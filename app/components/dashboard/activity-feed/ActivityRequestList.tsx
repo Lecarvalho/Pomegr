@@ -178,6 +178,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
     </footer>
     {phone
       ? <p className="activityFeedCaveat">Requests with their tool calls · tap a call for details · <DottedInfoPopover ariaLabel="How to read this feed" content={PHONE_HOW_TO_READ}>how to read this</DottedInfoPopover></p>
-      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Each request's uncached input, cache write and output are request-local and never summed across requests; hover a count for its exact value. The agent and the recorded model are named when they change from the request above. Tool calls nest under their request with wall duration. Targets show Bash descriptions and file names only.">Request-local counts</DottedInfoPopover></p>}
+      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Never summed across requests; hover a count for its exact value.">Request-local counts</DottedInfoPopover></p>}
   </div>;
 }

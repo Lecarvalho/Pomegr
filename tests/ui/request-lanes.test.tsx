@@ -105,7 +105,6 @@ describe("request lanes", () => {
     const user = userEvent.setup();
     const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
     const maxima = () => lanes(container).map((lane) => lane.querySelector(".requestLaneMaximum")?.textContent);
-    expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
     expect(maxima()).toEqual(["max 8,000", "max 800", "max 1,500"]);
     const childBar = laneNamed(container, "Builder").querySelector(".requestsActionsSegment.uncached")!;
     const primaryBar = laneNamed(container, "Primary agent").querySelector(".requestsActionsSegment.uncached")!;
@@ -266,7 +265,10 @@ describe("request lanes", () => {
   it("styles lanes as a 220px ellipsized label column beside the plot", () => {
     const styles = readFileSync(join(process.cwd(), "app", "styles", "request-lanes.css"), "utf8");
     expect(readFileSync(join(process.cwd(), "app", "globals.css"), "utf8")).toContain('@import "./styles/request-lanes.css";');
-    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/u);
+    expect(styles).toMatch(/\.requestsActionsPlot\s*\{\s*--lane-label-width:\s*220px;/u);
+    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*var\(--lane-label-width\) minmax\(0, 1fr\)/u);
+    // The Largest strip starts under the plots, level with the first bar (LANE_LEFT).
+    expect(styles).toMatch(/\.requestsActionsFooter\.isLanes\s*\{\s*padding-left:\s*calc\(var\(--lane-label-width\) \+ 8px\);/u);
     for (const name of ["requestLaneName", "requestLaneMeta"]) {
       expect(styles).toMatch(new RegExp(`\\.${name}\\s*\\{[^}]*overflow:\\s*hidden;[^}]*text-overflow:\\s*ellipsis;[^}]*white-space:\\s*nowrap`, "u"));
     }
@@ -446,7 +448,6 @@ describe("request single chart and role track", () => {
     expect(screen.getByRole("button", { name: "Single chart" })).toHaveAttribute("aria-pressed", "true");
     expect(container.querySelector(".requestLanes")).toBeNull();
     const svg = container.querySelector("svg.requestsActionsChart")!;
-    expect(screen.queryByText("Per-lane scales")).toBeNull();
     expect(segmentFamilies(container)).toEqual(Array.from({ length: 3 }, () => ["neutral", "writing", "system", "neutral"]).flat());
     const bars = Array.from(svg.querySelectorAll(".requestsActionsBar"));
     const segments = Array.from(svg.querySelectorAll(".requestRoleSegment"));
@@ -483,15 +484,35 @@ describe("request single chart and role track", () => {
     expect(named()).toHaveTextContent("#4Primary agentorchestrator");
   });
 
-  it("explains lane focus and group expansion in a keyboard-reachable popover", async () => {
+  it("explains the chart mode and lane scales in the quiet footer popover", async () => {
     const user = userEvent.setup();
-    renderPanel(laneSnapshots(), { agents: AGENTS });
-    const trigger = screen.getByRole("button", { name: "About lanes" });
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    const trigger = screen.getByRole("button", { name: "About this chart" });
+    expect(trigger).toHaveTextContent("How to read this");
+    expect(trigger.closest(".requestsActionsFooter")).not.toBeNull();
+    expect(container.querySelector(".requestsActionsRange")).toHaveTextContent("Showing #1–#12 of 12");
+    expect(container.querySelector(".requestsActionsRange")!.closest("button")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Requests" }).querySelector("button")).toBeNull();
     expect(trigger.tabIndex).toBe(0);
     trigger.focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("dialog", { name: "About lanes" })).toHaveTextContent("Click a lane name to focus that agent across the tab, and click it again to show all agents.");
-    expect(screen.getByRole("dialog", { name: "About lanes" })).toHaveTextContent("click a group name to expand it");
+    expect(screen.getByRole("dialog", { name: "About this chart" })).toHaveTextContent("Each lane has its own scale.");
+    expect(screen.getByRole("dialog", { name: "About this chart" })).toHaveTextContent("Fresh tokens leaves out cache reads");
+  });
+
+  it("starts the Largest strip under the lane plots and at the edge for the single chart", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    expect(container.querySelector(".requestsActionsFooter")).toHaveClass("isLanes");
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+    expect(container.querySelector(".requestsActionsFooter")).not.toHaveClass("isLanes");
+  });
+
+  it("counts a focused agent's requests in the range line", async () => {
+    const user = userEvent.setup();
+    const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
+    await user.click(screen.getByRole("button", { name: /^Focus Builder · /u }));
+    expect(container.querySelector(".requestsActionsRange")).toHaveTextContent(/^Showing #\d+–#\d+ · 3 of 3 for this agent$/u);
   });
 
   it("keeps role tints out of lanes and the minimap", async () => {

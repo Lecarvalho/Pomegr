@@ -2,7 +2,6 @@
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
-import { compactNumber } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
@@ -384,7 +383,7 @@ function RequestChartsSection() {
   return <Section id="request-charts" title="Request charts" lede="Activities draws one lane per agent on desktop; Single chart stacks every request on one scale above the role-family agent track. Both share request order, window, selection, arrow keys, and the neutral minimap. Static data only.">
     <section className="panel requestsActionsPanel" aria-label="Lane chart sample" style={SAMPLE_PANEL_STYLE}>
       <div className="requestsActionsPlot">
-        <p className="requestsActionsScale"><strong>Per-lane scales</strong><span>Rescaled · cache reads excluded</span></p>
+        <p className="requestsActionsRange">Showing #{windowStart}–#{end} of {SAMPLE_ROWS.length}</p>
         <RequestLaneChart lanes={SAMPLE_LANES} agents={SAMPLE_AGENTS} workflows={SAMPLE_WORKFLOWS} expanded={expanded} onToggleGroup={toggleGroup} focusedAgentId={null} onFocusAgent={ignoreFocus} {...chart} />
         <RequestMinimap rows={SAMPLE_ROWS} start={windowStart} end={end} mode="fresh" cacheWriteAvailable onMove={moveWindow} />
       </div>
@@ -392,7 +391,7 @@ function RequestChartsSection() {
     <p className="designSystemNote">Lanes: 220px ellipsized labels with name · role · model in the tooltip and accessible name, a per-lane max in a 72px gutter, and a taller primary lane. Beyond eight roster lanes, Direct subagents and each workflow collapse into one group row; Primary and Compactions never collapse. Lane names are quiet buttons that focus the agent across the tab (inert here). Lanes, labels, and the minimap carry no role tint; the minimap window is grey, only cache-evidence ticks stay amber, and its hint lives in the tooltip and accessible description.</p>
     <section className="panel requestsActionsPanel" aria-label="Single chart sample" style={SAMPLE_PANEL_STYLE}>
       <div className="requestsActionsPlot">
-        <p className="requestsActionsScale"><strong>0–{compactNumber(SAMPLE_MAXIMUM)} tokens</strong><span>Rescaled · cache reads excluded</span></p>
+        <p className="requestsActionsRange">Showing #{windowStart}–#{end} of {SAMPLE_ROWS.length}</p>
         <RequestBarsChart {...chart} maximum={SAMPLE_MAXIMUM} phone={false} onMove={moveWindow} agents={SAMPLE_AGENTS} onInspect={setInspectedId} />
         <RequestRoleLegend rows={SAMPLE_ROWS.slice(windowStart - 1, end)} agents={SAMPLE_AGENTS} named={SAMPLE_ROWS.find((row) => row.id === inspectedId) ?? selected} />
       </div>

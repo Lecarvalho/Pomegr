@@ -78,6 +78,19 @@ export function axisLabels(container: HTMLElement): string[] {
   return labels.length > 2 ? [labels[0], labels.at(-1) || ""] : labels;
 }
 
+/** The single chart's top axis tick, which prints the scale maximum. */
+export function scaleTop(container: HTMLElement): string {
+  const ticks = Array.from(container.querySelectorAll("svg.requestsActionsChart > .requestsActionsAxis"))
+    .filter((group) => group.querySelector("line"))
+    .map((group) => group.querySelector("text")?.textContent || "");
+  return ticks.at(-1) || "";
+}
+
+/** The range line above the chart, or null when the panel omits it. */
+export function rangeLine(container: HTMLElement): string | null {
+  return container.querySelector(".requestsActionsRange")?.textContent ?? null;
+}
+
 export function setPhone(matches: boolean) {
   vi.stubGlobal("matchMedia", vi.fn().mockImplementation((query: string) => ({
     matches,

@@ -123,7 +123,8 @@ describe("Pomegr visual contract", () => {
   });
 
   it("keeps request lanes labeled and collapsible, the minimap neutral, and role tint in the single-chart track only", () => {
-    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\)/);
+    expect(styles).toMatch(/\.requestsActionsPlot\s*\{\s*--lane-label-width:\s*220px;/);
+    expect(styles).toMatch(/\.requestLane, \.requestLaneAxisRow, \.requestLaneGroupHeader\s*\{[^}]*grid-template-columns:\s*var\(--lane-label-width\) minmax\(0, 1fr\)/);
     expect(styles).toMatch(/\.requestLaneName\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/);
     expect(styles).toMatch(/\.requestLaneMeta\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/);
     expect(styles).toMatch(/\.requestLaneLabel\.commandQuietAction\[aria-pressed="true"\]\s*\{\s*background:\s*color-mix\(in srgb, var\(--command-ink\) 6%, transparent\)/);

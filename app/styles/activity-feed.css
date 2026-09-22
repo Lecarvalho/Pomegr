@@ -35,7 +35,10 @@
 .activityOtherCounts strong { font-family: var(--font-data); font-weight: 400; }
 .activityOtherCounts .activityFailures { color: var(--color-error); }
 .activityBreakdown p { margin: 16px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
-.activityKindCaveat { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+/* Quiet like the Requests How to read this: caption, muted, faded dotted underline until hover. */
+.activityKindCaveat { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: var(--text-caption); }
+.activityKindInfo .dottedInfoPopoverLabel { text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.activityKindInfo .dottedInfoPopoverTrigger:hover .dottedInfoPopoverLabel { text-decoration-color: currentColor; }
 .activityLayout.isPhone .activityBreakdown { border-right: 0; border-bottom: 0; border-top: 1px solid var(--line); }
 .activityLayout.isPhone.designSystemActivityPhoneSample { grid-template-columns: minmax(0, 1fr); }
 .activityFeed, .activityTable { min-width: 0; width: 100%; }

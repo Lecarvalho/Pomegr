@@ -1,7 +1,10 @@
 /* Desktop request lanes: a 220px label column beside each plot, sharing one x geometry. Label buttons
    bleed into the .requestsActionsPlot side padding (20px) so their hover reaches the panel edge. */
+.requestsActionsPlot { --lane-label-width: 220px; }
 .requestLanes { --lane-label-bleed: 20px; display: flex; flex-direction: column; gap: 6px; }
-.requestLane, .requestLaneAxisRow, .requestLaneGroupHeader { display: grid; grid-template-columns: 220px minmax(0, 1fr); align-items: stretch; }
+.requestLane, .requestLaneAxisRow, .requestLaneGroupHeader { display: grid; grid-template-columns: var(--lane-label-width) minmax(0, 1fr); align-items: stretch; }
+/* The Largest strip starts under the plots, level with the first bar (LANE_LEFT, 8px). */
+.requestsActionsFooter.isLanes { padding-left: calc(var(--lane-label-width) + 8px); }
 .requestLaneLabel { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; padding-right: var(--space-3); border-right: 1px solid var(--command-line); }
 /* Lane-name focus and group expand buttons keep the label column; quiet-action hover and focus ring. */
 .requestLaneLabel.commandQuietAction { flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; width: calc(100% + var(--lane-label-bleed)); min-height: 28px; margin-left: calc(-1 * var(--lane-label-bleed)); padding: var(--space-2) var(--space-3) var(--space-2) var(--lane-label-bleed); border: 0; border-right: 1px solid var(--command-line); border-radius: 0; text-align: left; white-space: normal; }

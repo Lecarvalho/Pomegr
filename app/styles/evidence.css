@@ -690,8 +690,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
 .requestsActionsPlot { padding: 0 20px 8px; scroll-margin-top: 80px; }
 .requestsActionsGuide { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding-bottom: 6px; }
-.requestsActionsScale { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; color: var(--command-muted); font-size: 12px; }
-.requestsActionsScale strong { color: var(--command-ink); font: 500 12px var(--font-data); font-variant-numeric: tabular-nums; }
+.requestsActionsRange { margin: 0; color: var(--command-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
 .requestsActionsGuide .requestsActionsLegend { justify-content: flex-end; margin-left: auto; }
 .requestsActionsChart { display: block; width: 100%; height: 274px; overflow: visible; }
 .requestsActionsAxis text, .requestsActionsSelectedLabel { fill: var(--command-faint); font: var(--text-caption) var(--font-data); font-variant-numeric: tabular-nums; }
@@ -725,6 +724,11 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsNumber { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 /* Largest strip: one wrapping line under the minimap. The metric label cycles in place; each item
    selects its request. Quiet actions bleed into the plot padding so their text aligns with the minimap. */
+.requestsActionsFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-3); }
+.requestsActionsFooter .requestsActionsLargest { flex: 1 1 auto; }
+.requestsActionsInfo { margin: var(--space-2) 0 0 auto; color: var(--command-muted); font-size: var(--text-caption); }
+.requestsActionsInfo .dottedInfoPopoverLabel { text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.requestsActionsInfo .dottedInfoPopoverTrigger:hover .dottedInfoPopoverLabel { text-decoration-color: currentColor; }
 .requestsActionsLargest { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; margin: var(--space-2) -6px 0; }
 .requestsActionsLargestRow { gap: 6px; min-width: 0; max-width: 100%; }
 .requestsActionsLargestRow.isSelected { background: color-mix(in srgb, var(--command-ink) 10%, transparent); }
@@ -746,6 +750,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   /* Phone keeps the Largest strip under the minimap; each item keeps a 44px touch target. */
   .requestsActionsLargest .commandQuietAction { min-height: 44px; }
   .requestsActionsLargestName { max-width: 18ch; }
+  .requestsActionsInfo .dottedInfoPopoverTrigger { min-height: 44px; }
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(100px, 130px); gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--command-line); }
   .requestsActionsHeading { max-width: none; }
   .requestsActionsHeading .sessionEyebrow { display: none; }

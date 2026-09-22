@@ -50,6 +50,6 @@ export function ActivityKindRail({ feed, selection, tasks }: { feed: ActivityFee
     <div className="activityOtherCounts">
       <div className={feed.shellTasks.failed ? "activityFailures" : ""}><span>Failed shell runs</span><strong>{feed.shellTasks.failed.toLocaleString()}</strong></div>
     </div>
-    <p className="activityKindCaveat"><DottedInfoPopover ariaLabel="About these counts" content="Counts describe recorded tool calls, not effort or quality. Duration is wall time from call to result, including approval waits. The Shell row and Failed shell runs count recorded shell calls; the shell task rows are the latest tasks this agent scope still retains, with the Bash description, status, exit code and wall duration only. Command text, output and paths stay on the monitor.">Counts, not effort or cost.</DottedInfoPopover></p>
+    <p className="activityKindCaveat"><DottedInfoPopover className="activityKindInfo" ariaLabel="About these counts" content="Recorded tool calls, not effort or quality. Durations are wall time, including approval waits.">Counts, not effort or cost.</DottedInfoPopover></p>
   </div>;
 }

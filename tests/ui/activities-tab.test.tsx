@@ -490,10 +490,10 @@ describe("Activities tab", () => {
     expect(within(feed).getByText("Request-local counts")).toBeInTheDocument();
     expect(within(feed).getByText("Request-local counts").closest(".activityFeedCaveat")).toBeInTheDocument();
     await user.click(within(feed).getByRole("button", { name: "About these counts" }));
-    expect(screen.getByRole("dialog", { name: "About these counts" })).toHaveTextContent("Counts describe recorded tool calls, not effort or quality.");
+    expect(screen.getByRole("dialog", { name: "About these counts" })).toHaveTextContent("Recorded tool calls, not effort or quality. Durations are wall time, including approval waits.");
     await user.keyboard("{Escape}");
     await user.click(within(feed).getByRole("button", { name: "About request rows" }));
-    expect(screen.getByRole("dialog", { name: "About request rows" })).toHaveTextContent("Targets show Bash descriptions and file names only.");
+    expect(screen.getByRole("dialog", { name: "About request rows" })).toHaveTextContent("Never summed across requests; hover a count for its exact value.");
   });
 
   it("shows an explicit unavailable state instead of the request feed while the session view is paused", async () => {

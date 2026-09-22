@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed, Workflow } from "../../../shared/monitor-contract";
-import { agentDisplayName, agentTreeRows, compactNumber } from "../../dashboard-utils";
+import { agentDisplayName, agentTreeRows } from "../../dashboard-utils";
 import { EmptyState } from "../EmptyState";
 import { DottedInfoPopover } from "../DottedInfoPopover";
 import { CommandSelect } from "../command-center/CommandPage";
@@ -12,14 +12,25 @@ import { buildRequestLanes } from "./requests-actions/lane-model";
 import { RequestLaneChart } from "./requests-actions/RequestLaneChart";
 import { RequestMinimap } from "./requests-actions/RequestMinimap";
 import { RequestRoleLegend } from "./requests-actions/RequestRoleTrack";
-import { isCompleteRequestOverview, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
+import { isCompleteRequestOverview, requestMarker, scaleMax, type ChartMode, type RequestRow } from "./requests-actions/model";
 import type { SessionRequestSelection } from "./requests-actions/useSessionRequestSelection";
 import { useStableHistoryStatus } from "./requests-actions/useStableHistoryStatus";
 import { CacheRefillIcon } from "./CacheRefillIcon";
 
 const NO_WORKFLOWS: Workflow[] = [];
+const LANE_NOTE = "Each lane has its own scale.";
+const FRESH_NOTE = "Fresh tokens leaves out cache reads; every request re-reads the cached prompt.";
 
 type ChartLayout = "lanes" | "single";
+
+/** The loaded window as request markers. Session numbers skip other agents, so a scoped window also counts its requests. */
+function windowRange(visible: RequestRow[], total: number, scoped: boolean): string | null {
+  const first = visible[0];
+  const last = visible.at(-1);
+  if (!first || !last) return null;
+  const markers = first === last ? requestMarker(first) : `${requestMarker(first)}–${requestMarker(last)}`;
+  return scoped ? `Showing ${markers} · ${visible.length} of ${total} for this agent` : `Showing ${markers} of ${total}`;
+}
 
 export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, requestSnapshots, cacheWriteAvailable, selection }: {
   agents: Agent[]; workflows?: Workflow[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
@@ -55,13 +66,21 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   const windowStart = requestHistory.enabled && !requestHistory.preview ? requestHistory.offset + start : start;
   const chartTotal = requestHistory.enabled ? requestHistory.total : rows.length;
   const chartRef = useRef<HTMLDivElement>(null);
+  // The preview's markers are times, and its retention note already says what is shown.
+  const range = requestHistory.preview ? null : windowRange(visibleRows, chartTotal, resolvedScope !== "all");
+  // Explanations collect in one quiet footer popover so the heading and range line stay plain text.
+  const notes = [
+    mode === "fresh" && FRESH_NOTE,
+    !single && LANE_NOTE,
+    !requestHistory.preview && (requestHistory.enabled ? "Request numbers are session labels, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent)."),
+  ].filter((note): note is string => Boolean(note));
   const locate = (row: RequestRow) => {
     select(row, true);
     if (phone) chartRef.current?.scrollIntoView?.({ block: "start" });
   };
   return <section className="panel requestsActionsPanel" aria-label="Requests">
     <header className="requestsActionsHeader">
-      <div className="requestsActionsHeading"><h2>{requestHistory.preview ? "Requests" : <DottedInfoPopover ariaLabel="About request links" content={requestHistory.enabled ? "Request numbers are stable labels within this session, not provider ids." : "Request numbers are positions in the retained feed (latest 100 per agent), not provider ids."}>Requests</DottedInfoPopover>}</h2><span className="sessionEyebrow">One bar per model request</span></div>
+      <div className="requestsActionsHeading"><h2>Requests</h2><span className="sessionEyebrow">One bar per model request</span></div>
       <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>
       <div className="requestsActionsModes">
         <div className="commandSegmented" role="group" aria-label="Chart mode">{([['fresh', 'Fresh tokens'], ['full', 'Full breakdown']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} key={value} onClick={() => setMode(value)}>{label}</button>)}</div>
@@ -71,7 +90,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
     {(!requestHistory.enabled && requestSnapshots?.status !== "ready") || !rows.length || !selected ? <EmptyState text={requestHistory.enabled && historyStatus === "loading" ? "Loading request history…" : requestHistory.enabled && historyStatus === "unavailable" ? "Request history is unavailable. Retrying…" : "No request observations for this session yet."} /> : <>
       <div className="requestsActionsPlot" ref={chartRef}>
         <div className="requestsActionsGuide">
-          <p className="requestsActionsScale" aria-live="polite"><strong>{single ? `0–${compactNumber(maximum)} tokens` : <DottedInfoPopover ariaLabel="About lanes" content="Each lane has its own scale; max is its tallest request on the loaded page. Click a lane name to focus that agent across the tab, and click it again to show all agents. With more than eight lanes, workflow groups collapse; click a group name to expand it.">Per-lane scales</DottedInfoPopover>}</strong><span>{mode === "fresh" ? "Rescaled · cache reads excluded" : "All input + output"}</span></p>
+          {range && <p className="requestsActionsRange">{range}</p>}
           <div className="requestsActionsLegend" aria-label="Chart legend">
             <span><i className="requestsActionsSwatch uncached" />{phone ? "Uncached" : "Uncached input"}</span>
             {cacheWriteAvailable && <span><i className="requestsActionsSwatch write" />Cache write</span>}
@@ -89,7 +108,10 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
           : <RequestLaneChart lanes={lanes.lanes} agents={agents} workflows={workflows} expanded={expandedGroups} onToggleGroup={toggleGroup} focusedAgentId={resolvedScope === "all" ? null : resolvedScope} onFocusAgent={(agentId) => setScope(agentId ?? "all")} rows={rows} start={start} end={end} size={size} mode={mode} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={select} onStep={step} windowStart={windowStart} total={chartTotal} />}
         {single && <RequestRoleLegend rows={rows.slice(start - 1, end)} agents={agents} named={(inspectedId && rows.find((row) => row.id === inspectedId)) || selected} />}
         <RequestMinimap rows={rows} overview={overview} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} interactive={!requestHistory.enabled || isCompleteRequestOverview(overview, requestHistory.total)} />
-        <LargestRequestsList rows={rows} agents={agents} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />
+        <div className={`requestsActionsFooter${single ? "" : " isLanes"}`}>
+          <LargestRequestsList rows={rows} agents={agents} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />
+          {notes.length > 0 && <DottedInfoPopover className="requestsActionsInfo" ariaLabel="About this chart" content={notes.map((note) => <span key={note}>{note}</span>)}>How to read this</DottedInfoPopover>}
+        </div>
       </div>
       {requestHistory.preview && <p className="requestsActionsRetention">{historyStatus === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…"}</p>}
     </>}

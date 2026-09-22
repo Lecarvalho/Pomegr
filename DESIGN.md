@@ -388,7 +388,7 @@ symbol and label lane sits above compaction labels. Show marker labels on select
 focus, or hover, with matching minimap ticks; the bar's accessible name carries the
 same label. Match only unambiguous normalized agent/timestamp pairs.
 
-Requests is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, and a scoped Largest strip. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Show each mode's numeric scale and label Fresh as rescaled with cache reads excluded. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
+Requests is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, and a scoped Largest strip. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Each layout shows its numeric scale on the chart itself: lane maxima or the single chart's axis ticks. Above the chart, a caption-size muted range line reads `Showing #first–#last of total`; a single-agent scope adds `· N of M for this agent`, because session request numbers skip other agents. The recent-request preview omits the range line. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
 
 The desktop request header keeps its title and one-bar explanation inline, with
 the legend and controls alongside when space permits. The chart retains its scale
@@ -419,6 +419,14 @@ and total; skip cache write when unavailable. Omit repeated agent and Before
 metadata, expansion controls, and the ranking footer. Phone keeps the strip under the minimap
 with one full-width row per request at the 44px touch height.
 
+The Requests title and range line stay plain text. Their explanations (why Fresh
+tokens leaves out cache reads, request numbering, and in lanes the per-lane scales)
+share one quiet How to read this dotted popover at the bottom right of the panel,
+beside the Largest strip: caption size, muted, with a faded dotted underline. The
+Actions by kind rail caveat uses the same quiet treatment. Popover text states only
+what a technical reader cannot discover from the controls: one or two short
+sentences, no walkthrough of clicks or privacy boundaries.
+
 #### Request lanes and single chart
 
 Desktop Activities defaults to lanes. Two segmented groups sit in `.requestsActionsModes`:
@@ -430,7 +438,8 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   exactly once. Requests from compaction agents share one Compactions lane, placed last. The
   primary lane is taller (22px band, 96px plot; other lanes 18px and 34px). Each lane prints
   its own `max N` (caption, Geist Mono, faint) in a 72px right gutter that bars and evidence
-  icons never reach. The scale line reads Per-lane scales with a dotted info popover. Lane
+  icons never reach. In lanes, the Largest strip starts under the plots, level with
+  the first bar, rather than under the label column. Lane
   evidence icons are 14px. Band text is placed in priority order, dropping any label that would
   overlap rather than drawing it: the hovered, focused, or selected cache-evidence label, then
   the selected request number, then compaction text.

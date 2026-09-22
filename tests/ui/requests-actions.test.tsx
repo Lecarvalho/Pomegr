@@ -1,4 +1,4 @@
-import { RequestsActionsPanel, snapshot, requestFeed, overviewPoint, fullRefill, renderPanel, HistoryLocateHarness, chart, axisLabels, setPhone, selectedRequest } from "./requests-actions-test-fixtures";
+import { RequestsActionsPanel, snapshot, requestFeed, overviewPoint, fullRefill, renderPanel, HistoryLocateHarness, chart, axisLabels, rangeLine, scaleTop, setPhone, selectedRequest } from "./requests-actions-test-fixtures";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -116,7 +116,8 @@ describe("RequestsActionsPanel", () => {
     const calls = fetchPage.mock.calls.length;
     // Phone and desktop lanes scale over their visible requests; desktop single-chart mode uses
     // the whole-history overview.
-    expect(screen.getByText(phone ? "0–2M tokens" : "Per-lane scales")).toBeInTheDocument();
+    expect(rangeLine(container)).toBe(`Showing #${(total - size + 1) * 10}–#1800 of 180`);
+    if (phone) expect(scaleTop(container)).toBe("2M");
     if (phone) {
       const svg = chart(container);
       vi.spyOn(svg, "getBoundingClientRect").mockReturnValue({ left: 0, right: 334, top: 0, bottom: 196, width: 334, height: 196, x: 0, y: 0, toJSON: () => ({}) });
@@ -124,13 +125,14 @@ describe("RequestsActionsPanel", () => {
       const slot = (330 - 34 + 2.8) / size;
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size) * slot, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#10", "#200"]);
-      expect(screen.getByText("0–12M tokens")).toBeInTheDocument();
+      expect(scaleTop(container)).toBe("12M");
+      expect(rangeLine(container)).toBe("Showing #10–#200 of 180");
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: (total - size - 10) * slot, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#110", "#300"]);
-      expect(screen.getByText("0–2M tokens")).toBeInTheDocument();
+      expect(scaleTop(container)).toBe("2M");
       fireEvent.pointerMove(svg, { pointerId: 1, clientX: 0, clientY: 100 });
       expect(axisLabels(container)).toEqual(["#1610", "#1800"]);
-      expect(screen.getByText("0–2M tokens")).toBeInTheDocument();
+      expect(scaleTop(container)).toBe("2M");
       expect(fetchPage).toHaveBeenCalledTimes(calls);
       fireEvent.pointerUp(svg, { pointerId: 1 });
       return;
@@ -140,7 +142,7 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 179, clientY: 20 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 0, clientY: 20 });
     expect(axisLabels(container)).toEqual(["#10", `#${size * 10}`]);
-    expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
+    expect(rangeLine(container)).toBe(`Showing #10–#${size * 10} of 180`);
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: size + 9, clientY: 20 });
     expect(axisLabels(container)).toEqual(["#110", `#${(size + 10) * 10}`]);
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 180, clientY: 20 });
@@ -190,9 +192,9 @@ describe("RequestsActionsPanel", () => {
     await waitFor(() => expect(selectedRequest()).toBe("#10"));
     expect(axisLabels(container)).toEqual(["#1", "#20"]);
     expect(calls.at(-1)).toContain("requestId=request-10");
-    expect(screen.queryByText("Request numbers are stable labels within this session, not provider ids.", { exact: false })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "About request links" }));
-    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are stable labels within this session, not provider ids.");
+    expect(screen.queryByText("Request numbers are session labels, not provider ids.", { exact: false })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "About this chart" }));
+    expect(screen.getByRole("dialog", { name: "About this chart" })).toHaveTextContent("Request numbers are session labels, not provider ids.");
   });
 
   it("discards an earlier session-history response after the viewed session changes", async () => {
@@ -360,10 +362,10 @@ describe("RequestsActionsPanel", () => {
     expect(axisLabels(container)).toEqual(["#941", "#1000"]);
     expect(selectedRequest()).toBe("#1000");
     expect(screen.queryByText(/Request numbers are positions/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "About request links" }));
-    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids.");
+    await user.click(screen.getByRole("button", { name: "About this chart" }));
+    expect(screen.getByRole("dialog", { name: "About this chart" })).toHaveTextContent("Request numbers are positions in the retained feed (latest 100 per agent).");
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "About request links" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "About this chart" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Showing \d/)).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Request history pages" })).not.toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "Request window" }).parentElement).not.toHaveTextContent(/Loaded|All \d/);
@@ -449,9 +451,8 @@ describe("RequestsActionsPanel", () => {
     const labels = axisLabels(container);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(0);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
-    expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
     expect(screen.getByText("max 8,000")).toBeInTheDocument();
-    expect(screen.getByText("Rescaled · cache reads excluded")).toBeInTheDocument();
+    expect(rangeLine(container)).toBe("Showing #41–#100 of 100");
     const freshHeight = Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"));
     expect(freshHeight).toBeCloseTo(84);
     const selectedBar = container.querySelector(".requestsActionsBar.isSelected .requestsActionsSegment")!;
@@ -467,7 +468,6 @@ describe("RequestsActionsPanel", () => {
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(60);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.getByText("max 120K")).toBeInTheDocument();
-    expect(screen.getByText("All input + output")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Fresh tokens" }));
     expect(selectedRequest()).toBe("#50");
@@ -495,9 +495,9 @@ describe("RequestsActionsPanel", () => {
     const { container } = renderPanel([snapshot(1, "primary", {
       uncachedInputTokens: 2_000, cacheWriteTokens: 0, cacheReadTokens: 90_000, outputTokens: 1_000,
     })], { cacheWriteAvailable: false });
-    expect(screen.getByText("0–3,000 tokens")).toBeInTheDocument();
+    expect(scaleTop(container)).toBe("3,000");
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
-    expect(screen.getByText("0–120K tokens")).toBeInTheDocument();
+    expect(scaleTop(container)).toBe("120K");
     expect(selectedRequest()).toBe("#1");
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
