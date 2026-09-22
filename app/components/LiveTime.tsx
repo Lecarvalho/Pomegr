@@ -46,7 +46,7 @@ export function ExecutionTaskWallTimeText({ task }: { task: ExecutionTask }) {
 }
 
 export function SessionWallTimeText({ session, historical }: {
-  session: NonNullable<MonitorState["session"]>;
+  session: Pick<NonNullable<MonitorState["session"]>, "durationMs" | "startedAt">;
   historical: boolean;
 }) {
   const now = useLiveNow();

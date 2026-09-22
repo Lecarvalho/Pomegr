@@ -101,9 +101,16 @@ recorded in [Activity events](../METRICS.md#activity-events) and the
 
 The [information architecture redesign plan](plans/ia-redesign.md) holds the
 approved navigation, session tab, agent detail, file history, and transport
-redesign with its prototype artboards. Implementation has not started;
-[DESIGN.md](../../DESIGN.md), [Observation cache](../OBSERVATION_CACHE.md), and
-[Metrics](../METRICS.md) stay authoritative until each task updates them.
+redesign with its prototype artboards. Implementation is active: Sessions 1–3 are
+complete, and Session 4 (persistence and storage) is next. The plan remains a
+working checklist, not runtime authority; [DESIGN.md](../../DESIGN.md),
+[Observation cache](../OBSERVATION_CACHE.md), and [Metrics](../METRICS.md) own
+shipped behavior.
+
+The [overview sparse state and link rule plan](plans/overview-sparse-and-links.md)
+is an approved, not yet implemented UI change to the session Overview and Signals
+tabs. It reuses the redesign prototype artboards and moves its rules into
+[DESIGN.md](../../DESIGN.md) as its tasks complete.
 
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not

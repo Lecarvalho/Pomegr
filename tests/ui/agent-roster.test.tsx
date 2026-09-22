@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, Workflow } from "../../shared/monitor-contract";
@@ -224,6 +225,17 @@ describe("grouped agent roster", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Workflow · Verification/ })).toHaveAttribute("aria-expanded", "true"));
   });
 
+  it("opens activities with the selected agent scope from the inspector", async () => {
+    const user = userEvent.setup();
+    const openActivities = vi.fn();
+    render(panel([agent, child("worker")], { onOpenActivities: openActivities }));
+    await user.click(screen.getByRole("button", { name: /Direct subagents/ }));
+    await user.click(screen.getByRole("button", { name: "Select worker" }));
+    await user.click(screen.getByRole("button", { name: "Activities for this agent" }));
+    expect(openActivities).toHaveBeenCalledWith("worker");
+    expect(screen.getByRole("link", { name: "test-model across sessions" })).toHaveAttribute("href", "/agents?model=test-model");
+  });
+
   it("opens the inspector sheet only after a phone row selection", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
@@ -242,6 +254,32 @@ describe("grouped agent roster", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /worker/ })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Select worker" })).toHaveFocus();
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it("opens and clears the phone inspector for an externally scoped agent selection", async () => {
+    const user = userEvent.setup();
+    const selected = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    render(panel([agent, child("worker")], { selectedAgentId: "worker", onSelectAgent: selected }));
+    expect(await screen.findByRole("dialog", { name: /worker/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back" }));
+    expect(selected).toHaveBeenCalledWith(null);
+  });
+
+  it("restores focus to a controlled phone selection after Escape clears its URL state", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    function ControlledPhoneRoster() {
+      const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+      return panel([agent], { selectedAgentId, onSelectAgent: setSelectedAgentId });
+    }
+    render(<ControlledPhoneRoster />);
+    const opener = screen.getByRole("button", { name: "Select Primary agent" });
+    await user.click(opener);
+    expect(await screen.findByRole("dialog", { name: /Primary/ })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /Primary/ })).not.toBeInTheDocument());
+    expect(opener).toHaveFocus();
   });
 
   it("keeps the roster mounted while the inspector opens the temporary tree", async () => {

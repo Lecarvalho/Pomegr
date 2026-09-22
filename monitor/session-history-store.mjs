@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { normalizedRequestModel } from "./request-snapshots.mjs";
 import { normalizedRequestWork } from "./request-work.mjs";
 import { normalizedWorkKind, toolWorkKind, WORK_KINDS } from "./work-kind.mjs";
 import { activityGroupPlan, emptyActivityGroups, scopeMatches, servedActivityGroups } from "./session-history-groups.mjs";
@@ -46,6 +47,8 @@ function safeRequest(value) {
     cacheReadTokens: value.cacheReadTokens, outputTokens: value.outputTokens, totalTokens: value.totalTokens,
     precedingWork, precedingAssociation: precedingWork.length ? "transcript_adjacency" : null,
     issuedWork, issuedAssociation: issuedWork.length ? "recorded_link" : null,
+    // Records committed before per-request models were retained stay valid as unreported.
+    model: normalizedRequestModel(value.model),
   };
 }
 function safeText(value, maximum, allowEmpty = false) { return typeof value === "string" && (allowEmpty || value.length > 0) && value.length <= maximum && !/[\u0000-\u001f\u007f]/.test(value) ? value : null; }

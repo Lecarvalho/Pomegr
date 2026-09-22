@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { AgentsRun } from "../../../shared/agents-contract";
+import Link from "next/link";
+import type { AgentsAnalyticsSnapshot, AgentsRun } from "../../../shared/agents-contract";
+import type { WorkKind } from "../../../shared/monitor-contract";
 import { relativeTime, sessionListTime } from "../../dashboard-utils";
 import { useAgents } from "../../agents-client";
-import { CommandEmpty, CommandSelect } from "../command-center/CommandPage";
+import { CommandEmpty, CommandPageHeader, CommandSelect } from "../command-center/CommandPage";
 import { AgentEvidencePanel } from "./AgentEvidencePanel";
 import { ModelRanking, PatternsPanel, RoleMatrix, WorkPanel } from "./AgentsModelPanels";
 import { AgentsRosterPanel } from "./AgentsRosterPanel";
@@ -26,7 +28,22 @@ function SelectionNotice({ project, days, scope, connected }: { project: string;
   </p>;
 }
 
-export function AgentsView() {
+function withModelFilter(snapshot: AgentsAnalyticsSnapshot, model: string | null) {
+  if (!model) return snapshot;
+  const runs = snapshot.runs.filter((run) => run.model === model);
+  const work = new Map<WorkKind, number>();
+  for (const run of runs) for (const item of run.work) work.set(item.workKind, (work.get(item.workKind) || 0) + item.count);
+  return {
+    ...snapshot,
+    summary: { ...snapshot.summary, runCount: runs.length, sessionCount: new Set(runs.map((run) => run.sessionId)).size, modelCount: runs.length ? 1 : 0, mainRunCount: runs.filter((run) => run.scope === "main").length, delegatedRunCount: runs.filter((run) => run.scope === "delegated").length },
+    models: snapshot.models.filter((entry) => entry.model === model),
+    runs,
+    roster: snapshot.roster.filter((run) => run.model === model),
+    work: [...work].map(([workKind, count]) => ({ workKind, count })),
+  };
+}
+
+export function AgentsView({ initialModel = null }: { initialModel?: string | null }) {
   const [project, setProject] = useState<string | "all">("all");
   const [days, setDays] = useState<7 | 30 | 90>(30);
   const [scope, setScope] = useState<Scope>("all");
@@ -41,7 +58,8 @@ export function AgentsView() {
     setRetained(result);
     if (retained.data && (result.data.filters.project !== retained.data.filters.project || result.data.filters.days !== retained.data.filters.days || result.data.filters.scope !== retained.data.filters.scope)) setSelection(null);
   }
-  const { data, checkedAt } = result.data ? result : retained;
+  const { data: unfilteredData, checkedAt } = result.data ? result : retained;
+  const data = useMemo(() => unfilteredData ? withModelFilter(unfilteredData, initialModel) : null, [initialModel, unfilteredData]);
   const applied = data?.filters || { project, days, scope };
   const switching = applied.project !== project || applied.days !== days || applied.scope !== scope;
   const loading = result.loading;
@@ -63,9 +81,9 @@ export function AgentsView() {
   const missingAgentEvidence = data && data.summary.runCount === 0 && data.coverage.missingSessions > 0;
 
   return <section className={styles.agentsView} aria-busy={loading && !data || undefined}>
-    <header className={styles.pageHead}><div><h1>Agents</h1><p>See which models you use, the roles they take, and how you delegate.</p></div>{snapshotTime && <div className={styles.snapshot}><strong>Summary observed</strong><time dateTime={snapshotTime} title={sessionListTime(snapshotTime)}>{relativeTime(snapshotTime)}</time></div>}</header>
+    <CommandPageHeader title="Models & delegation" meta="See which models you use, the roles they take, and how you delegate." actions={snapshotTime && <div className={styles.snapshot}><strong>Summary observed</strong><time dateTime={snapshotTime} title={sessionListTime(snapshotTime)}>{relativeTime(snapshotTime)}</time></div>} />
     <div className={styles.tabs} role="tablist" aria-label="Agent views"><button className={styles.tab} role="tab" id="agents-tab-models" aria-selected={tab === "models"} aria-controls="agents-models-panel" tabIndex={tab === "models" ? 0 : -1} type="button" onClick={() => setActiveTab("models")} onKeyDown={(event) => tabKeyDown(event, "models")}>Models &amp; work</button><button className={styles.tab} role="tab" id="agents-tab-live" aria-selected={tab === "live"} aria-controls="agents-live-panel" tabIndex={tab === "live" ? 0 : -1} type="button" onClick={() => setActiveTab("live")} onKeyDown={(event) => tabKeyDown(event, "live")}>Live agents {data && <span className={styles.tabCount}>{data.roster.length}</span>}</button></div>
-    <div className={styles.filters} aria-label="Agent filters"><label className={styles.filter}><span className={styles.filterLabel}>Project</span><CommandSelect aria-label="Project" value={applied.project} onChange={(event) => { setProject(event.currentTarget.value); setSelection(null); }}><option value="all">All projects</option>{projects.map((value) => <option value={value} key={value}>{value}</option>)}</CommandSelect></label>{tab === "models" && <label className={styles.filter}><span className={styles.filterLabel}>Period</span><CommandSelect aria-label="Period" value={applied.days} onChange={(event) => { setDays(Number(event.currentTarget.value) as 7 | 30 | 90); setSelection(null); }}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></CommandSelect></label>}<div className={styles.segmented} role="group" aria-label="Agent scope"><button type="button" aria-pressed={applied.scope === "all"} onClick={() => { setScope("all"); setSelection(null); }}>All agents</button><button type="button" aria-pressed={applied.scope === "main"} onClick={() => { setScope("main"); setSelection(null); }}>Main</button><button type="button" aria-pressed={applied.scope === "delegated"} onClick={() => { setScope("delegated"); setSelection(null); }}>Delegated</button></div>{data && <details className={styles.coverage}><summary>About this data</summary><div className={styles.coverageBox}><strong>{data.coverage.retainedSessions} retained sessions contribute {data.coverage.retainedRuns} agent runs.</strong><br />{data.coverage.missingSessions ? `${data.coverage.missingSessions} eligible session${data.coverage.missingSessions === 1 ? " has" : "s have"} no retained agent evidence.` : "All eligible retained sessions contributed agent evidence."}{data.coverage.missingSessions > 0 && <p>Some past sessions may remain unavailable.</p>}{data.coverage.truncated ? " Retention is bounded; this selection may be incomplete." : ""}</div></details>}</div>
+    <div className={styles.filters} aria-label="Agent filters"><label className={styles.filter}><span className={styles.filterLabel}>Project</span><CommandSelect aria-label="Project" value={applied.project} onChange={(event) => { setProject(event.currentTarget.value); setSelection(null); }}><option value="all">All projects</option>{projects.map((value) => <option value={value} key={value}>{value}</option>)}</CommandSelect></label>{tab === "models" && <label className={styles.filter}><span className={styles.filterLabel}>Period</span><CommandSelect aria-label="Period" value={applied.days} onChange={(event) => { setDays(Number(event.currentTarget.value) as 7 | 30 | 90); setSelection(null); }}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></CommandSelect></label>}<div className={styles.segmented} role="group" aria-label="Agent scope"><button type="button" aria-pressed={applied.scope === "all"} onClick={() => { setScope("all"); setSelection(null); }}>All agents</button><button type="button" aria-pressed={applied.scope === "main"} onClick={() => { setScope("main"); setSelection(null); }}>Main</button><button type="button" aria-pressed={applied.scope === "delegated"} onClick={() => { setScope("delegated"); setSelection(null); }}>Delegated</button></div>{initialModel && <span className="commandChip" aria-label={`Model filter: ${initialModel}`}>{initialModel}<Link className="commandQuietAction" href="/agents" aria-label="Clear model filter">Clear</Link></span>}{data && <details className={styles.coverage}><summary>About this data</summary><div className={styles.coverageBox}><strong>{data.coverage.retainedSessions} retained sessions contribute {data.coverage.retainedRuns} agent runs.</strong><br />{data.coverage.missingSessions ? `${data.coverage.missingSessions} eligible session${data.coverage.missingSessions === 1 ? " has" : "s have"} no retained agent evidence.` : "All eligible retained sessions contributed agent evidence."}{data.coverage.missingSessions > 0 && <p>Some past sessions may remain unavailable.</p>}{data.coverage.truncated ? " Retention is bounded; this selection may be incomplete." : ""}</div></details>}</div>
     {loading && !data && <p className={styles.notice} role="status">Loading agent information. You can leave this page and check back later; it refreshes automatically when you return.</p>}
     {switching && <SelectionNotice key={JSON.stringify([project, days, scope])} project={project} days={days} scope={scope} connected={result.connected} />}
     {partial && <p className={`${styles.notice} ${styles.noticeWarning}`} role="status">Partial coverage · {data.coverage.retainedSessions} retained sessions are included.{data.coverage.missingSessions ? ` ${data.coverage.missingSessions} eligible session${data.coverage.missingSessions === 1 ? " has" : "s have"} no retained agent evidence.` : " Retention is bounded for this selection."}</p>}

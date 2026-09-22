@@ -1,0 +1,60 @@
+# ACOS project configuration, derived by `/acos init`.
+# Values here fill `{{ project.* }}` placeholders in presets and blocks.
+
+acos: "0.1"
+
+# Handoff verifier named in docs/AGENT-WORKFLOW.md ("Before handing off a change,
+# run `npm run verify:fast`"). It chains lint, typecheck, contract/ops tests,
+# provider-doc, architecture, and boundary checks. The full `npm run verify`
+# (build, generated-artifact sync, node/UI/landing suites) stays CI's job.
+verify: "npm run verify:fast"
+
+# Captures the cropped screenshots a part's try-it page is built from;
+# substituted into {{ project.shot }}. Headless Chrome or Edge, no dependencies.
+# The dashboard must be running (`npm run dev`, http://localhost:3003).
+shot: "node .agents/skills/acos/scripts/shot.mjs"
+
+# Providers whose CLI is reachable on this machine (gemini, ollama absent).
+providers:
+  - anthropic
+  - openai
+
+# Each harness resolves its provider, model tiers, and startup load here.
+# Shared verify, capture, limits, and gates deliberately remain top-level.
+harnesses:
+  claude:
+    provider: anthropic
+    models:
+      fast: claude-haiku-4-5
+      balanced: claude-sonnet-5
+      strong: claude-opus-5
+    startup:
+      orchestrator: 40000
+      subagent: 27000
+      basis: "estimated 2026-09-18 from Claude Code's loaded project and harness surface; no /context reading yet"
+
+  codex:
+    provider: openai
+    models:
+      fast: gpt-5.6-luna
+      balanced: gpt-5.6-terra
+      strong: gpt-6-astra
+    startup:
+      orchestrator: 46000
+      subagent: 29000
+      basis: "estimated 2026-09-19 from Codex's loaded project, tool, MCP, and skill surface; separately estimated, not measured"
+
+gates:
+  go: required
+
+# Session limits. Advisory, compose-time only: size tasks into slices, cap
+# delegation. Not checked mid-run; /acos calibrate reports overruns.
+limits:
+  files: 8                       # per context: an inline part, or one slice of a
+                                 # fan-out. A session running three slices
+                                 # legitimately touches three times this.
+  lines: 400                     # added plus removed, same per-context meaning
+  orchestrator_tokens: 120000
+  worker_context_tokens: 300000
+  agents: 3
+  stages: 5

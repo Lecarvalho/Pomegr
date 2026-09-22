@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: Session 1 complete; T02 and T01 verified and independently accepted.
+> Status: active; Sessions 1–3 are complete. Session 4 (T07 then T13) is the next unchecked implementation session.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Session 2 is next; it has not started. Begin it only in a fresh user-started implementation session.
+> Next task or decision: Start Session 4 (T07 then T13) in a fresh user-requested session. First verify SQLite in the actual Electron monitor worker, then implement persistence/retention before native storage settings.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -80,7 +80,7 @@ Session page (artboards `Main`, `SessionAgents`, `ActivityTab`, `SignalsTab`, `R
 - Tab bar sits directly under the KPIs. Tabs in order: Overview, Agents, Activities, Repository, Signals, Resources, Details. URL values are `overview`, `agents`, `activities`, `repository`, `signals`, `resources`, `details`; unknown values fall back to Overview. Resources is hidden only when a session has neither live samples nor stored resource rows, including peaks. Deep links accept `agent`, `request`, and `path` parameters.
 - Overview tab content: Right now (one row per active agent: name, role and model, latest action, latest context, age), top two efficiency signals with "Show in agent" or an evidence link to Activities, Repository one-liner, last-48-request strip with fresh tokens and role-family track/legend linking to Activities, Progress (agent-maintained plan and agent estimate), Work by kind counts, and Cost estimate.
 - Agents tab keeps today's roster and selected-agent inspector: status bar, legend, role counts, filter, Group by workflow, Status and Model selects, Hide finished, Sort, and desktop List/Tree/Grid. The inspector retains lineage, facts, skills, cache lifetime, compactions, shell tasks and signals, plus "Activities for this agent", "<model> across sessions", and one-shot Copy transcript path. Models & delegation uses the shared row where applicable and links to the inspector by agent id.
-- Activities tab combines a Requests chart as scrubber and one Activity feed grouped by request. The agent filter in the chart header applies to the whole tab. Largest requests is a strip under the minimap. The feed's left rail contains Actions by kind (icon, count, share, median; one pressed toggle filters nested calls), Shell tasks, Failed shell runs, and caveats. The right side shows five requests around selection with request-local counts and nested tool calls, then Previous / Next / Jump to latest. Targets show basenames only. Agent navigation opens the Agents inspector. There is no separate Requests tab and no Fed by / Called row.
+- Activities tab combines a Requests chart as scrubber and one Activity feed grouped by request. The agent filter in the chart header applies to the whole tab. Largest requests is a strip under the minimap. The feed's left rail contains Actions by kind (icon, count, share, median; read-only summary rows, not a filter), Shell tasks, Failed shell runs, and caveats. The right side shows five requests around selection with request-local counts and nested tool calls, then Previous / Next / Jump to latest. Targets show basenames only. Agent navigation opens the Agents inspector. There is no separate Requests tab and no Fed by / Called row.
 - Desktop chart: one lane per agent sharing request order, viewport, minimap and keyboard stepping. Every request occurs once, with compactions in its own lane. Per-lane scales print maxima; the primary lane is taller. Labels are 220px, ellipsized, with the full name and role/model in a title tooltip and accessible name, and no role-colored dots. More than eight lanes collapse by workflow group; click expands a group or focuses a lane. Controls are Fresh tokens / Full breakdown and Lanes / Single chart; single chart includes the role-family agent track. The minimap is neutral grey. Chart selection uses bars or arrow keys; Previous / Next belong to the feed. Request detail shows the four request-local counts.
 - Signals tab holds efficiency signals, cache evidence, flow score with its two inputs, cache lifetime by agent, and agent-reported MCP signals. Introduce deterministic rules with "Not a quality assessment"; retain observed/inference/attributed qualifications on cache evidence and clearly distinguish agent-reported signals. Evidence links go to Activities with the corresponding agent/request selected; never invent a request association. Flow score leaves Details.
 - Live selection and correlation: incoming requests extend history and the minimap. The chart may advance while the selected bar remains inside its viewport; when further advancement would push it out, anchor the viewport with that bar at its left edge. Do not clamp an old bar into a false request position. Request details and the Activities feed always follow the selected visible bar. Anchoring never pauses collection. Dragging away transfers selection to the nearest visible bar (the left-edge bar when dragging right); update chart, request details and feed together. Jump to latest reveals/selects the latest request. Filters, keyboard navigation and paging obey the same invariant; no detail survives without its bar. During a range fetch retain the previous correlated view until the new view is ready, or show a coordinated loading state.
@@ -89,7 +89,7 @@ Session page (artboards `Main`, `SessionAgents`, `ActivityTab`, `SignalsTab`, `R
 - Resources tab: CPU, memory and disk-I/O sparkline cards with current value and window peak, a 5 min / 30 min / Session window selector, and a peaks table with a time-overlap caveat. Live sessions use raw recent samples or Session minute aggregates. Historical sessions show retained Session curves and recorded peaks; if curves were pruned, show peaks and the retention explanation. Hide only when neither live samples nor stored rows exist. Peak selection zooms to its retained sample window when available. Machine-aggregate measurements do not imply per-task resource attribution. The process table is deferred to a separate monitor-private sampler.
 - Details tab: Session facts (provider, session id, project, started, approval mode, session-observed plugin/policy), one-shot Copy transcript path, Cost estimate, and inline Context inventory with category table, groups and repository revision link. Flow score is on Signals; usage limits remain shell chrome.
 - Phone: app bar with menu, brand, search and alerts; three KPIs (agents, context, calls); sticky tabs Overview, Agents, Activities, Repo, More fitting 390px without scrolling. More opens Signals, Resources and Details using the same query URLs. Agents shows List/Grid without Tree; a row opens the full-viewport inspector with Back and focus restoration. Direct subagents uses one 48px summary line; context uses regular-weight primary text.
-- Phone Activities always uses single chart, with no lane toggle. Include role track/legend, compaction labels in a reserved band above bars, minimap and Largest strip. Put five request groups before Actions by kind and Shell tasks. Each request line shows agent, role, uncached input and time; tool lines show kind, target and duration, without colored counts or per-call times. Other token counts and call times remain in request detail. The selected request has the approved brand-colored left rule. Use one short caveat with a dotted "how to read this" popover and 44px Previous / Next / Jump to latest targets. Overview stays about two phone screens; hit targets are at least 44px.
+- Phone Activities always uses single chart, with no lane toggle. Include role track/legend, compaction labels in a reserved band above bars, minimap and Largest strip. Put five request groups before Actions by kind and Shell tasks. Each request line (44px) shows agent, role, uncached input and time; tapping it opens request detail with the four request-local counts. Each call line is one thin 32px full-width row: kind icon, ellipsized target and wall duration only, with a faint trailing chevron; the kind word, status, exit code, background flag and call/result times are not printed inline. Tapping a call line expands it in place: a detail block opens directly beneath the line, indented to the line's text edge on the raised surface, with the chevron rotated down. Tapping still selects the call's request and chart bar exactly as before; the expansion is purely additive. The block holds kind/status/foreground chips, then Kind, Wall duration, Called, Result and Agent rows, and nothing else: no links, no caveat text, no role suffix. One call is open at a time; tapping the open line or another line collapses it, Escape collapses it, the feed keeps scrolling normally, no sheet, popover or scrim is used, and no URL parameter is added. The block keeps the selected request's left rule when it belongs to that request. Failed or running calls tint only the duration text (amber), never the row. The selected request has the approved brand-colored left rule, and its call lines carry the same rule. Use one short caveat ("tap a call for details") with a dotted "how to read this" popover and 44px Previous / Next / Jump to latest targets. Overview stays about two phone screens; buttons, tabs and request lines are at least 44px, and the 32px call line is the single documented dense-list exception because it is full-width and separated by 44px request lines.
 
 Agent selection and deep links:
 
@@ -173,7 +173,7 @@ contracts for the UI workers. Keep the composed `/api/state` compatibility view.
 
 ### Session 2 — Navigation and session shell
 
-- [ ] Session 2 complete — T03, T04 and T05.
+- [x] Session 2 complete — T03, T04 and T05.
 
 A Terra worker owns T03's app bar, palette, page header, sidebar limits and shared
 design controls. Integrate that contract before T04. A Sol worker then owns
@@ -189,7 +189,7 @@ temporary panels so Session 6 can verify their removal.
 
 ### Session 3 — Activities and Signals
 
-- [ ] Session 3 complete — T06 and T06b.
+- [x] Session 3 complete — T06 and T06b.
 
 A Sol worker owns T06's shared selection state, lane chart and grouped feed
 integration. Once its selection/range interface is fixed, that worker may delegate
@@ -263,11 +263,21 @@ completion; worker tasks are bounded pieces within it.
    approved orchestration without asking the user to approve it again.
 2. Keep the coordinator responsible for dependency order, interface decisions,
    integration, independent review and final verification. Delegate focused
-   implementation and investigation. Use explicit `gpt-5.6-sol` for coupled
-   state/persistence work and substantive independent reviews, `gpt-5.6-terra`
-   for bounded UI/transport work, and `gpt-5.6-luna` for narrow probes or edits.
-   Workers and their descendants must never use Astra. If a selected model is
-   unavailable, choose another allowed model; do not silently exceed the ceiling.
+   implementation and investigation. Sol, Terra and Luna in this plan name work
+   classes. Select the explicit model from the column for the harness running the
+   session:
+
+   | Work class | Use for | Codex | Claude Code |
+   | --- | --- | --- | --- |
+   | Sol | Coupled state/persistence work and substantive independent reviews | `gpt-5.6-sol` | `claude-opus-5` (`opus`) |
+   | Terra | Bounded UI/transport work | `gpt-5.6-terra` | `claude-sonnet-5` (`sonnet`) |
+   | Luna | Narrow probes or edits | `gpt-5.6-luna` | `claude-haiku-4-5` (`haiku`) |
+   | Ceiling | Never used by workers or their descendants | Astra | Fable |
+
+   Prefer the cheapest capable model. A Sol-class implementation may start on the
+   Terra-class model and escalate to the Sol-class model after a failed check;
+   independent reviews start at Sol class. If a selected model is unavailable,
+   choose another allowed model; do not silently exceed the ceiling.
 3. Use at most the available four concurrent agent slots, including the root
    coordinator. Normally run two workers and leave the remaining slot for review
    or one nested worker. Nested delegation consumes this same limit; it does not
@@ -360,7 +370,7 @@ Completed 2026-09-14 in Session 1. See the [verified handoff](#session-1-handoff
 Owner: monitor indexing and projection (`monitor/`), serving handlers, `shared/`.
 
 - Split session projection into domains: `session-summary`, `agents`, `agent` (inspector by id), `signals`, `repository`, `resources`, `details`. Signals owns cache events, efficiency signals, flow score, per-agent cache lifetime, and agent-reported signals. Activity and requests stay on `session-history`; `scope=<agentId>` scopes the chart, ranking, feed, kind aggregates, and shell-task views together.
-- Page `kind=activity&from=<n>&to=<n>` by a bounded request-number range with tool calls nested under each request. The default feed shows five scoped requests around selection, adjusted at either end. Preserve stable session request numbers across filters and exclude unresolved associations from request groups rather than inventing one. Add a bounded `workKind=<WorkKind>` filter (one recognized value) for nested calls. A kind filter must not remove the selected request header or its bar; show an explicit no-matching-calls state. Validate range bounds and maintain response limits for requests with many calls, with explicit continuation rather than silent truncation.
+- Page `kind=activity&from=<n>&to=<n>` by a bounded request-number range with tool calls nested under each request. The default feed shows five scoped requests around selection, adjusted at either end. Preserve stable session request numbers across agent scopes and exclude unresolved associations from request groups rather than inventing one. A retained request header without request-linked calls shows an explicit no-calls state. The earlier `workKind=<WorkKind>` nested-call filter was removed on 2026-09-22. Validate range bounds and maintain response limits for requests with many calls, with explicit continuation rather than silent truncation.
 - Each domain owns a revision counter and readiness; `writeCommitted` serves 204 on matching revision. `/api/session-history` today always answers 200 with an in-body revision string and never uses `writeCommitted`; add the 204 path there too.
 - Set ETag to the revision. Compression is new work: vinext compresses only static build assets, and `proxyMonitorJson` buffers the body and copies one header. Implement gzip in the monitor (honor `Accept-Encoding`, `Vary: Accept-Encoding`) and let the proxy pass `Content-Encoding` through, or compress in the proxy. `desktop/lan-gateway.mjs` already forwards `etag`, `if-none-match`, and `content-encoding`.
 - SSE events carry domain, session id, revision, and for history the total count. Today `/api/events` emits only `catalog`, `repositories`, and `history` with `{domain, revision}` and no session id.
@@ -369,6 +379,9 @@ Owner: monitor indexing and projection (`monitor/`), serving handlers, `shared/`
 - Update `docs/OBSERVATION_CACHE.md` (phases D and S, revision semantics, readiness per domain) and `docs/ARCHITECTURE.md`.
 
 ### T03 App bar, palette, page header, sidebar limits
+
+Completed 2026-09-14 within the partial Session 2 checkpoint. See the
+[verified handoff](#session-2-checkpoint). Session 2 remains unchecked.
 
 Owner: UI (`app/components/command-center/`, `app/styles/shell.css`, `DESIGN.md`). Artboard: `HeaderStandard.html`; app bar and sidebar also visible on every desktop artboard.
 
@@ -412,10 +425,10 @@ Owner: UI (`app/components/dashboard/requests-actions/`, activity feed) and comm
 Depends on T04, T02 request-range history, and T01 transport.
 
 - Build the lane chart and single-chart mode from Agreed decisions: shared request order, exactly-one-lane assignment, per-lane scales, compactions, workflow collapse beyond eight, focus, 220px labels and tooltips, neutral minimap, Fresh tokens / Full breakdown.
-- Place agent scope in the chart header and apply it to chart, Largest strip, feed, Actions by kind and shell-task views. Kind toggles filter nested calls with count/share/median context; they do not orphan selection by deleting its request header. Largest values remain request-local.
+- Place agent scope in the chart header and apply it to chart, Largest strip, feed, Actions by kind and shell-task views. Actions by kind rows are read-only count/share/median summaries; they do not filter nested calls. Largest values remain request-local.
 - Under the minimap and Largest strip, render one Activity feed: left Actions by kind, Shell tasks and Failed shell runs; right five request groups around selection with nested calls. Previous / Next changes the request range and keeps chart selection visible; Jump to latest reveals and selects the latest request. No old cross-tab return strip or Fed by / Called tallies.
 - Implement the approved anchored viewport in `useSessionRequestSelection.ts` and `RequestMinimap.tsx`: stop automatic viewport advance before selection would leave it, while history and minimap totals grow. Dragging beyond selection transfers it to a visible bar. Details and feed must never retain a selection absent from the chart. Use coherent loading and cancellation so rapid navigation cannot mix requests.
-- Phone follows the single-chart and quiet grouped-feed rules above. Add the scoped selected-request left-rule exception to DESIGN.md and its contract tests before styling it.
+- Phone follows the single-chart and quiet grouped-feed rules above, including the 32px call line and the in-place call expansion (artboard `Mobile`, frame "Activities · tapped call line expands in place"). The expanded block exposes only already-bounded activity and execution-task metadata (work kind, Bash description or file basename, wall duration, call and result timestamps, lifecycle status, exit code, failure category, background flag, normalized agent and request number); never command text, output, per-call tokens or cost. Expansion is a disclosure on the line (aria-expanded), one open at a time, Escape collapses, no sheet or scroll lock, and no URL parameter. Add the scoped selected-request left-rule exception and the 32px phone call-line height to DESIGN.md and its contract tests before styling them.
 - Keep traceable observed metadata in Activities; full cache evidence and rule-generated views live in Signals. Request details retain four counts and the shared association caveat explaining that recorded links do not allocate task token cost.
 - Tests: growing totals with anchored selection; drag, page, keyboard and filter selection; synchronized loading and cancellation; request groups at range edges, empty/unresolved associations and bounded continuation; lane assignment/focus/collapse; scope consistency; no provider identifiers in DOM.
 - Update `docs/OBSERVATION_CACHE.md` for range paging, selection and event totals, and `docs/METRICS.md` for request-local and association wording. Compare desktop and phone artboards.
@@ -464,6 +477,7 @@ Owner: UI (`app/components/repositories/`, `app/components/dashboard/`). Artboar
 - Session Repository tab: top bar as in the artboard; commit lists removed from the session page; PR popover replaced by the chip and second line.
 - Repository page Files tab beside the existing tabs; Git tab gains the commit lists that left the session page.
 - Deep links with `path` on both sides.
+- Links follow the prototype README link rule (2026-09-20): **Git tab on repository page** and **All history on repository page** are quiet actions with a trailing chevron, not brand text links; session titles in the file history panel stay ink-colored.
 - Historical sessions: recorded branch, recorded files, PR state at last check, never the current tree. This needs the T00 checkpoint additions: today `recordedGitState` in `monitor/server.mjs` keeps only the branch and returns empty files, null comparison, empty commits, and unavailable pull requests for historical sessions. Persist files, comparison, and pull-request state at the last live check and serve them from the `repository` domain.
 - "Commits in session" is a new count. Today the repository section carries the last eight commits on HEAD regardless of session. Count commits whose committed time falls inside the session's wall-time window on the recorded branch, or drop the number from the second line.
 - Compare against both artboards.
@@ -529,10 +543,882 @@ No unresolved product decision blocks implementation. The latest approved rules 
 - Existing exports are visual references, not current runtime behavior. Use the actual paths in the prototype README. Written changes override stale drawing details: Activities/Signals navigation, inspector selection, no per-agent role dots in lists, phone selected-request rule, historical resource curves, and the Storage usage bar/soft threshold. Do not claim regenerated artboards for this documentation update.
 - Verify SQLite inside the Electron monitor worker before T07 implementation. Resolve technical fallback from evidence if unavailable; a system-Node probe is insufficient.
 - Implementation orchestration is finalized in the session queue and protocol above. The user will request implementation separately; that request starts exactly the first unchecked session. Do not start code changes under this documentation authorization.
-- For implementation delegation use Sol or cheaper models only: explicit `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna`. No Astra subagents. Nested subagents are permitted under the same ceiling, bounded task ownership and available concurrency. Prefer the cheapest capable model.
+- For implementation delegation use Sol-class or cheaper models only, from the harness column in the protocol's work-class table: `gpt-5.6-sol`, `gpt-5.6-terra`, or `gpt-5.6-luna` under Codex; `claude-opus-5`, `claude-sonnet-5`, or `claude-haiku-4-5` under Claude Code. No Astra or Fable subagents. Nested subagents are permitted under the same ceiling, bounded task ownership and available concurrency. Prefer the cheapest capable model.
 - Keep the coordinator's context small through focused task briefs and concise handoffs. Follow the ownership, dependency waves, model choices, integration/review responsibilities and verification protocol above; checkpoints must allow work to continue without repeating investigations.
 
 ## Continuation checkpoint
+
+2026-09-20 · **T03 sidebar limits correction complete.** The rail now follows the
+approved one-row-per-recent-provider rule and selects each provider's
+highest-percentage available window without treating the provider's
+active-or-reached flag as a visibility gate. UI coverage includes ordinary
+unreached Claude and Codex windows; Session 4 remains the next implementation
+session.
+
+### Session 3 checkpoint
+
+2026-09-20 · **Session 3 complete — T06 Activities and T06b Signals.** ACOS run
+`runs/2026-09-19-ia-session-3-vertical-finish` completed the remaining vertical
+work and supersedes the stale 21-part finish-run reference for this checkpoint.
+Activities now keeps the request chart, five-group feed, selected details, range,
+agent scope, and phone call disclosures correlated over committed request windows.
+Signals owns the ordered Efficiency, Cache evidence, Cache lifetime, and Reported
+signals sections, with deterministic evidence kept distinct from potentially stale
+agent-reported updates. `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and
+`docs/METRICS.md` now own the enduring presentation, cache, and evidence rules.
+
+The independent review passed on its second iteration after repairing one 390px
+sticky-chrome collision. The scoped phone offset and design-contract regression keep
+the Signals eyebrow and title visible; the refreshed five-crop Signals evidence is
+`VERDICT: PASS`. Activities' five claim-level crops were already accepted. The full
+`npm test` wrapper passed, including 1,179 passing Node tests with one skipped and
+899 passing UI tests. `npm run verify:fast` passed with no errors and the 16
+pre-existing warnings; `git diff --check` passed.
+
+**Accepted visual differences.** Live request numbers, wall times, and availability
+states replace prototype sample content. The phone Signals view adds a 56px scoped
+top accommodation for the real sticky application chrome; the artboard did not model
+that overlap. These differences preserve the approved hierarchy and interaction
+contract rather than introducing a new design direction.
+
+**Reuse in Session 5.** Repository and Resources should reuse the committed-domain
+rules proven here: exact-query revisions, body retention on matching `204`,
+last-known-good presentation while loading, stale-response cancellation, honest
+unavailable states, the shared session tab/phone More navigation, and evidence links
+only when their normalized association is proven. Do not reuse Activity's 32px
+disclosure exception outside its documented phone call line.
+
+Work is uncommitted on branch `claude/ia-redesign-session-3` at base
+`f94f4a15cd0d165da56b5eae840c52ed7932762e`. Sessions 4–6 and T07–T13 remain
+unchecked; T12 still owns deletion of this plan and its prototype. Stop before
+Session 4.
+
+2026-09-17 · **Session 3 part 2 of 7 done: T06 desktop Activity feed.** ACOS run
+`runs/2026-09-16-ia-session-3/2-activities-desktop-feed` (manifest, log and stage artifacts
+there). The independent Sol review passed in its second iteration. Session 3 stays unchecked.
+
+**State.** Branch `claude/ia-redesign-session-3`. Part 2 is uncommitted on top of the part 1
+commit `7a519d0`. The fixed part 1 interface is unchanged: `useSessionRequestSelection.ts`,
+`useActivityFeed.ts` and `feed-model.ts` were not edited.
+
+**Changed files.**
+
+- New:
+  - `app/components/dashboard/activity-feed/ActivityFeedPanel.tsx`: the `Activity feed` section.
+    It shows one `role="status"` state when there is no feed body, then rail plus list.
+  - `activity-feed/ActivityKindRail.tsx`: Actions by kind summary rows, Shell tasks, Failed shell
+    runs and the "Counts, not effort or cost." caveat popover.
+  - `activity-feed/ActivityRequestList.tsx`: request groups, nested calls and range navigation.
+    - Each group has a select button with request-local uncached input, cache write (gated on
+      `cacheWriteAvailable`) and output read from `group.request`.
+    - The agent name is a sibling `commandTextLink`; an agent missing from the roster is plain
+      text.
+    - Previous / Next / Jump to latest sit below the groups, followed by the "Local counts only."
+      caveat popover.
+- Deleted:
+  - `activity-feed/ActivityRequestGroups.tsx`
+  - `ActivityPanel.tsx`
+  - `useActivityHistory.ts`
+  - `tests/ui/activity-panel.test.tsx`
+  - `tests/ui/activity-history.test.tsx`
+- Modified:
+  - `ActivitiesTab.tsx`: renders `ActivityFeedPanel`, adds the `onOpenAgent` prop and drops the
+    dead `onRefresh` plumbing. When paused, it renders "Activity history is unavailable while
+    this session view is paused."
+  - `RequestsActionsPanel.tsx`: `LargestRequestsList` now sits directly under `RequestMinimap`
+    and is still hidden on phone.
+  - `app/Dashboard.tsx`: `onOpenAgent` calls
+    `navigate({ tab: "agents", agent, request: null })`.
+  - `app/styles/evidence.css`:
+    - The details row is single-column.
+    - The Largest strip is a wrapping band with a full-width top rule (`margin: 0 -20px`,
+      `flex: 1 1 220px` rows).
+    - The dead activity-panel rules are removed.
+- Tests:
+  - `activities-tab.test.tsx`: counts, missing counts, cache write hidden, agent link, caveats,
+    paused, preview loading, preview unavailable, and first feed failure.
+  - `activities-test-server.ts`: new `requestsStatus` and `requestGroupOverrides` switches.
+  - `dashboard-t04.test.tsx`: the explicit `request` clear.
+  - `history-publications.test.tsx`: the `useActivityHistory` test was removed.
+  - `work-kind-icons.test.tsx`: the icon tests now render `ActivityFeedPanel`. The old "System"
+    actor assertion was dropped.
+
+**Reuse for parts 3-4.**
+
+- Container and props:
+  - `ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAvailable, onOpenAgent })` is
+    the feed container.
+  - `ActivitiesTab` takes `onOpenAgent`.
+  - The agent scope control stays in the `RequestsActionsPanel` chart header and feeds
+    `selection.historyScope`.
+- Part 4 (phone) reorders the same `ActivityRequestList` and `ActivityKindRail` pieces, with
+  request groups before Actions by kind. Its call line should add the phone-only presentation to
+  these components rather than fork the feed model.
+- Body gating: the feed hides totals, shell counts and navigation until a body exists. A retained
+  body from an earlier query stays visible while a new one loads, which the correlation rule
+  allows.
+
+**Accepted artboard differences.**
+
+- The rail shows only aggregate Shell tasks and Failed shell runs counts. The feed page contract
+  has no per-task rows, and the written decision lists them as single items.
+- Request groups stay oldest to newest, matching the chart direction and the hook tests. No
+  written decision sets the order.
+- The container is named "Activity feed", matching the plan vocabulary.
+- `LargestRequestsList` row markup is unchanged; only its position and strip CSS changed.
+
+**Verification.**
+
+- After the fix stage, the orchestrator ran `npm run verify:fast && npm run test:ui` serially:
+  exit 0, with 85 files and 835 tests (two superseded test files were deleted).
+- A later one-line test isolation change passed a focused `npx vitest run
+  tests/ui/dashboard-t04.test.tsx` (20 tests).
+- The full `npm test` with the build was not run; part 7 owns it.
+
+**Review.**
+
+- Iteration 1 FAILED with one reproduced blocker. While request history was loading or
+  unavailable, or the first feed query failed, the feed showed invented zero counts and enabled
+  range navigation. The deleted panel's loading and unavailable states had no replacement.
+- A fix stage resolved it with regression tests. It also fixed:
+  - counts missing on groups outside the 60-request chart page;
+  - the missing-count and cache-write tests;
+  - the popover copy;
+  - the strip layout;
+  - dead CSS;
+  - the unknown-agent link and explicit `request` clearing.
+- Iteration 2 passed. Its should on test isolation was fixed inline.
+
+**Design consequence recorded.** Grouping by request removes activity that has no request link
+from every Activities surface: user inputs, system task notifications, and unlinked replies and
+calls. This follows the agreed "one Activity feed grouped by request" decision and is not a
+regression to fix. Docs must stop describing the deleted eight-row panel.
+
+**Deferred findings and owners.**
+
+- Part 5 (T06 docs):
+  - Rewrite `docs/METRICS.md` (activity section around lines 555-600),
+    `docs/OBSERVATION_CACHE.md` (around lines 278-295) and `DESIGN.md` "Session Evidence"
+    (around lines 287-331), which still describe the deleted panel.
+  - Record the design consequence above.
+  - This adds to the existing cadence entry for the grouped feed.
+- Part 5 (acceptance):
+  - After a scope change whose request page fails, the feed keeps the previous scope's body with
+    no status until history recovers. The chart shows the failure. This predates part 2. Suggested
+    fix: treat a retained body whose query differs from the current one as no body while
+    `selection.history.preview`.
+  - Each 5 s retry toggles the status between "Loading activity…" and "Activity history is
+    unavailable; retrying…", and so does the chart's retention note, so screen readers re-announce
+    it.
+  - Add a regression test for counts on a group outside the chart page.
+  - Visual QA:
+    - token pairs shift the calls column in the reused six-column `.activityRow` grid;
+    - the caveat paragraph is unstyled;
+    - the agent link alignment;
+    - a lone fifth Largest row stretches full width at some widths.
+- Part 4 (phone):
+  - Remaining dead selectors: `.activityHead` in a grouped selector, `.actor i` and
+    `.activityRow time` in `evidence.css`. Remove them if the phone call line does not use them.
+  - `targetBasename` still shortens prose that ends in a path ("Run tests for app/foo.test.ts"
+    becomes "foo.test.ts"). The new caveat says targets show Bash descriptions and file names, so
+    settle the helper when the ellipsized call-line target is built.
+- Part 7 regression sweep: a session paused from mount shows "Loading activities…" indefinitely.
+  This comes from `useTransitionalSessionState` and predates part 2.
+
+**Next step.** Part 3 (activities-lane-chart): `/acos run runs/2026-09-16-ia-session-3 3`,
+preferably in a fresh session. Commit part 2 first if a clean base is wanted.
+
+2026-09-17 · **Session 3 part 1 of 7 done: T06 selection core.** ACOS run
+`runs/2026-09-16-ia-session-3/1-activities-selection-core` (manifest, log and stage artifacts
+there). The independent Sol review passed in its second iteration. Session 3 stays unchecked.
+
+**State.** Branch `claude/ia-redesign-session-3`. Part 1 is committed as one commit on top of
+`47ebdb2`, together with this checkpoint. The ACOS run records under `runs/` are gitignored and
+stay local.
+
+**Changed files.**
+
+- New:
+  - `app/components/dashboard/ActivitiesTab.tsx`
+  - `app/components/dashboard/useTransitionalSessionState.ts` (`/api/state` polling moved
+    verbatim from `LegacySessionTab.tsx`)
+  - `app/components/dashboard/activity-feed/{useActivityFeed.ts,feed-model.ts,ActivityRequestGroups.tsx,duration.ts}`
+  - `app/components/dashboard/requests-actions/selection-viewport.ts`
+- Modified:
+  - `app/components/dashboard/requests-actions/useSessionRequestSelection.ts` (661 lines)
+  - `requests-actions/useRequestSelection.ts`
+  - `LegacySessionTab.tsx` (activities branch removed)
+  - `ActivityPanel.tsx` (imports `activityDuration` from `activity-feed/duration.ts`)
+  - `app/Dashboard.tsx` (routes `activities` to `ActivitiesTab`)
+- Tests:
+  - New: `tests/ui/{selection-viewport.test.ts,activities-selection.test.tsx,activity-feed.test.tsx,activities-tab.test.tsx,activities-test-server.ts}`
+  - Adjusted: `tests/ui/requests-actions.test.tsx`. The minimap test now expects the selection to
+    move to the nearest visible request, because the positional fallback was removed.
+  - Adjusted: `tests/ui/transitional-session-tab.test.tsx` (tab union).
+
+**Fixed interface for parts 2-4.** Parts 2-4 consume this interface and must not change the
+selection hook.
+
+- Selection owner is `useSessionRequestSelection`.
+  - New options: `route?: { agent: string | null; request: string | null }` and
+    `onRouteChange?`.
+  - It keeps all earlier return fields.
+  - It adds `mode: "follow" | "track" | "anchored"`, `selectedNumber`, `selectedIndex`,
+    `workKind`, `setWorkKind`, `historyScope`, `pending`, `previousRange()`, `nextRange()`
+    (steps of 5 in scope), `jumpToLatest()`, `moveWindow(start)` (moves the selection with the
+    window) and `locate(id, targetScope?)`.
+- `selection-viewport.ts` holds the pure rules: `advanceOnGrowth`, `transferOnViewportMove`,
+  `stepTarget`, `modeFor`, `selectionAfterCommit`.
+- Feed hook: `useActivityFeed({ enabled, query: { sessionId, scope, selected, workKind }, historyRevision })`.
+  - It returns `{ status, correlated, groups, byKind, shellTasks, requestTotal, callTotal, revision, loadMore, loadingMore, retry }`.
+  - `feed-model.ts` exports `parseActivityFeedPage`, `mergeCalls` and `targetBasename`.
+- Container: `ActivitiesTab({ sessionId, historical, paused, route, onRouteChange })`.
+  - It renders the unchanged `RequestsActionsPanel`, then the minimal
+    `ActivityRequestGroups({ selection, feed, agents, busy })`, then the legacy `ActivityPanel`.
+  - It sets `busy = !feed.correlated || selection.pending`.
+  - Part 2 replaces `ActivityRequestGroups` and deletes `ActivityPanel` (sole consumer:
+    `ActivitiesTab`).
+  - `RequestsActionsPanel` is consumed only by `ActivitiesTab`.
+
+**Invariants.**
+
+- **Growth:**
+  - Follow keeps the latest request selected.
+  - Track advances the viewport until the selected bar would leave it, then anchors that bar at
+    the left edge. The anchoring fetch completes before the page commits.
+  - Anchored keeps its viewport while totals and the minimap grow.
+- **Identity:**
+  - A refreshed page is checked by position, then by request ID.
+  - A request absent from scope jumps to latest and clears `request`.
+  - Nothing is ever clamped to a false position.
+- **Drag and minimap:** the selection moves to the nearest visible bar.
+- **Precedence:** a user selection supersedes an in-flight refresh. A queued history event
+  flushes against the synchronously committed selection, never a stale mode.
+- **Range fetches:** the previous chart stays rendered and the feed is marked busy.
+- **StrictMode:** unmount interrupts reads and remount resumes them.
+
+**Transport and URL decisions.**
+
+- **Feed range:** the grouped feed sends `selected` with `scope`, and optionally `workKind`.
+  It never sends `from`/`to`. A scoped agent's request numbers are sparse, so a 64-number range
+  can hold fewer than five of its requests.
+- **Feed cadence:** the feed has no subscription or timer of its own. It revalidates when the
+  request page's committed revision changes, sending `revision=` so an unchanged answer returns
+  204. That page already follows the Session 1 cadence, so historical sessions fetch once per
+  query. Retry is manual.
+- **URL `request`:** accepts a stable number, resolved with one grouped lookup, or an opaque
+  request ID, which is rewritten to its number.
+  - A lookup answered "loading" retries on the next revision or on reconnect.
+  - A transient failure keeps the deep link.
+  - Only a ready response without the number degrades to latest.
+- **URL `agent`:** an unknown agent degrades to all agents.
+- **Write-back:** happens only after user actions, once per settled gesture (300 ms UI settle,
+  not polling). Follow mode writes `request` as null.
+
+**Verification.** `npm run verify:fast && npm run test:ui`, run serially by the orchestrator
+after the fix stage, passed.
+
+- `verify:fast`: lint 0 errors and 16 pre-existing warnings. Architecture and boundary checks
+  passed, with no file over 800 lines and no orphans.
+- `test:ui`: 87 files, 867 tests.
+- The full `npm test` (with the build) was not run in this part; part 7 owns it.
+
+**Review.**
+
+- Iteration 1 FAILED with three reproduced blockers:
+  - React StrictMode stranded deep-link loads.
+  - A queued history event undid a drag.
+  - A selection during a track refresh committed a page without its bar.
+- A fix stage resolved all three, plus six shoulds (including a route write per drag step) and
+  three nits.
+- Iteration 2 passed.
+
+**Deferred findings and owners.**
+
+- Part 5 (T06 docs): add an `docs/OBSERVATION_CACHE.md` cadence entry for the grouped feed
+  (revalidation on page revision, 204, manual retry, 300 ms write settle).
+- Part 2: `targetBasename` shortens prose that ends in a path ("Run tests for app/foo.test.ts"
+  becomes "foo.test.ts"). Settle the target copy with the feed design.
+- Part 7 regression sweep:
+  - Cancelling an in-flight read leaves a queued publication waiting until the next event,
+    fallback or selection (pre-existing, low impact).
+  - A held arrow key stalls when fetches are slower than key repeat (pre-existing).
+- Recorded only: the `advanceOnGrowth` follow and anchored branches are exercised only by tests,
+  kept to document the rule.
+
+**Next step.** Part 2 (activities-desktop-feed): `/acos run runs/2026-09-16-ia-session-3 2`,
+preferably in a fresh session.
+
+### Session 2 checkpoint
+
+2026-09-16 · **Session 2 complete after rounds 3 to 5.** Acceptance-r4 verdict PASS, the
+user's phone check PASS, and the full `npm test && npm run verify:fast` chain PASS on the
+round-5 tree. Session 2 is now checked in the session queue above. This entry is the current resume point for
+Session 3; the 2026-09-16 entry beneath it (stopped after round 2) and the 2026-09-14
+entries stay as history. Supplementary evidence is retained locally under
+`runs/2026-09-16-resume-ia-session-2/` (gitignored); every fact needed to resume is
+restated in this entry.
+
+**State.** Branch `claude/ia-redesign-session-2`. Session 2 work through round 3 is
+committed as `9d9bd8f` (base main `3b116ad`); two user-owned ACOS tooling commits,
+`1f91e8c` and `60621a5`, sit on top and are unrelated to Session 2. Rounds 4 and 5 are
+uncommitted in the worktree. No push occurred. `git status --short`:
+
+```
+M  app/Dashboard.tsx
+M  app/api/monitor-proxy.ts
+M  app/api/session-domain/route.ts
+M  app/components/dashboard/LegacySessionTab.tsx
+M  app/components/dashboard/SessionTabs.tsx
+M  app/session-domain-store.ts
+M  docs/AGENT-WORKFLOW.md
+M  docs/OBSERVATION_CACHE.md
+M  docs/internal/plans/ia-redesign.md
+M  monitor/observation-runtime.mjs
+M  monitor/session-observation-coordinator.mjs
+M  tests/session-domain-runtime.test.mjs
+M  tests/session-domain-transport.test.mjs
+M  tests/ui/dashboard-readiness.test.tsx
+M  tests/ui/dashboard-t04.test.tsx
+D  tests/ui/legacy-session-tab.test.tsx
+M  tests/ui/session-domain-store.test.tsx
+M  tests/ui/session-tabs.test.tsx
+?? monitor/session-domain-serving.mjs
+?? tests/ui/transitional-session-tab.test.tsx
+```
+
+**Round 3: acceptance-r2 findings resolved.**
+
+| Finding | Resolution (round 3) |
+| --- | --- |
+| N1 restart froze rejected revisions forever | Epoch-aware guard added: `app/session-domain-store.ts` per-entry `dataEpoch` compared against `currentEpoch`, guard around lines 127-136, epoch advanced on every live event; a pending rebuild keeps its fast cadence. |
+| N2 Agents List/Grid toggle a no-op, persistence deleted | `app/components/dashboard/AgentsTab.tsx` restores controlled `viewMode` and the `pomegr-agent-activity-view-<sessionId>` localStorage key; ported to `tests/ui/agents-tab.test.tsx`. Recorded as a T05 file-ownership exception. |
+| N3 browser confirmation blocked by the "defects" state | Unblocked once N1, N2 and S1 landed; `confirm-navigation-r3.md`/`reconfirm-navigation-r3.md` passed every flow. |
+| Checkpoint step 4, historical 503 stall | Monitor serves the retained loading body through an in-flight poll failure instead of dead-ending; the browser store retries. |
+| S1 literal NUL bytes in `monitor/session-domain-store.mjs` | Restored to a normal text escape at both separator sites; the file diffs as text again. |
+| S2 retained loading body hid poll errors | `app/Dashboard.tsx` now surfaces `summaryResult.error` on the loading-with-no-session branch. |
+| S3 Resources deep link redirected while still loading | `SessionTabs.tsx` redirects only once `resourceAvailability.readiness` has actually resolved. |
+| S4 unported Details assertions / report-mismatch test | Ported into the renamed `tests/ui/transitional-session-tab.test.tsx` and `tests/ui/dashboard-t04.test.tsx`. |
+| S5 no explicit-request test, no DOM privacy test | Added to `tests/ui/dashboard-t04.test.tsx`. |
+| S6 duplicated DESIGN.md paragraphs | De-duplicated. |
+| T1 checkpoint should record T06 deferral, T05 exceptions, transitional-panel list | T06 deferral and T05 exceptions were recorded in round 3; the transitional-panel list itself waited for this entry (see the list below). |
+| T2 browser-store doc lacked restart/epoch semantics | Promoted to acceptance-r3's blocker B2; resolved in round 4 (next table). |
+| T3 pending-entry leak | Fixed via `survivedPrune` in round 3, but the one-pass fix reintroduced the defect as acceptance-r3's B1; properly resolved in round 4 (next table). |
+| T4 phone `nav`/`tablist` share the label "Session sections" | Left open through round 3; resolved in round 4 with distinct "Session navigation" / "Session sections" labels. |
+| Round-1 should, Activities ignores agent/request scope | Deferred to T06 throughout; unchanged (see "Known deferral" below). |
+| Round-1 should, T05 exception for `AgentRoster.tsx` | Held; `AgentRoster.tsx` itself stayed untouched, only `AgentsTab.tsx`'s view-mode wiring is the T05 exception. |
+
+**Round 4: acceptance-r3 findings resolved.**
+
+| Finding | Resolution (round 4) |
+| --- | --- |
+| B1 detached pending entry after a multi-consumer keyed navigation | `app/session-domain-store.ts`: cleanup-time prune (`detachSubscriber`) no longer ages or consumes pending protection; only a subscribe-time pass (`touchSession`) sets `survivedPrune`; `attachSubscriber` re-registers a detached entry. The new multi-consumer test fails against the round-3 logic and passes with either half of the fix alone. |
+| B2 restart/epoch semantics undocumented | Added to `docs/OBSERVATION_CACHE.md`: a loading response never replaces a resolved body; a lower revision is rejected within one epoch; the first resolved body after an epoch change is accepted and re-arms the guard; a pending rebuild keeps its fast cadence; revision clocks restart at 0 per monitor process; a 404 for a proven-absent session is definitive. Wording nits recorded as n-a below. |
+| S-a sessions outside the 50-per-provider catalog window dead-ended on a retrying 503 | Bounded asynchronous hydration for uncatalogued IDs (4 concurrent probes, 128 records, 30 s recheck); only the session-domain route passes a genuine 404 through; the store stops retrying on 404 and recovers on a revision event, focus, reconnect, or revalidate. |
+| S-b two lint errors | Fixed: store mutations moved into module functions; `LegacySessionTab.tsx` keys its inner panel on `sessionId`. `npm run lint`: 0 errors. |
+| n1 domain GETs never prioritized restored-live re-hydration | Coordinator now triggers it, deduplicated via `restoredHydrations`. |
+| n2 no test for the Overview "Show agent" button | Added. |
+| n3 placeholder `catalogIdentity` check missing; no historical retry | Both added to `LegacySessionTab.tsx`. |
+| n4 equal revision after a restart gives 204 and a skipped event | Documented alongside B2; no ETag instance component was added. |
+| n5 restart recovery depends only on the SSE epoch | Documented, but flagged as still ownerless; assigned in this entry, see S-1(b) below. |
+| n6 untracked `tsconfig.tsbuildinfo` | Moot; absent from the worktree (see the note below). |
+| n7 wrong `AgentsTab` `onOpenActivities` comment | Corrected. |
+| T4 (carried from acceptance-r2) | Resolved; see the round-3 table above. |
+
+**acceptance-r4 verdict: PASS.** No blockers remained. Three S-1 deferrals needed owners
+before Session 2 could close; assigned here:
+
+(a) **Failure-versus-absence deferral.** A hydration probe that fails mid-read for a
+session outside the provider catalog window is still served as 404 until the 30 s
+recheck, the same as a proven-absent session; the two cases are not distinguished. Owner:
+unassigned, next provider-observer change in `monitor/providers/normalized-polling-observer.mjs`
+and `registry.mjs` (these already collapse a failure and a missing source into `false`); no
+task in the current session queue owns provider-observer internals.
+
+(b) **n5 residual.** Restart recovery depends only on the SSE epoch
+(`app/session-domain-store.ts:127`, `app/live-events.ts`); in an environment where
+`EventSource` never opens, the epoch never advances and a monitor restart reproduces the
+original N1 symptom (stale data, 1 s polling). Owner: unassigned, next change touching
+`app/live-events.ts` reconnect/epoch semantics or the store's restart guard; no queued
+Session 3-6 task owns this transport hardening directly.
+
+(c) **T05 exception unchanged.** The round-3 `AgentsTab.tsx` view-mode change remains the
+only T05 exception; round 4 touched no T05 path (`git diff 9d9bd8f` over T05 paths is
+empty).
+
+**acceptance-r4 open nits (n-a to n-e), owners assigned in this entry:**
+
+- n-a. `docs/OBSERVATION_CACHE.md` wording: a blocked SSE stream does advance the epoch
+  (`app/live-events.ts:75,90-95` fires `error` and reconnects); the "1-second cadence"
+  statement (`OBSERVATION_CACHE.md:1769-1771`) applies to live entries only, historical
+  retries stay 5 s/30 s hidden; remove the review-finding IDs "(n4)"/"(n5)" from
+  `OBSERVATION_CACHE.md:1359,1364`. Owner: Session 6 T12 closure documentation pass (or any
+  earlier session that next edits `OBSERVATION_CACHE.md`).
+- n-b. `app/session-domain-store.ts:120-123`, `app/api/monitor-proxy.ts:26-30`,
+  `app/api/session-domain/route.ts:32-33`: "404 only after hydration proved absence" is
+  overstated; an `agent` query for an agent missing from a committed record, and malformed
+  or unregistered-provider IDs, also 404 without hydration (low impact today). Owner:
+  whichever of T06b, T08 or T09 next extends `app/session-domain-store.ts`'s domain set.
+- n-c. `app/session-domain-store.ts:333`: re-registering a detached entry checks key
+  presence, not object identity; unreachable today because each query key has one
+  consumer. Owner: same as n-b.
+- n-d. `confirm-navigation-r4.md` Flow 1 (sidebar Sessions to the live session row) did not
+  exercise B1's same-commit unmount/mount trigger; B1 itself is covered by the
+  mutation-verified unit test. Owner: Session 6 T12's final regression sweep; optionally
+  repeat Agents tab straight to another session through the command palette.
+- n-e. `app/components/dashboard/LegacySessionTab.tsx:106,108`: a `reconnecting` event
+  cancels a historical legacy tab's forced retry timer without `force`, so it waits for the
+  next `connected` poll instead of retrying immediately (it still recovers). Owner: Session
+  6 T12, since `LegacySessionTab.tsx` is itself one of the transitional panels scheduled for
+  removal.
+
+**Round 5: architecture fix, no behavior change.** The first full verification (under
+round 4) failed `npm run verify:fast` at `check:architecture` with two violations that
+predated round 4: `monitor/observation-runtime.mjs` at 913 lines (cap 800), and
+`tests/ui/legacy-session-tab.test.tsx` using a legacy/versioned source filename. Fixed by
+extracting `monitor/session-domain-serving.mjs` (168 lines; `createSessionDomainServing`
+returning `commit`/`forget`/`clear`/`protectedSessionIds`/`serveSessionDomain`), which
+brought `monitor/observation-runtime.mjs` down to 780 lines, and renaming the test file to
+`tests/ui/transitional-session-tab.test.tsx` (byte-identical copy). The three path
+references in this plan and one row in `docs/AGENT-WORKFLOW.md` were updated to match. The
+orchestrator's normalized-line comparison against the pre-extraction file found only
+identifier rewiring (`observationCoordinator`→`coordinator`,
+`observationServingActive`→`isServingActive()`, `commitSessionDomains`→
+`sessionDomainServing.commit`, and similar), a split import, re-wrapped comments, the
+factory shell, and `stop()`'s reset folded into `sessionDomainServing.clear()` with the
+same three underlying clears; no logic change.
+
+**Browser and phone checks.** Desktop Chrome round 4 (`confirm-navigation-r4.md`)
+confirmed all five flows with no defects: Flow 1, keyed navigation from an Agents tab via
+the sidebar Sessions list to the live session, showed KPIs advancing within 30 s with no
+reload (Calls 196→234, all-agent context 630.5K→668.3K, wall time 21m→28m); note per nit
+n-d above that this flow went through the Sessions page rather than exercising B1's exact
+same-commit trigger. Flow 2, an unknown session ID, resolved to a definitive "Session
+unavailable" in about 10 s, with one retry 10-20 s later and then no further requests
+(confirms no indefinite 5 s poll). Flow 3, a session older than the 50-per-provider catalog
+window (identified from local file mtimes only, no content read), loaded successfully in
+about 15-20 s, well inside the 90 s bar. Flow 4, a full monitor-process restart, saw the
+monitor and web ports both answer in about 58 s, with the still-open Overview reflecting
+current data with no reload in about 60-70 s total elapsed. Flow 5, regression sanity,
+confirmed historical sessions still reach the tab bar quickly, agent/path selection
+round-trips across tab changes, and the Agents List/Grid toggle persists across reload. The
+known deferral (Activities ignoring agent/request scope) was confirmed still true, per the
+T06 deferral, not a defect.
+
+The user performed the 390px phone check in round 3 (`phone-check.md`): 6 of 6 items pass
+(tab bar reached, sticky tabs with no horizontal scroll, 44px targets, More menu
+open/focus-return, Agents List/Grid toggle). Item 2 (load time) passed but was noted as
+slow; server-log evidence for that open showed only fast 200/204 responses with no 4xx/5xx,
+so the wait is client-side (dev-mode bundle download and hydration over the LAN), not a
+server defect. Limitation: only the one live session was opened on the phone; recommend
+opening a historical session on the phone at the next manual check.
+
+**Verification (`artifacts/verify.md`).** Command `npm test && npm run verify:fast`, run
+serially from the repository root.
+
+- Iteration 1, under round 4 (2026-09-16T21:07Z): FAIL. `npm test` exit 0 (Node: 1,180
+  tests, 1,179 pass, 1 skipped, 0 fail; UI: 83 files, 808 tests pass). `npm run
+  verify:fast` exit 1 at `check:architecture` on the two violations above;
+  `check:boundaries` was not reached in this chain (it was clean in `integrate-r4`).
+- Rerun, under round 5 (2026-09-16T22:01Z): PASS. `npm test` exit 0 (build regenerated
+  plugin bundles with no tracked diffs; Node suites 38/38, 16/16, 33/35 with 2 skipped,
+  9/9, 23/23, 36/36, totalling 1,180 with 1,179 pass, 1 skipped, 0 fail; UI: 83 files, 808
+  tests pass). `npm run verify:fast` exit 0: lint 0 errors (17 pre-existing warnings);
+  typecheck, provider-contract, provider-adapters and landing typechecks clean; contract
+  and ops tests pass; provider capability documentation in sync; architecture checks
+  passed (730 source files); no dependency violations (483 modules, 1,483 dependencies).
+
+**Models used, rounds 3 to 5** (Sol/Terra harness column only; no Astra/Fable used by any
+worker or reviewer):
+
+| Stage | Round | Model | Effort | Iter. | Check |
+| --- | --- | --- | --- | --- | --- |
+| fix-monitor-r3 | 3 | opus | high | 1 | — |
+| fix-store-restart-r3 | 3 | sonnet | high | 1 | — |
+| fix-agents-view-r3 | 3 | sonnet | medium | 1 | — |
+| fix-dashboard-r3 | 3 | sonnet | high | 1 | — |
+| fix-tabs-legacy-r3 | 3 | sonnet | medium | 1 | — |
+| integrate-r3 | 3 | sonnet | medium | 1 | pass |
+| confirm-navigation-r3 | 3 | sonnet | medium | 1 | — |
+| fix-browser-defects-r3 | 3 | sonnet | high | 1 | pass |
+| reconfirm-navigation-r3 | 3 | sonnet | medium | 1 | FAIL (user: skip, no flow failed) |
+| phone-check | 3 | opus | low | 1 | pass |
+| acceptance-r3 | 3 | opus | high | 1 | FAIL |
+| fix-store-monitor-r4 | 4 | opus | high | 1 | — |
+| fix-legacy-tabs-r4 | 4 | sonnet | medium | 1 | — |
+| integrate-r4 | 4 | sonnet | medium | 1 | pass |
+| confirm-navigation-r4 | 4 | sonnet | medium | 1 | — |
+| acceptance-r4 | 4 | opus | high | 1 | PASS |
+| full-verification (1st attempt) | 4 | opus | low | 1 | FAIL (`check:architecture`) |
+| fix-architecture-r5 | 5 | sonnet | high | 1 | pass |
+| full-verification (rerun) | 5 | opus | low | 1 | PASS |
+| handoff-r5 (this entry) | 5 | sonnet | medium | 1 | — |
+
+**Session 6 must verify removal of these transitional panels**, unchanged since round 3
+(from `acceptance-r3.md`, T1 details):
+
+- Activities: `RequestsActionsPanel` and `ActivityPanel`
+- Signals: `InsightsPanel` and `CacheEvidenceDisclosure`
+- Repository: `RepositoryDisclosurePanel`
+- Resources: `ResourceUsagePanel`
+- Details: `SessionDetailsPanel`
+
+**Note.** `tsconfig.tsbuildinfo` must never be committed. It is currently absent from the
+worktree and is regenerated by builds.
+
+**Known deferral unchanged.** The Activities tab ignores agent/request scope until T06.
+
+**Next step.** Session 3 (T06 and T06b) starts only on a separate user request.
+
+2026-09-16 · **Stopped on explicit user instruction after a second independent acceptance
+failed: a handoff instead of a third round.** Its resume steps below supersede the
+2026-09-14 "Essential resume steps"; the 2026-09-14 entries stay as history. Session 2
+remained unchecked as of this entry (superseded by the completion entry above; Session 2
+is now checked). Branch `main`, HEAD `3b116ada46ca91667e7b7378ce974bd0337770b0`. All
+changes are uncommitted; no commit or push occurred.
+
+Two independent-acceptance rounds ran against the T04 completion diff (round 1 verdict FAIL,
+5 blockers; round 2 verdict FAIL, 3 blockers). Round 2 fixed 4 of round 1's 5 blockers and
+found 2 new ones. Round 2 test results: `npm run test:ui` 83 files / 779 tests passed,
+`npm run typecheck` clean, `npm run check:boundaries` clean (482 modules / 1,481
+dependencies), and 35 targeted node tests (`session-domain-store`, `session-domain-runtime`,
+`session-domain-transport`, `observation-serving`, `committed-response-cache`,
+`api-serialization`) passed. Neither round ran the integrated `npm test` or
+`npm run verify:fast`; no full-suite pass is claimed for T04/T05 in this session.
+
+Fixed between rounds (round-1 blockers, now resolved and tested):
+
+- Monitor re-commit/eviction flap (`monitor/session-domain-store.mjs`,
+  `monitor/observation-runtime.mjs`): catalog events previously re-committed every catalog
+  session and refreshed retention on each one, so bound-based eviction dropped the newest
+  (live) rows first, producing the observed revision flap (0/0/76003/0/76105…) and a
+  permanently "Loading session…" page. Fixed with demand-ordered retention, no-op identical
+  re-commits, a protected-session exemption for live/working/needs_input/open rows, and
+  hydration triggered from `serveSessionDomain` for hydratable rows with no committed
+  evidence. Tests: `tests/session-domain-runtime.test.mjs` (catalog-churn and
+  hydration-reaches-ready cases), `tests/session-domain-store.test.mjs`.
+- Legacy consumer corrections (`app/components/dashboard/LegacySessionTab.tsx`): first 204,
+  last-known-good plus notice, 1s/5s/reconnect cadence, hidden/focus handling,
+  `refreshAfterFlight`, session reset, late-abort non-commit are now covered by
+  `tests/ui/transitional-session-tab.test.tsx:100-268`.
+- Deleted-suite behavior: progressive-readiness ported to
+  `tests/ui/dashboard-readiness.test.tsx:32-69`; offline-only-after-failure ported
+  (`app/Dashboard.tsx:131`, `tests/ui/dashboard-t04.test.tsx:250`); repository privacy,
+  recorded-state labels, sanitized Codex usage, historical Usage-limits omission and the
+  fallback details summary ported to `tests/ui/transitional-session-tab.test.tsx:271-331`.
+- Tab accessibility (`app/components/dashboard/SessionTabs.tsx`): roving tabindex, `More`
+  focus handling and arrow/Home/End/Escape, `aria-controls`/`aria-labelledby`, resolved and
+  tested in `tests/ui/session-tabs.test.tsx:46-100`.
+- Plan wording: Signals "Show agent" opens the Agents tab (already reconciled in Agreed
+  decisions above); browser-confirmed in both round-2 flow reports.
+
+Remaining resume steps, in order (file:line verified against source on 2026-09-16; adjust
+if source has moved):
+
+1. **Restore two literal NUL bytes in `monitor/session-domain-store.mjs`.** Lines 62
+   (`function key(sessionId, domain) { return `${sessionId}<NUL>${domain}`; }`) and 224
+   (`recordKey.lastIndexOf("<NUL>")`) contain a literal NUL byte where an escape sequence
+   (for example `::`) was intended. Behavior is unaffected today because both sides use the
+   same literal byte, but `git diff --numstat` reports `-\t-\t` (binary) for this file and
+   `grep` reports "binary file matches", so the file is unreviewable as text. Restore a normal
+   text separator and re-run the affected store tests.
+2. **Store revision guard rejects every lower revision permanently after a monitor
+   restart.** `app/session-domain-store.ts:110-111` treats any response with
+   `value.revision < retained.revision` (or a `loading` response at or below the retained
+   revision) as stale and keeps the old body forever. Per-domain revision clocks in
+   `monitor/session-domain-store.mjs` restart at 0 on every monitor process start (for
+   example `npm run dev`, the restart-pomegr skill, or a desktop monitor-worker restart), so
+   a page left open across a restart receives revisions permanently below its retained one
+   and never recovers — a live session can show a stale "In progress" state indefinitely with
+   `connected: true` and no error. `app/live-events.ts`'s `connect()` already resets its
+   `latestRevisions` map per connection epoch; the store does not use `epoch` at all. Fix
+   direction: accept a lower revision after a live-events epoch change or reconnect recovery
+   (or narrow the guard to reject only `loading`/revision-0 envelopes, never a resolved lower
+   revision). Add a test simulating a monitor restart while an entry is retained. No test
+   exists today.
+3. **`AgentsTab.tsx` drops the roster List/Grid toggle and its persistence — a T05
+   regression.** `app/components/dashboard/AgentsTab.tsx:35-49` renders
+   `AgentActivityPanel`/`AgentRoster` without passing `viewMode` or `onViewModeChange`, so
+   `AgentRoster.tsx:63` defaults to `viewMode="list"` with a no-op handler and the shipped
+   Grid button (`AgentRoster.tsx:285`) does nothing. `HEAD:app/Dashboard.tsx` wired this and
+   persisted `pomegr-agent-activity-view-<sessionId>` to `window.localStorage`; that
+   persistence is gone from `app/`, and the deleted test
+   `tests/ui/workflow-activity.test.tsx` ("coerces a stored Tree view to List and persists the
+   Grid choice") was dispositioned as "not portable" instead of ported. Wire `viewMode` state
+   (with the same storage key convention) through `AgentsTab.tsx` into `AgentRoster`, and port
+   the deleted assertion. Record this as a recorded exception to T05 file ownership (T05 owns
+   `AgentsTab.tsx`; this fix necessarily touches it after the T04 migration).
+4. **Investigate the historical-session 503 stall that needed a reload.** In round 2's
+   `reconfirm-navigation-r2.md` Flow 0, the historical session `claude:2eadb47d…` stalled on
+   "Loading session… Reading the latest committed summary." on first navigation; a reload
+   reached the tab bar in ~10s. Network capture showed a 200 on
+   `GET /api/session-domain?...&domain=session-summary` followed by a 503 on the same query
+   with `&revision=238`. The likely presentation gap is `app/Dashboard.tsx:131-132`: when a
+   retained body has `readiness: "loading"` and no `session` yet, the page always renders
+   `SessionLoading` and never checks `summaryResult.error`, even when a later poll actually
+   failed (the `SessionConnectionIssue` branch on line 131 only fires when `summary` itself is
+   null). Confirm this is the exact cause, then surface `summaryResult.error` on the
+   loading-with-no-session branch too, and add a test for a resolved-then-failed sequence.
+5. **Should-fix items** (not blockers, but recorded findings from round 2 that remain open):
+   - `app/Dashboard.tsx:131-132` — see step 4; the same code location is both the reload-stall
+     root cause and this general gap (loading body plus failing polls shows "Loading" with no
+     error).
+   - `app/components/dashboard/SessionTabs.tsx:39,44-46` — the tab filter requires
+     `summary.resourceAvailability.hasData === true`, and the `useEffect` at line 44-46
+     redirects to Overview whenever the active tab is not in `available`. On a live session
+     whose `resourceAvailability.readiness` is still `loading`, `hasData` is `null`, so a
+     `?tab=resources` deep link (or a user already on Resources) is redirected to Overview
+     before evidence resolves; redirect only once readiness has resolved (`ready` with no data,
+     or `unavailable`). `available` is also rebuilt on every render, so the effect can
+     re-invoke `router.replace` on every render until the URL settles — memoize it or narrow
+     the effect's dependency.
+   - Port the remaining deleted `dashboard-session-navigation` assertions that still apply
+     because `SessionDetailsPanel` still renders behind the Details tab: "omits Codex usage UI
+     when the provider capability is disabled", "omits current Usage and missing Loaded values
+     from a historical collapsed summary" (the new `transitional-session-tab.test.tsx:310` checks
+     only the expanded heading, not the collapsed summary), and "omits Loaded context inventory
+     entirely when the selected provider does not support it". Also add the report
+     session-mismatch guard test: "does not export a different session returned by a refresh"
+     (`app/Dashboard.tsx:116`) has no dedicated test.
+   - `tests/ui/dashboard-t04.test.tsx`: no test proves an explicit `request` supplied together
+     with an agent change is kept (`app/Dashboard.tsx:101-102` clears `request` only when none
+     is explicitly supplied); no DOM-level privacy test asserts the summary-rendered Overview
+     and header contain no path, prompt, tool-output, or provider-ID content.
+   - `DESIGN.md:281-287` — the "Session detail uses the shared page header…" paragraph and the
+     "Role tint is the only exception…" paragraph are each duplicated verbatim (281/285 and
+     283/287). Delete one copy of each.
+6. **Nits to fold into this checkpoint (done by this entry) and one doc update still
+   needed:**
+   - T05 ownership exceptions to record: `app/components/dashboard/agent-roster/AgentRoster.tsx`
+     (a focus-restoration race fix around lines 270-276, made during T04 integration, verified
+     correct — `agent-tree-focus` tests pass) and `app/components/dashboard/AgentsTab.tsx`
+     (step 3 above, once fixed).
+   - `docs/OBSERVATION_CACHE.md:1722-1727` (the "session-domain browser store" paragraph)
+     still does not describe the step-2 regression guard or restart revision semantics; update
+     it together with step 2's fix.
+   - `app/session-domain-store.ts` — an entry created by a render that React later abandons
+     (for example an interrupted concurrent-mode render) keeps `pendingSubscription: true`
+     (set at line 243) and is never pruned (the prune-exemption check is at line 149). The leak
+     is small and bounded by distinct query keys; prefer registering entries in `subscribe`
+     rather than during render, or add an exemption timeout.
+   - Activities ignoring `agent`/`request` scope from `LegacySessionTab.tsx` navigations
+     (`AgentsTab` "Activities for this agent", Overview request bars) is intentionally
+     deferred to T06, which owns Activities selection state per its task description ("Place
+     agent scope in the chart header and apply it…"). No action needed in Session 2.
+7. **User's manual 390px phone check**, still outstanding because the available browser
+   automation tool cannot narrow `window.innerWidth` below roughly 2300px in this environment
+   (confirmed across four resize attempts in two independent-acceptance rounds — not an app
+   defect). The user will check manually on a phone over the LAN at port 3003: the More menu
+   opens and closes, focus returns to More after choosing a menu item, there is no horizontal
+   scroll at 390px, and all five/four+More tab targets are 44px. The phone tablist DOM and CSS
+   changed in round 2 (`SessionTabs.tsx`'s `.sessionPhoneTabs`/`.sessionPhoneTablist`
+   restructure), so the desktop-only browser confirmation from earlier in Session 2 does not
+   cover this.
+8. **Fresh independent acceptance on the actual diff**, then serial host `npm test`
+   (includes the build) followed by `npm run verify:fast`. Mark Session 2 complete only after
+   both pass and acceptance passes with no remaining blockers. Stop before Session 3.
+
+What round 2's browser confirmation actually showed (for context, so a fresh session does not
+re-run already-passed checks unnecessarily): on the live session, tab bar reached in ~5s;
+Signals "Show agent" correctly opens Agents with the matching agent selected; a plain tab
+switch preserves `agent`/`request`/`path`; changing the selected agent clears an unrelated
+`request`; desktop arrow-key roving focus plus Enter/Space activation follows the WAI-ARIA APG
+manual-activation tablist pattern and is not a defect. One side observation, not a defect: with
+`request=684` pinned in the URL, the on-page selected-request panel live-tail-followed to a
+newer request (#687) while the URL kept `request=684`; this is existing live-tail behavior,
+distinct from the query-persistence contract, and belongs with the T06 deferral above.
+
+Session-domain-store privacy is unaffected by the round-2 monitor change: the only new summary
+fields are bounded recomputed counts (`idleAgents`, `finishedAgents`, `activeAgents`) and a
+readiness/boolean pair (`resourceAvailability`); retention metadata and hydration dedupe never
+leave the monitor.
+
+2026-09-14 · **Stopped on explicit user instruction: “Ok stop and give a handoff.”**
+Implementation and review workers were interrupted; no further implementation
+or test runs were started after that instruction. Resume this same unchecked
+Session 2, never Session 3. All changes are uncommitted on `main` at
+`3b116ada46ca91667e7b7378ce974bd0337770b0`.
+
+T03 remains accepted. Sol implemented the summary-only shell, domain browser
+store, tabs and Overview; Terra implemented the scoped Agents roster/inspector.
+T05 is independently accepted: 40 focused tests, TypeScript and diff checks pass;
+actual phone checks confirm URL clearing, focus restoration, scroll unlock and
+regular-weight context. T04 desktop/phone visual corrections are accepted:
+1440px layout matches Main; 390px has 44px tabs and no horizontal overflow.
+Its actual Overview is about 1666px with a long title and three active rows;
+the extra height compared with the illustrative artboard preserves real evidence.
+Existing Activities/Signals panels are restored and every mounted consumer now
+receives Desktop Pause. No final T04 or full-session pass is claimed.
+
+Changed T04 ownership:
+
+- `app/Dashboard.tsx`, `app/sessions/[sessionId]/page.tsx`, and new
+  `app/components/dashboard/{SessionOverview,SessionTabs,LegacySessionTab}.tsx`
+  plus `session-route.ts`: summary-only persistent header/Overview, query-driven
+  tabs, lazy existing panels, scoped navigation, and report export.
+- New `app/session-domain-store.ts`: exact-query body/revision retention,
+  shared events, current plus two recent sessions, historical/live cadence,
+  cancellation and last-known-good data. This remains under final review.
+- `monitor/session-domain-projection.mjs` and
+  `shared/session-domain-contract.ts`: summary-native agent status counts and
+  resource availability. No navigation-driven eager domain acquisition.
+- New `app/role-family.ts`, role tokens, session styles, design-system samples,
+  `DESIGN.md` and `docs/OBSERVATION_CACHE.md`. The nested role helper used
+  explicit Luna; T04 and independent review used Sol, T05 used Terra.
+- New browser store/Dashboard/route/role tests and summary fixture; obsolete
+  `SessionCommandBar.tsx` removed. Dashboard test migration is unfinished.
+
+T05 accepted ownership: `AgentsTab.tsx`, roster/inspector, `AgentEvidencePanel.tsx`,
+`AgentsView.tsx`, `app/agents/page.tsx`, phone roster context styles, and focused
+tests. Agents uses only `agents` plus the selected `agent` domain; unknown agent
+links normalize to a valid selection. Model links preserve a sanitized functional
+`?model=` filter. Phone Back/Escape clears the URL, restores row focus and unlocks
+scroll. Inspector lineage, tasks, signals and historical evidence remain scoped.
+
+Essential resume steps, in order:
+
+1. Finish T04 on Sol. Both `app/session-domain-store.ts` and `LegacySessionTab.tsx`
+   still independently initiate a fetch after subscribing to an already-connected
+   event singleton, whose synchronous connection notification can initiate one
+   first. Prevent the duplicate and test exactly one initial request with the
+   real notification semantics.
+2. Independently verify the late corrections already present in source: first
+   response 204 requires a retained exact-query body; legacy error rendering keeps
+   last-known-good state; retained loading plus 204 keeps one-second cadence;
+   reconnect/failure uses five seconds; session changes reset revisions; aborted
+   responses cannot commit; all mounted consumers honor Pause. Check hidden and
+   in-flight invalidation, three-session eviction, and no historical timers.
+3. Verify `InsightsPanel.tsx`'s newly added `preventDefault()` repair. Before that
+   edit, an actual Show agent click stayed on Signals with `#agent-activity`;
+   the correction has not yet had a browser confirmation. Test Activities agent
+   scope and request navigation too. Simple tab changes retain agent/request/path;
+   changing agent clears an unrelated request unless explicitly replaced.
+4. Finish the new `dashboard-t04.test.tsx` and `session-domain-store.test.tsx`
+   suites. Audit removed Dashboard navigation/loading, desktop-controls,
+   report-export and progressive-readiness tests: preserve their still-applicable
+   behavior in replacements, including export failures, Pause, history/privacy,
+   readiness and scope transitions. Do not treat deleted assertions as fixes.
+5. Obtain final independent Sol acceptance, run focused regressions, then run
+   host/escalated `npm test` (includes build) and `npm run verify:fast` serially.
+   Resolve every failure, run final diff/document checks, update this handoff,
+   and only then mark Session 2 complete. Stop before Session 3.
+
+Latest actual verification:
+
+- T05: `npx vitest run tests/ui/agents-tab.test.tsx tests/ui/agent-roster.test.tsx
+  tests/ui/agent-roster-groups.test.ts tests/ui/agents-view.test.tsx` passed
+  40 tests in four files. TypeScript and diff check passed; independent Sol
+  accepted the corrected source and its narrower 37-test selection.
+- T04 reported TypeScript passing before the latest transport/test edits.
+  Final T04 focused results have not been handed off. No integrated `npm test`
+  or `verify:fast` ran after T04/T05 implementation; earlier full passes below
+  certify T03 only.
+- Parent `npm run lint` passed with zero errors and 16 existing warnings
+  (`outputs/ia-session2-integration-lint.log`); architecture passed for 726
+  source files; provider documentation check passed. The earlier boundary run
+  failed only on orphan SessionCommandBar, since removed; rerun is required.
+- Parent `node --test tests/session-domain-store.test.mjs` passed 10 tests
+  (`outputs/ia-session2-domain-test.log`). All nine local Markdown file links
+  across this plan, OBSERVATION_CACHE and DESIGN resolve.
+- Main/Mobile and SessionAgents/Mobile comparisons passed after one correction
+  batch. Phone context computed weight is 400; visible tab width equals scroll
+  width and all five tab targets are 44px. T03 comparisons are recorded below.
+
+Temporary browser tabs were closed, viewport reset, and owned dev/prototype
+servers stopped. Logs and the prototype helper remain ignored under `outputs/`.
+T04 experienced one temporary Sol-capacity error and successfully resumed before
+this user-requested stop. No model above Sol was used by delegated workers.
+
+2026-09-14 · Session 2 partially implemented under explicit authorization, then
+checkpointed at the usage-guard handoff threshold. Terra implemented T03; Sol
+performed a read-only T04 preparation and independently reviewed T03. No worker
+used a model above Sol. At that earlier checkpoint T04 and T05 had no changes;
+the active checkpoint above supersedes that implementation status.
+
+Starting branch: `main`; HEAD: `3b116ada46ca91667e7b7378ce974bd0337770b0`.
+Pre-existing edits in `docs/COMMERCIAL_STRATEGY.md`,
+`docs/plans/mobile-pairing-cloudflare.md`, and
+`docs/plans/remote-platform-and-orgs.md` are unrelated and must be preserved.
+All changes remain uncommitted. The session checkbox stays unchecked until T04,
+T05 and final integrated acceptance also pass. No commit or push was performed.
+
+The baseline `npm run verify:fast` passed before implementation (zero lint errors,
+16 warnings; 717-source architecture check; 476 modules / 1,455 dependencies).
+Log: ignored `outputs/ia-session2-baseline.log`.
+
+T03 behavior and ownership:
+
+- `app/components/command-center/CommandPage.tsx` exports `CommandPageHeader`
+  with breadcrumb, title, meta, actions and tabs slots; `CommandPage` remains the
+  compatible wrapper. Shell breadcrumbs are removed. Session header adoption is
+  deliberately left to T04.
+- `CommandCenterShell.tsx` owns the 280px/200px/phone-icon palette trigger,
+  normalized recent session/repository results, combobox/listbox keyboard
+  selection, contained focus and Escape restoration. Both keyboard and pointer
+  openers close other shell overlays. New buttons compose `commandQuietAction`.
+- Sidebar limits use catalog sessions created in the last seven days and the
+  highest-percentage available provider window. Ordinary unreached windows remain
+  eligible so every recently observed provider with usage data can appear. Text
+  and bar fills share the 75/85-percent severity thresholds. This is shell data,
+  separate from historical session evidence.
+- `CommandViews.tsx`, `app/HomeDashboard.tsx`, `app/hooks/useHomePreferences.ts`,
+  `app/components/agents/AgentsView.tsx`,
+  `app/components/repositories/RepositoryDetailView.tsx` and
+  `app/settings/SettingsPage.tsx` adopt the shared header/navigation. The
+  Sessions filter segment occupies the actions slot; search remains below it.
+  `app/dashboards/page.tsx` redirects to Home; old navigation, pins and
+  `tests/ui/dashboards-view.test.tsx` are removed. LAN redirect access remains.
+- `app/styles/shell.css`, `workspace.css`, `evidence.css`, and `design-system.css`
+  implement responsive shared controls and transparent outline chips.
+  `DESIGN.md`, `app/components/design-system/DesignSystemView.tsx`,
+  `tests/rendered-html.test.mjs` and UI tests for app shell, design system,
+  design contract, Home preferences, repository detail and Sessions were updated.
+
+Visual verification: parent compared HeaderStandard against the
+running app at 1440, 900 and 390 pixels; corrected misplaced desktop search,
+missing phone search, and the overlapping tablet Sessions header. Light Settings
+also rendered correctly; the original dark theme was restored. Keyboard smoke
+covered Ctrl K, filtering, Enter navigation and Escape focus restoration;
+the actual `/dashboards` route redirected to `/`. Accepted visual differences:
+the incumbent painted brand, 220px rail, local-profile placeholder and page
+descriptions remain under DESIGN.md; search stays below the Sessions header.
+The prototype's explanatory labels and placeholder values were not added.
+
+Verification and independent review:
+
+- The initial full `npm test` passed its build, plugin, operations, inventory
+  and Node stages (1,168 Node tests passed, one opt-in test skipped), then
+  failed 11 UI tests across four files (725 passed).
+  Log: `outputs/ia-session2-t03-test.log`. All eleven failures were repaired.
+- After correction, `npm run test:ui` passed all 738 tests across 81 files;
+  targeted app-shell passed 19 tests. `npm run verify:fast` passed with zero
+  lint errors and 16 existing warnings. Parent `npm run build` passed on the
+  corrected tree (`outputs/ia-session2-t03-final-build.log`).
+- Sol re-reviewed its six initial findings against the frozen diff and found
+  all resolved: tests, modal focus/ARIA, severity fills, common palette opener,
+  button roles, and active-window selection. Normalized data sources,
+  historical isolation, LAN redirect access and chip contracts also passed.
+- The final full `npm test` passed against the corrected frozen tree: build,
+  plugins, operations, inventory, 1,168 Node tests (one opt-in skip), and all
+  738 UI tests in 81 files. Log: `outputs/ia-session2-t03-final-test.log`.
+  T03 is verified and independently accepted; no T03 findings remain.
+- `git diff --check` passed. The plan's local file link resolves; handoff anchors
+  and ownership references were inspected. The baseline and final fast verifier
+  retain the same 16 pre-existing lint warnings.
+
+T04/T05 integration contracts: reuse `CommandPageHeader` with session tabs below
+the KPIs. The browser store retains exact-query bodies and revisions, one shared
+SSE listener and current plus two recent sessions under the canonical cadence.
+Header/KPIs/Overview consume summary-native data only; transitional existing
+panels mount only behind their selected tabs. T05 consumes `agents` and selected
+`agent` domains. Status counts come from normalized summary metadata, never
+inference from the bounded Right now rows. Tab changes preserve query scope;
+changing agent scope clears an unrelated selected request.
+
+Resume owners: Sol T04, separate Sol independent acceptance; Terra T05 is
+accepted. The coordinator owns final integration checks. Workers are stopped;
+the checkpoint above lists remaining corrections and completed preview cleanup.
+Logs/scripts remain ignored under `outputs/`.
 
 ### Session 1 handoff
 
@@ -634,6 +1520,7 @@ is the next unchecked item and is intentionally left for a fresh user-started se
 - 2026-09-14 · Documentation reconciliation and T00 prerequisite policy complete: Activities/Signals and inspector decisions folded into tasks; former T04b absorbed by T06 and T06b added; phone rules, anchored selection, soft storage threshold and usage bar recorded. AGENTS.md, OBSERVATION_CACHE.md and METRICS.md now own the approved file-history privacy and historical repository prerequisites, explicitly marked as not shipped. Prototype README reconciled; artboards unchanged. Runtime implementation remains pending. User implementation/model constraints saved above.
 - Verification for this documentation update: `git diff --check` passed; `npm run check:provider-docs` passed; all 14 local Markdown links in the plan and prototype README resolve. A bounded independent plan review found no remaining decision conflicts. `npm run verify:fast` failed at lint on 36 errors in the existing exported prototype vendor/support JavaScript; later stages did not run. Those generated exports were already present before this update and were not changed. No build, runtime privacy tests or visual comparison was claimed for this documentation-only task. Resolve the verifier blocker before accepting implementation tasks.
 
+- 2026-09-15 · Canvas version 47: phone Activities call lines became thin 32px icon/target/duration rows; tapping one expands its details in place beneath the line (version 49 replaced the earlier bottom-sheet idea; version 50 trimmed the block to chips plus five rows and kept the pre-existing request selection on tap); a sixth phone frame shows the expanded state. Desktop call rows are unchanged. The phone rules in Agreed decisions and T06 now carry the row height exception and the sheet contents.
 - 2026-09-14 · Design exports reached canvas version 46. Desktop Activities and Signals, the retained agent inspector, and five phone screens were approved; the current decisions and tasks above now own those rules. Existing exports were subsequently placed in the artboard folders linked by the prototype README. No exports regenerated in the documentation reconciliation.
 - 2026-09-13 · Initial codebase/design validation established privacy pre-work, T02 before T01, the SQLite resource-history approach, full-height artboards, role-family tints, and usage-limit thresholds. The current plan supersedes earlier navigation and storage wording. No runtime implementation completed.
 - Checkpoint format for implementation: task id, completion date, changed behavior and files, actual verification commands/results, artboard comparison with accepted deviations, and remaining work. Delete this plan and its temporary assets at T12 after enduring rules and follow-ups have owners.

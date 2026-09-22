@@ -1,0 +1,68 @@
+# ACOS provider catalog.
+#
+# One entry per provider the orchestrator may route a stage to.
+# Everything under `price` is optional and rough. It only feeds the
+# advisory estimate; it never gates execution. Edit freely.
+#
+# `invoke` describes how each adapter reaches the provider. A native adapter
+# names the one harness where it is legal. The runner must reject native use
+# unless both this harness and the active profile's provider match.
+# Values:
+#   { native_harness: <claude|codex> } - native only in that harness
+#   <string> - a shell command template for the external adapter.
+#              The stage prompt is passed on stdin. {{model}} and
+#              {{effort}} are substituted. Exit code 0 = ran; the
+#              stage check decides pass/fail separately.
+#   null     - not reachable through that adapter
+
+acos: "0.1"
+
+providers:
+
+  anthropic:
+    label: Anthropic (Claude)
+    invoke:
+      inline: { native_harness: claude }
+      subagent: { native_harness: claude }
+      workflow: { native_harness: claude }
+      external: "claude -p --model {{model}}"
+    effort_map:            # provider-agnostic effort -> provider setting
+      low: low
+      medium: medium
+      high: high
+      max: max
+    models:
+      claude-opus-5:
+        tier: strong
+        context: 1000000
+        price: { input_per_mtok: 5.00, output_per_mtok: 25.00, currency: USD }
+      claude-sonnet-5:
+        tier: balanced
+        context: 1000000
+        price: { input_per_mtok: 2.00, output_per_mtok: 10.00, currency: USD }
+      claude-haiku-4-5:
+        tier: fast
+        context: 200000
+        price: { input_per_mtok: 1.00, output_per_mtok: 5.00, currency: USD }
+
+  openai:
+    label: OpenAI
+    invoke:
+      inline: { native_harness: codex }
+      subagent: { native_harness: codex }
+      workflow: null
+      external: "codex exec --model {{model}} -c model_reasoning_effort={{effort}}"
+    effort_map:
+      low: low
+      medium: medium
+      high: high
+      max: max
+    models:
+      gpt-6-astra:
+        tier: strong
+        # price omitted on purpose; fill in if you want it in estimates
+      gpt-5.6-terra:
+        tier: balanced
+        # price omitted on purpose; fill in if you want it in estimates
+      gpt-5.6-luna:
+        tier: fast

@@ -1,6 +1,6 @@
-import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { HistoryLocateHarness, setPhone, snapshot } from "./requests-actions-test-fixtures";
+import { HistoryLocateHarness, setPhone, snapshot, selectedRequest } from "./requests-actions-test-fixtures";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { agent } from "./dashboard-test-fixtures";
 
@@ -52,11 +52,11 @@ it.each(["bar", "step"])("keeps a newer loaded %s selection when an older reques
   });
   vi.stubGlobal("fetch", fetchPage);
   render(<HistoryLocateHarness sessionId="replace-lookup" requests={[]} />);
-  await screen.findByRole("heading", { name: "Request #180" });
+  await waitFor(() => expect(selectedRequest()).toBe("#180"));
   fireEvent.click(screen.getByRole("button", { name: "Locate absent request" }));
   if (action === "bar") fireEvent.click(screen.getByRole("button", { name: /^Request #175,/ }));
-  else fireEvent.click(screen.getByRole("button", { name: "Prev" }));
+  else fireEvent.keyDown(screen.getByRole("button", { name: /^Request #180,/ }), { key: "ArrowLeft" });
   await act(async () => { finish(); });
-  expect(screen.getByRole("heading", { name: `Request #${action === "bar" ? 175 : 179}` })).toBeInTheDocument();
+  expect(selectedRequest()).toBe(`#${action === "bar" ? 175 : 179}`);
   expect(fetchPage).toHaveBeenCalledTimes(2);
 });

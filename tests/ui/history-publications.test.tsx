@@ -1,11 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { subscribeHistoryPublications } from "../../app/history-publications";
-import { useActivityHistory } from "../../app/components/dashboard/useActivityHistory";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { agent } from "./dashboard-test-fixtures";
 import { requestFeed, snapshot } from "./requests-actions-test-fixtures";
-import type { ActivityHistoryPage, RequestHistoryPage } from "../../shared/session-history-contract";
+import type { RequestHistoryPage } from "../../shared/session-history-contract";
 
 class HistoryEventSource {
   static instances: HistoryEventSource[] = [];
@@ -36,17 +35,6 @@ class HistoryEventSource {
   }
 
   close() { this.closed = true; }
-}
-
-function activityPage(total: number, revision = String(total), offset = Math.floor(Math.max(0, total - 1) / 8) * 8): ActivityHistoryPage {
-  return {
-    kind: "activity", status: "ready", revision, offset, total, linkedCount: 0,
-    items: Array.from({ length: Math.min(8, total - offset) }, (_, index) => ({
-      id: `event-${offset + index}`, timestamp: "2026-09-10T12:00:00.000Z", actor: "Primary agent", agentId: "primary",
-      tool: "Assistant replied", detail: "", workKind: "report", status: null, durationMs: null,
-      requestId: null, requestNumber: null,
-    })),
-  };
 }
 
 const subscriptions: Array<() => void> = [];
@@ -114,36 +102,12 @@ describe("history publication notifications", () => {
     expect(second.closed).toBe(true);
   });
 
-  it("refreshes Activity from the event without a timer or chart revision", async () => {
-    vi.useFakeTimers();
-    vi.stubGlobal("EventSource", HistoryEventSource);
-    let total = 8;
-    const fetcher = vi.fn(async (url: string) => {
-      const params = new URL(url, "http://localhost").searchParams;
-      const offset = params.get("offset") === "latest" ? Math.floor(Math.max(0, total - 1) / 8) * 8 : Number(params.get("offset"));
-      return { ok: true, json: async () => activityPage(total, String(total), offset) };
-    });
-    vi.stubGlobal("fetch", fetcher);
-    const { result } = renderHook(() => useActivityHistory({ enabled: true, sessionId: "claude:history-events", scope: "all", filterRequestId: null, navigation: null }));
-    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    const calls = fetcher.mock.calls.length;
-    total = 9;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
-    expect(result.current.page?.total).toBe(9);
-    expect(fetcher).toHaveBeenCalledTimes(calls + 2);
-    const afterFirst = fetcher.mock.calls.length;
-    act(() => HistoryEventSource.instances[0].emit({ domain: "history", sessionId: "claude:history-events", revision: 1 }));
-    await act(async () => { await Promise.resolve(); });
-    expect(fetcher).toHaveBeenCalledTimes(afterFirst);
-  });
-
   it("refreshes unpinned latest Requests immediately while sharing the stream", async () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     let total = 2;
     const requests = [snapshot(1), snapshot(2)];
     const fetcher = vi.fn(async () => {
-      const items = Array.from({ length: total }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+      const items = Array.from({ length: total }, (_, index) => ({ ...snapshot(index + 1), number: index + 1, model: null }));
       const page: RequestHistoryPage = { kind: "requests", status: "ready", revision: String(total), total, offset: 0, linkedCount: 0, items, overview: items.map((item) => [item.uncachedInputTokens, item.cacheWriteTokens, item.cacheReadTokens, item.outputTokens]) };
       return { ok: true, json: async () => page };
     });
@@ -165,7 +129,7 @@ describe("history publication notifications", () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     const fetcher = vi.fn(async () => {
       const page: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
-        items: [{ ...snapshot(1), number: 1 }], overview: [[1, 2, 3, 4]] };
+        items: [{ ...snapshot(1), number: 1, model: null }], overview: [[1, 2, 3, 4]] };
       return { ok: true, json: async () => page };
     });
     vi.stubGlobal("fetch", fetcher);
@@ -184,7 +148,7 @@ describe("history publication notifications", () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     const pageFor = (offset: number, revision: string): RequestHistoryPage => {
       const total = 120;
-      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(offset + index + 1), number: offset + index + 1 }));
+      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(offset + index + 1), number: offset + index + 1, model: null }));
       return { kind: "requests", status: "ready", revision, total, offset, linkedCount: 0, items,
         overview: Array.from({ length: total }, (_, index) => [index + 1, 2, 3, 4]) };
     };
@@ -210,9 +174,9 @@ describe("history publication notifications", () => {
   it("settles a historical request overview on its committed-history publication without following later revisions", async () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
-      items: [{ ...snapshot(1), number: 1 }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
+      items: [{ ...snapshot(1), number: 1, model: null }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
     const fetcher = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1, model: null }] }) })
       .mockResolvedValue({ ok: true, json: async () => ready });
     vi.stubGlobal("fetch", fetcher);
     const { result } = renderHook(() => useSessionRequestSelection({ agents: [agent], requestSnapshots: requestFeed([snapshot(1)]), contextBoundaries: [], historical: true, sessionId: "claude:recorded-hydration", historyEnabled: true }));
@@ -232,7 +196,7 @@ describe("history publication notifications", () => {
   it.each([false, true])("retries an unavailable %s request history page when its next publication arrives", async (historical) => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
-      items: [{ ...snapshot(1), number: 1 }], overview: [[1, 2, 3, 4]] };
+      items: [{ ...snapshot(1), number: 1, model: null }], overview: [[1, 2, 3, 4]] };
     const fetcher = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ kind: "requests", status: "unavailable", revision: "1", total: 0, offset: 0, linkedCount: 0, items: [] }) })
       .mockResolvedValue({ ok: true, json: async () => ready });
@@ -250,7 +214,7 @@ describe("history publication notifications", () => {
     let firstSignal: AbortSignal | undefined;
     let firstRequest!: (value: unknown) => void;
     const ready: RequestHistoryPage = { kind: "requests", status: "ready", revision: "2", total: 1, offset: 0, linkedCount: 0,
-      items: [{ ...snapshot(1), number: 1 }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
+      items: [{ ...snapshot(1), number: 1, model: null }], overview: [[snapshot(1).uncachedInputTokens, snapshot(1).cacheWriteTokens, snapshot(1).cacheReadTokens, snapshot(1).outputTokens]] };
     const fetcher = vi.fn((_: string, options?: RequestInit) => {
       if (!firstSignal) {
         firstSignal = options?.signal as AbortSignal;
@@ -269,7 +233,7 @@ describe("history publication notifications", () => {
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(firstSignal?.aborted).toBe(false);
-    firstRequest({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) });
+    firstRequest({ ok: true, json: async () => ({ kind: "requests", status: "ready", revision: "1", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1, model: null }] }) });
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.history.overview).toEqual(ready.overview));
   });
@@ -278,7 +242,7 @@ describe("history publication notifications", () => {
     vi.stubGlobal("EventSource", HistoryEventSource);
     const pageFor = (revision: string, total: number): RequestHistoryPage => {
       const offset = 0;
-      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1 }));
+      const items = Array.from({ length: 60 }, (_, index) => ({ ...snapshot(index + 1), number: index + 1, model: null }));
       return { kind: "requests", status: "ready", revision, total, offset, linkedCount: 0, items,
         overview: Array.from({ length: total }, (_, index) => [index + 1, 2, 3, 4]) };
     };

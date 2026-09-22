@@ -59,7 +59,7 @@ export function normalizedSessionActivity(providerId, sessionId, evidence) {
 export function normalizedSessionHistory(providerId, sessionId, evidence) {
   if (!evidence) return { requests: [], activity: [], complete: false };
   const requestIdByOldId = new Map();
-  const requests = buildRequestSnapshots({ sessionId: `${providerId}:${sessionId}`, agents: evidence.agents, usageSnapshots: evidence.usageSnapshots, unlimited: true }).items;
+  const requests = buildRequestSnapshots({ sessionId: `${providerId}:${sessionId}`, agents: evidence.agents, usageSnapshots: evidence.usageSnapshots, unlimited: true, includeModel: true }).items;
   for (const request of requests) requestIdByOldId.set(request.id, request.id);
   const activity = normalizedSessionActivity(providerId, sessionId, evidence)
     .map((item) => ({ ...item, requestId: requestIdByOldId.get(item.requestId) || null }));

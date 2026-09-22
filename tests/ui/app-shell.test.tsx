@@ -1,6 +1,7 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import Link from "next/link";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn() }));
 
@@ -15,16 +16,27 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
   return { ...actual, useProviderStatus: () => actual.EMPTY_PROVIDER_STATUS };
 });
 
+// Isolate the independent usage-limits feed so the sidebar-tone test can hand it a fixed
+// provider snapshot without racing the real polling store's network calls.
+const usageLimitsState = vi.hoisted(() => ({
+  snapshot: { revision: null, generatedAt: null, providers: [], readiness: { claude: "loading", codex: "loading" } } as UsageLimitsSnapshot,
+}));
+vi.mock("../../app/usage-limits-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/usage-limits-client")>();
+  return { ...actual, useUsageLimits: () => usageLimitsState.snapshot };
+});
+
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
 import { ClientAccessProvider } from "../../app/hooks/ClientAccessContext";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
-import { pomegrMarkVariantForSearch, shortcutHintForPlatform } from "../../app/components/command-center/CommandCenterShell";
+import { CommandPageHeader } from "../../app/components/command-center/CommandPage";
+import { pomegrMarkVariantForSearch, shortcutHintForPlatform, sidebarLimitsForCatalog } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
 import pomegrPackageManifest from "../../package.json";
 import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
-import type { SessionSummary } from "../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, SessionSummary, UsageLimitsSnapshot } from "../../shared/monitor-contract";
 
 function response(body: object) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -77,27 +89,23 @@ afterEach(() => {
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   navigation.pathname = "/";
   navigation.push.mockReset();
+  usageLimitsState.snapshot = { revision: null, generatedAt: null, providers: [], readiness: { claude: "loading", codex: "loading" } };
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
 });
 
 describe("Command Center app shell", () => {
-  it("keeps the session breadcrumb in the header and updates it on route changes", async () => {
-    navigation.pathname = "/sessions/claude-live-1";
+  it("keeps route breadcrumbs inside the shared page header", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
-    const { rerender } = render(<AppShell><h1>Session content</h1></AppShell>);
-    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
-    expect(breadcrumb.closest("header")).toBe(screen.getByRole("banner"));
+    render(<AppShell><CommandPageHeader title="Pomegr" breadcrumb={<><Link href="/sessions">Sessions</Link><span aria-current="page">Pomegr</span></>} /></AppShell>);
+    const breadcrumb = screen.getAllByText("Sessions").find((element) => element.closest(".commandPageBreadcrumb"))?.closest(".commandPageBreadcrumb") as HTMLElement | null;
+    expect(breadcrumb).toBeInTheDocument();
+    if (!breadcrumb) throw new Error("Shared page breadcrumb is missing");
+    expect(breadcrumb.closest("header")).toHaveClass("commandPageHeader");
+    expect(breadcrumb.closest("header")).not.toHaveClass("commandHeader");
     expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
-    expect(await within(breadcrumb).findByText("Pomegr")).toHaveAttribute("aria-current", "page");
-    navigation.pathname = "/sessions/codex-missing";
-    rerender(<AppShell><h1>Loading session</h1></AppShell>);
-    expect(within(breadcrumb).getByText("Session")).toHaveAttribute("aria-current", "page");
-    expect(within(breadcrumb).queryByText("Pomegr")).not.toBeInTheDocument();
-    navigation.pathname = "/sessions";
-    rerender(<AppShell><h1>Sessions</h1></AppShell>);
-    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).not.toBeInTheDocument();
+    expect(within(breadcrumb).getByText("Pomegr")).toHaveAttribute("aria-current", "page");
   });
 
   it("uses the platform-appropriate global search hint", () => {
@@ -153,18 +161,25 @@ describe("Command Center app shell", () => {
     expect(screen.getByRole("button", { name: "Open primary menu" })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("opens and dismisses the mobile global search", async () => {
+  it("opens the palette, retains focus, and restores the trigger on escape", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
     render(<AppShell><main>Home content</main></AppShell>);
 
-    const openSearch = await screen.findByRole("button", { name: "Open search" });
+    const openSearch = await screen.findByRole("button", { name: "Search Pomegr" });
     await user.click(openSearch);
-    expect(openSearch.closest(".commandHeader")).toHaveClass("isSearchOpen");
-    expect(screen.getByRole("searchbox", { name: "Search Pomegr destinations" })).toHaveFocus();
-
-    await user.click(screen.getByRole("button", { name: "Close search" }));
-    expect(openSearch.closest(".commandHeader")).not.toHaveClass("isSearchOpen");
+    const dialog = screen.getByRole("dialog", { name: "Search Pomegr" });
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    expect(search).toHaveFocus();
+    expect(search).toHaveAttribute("aria-controls", "command-palette-results");
+    expect(screen.getByRole("listbox", { name: "Search results" })).toBeInTheDocument();
+    await user.tab();
+    expect(search).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(search).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(dialog).not.toBeInTheDocument();
+    expect(openSearch).toHaveFocus();
   });
 
   it("opens the profile placeholder and routes global search to known destinations", async () => {
@@ -175,10 +190,140 @@ describe("Command Center app shell", () => {
     expect(screen.getByText("Workspace identity and preferences are coming soon.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open settings" })).toHaveAttribute("href", "/settings");
 
-    const search = screen.getByRole("searchbox", { name: "Search Pomegr destinations" });
-    await user.type(search, "repository branch{enter}");
+    await user.click(screen.getByRole("button", { name: "Search Pomegr" }));
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    await user.type(search, "repositories{enter}");
     expect(navigation.push).toHaveBeenCalledWith("/repositories");
-    expect(search).toHaveValue("");
+    expect(screen.queryByRole("dialog", { name: "Search Pomegr" })).not.toBeInTheDocument();
+  });
+
+  it("resets the palette highlight when a narrower query follows arrow-key navigation", async () => {
+    const user = userEvent.setup();
+    // A session whose title also matches "usage" so narrowing to that query leaves two
+    // results: the "Usage limits" destination (first) and this session (second).
+    const auditSession = { ...sessions[0], id: "claude:usage-audit", title: "Usage audit", project: "Pomegr" };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [auditSession] }));
+    render(<AppShell><main>Home content</main></AppShell>);
+
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    expect(search).toHaveFocus();
+
+    // Arrow down to the 5th destination (index 4, "Usage limits") while the query is empty.
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(screen.getByRole("option", { name: /Usage limits/ })).toHaveAttribute("aria-selected", "true");
+
+    // Narrowing to "usage" leaves two matches in this order: "Usage limits" (first) and
+    // "Usage audit" (second). The stale numeric index (4) would clamp onto the second match;
+    // the highlight must reset back to the first one instead.
+    await user.type(search, "usage");
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveAccessibleName(/Usage limits/);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+
+    await user.keyboard("{Enter}");
+    expect(navigation.push).toHaveBeenCalledWith("/usage-limits");
+    expect(screen.queryByRole("dialog", { name: "Search Pomegr" })).not.toBeInTheDocument();
+  });
+
+  it("uses the palette opener for Ctrl K and closes other shell layers", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    render(<AppShell><main>Home content</main></AppShell>);
+    const notification = await screen.findByRole("button", { name: /Notifications/ });
+    await user.click(notification);
+    expect(screen.getByRole("complementary", { name: "Notifications" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("complementary", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Search Pomegr" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Open primary menu" }));
+    expect(screen.getByRole("complementary", { name: "Primary navigation" })).toHaveClass("isOpen");
+    fireEvent.keyDown(document, { key: "k", ctrlKey: true });
+    expect(screen.getByRole("complementary", { name: "Primary navigation" })).not.toHaveClass("isOpen");
+  });
+
+  it("shows the tightest available window for every recently observed provider", () => {
+    const recent = [
+      { ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" },
+      { ...sessions[1], createdAt: "2026-08-24T11:59:00.000Z" },
+    ];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "five-hour", label: "Five hour", window: "5 hours", percent: 74, resetsAt: null, severity: "normal", active: true },
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 85, resetsAt: null, severity: "critical", active: false },
+      ] } },
+      { provider: "codex", source: "Codex", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "codex-primary", label: "Codex", window: "5 hours", percent: 64, resetsAt: null, severity: "normal", active: false },
+        { id: "codex-secondary", label: "Codex", window: "7 days", percent: 78, resetsAt: null, severity: "warning", active: false },
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 85, label: "7 days", severity: "critical" },
+      { provider: "Codex", percent: 78, label: "7 days", severity: "warning" },
+    ]);
+    expect(sidebarLimitsForCatalog(recent, [{ ...providers[1], usageLimits: { ...providers[1].usageLimits, limits: [] } }], Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([]);
+  });
+
+  it("carries the monitor-provided severity through instead of re-deriving it from the percent", () => {
+    const recent = [{ ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" }];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        // A high percent that would trip the old local ">= 85" threshold, but the monitor
+        // has classified it as "normal" (e.g. a window that is not the active/binding one).
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 90, resetsAt: null, severity: "normal", active: false },
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 90, label: "7 days", severity: "normal" },
+    ]);
+  });
+
+  it("falls back to normal severity when a window omits it", () => {
+    const recent = [{ ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" }];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 95, resetsAt: null, active: false } as HomeProviderUsageLimits["usageLimits"]["limits"][number],
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 95, label: "7 days", severity: "normal" },
+    ]);
+  });
+
+  it("renders the sidebar usage tone from the monitor-provided severity, not local percent thresholds", async () => {
+    const recentSession = { ...sessions[0], createdAt: new Date().toISOString() };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [recentSession] }));
+    usageLimitsState.snapshot = {
+      revision: 1,
+      generatedAt: null,
+      providers: [{
+        provider: "claude",
+        source: "Claude Code",
+        readiness: "ready",
+        usageLimits: {
+          available: true,
+          fetchedAt: null,
+          attemptedAt: null,
+          // 90% would trip the old local ">= 85" threshold and render "critical", but the
+          // monitor has classified this window as "normal" — the sidebar must follow it.
+          limits: [{ id: "seven-day", label: "Seven day", window: "7 days", percent: 90, resetsAt: null, severity: "normal", active: true }],
+        },
+      }],
+      readiness: { claude: "ready", codex: "ready" },
+    };
+    render(<AppShell><main>Home content</main></AppShell>);
+    const strong = await screen.findByText("90% · 7 days");
+    const row = strong.closest(".commandSidebarLimit");
+    expect(row).toHaveClass("normal");
+    expect(row).not.toHaveClass("critical");
+    expect(row).not.toHaveClass("warning");
   });
 
   it("keeps the desktop update offer in the persistent rail", async () => {
@@ -194,11 +339,37 @@ describe("Command Center app shell", () => {
     expect(installUpdate).toHaveBeenCalledOnce();
   });
 
+  it("halts session-catalog polling while desktop Pause is active and resumes it once Pause clears", async () => {
+    vi.useFakeTimers();
+    const desktopState: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { estimatedCost: true }, update: { status: "idle", version: null } };
+    let notify!: (next: DesktopState) => void;
+    (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = {
+      getDesktopState: async () => desktopState,
+      installUpdate: vi.fn(),
+      onDesktopStateChanged: (callback: (next: DesktopState) => void) => { notify = callback; return () => {}; },
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    const catalogCalls = () => fetchMock.mock.calls.filter(([input]) => input === "/api/sessions").length;
+    render(<AppShell><main>Home content</main></AppShell>);
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    const baseline = catalogCalls();
+    expect(baseline).toBeGreaterThan(0);
+    act(() => notify({ ...desktopState, paused: true }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    const pausedCount = catalogCalls();
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(catalogCalls()).toBe(pausedCount);
+    act(() => notify({ ...desktopState, paused: false }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(catalogCalls()).toBeGreaterThan(pausedCount);
+  });
+
   it("shares one catalog poll with route consumers", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
     render(<AppShell><LiveSessionConsumer /></AppShell>);
     await waitFor(() => expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%, Awaiting approval 0%"));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => input === "/api/sessions")).toHaveLength(1));
     expect(fetchMock).toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ cache: "no-store" }));
   });
 
@@ -212,18 +383,21 @@ describe("Command Center app shell", () => {
       createdAt: "2026-08-24T12:01:00.000Z",
       updatedAt: "2026-08-24T12:01:00.000Z",
     };
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockImplementationOnce(() => response({ revision: 1, sessions }))
-      .mockImplementationOnce(() => response({ revision: 2, sessions: [...sessions, added] }));
+    let sessionRequest = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (String(input).startsWith("/api/sessions")) return response(sessionRequest++ ? { revision: 2, sessions: [...sessions, added] } : { revision: 1, sessions });
+      return response({ providers: [], repositories: [] });
+    });
     const view = render(<AppShell><LiveSessionConsumer /></AppShell>);
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions")).length).toBe(1));
     expect(CatalogEventSource.instances).toHaveLength(1);
     expect(CatalogEventSource.instances[0].url).toBe("/api/events");
 
     act(() => CatalogEventSource.instances[0].emitCatalog({ domain: "sessions", revision: 2 }));
     await waitFor(() => expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("New live work 42%"));
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions?revision=1");
+    const sessionCalls = fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions"));
+    expect(sessionCalls).toHaveLength(2);
+    expect(sessionCalls[1][0]).toBe("/api/sessions?revision=1");
 
     view.unmount();
     expect(CatalogEventSource.instances[0].closed).toBe(true);
@@ -235,16 +409,18 @@ describe("Command Center app shell", () => {
     const current: SessionSummary = { ...sessions[0], currentActivity: {
       label: "Verifying current work", observedAt: sessions[0].updatedAt, state: "current",
     } };
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockImplementationOnce(() => response({ revision: 1, sessions: [current] }))
-      .mockImplementationOnce(() => response({ revision: 2, sessions: [{ ...current, activityStatus: "idle", currentActivity: null }] }));
+    let sessionRequest = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (String(input).startsWith("/api/sessions")) return response(sessionRequest++ ? { revision: 2, sessions: [{ ...current, activityStatus: "idle", currentActivity: null }] } : { revision: 1, sessions: [current] });
+      return response({ providers: [], repositories: [] });
+    });
     const view = render(<AppShell><SessionsView /></AppShell>);
     expect(await screen.findAllByLabelText(/^Current activity:/)).toHaveLength(2);
     act(() => CatalogEventSource.instances[0].emitCatalog({ domain: "sessions", revision: 2 }));
     await waitFor(() => expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions"))).toHaveLength(2);
     view.unmount();
   });
 
@@ -272,24 +448,29 @@ describe("Command Center app shell", () => {
     const first = { ...sessions[0], id: "codex:first", title: "Created first", createdAt: "2026-08-24T11:58:00.000Z", updatedAt: "2026-08-24T11:58:00.000Z" };
     const second = { ...sessions[0], id: "codex:second", title: "Created second", createdAt: "2026-08-24T11:59:00.000Z", updatedAt: "2026-08-24T11:59:00.000Z" };
     const refreshedSecond = { ...second, updatedAt: "2026-08-24T12:01:00.000Z", activityStatus: "idle" as const, progress: { ...second.progress!, percent: 100 } };
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockImplementationOnce(() => response({ sessions: [first, second] }))
-      .mockImplementationOnce(() => response({ sessions: [refreshedSecond, first] }));
+    let sessionRequest = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (String(input).startsWith("/api/sessions")) return response(sessionRequest++ ? { sessions: [refreshedSecond, first] } : { sessions: [first, second] });
+      return response({ providers: [], repositories: [] });
+    });
     render(<AppShell><LiveSessionConsumer /></AppShell>);
     act(() => CatalogEventSource.instances[0].emitOpen());
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created second 42%, Created first 42%");
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions"))).toHaveLength(2);
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Created second 100%, Created first 42%");
   });
 
   it("retains the catalog and restores its online state when a real 204 follows a transient failure", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(new Response(JSON.stringify({ revision: 1, sessions }), { status: 200, headers: { "Content-Type": "application/json" } }))
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    let sessionRequest = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (!String(input).startsWith("/api/sessions")) return response({ providers: [], repositories: [] });
+      const status = sessionRequest++;
+      if (status === 0) return Promise.resolve(new Response(JSON.stringify({ revision: 1, sessions }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      return Promise.resolve(new Response(null, { status: status === 1 ? 503 : 204 }));
+    });
     render(<AppShell><LiveSessionConsumer /></AppShell>);
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
@@ -298,7 +479,7 @@ describe("Command Center app shell", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(screen.getByText("Local monitor")).toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions"))).toHaveLength(3);
   });
 });
 

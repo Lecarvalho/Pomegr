@@ -84,12 +84,19 @@ F consumes the browser API and never fills or owns a backend cache.
 D derives `ActivityFeed` from the full retained normalized event set: total,
 tool-call count, message/input count, failed-shell count, and bounded WorkKind
 counts with median resolved wall durations. S serves only its newest 200 items;
-The small state feed remains a summary projection. The session Activity panel
-uses the separate paged history contract below. Totals can exceed the state
-window. No page or agent-scope action acquires provider evidence.
-Explicit request selection navigates F to a linked row's page using only that
-committed window, revealing All agents if the current Activity scope hides it.
-Background revisions preserve later-page anchors and do not trigger navigation.
+the small state feed remains a summary projection. Activities consumes the
+separate paged request-group history below: five groups around its selection,
+with calls nested only when their recorded request association validates. Totals
+can exceed the state window. No page, range, selection, or agent-scope action
+acquires provider evidence. Unlinked normalized events remain retained where
+supported but do not enter the grouped feed.
+
+Explicit request selection uses the committed exact query to align chart, request
+details, and feed. A browser sends a revision only for that exact retained query;
+a matching `204` retains its body. New range or selection queries fetch a committed
+body, preserve last-known-good bodies while loading, and cancellation or a stale
+response cannot replace a newer selection. Background revisions preserve anchored
+older selections; historical sessions never follow live additions.
 
 Activity items add only nullable `durationMs` (0–86,400,000 ms) and `requestId`
 (the opaque ID of a served request snapshot). U2 pairs recorded call/result
@@ -122,10 +129,19 @@ D projects each committed session into seven independently revisioned response d
 `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and
 `details`. `agent` selects one normalized agent ID from its committed projection.
 `session-summary` alone contains the session header and Overview inputs: lifecycle,
-all-agent context, current-agent rows, two efficiency signals, a repository summary,
+readiness-qualified agent status counts, all-agent context, current-agent rows, two efficiency signals, a repository summary,
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
-kind totals, and the normalized cost estimate. `signals` owns flow and cache evidence;
-the other domains retain their corresponding normalized public state. The inspector
+kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
+flag used only to decide whether the Resources tab can be hidden. `signals` owns the
+committed Efficiency, Cache lifetime, and agent-reported Reported signals sections.
+Deterministic evidence and labeled inferences remain distinct from
+agent-reported signals, which may be stale. Missing source evidence remains unavailable;
+historical and current projections remain isolated. Current-agent fallbacks come from
+committed normalized tool calls attributed by agent ID, never from display labels, and the
+repository summary carries a branch comparison only after its remote check succeeded, as the
+Repository tab does. `agents` also carries the roster's per-agent history marks: insights,
+loop patterns, possible full refills, cache-read drops and context boundaries. The other
+domains retain their corresponding normalized public state. The inspector
 also carries bounded selected-agent request, insight, cache and task evidence. Each
 composed domain preserves the readiness of its source sections: a ready core does not
 make missing agent, context, activity or request evidence ready. Request-strip readiness
@@ -164,17 +180,27 @@ eight rows; request windows contain at most 60 (20 on phones). Agent scope,
 request lookup, request-only filtering, and an opaque event anchor operate on
 committed indexes. GETs never acquire or normalize provider records.
 
+Each request record in this surface, including a grouped request header, also carries
+`model`: the one model identifier recorded for that request, validated monitor-side as a
+bounded identifier (at most 120 letters, digits, `.`, `_`, `:`, `@`, `+`, `[`, `]`, or
+`-`, with no drive prefix, path separator, markup, prose, or control characters), or
+`null` when it is missing, synthetic, unsafe, or was committed before per-request models
+were retained. It describes that request only, not agent model history, routing, or
+service tier. The `/api/state` request-snapshot feed, cache events, cache-read drops, and
+reports still exclude request-level model identities. Older committed generations serve
+`null` until a complete replay commits a replacement revision; a GET never backfills it.
+
 Activity history additionally accepts a positive request-number `from`/`to` range
-covering at most 64 consecutive numbers, `selected`, one recognized `workKind`, and
-an opaque continuation. Range endpoints must be supplied together; reversed or
-out-of-bound ranges, duplicate query keys and unrecognized work kinds are rejected. It returns at most five
+covering at most 64 consecutive numbers, `selected`, and an opaque continuation. Range
+endpoints must be supplied together; reversed or out-of-bound ranges, duplicate query
+keys and unrecognized query keys are rejected. It returns at most five
 scoped request headers around the selection, adjusted at either end, with calls nested
-under their recorded request. A work-kind filter retains each request header and reports
-`noMatchingCalls` when no nested call matches. Each group carries at most 50 calls and a
+under their recorded request. A retained request header without request-linked calls
+reports `noMatchingCalls`. Each group carries at most 50 calls and a
 page carries at most 200; remaining calls use explicit continuation. A continuation
 reserves budget for its target group before other groups, so dense preceding groups
 cannot prevent progress. Nested calls retain chronological order. Stable request
-numbers do not change across filters. Calls without a recorded request association stay
+numbers do not change across agent scopes. Calls without a recorded request association stay
 in the legacy flat feed but never enter a request group. Agent scope is applied
 consistently to request headers, nested calls, work-kind counts, median wall durations,
 and shell-task totals. A request-linked call with no normalized actor participates only
@@ -712,7 +738,7 @@ GETs, and UI polling remain unchanged.
 | Tier | Authority and contents | Current default bound |
 | --- | --- | --- |
 | **L1 evidence cache** | Runtime-authoritative immutable normalized session evidence in monitor memory | 100-entry and 8 MiB pruning targets for unpinned entries; one entry larger than 8 MiB is rejected |
-| **L1 response cache** | Prebuilt provider-neutral JSON responses and independent revisions for cache-only serving | Session domains retain 24 sessions and evict after ten idle minutes; other response domains retain their documented bounds |
+| **L1 response cache** | Prebuilt provider-neutral JSON responses and independent revisions for cache-only serving | Session domains retain a soft bound of 24 sessions (live or open catalog rows and the most recently requested session are exempt up to 128) and evict after ten minutes without a request or semantic change; other response domains retain their documented bounds |
 | **L2 checkpoint cache** | Schema-versioned, privacy-filtered JSON used only to accelerate restart recovery | 100 entries and 16 MiB total |
 | **Frontend view state** | The latest response retained by React while refreshing | Not a source of truth and not durable |
 
@@ -1299,7 +1325,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
-| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session/catalog commits, after restore even when evidence is unchanged, and asynchronously after a known evicted session is requested |
+| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions only, and asynchronously after a known evicted session is requested |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
@@ -1346,10 +1372,66 @@ pairing authorization.
 
 Historical session state never receives current Git state or current usage limits.
 
+The one-shot `/api/transcript-path` read sits outside this table because it returns one
+local file location, not a revisioned body. When observation is active and the session
+has committed L1 evidence, the monitor checks the requested agent's `transcriptAvailable`
+flag in that evidence. It then asks the adapter to locate only that agent's file, so a
+copy action does not acquire, parse, or normalize the session. Claude locates the file in
+the session's subagent and workflow directories; Codex finds the child's rollout file in
+its cached thread-metadata tree. Two cases still use a full compatibility read: a session
+without committed evidence, and a Codex child that thread metadata cannot place because
+only a parent rollout record links it.
+
 Session-domain revision clocks are monotonic per domain across sessions. A domain
 advances only when its semantic JSON changes; the observation timestamp alone does not
 advance it. Eviction retains the clock floor, so rebuilding a response cannot make an
-old client ETag appear current.
+old client ETag appear current, but only within one monitor process: revision clocks restart at
+0 in a new process, so the clock-floor guarantee does not span a restart. If the new process's
+first resolved revision for a domain happens to equal the revision a browser client retained
+from before the restart, the monitor's equality-only comparison answers `204` and skips the
+revision event; the client keeps its pre-restart content until the next semantic change advances
+the revision, and the browser store's epoch-based regression guard never applies because no body
+arrives to accept or reject (n4). Restart recovery otherwise depends on the browser store
+detecting a new live-event connection epoch; if its `EventSource` never opens, for example
+because SSE is blocked or buffered by an intermediary, the epoch never advances after a restart,
+so the new process's lower-revision resolved bodies are rejected as same-epoch regressions,
+retained pre-restart data stays visible, and the entry falls back to 1-second polling until the
+new process's revision passes the retained one (n5). A monitor-instance component in the ETag
+would remove both residual cases; none is implemented.
+
+Session-domain retention follows demand, not commit order. A semantically identical
+re-projection is a no-op: it neither advances a revision nor refreshes retention, so
+catalog churn cannot reorder or evict retained sessions. A catalog commit re-projects
+only sessions whose domains are already retained; other rows project when their evidence
+commits or when a request asks for them. Above the soft bound, never-requested sessions
+evict first, then the least recently used. Live or open catalog rows and the most recently
+requested session are exempt up to a hard ceiling of 128 sessions. A request recorded
+before a projection exists carries over to the first commit after rebuild or hydration.
+
+A requested catalog row without committed L1 evidence serves `loading` and queues one
+asynchronous, pinned selection hydration, the same one `/api/state` queues, until its
+evidence commits or a 30-second retry window passes. It receives no unavailable
+placeholder. Only a row whose catalog readiness is `unavailable` projects the unavailable
+placeholder, and that placeholder never replaces a retained evidence projection.
+
+Absence from the catalog is never proof that a session is absent, because provider catalogs are
+bounded windows. During monitor startup, before every provider catalog has published, a request
+for a session with neither committed L1 evidence nor a catalog row serves `loading` and queues
+the same deduplicated selection hydration. Its commit publishes the domain revision event that a
+browser entry recovers from. After every provider catalog has published, a request for such a
+session with a syntactically valid ID of a registered provider also serves `loading`, and queues
+one asynchronous probe hydration (at most four outstanding at a time, with at most 128 retained
+outcomes). A found session commits normally and publishes its domain revision event. Only after
+the probe publishes no evidence does the request answer `unavailable` (HTTP 404). A proven
+absence is re-probed at most once per 30-second retry window and keeps answering 404 meanwhile.
+An ID of an unregistered provider answers 404 without hydration. The probe cannot distinguish a
+failed acquisition from a missing source, so a transient acquisition failure also answers 404
+until it is re-probed. The session-domain proxy route passes this definitive 404 through with its
+fixed unavailable body; every other proxy route, and any monitor failure or timeout, still maps
+to 503. GETs never acquire, parse, or normalize synchronously.
+
+A session-domain request for committed evidence restored from a checkpoint as live prioritizes
+the same deduplicated restored-live revalidation that `/api/state` selection triggers.
 
 Session publications allocate revisions from a store-wide monotonic sequence. Evicting
 and rebuilding a session cannot reuse a revision still held by a client and incorrectly
@@ -1607,7 +1689,7 @@ valid committed repository files or current live resource samples.
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
   already at the end. Scope, mode, and selection reset on session change. The session
-  orders Requests & actions, Activity, then Cache evidence. Desktop request Prev/Next crosses
+  orders Requests & actions before Activity. Desktop request Prev/Next crosses
   committed history pages. Phone omits Prev/Next and retains a slim tappable minimap; horizontal dragging
   on the chart moves its 20-request window, with rightward drags revealing older
   requests and leftward drags revealing newer requests. Taps select bars; vertical
@@ -1620,12 +1702,13 @@ valid committed repository files or current live resource samples.
   accompanied by the compact committed overview. No provider acquisition or
   synthetic token history is added. The overview's bar geometry is reused while
   the window moves, rather than rebuilding every miniature bar per pointer event.
-  The detail chart uses the full-scope overview to keep its scale stable during
-  navigation, recalculating for scope, mode, capability, or revision changes.
+  The detail chart recalculates its scale from the committed visible window during
+  navigation so off-window requests cannot compress its bars. Scope, mode,
+  capability, window, or revision changes may change that scale.
   The thumb previews the requested position while the chart keeps its last
   committed page; aborted or stale responses cannot replace a newer navigation.
-  Miniature bars cover all scoped requests and use one full-overview maximum for
-  the selected mode, independent of the detail page. Page and overview replace
+  Miniature bars cover all scoped requests and use one stable full-overview maximum
+  for the selected mode, independent of the detail page. Page and overview replace
   together, retaining the last committed revision during loading or failure.
   Older monitors without an overview show only loaded positions, which do not
   imply zero usage elsewhere. Scope/session changes discard the prior overview.
@@ -1634,9 +1717,7 @@ valid committed repository files or current live resource samples.
   chart and activity target; background refreshes do not repeat that navigation or
   override manual Activity paging.
   Selection still reveals linked activity without a
-  request-only presentation filter. Cache evidence is a saved, closed-by-default
-  disclosure and matches requests only by normalized
-  agent and observation timestamp. These presentation changes leave cache-only GETs,
+  request-only presentation filter. These presentation changes leave cache-only GETs,
   last-known-good revisions, checkpoint privacy, and polling cadence unchanged.
 - The session KPI strip renders once core evidence is ready. Agent counts and status
   tallies follow agent readiness, latest context follows context readiness, and tool
@@ -1685,6 +1766,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
+| Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
 | Historical session and history | Mounted queries hydrate through events and reconnect revalidation; ready queries have no periodic timer; navigation, focus and reconnect may revalidate |
 | Repository inventory | Repository events and the same 30/5/30-second fallback; shared consumers and desktop Pause do not create extra pollers |
@@ -1701,6 +1783,31 @@ last-known-good values. Focus or foreground return revalidates mounted consumers
 hidden session consumers suppress immediate event bursts and use their 30-second
 fallback. Desktop **Pause updates** pauses F subscriptions and polling, including
 repository views, and never controls backend observation.
+
+The session-domain browser store never sends a revision without the exact retained
+query body. It validates the returned session, domain, and selected normalized agent
+identity before caching. Server rendering returns an empty snapshot without retaining
+module-global query entries. Unmount aborts an active request; remount reuses only a
+complete last-known-good body. Historical entries whose last request succeeded with a
+resolved body have no periodic timer, including when their readiness is unavailable. A
+failed request or a still-loading body retries every 5 seconds (30 seconds hidden) until
+it resolves, and a failure clears the pending invalidated revision so a replayed event
+can revalidate. Events, reconnect recovery, navigation, and focus may also revalidate
+them. Hidden revision bursts remain coalesced until the hidden fallback or foreground
+return.
+
+A loading response never replaces a retained resolved body. Within one live-event
+connection epoch, a lower revision than the entry's retained revision is rejected. After an
+epoch change (a reconnect or a monitor restart), retained data stays visible while the entry
+is loading, and the first resolved body is accepted even at a lower revision than the
+retained one; accepting that body re-arms the guard for the new epoch. A declined rebuild
+(a rejected lower-revision body) keeps the 1-second retry cadence rather than falling back to
+the slower connected cadence. A 404 from the session-domain route is a definitive unavailable
+result, not a transient failure. The store drops a retained `loading` placeholder but keeps
+resolved last-known-good data, reports no error, and schedules no retry timer. Only a
+matching domain revision event, a live-event reconnect, focus or visibility, or an explicit
+revalidate re-checks it. The session page shows "Session unavailable" instead of the
+monitor-connection notice.
 
 A loading historical response cannot leave an in-flight flag set after its request
 settles: later readiness events and reconnects must be able to finish hydration.
@@ -1778,6 +1885,8 @@ restored, or inactive primary lifecycle produces null in the catalog, even if ch
 work. The older heading remains in retained agent evidence, not in `currentActivity`.
 For Claude Code, U2 recognizes only a bounded one-line `description` on a native
 `Bash` tool-use record and associates it privately with that exact tool-use ID. A
+turn opens on recognized user input, a system task notification, or a system-sourced
+subagent hand-back or automatic continuation; other meta records never open one. A
 matching result or recognized turn/agent terminal clears the description. Commands,
 other arguments, results, thinking, prompts, response text, attachments, arbitrary
 tool descriptions, and MCP arguments never enter this field. Parallel calls are
@@ -1820,6 +1929,16 @@ running fallback with last-observed evidence, without new acquisition or changin
 retained session evidence. Failed candidates preserve the previous committed revision.
 The compatibility summary cache retains a separate last-observed fallback for the same
 reconciliation; neither fallback is added to Home, session-detail state, or reports.
+Each committed `session-summary.rightNow` row also derives an optional agent-scoped
+`activityFallback` from that row's normalized execution tasks and activity calls only.
+It uses the same fixed vocabulary, original timestamp, `current` or `last_observed`
+state, and lifecycle qualification as the session fallback, but cannot borrow another
+agent's task or call. Serving reads the already committed domain projection and never
+acquires provider evidence. F prefers a qualified provider `currentActivity`, then this
+agent-owned fallback, then normalized status. Only active provider activity or an active
+`current` fallback receives the existing current marker and shimmer; `last_observed`
+fallback text remains static. This remains bounded execution evidence, not provider
+narration or authoritative proof of current work.
 F renders the work label for last-observed work, with a static version of the activity
 icon and "Previous activity" accessible naming. Delegated and multiple-agent scope remains
 inline; primary-agent attribution and the age appear only in the popover. Qualified

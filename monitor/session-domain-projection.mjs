@@ -1,4 +1,5 @@
 import { repositoryRelativePath } from "./repository-path.mjs";
+import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
@@ -174,7 +175,7 @@ function base(domain, sessionId, observedAt, state, domainReadiness) {
   };
 }
 
-function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, repository, pullRequests) {
+function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness) {
   const session = state?.session;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const sections = sectionReadiness(ready, ["core", "agentEvidence", "contextEvidence", "activityEvidence", "repository"]);
@@ -203,7 +204,10 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
     } : null,
     metrics: {
       agents: state.metrics?.agents || 0,
-      activeAgents: state.metrics?.activeAgents || 0,
+      activeAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => agent.status === "active").length : 0,
+      // An agent waiting for input is idle in these totals, as in the roster's status tally.
+      idleAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["idle", "waiting", "warm", "needs_input"].includes(agent.status)).length : null,
+      finishedAgents: ready.agentEvidence === "ready" ? agents.filter((agent) => ["finished", "stopped"].includes(agent.status)).length : null,
       toolCalls: state.metrics?.toolCalls || 0,
       repeatedCalls: state.metrics?.repeatedCalls || 0,
     },
@@ -230,6 +234,11 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       model: agent.model,
       status: agent.status,
       currentActivity: agent.currentActivity || null,
+      // Private normalized tool calls carry the owning agent ID; public activity items carry only its label.
+      activityFallback: projectAgentSessionActivityFallback(catalogEntry || {
+        isLive: state.view === "live",
+        activityStatus: "unknown",
+      }, agent, toolCalls),
       tokens: { total: agent.tokens?.total || 0 },
       lastSeen: agent.lastSeen,
       updatedAt: agent.updatedAt,
@@ -241,7 +250,12 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       branch: typeof repository?.branch === "string" ? repository.branch : null,
       changedFiles: repository?.available === true && Array.isArray(repository.files) ? repository.files.length : null,
       pullRequestCount: pullRequests?.status === "ready" && Array.isArray(pullRequests.items) ? pullRequests.items.length : null,
-      comparison: fields(repository?.comparison, ["branch", "kind", "ahead", "behind", "integrated"]),
+      // Like the Repository tab, a comparison counts only after its remote check succeeded.
+      comparison: repository?.remote?.status === "ready" ? repository.comparison : null,
+    },
+    resourceAvailability: {
+      readiness: resourcesReadiness,
+      hasData: resourcesReadiness === "ready" ? Boolean(state.metrics?.resources?.samples?.length || state.metrics?.resources?.current) : null,
     },
     requestSnapshots: { ...requests, items: requests.items.slice(-48) },
     planTasks: list(state.planTasks, publicPlanTask),
@@ -292,12 +306,23 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const resourcesReadiness = state.view === "history" && !state.metrics?.resources
     ? "unavailable"
     : readiness(ready.resources);
+  const requests = publicRequestFeed(state.metrics?.tokens?.requestSnapshots);
+  const cacheEvents = publicCacheEvents(state.metrics?.tokens?.cacheEvents);
+  const cacheReadDrops = publicCacheReadDrops(state.metrics?.tokens?.cacheReadDrops);
+  const insights = list(state.insights, publicInsight);
+  const loops = list(state.loops, publicLoop);
+  const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, repository, pullRequests));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,
     workflows,
+    insights,
+    loops,
+    cacheRefills: cacheEvents.possibleFullRefills,
+    cacheReadDrops: cacheReadDrops.items,
+    contextBoundaries: boundaries,
   });
   domains.set("signals", {
     ...base("signals", sessionId, observedAt, state, aggregateReadiness(sectionReadiness(ready, ["activityEvidence", "contextEvidence"]))),
@@ -308,13 +333,13 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
       repeatedCalls: ready.activityEvidence === "ready" && Number.isSafeInteger(state.metrics?.repeatedCalls) && state.metrics.repeatedCalls >= 0 ? state.metrics.repeatedCalls : null,
       overlappingTargets: ready.activityEvidence === "ready" && Number.isSafeInteger(state.metrics?.overlappingTargets) && state.metrics.overlappingTargets >= 0 ? state.metrics.overlappingTargets : null,
     },
-    insights: list(state.insights, publicInsight),
-    loops: list(state.loops, publicLoop),
+    insights,
+    loops,
     toolPatterns: list(state.toolPatterns, publicToolPattern),
     sessionSignal: publicSignal(session?.signal),
     agents: agents.map(({ id, label, cacheLifetime, signal }) => ({ id, label, cacheLifetime, signal })),
-    cacheEvents: publicCacheEvents(state.metrics?.tokens?.cacheEvents),
-    cacheReadDrops: publicCacheReadDrops(state.metrics?.tokens?.cacheReadDrops),
+    cacheEvents,
+    cacheReadDrops,
   });
   domains.set("repository", {
     ...base("repository", sessionId, observedAt, state, repositoryReadiness),
@@ -339,10 +364,6 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     session: detailsSession,
     context,
   });
-  const requests = publicRequestFeed(state.metrics?.tokens?.requestSnapshots);
-  const cacheEvents = publicCacheEvents(state.metrics?.tokens?.cacheEvents);
-  const cacheReadDrops = publicCacheReadDrops(state.metrics?.tokens?.cacheReadDrops);
-  const insights = list(state.insights, publicInsight);
   const agentSections = sectionReadiness(ready, ["agentEvidence", "contextEvidence", "activityEvidence"]);
   const agentResponses = new Map(agents.map((agent) => [agent.id, {
     ...base("agent", sessionId, observedAt, state, aggregateReadiness(agentSections)),

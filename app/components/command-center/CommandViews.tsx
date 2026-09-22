@@ -88,37 +88,11 @@ function SessionCurrentActivity({ session, compact = false }: { session: Session
   </AgentChip>;
 }
 
-const builtInDashboards = [
-  { title: "Session overview", detail: "Live and historical work across projects", scope: "All sessions", href: "/sessions" },
-  { title: "Agent operations", detail: "Session-level agent counts and execution state", scope: "Live sessions", href: "/agents" },
-  { title: "Usage & cache evidence", detail: "Provider windows and request observations", scope: "Account", href: "/usage-limits" },
-  { title: "Repository activity", detail: "Projects associated with observed sessions", scope: "Projects", href: "/repositories" },
-];
-
-const DASHBOARD_COLUMNS: CommandTableColumn<(typeof builtInDashboards)[number]>[] = [
-  {
-    id: "dashboard", label: "Dashboard",
-    renderCell: (dashboard) => <Link className="commandTablePrimary" href={dashboard.href}><strong>{dashboard.title}</strong><small>{dashboard.detail}</small></Link>,
-  },
-  {
-    id: "scope", label: "Scope", colClassName: "commandDashboardColScope",
-    renderCell: (dashboard) => dashboard.scope,
-  },
-  {
-    id: "updated", label: "Updated", className: "commandDashboardUpdated", colClassName: "commandDashboardColUpdated",
-    renderCell: () => "Live data",
-  },
-  {
-    id: "open", label: "Open dashboard", hideLabel: true, colClassName: "commandDashboardColAction",
-    renderCell: (dashboard) => <Link className="commandIconLink" href={dashboard.href} aria-label={"Open " + dashboard.title}><CommandIcon name="arrow" size="small" /></Link>,
-  },
-];
-
 const SESSION_PAGE_SIZE = 10;
 function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<SessionSummary>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
-    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{session.project} · <ProviderBadge source={session.source} compact /></span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
+    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{session.project} · <ProviderBadge source={session.source} variant="text" /></span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
   },
   {
     id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
@@ -160,40 +134,13 @@ function SessionProviderWarning({ session, providers }: { session: SessionSummar
   return <ProviderStatusDetails status={status} compact chip />;
 }
 
-export function DashboardsView() {
-  const [query, setQuery] = useState("");
-  const visible = builtInDashboards.filter((dashboard) => {
-    return `${dashboard.title} ${dashboard.detail} ${dashboard.scope}`.toLowerCase().includes(query.trim().toLowerCase());
-  });
-  return <CommandPage title="Dashboards" description="Purpose-built views for workspace health, live execution, usage evidence, and repository change." action={<button className="commandPrimaryAction" type="button" disabled aria-disabled="true"><CommandIcon name="spark" size="small" />Create dashboard</button>}>
-    <CommandToolbar>
-      <CommandSearch value={query} onChange={setQuery} placeholder="Find a dashboard" label="Find a dashboard" />
-      <span className="commandToolbarCount">{visible.length} dashboards</span>
-    </CommandToolbar>
-    <div className="commandDashboardDirectory">
-      <section className="commandDashboardRows" aria-label="Built-in dashboards">
-        <CommandTable
-          caption="Built-in dashboards"
-          rows={visible}
-          columns={DASHBOARD_COLUMNS}
-          getRowKey={(dashboard) => dashboard.href}
-          className="commandDashboardTable"
-          emptyState={<CommandEmpty title="No dashboards match" detail="Try a different dashboard name or filter." icon="dashboard" />}
-        />
-      </section>
-      <aside className="commandDashboardPreview"><h2>Session overview</h2><p>Find live and historical work across your projects, with filters for sessions that need input.</p><Link className="commandSecondaryAction" href="/sessions">Open sessions <CommandIcon name="arrow" size="small" /></Link></aside>
-    </div>
-    <p className="commandUnavailableNote">Custom dashboard composition is not available yet. The built-in views above remain read-only and provider-neutral.</p>
-  </CommandPage>;
-}
-
 export function SessionsView({ initialProject = "", initialRepositoryId }: { initialProject?: string; initialRepositoryId?: string } = {}) {
   const [project, setProject] = useState(initialProject);
   const { providers } = useProviderStatus();
   const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
-  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | "history" | null>(null);
+  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | null>(null);
   const [page, setPage] = useState(1);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const filter = selectedFilter ?? (liveSessionCount > 0 ? "live" : "all");
@@ -203,7 +150,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
     if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
     if (filter === "live" && !session.isLive) return false;
-    if (filter === "history" && session.isLive) return false;
     if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
     return true;
   })), [filter, project, initialRepositoryId, query, sessions]);
@@ -214,15 +160,16 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const providerSettingsAvailable = useProviderSettingsAvailable();
   return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={loading && !sessions.length}>
     <div className="commandSessionsDirectory">
-      <CommandToolbar>
+      <div className="commandSessionsToolbar"><CommandToolbar label="Filter sessions">
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
-        {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
-        <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
-        <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
-        <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
-        <CommandFilter active={filter === "history"} onClick={() => updateFilter("history")} count={sessions.length - liveSessionCount}>History</CommandFilter>
-        <span className="commandToolbarCount">{filteredSessions.length} matches</span>
-      </CommandToolbar>
+        <div className="commandSessionFilters" role="group" aria-label="Session scope">
+          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
+          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
+          <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
+          <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
+        </div>
+        <span className="commandToolbarCount" aria-live="polite">{filteredSessions.length} matches</span>
+      </CommandToolbar></div>
       <CommandTable
         caption="Observed Pomegr sessions"
         rows={filteredSessions}
@@ -263,7 +210,7 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
           ? `${limits.origin === "local_observation" ? "Last observed" : "Updated"} ${relativeTime(limits.fetchedAt)}`
           : status === "loading" ? "Connecting…" : "Unavailable";
   return <section className="commandUsageProvider" aria-labelledby={`usage-${entry.provider}`}>
-    <header className="commandUsageProviderHead"><div className="commandUsageProviderIdentity"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} /></h2><ProviderStatusDetails status={providerStatus} compact dotOnly /></div><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
+    <header className="commandUsageProviderHead"><div className="commandUsageProviderIdentity"><h2 id={`usage-${entry.provider}`}><ProviderBadge source={entry.source} variant="text" /></h2><ProviderStatusDetails status={providerStatus} compact dotOnly /></div><span>{statusLabel}{failureKind && limits.fetchedAt && <> · {limits.origin === "local_observation" ? "Last observed" : "Updated"} {relativeTime(limits.fetchedAt)}</>}</span></header>
     {status === "loading" ? <CommandEmpty title="Waiting for provider usage" detail="The monitor is preparing the latest account-level window." icon="timer" /> : status !== "ready" || !limits.available ? <div className="commandUsageUnavailable"><CommandIcon name="limits" size="small" /><p>{failureKind ? usageLimitFailureMessage(entry.source, limits) : `Usage limits for ${entry.source} are unavailable.`}{limits.retryAt && <><br /><RetryCountdownText value={limits.retryAt} />.</>}</p></div> : displayedLimits.current.length || displayedLimits.localFable ? <><div className="commandUsageRows">{displayedLimits.current.map((limit) => <article className={`commandUsageWindow ${limit.severity}`} key={limit.id}>
       <header><strong>{limit.label}</strong><b>{Math.round(limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, limit.percent))}%` }} /></div><footer><span>{usageResetLabel(limit.resetsAt)}</span><span>Provider-reported window</span></footer>
     </article>)}{displayedLimits.localFable?.kind === "retained" && <article className={`commandUsageWindow ${displayedLimits.localFable.limit.severity}`} key="retained-model-fable"><header><strong>{displayedLimits.localFable.limit.label}</strong><b>{Math.round(displayedLimits.localFable.limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, displayedLimits.localFable.limit.percent))}%` }} /></div><footer><span>{usageResetLabel(displayedLimits.localFable.limit.resetsAt)}</span><span>Last API value {relativeTime(displayedLimits.localFable.fetchedAt)}</span></footer></article>}{displayedLimits.localFable?.kind === "unavailable" && <article className="commandUsageWindow" key="unavailable-model-fable"><header><strong>Fable</strong><span className="commandUsageStatus">{displayedLimits.localFable.label}</span></header><footer><span>{displayedLimits.localFable.detail}</span></footer></article>}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}

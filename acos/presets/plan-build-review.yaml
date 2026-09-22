@@ -1,0 +1,34 @@
+# Preset: plan-build-review
+# Plan in-session, implement in-session (escalate on failure), review in a
+# subagent (strong) for an independent judgement. Inline stages carry no
+# model and no effort: they run at the session's, which nothing can change
+# mid-run. The escalated retry is therefore delegated to the named model
+# and counts against limits.agents.
+
+acos: "0.1"
+name: plan-build-review
+description: "Plan, implement with escalation, then independent review."
+
+stages:
+  - block: plan
+    adapter: inline
+
+  - block: implement
+    adapter: inline
+    on_fail: escalate
+    escalation:
+      - { provider: "{{ project.provider }}", model: "{{ project.models.strong }}", effort: high }
+    max_iterations: 3
+
+  - block: review
+    adapter: subagent
+    effort: high
+    model: "{{ project.models.strong }}"
+    on_fail: retry
+
+loop:
+  max_iterations: 3
+  on_fail: retry
+
+gates:
+  go: required

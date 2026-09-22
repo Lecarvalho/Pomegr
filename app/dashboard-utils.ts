@@ -91,16 +91,19 @@ export function sessionState(session: Pick<SessionSummary, "activityStatus">) {
   return { label: "Unknown", state: "unknown" as const };
 }
 
-export function sessionNeedingAttention(sessions: SessionSummary[], currentSessionId: string | null, viewingHistory: boolean) {
-  if (!currentSessionId || viewingHistory) return null;
-  return sessions.find((session) => session.id === currentSessionId && session.isLive && session.needsInput) || null;
-}
-
 export function compactNumber(value: number) {
   return new Intl.NumberFormat(undefined, {
     notation: value >= 10_000 ? "compact" : "standard",
     maximumFractionDigits: value >= 10_000 ? 1 : 0,
   }).format(value);
+}
+
+/**
+ * The one request-local token count format: print `compactNumber(value)` (139.7K) and put this
+ * exact value in the hover title, so every compact count keeps its exact reading.
+ */
+export function requestTokenTitle(label: string, value: number) {
+  return `${label}: ${value.toLocaleString()} ${value === 1 ? "token" : "tokens"}, this request only`;
 }
 
 export function formatDuration(milliseconds: number) {

@@ -1,0 +1,38 @@
+/* Desktop request lanes: a 220px label column beside each plot, sharing one x geometry. Label buttons
+   bleed into the .requestsActionsPlot side padding (20px) so their hover reaches the panel edge. */
+.requestsActionsPlot { --lane-label-width: 220px; }
+.requestLanes { --lane-label-bleed: 20px; display: flex; flex-direction: column; gap: 6px; }
+.requestLane, .requestLaneAxisRow, .requestLaneGroupHeader { display: grid; grid-template-columns: var(--lane-label-width) minmax(0, 1fr); align-items: stretch; }
+/* The Largest strip starts under the plots, level with the first bar (LANE_LEFT, 8px). */
+.requestsActionsFooter.isLanes { padding-left: calc(var(--lane-label-width) + 8px); }
+.requestLaneLabel { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 0; padding-right: var(--space-3); border-right: 1px solid var(--command-line); }
+/* Lane-name focus and group expand buttons keep the label column; quiet-action hover and focus ring. */
+.requestLaneLabel.commandQuietAction { flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; width: calc(100% + var(--lane-label-bleed)); min-height: 28px; margin-left: calc(-1 * var(--lane-label-bleed)); padding: var(--space-2) var(--space-3) var(--space-2) var(--lane-label-bleed); border: 0; border-right: 1px solid var(--command-line); border-radius: 0; text-align: left; white-space: normal; }
+.requestLaneLabel.commandQuietAction[aria-pressed="true"] { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+/* Group chevrons hang in the bleed so group names align with lane names; members indent one step. */
+.requestLaneLabel.commandQuietAction[aria-expanded] { padding-left: calc(var(--lane-label-bleed) - 12px - var(--space-1)); }
+.requestLaneLabel.commandQuietAction[aria-expanded] .requestLaneMeta { padding-left: calc(12px + var(--space-1)); }
+.requestLane.isGroupMember > .requestLaneLabel { padding-left: calc(var(--lane-label-bleed) + var(--space-4)); }
+.requestLaneChevron { display: inline-block; width: 12px; height: 12px; margin-right: var(--space-1); vertical-align: -1px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.requestLaneLabel[aria-expanded="true"] .requestLaneChevron { transform: rotate(90deg); }
+.requestLaneName { min-width: 0; overflow: hidden; color: var(--command-ink); font-size: var(--text-xs); font-weight: 500; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.requestLaneMeta { min-width: 0; overflow: hidden; color: var(--command-muted); font-size: var(--text-caption); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.requestLanePlot, .requestLaneAxis { display: block; width: 100%; overflow: visible; }
+.requestLaneMaximum { fill: var(--command-faint); font: var(--text-caption) var(--font-data); font-variant-numeric: tabular-nums; }
+.requestLanePlot .requestsActionsRefill .cacheRefillIcon { width: 14px; height: 14px; }
+
+/* Chart controls: Fresh tokens / Full breakdown and, on desktop, Lanes / Single chart. */
+.requestsActionsModes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* Single-chart agent track and its legend: the only role tints in Activities. */
+.requestRoleSegment { fill: var(--session-role, var(--command-line-strong)); }
+.requestRoleLegendRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); margin-top: var(--space-2); }
+/* session.css loads later, so the Overview legend rules are overridden with a compound selector; role labels keep their case. */
+.sessionRoleLegend.requestRoleLegend { margin-top: 0; }
+.sessionRoleLegend.requestRoleLegend > span { text-transform: none; }
+.requestRoleNamed { display: inline-flex; align-items: baseline; gap: var(--space-2); min-width: 0; margin: 0; color: var(--command-muted); font-size: var(--text-caption); }
+.requestRoleNamed strong { overflow: hidden; color: var(--command-ink); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 760px) {
+  /* Reserve one stable row above the touch minimap as the inspected request changes. */
+  .requestRoleNamed { flex: 0 0 100%; width: 100%; }
+}

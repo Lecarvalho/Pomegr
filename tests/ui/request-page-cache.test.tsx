@@ -9,7 +9,7 @@ function page(revision: string, offset = 120, total = 180): RequestHistoryPage {
     items: Array.from({ length: Math.min(60, total - offset) }, (_, index) => ({
       id: `request-${revision}-${offset + index}`, number: offset + index + 1, agentId: "primary",
       observedAt: "2026-09-10T12:00:00Z", cacheLifetime: null,
-      uncachedInputTokens: 1, cacheWriteTokens: 2, cacheReadTokens: 3, outputTokens: 4, totalTokens: 10,
+      uncachedInputTokens: 1, cacheWriteTokens: 2, cacheReadTokens: 3, outputTokens: 4, totalTokens: 10, model: null,
       precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
     })),
   };

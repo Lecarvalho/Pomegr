@@ -109,12 +109,14 @@ for (const disk of [false, true]) {
     assert.equal(primaryActors.requestGroups.find((group) => group.request.number === 1).calls
       .some((call) => call.id === "linked-without-agent"), false, "agent scopes exclude calls without a matching actor id");
 
-    const grouped = await store.read(sessionId, { kind: "activity", from: "1", to: "7", selected: "4", workKind: "read", scope: "primary" });
+    const grouped = await store.read(sessionId, { kind: "activity", from: "1", to: "7", selected: "4", scope: "primary" });
     assert.deepEqual(grouped.requestGroups.map((group) => group.request.number), [2, 3, 4, 5, 6]);
     assert.deepEqual(grouped.range, { from: 2, to: 6 });
     assert.equal(grouped.requestTotal, 8);
-    assert.equal(grouped.callTotal, 220);
-    assert.equal(grouped.requestGroups[4].noMatchingCalls, true);
+    assert.equal(grouped.callTotal, 221);
+    assert.equal(grouped.requestGroups[4].calls.length, 0, "the page budget is spent before the last group");
+    assert.equal(grouped.requestGroups[4].noMatchingCalls, false, "a budget-starved group still has recorded calls");
+    assert.equal(grouped.requestGroups[4].continuation.remaining, 1);
     assert.equal(grouped.requestGroups[2].calls.length, 50);
     assert.equal(grouped.requestGroups[2].continuation.remaining, 5);
     assert.equal(grouped.requestGroups.reduce((total, group) => total + group.calls.length, 0), 200);
@@ -124,11 +126,16 @@ for (const disk of [false, true]) {
     const flatLatest = await store.read(sessionId, { kind: "activity", offset: "latest" });
     assert.ok(flatLatest.items.some((item) => item.id === "unresolved-read"), "legacy flat rows retain unresolved calls");
 
-    const continued = await store.read(sessionId, { kind: "activity", selected: "4", workKind: "read", continuation: grouped.requestGroups[2].continuation.cursor });
+    const continued = await store.read(sessionId, { kind: "activity", selected: "4", continuation: grouped.requestGroups[2].continuation.cursor });
     const selected = continued.requestGroups.find((group) => group.request.number === 4);
     assert.equal(selected.calls.length, 5);
     assert.equal(selected.continuation, null);
     assert.equal(selected.noMatchingCalls, false);
+
+    const emptySessionId = "codex:grouped-history-empty";
+    await store.publish(emptySessionId, { requests: [requests[0]], activity: [], complete: true });
+    const [empty] = (await store.read(emptySessionId, { kind: "activity" })).requestGroups;
+    assert.deepEqual([empty.calls, empty.noMatchingCalls, empty.continuation], [[], true, null], "a header without recorded calls stays explicit");
   });
 }
 
@@ -354,7 +361,7 @@ test("unchanged publication replaces a v2 activity index before grouped reads", 
   assert.equal((await new SessionHistoryStore({ directory }).read(sessionId, { kind: "activity" })).status, "unavailable");
   const migrated = await store.publish(sessionId, { requests: [item], activity: [call], complete: true });
   assert.equal(migrated.revision, 2);
-  const grouped = await new SessionHistoryStore({ directory }).read(sessionId, { kind: "activity", workKind: "shell" });
+  const grouped = await new SessionHistoryStore({ directory }).read(sessionId, { kind: "activity" });
   assert.equal(grouped.status, "ready");
   assert.equal(grouped.requestGroups[0].calls[0].id, "v2-call");
   assert.deepEqual(grouped.byKind, [{ kind: "shell", count: 1, medianDurationMs: 25 }]);
@@ -519,4 +526,28 @@ test("bounds resident index cache by entries and source bytes", async (t) => {
   assert.equal((await byteBounded.read("codex:two", { kind: "requests" })).status, "ready");
   assert.equal((await byteBounded.read("codex:two", { kind: "requests" })).status, "ready");
   assert.equal(byteParsed(), 2, "manifest over byte budget is reparsed");
+});
+
+test("retains each request's bounded recorded model and serves unsafe or legacy values as unreported", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-model-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const store = new SessionHistoryStore({ directory });
+  const recorded = { ...request("2222222222222221", "2026-09-04T00:00:00Z"), model: " claude-opus-5 " };
+  const switched = { ...request("2222222222222222", "2026-09-04T00:01:00Z"), model: "us.anthropic.claude-sonnet-4-5-20250929-v1:0" };
+  const pathLike = { ...request("2222222222222223", "2026-09-04T00:02:00Z"), model: String.raw`C:\Users\PRIVATE_USER\model` };
+  const driveRelative = { ...request("2222222222222226", "2026-09-04T00:05:00Z"), model: "C:PRIVATE_USER" };
+  const markup = { ...request("2222222222222224", "2026-09-04T00:03:00Z"), model: "<synthetic>" };
+  const legacy = request("2222222222222225", "2026-09-04T00:04:00Z");
+  await store.publish("claude:models", { requests: [recorded, switched, pathLike, markup, legacy, driveRelative], activity: [], complete: true });
+
+  const expected = ["claude-opus-5", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", null, null, null, null];
+  for (const reader of [store, new SessionHistoryStore({ directory })]) {
+    const page = await reader.read("claude:models", { kind: "requests" });
+    assert.deepEqual(page.items.map((item) => item.model), expected);
+    const groups = await reader.read("claude:models", { kind: "activity" });
+    // Grouped Activity serves the latest five request headers.
+    assert.deepEqual(groups.requestGroups.map((group) => group.request.model), expected.slice(-5));
+  }
+  for (const name of await readdir(directory, { recursive: true })) {
+    if (name.endsWith(".json")) assert.doesNotMatch(await readFile(path.join(directory, name), "utf8"), /PRIVATE_USER|synthetic/);
+  }
 });

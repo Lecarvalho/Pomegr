@@ -2,7 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { MonitorState } from "../../shared/monitor-contract";
 import { SessionDetailsPanel } from "../../app/components/dashboard/SessionDetailsPanel";
-import { SessionHero } from "../../app/components/dashboard/SessionHero";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import { claudeCapabilities, codexCapabilities, repositorySession } from "./dashboard-test-fixtures";
@@ -15,16 +14,11 @@ describe("estimated session cost", () => {
     } satisfies MonitorState;
   }
 
-  it("moves a captured provider estimate out of the hero and into session details", () => {
+  it("shows a captured provider estimate in session details", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 1.2345, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
     };
-    const hero = render(<LiveClockProvider running={false}><SessionHero session={session} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
-
-    expect(hero.container).not.toHaveTextContent("$1.23");
-    expect(hero.container).not.toHaveTextContent(/cost estimate/i);
-    hero.unmount();
 
     render(<LiveClockProvider running={false}><SessionDetailsPanel state={detailsState(session, "Claude Code", claudeCapabilities)} historical={false} /></LiveClockProvider>);
 

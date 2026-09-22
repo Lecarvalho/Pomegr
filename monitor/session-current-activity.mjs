@@ -60,6 +60,11 @@ function currentExecutionAgent(agent) {
   return !agent.liveness || (agent.liveness.evidence === "observed" && agent.liveness.freshness === "current");
 }
 
+function callActorId(call) {
+  if (typeof call?.actor === "string") return call.actor;
+  return typeof call?.actor?.id === "string" ? call.actor.id : null;
+}
+
 /** Suppress an older running summary as soon as catalog lifecycle changes. */
 export function reconcileSessionActivityFallback(entry, activity, lastObserved = null) {
   const selected = activity?.state === "current"
@@ -91,13 +96,14 @@ export function projectSessionActivityFallback(entry, agents = [], toolCalls = [
   };
   for (const call of Array.isArray(toolCalls) ? toolCalls : []) {
     if (!Object.hasOwn(WORK_LABELS, call.workKind)) continue;
+    const actorId = callActorId(call);
     observe({
       label: WORK_LABELS[call.workKind][1] + (call.status === "failed" ? " failed" : ""),
       observedAt: activityTimestamp(call.timestamp),
       state: "last_observed",
       source: "tool",
-      actor: actorScope(call.actor?.id),
-    }, `tool:${call.actor?.id}:${call.id}`);
+      actor: actorScope(actorId),
+    }, `tool:${actorId}:${call.id}`);
   }
 
   const running = new Map();
@@ -133,4 +139,13 @@ export function projectSessionActivityFallback(entry, agents = [], toolCalls = [
     };
   }
   return latest;
+}
+
+/** Agent-owned D projection from committed normalized evidence; never borrows another agent's work. */
+export function projectAgentSessionActivityFallback(entry, agent, toolCalls = []) {
+  if (!agent || typeof agent.id !== "string") return null;
+  const ownedCalls = Array.isArray(toolCalls)
+    ? toolCalls.filter((call) => callActorId(call) === agent.id)
+    : [];
+  return projectSessionActivityFallback(entry, [agent], ownedCalls);
 }

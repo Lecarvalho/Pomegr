@@ -40,6 +40,15 @@
         "rule": "design-system-color",
         "value": "rgba(0, 0, 0, .52)",
         "createdAt": "2026-09-07T02:54:40.809Z"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/styles/activity-feed.css"
+        ],
+        "createdAt": "2026-09-21T03:25:46.989Z",
+        "reason": "DESIGN.md documented exception: Selected-request brand rule, the only brand-colored left border in app/styles, guarded by pomegr-design-contract test"
       }
     ]
   }

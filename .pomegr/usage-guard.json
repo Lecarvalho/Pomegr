@@ -1,10 +1,10 @@
 {
   "version": 1,
   "mode": "advisory",
-  "checkIntervalSeconds": 60,
-  "warnAt": 70,
-  "handoffAt": 80,
-  "stopAt": 90,
+  "checkIntervalSeconds": 3000,
+  "warnAt": 80,
+  "handoffAt": 90,
+  "stopAt": 95,
   "concurrencyReservePercent": 5,
   "maxConcurrencyReservePercent": 15
 }

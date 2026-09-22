@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
-import { CommandSelect } from "./components/command-center/CommandPage";
+import { CommandPageHeader, CommandSelect } from "./components/command-center/CommandPage";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
@@ -21,8 +21,7 @@ import styles from "./HomeDashboard.module.css";
 type Destination = HomePin & { title: string; detail: string; href: string; icon: CommandIconName };
 const VIEWS: Destination[] = [
   { kind: "view", id: "sessions", title: "Sessions", detail: "Live and historical sessions", href: "/sessions", icon: "sessions" },
-  { kind: "view", id: "dashboards", title: "Dashboards", detail: "Built-in views", href: "/dashboards", icon: "dashboard" },
-  { kind: "view", id: "agents", title: "Agent operations", detail: "Session-level agent evidence", href: "/agents", icon: "agents" },
+  { kind: "view", id: "agents", title: "Models & delegation", detail: "Model, role, and work analysis", href: "/agents", icon: "agents" },
   { kind: "view", id: "usage-limits", title: "Usage limits", detail: "Provider account windows", href: "/usage-limits", icon: "limits" },
   { kind: "view", id: "repositories", title: "Repositories", detail: "Observed projects", href: "/repositories", icon: "repositories" },
 ];
@@ -92,17 +91,14 @@ export function HomeDashboard() {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   return <section className={`commandView commandHome ${styles.home}`} aria-labelledby="home-heading">
-    <header className={styles.intro}>
-      <h1 id="home-heading">Welcome to Pomegr</h1>
-      <p>Understand your coding sessions. Build on what you learn.</p>
-    </header>
+    <CommandPageHeader title="Welcome to Pomegr" headingId="home-heading" meta="Understand your coding sessions. Build on what you learn." />
 
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="Smoother live sessions, clearer cache evidence"
-          description="See recent requests and activity while older history loads. Live updates keep flowing, and cache reuse drops across model changes now have their own label."
-          details="The session you open gets loading priority, with recent requests visible while full history catches up. Requests and Activity preserve your place during updates; selecting the newest request resumes following live work. Restored sessions refresh their status more reliably. Cache evidence now distinguishes reuse drops across model changes from possible refills, without inferring a refill or expiry from a model change."
+          title="A redesigned workspace for every session"
+          description="Sessions now open in a clearer tabbed workspace, with a compact overview and correlated Activities and Signals views across desktop and phone."
+          details="Open a session to scan current agents, recent requests, repository state, progress, and available cost estimates from Overview. Activities keeps the selected request aligned across agent lanes or the single chart, Largest requests, and the grouped feed; scope the view by agent or jump to the latest work. Signals brings efficiency, cache evidence, cache lifetime, and agent-reported updates together while keeping deterministic evidence separate from potentially stale reports."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
@@ -150,7 +146,7 @@ export function HomeDashboard() {
             <p>Open a session’s Context history to see recorded snapshots and compaction boundaries, when available. Select an agent to focus the timeline.</p>
             <Link className={styles.textLink} href={lastViewed?.href || "/sessions"}>Inspect a session<CommandIcon name="arrow" size="small" /></Link>
           </article>
-          <article>
+          <article className={styles.reportGuide}>
             <h3>Download a session report</h3>
             <p>Keep a retrospective of recorded session metadata. Open a session, then choose “Download report”.</p>
             <Link className={styles.textLink} href="/sessions">Choose a session<CommandIcon name="arrow" size="small" /></Link>

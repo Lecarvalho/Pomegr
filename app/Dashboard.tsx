@@ -1,33 +1,28 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useRef, useState } from "react";
-import type { MonitorState, SessionReadiness, SessionSummary } from "../shared/monitor-contract";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
+import type { SessionSummaryDomain } from "../shared/session-domain-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
-import { createEmptyMonitorState, createEmptyProviderCapabilities } from "../shared/monitor-state.mjs";
-import { AgentActivityPanel, type AgentActivityViewMode } from "./components/dashboard/AgentActivityPanel";
-import { SessionCommandBar } from "./components/dashboard/SessionCommandBar";
-import { ResourceUsagePanel } from "./components/dashboard/ResourceUsagePanel";
-import { ActivityPanel } from "./components/dashboard/ActivityPanel";
-import { useSessionRequestSelection } from "./components/dashboard/requests-actions/useSessionRequestSelection";
-import { RequestsActionsPanel } from "./components/dashboard/RequestsActionsPanel";
-import { CacheEvidenceDisclosure } from "./components/dashboard/CacheEvidenceDisclosure";
-import { SessionDetailsPanel } from "./components/dashboard/SessionDetailsPanel";
-import { RepositoryDisclosurePanel } from "./components/dashboard/RepositoryDisclosurePanel";
-import { SessionHero } from "./components/dashboard/SessionHero";
-import { ProviderBadge } from "./components/ProviderBadge";
-import { SessionKpiStrip } from "./components/dashboard/SessionKpiStrip";
-import { SessionSummaryCards } from "./components/dashboard/SessionSummaryCards";
-import { sessionNeedingAttention, stateEndpoint } from "./dashboard-utils";
-import { LiveClockProvider } from "./hooks/LiveClockContext";
-import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
+import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
+import { AgentsTab } from "./components/dashboard/AgentsTab";
+import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
+import { SessionIdChip } from "./components/dashboard/SessionIdChip";
+import { SignalsTab } from "./components/dashboard/SignalsTab";
+import { SessionOverview } from "./components/dashboard/SessionOverview";
+import { SessionTabs } from "./components/dashboard/SessionTabs";
+import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
+import { CommandBreadcrumbSeparator, CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
 import type { DesktopState } from "./components/DesktopControls";
-import { useSessionCatalog } from "./hooks/SessionCatalogContext";
-import { useUsageLimits, useUsageLimitsPollingPause } from "./usage-limits-client";
-import { useProviderStatus, useProviderStatusPollingPause } from "./provider-status-client";
-import { useRepositoryInventoryPollingPause } from "./repository-inventory-client";
-import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor } from "./components/ProviderStatus";
+import { SessionWallTimeText } from "./components/LiveTime";
+import { ProviderBadge } from "./components/ProviderBadge";
+import { compactNumber, sessionListTime, sessionState, stateEndpoint } from "./dashboard-utils";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
-import { subscribeLiveEvents } from "./live-events";
+import { useSessionCatalog } from "./hooks/SessionCatalogContext";
+import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
+import { useSessionDomain } from "./session-domain-store";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -35,323 +30,140 @@ type DesktopBridge = {
   onDesktopStateChanged(callback: (state: DesktopState) => void): () => void;
 };
 
-function desktopBridge() {
-  return (window as Window & { pomegrDesktop?: DesktopBridge }).pomegrDesktop;
+function desktopBridge() { return (window as Window & { pomegrDesktop?: DesktopBridge }).pomegrDesktop; }
+
+function SessionKpis({ summary, historical }: { summary: SessionSummaryDomain; historical: boolean }) {
+  const agentsReady = summary.sectionReadiness.agentEvidence === "ready";
+  const statusCountsReady = agentsReady && summary.metrics.idleAgents !== null && summary.metrics.finishedAgents !== null
+    && summary.metrics.activeAgents + summary.metrics.idleAgents + summary.metrics.finishedAgents === summary.metrics.agents;
+  const contextReady = summary.sectionReadiness.contextEvidence === "ready";
+  const activityReady = summary.sectionReadiness.activityEvidence === "ready";
+  const session = summary.session;
+  return <section className="sessionKpiStrip sessionSummaryKpis" aria-label="Session totals">
+    <div className="sessionKpi"><span className="sessionEyebrow">Agents</span><strong>{agentsReady ? summary.metrics.agents.toLocaleString() : "—"}</strong><small>{statusCountsReady ? <><span className={summary.metrics.activeAgents ? "sessionPositive" : undefined}>{summary.metrics.activeAgents} active</span><span className="sessionDesktopLabel"> · {summary.metrics.idleAgents} idle · {summary.metrics.finishedAgents} finished</span></> : "Agent status counts unavailable"}</small></div>
+    <div className="sessionKpi"><span className="sessionEyebrow"><span className="sessionDesktopLabel">All-agent context</span><span className="sessionPhoneLabel">Context</span></span><strong className="sessionContextValue">{contextReady ? compactNumber(summary.allAgentContext) : "—"}</strong><small>{contextReady ? <><span className="sessionDesktopLabel">Latest snapshots · not spend</span><span className="sessionPhoneLabel">Sum of latest</span></> : "Context evidence unavailable"}</small></div>
+    <div className="sessionKpi sessionKpiWall"><span className="sessionEyebrow">{historical ? "Recorded wall time" : "Wall time"}</span><strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong><small>Includes idle gaps</small></div>
+    <div className="sessionKpi sessionKpiCalls"><span className="sessionEyebrow">Calls</span><strong>{activityReady ? summary.metrics.toolCalls.toLocaleString() : "—"}</strong><small>{activityReady ? `${summary.metrics.repeatedCalls.toLocaleString()} repeated` : "Activity evidence unavailable"}</small></div>
+    <div className="sessionKpi sessionKpiDesktopOnly"><span className="sessionEyebrow">Agent estimate</span><strong>{activityReady && session?.progress ? `${session.progress.percent}%` : "—"}</strong><small>{activityReady && session?.progress ? `${session.progress.phase.replaceAll("_", " ")} · ${session.progress.confidence} confidence` : "No estimate recorded"}</small></div>
+  </section>;
 }
 
-function notificationNavigationSessionId() {
-  if (typeof window === "undefined") return null;
-  const candidate = new URLSearchParams(window.location.search).get("sessionId");
-  return candidate && /^[a-z][a-z0-9_-]{0,31}:[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(candidate) ? candidate : null;
+function SessionLoading({ error }: { error?: string | null }) {
+  return <section className="commandView commandSessionView" aria-busy="true"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Loading session…" meta="Reading the latest committed summary." /><div className="sessionTabState" role="status">Loading session summary…</div>{error && <div className="notice" role="alert"><span aria-hidden="true">!</span>{error}</div>}</section>;
 }
 
-function storedAgentActivityViewMode(sessionId: string | null): AgentActivityViewMode {
-  if (!sessionId || typeof window === "undefined") return "list";
-  try {
-    return window.localStorage.getItem(`pomegr-agent-activity-view-${sessionId}`) === "grid" ? "grid" : "list";
-  } catch {
-    return "list";
-  }
+// The store never resolves `data` from a request that failed before any committed body was
+// ever retained (see `session-domain-store.ts`'s catch branch), so without this a session whose
+// very first request fails would render `SessionLoading` forever instead of recovering. Once a
+// later poll succeeds `summary.data` becomes non-null and the caller stops rendering this state
+// on its own, so no local retry bookkeeping is needed here.
+function SessionConnectionIssue({ message }: { message: string }) {
+  return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session evidence unavailable" meta="Pomegr has not yet reached the local monitor for this session." /><div className="notice" role="alert"><span aria-hidden="true">!</span>{message}</div></section>;
 }
 
-export function Dashboard({ initialSessionId = null }: { initialSessionId?: string | null }) {
-  const [data, setData] = useState<MonitorState>(() => createEmptyMonitorState());
+function SessionUnavailable({ meta }: { meta: string }) {
+  return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session unavailable" meta={meta} /><div className="sessionTabState">Choose another session from the Sessions page.</div></section>;
+}
+
+// A detected session whose provider has not recorded anything yet is not unavailable: keep its
+// catalog identity and say that its evidence will appear once the provider records it.
+function SessionAwaitingActivity({ session }: { session: SessionSummary }) {
+  return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{session.project}</span></>} title={session.title} meta={<div className="sessionHeaderMeta"><ProviderBadge source={session.source} /></div>} /><div className="sessionTabState" role="status">No recorded activity yet. Activity and context appear here once the provider records them.</div></section>;
+}
+
+export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { initialSessionId: string; initialQuery?: SessionRouteQuery }) {
+  const router = useRouter();
   const { sessions } = useSessionCatalog();
-  const sharedUsage = useUsageLimits();
-  const providerStatus = useProviderStatus();
-  const { preferences: displayPreferences } = useDisplayPreferences();
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(() => initialSessionId ?? notificationNavigationSessionId());
+  const { preferences } = useDisplayPreferences();
+  const catalogSession = sessions.find((session) => session.id === sessionId);
+  const catalogHistorical = Boolean(catalogSession && !catalogSession.isLive && catalogSession.activityStatus !== "open");
   const [paused, setPaused] = useState(false);
-  useUsageLimitsPollingPause(paused);
-  useProviderStatusPollingPause(paused);
-  useRepositoryInventoryPollingPause(paused);
-  const [loading, setLoading] = useState(true);
   const [reportGenerating, setReportGenerating] = useState(false);
-  const revisionsBySessionRef = useRef(new Map<string, number | string>());
-  const sessionViewRef = useRef<HTMLElement>(null);
-  const [agentActivityViewPreference, setAgentActivityViewPreference] = useState<{ sessionId: string | null; viewMode: AgentActivityViewMode }>({ sessionId: null, viewMode: "list" });
-  const [workflowNavigation, setWorkflowNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
-  const [agentNavigation, setAgentNavigation] = useState<{ sessionId: string; id: string; request: number } | null>(null);
-  const capabilities = data.capabilities || createEmptyProviderCapabilities();
-  const sharedProviderUsage = sharedUsage.providers.find((entry) => entry.provider === (data.source === "Codex" ? "codex" : "claude"));
-  const displayData = sharedUsage.readiness[(data.source === "Codex" ? "codex" : "claude")] === "ready" && sharedProviderUsage
-    ? { ...data, usageLimits: sharedProviderUsage.usageLimits }
-    : data;
-  const selectedSession = selectedSessionId ? sessions.find((session) => session.id === selectedSessionId)
-    ?? (data.catalogIdentity?.id === selectedSessionId ? data.catalogIdentity : null) : null;
-  // Open can age out of the Live filter without becoming a historical snapshot.
-  const selectedIsHistorical = Boolean(selectedSessionId && (selectedSession
-    ? !selectedSession.isLive && selectedSession.activityStatus !== "open"
-    : data.view === "history"));
-  const transportTargetRef = useRef({ sessionId: selectedSessionId ?? data.session?.id ?? null, historical: selectedIsHistorical, loading });
-  useEffect(() => {
-    transportTargetRef.current = { sessionId: selectedSessionId ?? data.session?.id ?? null, historical: selectedIsHistorical, loading };
-  }, [data.session?.id, loading, selectedIsHistorical, selectedSessionId]);
-  const [, setProviderNoticeVersion] = useState(0);
-
-  useEffect(() => {
-    const legacySessionId = notificationNavigationSessionId();
-    if (!legacySessionId || initialSessionId) return;
-    try {
-      window.history.replaceState(null, "", `/sessions/${encodeSessionRoute(legacySessionId)}`);
-    } catch {
-      window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
-    }
-  }, [initialSessionId]);
+  const [reportError, setReportError] = useState<string | null>(null);
+  // The catalog row can be loading, unavailable, or simply missing while the session's own
+  // fetched summary already confirms `view: "history"`. Latch that confirmation so a recorded
+  // session never keeps the live polling cadence just because the catalog has no matching row.
+  const [trackedSessionId, setTrackedSessionId] = useState(sessionId);
+  const [knownHistorical, setKnownHistorical] = useState(catalogHistorical);
+  if (sessionId !== trackedSessionId) { setTrackedSessionId(sessionId); setKnownHistorical(catalogHistorical); }
+  const domainHistorical = catalogHistorical || knownHistorical;
+  const summaryResult = useSessionDomain({ sessionId, domain: "session-summary" }, { historical: domainHistorical, enabled: !paused });
+  const summary = summaryResult.data;
+  if (summary?.view === "history" && !knownHistorical) setKnownHistorical(true);
+  const historical = summary?.view === "history" || catalogHistorical;
+  const activeTab = parseSessionTab(initialQuery.tab);
 
   useEffect(() => {
     const bridge = desktopBridge();
     if (!bridge) return;
     let active = true;
-    const apply = (state: DesktopState | null) => {
-      if (!active || !state) return;
-      setPaused(state.paused);
-    };
-    void bridge.getDesktopState().then(apply, () => {});
-    const unsubscribe = bridge.onDesktopStateChanged(apply);
+    void bridge.getDesktopState().then((state) => { if (active && state) setPaused(state.paused); }, () => {});
+    const unsubscribe = bridge.onDesktopStateChanged((state) => setPaused(state.paused));
     return () => { active = false; unsubscribe(); };
   }, []);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const revisionKey = selectedSessionId ?? "__current__";
-      const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store", signal });
-      if (signal?.aborted) return "aborted" as const;
-      if (!response.ok) throw new Error("Monitor unavailable");
-      if (response.status === 204) {
-        setData((current) => ({ ...current, connected: true, error: undefined }));
-        return "unchanged" as const;
-      }
-      const nextData = await response.json() as MonitorState;
-      if (signal?.aborted) return "aborted" as const;
-      startTransition(() => {
-        const headerRevision = response.headers.get("x-pomegr-revision");
-        if (typeof nextData.revision === "number" || typeof nextData.revision === "string") revisionsBySessionRef.current.set(revisionKey, nextData.revision);
-        else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
-        setSelectedSessionId((current) => current ?? nextData.session?.id ?? nextData.catalogIdentity?.id ?? null);
-        setData(nextData);
-      });
-      return Object.values(nextData.readiness || {}).includes("loading") || (!nextData.session && nextData.readiness?.core !== "unavailable")
-        ? "loading" as const
-        : "ready" as const;
-    } catch {
-      if (signal?.aborted) return "aborted" as const;
-      setData((current) => ({ ...current, connected: false, error: "Local monitor unavailable. Run npm run dev in this project; Pomegr will reconnect automatically." }));
-      return "failed" as const;
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, [selectedSessionId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    let nextRefresh: number | null = null;
-    let reconnecting = false;
-    let unsubscribeEvents: (() => void) | null = null;
-    let requestInFlight = false;
-    let refreshAfterFlight = false;
-    if (paused) return () => controller.abort();
-    const schedule = (delay: number) => {
-      if (controller.signal.aborted) return;
-      if (nextRefresh !== null) window.clearTimeout(nextRefresh);
-      nextRefresh = window.setTimeout(() => { nextRefresh = null; void poll(); }, delay);
-    };
-    const poll = async () => {
-      if (requestInFlight) { refreshAfterFlight = true; return; }
-      requestInFlight = true;
-      const result = await refresh(controller.signal);
-      requestInFlight = false;
-      if (controller.signal.aborted || paused || result === "aborted") return;
-      if (refreshAfterFlight) { refreshAfterFlight = false; schedule(0); return; }
-      if (transportTargetRef.current.historical) return;
-      if (document.hidden) return schedule(30_000);
-      // Only unresolved live evidence retains the fast loading probe. Ready
-      // state is driven by revisions, with a low-frequency missed-event guard.
-      if (result === "loading" && !transportTargetRef.current.historical) return schedule(1_000);
-      schedule(reconnecting ? 5_000 : 30_000);
-    };
-    const foreground = () => {
-      if (!document.hidden && transportTargetRef.current.historical) { void poll(); return; }
-      if (!document.hidden && nextRefresh !== null) {
-        window.clearTimeout(nextRefresh);
-        nextRefresh = null;
-        void poll();
-      }
-    };
-    window.addEventListener("focus", foreground);
-    document.addEventListener("visibilitychange", foreground);
-    void poll();
-    unsubscribeEvents = subscribeLiveEvents((event) => {
-      if (controller.signal.aborted) return;
-      if (event.type === "connection") {
-        reconnecting = event.state === "reconnecting";
-        if (event.state === "reconnecting" && nextRefresh !== null) { window.clearTimeout(nextRefresh); nextRefresh = null; schedule(document.hidden ? 30_000 : 5_000); }
-        // A reconnect may have missed the readiness event. Revalidate an
-        // unfinished historical mount once without starting a history poll.
-        if (event.state === "connected" && transportTargetRef.current.historical && transportTargetRef.current.loading) void poll();
-        return;
-      }
-      const activeSessionId = transportTargetRef.current.sessionId;
-      if (event.domain === "sessions" || (activeSessionId && event.sessionId === activeSessionId)) {
-        // Background tabs coalesce publications into their 30s cadence. A
-        // foreground/focus transition performs the immediate revalidation.
-        if (document.hidden) return;
-        if (nextRefresh !== null) { window.clearTimeout(nextRefresh); nextRefresh = null; }
-        void poll();
-      }
-    });
-    return () => {
-      controller.abort();
-      if (nextRefresh !== null) window.clearTimeout(nextRefresh);
-      unsubscribeEvents?.();
-      window.removeEventListener("focus", foreground);
-      document.removeEventListener("visibilitychange", foreground);
-    };
-  }, [paused, refresh]);
-
-  const activeSessionId = data.session?.id ?? null;
-  const agentActivityViewMode = agentActivityViewPreference.sessionId === activeSessionId
-    ? agentActivityViewPreference.viewMode
-    : storedAgentActivityViewMode(activeSessionId);
-  const changeAgentActivityView = useCallback((viewMode: AgentActivityViewMode) => {
-    setAgentActivityViewPreference({ sessionId: activeSessionId, viewMode });
-    if (!activeSessionId) return;
-    try {
-      window.localStorage.setItem(`pomegr-agent-activity-view-${activeSessionId}`, viewMode);
-    } catch {
-      // The in-memory controlled state remains usable when preferences are unavailable.
-    }
-  }, [activeSessionId]);
-
-  const viewingHistory = data.view === "history";
-  const requestSelection = useSessionRequestSelection({ historyEnabled: true, sessionId: data.session?.id, agents: data.agents, requestSnapshots: data.metrics.tokens.requestSnapshots, contextBoundaries: data.metrics.tokens.contextHistory.boundaries, historical: viewingHistory, cacheEvents: data.metrics.tokens.cacheEvents, cacheReadDrops: data.metrics.tokens.cacheReadDrops });
-  const sessionMatchesSelection = Boolean(data.session && (!selectedSessionId || selectedSessionId === data.session.id));
-  const switchingSession = Boolean(loading && data.session && selectedSessionId && selectedSessionId !== data.session.id);
-  const visibleProviderStatus = providerStatusFor(providerStatus.providers, data.source === "Codex" ? "codex" : "claude");
-  const providerIssueKey = visibleProviderStatus?.incidentKey || visibleProviderStatus?.status || null;
-  const providerIssueRank = visibleProviderStatus ? providerIncidentRank(visibleProviderStatus) : 0;
-  const showProviderNotice = providerServiceNoticeVisible(visibleProviderStatus, viewingHistory, dismissedProviderIncidentFor(data.session?.id || null), sessionMatchesSelection && !switchingSession);
-  const connecting = loading && !data.error && !data.session;
-  const clockRunning = data.connected && !viewingHistory && !paused && !switchingSession;
-  const attentionSession = sessionNeedingAttention(sessions, data.session?.id || null, viewingHistory);
+  const navigate = useCallback((changes: Partial<Record<keyof SessionRouteQuery, string | null>>) => {
+    const next = { ...changes };
+    if (Object.prototype.hasOwnProperty.call(changes, "agent") && changes.agent !== initialQuery.agent
+      && !Object.prototype.hasOwnProperty.call(changes, "request")) next.request = null;
+    const query = sessionQueryString(initialQuery, next);
+    router.replace(`/sessions/${encodeSessionRoute(sessionId)}${query ? `?${query}` : ""}`, { scroll: false });
+  }, [initialQuery, sessionId, router]);
+  const selectTab = useCallback((tab: SessionTab) => navigate({ tab }), [navigate]);
+  const navigateActivities = useCallback(({ agent, request }: { agent: string | null; request: string | null }) => navigate({ agent, request }), [navigate]);
 
   const generateReport = async () => {
-    if (!data.session || reportGenerating) return;
+    if (!summary?.session || reportGenerating) return;
     setReportGenerating(true);
-    let reportState = data;
+    setReportError(null);
     try {
-      try {
-        const revisionKey = selectedSessionId ?? "__current__";
-        const response = await fetch(stateEndpoint(selectedSessionId, revisionsBySessionRef.current.get(revisionKey) ?? null), { cache: "no-store" });
-        if (response.ok && response.status !== 204) {
-          const latestState = await response.json() as MonitorState;
-          if (latestState.session?.id === data.session.id) {
-            const headerRevision = response.headers.get("x-pomegr-revision");
-            if (typeof latestState.revision === "number" || typeof latestState.revision === "string") revisionsBySessionRef.current.set(revisionKey, latestState.revision);
-            else if (headerRevision) revisionsBySessionRef.current.set(revisionKey, headerRevision);
-            reportState = { ...latestState, revision: latestState.revision ?? headerRevision ?? null };
-            setData(reportState);
-          }
-        }
-      } catch {
-        // The visible snapshot remains sufficient when the local refresh is unavailable.
-      }
+      const response = await fetch(stateEndpoint(sessionId), { cache: "no-store" });
+      if (!response.ok || response.status === 204) throw new Error("Report evidence unavailable");
+      const state = await response.json() as MonitorState;
+      if (state.session?.id !== sessionId) throw new Error("Report evidence unavailable");
       const generatedAt = new Date();
-      const content = buildSessionReport(reportState, generatedAt);
-      const filename = sessionReportFilename(reportState, generatedAt);
+      const content = buildSessionReport(state, generatedAt);
+      const filename = sessionReportFilename(state, generatedAt);
       const bridge = desktopBridge();
-      if (bridge) {
-        await bridge.saveReport({ filename, content });
-        return;
+      if (bridge) await bridge.saveReport({ filename, content });
+      else {
+        const url = URL.createObjectURL(new Blob([content], { type: "text/markdown;charset=utf-8" }));
+        const link = document.createElement("a"); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
       }
-      const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } finally {
-      setReportGenerating(false);
-    }
+    } catch { setReportError("The report could not be prepared from the latest committed session evidence."); }
+    finally { setReportGenerating(false); }
   };
 
-  return (
-    <LiveClockProvider running={clockRunning}>
-      <section className="commandSessionView" id="top" ref={sessionViewRef}>
-        <SessionCommandBar connected={data.connected} connecting={connecting} />
-        {data.session && (!selectedSessionId || selectedSessionId === data.session.id) ? <div className="sessionView" key={data.session.id} aria-busy={switchingSession}>
-          <SessionHero session={data.session} source={data.source} capabilities={capabilities} historical={viewingHistory} activityStatus={selectedSession?.activityStatus} reportGenerating={reportGenerating} onGenerateReport={generateReport} />
-          {showProviderNotice && <ProviderServiceNotice status={visibleProviderStatus!} onDismiss={() => { dismissProviderIncident(data.session!.id, { key: providerIssueKey!, rank: providerIssueRank }); setProviderNoticeVersion((version) => version + 1); }} />}
-          {attentionSession && <div className="attentionNotice" role="status"><span className="attentionGlyph" aria-hidden="true">!</span><span><strong>Agent needs your input</strong><small>{attentionSession.title}</small></span></div>}
-          {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-          <SessionKpiStrip state={data} historical={viewingHistory} />
-          <RequestsActionsPanel selection={requestSelection} key={`${data.session.id}-requests-actions`} agents={data.agents} requestSnapshots={data.metrics.tokens.requestSnapshots} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} cacheEvents={data.metrics.tokens.cacheEvents} cacheReadDrops={data.metrics.tokens.cacheReadDrops} />
-          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="activity feed" /> : <ActivityPanel historyEnabled key={`${data.session.id}-activity`} activity={data.activity} sessionId={data.session.id} selection={requestSelection} historical={viewingHistory} loading={loading} onRefresh={() => void refresh()} />}
-          {data.readiness?.contextEvidence !== "loading" && <CacheEvidenceDisclosure key={`${data.session.id}-cache-evidence`} agents={data.agents} cacheEvents={data.metrics.tokens.cacheEvents} requestSnapshots={data.metrics.tokens.requestSnapshots} cacheWriteAvailable={capabilities.cacheWriteUsage} historical={viewingHistory} selectedSnapshot={requestSelection.selected} onSelectSnapshot={(snapshot) => { requestSelection.locate(snapshot.id); sessionViewRef.current?.querySelector(".requestsActionsPlot")?.scrollIntoView?.({ block: "start" }); }} />}
-          {data.readiness?.activityEvidence === "loading" ? <ReadinessSkeleton label="session activity" className="sessionProgressSkeleton" /> : <SessionSummaryCards state={data} paused={paused} historical={viewingHistory} needsInput={Boolean(attentionSession?.needsInput)} onOpenWorkflow={(id) => { changeAgentActivityView("list"); setWorkflowNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} onShowAgent={(id) => { changeAgentActivityView("list"); setAgentNavigation((previous) => ({ sessionId: data.session!.id, id, request: (previous?.request || 0) + 1 })); }} />}
-          {data.readiness?.agentEvidence === "loading" ? <ReadinessSkeleton label="agent evidence" /> : <section className="contentGrid" id="agent-activity">
-            <AgentActivityPanel agentNavigation={agentNavigation?.sessionId === data.session.id ? agentNavigation : null} workflowNavigation={workflowNavigation?.sessionId === data.session.id ? workflowNavigation : null} key={data.session.id} insights={data.insights} loops={data.loops} agents={data.agents} cacheRefills={data.metrics.tokens.cacheEvents.possibleFullRefills} cacheReadDrops={data.metrics.tokens.cacheReadDrops?.items} contextBoundaries={data.metrics.tokens.contextHistory.boundaries} executionTasks={data.executionTasks || []} planTasks={capabilities.planTasks ? data.planTasks || [] : []} requestSnapshots={data.metrics.tokens.requestSnapshots} workflows={data.workflows || []} historical={viewingHistory} sessionId={data.session.id} viewMode={agentActivityViewMode} onViewModeChange={changeAgentActivityView} />
-          </section>}
-          {!viewingHistory && (data.readiness?.resources === "loading" ? <ReadinessSkeleton label="resource usage" /> : <ResourceUsagePanel resources={data.metrics.resources} />)}
+  // A definitive monitor answer (its hydration found no recorded evidence for this session) is not
+  // a connection problem: show it honestly instead of "not yet reached the monitor", with no retry.
+  if (!summary && summaryResult.unavailable) return <SessionUnavailable meta="Pomegr found no recorded evidence for this session." />;
+  if (!summary) return summaryResult.error ? <SessionConnectionIssue message={summaryResult.error} /> : <SessionLoading />;
+  // A retained "loading" body (no session yet) is still evidence that a request once completed,
+  // so a later poll failure surfaces the connection notice alongside it rather than silently
+  // showing "Loading session…" forever; the next successful response clears `summaryResult.error`
+  // on its own (see session-domain-store.ts), so no local retry bookkeeping is needed here either.
+  if (summary.readiness === "loading" && !summary.session) return <SessionLoading error={summaryResult.error} />;
+  if (!summary.session || summary.readiness === "unavailable") return catalogSession
+    ? <SessionAwaitingActivity session={catalogSession} />
+    : <SessionUnavailable meta="Pomegr has no committed summary for this session." />;
 
-          <RepositoryDisclosurePanel session={displayData.session!} historical={viewingHistory} />
-          <SessionDetailsPanel state={displayData} historical={viewingHistory} showEstimatedCost={displayPreferences.estimatedCost} />
-        </div> : <>
-          {data.error && <div className="notice"><span>!</span>{data.error}</div>}
-          <AwaitingSession connected={data.connected} connecting={connecting} loadingSession={Boolean(selectedSessionId)} session={selectedSession} readiness={data.readiness} />
-        </>}
-      </section>
-    </LiveClockProvider>
-  );
-}
-
-function AwaitingSession({ connected, connecting, loadingSession, session, readiness }: { connected: boolean; connecting: boolean; loadingSession: boolean; session: SessionSummary | null | undefined; readiness?: SessionReadiness }) {
-  if (session && readiness?.core === "unavailable") return <section className="sessionView" aria-label={`Session ${session.title}`}>
-    <header className="hero"><div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /></div></div></header>
-    <section className="panel sessionLoadingPanel" aria-label="Recorded activity" role="status">
-      <strong>No recorded activity yet</strong>
-      <p>Pomegr has detected this session. Activity and context will appear here when the provider records them.</p>
-    </section>
-  </section>;
-  if (loadingSession && session) return <SessionLoadingShell session={session} readiness={readiness || { core: "loading", agentEvidence: "loading", contextEvidence: "loading", activityEvidence: "loading", repository: "loading", resources: "loading", usageLimits: "loading" }} />;
-  const heading = connecting
-    ? loadingSession ? "Loading session" : "Connecting to local monitor"
-    : connected ? "No active session yet" : "Local monitor offline";
-  const description = connecting
-    ? loadingSession
-      ? "Fetching the latest state for this session."
-      : "Loading the latest session state. Prompts and responses stay private."
-    : connected
-      ? "Start a coding-agent session and it will appear here automatically. Prompts and responses stay private."
-      : "Run npm run dev in this project. Pomegr will reconnect automatically.";
-  return (
-    <section className="awaitingSession" aria-label="Session discovery status" aria-live="polite">
-      <h1>{heading}</h1>
-      <p>{description}</p>
-    </section>
-  );
-}
-
-function SessionLoadingShell({ session, readiness }: { session: SessionSummary; readiness: SessionReadiness }) {
-  const domainSkeleton = (domain: keyof SessionReadiness) => readiness[domain] === "loading";
-  return <section className="sessionView sessionView-loading" aria-label={`Loading ${session.title}`} aria-busy="true">
-    <header className="hero">
-      <div><h1>{session.title}</h1><div className="sessionIdentity"><ProviderBadge source={session.source} /><span className="sessionIdentityPart"><span aria-hidden="true">·</span>{session.isLive ? "Live session" : "Recorded session"}</span></div></div>
-      <span className="uiSkeleton sessionLoadingStatus" aria-hidden="true" />
-    </header>
-    <p className="srOnly" role="status">Loading session evidence for {session.title}.</p>
-    <div className="sessionLoadingPanels">
-      {(["agentEvidence", "contextEvidence", "activityEvidence", "repository", "resources", "usageLimits"] as const).map((domain) => domainSkeleton(domain)
-        ? <section className="sessionLoadingPanel panel" aria-hidden="true" key={domain}><span className="uiSkeleton sessionLoadingPanelTitle" /><span className="uiSkeleton sessionLoadingPanelBody" /><span className="uiSkeleton sessionLoadingPanelBody short" /></section>
-        : readiness[domain] === "unavailable" ? <section className="sessionLoadingPanel panel sessionLoadingUnavailable" key={domain}><strong>{domain.replace(/([A-Z])/g, " $1")} unavailable</strong><p>This evidence could not be confirmed by the local monitor.</p></section>
-        : null)}
+  const status = sessionState(summary.lifecycle);
+  const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
+  const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><SessionIdChip sessionId={nativeId} />{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? sessionListTime(summary.session.startedAt) : "time unavailable"}</span></div>;
+  return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
+    <CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{summary.session.project}</span></>} title={summary.session.title} meta={meta}
+      actions={<button type="button" className="commandQuietAction" disabled={reportGenerating} onClick={() => void generateReport()}>{reportGenerating ? "Preparing…" : "Download report"}</button>} />
+    {summaryResult.error && <div className="notice" role="status"><span aria-hidden="true">!</span>{summaryResult.error}</div>}
+    {reportError && <div className="notice" role="status"><span aria-hidden="true">!</span>{reportError}</div>}
+    <SessionKpis summary={summary} historical={historical} />
+    <SessionTabs active={activeTab} summary={summary} onSelect={selectTab} />
+    <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
+      {activeTab === "overview" && <SessionOverview summary={summary} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
+      {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
+      {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
+      {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>
   </section>;
-}
-
-function ReadinessSkeleton({ label, className = "" }: { label: string; className?: string }) {
-  return <section className={`panel readinessSkeleton ${className}`.trim()} aria-busy="true"><p className="srOnly" role="status">Loading {label}.</p><span className="uiSkeleton readinessSkeletonTitle" aria-hidden="true" /><span className="uiSkeleton readinessSkeletonBody" aria-hidden="true" /><span className="uiSkeleton readinessSkeletonBody short" aria-hidden="true" /></section>;
 }

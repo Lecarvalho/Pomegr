@@ -64,7 +64,7 @@ function InsightRow({ insight, onShowAgent }: { insight: Insight; onShowAgent?: 
     <div>
       <strong>{insight.title}</strong>
       <p>{insight.detail}</p>
-      {showAgent && <a className="insightAgentLink" href="#agent-activity" onClick={() => onShowAgent?.(agentId!)}>Show agent</a>}
+      {showAgent && <a className="insightAgentLink" href="#agent-activity" onClick={(event) => { if (!onShowAgent) return; event.preventDefault(); onShowAgent(agentId!); }}>Show agent</a>}
     </div>
   </div>;
 }

@@ -28,7 +28,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "Smoother live sessions, clearer cache evidence" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "A redesigned workspace for every session" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -37,7 +37,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
-      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "progressive-live-sessions-v1",
+      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "redesigned-session-workspace-v1",
     });
     view.unmount();
     home();
@@ -54,11 +54,11 @@ describe("personal Home", () => {
 
   it("shows the release update after the previous session announcement was dismissed", () => {
     window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
-      version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "session-page-v2",
+      version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "progressive-live-sessions-v1",
     }));
     home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "Smoother live sessions, clearer cache evidence" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "A redesigned workspace for every session" })).toBeInTheDocument();
   });
 
   it("offers navigation with a compact local provider-status exception", async () => {

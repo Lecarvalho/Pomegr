@@ -7,8 +7,7 @@ import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { RelativeTimeText } from "../LiveTime";
 import { PopoverFrame } from "../PopoverFrame";
 
-function comparisonLabel(repository: NonNullable<MonitorState["session"]>["repository"]) {
-  const comparison = repository.comparison;
+export function comparisonLabel(comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"]) {
   if (!comparison) return null;
   if (comparison.integrated) return `Changes integrated into ${comparison.branch}`;
   if (comparison.ahead === 0 && comparison.behind === 0) return `Up to date with ${comparison.branch}`;
@@ -29,7 +28,7 @@ export function RepositoryPanel({ session }: { session: NonNullable<MonitorState
   const commits = repository.commits || [];
   const isMain = repository.isMain ?? true;
   const remote = repository.remote || { status: "unavailable", checkedAt: null };
-  const comparison = remote.status === "ready" ? comparisonLabel(repository) : null;
+  const comparison = remote.status === "ready" ? comparisonLabel(repository.comparison) : null;
   const commitsLabel = isMain
     ? "RECENT COMMITS"
     : repository.comparison?.integrated

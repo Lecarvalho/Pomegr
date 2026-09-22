@@ -3,7 +3,7 @@ import { proxyMonitorJson } from "../monitor-proxy";
 export const dynamic = "force-dynamic";
 
 const allowed = new Set(["sessionId", "kind", "scope", "offset", "limit", "requestId", "filterRequestId", "anchor", "overview",
-  "revision", "from", "to", "selected", "workKind", "continuation"]);
+  "revision", "from", "to", "selected", "continuation"]);
 
 export async function GET(request: Request) {
   const source = new URL(request.url);

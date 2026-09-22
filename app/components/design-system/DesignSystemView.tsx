@@ -1,16 +1,27 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
+import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
 import { AgentChip } from "../AgentChip";
+import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
 import { RepositoryRow } from "../repositories/RepositoryRow";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
+import { WorkKindIcon } from "../WorkKindIcon";
+import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
+import { scaleMax, type RequestRow } from "../dashboard/requests-actions/model";
+import { RequestBarsChart } from "../dashboard/requests-actions/RequestBarsChart";
+import { RequestLaneChart } from "../dashboard/requests-actions/RequestLaneChart";
+import { RequestMinimap } from "../dashboard/requests-actions/RequestMinimap";
+import { RequestRoleLegend } from "../dashboard/requests-actions/RequestRoleTrack";
 import {
+  CommandBreadcrumbSeparator,
   CommandEmpty,
   CommandFilter,
   CommandMetric,
   CommandPage,
+  CommandPageHeader,
   CommandSearch,
   CommandSelect,
   CommandStatus,
@@ -38,6 +49,9 @@ export function DesignSystemView() {
   return <CommandPage title="Design system" description="Every control below is the real shared class or component, rendered with static sample data. Nothing on this page reads session state.">
     <ButtonsSection />
     <FormFieldsSection />
+    <ShellSection />
+    <RoleFamilySection />
+    <RequestChartsSection />
     <ChipsSection />
     <Section id="repository-row" title="Repository setup row" lede="Shared settings geometry, standard chips, and independent row actions.">
       <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
@@ -126,12 +140,13 @@ const BUTTON_ROLES: ButtonRole[] = [
     id: "quiet",
     name: "Quiet",
     selector: ".commandQuietAction",
-    contract: "No border, no fill, muted 12px/500, min-height 28px, padding 0 6px, gap 6px, optional 14px direct-child icon. Used for optional actions such as Download report and sort cycling.",
+    contract: "No border, no fill, muted 12px/500, min-height 28px, padding 0 6px, gap 6px, optional 14px direct-child icon. Used for optional actions such as Download report and sort cycling. Panel headings compose it as .panelHeadingLink.",
     hover: "Hover and [aria-expanded=\"true\"] tint the background with 6% ink (color-mix) and lift the text to ink; :active uses 10%.",
     activeLabel: "Expanded",
     render: ({ active, disabled }) => <>
       <button type="button" className="commandQuietAction" aria-expanded={active ? "true" : undefined} disabled={disabled}><DownloadIcon />Download report</button>
       <button type="button" className="commandQuietAction" aria-expanded={active ? "true" : undefined} disabled={disabled}>by uncached input</button>
+      <PanelHeadingLink id="design-system-panel-heading" onOpen={() => undefined}>Efficiency signals</PanelHeadingLink>
     </>,
   },
   {
@@ -202,14 +217,14 @@ function FormFieldsSection() {
 }
 
 function ChipsSection() {
-  return <Section id="chips" title="Chips and pills" lede="One chip contract covers every evidence chip: .commandChip (Command Center session badges) and .agentChip (the AgentChip component) share identical geometry — 20px min-height, a 1px --command-line/--line border, --command-panel-2/--panel-2 fill, 11px/500 sentence-case text, and an optional 6px leading dot. Tone modifiers (info, positive, warning, negative) recolor only the text and dot; the border and fill never change.">
+  return <Section id="chips" title="Chips and pills" lede="One chip contract covers every evidence chip: .commandChip (Command Center session badges) and .agentChip (the AgentChip component) share identical geometry — 20px min-height, a 1px --command-line/--line border, transparent fill, 11px/500 sentence-case text, and an optional 6px leading dot. Tone modifiers (info, positive, warning, negative) recolor only the text and dot; the border stays neutral.">
     <div className="designSystemStates">
       <Sample label="Neutral" note="Base .agentChip, rendered through the AgentChip component. With a title it becomes a tooltip trigger; as a button it opens a disclosure.">
         <AgentChip>Explore</AgentChip>
         <AgentChip title="Reported by the agent through the Pomegr MCP tool" ariaLabel="Sample reported signal">Reported signal</AgentChip>
         <AgentChip as="button" ariaLabel="Open sample disclosure" expanded={false}>2 compactions</AgentChip>
       </Sample>
-      <Sample label="With a dot" note="An optional leading 6px dot (a direct-child <i>) picks up the tone color; the chip border and fill stay the same. Command Center session badges (.commandChip, e.g. workflow status) render this form directly.">
+      <Sample label="With a dot" note="An optional leading 6px dot (a direct-child <i>) picks up the tone color; the chip border stays neutral and the fill stays transparent. Command Center session badges (.commandChip, e.g. workflow status) render this form directly.">
         <span className="commandChip"><i aria-hidden="true" />Neutral</span>
         <span className="commandChip positive"><i aria-hidden="true" />Running</span>
         <span className="commandChip warning"><i aria-hidden="true" />Blocked</span>
@@ -226,11 +241,11 @@ function ChipsSection() {
           <AgentChip className="sessionSignal" title="A much longer agent-reported signal that needs to truncate at the shared max width">A much longer reported signal that truncates</AgentChip>
         </span>
       </Sample>
-      <Sample label="ProviderBadge" note="Provider marks stay adapter-specific content; the badge is text plus a 13px mark (10px compact).">
+      <Sample label="ProviderBadge" note="Provider names are words, never logos: an outline chip by default, plain inherited text in headings and inline metadata.">
         <ProviderBadge source="Claude Code" />
         <ProviderBadge source="Codex" />
-        <ProviderBadge source="Claude Code" compact />
-        <ProviderBadge source="Codex" compact />
+        <ProviderBadge source="Claude Code" variant="text" />
+        <ProviderBadge source="Codex" variant="text" />
       </Sample>
       <Sample label="CommandStatus" note=".commandStatusText with a .commandStatusDot: active, attention, idle, unknown.">
         <CommandStatus state="active">Working</CommandStatus>
@@ -257,7 +272,145 @@ function ChipsSection() {
       <CommandFilter active={false} onClick={() => {}}>Needs input</CommandFilter>
       <span className="commandToolbarCount">15 sessions</span>
     </CommandToolbar>
-    <p className="designSystemNote">Filter chips (.commandFilterChip inside .commandToolbar) are 36px interactive toggles; the pressed chip takes --command-panel-3 and ink. Evidence chips (.commandChip / .agentChip) are plain labels, not buttons, even though they share the same border-and-fill language.</p>
+    <p className="designSystemNote">Filter chips (.commandFilterChip inside .commandToolbar) are 36px interactive toggles; the pressed chip takes --command-panel-3 and ink. Evidence chips (.commandChip / .agentChip) are transparent outline labels, not buttons.</p>
+  </Section>;
+}
+
+function ShellSection() {
+  return <Section id="shell" title="Page header, tabs, and sidebar limits" lede="Every route starts with CommandPageHeader: an optional breadcrumb trail, title, optional meta line, and a right-aligned actions slot. Its tab slot supplies the shared one-rule tab bar. Sidebar limits are shell chrome from the account usage store, never session evidence.">
+    <div className="designSystemShellSample">
+      <CommandPageHeader breadcrumb={<><a href="#shell">Repositories</a><CommandBreadcrumbSeparator /><span aria-current="page">pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
+    </div>
+    <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 5-hour</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · Weekly</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
+  </Section>;
+}
+
+function RoleFamilySection() {
+  return <Section id="role-families" title="Agent track role families" lede="Role tints appear only in request tracks and their legends. Orchestrator remains neutral; same-role agents share one tint.">
+    <div className="sessionRoleLegend" aria-label="Agent role family legend">
+      <span><i className="roleFamily-neutral" aria-hidden="true" />Orchestrator ×1</span>
+      <span><i className="roleFamily-reading" aria-hidden="true" />Explore ×2</span>
+      <span><i className="roleFamily-planning" aria-hidden="true" />Plan ×1</span>
+      <span><i className="roleFamily-writing" aria-hidden="true" />Builder ×3</span>
+      <span><i className="roleFamily-reviewing" aria-hidden="true" />Reviewer ×1</span>
+      <span><i className="roleFamily-generic" aria-hidden="true" />Fork ×2</span>
+      <span><i className="roleFamily-system" aria-hidden="true" />Compaction ×1</span>
+    </div>
+  </Section>;
+}
+
+// Static request-chart sample: nine roster agents plus a compaction agent, so the lane chart
+// crosses the eight-lane threshold and shows one expanded and one collapsed group.
+const SAMPLE_TIME = Date.parse("2026-08-09T12:00:00.000Z");
+const SAMPLE_WINDOW = 32;
+const SAMPLE_WORKFLOW_ID = "sample-test-sweep";
+
+function sampleAgent(id: string, label: string, role: AgentRole, workflowId: string | null = null): Agent {
+  const seen = new Date(SAMPLE_TIME).toISOString();
+  return {
+    id, parentId: id === "primary" ? null : "primary", workflowId, workflowPhaseId: null, workflowOrder: null, workflowState: workflowId ? "done" : null,
+    label, role, model: id === "primary" ? "large-model" : "small-model", effort: "medium", status: "finished", signal: null, toolCalls: 0, skills: [],
+    lastSeen: seen, startedAt: seen, updatedAt: seen, durationMs: 0, cacheLifetime: "1h", tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  };
+}
+
+const SAMPLE_AGENTS: Agent[] = [
+  sampleAgent("primary", "Primary agent", "orchestrator"),
+  sampleAgent("explore", "Map the request feed", "explore"),
+  sampleAgent("plan", "Plan lane collapse", "plan"),
+  sampleAgent("review", "Review the chart diff", "reviewer"),
+  sampleAgent("worker-1", "Lane model tests", "builder", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-2", "Label geometry tests", "builder", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-3", "Collapse tests", "tester", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-4", "Focus tests", "tester", SAMPLE_WORKFLOW_ID),
+  sampleAgent("worker-5", "Minimap tests", "general-purpose", SAMPLE_WORKFLOW_ID),
+  sampleAgent("compaction", "Compaction", "compaction"),
+];
+
+const SAMPLE_WORKFLOWS: Workflow[] = [{
+  id: SAMPLE_WORKFLOW_ID, name: "Test sweep", summary: null, status: "completed", metadataStatus: "ready", startedAt: null, updatedAt: null, durationMs: 0,
+  agentIds: ["worker-1", "worker-2", "worker-3", "worker-4", "worker-5"], phases: [],
+}];
+
+// One key per request in order: p primary, e explore, l plan, r review, c compaction, 1-5 workers.
+const SAMPLE_KEYS: Record<string, string> = { p: "primary", e: "explore", l: "plan", r: "review", c: "compaction", 1: "worker-1", 2: "worker-2", 3: "worker-3", 4: "worker-4", 5: "worker-5" };
+const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p 3 4 p l p 5 1 p p c p r p e p 2 p".split(" ").map((key, index) => {
+  const agentId = SAMPLE_KEYS[key];
+  const weight = agentId === "primary" ? 6 : agentId === "compaction" ? 4 : 2;
+  const uncachedInputTokens = weight * (500 + index * 37 % 11 * 160);
+  const cacheWriteTokens = weight * (index % 5 === 0 ? 900 : 120);
+  const cacheReadTokens = weight * 3_000;
+  const outputTokens = weight * (180 + index % 7 * 70);
+  return {
+    id: `sample-request-${index + 1}`, agentId, observedAt: new Date(SAMPLE_TIME + index * 45_000).toISOString(), cacheLifetime: "1h",
+    uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, totalTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens + outputTokens,
+    precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
+    ordinal: index + 1, number: index + 1, freshTokens: uncachedInputTokens + cacheWriteTokens + outputTokens,
+    // The primary rows after each compaction-agent request, and one recorded refill.
+    compactionBefore: index === 16 || index === 33,
+    ...(index === 37 ? { cacheEvidence: { kind: "refill" as const } } : {}),
+  };
+});
+const SAMPLE_LANES = buildRequestLanes(SAMPLE_ROWS, SAMPLE_AGENTS, "fresh", true).lanes;
+const SAMPLE_PANEL_STYLE = { marginTop: "var(--space-4)" };
+function ignoreFocus() {}
+
+function RequestChartsSection() {
+  const [windowStart, setWindowStart] = useState(SAMPLE_ROWS.length - SAMPLE_WINDOW + 1);
+  const [selectedIndex, setSelectedIndex] = useState(33);
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(["direct"]));
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const end = windowStart + SAMPLE_WINDOW - 1;
+  const selected = SAMPLE_ROWS[selectedIndex];
+  const selectIndex = (index: number) => {
+    const next = Math.max(0, Math.min(SAMPLE_ROWS.length - 1, index));
+    setSelectedIndex(next);
+    if (next + 1 < windowStart) setWindowStart(next + 1);
+    else if (next + 1 > end) setWindowStart(next + 2 - SAMPLE_WINDOW);
+  };
+  const moveWindow = (start: number) => {
+    setWindowStart(start);
+    setSelectedIndex((current) => Math.max(start - 1, Math.min(start + SAMPLE_WINDOW - 2, current)));
+  };
+  const toggleGroup = (groupId: string) => setExpanded((current) => {
+    const next = new Set(current);
+    if (!next.delete(groupId)) next.add(groupId);
+    return next;
+  });
+  const visibleMaximum = Math.max(1, scaleMax(SAMPLE_ROWS.slice(windowStart - 1, end), "fresh", true));
+  const chart = { rows: SAMPLE_ROWS, start: windowStart, end, size: SAMPLE_WINDOW, mode: "fresh" as const, selectedId: selected.id, cacheWriteAvailable: true,
+    onSelect: (row: RequestRow) => selectIndex(row.ordinal - 1), onStep: (delta: number) => selectIndex(selectedIndex + delta), windowStart, total: SAMPLE_ROWS.length };
+  return <Section id="request-charts" title="Request charts" lede="Activities draws one lane per agent on desktop; Single chart stacks every request on one scale above the role-family agent track. Both share request order, window, selection, arrow keys, and the neutral minimap. Static data only.">
+    <section className="panel requestsActionsPanel" aria-label="Lane chart sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="requestsActionsPlot">
+        <p className="requestsActionsRange">Showing #{windowStart}–#{end} of {SAMPLE_ROWS.length}</p>
+        <RequestLaneChart lanes={SAMPLE_LANES} agents={SAMPLE_AGENTS} workflows={SAMPLE_WORKFLOWS} expanded={expanded} onToggleGroup={toggleGroup} focusedAgentId={null} onFocusAgent={ignoreFocus} {...chart} />
+        <RequestMinimap rows={SAMPLE_ROWS} start={windowStart} end={end} mode="fresh" cacheWriteAvailable onMove={moveWindow} />
+      </div>
+    </section>
+    <p className="designSystemNote">Lanes: 220px ellipsized labels with name · role · model in the tooltip and accessible name, a per-lane max in a 72px gutter, and a taller primary lane. Beyond eight roster lanes, Direct subagents and each workflow collapse into one group row; Primary and Compactions never collapse. Lane names are quiet buttons that focus the agent across the tab (inert here). Lanes, labels, and the minimap carry no role tint; the minimap window is grey, only cache-evidence ticks stay amber, and its hint lives in the tooltip and accessible description.</p>
+    <section className="panel requestsActionsPanel" aria-label="Single chart sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="requestsActionsPlot">
+        <p className="requestsActionsRange">Showing #{windowStart}–#{end} of {SAMPLE_ROWS.length}</p>
+        <RequestBarsChart {...chart} maximum={visibleMaximum} phone={false} onMove={moveWindow} agents={SAMPLE_AGENTS} onInspect={setInspectedId} />
+        <RequestRoleLegend rows={SAMPLE_ROWS.slice(windowStart - 1, end)} agents={SAMPLE_AGENTS} named={SAMPLE_ROWS.find((row) => row.id === inspectedId) ?? selected} />
+      </div>
+    </section>
+    <p className="designSystemNote">Single chart: one visible-window scale so off-window requests cannot compress its bars, a 4px role-family segment under each bar, and a legend of the roles in view with distinct agent counts. Hovering or focusing a bar names its agent beside the legend, else the selected request&apos;s agent. Phone draws only the single chart and has no layout toggle.</p>
+    <section className="activityPanel" aria-label="Phone Activities exceptions sample" style={SAMPLE_PANEL_STYLE}>
+      <header className="activityPanelHeader"><div><h2>Phone Activities exceptions</h2><p>Static selected request and nested call-line sample.</p></div></header>
+      <div className="activityLayout isPhone designSystemActivityPhoneSample">
+        <div className="activityFeed">
+          <article className="activityTableFrame isSelectedRequest" aria-label="Selected request #34">
+            <button type="button" className="commandQuietAction activityRow activityRequestLine" aria-pressed="true" aria-label="Request #34, Primary agent, orchestrator, model claude-opus-5, uncached input 12,480, 12:34 PM, 1 call">
+              <span className="requestsActionsNumber">#34</span><span className="activityRequestWho"><strong>Primary agent</strong> <span>orchestrator</span> <span className="activityRequestModel">claude-opus-5</span></span><span className="activityRequestMeta">12.5k in · <time dateTime="2026-08-09T12:34:00.000Z">12:34 PM</time></span>
+            </button>
+            <ul className="activityTable"><li><button type="button" className="commandQuietAction activityCallLine" aria-expanded="false" aria-label="Bash, verify-ui, 0.8s"><WorkKindIcon kind="shell" /><span className="activityCallTarget">verify-ui</span><span className="activityCallDuration">0.8s</span><svg className="activityCallChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg></button></li></ul>
+          </article>
+          <p className="designSystemNote">Documented exceptions: the selected phone request group alone carries the brand left rule; its nested call disclosure line alone is 32px high.</p>
+        </div>
+      </div>
+    </section>
   </Section>;
 }
 

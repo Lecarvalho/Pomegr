@@ -40,7 +40,7 @@ describe("Agents view", () => {
     await user.click(screen.getByRole("button", { name: "GPT-5.6 Terra, Coordinate, 1 runs" }));
     expect(screen.getByRole("dialog", { name: "GPT-5.6 Terra · Coordinate evidence" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Why is the model unreported?" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Open parent session/ })).toHaveAttribute("href", expect.stringContaining("/sessions/"));
+    expect(screen.getByRole("link", { name: /Open parent session/ })).toHaveAttribute("href", "/sessions/codex-agents?tab=agents&agent=primary");
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -170,6 +170,14 @@ describe("Agents view", () => {
     const evidence = screen.getByRole("dialog", { name: "GPT-5.6 Luna · Build evidence" });
     expect(within(evidence).getByText("Implement changes")).toBeInTheDocument();
     expect(within(evidence).queryByText("Coordinate work")).not.toBeInTheDocument();
+  });
+
+  it("retains a linked model filter and can clear it", () => {
+    render(<AgentsView initialModel="GPT-5.6 Luna" />);
+    expect(screen.getByLabelText("Model filter: GPT-5.6 Luna")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5.6 Luna appears in 1 of 1 Build run.")).toBeInTheDocument();
+    expect(screen.queryByText("GPT-5.6 Terra")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Clear model filter" })).toHaveAttribute("href", "/agents");
   });
 
   it("distinguishes recorded zero tasks from partial or unavailable work evidence", () => {

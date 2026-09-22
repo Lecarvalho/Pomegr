@@ -9,11 +9,17 @@ export const metadata: Metadata = {
 
 export default async function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { sessionId } = await params;
+  const query = await searchParams;
   const initialSessionId = decodeSessionRoute(sessionId);
   if (!initialSessionId) notFound();
-  return <Dashboard key={initialSessionId} initialSessionId={initialSessionId} />;
+  const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+  return <Dashboard key={initialSessionId} initialSessionId={initialSessionId} initialQuery={{
+    tab: first(query.tab), agent: first(query.agent), request: first(query.request), path: first(query.path),
+  }} />;
 }

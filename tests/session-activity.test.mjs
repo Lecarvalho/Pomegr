@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectSessionActivityFallback, reconcileSessionActivityFallback } from "../monitor/session-current-activity.mjs";
+import { projectAgentSessionActivityFallback, projectSessionActivityFallback, reconcileSessionActivityFallback } from "../monitor/session-current-activity.mjs";
 
 const entry = { isLive: true, activityStatus: "working" };
 const startedAt = "2026-09-02T12:00:00.000Z";
@@ -21,6 +21,18 @@ test("last tool activity is never promoted to current by recency or tool status"
     label: "file edit", state: "last_observed", observedAt: finishedAt, source: "tool", actor: "primary",
   });
   assert.equal(projectSessionActivityFallback(entry, [], [{ ...call, actor: { id: "missing" } }]).actor, "unknown");
+});
+
+test("agent fallback is isolated to its own normalized tasks and calls", () => {
+  const child = { ...agent, id: "child", executionTasks: [{ ...task, workKind: "search" }] };
+  const childCall = { ...call, actor: "child", workKind: "write", timestamp: finishedAt };
+  assert.equal(projectAgentSessionActivityFallback(entry, { ...agent, executionTasks: [] }, [childCall]), null);
+  assert.deepEqual(projectAgentSessionActivityFallback(entry, child, [call]), {
+    label: "Searching", state: "current", observedAt: startedAt, source: "execution_task", actor: "subagent",
+  });
+  assert.deepEqual(projectAgentSessionActivityFallback(entry, { ...agent, executionTasks: [] }, [call]), {
+    label: "file edit", state: "last_observed", observedAt: finishedAt, source: "tool", actor: "primary",
+  });
 });
 
 test("only normalized running tasks with eligible lifecycle get a current summary", async (t) => {
@@ -89,6 +101,13 @@ test("summary never includes tool/task text, actor identity, arguments, or extra
   assert.deepEqual(Object.keys(current).sort(), ["actor", "label", "observedAt", "source", "state"]);
   assert.doesNotMatch(JSON.stringify({ current, last }), /PRIVATE_/);
   assert.deepEqual(privateAgent, before);
+});
+
+test("agent fallback keeps its bounded shape when matching private calls", () => {
+  const privateFields = { tool: "PRIVATE_TOOL", detail: "PRIVATE_DETAIL", command: "PRIVATE_COMMAND", arguments: "PRIVATE_ARGUMENTS", result: "PRIVATE_RESULT", path: "PRIVATE_PATH", id: "PRIVATE_CALL" };
+  const result = projectAgentSessionActivityFallback(entry, { ...agent, executionTasks: [] }, [{ ...call, ...privateFields }]);
+  assert.deepEqual(Object.keys(result).sort(), ["actor", "label", "observedAt", "source", "state"]);
+  assert.doesNotMatch(JSON.stringify(result), /PRIVATE_/);
 });
 
 test("cached fallback switches immediately to last observed when catalog stops working", () => {

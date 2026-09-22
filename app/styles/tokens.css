@@ -44,6 +44,13 @@
   --resource-memory: #6e6674;
   --resource-read: #526c6d;
   --resource-write: #786656;
+  /* Agent track role families: equal lightness/chroma, hue distinguishes work. */
+  --role-reading: oklch(0.72 0.11 240);
+  --role-planning: oklch(0.72 0.11 175);
+  --role-writing: oklch(0.72 0.11 78);
+  --role-reviewing: oklch(0.72 0.11 350);
+  --role-generic: oklch(0.72 0.025 260);
+  --role-system: oklch(0.82 0.025 260);
   /* Existing component vocabulary resolves to this single palette. */
   --ink: var(--color-text);
   --muted: var(--color-muted);
@@ -109,4 +116,10 @@ html[data-theme="dark"] {
   --resource-memory: #aaa0b0;
   --resource-read: #8caaa8;
   --resource-write: #baa38d;
+  --role-reading: oklch(0.78 0.11 240);
+  --role-planning: oklch(0.78 0.11 175);
+  --role-writing: oklch(0.78 0.11 78);
+  --role-reviewing: oklch(0.78 0.11 350);
+  --role-generic: oklch(0.78 0.025 260);
+  --role-system: oklch(0.88 0.025 260);
 }

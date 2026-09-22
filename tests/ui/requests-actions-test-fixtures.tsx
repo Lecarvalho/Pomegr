@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ComponentProps } from "react";
-import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed, Workflow } from "../../shared/monitor-contract";
 import type { RequestOverviewPoint } from "../../shared/session-history-contract";
 import { useSessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { RequestsActionsPanel as ControlledRequestsActionsPanel } from "../../app/components/dashboard/RequestsActionsPanel";
@@ -50,9 +50,10 @@ export function fullRefill(agentId: string, observedAt: string): CacheEventFeed[
   return [{ agentId, count: 1, occurrences: [{ observedAt, reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null }], reasons: [], toolChangeAttributions: [] }];
 }
 
-export function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
+export function renderPanel(items: RequestSnapshot[], options: { agents?: Agent[]; workflows?: Workflow[]; cacheWriteAvailable?: boolean; historical?: boolean; cacheReadDrops?: CacheReadDropFeed } = {}) {
   return render(<RequestsActionsPanel
     agents={options.agents ?? [agent]}
+    workflows={options.workflows}
     requestSnapshots={requestFeed(items)}
     contextBoundaries={[]}
     cacheWriteAvailable={options.cacheWriteAvailable ?? true}
@@ -66,14 +67,28 @@ export function HistoryLocateHarness({ sessionId, requests }: { sessionId: strin
   return <><button type="button" onClick={() => selection.locate("request-10")}>Locate absent request</button><ControlledRequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed(requests)} contextBoundaries={EMPTY_BOUNDARIES} cacheWriteAvailable historical={false} selection={selection} /></>;
 }
 
-export function chart(container: HTMLElement): SVGSVGElement {
-  return container.querySelector("svg.requestsActionsChart") as SVGSVGElement;
+/** The single chart on phone, or the lanes root on desktop; both own bars, axis labels and arrow keys. */
+export function chart(container: HTMLElement): HTMLElement {
+  return container.querySelector("svg.requestsActionsChart, .requestLanes") as HTMLElement;
 }
 
 export function axisLabels(container: HTMLElement): string[] {
   const svg = chart(container);
   const labels = Array.from(svg.querySelectorAll(".requestsActionsAxis:last-child text")).map((node) => node.textContent || "");
   return labels.length > 2 ? [labels[0], labels.at(-1) || ""] : labels;
+}
+
+/** The single chart's top axis tick, which prints the scale maximum. */
+export function scaleTop(container: HTMLElement): string {
+  const ticks = Array.from(container.querySelectorAll("svg.requestsActionsChart > .requestsActionsAxis"))
+    .filter((group) => group.querySelector("line"))
+    .map((group) => group.querySelector("text")?.textContent || "");
+  return ticks.at(-1) || "";
+}
+
+/** The range line above the chart, or null when the panel omits it. */
+export function rangeLine(container: HTMLElement): string | null {
+  return container.querySelector(".requestsActionsRange")?.textContent ?? null;
 }
 
 export function setPhone(matches: boolean) {
@@ -87,4 +102,10 @@ export function setPhone(matches: boolean) {
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   })));
+}
+
+/** The pressed chart bar is the one place the panel shows the selected request; returns its marker. */
+export function selectedRequest(): string | null {
+  const label = document.querySelector('.requestsActionsBar[aria-pressed="true"]')?.getAttribute("aria-label");
+  return label?.match(/^Request (.+?),/u)?.[1] ?? null;
 }

@@ -1,6 +1,9 @@
-import { memo, useMemo, useRef, type PointerEvent } from "react";
+import { memo, useId, useMemo, useRef, type PointerEvent } from "react";
 import type { RequestOverviewPoint } from "../../../../shared/session-history-contract";
 import { isCompleteRequestOverview, plottedTotal, type ChartMode, type RequestRow } from "./model";
+
+/** Not rendered inline: a hover tooltip and the slider's accessible description. */
+const MINIMAP_HINT = "Drag the window, or use arrow keys, Page Up / Page Down, Home and End.";
 
 const MiniBars = memo(function MiniBars({ values, offset, slotWidth }: { values: number[]; offset: number; slotWidth: number }) {
   const maximum = values.reduce((max, value) => Math.max(max, value), 1);
@@ -15,6 +18,7 @@ export function RequestMinimap({ rows, overview, start, end, total = rows.length
   total?: number; offset?: number; overview?: RequestOverviewPoint[] | null; interactive?: boolean;
 }) {
   const drag = useRef<{ pointerId: number; offset: number } | null>(null);
+  const hintId = useId();
   const completeOverview = useMemo(() => isCompleteRequestOverview(overview, total), [overview, total]);
   const fallbackRows = completeOverview ? null : rows;
   const values = useMemo(() => fallbackRows
@@ -40,7 +44,7 @@ export function RequestMinimap({ rows, overview, start, end, total = rows.length
   };
   return <div className={`requestsActionsMinimap${interactive ? "" : " isLoading"}`}>
     <svg viewBox="0 0 1000 26" preserveAspectRatio="none" role={interactive ? "slider" : "img"} aria-label={interactive ? "Request window" : "Request map loading"} tabIndex={interactive ? 0 : undefined} aria-busy={interactive ? undefined : true}
-      aria-valuemin={interactive ? 1 : undefined} aria-valuemax={interactive ? lastStart : undefined} aria-valuenow={interactive ? start : undefined} aria-valuetext={interactive ? `Request positions ${start} to ${end} of ${total}` : undefined}
+      aria-valuemin={interactive ? 1 : undefined} aria-valuemax={interactive ? lastStart : undefined} aria-valuenow={interactive ? start : undefined} aria-valuetext={interactive ? `Request positions ${start} to ${end} of ${total}` : undefined} aria-describedby={interactive ? hintId : undefined}
       onKeyDown={(event) => {
         if (!interactive) return;
         const next = event.key === "ArrowLeft" ? start - 1 : event.key === "ArrowRight" ? start + 1 : event.key === "PageUp" ? start - windowSize : event.key === "PageDown" ? start + windowSize : event.key === "Home" ? 1 : event.key === "End" ? lastStart : null;
@@ -53,6 +57,7 @@ export function RequestMinimap({ rows, overview, start, end, total = rows.length
         event.currentTarget.setPointerCapture?.(event.pointerId);
         move(event);
       }} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onLostPointerCapture={() => { drag.current = null; }}>
+      {interactive && <title id={hintId}>{MINIMAP_HINT}</title>}
       <MiniBars values={values} offset={barOffset} slotWidth={slotWidth} />
       {rows.map((row, index) => row.cacheEvidence && <line key={row.id} className={`requestsActionsMiniRefill${row.cacheEvidence.kind !== "refill" ? " isInferred" : ""}`} x1={(offset + index + .5) * slotWidth} x2={(offset + index + .5) * slotWidth} y1={1} y2={8} />)}
       <rect className={`requestsActionsMiniWindow${start === 1 && end === total ? " isWhole" : ""}`} x={(start - 1) * slotWidth} y={1} width={windowSize * slotWidth} height={24} />

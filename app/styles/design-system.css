@@ -24,6 +24,8 @@
 .designSystemSwatch i { display: block; height: 40px; border: 1px solid var(--command-line); border-radius: var(--control-radius); }
 .designSystemSwatch code, .designSystemTokenList code { font: var(--text-xs)/1.5 var(--font-data); overflow-wrap: anywhere; }
 .designSystemTokenList { margin: var(--space-3) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); list-style: none; color: var(--command-muted); }
+.designSystemShellSample { margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.designSystemSidebarLimits { width: min(220px, 100%); margin-top: var(--space-3); padding: var(--space-3); border: 1px solid var(--command-line); background: var(--command-sidebar); }
 .designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
 .designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }

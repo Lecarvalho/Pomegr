@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
-import { DashboardsView } from "../components/command-center/CommandViews";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Dashboards · Pomegr", description: "Built-in Pomegr workspace dashboards." };
-
-export default function DashboardsPage() { return <DashboardsView />; }
+/** Legacy destination retained only so saved local and paired-LAN links reach Home. */
+export default function DashboardsPage() {
+  redirect("/");
+}

@@ -57,7 +57,10 @@ describe("current agent activity", () => {
     render(detail({ ...baseAgent, currentActivity: activity }));
 
     const inspector = screen.getByRole("region", { name: "Agent inspector for Primary agent" });
-    expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(activity.label);
+    const currentActivity = screen.getByRole("region", { name: "Current provider-reported activity" });
+    expect(currentActivity).toHaveTextContent(activity.label);
+    expect(currentActivity.querySelector("strong")).toHaveClass("currentActivityShimmer");
+    expect(currentActivity.querySelector("strong")).toHaveAttribute("data-text", activity.label);
     expect(inspector).toHaveTextContent("Provider-reported");
     expect(inspector).toHaveTextContent("Shell tasks0");
   });
@@ -96,7 +99,10 @@ describe("current agent activity", () => {
       freshness: "stale",
       reason: "legacy_snapshot",
     } }));
-    expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent("Last observed activity");
-    expect(screen.getByRole("region", { name: "Last observed provider-reported activity" })).toHaveTextContent(activity.label);
+    const retainedActivity = screen.getByRole("region", { name: "Last observed provider-reported activity" });
+    expect(retainedActivity).toHaveTextContent("Last observed activity");
+    expect(retainedActivity).toHaveTextContent(activity.label);
+    expect(retainedActivity.querySelector("strong")).not.toHaveClass("currentActivityShimmer");
+    expect(retainedActivity.querySelector("strong")).not.toHaveAttribute("data-text");
   });
 });

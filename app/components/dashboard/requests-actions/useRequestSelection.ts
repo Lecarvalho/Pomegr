@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { windowFor, type RequestRow } from "./model";
+import { transferOnViewportMove } from "./selection-viewport";
 
 type Selection = { rows: RequestRow[]; scope: string; size: number; selectedId: string | null; start: number; pinned: boolean };
 
@@ -29,9 +30,12 @@ export function useRequestSelection(
   let current = stored;
   if ((!sameRows(stored.rows, rows)) || stored.scope !== scope || stored.size !== size) {
     const follow = atLatest && !historical && !stored.pinned && stored.selectedId === stored.rows.at(-1)?.id && stored.start + stored.size - 1 >= stored.rows.length;
-    if (stored.scope !== scope || !stored.rows.length || follow) current = newest(rows, scope, size, historical || !atLatest);
+    // A selection absent from the new rows is never clamped to a false position: it rejoins the
+    // newest request instead. History navigation supplies explicit transfer targets separately.
+    const retainedId = rows.find((row) => row.id === stored.selectedId)?.id ?? null;
+    if (stored.scope !== scope || !stored.rows.length || follow || retainedId === null) current = newest(rows, scope, size, historical || !atLatest);
     else {
-      const selectedId = rows.find((row) => row.id === stored.selectedId)?.id ?? rows[Math.min(rows.length - 1, stored.rows.findIndex((row) => row.id === stored.selectedId))]?.id ?? null;
+      const selectedId = retainedId;
       const anchorId = stored.rows[stored.start - 1]?.id;
       const anchor = rows.findIndex((row) => row.id === anchorId);
       const start = stored.size !== size
@@ -43,12 +47,21 @@ export function useRequestSelection(
   }
   const selected = rows.find((row) => row.id === current.selectedId) ?? null;
   const end = Math.min(rows.length, current.start + size - 1);
-  const select = (row: RequestRow, center = false) => {
-    const followsLatest = !historical && atLatest && row.id === rows.at(-1)?.id;
+  /** `pin` keeps a newest selection from following later appends (for example a located deep link). */
+  const select = (row: RequestRow, center = false, pin = false) => {
+    const followsLatest = !pin && !historical && atLatest && row.id === rows.at(-1)?.id;
     setNavigation({ id: row.id, followLatest: followsLatest });
     setStored({ ...current, pinned: !followsLatest, selectedId: row.id, start: center ? windowFor(rows, row.ordinal, size).start : current.start });
   };
-  const moveWindow = (start: number) => setStored({ ...current, start: Math.max(1, Math.min(start, Math.max(1, rows.length - size + 1))) });
+  /** Moving the window away from the selection transfers it to the nearest visible bar. */
+  const moveWindow = (start: number) => {
+    const nextStart = Math.max(1, Math.min(start, Math.max(1, rows.length - size + 1)));
+    const target = selected ? rows[transferOnViewportMove({ selectedIndex: selected.ordinal - 1, offset: nextStart - 1, size })] : null;
+    if (!selected || !target || target.id === selected.id) return setStored({ ...current, start: nextStart });
+    const followsLatest = !historical && atLatest && target.id === rows.at(-1)?.id;
+    setNavigation({ id: target.id, followLatest: followsLatest });
+    setStored({ ...current, start: nextStart, selectedId: target.id, pinned: !followsLatest });
+  };
   const step = (delta: number) => {
     const ordinal = Math.max(1, Math.min(rows.length, (selected?.ordinal ?? rows.length) + delta));
     const row = rows[ordinal - 1];

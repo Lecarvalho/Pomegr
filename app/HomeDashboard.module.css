@@ -16,19 +16,6 @@
 .home p { color: var(--command-muted); }
 .home a { text-underline-offset: 4px; }
 
-.intro {
-  padding: 2px 0 20px;
-  margin-bottom: 18px;
-  border-bottom: 1px solid var(--command-line);
-}
-
-.intro h1 {
-  font: 650 var(--text-title, 26px)/1.1 var(--font-ui, sans-serif);
-  letter-spacing: -.025em;
-}
-
-.intro p { margin-top: 5px; font-size: var(--text-sm, 13px); }
-
 .home .browse {
   flex-shrink: 0;
   min-height: var(--control-height, 36px);
@@ -212,8 +199,6 @@
 
 @media (max-width: 760px) {
   .home { padding: 0 0 32px; }
-  .intro { padding-bottom: 16px; margin-bottom: 16px; }
-  .intro h1 { font-size: 24px; }
   .workspace,
   .roadmapGrid { grid-template-columns: 1fr; gap: 18px; }
   .sessions,
@@ -228,6 +213,7 @@
   .roadmapGrid article:first-child { padding: 14px 0 0; border-inline-start: 0; border-top: 1px solid var(--command-line); }
   .roadmapGrid article:first-child { padding-top: 0; border-top: 0; }
   .home .removePin { width: 44px; height: 44px; }
+  .reportGuide { display: none; }
 }
 
 @media (max-width: 380px) {

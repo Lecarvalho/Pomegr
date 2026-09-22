@@ -6,6 +6,7 @@ import test from "node:test";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { normalizedSessionHistory } from "../monitor/providers/session-history.mjs";
+import { buildRequestSnapshots } from "../monitor/request-snapshots.mjs";
 import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
 import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "../monitor/providers/codex-activity-correlation.mjs";
 
@@ -204,4 +205,15 @@ test("Codex early, late, and replay history preserve duplicate child-label reply
 test("history preserves explicit activity ownership when agent labels repeat", () => {
   const history = normalizedSessionHistory("claude", "same-label", { agents: [{ id: "agent-a", label: "Subagent", executionTasks: [] }, { id: "agent-b", label: "Subagent", executionTasks: [] }], usageSnapshots: [], toolCalls: [], activity: [{ id: "reply", timestamp: stamp(0), actor: "Subagent", tool: "Assistant replied", workKind: "report", detail: "", status: null, _historyAgentId: "agent-b" }] });
   assert.equal(history.activity[0].agentId, "agent-b");
+});
+
+test("history requests carry each request's bounded recorded model while the state feed never does", () => {
+  const usage = (index, model) => ({ actorId: "primary", dedupeId: `PRIVATE_DEDUPE-${index}`, timestamp: stamp(index), input: 2, cacheWrite: 0, cacheRead: 3, output: 1, model });
+  const evidence = { agents: [{ id: "primary", label: "Agent", executionTasks: [] }], toolCalls: [], activity: [],
+    usageSnapshots: [usage(0, "claude-opus-5"), usage(1, "claude-sonnet-5"), usage(2, "<synthetic>"), usage(3, "")] };
+  const history = normalizedSessionHistory("claude", "models", evidence);
+  assert.deepEqual(history.requests.map((request) => request.model), ["claude-opus-5", "claude-sonnet-5", null, null]);
+  assert.equal(JSON.stringify(history).includes("PRIVATE"), false);
+  const feed = buildRequestSnapshots({ sessionId: "claude:models", agents: evidence.agents, usageSnapshots: evidence.usageSnapshots });
+  assert.ok(feed.items.every((item) => !Object.hasOwn(item, "model")));
 });

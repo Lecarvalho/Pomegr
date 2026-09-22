@@ -1,53 +1,26 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
-import { SessionHero } from "../../app/components/dashboard/SessionHero";
-import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-import { claudeCapabilities, agent, repositorySession } from "./dashboard-test-fixtures";
+import type { SignalsDomain } from "../../shared/session-domain-contract";
+import { SignalsReportedSection } from "../../app/components/dashboard/signals/SignalsReportedSection";
 
-describe("reported signal tooltips", () => {
-  it("shows a session signal description on desktop hover", async () => {
-    const user = userEvent.setup();
-    const signaledSession = {
-      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
-      signal: {
-        label: "Review complete",
-        tone: "positive" as const,
-        reportedAt: "2026-08-08T12:00:05.000Z",
-        description: "All requested checks passed.",
-      },
-    };
+const agents: SignalsDomain["agents"] = [{ id: "primary", label: "Primary agent", cacheLifetime: "1h", signal: { label: "Tests passed", tone: "positive", reportedAt: "2026-09-19T12:00:00.000Z", description: "Focused checks completed." } }];
 
-    render(<LiveClockProvider running={false}><SessionHero session={signaledSession} source="Claude Code" capabilities={claudeCapabilities} historical={false} /></LiveClockProvider>);
-
-    const trigger = screen.getByRole("button", { name: "Review complete" });
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-    await user.hover(trigger);
-    expect(screen.getByRole("tooltip")).toHaveClass("tooltipPopover", "signalTooltip");
-    expect(screen.getByRole("tooltip")).toHaveTextContent("All requested checks passed.");
-    await user.unhover(trigger);
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+describe("Signals reported section", () => {
+  it("distinguishes bounded session and agent-reported signals with tones and descriptions", () => {
+    render(<SignalsReportedSection historical={false} agents={agents} sessionSignal={{ label: "Review complete", tone: "info", reportedAt: "2026-09-19T12:01:00.000Z", description: "Review was submitted." }} />);
+    const rows = within(screen.getByRole("list")).getAllByRole("listitem");
+    expect(rows[0]).toHaveClass("info"); expect(rows[0]).toHaveTextContent("Session · agent-reported"); expect(rows[0]).toHaveTextContent("Review was submitted.");
+    expect(rows[1]).toHaveClass("positive"); expect(rows[1]).toHaveTextContent("Agent · agent-reported · Primary agent"); expect(rows[1]).toHaveTextContent("Focused checks completed.");
+    expect(screen.getByText("Signals are agent-reported, may be stale, and are not Pomegr judgments.")).toBeInTheDocument();
   });
-
-  it("toggles an agent signal description on touch and dismisses it", () => {
-    const signaledAgent = {
-      ...agent,
-      signal: {
-        label: "Approved",
-        tone: "positive" as const,
-        reportedAt: "2026-08-08T12:00:05.000Z",
-        description: "All requested checks passed.",
-      },
-    };
-
-    render(<LiveClockProvider running={false}><AgentActivityPanel agents={[signaledAgent]} executionTasks={[]} planTasks={[]} historical={false} /></LiveClockProvider>);
-
-    const trigger = screen.getByRole("button", { name: "Approved" });
-    fireEvent.pointerDown(trigger, { pointerType: "touch" });
-    fireEvent.pointerUp(trigger, { pointerType: "touch" });
-    expect(screen.getByRole("tooltip")).toHaveTextContent("All requested checks passed.");
-    fireEvent.pointerDown(document.body, { pointerType: "touch" });
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  it("uses an honest live empty state", () => {
+    render(<SignalsReportedSection historical={false} agents={[{ ...agents[0], signal: null }]} sessionSignal={null} />);
+    expect(screen.getByText("No reported signals yet.")).toBeInTheDocument();
+  });
+  it("preserves recorded wording for historical signals and empty history", () => {
+    const { rerender } = render(<SignalsReportedSection historical agents={agents} sessionSignal={null} />);
+    expect(screen.getByText("Recorded agent-reported signals for this session.")).toBeInTheDocument();
+    rerender(<SignalsReportedSection historical agents={[{ ...agents[0], signal: null }]} sessionSignal={null} />);
+    expect(screen.getByText("No reported signals were recorded for this session.")).toBeInTheDocument();
   });
 });

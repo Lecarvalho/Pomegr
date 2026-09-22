@@ -1,13 +1,13 @@
 # IA redesign prototype
 
-Standalone exports of the approved design canvas (version 46, 2026-09-14) for the
+Standalone exports of the approved design canvas (version 46, 2026-09-14; `Mobile` regenerated from version 50, 2026-09-15) for the
 [information architecture redesign plan](../../ia-redesign.md). Serve an artboard folder and open its `.dc.html` file in a browser (see its local README); each is a full-height artboard using the dark theme values from
 `app/styles/tokens.css`. Sample data comes from one real session and invented file
 names; treat every number as placeholder.
 
 The plan owns implementation decisions within the repository's current contracts.
 Where a drawing differs, follow the plan and the explicit overrides below.
-This documentation update does not regenerate the version-46 exports.
+Only the `Mobile` export was regenerated for version 50 (thin 32px phone call lines that expand in place). On 2026-09-20 the `Main`, `SignalsTab`, `RepositoryTab` and `Mobile` exports were regenerated from version 53 and `OverviewSparse` was added, for the [overview sparse state and link rule plan](../../overview-sparse-and-links.md); their only drawing changes are the link treatment described under [Links](#links) and the new sparse artboard. The remaining exports are version 46.
 
 Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifact/eb54dd04-0c68-450d-8c04-ab4776816fd9
 
@@ -16,9 +16,10 @@ Live canvas (editable, requires claude.ai access): https://claude.ai/code/artifa
 - [0 · Header standard](HeaderStandard-html/HeaderStandard.dc.html)
 - [1 · Proposed sitemap](Sitemap-html/Sitemap.dc.html)
 - [2 · Session overview (L1)](Main-html/Main.dc.html)
+- [2b · Session overview (L1): sparse state, session just started](OverviewSparse-html/OverviewSparse.dc.html)
 - [3 · Session › Agents tab (L2): roster and selected-agent pane](SessionAgents-html/SessionAgents.dc.html)
 - [5 · Session › Signals tab (L2)](SignalsTab-html/SignalsTab.dc.html)
-- [6 · Phone: Overview, Agents, agent sheet, Activities, More sheet](Mobile-html/Mobile.dc.html)
+- [6 · Phone: Overview, Agents, agent sheet, Activities, expanded call, More sheet](Mobile-html/Mobile.dc.html)
 - [7 · Session › Repository tab (L2)](RepositoryTab-html/RepositoryTab.dc.html)
 - [8 · Repository › Files tab (file history)](RepoFiles-html/RepoFiles.dc.html)
 - [9 · Session › Resources tab (L2)](ResourcesTab-html/ResourcesTab.dc.html)
@@ -51,6 +52,14 @@ Desktop has Lanes / Single chart; single chart includes the role-family track. P
 
 Session header = hero + KPI strip, identical on every tab (no collapsed variant). Overview is the first tab and holds Right now, signals, repository one-liner, request strip and progress. Nothing session-specific sits above the tab bar except the header.
 
+### Sparse overview
+
+The overview does not reserve space for evidence that does not exist yet (artboard 2b). The Requests strip always has the same number of slots as the full state, so a bar is the same width with 5 requests as with 48; unused slots show only the baseline and an empty role-track cell. With one or two agents, Right now spans the full width and sizes to its rows, with signals and repository side by side below; from three agents up the two-column layout of artboard 2 returns. A panel with no evidence is not rendered: without a progress estimate or plan tasks there is no Progress panel, and Work by kind and Cost share the row. Sub-minute medians are omitted. The latest-context meter drawn on the 2b agent row is not approved for implementation: the session summary exposes no context-window size for its Right now agents, so the app prints the latest context count only.
+
+### Links
+
+Decision 2026-09-20. A panel whose content continues on a tab uses its heading as the link (title plus a muted chevron, ink on hover) with no header-right link; a count the old link carried moves next to the title. Evidence rows are the link: the whole row opens its events in Activities and ends in a muted chevron, request numbers inside a row are plain mono ink, and a second destination is a quiet action (**Show agent**). Leaving the session for another page is a quiet action with a chevron. The brand text link stays for expanders and at most one in-content pointer per panel. On phone the heading link keeps a 44px tap box.
+
 ### Limits
 
 Sidebar limits: one line per provider that has sessions this week, showing only its tightest window. Colors follow the METRICS.md usage-limit rule: normal to 74%, warning 75 to 84%, critical 85% and up. Cursor appears the same way once its adapter reports windows. Full windows live on the Usage limits page. Historical sessions never render this widget as session data; it is shell chrome.
@@ -73,7 +82,7 @@ Dragging past selection hands it to the nearest visible bar (left edge when movi
 
 ### Activities, Signals and agent inspection
 
-Activities combines the Requests chart, Largest strip and five request groups around selection, with calls nested under each request. Agent scope applies to the whole tab. Desktop puts Actions by kind, Shell tasks and Failed shell runs in the left rail; kind toggles filter nested calls without removing the selected request header. Previous / Next / Jump to latest keep the chart and feed aligned. Fed by / Called tallies are removed.
+Activities combines the Requests chart, Largest strip and five request groups around selection, with calls nested under each request. Agent scope applies to the whole tab. Desktop puts Actions by kind, Shell tasks and Failed shell runs in the left rail as read-only summaries. Previous / Next / Jump to latest keep the chart and feed aligned. Fed by / Called tallies are removed.
 
 Signals owns efficiency signals, cache evidence, flow score with its inputs, per-agent cache lifetime and agent-reported MCP signals. Preserve observed/inference/attributed qualifiers and distinguish agent reports from deterministic rules. Signals links to the matching request in Activities, never to a separate Requests tab.
 
@@ -89,7 +98,7 @@ Details contains session facts, one-shot transcript path copy, cost estimate, an
 
 ### Phone
 
-Phone (2026-09-14 tab set): five tabs fit 390px without scrolling: Overview, Agents, Activities, Repo, More. More is a bottom sheet holding Signals, Resources and Details; each entry is the same ?tab= URL as on desktop. Tab bar sticks under the three KPIs. Agents: the roster only, List / Grid segment (no Tree), no column header row; the Direct subagents group is one 48px line with its values (count · context · active) at the right, as today; tapping a row opens the agent inspector as a full-viewport sheet with a Back header, as the app does today (no side pane, no agent route). Context counts are regular weight in the primary text color. Activities: always the single chart on phone (no lanes, no Lanes / Single chart toggle) with the agent track and role legend under the bars, minimap, Largest strip, then the feed, with Actions by kind and Shell tasks below it; the feed shows five requests around the selection, one quiet line per request (agent, role, uncached input, time) and one per tool call (kind, target, duration); the other counts live in the request detail. Hit targets 44px.
+Phone (2026-09-14 tab set): five tabs fit 390px without scrolling: Overview, Agents, Activities, Repo, More. More is a bottom sheet holding Signals, Resources and Details; each entry is the same ?tab= URL as on desktop. Tab bar sticks under the three KPIs. Agents: the roster only, List / Grid segment (no Tree), no column header row; the Direct subagents group is one 48px line with its values (count · context · active) at the right, as today; tapping a row opens the agent inspector as a full-viewport sheet with a Back header, as the app does today (no side pane, no agent route). Context counts are regular weight in the primary text color. Activities: always the single chart on phone (no lanes, no Lanes / Single chart toggle) with the agent track and role legend under the bars, minimap, Largest strip, then the feed, with Actions by kind and Shell tasks below it; the feed shows five requests around the selection, one quiet 44px line per request (agent, role, uncached input, time) and one thin 32px line per tool call (kind icon, target, duration; version 50). Tapping a call line still selects its request as before and additionally expands a detail block in place beneath it (kind/status chips, Kind, Wall duration, Called, Result, Agent), one open at a time, with no sheet or popover; the other request counts live in the request detail. Hit targets 44px except the 32px full-width call line, the single documented dense-list exception.
 
 ### Storage
 

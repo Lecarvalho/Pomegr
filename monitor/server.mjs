@@ -601,10 +601,15 @@ export function createMonitorRuntime(options = {}) {
   async function transcriptPath(requestedSessionId = "", agentId = "") {
     if (typeof requestedSessionId !== "string" || requestedSessionId.length === 0 || requestedSessionId.length > 256) return null;
     if (typeof agentId !== "string" || agentId.length === 0 || agentId.length > 256 || /[\u0000-\u001f\u007f]/.test(agentId)) return null;
-    const selection = await registry.readSession(requestedSessionId);
+    // The copy button renders only from committed evidence, which already proves the agent's
+    // transcript. Re-reading the whole session per click can outlast the web proxy's timeout.
+    const committed = observation.observationActive() ? observation.store.getByQualifiedId(requestedSessionId) : null;
+    const selection = committed
+      ? { evidence: committed.evidence, localId: committed.localSessionId, provider: registry.providerForSessionId?.(requestedSessionId) }
+      : await registry.readSession(requestedSessionId);
     const agent = selection?.evidence?.agents?.find((candidate) => candidate?.id === agentId);
     if (!agent?.transcriptAvailable || typeof selection.provider?.readTranscriptPath !== "function") return null;
-    return safeTranscriptPath(await selection.provider.readTranscriptPath(selection.evidence.localId, agentId));
+    return safeTranscriptPath(await selection.provider.readTranscriptPath(selection.localId ?? selection.evidence.localId, agentId));
   }
 
   function analyzeEmpty() {

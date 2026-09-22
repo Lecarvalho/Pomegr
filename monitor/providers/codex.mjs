@@ -8,34 +8,28 @@ import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
-import { mergeCodexActivityEvents, mergeCodexToolCalls, parseCodexCanonicalActivityEvents, parseCodexCanonicalTurns } from "./codex-activity-events.mjs";
-import {
-  mergeCodexExecutionTasks,
-  parseCodexCanonicalExecutionTasks,
-  parseCodexExecutionTaskStateRecords,
-} from "./codex-execution-tasks.mjs";
+import { mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
+import { mergeCodexExecutionTasks, parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "./codex-activity-correlation.mjs";
 import { parseCodexCurrentActivityStateRecords } from "./codex-current-activity.mjs";
 import { buildCodexAgentTree, parseCodexAgentRecords } from "./codex-agent-metadata.mjs";
-import { mergeCodexPullRequestCreations, parseCodexCanonicalPullRequests, parseCodexPullRequestRecords } from "./codex-pull-requests.mjs";
+import { mergeCodexPullRequestCreations, parseCodexPullRequestRecords } from "./codex-pull-requests.mjs";
 import { mergeCodexSignals, parseCodexSignalRecords, readCodexSignals } from "./codex-session-signals.mjs";
-import { parseCodexCanonicalSkillUsage, parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
+import { parseCodexSkillUsageRecords } from "./codex-skill-usage.mjs";
 import { createCodexUsageLimitsCoordinator } from "./codex-usage-limits.mjs";
 import { createCodexLivenessCoordinator } from "./codex-liveness.mjs";
 import { createCodexWriterPresence } from "./codex-writer-presence.mjs";
 import { createCodexOwningRuntime } from "./codex-owning-runtime.mjs";
 import { createCodexLiveState } from "./codex-live-state.mjs";
+import { createCodexAppServerSessionReader } from "./codex-app-server-session.mjs";
 import {
-  appServerResponseData,
-  appServerResponseThread,
   boundedInteger,
   codexSessionReference,
   compareCodexMetadata,
   expandCodexSelectedMetadata,
   mergeCodexMetadata,
   mergeFreshCodexSessionTreeMetadata,
-  trustedAppServerRolloutFile,
 } from "./codex-session-discovery.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { createHistoryOwnershipProjection, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests, readCompleteSessionHistory } from "./session-history.mjs";
@@ -44,21 +38,11 @@ import {
   DEFAULT_CODEX_SCAN_LIMIT,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
-  normalizeCodexThreadMetadata,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
-const TOP_LEVEL_SOURCE_KINDS = ["cli", "vscode", "exec", "appServer", "unknown"];
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
 export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
-const ALL_SOURCE_KINDS = [
-  ...TOP_LEVEL_SOURCE_KINDS,
-  "subAgent",
-  "subAgentReview",
-  "subAgentCompact",
-  "subAgentThreadSpawn",
-  "subAgentOther",
-];
 export function resolveCodexHome(options = {}) {
   const environment = options.env ?? process.env;
   const configured = options.codexHome ?? environment.CODEX_HOME;
@@ -163,41 +147,13 @@ export function createCodexProvider(options = {}) {
     reusableLivePlanTasks,
     reusableLiveTaskState,
   } = liveState;
-  function normalizeAppServerMetadata(thread, metadataOptions = {}) {
-    const metadata = normalizeCodexThreadMetadata(thread, metadataOptions);
-    if (!metadata) return null;
-    const rolloutFile = trustedAppServerRolloutFile(thread, [sessionsRoot, archivedRoot]);
-    return rolloutFile ? { ...metadata, rolloutFile } : metadata;
-  }
   async function appServerCall(method, params) {
     return owningRuntime.request(method, params);
   }
-  async function readAppServerCatalog() {
-    if (!appServer) return null;
-    const indexNames = readCodexSessionIndex(indexFile);
-    const filters = includeArchived ? [false, true] : [false];
-    try {
-      const pages = await Promise.all(filters.map(async (archived) => {
-        const response = await appServerCall("thread/list", {
-          limit: scanLimit,
-          sortKey: "updated_at",
-          sortDirection: "desc",
-          sourceKinds: ALL_SOURCE_KINDS,
-          archived,
-        });
-        const data = appServerResponseData(response);
-        if (data === null) throw new Error("Invalid Codex app-server thread/list response");
-        return data.flatMap((thread) => {
-          const indexed = indexNames.get(thread?.id);
-          const metadata = normalizeCodexThreadMetadata(thread, { archived, indexName: indexed?.title });
-          return metadata ? [metadata] : [];
-        });
-      }));
-      return mergeCodexMetadata(pages.flat()).slice(0, scanLimit);
-    } catch {
-      return null;
-    }
-  }
+  const appServerSessions = createCodexAppServerSessionReader({
+    appServer, request: appServerCall, indexFile, includeArchived, scanLimit,
+    rolloutRoots: [sessionsRoot, archivedRoot],
+  });
   const makeRolloutDiscovery = () => createCodexRolloutDiscovery({
     roots: [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])],
     maximumFiles: scanLimit, now,
@@ -214,7 +170,7 @@ export function createCodexProvider(options = {}) {
     });
   }
   const metadataCatalog = createCodexCatalogCache({ cacheMs, now, load: async (readOptions) => {
-      const appServerMetadata = await readAppServerCatalog();
+      const appServerMetadata = await appServerSessions.readCatalog();
       const fallbackMetadata = await readFallbackMetadata(readOptions);
       const combined = mergeCodexMetadata([...fallbackMetadata, ...(appServerMetadata || [])]);
       const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
@@ -233,90 +189,6 @@ export function createCodexProvider(options = {}) {
       .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
       .slice(0, catalogLimit).sort(compareCodexMetadata);
   }
-  async function readAppServerSession(localSessionId) {
-    if (!appServer) return null;
-    try {
-      const response = await appServerCall("thread/read", { threadId: localSessionId, includeTurns: false });
-      const thread = appServerResponseThread(response);
-      if (!thread || thread.id !== localSessionId) return null;
-      const indexed = readCodexSessionIndex(indexFile).get(localSessionId);
-      return normalizeAppServerMetadata(thread, { indexName: indexed?.title });
-    } catch {
-      return null;
-    }
-  }
-  async function readAppServerSessionTree(localSessionId) {
-    const root = await readAppServerSession(localSessionId);
-    if (!root) return { metadata: [], descendantIds: new Set(), freshIds: new Set() };
-    const discovered = [root];
-    const descendantIds = new Set();
-    const freshIds = new Set([root.localId]);
-    const filters = includeArchived ? [false, true] : [false];
-    try {
-      const pages = await Promise.all(filters.map(async (archived) => {
-        const response = await appServerCall("thread/list", {
-          limit: scanLimit,
-          sortKey: "created_at",
-          sortDirection: "asc",
-          sourceKinds: ALL_SOURCE_KINDS,
-          archived,
-          ancestorThreadId: localSessionId,
-        });
-        const data = appServerResponseData(response);
-        if (data === null) throw new Error("Invalid Codex app-server descendant response");
-        const metadata = data.flatMap((thread) => {
-          const metadata = normalizeAppServerMetadata(thread, { archived });
-          return metadata ? [metadata] : [];
-        });
-        const ignoredAncestorFilter = metadata.some((item) => (
-          item.localId === localSessionId
-          || (isTopLevelCodexSession(item) && item.localId !== localSessionId)
-        ));
-        return { metadata, trusted: !ignoredAncestorFilter };
-      }));
-      for (const page of pages) {
-        const pageMetadata = page.trusted ? page.metadata.map((item) => (
-          item.sessionId === item.localId && !item.parentThreadId && !item.forkedFromId
-            ? { ...item, sessionId: localSessionId }
-            : item
-        )) : page.metadata;
-        discovered.push(...pageMetadata);
-        if (!page.trusted) continue;
-        for (const item of pageMetadata) {
-          descendantIds.add(item.localId);
-          freshIds.add(item.localId);
-        }
-      }
-    } catch {
-      // Descendant filtering is experimental; rollout relationships remain the fallback.
-    }
-    return { metadata: mergeCodexMetadata(discovered), descendantIds, freshIds };
-  }
-
-  async function readAppServerThreadEvidence(threadId, actor, fallbackTimestamp) {
-    const unavailable = { available: false, toolCalls: [], activity: [], executionTasks: [], skills: [], pullRequestCreations: [] };
-    if (!appServer) return unavailable;
-    try {
-      const response = await appServerCall("thread/read", { threadId, includeTurns: true });
-      const thread = appServerResponseThread(response);
-      if (!thread || thread.id !== threadId || !Array.isArray(thread.turns)) return unavailable;
-      return {
-        available: true,
-        toolCalls: parseCodexCanonicalTurns(thread.turns, { actor, fallbackTimestamp }),
-        activity: parseCodexCanonicalActivityEvents(thread.turns, { actor }),
-        executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
-        skills: parseCodexCanonicalSkillUsage(thread.turns),
-        pullRequestCreations: parseCodexCanonicalPullRequests(thread.turns, {
-          actorId: actor.id,
-          fallbackTimestamp,
-          sourceKey: threadId,
-        }),
-      };
-    } catch {
-      return unavailable;
-    }
-  }
-
   async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
     const historical = readOptions.historical !== false;
@@ -328,7 +200,7 @@ export function createCodexProvider(options = {}) {
       ? readOptions.incrementalGenerationsByFile
       : null;
     const discovered = await discoveredMetadata();
-    const appServerTree = await readAppServerSessionTree(localSessionId);
+    const appServerTree = await appServerSessions.readSessionTree(localSessionId);
     const mergedMetadata = mergeFreshCodexSessionTreeMetadata(discovered, appServerTree);
     const metadataById = new Map(mergedMetadata.map((item) => [item.localId, item]));
     const rootMetadata = metadataById.get(localSessionId) || null;
@@ -596,7 +468,7 @@ export function createCodexProvider(options = {}) {
     });
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
-      readAppServerThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
+      appServerSessions.readThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
     )));
     const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
@@ -700,8 +572,22 @@ export function createCodexProvider(options = {}) {
     workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
 
+  // One copy action needs one file location, so resolve it from the cached thread-metadata
+  // tree instead of reading every rollout. Only a child that tree cannot place, such as one
+  // linked solely by a parent rollout record, still needs the full session read.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
-    if (!transcriptPathsBySessionId.has(localSessionId)) await readSession(localSessionId, { historical: true });
+    if (!isSafeCodexSessionId(localSessionId) || typeof agentId !== "string" || !agentId.startsWith("agent-")) return null;
+    const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
+    if (recorded && fs.existsSync(recorded)) return recorded;
+    const metadataById = new Map((await discoveredMetadata()).map((item) => [item.localId, item]));
+    const threadId = agentId.slice("agent-".length);
+    if (isTopLevelCodexSession(metadataById.get(localSessionId)) && threadId !== localSessionId) {
+      const selectedIds = new Set([localSessionId]);
+      expandCodexSelectedMetadata(metadataById, selectedIds);
+      const rolloutFile = selectedIds.has(threadId) ? metadataById.get(threadId)?.rolloutFile : null;
+      if (rolloutFile) return rolloutFile;
+    }
+    await readSession(localSessionId, { historical: true });
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
   async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }

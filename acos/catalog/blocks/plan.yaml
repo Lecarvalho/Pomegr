@@ -1,0 +1,43 @@
+name: plan
+role: "Turn intent plus context into an ordered, checkable implementation plan; for a fan-out, one brief per slice."
+default:
+  adapter: inline
+  # No effort: an inline stage runs at the session's. When this block is
+  # delegated instead, effort comes from the skill's Economy rules.
+inputs: [context]
+outputs: [plan]
+check:
+  kind: none
+prompt: |
+  You are the planner. Do not modify any file.
+
+  Produce a plan the implementer can follow without asking questions:
+  1. Numbered steps, each naming the file(s) it touches.
+  2. What "done" looks like for each step.
+  3. The exact verify command to run at the end.
+  4. Anything explicitly out of scope.
+
+  Prefer the smallest change that satisfies the intent. If two designs
+  are reasonable, pick one and say why in one line.
+
+  If this plan part defers visible evidence to a named later part, copy
+  every visible claim, URL and capture target into `part.evidence` and
+  require a deterministic command check before this part closes. The
+  final evidence part must repeat the claims and name every part it covers.
+
+  When the plan feeds more than one implementer (a fan-out), write it as
+  `artifacts/plan.md` with one section per slice, headed `## <stage name>`.
+  Each implementer receives only its own section, so each section must
+  stand alone and carry:
+  - the files it owns (the stage's `owns`), and nothing outside them
+  - every interface it shares with another slice, as a signature or a
+    selector, with which slice owns the definition
+  - the tests it writes or must keep passing, by file
+  - what "done" looks like, in checkable sentences
+  - when the slice changes a visible surface: one capture line per claim
+    (`claim | url | selector or --full | eval if needed`) for the evidence
+    stage; the implementer keeps them current in its report. When evidence
+    is deferred, these exact lines also go into the handoff and the final
+    evidence part's manifest.
+  A shared file two slices would both edit is a cut error: give it one
+  owner, or say it must be handled before the fan-out starts.

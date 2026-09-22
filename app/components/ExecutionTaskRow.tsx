@@ -31,12 +31,17 @@ function failureTooltip(task: ExecutionTask) {
   return `${FAILURE_CAUSE_COPY[cause]}.${exitCode}`;
 }
 
-export function ExecutionTaskRow({ task, compact = false }: { task: ExecutionTask; compact?: boolean }) {
+/**
+ * One shell task. `compact` is the inspector's two-line row; `dense` is the one-line rail variant,
+ * which drops the kind word and carries the exit code beside the wall duration instead.
+ */
+export function ExecutionTaskRow({ task, compact = false, dense = false }: { task: ExecutionTask; compact?: boolean; dense?: boolean }) {
   const running = task.status === "running";
   const failureDetails = task.status === "failed" ? failureTooltip(task) : null;
+  const exitLabel = running ? "running" : task.exitCode !== null ? `exit ${task.exitCode}` : task.status;
   const marker = <><WorkKindIcon kind={task.workKind} /><span className="executionTaskStatusBadge"><TaskStatusGlyph status={task.status} /></span></>;
   return (
-    <div className={`executionTaskRow ${task.status}${compact ? " executionTaskRowCompact" : ""}`}>
+    <div className={`executionTaskRow ${task.status}${compact || dense ? " executionTaskRowCompact" : ""}${dense ? " executionTaskRowDense" : ""}`}>
       {failureDetails
         ? <AgentChip className="executionTaskMark executionTaskFailureTrigger" title={failureDetails} ariaLabel={`Show failure cause. ${failureDetails}`}>{marker}</AgentChip>
         : <span className="executionTaskMark" aria-hidden="true">{marker}</span>}
@@ -45,12 +50,12 @@ export function ExecutionTaskRow({ task, compact = false }: { task: ExecutionTas
           <strong>{task.label}</strong>
           {task.signal && <AgentChip className={`executionTaskSignal ${task.signal.tone}`} title="Reported for this task through the Pomegr MCP tool">{task.signal.label}</AgentChip>}
         </div>
-        <small>
+        {!dense && <small>
           Shell · {running && task.background ? "background · " : ""}<ExecutionTaskWallTimeText task={task} />
           {!compact && !running && task.exitCode !== null ? ` · exit code ${task.exitCode}` : ""}
-        </small>
+        </small>}
       </div>
-      {compact && <span className={`executionTaskExit${task.exitCode !== null && task.exitCode !== 0 ? " executionTaskExitError" : ""}`}>{running ? "running" : task.exitCode !== null ? `exit ${task.exitCode}` : task.status}</span>}
+      {(compact || dense) && <span className={`executionTaskExit${task.exitCode !== null && task.exitCode !== 0 ? " executionTaskExitError" : ""}`}>{dense ? <>{exitLabel} · <ExecutionTaskWallTimeText task={task} /></> : exitLabel}</span>}
     </div>
   );
 }
