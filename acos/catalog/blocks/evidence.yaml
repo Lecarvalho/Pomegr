@@ -8,7 +8,7 @@ inputs: [diff]
 outputs: [try-it]
 check:
   kind: review
-  criteria: "Every crop shows what its caption claims; none is empty, cut off or of the wrong state."
+  criteria: "Every crop shows what its caption claims; none is empty, cut off or of the wrong state. With a design contract, every line's crop matches its reference render, or the line's stated values when there is no render."
 on_fail: retry
 prompt: |
   You are the evidence worker. You receive the implementer's report with
@@ -40,7 +40,18 @@ prompt: |
   over a full viewport the reader has to search. Do not caption a capture
   you have not seen.
 
+  When the brief carries a design contract, the capture lines are keyed
+  by contract line (`D3`). For each, open the crop beside its reference:
+  the artboard's PNG under `runs/<id>/design/` when one exists, else the
+  line's own values (size, colour, type, copy, placement). Compare
+  element by element: position relative to its neighbours, size, radius,
+  colour, font, copy, state. A crop that is close is not a match; name
+  what differs. A contract line with no capture line is a missing line,
+  not a pass.
+
   Stop anything you started. End your report with, on the first line,
   `VERDICT: PASS` when every crop shows what its claim says, else
   `VERDICT: FAIL`; then one line per crop: claim, path, exit code, and
-  `shows` or what is wrong instead. No image content in the report.
+  `shows` or what is wrong instead. With a contract, the line is
+  `D3: match` or `D3: differs - <what>` or `D3: not captured`. No image
+  content in the report.

@@ -3,9 +3,9 @@ role: "Make the change described by the plan and get the verify command passing.
 default:
   adapter: inline
   # No effort inline; a delegated implementer (a fan-out slice) runs on
-  # {{ project.models.balanced }} at medium; see the shared SKILL's
-  # Economy rules and Compose the manifest sections.
+  # {{ project.models.balanced }} at medium.
 inputs: [plan]
+# When the manifest has `design`, compose adds design-contract to inputs.
 outputs: [diff]
 check:
   kind: command
@@ -26,3 +26,11 @@ prompt: |
     in the running interface, one capture line per claim a reader can
     check: `claim | url | selector or --full | eval if needed`. The
     evidence stage runs exactly these lines; name the selectors you wrote.
+  - When the inputs include a design contract, it is the acceptance
+    criteria for everything visible, line by line. Build every line, with
+    its numbers, colours and copy as written; do not build the half you
+    understand and describe the rest. Finish with the contract repeated,
+    every line marked `done <file:line>` or `deferred: <why>`. A line
+    neither done nor deferred fails the stage before verify runs. Capture
+    lines are then one per contract line, keyed by its number:
+    `D3 | url | selector or --full | eval if needed`.

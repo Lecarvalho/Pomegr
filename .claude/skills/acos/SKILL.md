@@ -1,6 +1,6 @@
 ---
 name: acos
-description: Compose an ACOS run manifest from the project's block catalog, show it, wait for GO, then execute it stage by stage. Use when the user invokes /acos, asks to "run this through acos", or the project has a .acos.yaml and the user asks for a non-trivial code change.
+description: Size a task against the project's session limits, compose an ACOS run manifest (or a plan of manifests, one per session), show it, wait for GO, then execute it without further interruptions and record what actually ran. Use when the user invokes /acos, asks to "run this through acos", or the project has a .acos.yaml and the user asks for a non-trivial code change.
 ---
 
 # ACOS runner

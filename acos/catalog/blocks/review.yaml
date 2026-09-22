@@ -4,10 +4,11 @@ default:
   adapter: subagent
   effort: high
 inputs: [plan, diff]
+# When the manifest has `design`, compose adds design-contract to inputs.
 outputs: [review]
 check:
   kind: review
-  criteria: "Diff matches the plan, no unrelated changes, no obvious defects."
+  criteria: "Diff matches the plan, no unrelated changes, no obvious defects. With a design contract, every line is done in the diff or deferred by name; none is narrowed."
 on_fail: retry
 prompt: |
   You are the reviewer. Do not modify any file.
@@ -18,5 +19,9 @@ prompt: |
     with file:line where possible.
   - Anything the plan asked for that is missing.
   - Anything changed that the plan did not ask for.
+  - With a design contract: each line marked `done` has its file:line
+    in the diff and the diff builds what the line says, numbers and copy
+    included; each `deferred` names a reason. A line built smaller,
+    approximately, or with its copy or colour changed is a blocker.
 
   FAIL only for blockers. No praise. No restating the diff.

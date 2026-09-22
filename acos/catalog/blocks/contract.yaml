@@ -1,0 +1,39 @@
+name: contract
+role: "Transcribe the design the manifest names into numbered acceptance lines, one per element and state, and copy its sources into the run."
+default:
+  adapter: inline
+  # Delegate (balanced, medium) when the design has more than three
+  # artboards or the orchestrator's budget cannot hold the sources.
+inputs: [design]
+outputs: [design-contract]
+check:
+  kind: review
+  criteria: "Every artboard and every canvas note is covered; each line names one element or state with what, where, size, colour, type and copy taken from the source markup; no line says 'as in the mockup'."
+on_fail: retry
+prompt: |
+  You are transcribing a design into a contract. Do not modify any source
+  file.
+
+  Copy every source `design.sources` names into `runs/<id>/design/`:
+  artboard `.dc.html` or `.html` files, exported PNGs, notes. A canvas URL
+  is read through the harness's artifact tool, one file per artboard plus
+  its index; record the version read in the contract's first line.
+
+  Then write `runs/<id>/artifacts/design-contract.md`. For each artboard,
+  a heading with its file name and frame size, then one numbered line per
+  element and per state that element has (idle, hover, live, settled,
+  empty, error), in reading order:
+
+      D3. <element> · <where, relative to what> · <size, spacing, radius> · <colour, type> · <copy, verbatim> · <motion, or none>
+
+  Take numbers, hex colours, font names and copy from the source markup,
+  not from the render. Use the render for placement and stacking. A
+  `data-props` tweak is a lever, not a line. A canvas note that states a
+  rule (when something appears, collapses, scales) is a line too, under
+  its own heading. Never merge two elements into one line. A reader who
+  has not seen the design must be able to build the element from its line
+  alone.
+
+  End with one line: `<n> lines across <m> artboards`. The implementer
+  ticks these lines; the evidence worker checks them; a line missing here
+  is a line nobody builds.

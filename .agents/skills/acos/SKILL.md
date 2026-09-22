@@ -124,6 +124,14 @@ These decide most of the manifest. Apply them before anything else.
 - **Effort matches the delegated stage**, not the task: a fan-out
   implementer medium, evidence low, review high. Inline stages carry
   none, and no model either.
+- **A design is a contract, not a hint.** A request that points at a
+  canvas, artboards, a mockup or exported screens gets `design:` in the
+  manifest and a `contract` stage first. The stage transcribes every
+  element and state into numbered lines; each line is a deliverable the
+  implementer ticks, the evidence worker checks against the render and
+  the reviewer reads. "Apply the visuals as in the mockup" is never a
+  brief: the lines are. A slice carrying contract lines runs its
+  implementer at high; `calibration.md` says when it needs `strong`.
 - **Workflow adapter is rare.** Three or more independent parallel stages,
   and the user has seen `adapter: workflow` in the manifest before GO.
 - **Orchestrator context is the scarce resource.** Default ceiling when
@@ -138,6 +146,13 @@ field. If the request is ambiguous in a way that changes the manifest
 question, then continue. Do not ask about anything the manifest itself
 will make visible.
 
+When the request names a design (a canvas URL, `.dc.html` or `.html`
+artboards, mockup PNGs, a folder of exported screens), record every
+source under `design.sources` now. A design mentioned later in the
+conversation, or shared mid-run, is a compose error in hindsight: stop,
+add it, and re-present. Without the sources in the manifest, no worker
+sees them.
+
 ## 2. Size the task
 
 Size in things you can count, then derive tokens from them. Never the
@@ -145,7 +160,10 @@ other way round.
 
 1. **Count.** Files the change creates or edits (tests included), lines
    changed, and deliverables (things the part must make true; each
-   sentence of acceptance is one). When the area is wide or unknown,
+   sentence of acceptance is one). With a design, run the `contract`
+   stage before counting: each contract line is a deliverable, counted
+   apart from the sentences, and a context holds about 20 of them; more
+   means slicing by artboard or by region of one. When the area is wide or unknown,
    delegate the count to a read-only worker instead of reading the tree
    yourself: the answer comes back as a page, and the budget the work
    needs survives the sizing. Compare with `limits.files` (default
@@ -327,6 +345,11 @@ Each must therefore be complete on its own: intent, scope, stages,
    placeholder with no value is a compose error: say which one and stop.
 4. Generate `id`: `YYYY-MM-DD-<short-slug-of-intent>`.
 5. Fill `scope` only if the user gave hints or it is obvious. Otherwise omit.
+   With a design, fill `design.sources` with every path or URL, and
+   `design.contract` with `runs/<id>/artifacts/design-contract.md`. The
+   first stage is `contract`; `implement`, `evidence` and `review`
+   stages gain `design-contract` in `inputs`. A fan-out slice gets only
+   the contract lines for the artboards or regions it owns.
 6. Estimate: `files`, `lines`, `calibration`, `confidence`, the
    orchestrator's startup/work/coordination/reserved/limit values, one
    worker entry per delegated stage, `aggregate_reserved_tokens`,
@@ -342,8 +365,10 @@ Each must therefore be complete on its own: intent, scope, stages,
    part of what the user approves at GO.
 
 Validate the result mentally: required fields present, enums valid,
-stage names unique, every `inputs` entry produced by an earlier stage,
-estimate within limits. An inline stage
+stage names unique, every `inputs` entry produced by an earlier stage
+(`design` is produced by the manifest's `design.sources`), estimate
+within limits. A manifest with `design` and no `contract` stage, or
+whose visible stages do not read `design-contract`, is a compose error. An inline stage
 carries no `provider`, `model` or `effort`: they are invalid there, and
 the session could not honour them anyway. If a stage needs a model or an
 effort other than the session's, delegate it. Stages that will run
@@ -471,6 +496,10 @@ On GO:
       diff file. `git diff` is the diff and the log holds the check.
    e. Run the `check`. `command`: run it, exit 0 is pass. `review`: the
       stage output's first line must be `VERDICT: PASS`. `none`: pass.
+      A stage whose inputs include `design-contract` has one more
+      condition before its own check: its report ends with the contract
+      repeated and no line left unmarked. An unmarked line is a failed
+      check; the retry prompt lists those lines and nothing else.
    f. Append a stage record to `log.yaml`: name, iteration, adapter,
       provider, model, started, ended, tokens only if the adapter
       reports them (never an estimate), check outcome, and the shortest
@@ -551,6 +580,12 @@ record.
    and the handoff repeats them. The final evidence part cannot defer
    again and must pass every carried claim. A part with no visible surface
    writes none.
+   With a design contract, the part closes only when every line is
+   `done` with a matching crop or `deferred` to a named part that
+   repeats the line; the handoff carries the deferred lines by number.
+   A `differs` line in the evidence verdict is fixed inline and
+   recaptured, like any failed crop. The design was approved before the
+   run; what differs from it is a defect, not a judgement call.
 5. Leave nothing running. A server, browser or background shell a stage
    started is stopped before the report, and anything temporary a stage
    wrote lives under `runs/<id>/` or the session's scratchpad, never in the
@@ -714,3 +749,7 @@ Refuse to overwrite an existing preset without asking.
   negotiated stage by stage; the user edits the cut by asking.
 - A manifest must run correctly in a session that has never seen this
   conversation. Everything it needs is in the file.
+- A design named in the request is transcribed into numbered lines
+  before sizing; the lines are acceptance criteria, ticked by the
+  implementer, checked against the render by evidence, read by review.
+  A part does not close on an open line.
