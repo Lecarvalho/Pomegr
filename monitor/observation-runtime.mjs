@@ -1,8 +1,7 @@
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
-import { createMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
+import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
 import { attachResourceHistory } from "./resource-history.mjs";
-import { resolveRetentionSettings } from "./store-retention.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -15,6 +14,7 @@ import { createProviderStatusObservation } from "./provider-status-observation.m
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
+import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
@@ -96,18 +96,9 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
-  const storageSettings = resolveRetentionSettings({ environment: options.environment || process.env, desktop: options.storageSettings || null });
-  // An injected checkpoint store means a test or embedded runtime; it never gets the real data-root database.
-  const monitorStoreDirectory = options.checkpointStore !== undefined || options.monitorStore === false
-    ? null
-    : path.join(resolvePomegrDataRoot(pomegrPaths), "monitor-store-v1");
-  const monitorStoreRuntime = options.monitorStoreRuntime || createMonitorStoreRuntime({
-    directory: monitorStoreDirectory,
-    settings: storageSettings,
-    now,
-  });
+  const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
-  const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, () => monitorStoreRuntime.afterCheckpointWrite());
+  const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
     now,
@@ -115,6 +106,7 @@ export function createObservationRuntime(options = {}) {
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
+  registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now });
   const historyStore = options.historyStore || new SessionHistoryStore({
     directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),
     maxSessions: options.historyMaxSessions,

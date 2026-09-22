@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
-import { boundedActivityDuration } from "../activity-events.mjs";
+import { boundedActivityDuration, boundedFileChanges } from "../activity-events.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -167,6 +167,52 @@ function mcpDetail(server, tool) {
   return boundedText([safeServer, safeTool].filter(Boolean).join(" / "), MAX_DETAIL_LENGTH);
 }
 
+const PATCH_FILE_HEADER = /^\*\*\* (Add File|Update File|Delete File|Move to):\s*(.+?)\s*$/gm;
+
+/** Structured candidates from an apply_patch body: headers only, never the diff body. */
+function patchFileChangeCandidates(patch) {
+  if (typeof patch !== "string") return [];
+  const candidates = [];
+  let current = null;
+  for (const match of patch.matchAll(PATCH_FILE_HEADER)) {
+    const action = match[1];
+    const target = match[2];
+    if (!target) { current = null; continue; }
+    if (action === "Move to") {
+      if (current && current.kind === "edited") {
+        current.previousTarget = current.target;
+        current.target = target;
+        current.kind = "moved";
+      }
+      continue;
+    }
+    current = {
+      target, kind: action === "Add File" ? "created" : action === "Delete File" ? "deleted" : "edited",
+      previousTarget: /** @type {string | undefined} */ (undefined),
+    };
+    candidates.push(current);
+  }
+  return candidates;
+}
+
+function canonicalFileChangeKind(kind) {
+  const type = typeof kind === "string" ? kind : kind?.type;
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "add") return "created";
+  if (normalized === "update") return "edited";
+  if (normalized === "delete") return "deleted";
+  return null;
+}
+
+/** Structured candidates from canonical app-server fileChange items: add/update/delete only. */
+function canonicalFileChangeCandidates(changes) {
+  return (Array.isArray(changes) ? changes : []).flatMap((change) => {
+    const target = typeof change?.path === "string" ? change.path : null;
+    const kind = canonicalFileChangeKind(change?.kind);
+    return target && kind ? [{ target, kind }] : [];
+  });
+}
+
 function functionDescriptor(name, input, namespace = "") {
   const normalized = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const collaboration = collaborationTool(name);
@@ -180,7 +226,10 @@ function functionDescriptor(name, input, namespace = "") {
       ? [...patch.matchAll(/^\*\*\* (?:Update|Add|Delete) File:\s*(.+?)\s*$/gm)].map((match) => match[1])
       : [];
     const detail = paths.length === 1 ? safeBasename(paths[0]) : paths.length > 1 ? `${safeBasename(paths[0])} +${paths.length - 1}` : "File change";
-    return { tool: "File change", detail, repetitionInput: { patch }, mutationInput: { tool: "apply_patch", input: { patch } }, mutationPaths: paths };
+    return {
+      tool: "File change", detail, repetitionInput: { patch }, mutationInput: { tool: "apply_patch", input: { patch } }, mutationPaths: paths,
+      fileChangeCandidates: patchFileChangeCandidates(patch),
+    };
   }
   if (normalized === "requestuserinput") {
     return { tool: "Request input", detail: "User input", repetitionInput: input, mutationInput: null };
@@ -218,7 +267,10 @@ function canonicalDescriptor(item) {
     const changes = Array.isArray(item.changes) ? item.changes : [];
     const paths = changes.map((change) => change?.path).filter((value) => typeof value === "string");
     const detail = paths.length === 1 ? safeBasename(paths[0]) : paths.length > 1 ? `${safeBasename(paths[0])} +${paths.length - 1}` : "File change";
-    return { tool: "File change", detail, repetitionInput: { changes }, mutationInput: { tool: "fileChange", input: { changes } }, mutationPaths: paths };
+    return {
+      tool: "File change", detail, repetitionInput: { changes }, mutationInput: { tool: "fileChange", input: { changes } }, mutationPaths: paths,
+      fileChangeCandidates: canonicalFileChangeCandidates(changes),
+    };
   }
   if (item.type === "mcpToolCall") return {
     tool: "MCP",
@@ -367,6 +419,10 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     requestId: null,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
     mutation: mutationEvidence(descriptor),
+    // Private working field: raw candidates awaiting the finalized status
+    // that decides fileChanges. Sealed away by sealCodexFileChanges before
+    // any call crosses this module's boundary.
+    fileChangeCandidates: descriptor.fileChangeCandidates || null,
   };
 }
 
@@ -396,6 +452,11 @@ export function mergeCodexToolCalls(callGroups) {
       timestamp: nextTimestamp,
       durationMs: call.durationMs ?? previous.durationMs ?? null,
       requestId: null,
+      // Already-sealed sources (a sealed call never carries fileChangeCandidates)
+      // may still disagree on fileChanges; prefer whichever observation has it.
+      ...(Object.hasOwn(call, "fileChanges") || Object.hasOwn(previous, "fileChanges")
+        ? { fileChanges: call.fileChanges || previous.fileChanges || null }
+        : {}),
     });
   }
   return [...calls.values()].sort((left, right) => (
@@ -403,8 +464,27 @@ export function mergeCodexToolCalls(callGroups) {
   ));
 }
 
+/**
+ * Convert a call's raw fileChangeCandidates into checkpointed fileChanges
+ * once its status is truly final, and strip the private working field so it
+ * never reaches evidence.toolCalls (the schema is strict).
+ */
+/** @param {{ cwd?: string, forbiddenRoots?: string[] }} [options] */
+function sealCodexFileChanges(call, status, options = {}) {
+  const { cwd, forbiddenRoots = [] } = options;
+  const { fileChangeCandidates, ...sealed } = call;
+  return {
+    ...sealed,
+    status,
+    fileChanges: status === "completed" && fileChangeCandidates?.length
+      ? boundedFileChanges(fileChangeCandidates, cwd, { forbiddenRoots })
+      : null,
+  };
+}
+
 export function parseCodexCanonicalTurns(turns, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
+  const { cwd, forbiddenRoots = [] } = options;
   const calls = [];
   for (const [turnIndex, turn] of (Array.isArray(turns) ? turns : []).entries()) {
     const turnStartedAt = codexTimestamp(turn?.startedAt) || options.fallbackTimestamp;
@@ -424,7 +504,7 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
       }));
     }
   }
-  return mergeCodexToolCalls([calls]);
+  return mergeCodexToolCalls([calls]).map((call) => sealCodexFileChanges(call, call.status, { cwd, forbiddenRoots }));
 }
 
 /** Normalize delivered assistant text from legacy and streamed rollout records. */
@@ -492,6 +572,7 @@ function outputStatus(payload) {
 export function parseCodexActivityRecords(records, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   const sourceKey = boundedText(options.sourceKey, 160) || actor.id;
+  const { cwd, forbiddenRoots = [] } = options;
   const calls = [];
   const updates = new Map();
   for (const [order, record] of (Array.isArray(records) ? records : []).entries()) {
@@ -540,11 +621,8 @@ export function parseCodexActivityRecords(records, options = {}) {
   }
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
-    return update ? {
-      ...call,
-      status: update.status,
-      durationMs: boundedActivityDuration(call.timestamp, update.timestamp),
-    } : call;
+    const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots });
+    return update ? { ...sealed, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : sealed;
   });
 }
 

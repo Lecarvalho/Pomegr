@@ -458,6 +458,53 @@ export async function readGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   };
 }
 
+const COMMIT_HASH = /^[0-9a-f]{40}$/iu;
+const RENAME_STATUS = /^R\d*$/u;
+const MAX_RENAMES = 512;
+
+function parseRenameRecords(output, root, forbiddenRoots) {
+  if (!output) return [];
+  const fields = output.split("\u0000").filter((field) => field.length > 0);
+  const renames = [];
+  let index = 0;
+  while (index < fields.length && renames.length < MAX_RENAMES) {
+    const status = fields[index];
+    if (RENAME_STATUS.test(status)) {
+      const from = fields[index + 1];
+      const to = fields[index + 2];
+      index += 3;
+      if (typeof from === "string" && typeof to === "string") {
+        const safeFrom = repositoryRelativePath(from, root, { forbiddenRoots });
+        const safeTo = repositoryRelativePath(to, root, { forbiddenRoots });
+        if (safeFrom && safeTo) renames.push({ from: safeFrom, to: safeTo });
+      }
+    } else {
+      // A non-rename status field is followed by exactly one path.
+      index += 2;
+    }
+  }
+  return renames;
+}
+
+/**
+ * Reads Git-only rename continuity for the file-change index: the current HEAD plus
+ * renames detected between `sinceHead` and HEAD (or, with no `sinceHead`, uncommitted
+ * working-tree renames against HEAD). Every path is validated with the same repository-
+ * relative validator the rest of the monitor uses; an invalid or cross-root candidate is
+ * dropped rather than surfaced. Never throws: a Git failure yields an empty result.
+ */
+export async function readGitRenamesAsync(root, { sinceHead, forbiddenRoots = [] } = {}) {
+  if (typeof root !== "string" || root.length === 0 || !path.isAbsolute(root)) return { head: "", renames: [] };
+  const head = (await tryGitAsync(root, ["rev-parse", "HEAD"], 5_000)).trim();
+  if (!COMMIT_HASH.test(head)) return { head: "", renames: [] };
+  const validSince = typeof sinceHead === "string" && COMMIT_HASH.test(sinceHead) ? sinceHead : null;
+  const args = validSince
+    ? ["diff", "--name-status", "-M", "-z", validSince, "HEAD"]
+    : ["diff", "--name-status", "-M", "-z", "HEAD"];
+  const output = await tryGitAsync(root, args, 10_000);
+  return { head, renames: parseRenameRecords(output, root, Array.isArray(forbiddenRoots) ? forbiddenRoots : []) };
+}
+
 process.once("exit", () => {
   if (remoteCacheRoot) {
     try { fs.rmSync(remoteCacheRoot, { recursive: true, force: true }); } catch { /* Temporary cache cleanup is best-effort. */ }
