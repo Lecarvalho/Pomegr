@@ -337,7 +337,52 @@ The normalized `metrics.resources` value exposes:
 - **Memory** — current summed working set and the highest working set observed by Pomegr during the current ownership window
 - **Disk I/O** — recent process-tree read and write transfer rates in bytes per second
 
-The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`, and resource data is excluded from persistence, generated reports, Flow score, efficiency signals, and recommendations.
+The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`; the bounded resource-history persistence described below is a separate committed record, and resource data of both kinds remains excluded from generated reports, Flow score, efficiency signals, and recommendations.
+
+### Resource history
+
+Pomegr persists a bounded history derived from the same in-memory sampler, on its own
+checkpoint cadence, never during a GET. Per session and per field (CPU cores, CPU machine
+percent, memory bytes, read bytes per second, write bytes per second), it keeps one row
+per minute with the minimum, average, and maximum of that minute's non-null samples, plus
+the exact sample timestamp of the maximum; a minute with no non-null value in any field is
+not written. Each field's per-minute maximum is a candidate peak, and Pomegr retains the
+top ten peaks per session per field by value, with the earlier peak kept on ties. Around each
+retained peak it also keeps the raw in-memory samples from two minutes before to two
+minutes after the peak's observation, so a peak can be zoomed to full resolution. Falling
+out of the top ten removes a peak's raw sample window along with it.
+
+Retention follows the storage settings: past the configured retention age (30, 90, 180,
+365 days, or keep all; default 90), Pomegr drops a session's per-minute rows and peak
+sample windows, but keeps its retained peaks for as long as the session remains in the
+catalog. Independently, a soft size-cleanup threshold prunes the oldest sessions' per-minute
+rows and sample windows first when the store grows past it; peaks and file changes are
+never deleted to enforce that threshold. Neither rule ever runs synchronously in a GET.
+
+**Peak-to-task and peak-to-request association.** Each retained peak carries a deterministic
+match against that session's normalized execution tasks, recomputed as later evidence
+arrives: a task's interval is `[startedAtMs, finishedAtMs]`, or `[startedAtMs,
+latestObservationMs]` while the task is still unfinished (an unfinished task with no later
+observation, or one no later than its start, does not match anything). A task matches the
+peak when its interval and the peak's measurement window share any instant, including a
+touching endpoint. The peak's matched task IDs are every matching task's ID, deduplicated
+and sorted, capped at 20. The peak links a request number only when at least one task
+matches and every matching task before that cap resolves to the same request; any
+disagreement, or no matching task carrying a request at all, leaves the request link empty.
+Usage-observation timestamps are never part of this matching and cannot by themselves give
+a request an execution interval. The monitor does not yet resolve request numbers when it
+records peaks, so every persisted peak currently carries an empty request link.
+
+This association is temporal coincidence between a session's process-tree aggregate measurement and
+the tasks or request that happened to be running at the same time, never a measurement of
+which task or request caused the resource use, and never per-task or per-request resource
+attribution. A request link appears only when it is unambiguous under the rule above; an
+absent link means the evidence did not resolve one, not that no work was happening.
+Persisted rows carry only the normalized session ID, the field enum, timestamps, numeric
+values, matched task IDs, and an optional matched request number — never PIDs, process
+identities, paths, command text, labels, or other raw evidence. Resource history, like live
+resource use, stays out of generated reports, Flow score, efficiency signals, and
+recommendations.
 
 ## Context machinery snapshot
 

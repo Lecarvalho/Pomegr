@@ -1,6 +1,7 @@
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { createMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
+import { attachResourceHistory } from "./resource-history.mjs";
 import { resolveRetentionSettings } from "./store-retention.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
@@ -105,6 +106,7 @@ export function createObservationRuntime(options = {}) {
     settings: storageSettings,
     now,
   });
+  const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
   const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, () => monitorStoreRuntime.afterCheckpointWrite());
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
@@ -352,7 +354,7 @@ export function createObservationRuntime(options = {}) {
     const refresh = registry.inspectSessions()
       .then(async (inspected) => {
         const resourceTargets = inspected.resourceTargets || [];
-        await resourceUsageSampler.sample(resourceTargets);
+        await resourceHistory.sampleAndSchedule(resourceTargets);
         for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
       })
       .catch(() => {})

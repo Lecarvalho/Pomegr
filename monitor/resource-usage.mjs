@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 const DEFAULT_INTERVAL_MS = 5_000;
-const DEFAULT_WINDOW_MS = 15 * 60_000;
+const DEFAULT_WINDOW_MS = 30 * 60_000;
 const MAX_SNAPSHOT_BYTES = 16 * 1024 * 1024;
 const WINDOWS_FILETIME_EPOCH = 116_444_736_000_000_000n;
 const ISO_TIMESTAMP = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,7}))?(Z|[+-]\d{2}:\d{2})$/;
@@ -432,6 +432,22 @@ export function createResourceUsageSampler(options = {}) {
 
     get(sessionId) {
       return activeSessionIds.has(sessionId) ? publicState(states.get(sessionId)) : null;
+    },
+
+    /**
+     * Bounded, non-destructive read of retained samples for a currently tracked (active)
+     * session, strictly newer than `sinceMs`. Returns `[]` for an inactive/unknown session.
+     * Gap samples (all measurement fields null) are included; callers skip null fields
+     * during aggregation rather than treating a gap as a session with no samples.
+     */
+    samplesSince(sessionId, sinceMs) {
+      if (!activeSessionIds.has(sessionId)) return [];
+      const state = states.get(sessionId);
+      if (!state) return [];
+      const cutoff = Number.isFinite(sinceMs) ? sinceMs : Number.NEGATIVE_INFINITY;
+      return state.samples
+        .filter((sample) => Date.parse(sample.timestamp) > cutoff)
+        .map((sample) => ({ ...sample }));
     },
 
     clear(sessionId) {
