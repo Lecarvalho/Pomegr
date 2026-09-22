@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsPage } from "../../app/settings/SettingsPage";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
+import { StorageUsageBar } from "../../app/settings/StorageSettings";
+import type { StorageSnapshot } from "../../shared/storage-contract";
 
 const styleEntry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
 const styles = [...styleEntry.matchAll(/@import "\.\/(.+?\.css)";/g)]
@@ -249,5 +251,36 @@ describe("Pomegr visual contract", () => {
     expect(commandPageSource).toMatch(/<span className="commandChip">Coming soon<\/span>/);
     expect(commandPageSource).not.toMatch(/commandBadge/);
     expect(styles).toMatch(/\.commandSettingsPane \.commandComingSoon h2\s*\{\s*margin-top:\s*8px/);
+  });
+
+  it("keeps the storage usage meter informational, clamped, and honest about unavailable evidence", () => {
+    expect(designContract).toMatch(/always present in desktop, browser, and paired LAN/);
+    expect(designContract).toMatch(/`role="meter"`/);
+    expect(designContract).toMatch(/informational\s*only, never focusable and never a slider/);
+    expect(designContract).toMatch(/never renders `0%` for\s*missing evidence/);
+    expect(designContract).toMatch(/\*\*Storage usage\s*unavailable\*\*/);
+    expect(designContract).toMatch(/\*\*Cleanup pending\*\*/);
+    expect(designContract).toMatch(/\*\*Preserved history exceeds the cleanup threshold\.\*\*/);
+
+    expect(styles).toMatch(/\.storageUsageTrack\s*\{[^}]*background:\s*var\(--command-panel-2\)/);
+    expect(styles).toMatch(/\.storageUsageTrack > b\s*\{[^}]*background:\s*var\(--command-muted\)/);
+    expect(styles).toMatch(/\.storageSettingsPanel\s*\{[^}]*border-radius:\s*var\(--panel-radius\)/);
+    expect(styles).toMatch(/\.storageSettingsPanel \.commandSettingRow\s*\{[^}]*padding:\s*14px 16px/);
+    expect(styles).not.toMatch(/\.storageUsage[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
+
+    const ordinary: StorageSnapshot = { revision: 1, readiness: "ready", databaseBytes: 380 * 1024 * 1024, thresholdBytes: 500 * 1024 * 1024, percent: 76, oldestRetainedDay: null, lastPrunedAt: null, retentionDays: 90, cleanupStatus: "normal" };
+    const { rerender, container } = render(<StorageUsageBar snapshot={ordinary} />);
+    expect(screen.getByText("380 MB / 500 MB · 76%")).toBeInTheDocument();
+    expect(screen.getByRole("meter")).toHaveAttribute("aria-valuenow", "76");
+
+    const over = { ...ordinary, databaseBytes: 550 * 1024 * 1024, percent: 110, cleanupStatus: "cleanup_pending" as const };
+    rerender(<StorageUsageBar snapshot={over} />);
+    expect(screen.getByText("550 MB / 500 MB · 110%")).toBeInTheDocument();
+    expect(screen.getByRole("meter")).toHaveAttribute("aria-valuenow", "100");
+    expect(screen.getByRole("status")).toHaveTextContent("Cleanup pending");
+
+    rerender(<StorageUsageBar snapshot={null} />);
+    expect(screen.queryByRole("meter")).not.toBeInTheDocument();
+    expect(container.querySelector(".storageUsageText")?.textContent).toBe("Storage usage unavailable");
   });
 });

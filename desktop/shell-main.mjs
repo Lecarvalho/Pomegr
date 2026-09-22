@@ -42,6 +42,7 @@ import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
 import { createProviderSettingsController, installProviderSettingsIpc, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
+import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
   createNeedsInputNotificationController,
@@ -112,6 +113,8 @@ let phoneAccess;
 let removePhoneAccessIpc;
 let providerSettingsController;
 let removeProviderSettingsIpc;
+let storageSettingsController;
+let removeStorageSettingsIpc;
 const nativeNotifications = new Set();
 const recordStage = (stage) => { recordShellStage(process.env, stage); };
 
@@ -416,6 +419,9 @@ async function stopRuntime() {
     removeProviderSettingsIpc?.();
     removeProviderSettingsIpc = undefined;
     providerSettingsController?.dispose();
+    removeStorageSettingsIpc?.();
+    removeStorageSettingsIpc = undefined;
+    storageSettingsController?.dispose();
     removePhoneAccessIpc?.();
     removePhoneAccessIpc = undefined;
     try { await withDeadline(phoneAccess?.dispose(), STOP_TIMEOUT_MS, "DESKTOP_PHONE_STOP_TIMEOUT"); } catch { /* Other services still stop. */ }
@@ -488,6 +494,17 @@ async function startDesktop() {
     if (value) launchEnvironment[key] = value;
   }
   const providerEnvironment = providerSettingsEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
+  async function restartApp() {
+    persistCurrentWindowState();
+    try {
+      await restartProviderSettingsApp({ application: app, stopRuntime,
+        environment: { ...minimalRuntimeEnvironment(process.env), ...launchEnvironment },
+        executable: launchEnvironment.PORTABLE_EXECUTABLE_FILE || process.execPath });
+    } catch {
+      await showStartupError();
+      throw new Error("DESKTOP_RESTART_FAILED");
+    }
+  }
   claudeSignIn = createClaudeSignInAction({
     environment: providerEnvironment,
     nativeEnvironment: nativeClaudeEnvironment(providerEnvironment),
@@ -502,17 +519,15 @@ async function startDesktop() {
     chooseDirectory: (options) => dialog.showOpenDialog(mainWindow, options),
     confirm: async (options) => (await dialog.showMessageBox(mainWindow, options)).response === 1,
     persist: (providerFolders) => queueSettingsUpdate((current) => ({ ...current, providerFolders })),
-    restart: async () => {
-      persistCurrentWindowState();
-      try {
-        await restartProviderSettingsApp({ application: app, stopRuntime,
-          environment: { ...minimalRuntimeEnvironment(process.env), ...launchEnvironment },
-          executable: launchEnvironment.PORTABLE_EXECUTABLE_FILE || process.execPath });
-      } catch {
-        await showStartupError();
-        throw new Error("DESKTOP_RESTART_FAILED");
-      }
-    },
+    restart: restartApp,
+  });
+  storageSettingsController = createStorageSettingsController({
+    storage: desktopSettings.storage,
+    environment: launchEnvironment,
+    canPersist: settingsLoad.canPersist,
+    confirm: async (options) => (await dialog.showMessageBox(mainWindow, options)).response === 1,
+    persist: (storage) => queueSettingsUpdate((current) => ({ ...current, storage })),
+    restart: restartApp,
   });
   const bridgePath = path.join(desktopPaths.unpackedRoot, "desktop", "workers", "claude-statusline-bridge.cjs");
   const usageShells = process.platform === "win32" ? resolveClaudeUsageShells(process.env) : null;
@@ -533,7 +548,7 @@ async function startDesktop() {
     showSaveDialog: (options) => dialog.showSaveDialog(mainWindow, options),
     writeFile,
   }));
-  let privateEnvironment = monitorPrivateEnvironment(providerEnvironment, {
+  let privateEnvironment = monitorPrivateEnvironment(storageSettingsEnvironment(providerEnvironment, desktopSettings.storage), {
     pomegrDataRoot: desktopPaths.dataRoot,
   });
   runtimeState = "starting";
@@ -615,7 +630,7 @@ async function startDesktop() {
           settings: desktopSettings,
           canPersist: settingsLoad.canPersist,
           launchAtLoginAvailable: desktopPaths.mode === "installed",
-          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window, lanSharingAutoStart: current.lanSharingAutoStart, providerFolders: current.providerFolders })),
+          saveSettings: (next) => queueSettingsUpdate((current) => ({ ...next, window: current.window, lanSharingAutoStart: current.lanSharingAutoStart, providerFolders: current.providerFolders, storage: current.storage })),
           setLoginItem: async (openAtLogin) => app.setLoginItemSettings({ openAtLogin, path: process.execPath, args: [] }),
           hideWindow: () => mainWindow?.hide(),
           showWindow: showShellWindow,
@@ -656,6 +671,7 @@ async function startDesktop() {
         startOptionalTray();
         installDesktopBehaviorIpc();
         removeProviderSettingsIpc = installProviderSettingsIpc({ ipcMain, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame, controller: providerSettingsController });
+        removeStorageSettingsIpc = installStorageSettingsIpc({ ipcMain, isTrustedEvent: (event) => trustedDesktopEvent(event) && event.senderFrame === mainWindow.webContents.mainFrame, controller: storageSettingsController });
         installClaudeSignInIpc();
         removeClaudeUsageIpc = installClaudeUsageIntegrationIpc({ ipcMain, isTrustedEvent: trustedDesktopEvent, integration: claudeUsageIntegration });
         removeRepositoryInventoryIpc = installRepositoryInventoryCaptureIpc({

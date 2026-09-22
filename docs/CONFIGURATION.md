@@ -29,9 +29,26 @@ Closing to the tray leaves local observation running. Click the tray icon, use *
 
 Installed state is stored in Electron's per-user application-data directory for Pomegr (normally beneath `%APPDATA%`). `POMEGR_DATA_DIR` is an advanced override that redirects Pomegr-owned state when set before launch. Portable state is always `PomegrData` beside the portable executable.
 
-Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, launch-at-login, notification, update, and phone-sharing startup booleans, plus the three private provider-folder overrides described below. Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
+Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, launch-at-login, notification, update, and phone-sharing startup booleans, plus the three private provider-folder overrides described below and the two storage retention/cleanup overrides described in [Storage settings](#storage-settings). Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
 Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
+
+## Storage settings
+
+Pomegr periodically prunes its own resource-history SQLite store by age and by a soft
+size threshold. Pruning only ages out or trims `resource_minutes` and
+`resource_peak_samples` rows; it never removes sessions, transcripts, checkpoints,
+file history, or recorded peaks.
+
+In the desktop app, open **Settings → Storage** to choose **Retention age** (30, 90,
+180, 365 days, or Keep all) and **Resource history cleanup threshold** (250 MB, 500 MB,
+1 GB, or 2 GB). Selecting **Save and restart Pomegr** shows the resolved values in a
+native confirmation. Saved desktop values win over the matching environment variables
+below once saved; the monitor applies either source only on its next start and prune
+cycle, never synchronously from a settings change or a browser request. Source-development
+launches and any field left unset in the desktop app continue to use the `POMEGR_RETENTION_DAYS`
+and `POMEGR_STORE_MAX_MB` environment variables below; an unset, malformed, or
+out-of-range value for either one falls back to its default.
 
 ## Provider setup
 
@@ -247,6 +264,8 @@ Unavailable features are capability-gated and omitted. A missing value is not re
 | `POMEGR_DATA_DIR` | Desktop and monitor | Override Pomegr-owned settings/snapshot root | `%APPDATA%\pomegr` on Windows |
 | `POMEGR_COST_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized Claude estimate snapshots | `%APPDATA%\pomegr\cost-snapshots` on Windows |
 | `POMEGR_USAGE_SNAPSHOTS_DIR` | Monitor and Claude status-line bridge | Sanitized local usage pair | `usage-snapshots` beneath Pomegr's data root |
+| `POMEGR_RETENTION_DAYS` | Monitor | Resource-history retention age: `30`, `90`, `180`, `365`, or `all` to keep every session | `90` |
+| `POMEGR_STORE_MAX_MB` | Monitor | Soft size threshold that triggers pruning the oldest resource history first: `250`, `500`, `1024`, or `2048` | `500` |
 | `SESSION_PULSE_PORT` | Monitor and development launcher | Loopback monitor port | `4317` |
 
 Do not point provider roots at a browser-served directory. Do not place OAuth tokens, auth-file contents, transcripts, or environment dumps in Pomegr configuration.

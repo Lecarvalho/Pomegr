@@ -53,6 +53,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/shell-stage.mjs",
   "desktop/settings.mjs",
   "desktop/provider-settings.mjs",
+  "desktop/storage-settings.mjs",
   "desktop/shell-main.mjs",
   "desktop/shell-orchestrator.mjs",
   "desktop/startup-error.mjs",

@@ -2,11 +2,13 @@
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
+import type { StorageSnapshot } from "../../../shared/storage-contract";
 import { AgentChip } from "../AgentChip";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
 import { RepositoryRow } from "../repositories/RepositoryRow";
+import { StorageUsageBar } from "../../settings/StorageSettings";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
 import { WorkKindIcon } from "../WorkKindIcon";
 import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
@@ -50,6 +52,7 @@ export function DesignSystemView() {
     <ButtonsSection />
     <FormFieldsSection />
     <ShellSection />
+    <StorageUsageSection />
     <RoleFamilySection />
     <RequestChartsSection />
     <ChipsSection />
@@ -282,6 +285,26 @@ function ShellSection() {
       <CommandPageHeader breadcrumb={<><a href="#shell">Repositories</a><CommandBreadcrumbSeparator /><span aria-current="page">pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
     </div>
     <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 5-hour</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · Weekly</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
+  </Section>;
+}
+
+const STORAGE_SAMPLE_BASE: StorageSnapshot = {
+  revision: 1, readiness: "ready", databaseBytes: 380 * 1024 * 1024, thresholdBytes: 500 * 1024 * 1024, percent: 76,
+  oldestRetainedDay: "2026-06-14", lastPrunedAt: null, retentionDays: 90, cleanupStatus: "normal",
+};
+const STORAGE_SAMPLE_ORDINARY: StorageSnapshot = STORAGE_SAMPLE_BASE;
+const STORAGE_SAMPLE_FULL: StorageSnapshot = { ...STORAGE_SAMPLE_BASE, databaseBytes: 500 * 1024 * 1024, percent: 100 };
+const STORAGE_SAMPLE_OVER: StorageSnapshot = { ...STORAGE_SAMPLE_BASE, databaseBytes: 550 * 1024 * 1024, percent: 110, cleanupStatus: "cleanup_pending" };
+const STORAGE_SAMPLE_UNAVAILABLE: StorageSnapshot = { ...STORAGE_SAMPLE_BASE, readiness: "unavailable", databaseBytes: null, percent: null, cleanupStatus: null };
+
+function StorageUsageSection() {
+  return <Section id="storage-usage" title="Storage usage" lede="StorageUsageBar (.storageUsageBar): an informational role=meter with a clamped 0-100% fill, real percentage text even over 100%, and an honest unavailable state that never reads 0%.">
+    <div className="designSystemGrid">
+      <Sample label="Ordinary"><StorageUsageBar snapshot={STORAGE_SAMPLE_ORDINARY} /></Sample>
+      <Sample label="100%"><StorageUsageBar snapshot={STORAGE_SAMPLE_FULL} /></Sample>
+      <Sample label="Over threshold"><StorageUsageBar snapshot={STORAGE_SAMPLE_OVER} /></Sample>
+      <Sample label="Unavailable"><StorageUsageBar snapshot={STORAGE_SAMPLE_UNAVAILABLE} /></Sample>
+    </div>
   </Section>;
 }
 
