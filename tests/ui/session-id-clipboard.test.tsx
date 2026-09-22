@@ -6,6 +6,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 import { Dashboard } from "../../app/Dashboard";
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { resetSessionDomainStoreForTests } from "../../app/session-domain-store";
 import { sessionSummaryFixture } from "./session-summary-test-fixture";
@@ -23,7 +24,7 @@ describe("session ID copy", () => {
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     try {
-      render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={summary.sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+      render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={summary.sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
       const chip = await screen.findByRole("button", { name: "3f2b9…b9c0d" });
       expect(chip).toHaveClass("commandChip", "sessionIdChip");
       expect(chip).toHaveAttribute("title", "Copy session ID 3f2b9c1e-7a4d-4e8b-9c21-5d6f7a8b9c0d");

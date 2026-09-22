@@ -80,9 +80,6 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .sessionProgressReportRow strong { flex: 0 1 auto; color: var(--amber); font: inherit; text-align: right; }
 .sessionProgressNote { margin: 0; padding: 0 20px 13px; color: var(--muted); font-size: var(--text-xs); line-height: 1.45; }
 .sessionProgressStale { border-color: color-mix(in srgb, var(--amber) 48%, var(--line)); }
-.awaitingSession { min-height: 430px; max-width: 720px; flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 52px 0 70px; }
-.awaitingSession h1 { margin: 0 0 14px; font: 400 clamp(38px, 4.5vw, 58px)/1.03 var(--font-inter), sans-serif; letter-spacing: -.04em; }
-.awaitingSession p { max-width: 58ch; margin: 0; color: var(--muted); font-size: var(--text-base); line-height: 1.6; }
 /* Release the reveal transform/filter so fixed mobile popovers stay viewport-relative. */
 .sessionView { animation: sessionReveal .18s cubic-bezier(.22, 1, .36, 1); }
 @keyframes sessionReveal { from { opacity: .72; transform: translateY(3px); filter: blur(1.5px); } to { opacity: 1; transform: translateY(0); filter: blur(0); } }
@@ -157,35 +154,8 @@ html[data-theme="dark"] .sunIcon { display: block; }
   .agentPopoverActions { gap: 6px; }
   .agentPopoverActions .copyTranscriptButton, .agentPopoverActions .closeButton { width: 44px; height: 44px; }
 }
-.cacheEvidenceHeader h3 { margin: 0; font-size: var(--text-sm); font-weight: 610; line-height: 1.2; }
-.cacheEvidenceHeader p { max-width: 68ch; margin: 6px 0 0; color: var(--muted); font-size: var(--text-xs); line-height: 1.45; }
 .contextScopeControl { width: min(250px, 34vw); flex: 0 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 6px; }
 .contextScopeControl > span:first-child { color: var(--muted); font-size: var(--text-xs); font-weight: 560; }
-.cacheEvidenceExpand { min-height: 36px; margin-inline-start: auto; padding: 0 10px; border: 1px solid var(--line-strong); background: var(--panel-2); color: var(--ink); cursor: pointer; font-size: var(--text-xs); font-weight: 560; }
-.cacheEvidenceSection { border-top: 1px solid var(--line); }
-.cacheEvidenceHeader { min-width: 0; padding: 14px 21px 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-.cacheEvidenceHeader > div { min-width: 0; }
-.cacheEvidenceHeader > span { flex: 0 0 auto; color: var(--muted); font-size: var(--text-xs); }
-.cacheEvidenceState { min-height: 76px; margin: 0; padding: 20px 21px; border-top: 1px solid var(--line); display: flex; align-items: center; color: var(--muted); font-size: var(--text-xs); }
-.cacheEvidenceExpand { min-height: 36px; width: calc(100% - 42px); margin: 0 21px 8px; text-align: left; }
-.cacheEvidenceList { margin: 0; padding: 0; border-top: 1px solid var(--line); list-style: none; }
-.cacheEvidenceItem { border-bottom: 1px solid var(--line); }
-.cacheEvidenceItem:last-child { border-bottom: 0; }
-.cacheEvidenceRow { --cache-event-color: var(--amber); min-width: 0; min-height: 48px; padding: 8px 21px; display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; align-items: center; gap: 10px; outline: none; transition: background-color 120ms ease, box-shadow 120ms ease; }
-.cacheEvidenceRow.reuse { --cache-event-color: var(--green); }
-.cacheEvidenceRow.miss_refill { --cache-event-color: var(--brand); }
-.cacheEvidenceRow.interactive { cursor: pointer; }
-.cacheEvidenceRow.interactive:hover, .cacheEvidenceRow.active { background: color-mix(in srgb, var(--cache-event-color) 7%, transparent); }
-.cacheEvidenceRow.active { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cache-event-color) 48%, transparent); }
-.cacheEvidenceRow.interactive:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
-.cacheEvidenceMark { width: 20px; height: 20px; display: grid; place-items: center; border: 1px solid var(--line-strong); color: var(--amber); }
-.cacheEvidenceRow.reuse .cacheEvidenceMark { color: var(--green); }
-.cacheEvidenceMark svg { width: 12px; height: 12px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; stroke-linejoin: miter; vector-effect: non-scaling-stroke; }
-.cacheEvidenceBody { min-width: 0; display: flex; align-items: baseline; gap: 7px; }
-.cacheEvidenceBody strong { flex: 0 0 auto; min-width: 0; font-size: var(--text-xs); font-weight: 610; white-space: nowrap; }
-.cacheEvidenceBody span { min-width: 0; flex: 1 1 auto; overflow: hidden; color: var(--muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
-.cacheEvidencePercent { color: var(--muted); font-size: var(--text-xs); white-space: nowrap; }
-.cacheEvidencePercent strong { color: var(--ink); font: 520 var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
 .cachePanel { position: relative; margin-bottom: 12px; min-height: 96px; display: grid; grid-template-columns: minmax(220px, .75fr) minmax(0, 1.25fr); overflow: visible; }.cachePanel.machineryPopoverOpen { z-index: 12; }
 .cacheLead { padding: 18px 21px; border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; }
 .cacheLead h2 { margin: 0 0 5px; font: 400 18px/1.1 var(--font-inter), sans-serif; }.cacheLead p { margin: 0; color: var(--muted); font-size: var(--text-xs); }
@@ -383,10 +353,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .cachePanel { grid-template-columns: 1fr; }.cacheLead, .machineryStat { grid-column: 1 / -1; }.cacheLead { border-right: 0; border-bottom: 1px solid var(--line); }.machineryStat { position: relative; border-right: 0; }.machineryPopover { left: 50%; width: calc(100vw - 54px); transform: translateX(-50%); }
   .machineryMeta { align-items: flex-start; flex-direction: column; gap: 5px; }.machineryMeta > span { margin-right: 0; }.machineryAllocation, .machineryCategories, .machineryGroups { grid-template-columns: 1fr; }.machineryAllocation > div + div { border-top: 1px solid var(--line); border-left: 0; }.machineryCategory { border-right: 0; border-bottom: 1px solid var(--line); }.machineryCategory:last-child { border-bottom: 0; }.machineryGroup { border-right: 0; }
   .contextScopeControl { width: 100%; grid-template-columns: 42px minmax(0, 1fr); }
-  .cacheEvidenceHeader { padding: 13px 14px 11px; }
-  .cacheEvidenceExpand { width: calc(100% - 28px); margin-right: 14px; margin-left: 14px; }
-  .cacheEvidenceRow { min-height: 48px; padding: 8px 14px; grid-template-columns: 22px minmax(0, 1fr) auto; }
-  .cacheEvidenceState { padding-right: 14px; padding-left: 14px; }
   .displayPreferenceList { padding: 0 20px; }.displayPreferenceRow { min-height: 112px; gap: 18px; }.displayPreferenceRow label span { font-size: var(--text-xs); }
   .pullRequestPopover { position: fixed; top: auto; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100vh - 28px); border-radius: var(--panel-radius); box-shadow: 0 24px 70px rgba(25,32,29,.28); }.pullRequestList { max-height: min(58vh, 420px); }.pullRequestRow { grid-template-columns: 36px minmax(0, 1fr); }.pullRequestTitle { align-items: flex-start; flex-direction: column; gap: 5px; }.pullRequestTitle strong { overflow: visible; white-space: normal; text-overflow: clip; line-height: 1.35; }.pullRequestStats { grid-column: 2; display: flex; justify-content: flex-start; min-width: 0; }.pullRequestStats i { margin: 0 0 0 auto; }
   .dashboardDisclosurePanel > summary { grid-template-columns: 24px minmax(0, 1fr); padding: 14px; }
@@ -429,7 +395,6 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .displayPreferenceRow input,
   .displayPreferenceRow input::after,
   .limitTrack i,
-  .cacheEvidenceRow,
   .machineryPopoverTrigger span,
   .dashboardDisclosureIconVertical,
   .dashboardDisclosureTitle,
@@ -450,16 +415,6 @@ html[data-theme="dark"] .closeButton:hover { border-color: var(--line-strong); b
 @keyframes pomegrSkeletonPulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 .sessionView-loading { min-width: 0; }
 .sessionLoadingStatus { width: 80px; height: 10px; flex: 0 0 auto; }
-.sessionLoadingPanels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 24px 0; }
-.sessionLoadingPanel { min-height: 150px; padding: 18px; display: grid; align-content: start; gap: 14px; }
-.sessionLoadingPanelTitle { width: 34%; height: 10px; }
-.sessionLoadingPanelBody { width: 86%; height: 11px; }
-.sessionLoadingPanelBody.short { width: 62%; }
-.readinessSkeleton { min-height: 146px; padding: 18px; display: grid; align-content: start; gap: 14px; }
-.readinessSkeletonTitle { width: 28%; height: 10px; }
-.readinessSkeletonBody { width: 86%; height: 11px; }
-.readinessSkeletonBody.short { width: 58%; }
-@media (max-width: 640px) { .sessionLoadingPanels { grid-template-columns: 1fr; gap: 12px; } }
 @media (prefers-reduced-motion: reduce) { .uiSkeleton { animation: none; } }
 html[data-theme="dark"] .statusPill.finished i { background: var(--panel); }
 html[data-theme="dark"] .statusPill.finished { color: var(--muted); }
@@ -592,7 +547,7 @@ html[data-theme="dark"] .activityRow { border-color: var(--line); }
 @media (max-width: 720px) {
   .themeToggle { min-height: 40px; }
   .themeToggle { width: 40px; }
-  .contextScopeControl .commandSelect select, .cacheEvidenceExpand { min-height: 44px; }
+  .contextScopeControl .commandSelect select { min-height: 44px; }
 }
 
 .desktopUpdateOffer {
@@ -731,8 +686,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsModes { grid-column: 2; grid-row: 2; justify-self: end; }
 }
 @media (max-width: 760px) {
-  /* Phone keeps the Largest strip under the minimap; each item keeps a 44px touch target. */
-  .requestsActionsLargest .commandQuietAction { min-height: 44px; }
+  /* Phone keeps the Largest strip as one wrapping line under the minimap: the items stay inline
+     against the phone full-width quiet action, and each keeps a 44px touch target. */
+  .requestsActionsLargest .commandQuietAction { width: auto; min-height: 44px; }
   .requestsActionsLargestName { max-width: 18ch; }
   .requestsActionsInfo .dottedInfoPopoverTrigger { min-height: 44px; }
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(100px, 130px); gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--command-line); }

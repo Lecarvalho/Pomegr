@@ -1,6 +1,8 @@
 import type {
   ActivityFeed,
   Agent,
+  CacheReadDropCount,
+  CacheRefillCount,
   ContextHistoryBoundary,
   Insight,
   LoopPattern,
@@ -87,6 +89,12 @@ export type AgentsDomain = SessionDomainBase & {
   domain: "agents";
   agents: Agent[];
   workflows: Workflow[];
+  /** Roster-row and focused-tree history marks; the selected-agent inspector keeps its own bounded copy. */
+  insights: Insight[];
+  loops: LoopPattern[];
+  cacheRefills: CacheRefillCount[];
+  cacheReadDrops: CacheReadDropCount[];
+  contextBoundaries: ContextHistoryBoundary[];
 };
 
 export type AgentDomain = SessionDomainBase & {

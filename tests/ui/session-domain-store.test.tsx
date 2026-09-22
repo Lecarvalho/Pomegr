@@ -282,6 +282,23 @@ describe("session domain browser store", () => {
     hook.unmount();
   });
 
+  it("never treats a retained revision from an earlier epoch as current", async () => {
+    // A restarted monitor's clocks restart, so a new commit can reuse the retained revision number.
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 3, { observedAt: "2026-09-14T12:00:00.000Z" })))
+      .mockResolvedValueOnce(json(domain("session-summary", "claude:s1", 3, { observedAt: "2026-09-14T12:05:00.000Z" })));
+    const hook = renderHook(() => useSessionDomain({ sessionId: "claude:s1", domain: "session-summary" }, { historical: true }));
+    await waitFor(() => expect(hook.result.current.data?.revision).toBe(3));
+    act(() => emit({ type: "connection", state: "reconnecting", epoch: 2 }));
+    // The same number in the new epoch still invalidates the retained body.
+    await act(async () => { emit({ type: "revision", domain: "session-summary", sessionId: "claude:s1", revision: 3, epoch: 2 }); await Promise.resolve(); });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    // The retained revision is not offered for a 204 against the restarted monitor.
+    expect(String(fetchMock.mock.calls[1][0])).not.toContain("revision=");
+    await waitFor(() => expect(hook.result.current.data?.observedAt).toBe("2026-09-14T12:05:00.000Z"));
+    hook.unmount();
+  });
+
   it("polls at the fast one-second cadence, not the slow steady-state one, while a monitor-restart rebuild is still in flight", async () => {
     // Regression test: after a monitor restart the stream reconnects at a new epoch and the
     // domain's first rebuilt response is a "loading" envelope that must not regress the retained

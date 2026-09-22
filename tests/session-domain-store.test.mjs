@@ -43,8 +43,8 @@ function state(overrides = {}) {
   };
 }
 
-function snapshot(publicState, observedAt = OBSERVED_AT) {
-  return { publicState, readiness: publicState.readiness, observedAt };
+function snapshot(publicState, observedAt = OBSERVED_AT, evidence = undefined) {
+  return { publicState, readiness: publicState.readiness, observedAt, evidence };
 }
 
 test("commits all seven complete domain snapshots with independent revisions", () => {
@@ -72,6 +72,7 @@ test("session-summary alone carries the bounded header and Overview data", () =>
   publicState.session.cost = { amount: 1.25, currency: "USD", type: "estimated", observedAt: OBSERVED_AT };
   publicState.session.progress = { phase: "implementing", percent: 60, confidence: "medium", reportedAt: OBSERVED_AT };
   publicState.session.repository.comparison = { branch: "origin/main", kind: "upstream", ahead: 2, behind: 0, integrated: false };
+  publicState.session.repository.remote = { status: "ready", checkedAt: OBSERVED_AT };
   publicState.agents[0].currentActivity = { label: "Running focused tests", observedAt: OBSERVED_AT };
   publicState.agents[0].executionTasks = [{ id: "task-1", kind: "shell", workKind: "search", status: "running", background: false, backgroundId: null, startedAt: OBSERVED_AT, finishedAt: null, exitCode: null, failureCause: null }];
   publicState.insights = [0, 1, 2].map((index) => ({ id: `signal-${index}`, level: "info", title: `Signal ${index}`, detail: "Observed evidence" }));
@@ -107,6 +108,49 @@ test("session-summary alone carries the bounded header and Overview data", () =>
   assert.deepEqual(summary.activity.byKind, [{ kind: "shell", count: 3, medianDurationMs: 25 }]);
   assert.equal(summary.session.progress.percent, 60);
   assert.equal(summary.session.cost.amount, 1.25);
+});
+
+test("summary totals, fallbacks and comparison use complete committed evidence", () => {
+  const publicState = state();
+  publicState.session.repository.comparison = { branch: "origin/main", kind: "upstream", ahead: 0, behind: 0, integrated: false };
+  publicState.session.repository.remote = { status: "unavailable", checkedAt: null };
+  // Public activity items name their actor by label only; private tool calls carry the agent ID.
+  publicState.activity = { items: [{ id: "call-1", timestamp: OBSERVED_AT, actor: "Child", tool: "Read", workKind: "read", detail: "file", status: null, durationMs: null, requestId: null }],
+    total: 1, toolCalls: 1, messages: 0, failed: 0, byKind: [] };
+  publicState.agents[1].status = "active";
+  const evidence = { toolCalls: [{ id: "call-1", timestamp: OBSERVED_AT, actor: { id: "child", label: "Child" }, tool: "Read", workKind: "read", status: "completed" }] };
+  const store = createSessionDomainStore();
+  store.commit(SESSION_ID, snapshot(publicState, OBSERVED_AT, evidence), { isLive: true, needsInput: false, activityStatus: "working" });
+  const summary = store.read(SESSION_ID, "session-summary").snapshot.value;
+
+  assert.deepEqual(summary.rightNow.find((agent) => agent.id === "child").activityFallback,
+    { label: "file read", state: "last_observed", observedAt: OBSERVED_AT, source: "tool", actor: "subagent" });
+  // Without a successful remote check the comparison is not presented, as on the Repository tab.
+  assert.equal(summary.repository.comparison, null);
+
+  publicState.agents[1].status = "needs_input";
+  store.commit(SESSION_ID, snapshot(publicState, OBSERVED_AT, evidence), { isLive: true, needsInput: true, activityStatus: "needs_input" });
+  const waiting = store.read(SESSION_ID, "session-summary").snapshot.value.metrics;
+  assert.equal(waiting.activeAgents + waiting.idleAgents + waiting.finishedAgents, waiting.agents);
+  assert.equal(waiting.idleAgents, 1);
+});
+
+test("agents carries the roster's per-agent history marks", () => {
+  const publicState = state();
+  publicState.insights = [{ id: "loop-child-0", level: "warning", title: "Repeated reads", detail: "Observed evidence", agentId: "child" }];
+  publicState.loops = [{ id: "loop-child-0", agent: "Child", agentId: "child", tool: "Read", detail: "file", calls: 3, repeats: 2 }];
+  publicState.metrics.tokens.contextHistory.boundaries = [{ id: "boundary-1", agentId: "child", timestamp: OBSERVED_AT, kind: "automatic_compaction", preTokens: 90 }];
+  publicState.metrics.tokens.cacheEvents = { status: "ready", items: [], possibleFullRefills: [{ agentId: "child", count: 1, occurrences: [], reasons: [], toolChangeAttributions: [] }] };
+  publicState.metrics.tokens.cacheReadDrops = { status: "ready", items: [{ agentId: "child", count: 1, occurrences: [] }] };
+  const store = createSessionDomainStore();
+  store.commit(SESSION_ID, snapshot(publicState));
+  const agents = store.read(SESSION_ID, "agents").snapshot.value;
+
+  assert.deepEqual(agents.insights.map((item) => item.id), ["loop-child-0"]);
+  assert.deepEqual(agents.loops.map((item) => item.repeats), [2]);
+  assert.deepEqual(agents.contextBoundaries.map((item) => item.id), ["boundary-1"]);
+  assert.deepEqual(agents.cacheRefills.map((item) => item.agentId), ["child"]);
+  assert.deepEqual(agents.cacheReadDrops.map((item) => item.agentId), ["child"]);
 });
 
 test("does not publish a revision or event when only observedAt changes", () => {

@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
+import { useState } from "react";
 import { useSessionDomain } from "../../session-domain-store";
 import { AgentActivityPanel, type AgentActivityViewMode } from "./AgentActivityPanel";
 
@@ -17,7 +16,6 @@ function storedAgentActivityViewMode(sessionId: string | null): AgentActivityVie
 export type AgentsTabProps = {
   sessionId: string;
   historical: boolean;
-  summary: SessionSummaryDomain;
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string | null) => void;
   onOpenActivities: (selection: { agentId?: string; request?: string }) => void;
@@ -43,11 +41,10 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
   // The store may expose its bounded loading envelope before the agents payload is ready.
   const agents = Array.isArray(result.data?.agents) ? result.data.agents : [];
   const defaultAgentId = agents.find((agent) => agent.id === "primary")?.id || agents[0]?.id || null;
-  const selectedAgentIsKnown = Boolean(selectedAgentId && agents.some((agent) => agent.id === selectedAgentId));
-  const inspectorAgentId = selectedAgentIsKnown ? selectedAgentId : defaultAgentId;
-  useEffect(() => {
-    if (selectedAgentId && agents.length > 0 && !selectedAgentIsKnown) onSelectAgent(null);
-  }, [agents.length, onSelectAgent, selectedAgentId, selectedAgentIsKnown]);
+  // An unknown linked agent falls back to the default without rewriting the link: a retained agents
+  // list can predate a newly spawned agent, and the link resolves once the refresh commits.
+  const knownSelectedAgentId = selectedAgentId && agents.some((agent) => agent.id === selectedAgentId) ? selectedAgentId : null;
+  const inspectorAgentId = knownSelectedAgentId || defaultAgentId;
   const inspector = useSessionDomain(
     { sessionId, domain: "agent", agentId: inspectorAgentId || "" },
     { historical, enabled: !paused && Boolean(inspectorAgentId) },
@@ -59,12 +56,17 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
   return <AgentActivityPanel
     agents={agents}
     workflows={result.data.workflows}
+    insights={result.data.insights}
+    loops={result.data.loops}
+    cacheRefills={result.data.cacheRefills}
+    cacheReadDrops={result.data.cacheReadDrops}
+    contextBoundaries={result.data.contextBoundaries}
     executionTasks={[]}
     planTasks={[]}
     historical={historical}
     sessionId={sessionId}
-    selectedAgentId={selectedAgentId}
-    onSelectAgent={(agentId) => onSelectAgent(agentId === selectedAgentId ? null : agentId)}
+    selectedAgentId={knownSelectedAgentId}
+    onSelectAgent={onSelectAgent}
     inspector={agentEvidence}
     onOpenActivities={(agentId) => onOpenActivities({ agentId })}
     viewMode={viewMode}

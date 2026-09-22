@@ -1,9 +1,6 @@
 /* Reusable Command Center route views. */
 .commandVisuallyHidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 .commandIconSmall { width: 14px; height: 14px; }
-.commandViewIntro { min-height: 60px; display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
-.commandPageHeading h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
-.commandPageHeading p { max-width: 66ch; margin: 7px 0 0; color: var(--command-muted); font-size: var(--text-base); line-height: 1.55; }
 .commandViewActions { flex: 0 0 auto; }
 .repositoryDetail .repositoryDetailHeader { align-items: flex-start; }
 .repositoryDetailMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 7px; color: var(--command-muted); font-size: var(--text-xs); }
@@ -127,18 +124,6 @@
 .commandChip.warning > i { background: var(--command-amber); }
 .commandChip.negative { color: var(--command-error); }
 .commandChip.negative > i { background: var(--command-error); }
-.commandDashboardDirectory { margin-top: 12px; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandDashboardRows { min-width: 0; }
-.commandDashboardRows .commandTableWrap { margin-top: 0; border: 0; border-radius: 0; }
-.commandDashboardTable { table-layout: fixed; }
-.commandDashboardColScope { width: 130px; }
-.commandDashboardColUpdated { width: 90px; }
-.commandDashboardColAction { width: 62px; }
-.commandDashboardTable .commandTablePrimary { min-width: 0; }
-.commandDashboardTable .commandTablePrimary strong, .commandDashboardTable .commandTablePrimary small { overflow-wrap: anywhere; }
-.commandDashboardPreview { padding: 20px; border-left: 1px solid var(--command-line); }
-.commandDashboardPreview h2 { margin: 0; font: 600 var(--text-heading)/1.5 var(--font-ui); }
-.commandDashboardPreview p { margin: 10px 0 18px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
 .commandUnavailableNote, .commandUsageCaution { margin: 12px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
 .commandTableWrap { margin-top: 16px; overflow: auto; border: 1px solid var(--command-line); background: var(--command-panel); border-radius: var(--panel-radius); }
 .commandTable { width: 100%; border-collapse: collapse; color: var(--command-muted); font-size: var(--text-sm); }
@@ -210,7 +195,7 @@
 .commandSelect:has(select:disabled)::after { opacity: .55; }
 @media (forced-colors: active) { .commandSelect select { appearance: auto; padding-inline-end: var(--space-3); } .commandSelect::after { display: none; } }
 .commandEmpty { min-height: 230px; padding: 34px; display: grid; place-items: center; align-content: center; border: 1px solid var(--command-line); background: var(--command-panel); color: var(--command-muted); text-align: center; }
-.commandToolbar + .commandEmpty, .commandViewIntro + .commandEmpty { margin-top: 12px; }
+.commandToolbar + .commandEmpty { margin-top: 12px; }
 .commandEmpty .commandIcon { width: 24px; height: 24px; }
 .commandEmpty h2 { margin: 14px 0 0; color: var(--command-ink); font-size: var(--text-sm); }
 .commandEmpty p { max-width: 54ch; margin: 8px 0 0; font-size: var(--text-xs); line-height: 1.55; }
@@ -384,8 +369,6 @@
 .sessionInventoryReference a { flex: 0 0 auto; color: var(--brand); font-size: var(--text-sm); text-underline-offset: 3px; }
 
 @media (max-width: 900px) {
-  .commandDashboardDirectory { grid-template-columns: 1fr; }
-  .commandDashboardPreview { border-top: 1px solid var(--command-line); border-left: 0; }
   .commandUsageRows { grid-template-columns: 1fr; }
   .commandUsageWindow + .commandUsageWindow { border-top: 1px solid var(--command-line); border-left: 0; }
   .repositoryInventorySummary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -424,13 +407,10 @@
   .commandTableActivityCompact .commandTableActivityMark::before { inset: 3px; }
   .commandTableActivityCompact .commandTableActivityLabel { color: var(--command-muted); font-size: var(--text-xs); }
   .commandTableActivityCompact .commandTableActivityMeta { font-size: var(--text-xs); }
-  .commandViewIntro { display: block; }
   .commandViewActions { margin-top: 12px; }
   .commandToolbar { align-items: stretch; flex-wrap: wrap; }
   .commandToolbar .commandSearch { width: 100%; }
   .commandToolbarCount { width: 100%; margin: 3px 0 0; }
-  .commandDashboardColScope { width: 100px; }
-  .commandDashboardColUpdated, .commandDashboardUpdated { display: none; }
   .commandMetric { min-height: 92px; }
   .commandRepositoryHead, .commandRepositoryIcon, .commandRepositoryIdentity small, .commandRepositoryToolbar .commandToolbarCount { display: none; }
   .commandRepositoryRow { min-height: 76px; grid-template-columns: minmax(0, 1fr) 24px; gap: 10px; padding: 12px 14px; }

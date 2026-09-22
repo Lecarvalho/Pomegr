@@ -39,6 +39,7 @@ vi.mock("../../app/components/dashboard/ActivitiesTab", async (importOriginal) =
 import { Dashboard } from "../../app/Dashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { resetSessionDomainStoreForTests } from "../../app/session-domain-store";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { MonitorState, SessionSummary } from "../../shared/monitor-contract";
@@ -86,7 +87,7 @@ function mount(query = {}, summary = sessionSummaryFixture(), state = composedSt
     if (url.startsWith("/api/state")) return json(state);
     return new Response(null, { status: 404 });
   });
-  const view = render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={catalogSessions}><Dashboard initialSessionId={SESSION_ID} initialQuery={query} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+  const view = render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={catalogSessions}><Dashboard initialSessionId={SESSION_ID} initialQuery={query} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
   return { ...view, fetchMock };
 }
 
@@ -156,6 +157,14 @@ describe("T04 session workspace", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/state"))).toBe(true);
   });
 
+  it("keeps a detected session's identity while its provider has recorded nothing yet", async () => {
+    const detected = catalog({ isLive: true, activityStatus: "open", summaryReadiness: "unavailable", title: "Fresh session" });
+    mount({}, sessionSummaryFixture({ readiness: "unavailable", session: null }), composedState(), [detected]);
+    expect(await screen.findByRole("heading", { name: "Fresh session" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("No recorded activity yet");
+    expect(screen.queryByRole("heading", { name: "Session unavailable" })).not.toBeInTheDocument();
+  });
+
   it("keeps a loading summary envelope distinct from unavailable evidence", async () => {
     const loading = sessionSummaryFixture({ readiness: "loading", session: null });
     mount({}, loading);
@@ -174,7 +183,7 @@ describe("T04 session workspace", () => {
       if (String(input).startsWith("/api/session-domain")) return succeed ? json(loading) : new Response(null, { status: 503 });
       return new Response(null, { status: 404 });
     });
-    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog({ isLive: true, activityStatus: "working" })]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog({ isLive: true, activityStatus: "working" })]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     // `findByRole` polls on a real timeout internally, which never fires under fake timers, so
     // flush pending microtasks manually instead (matching the other fake-timer tests below).
     await act(async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); });
@@ -207,7 +216,7 @@ describe("T04 session workspace", () => {
     const saveReport = vi.fn().mockResolvedValue({ status: "saved" });
     (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = { saveReport, getDesktopState: async () => null, onDesktopStateChanged: () => () => {} };
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/session-domain") ? json(sessionSummaryFixture()) : String(input).startsWith("/api/state") ? new Response(null, { status: 503 }) : new Response(null, { status: 404 }));
-    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Download report" }));
     await waitFor(() => expect(screen.getByText("The report could not be prepared from the latest committed session evidence.")).toBeInTheDocument());
@@ -224,7 +233,7 @@ describe("T04 session workspace", () => {
     (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = { saveReport, getDesktopState: async () => null, onDesktopStateChanged: () => () => {} };
     const mismatchedState = composedState({ session: { ...composedState().session!, id: "claude:a-different-session" } });
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/session-domain") ? json(sessionSummaryFixture()) : String(input).startsWith("/api/state") ? json(mismatchedState) : new Response(null, { status: 404 }));
-    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Download report" }));
     await waitFor(() => expect(screen.getByText("The report could not be prepared from the latest committed session evidence.")).toBeInTheDocument());
@@ -255,7 +264,7 @@ describe("T04 session workspace", () => {
       return new Response(null, { status: 404 });
     });
     try {
-      render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog({ isLive: true, activityStatus: "working" })]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+      render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog({ isLive: true, activityStatus: "working" })]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
       await act(async () => { for (let i = 0; i < 6; i += 1) await Promise.resolve(); });
       expect(screen.getByRole("heading", { name: "Recorded implementation session" })).toBeInTheDocument();
       fail = true;
@@ -377,7 +386,7 @@ describe("T04 session workspace", () => {
       if (String(input).startsWith("/api/session-domain")) return succeed ? json(sessionSummaryFixture()) : new Response(null, { status: 503 });
       return new Response(null, { status: 404 });
     });
-    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[catalog()]}><Dashboard initialSessionId={SESSION_ID} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     expect(await screen.findByRole("heading", { name: "Session evidence unavailable" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Loading session…" })).not.toBeInTheDocument();
     // Recovery does not depend on any local retry state here: the next successful response

@@ -47,14 +47,11 @@
 .commandSessionView .sessionContextValue { color: var(--color-context); }
 .commandSessionView .contentGrid { grid-template-columns: minmax(0, 1fr); }
 .commandSessionView #agent-activity { scroll-margin-top: 80px; }
-.commandSessionView .sessionSummaryCards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
-.commandSessionView .sessionSummaryCards > * { min-width: 0; margin: 0; }
-.commandSessionView :is(.sessionProgressCard, .sessionWorkflowCard) { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
+.commandSessionView .sessionProgressCard { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; }
 .commandSessionView .sessionSummaryCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .commandSessionView .sessionSummaryCardHeader .sessionEyebrow { margin: 0; }
 .commandSessionView .sessionSignalCount-warning,
 .commandSessionView .sessionProgressPhase-blocked { border-color: color-mix(in srgb, var(--command-amber) 40%, var(--command-line)); color: var(--command-amber); }
-.commandSessionView .sessionWorkflowStatus-running i { background: var(--command-green); }
 .commandSessionView :is(.sessionSummaryHeadline, .sessionProgressCompactValue) { display: flex; align-items: baseline; gap: 10px; }
 .commandSessionView .sessionSummaryNumber,
 .commandSessionView .sessionProgressCard .sessionProgressPercent { color: var(--command-ink); font: 500 26px/1 var(--font-ui) !important; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -76,12 +73,6 @@
 .commandSessionView .sessionKv > * { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .commandSessionView .sessionKv > :nth-child(even) { max-width: 23ch; color: var(--command-ink); font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; text-align: right; }
 .commandSessionView .sessionKv time { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
-.commandSessionView .sessionSummaryCards a { color: var(--command-brand-text); font-size: 12px; text-decoration: none; text-underline-offset: 3px; }
-.commandSessionView .sessionSummaryCards a:hover { color: var(--command-ink); text-decoration: underline; }
-.commandSessionView .sessionSummaryCards :is(a, button):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
-.commandSessionView .sessionFlowScore { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 16px 20px; }
-.commandSessionView .sessionFlowScore strong { font-family: var(--font-data); font-variant-numeric: tabular-nums; font-weight: 500; }
-.commandSessionView .sessionFlowScore small { grid-column: 1 / -1; color: var(--command-muted); font-size: 12px; }
 .commandSessionView .sessionPhoneLabel { display: none; }
 .commandSessionView .sessionEvidenceDisclosure > summary { grid-template-columns: 16px max-content minmax(0, 1fr); min-height: 52px; padding: 0 20px; gap: 12px; }
 .commandSessionView .sessionEvidenceDisclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
@@ -201,7 +192,6 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 @media (max-width: 1100px) {
   .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; }
   .commandSessionView .sessionKpi:nth-child(4) { border-left: 0; padding-left: 0; }
-  .commandSessionView .sessionSummaryCards { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 900px) {
@@ -221,12 +211,10 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .commandSessionView .sessionKpi > small { font-size: var(--text-caption); line-height: 1.35; overflow-wrap: anywhere; }
   .commandSessionView .sessionKpiEstimate:nth-child(n) { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 14px; }
   .commandSessionView .sessionKpiEstimate > .sessionEyebrow { grid-column: 1 / -1; }
-  .commandSessionView .sessionSummaryCards { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .commandSessionView .sessionSummaryCard { padding: 14px; gap: 8px; }
   .commandSessionView .sessionSummaryNumber,
   .commandSessionView .sessionProgressCard .sessionProgressPercent { font-size: 24px !important; }
-  .commandSessionView .sessionProgressCard .sessionProgressNote,
-  .commandSessionView .sessionWorkflowCard .sessionSummaryLink { display: none; }
+  .commandSessionView .sessionProgressCard .sessionProgressNote { display: none; }
   .commandSessionView .sessionSignalsCard .sessionSummaryCardHeader { padding: 0; }
   .commandSessionView .sessionSignalsCard .insight { padding: 8px 0; }
   .commandSessionView .sessionSignalsCard .insight:first-child { padding-top: 0; }

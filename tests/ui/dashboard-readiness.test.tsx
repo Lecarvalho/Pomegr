@@ -6,6 +6,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 import { Dashboard } from "../../app/Dashboard";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { resetSessionDomainStoreForTests } from "../../app/session-domain-store";
 import type { SessionSummaryDomain } from "../../shared/session-domain-contract";
@@ -22,7 +23,7 @@ function json(value: unknown) { return new Response(JSON.stringify(value), { sta
 
 function mount(summary: SessionSummaryDomain) {
   const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).startsWith("/api/session-domain") ? json(summary) : new Response(null, { status: 404 }));
-  const view = render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={summary.sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+  const view = render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={summary.sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
   return { ...view, fetchMock };
 }
 
@@ -73,7 +74,7 @@ describe("progressive readiness (ported)", () => {
       const fetchMock = vi.spyOn(globalThis, "fetch")
         .mockResolvedValueOnce(json({ domain: "session-summary", sessionId, revision: 0, readiness: "loading", observedAt: null }))
         .mockResolvedValue(new Response(JSON.stringify({ domain: "session-summary", sessionId, revision: 0, readiness: "unavailable", observedAt: null }), { status: 404 }));
-      render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+      render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
       expect(await screen.findByRole("heading", { name: "Loading session…" })).toBeInTheDocument();
       expect(await screen.findByRole("heading", { name: "Session unavailable" })).toBeInTheDocument();
       expect(screen.getByText("Pomegr found no recorded evidence for this session.")).toBeInTheDocument();
@@ -90,7 +91,7 @@ describe("progressive readiness (ported)", () => {
   it("keeps the connection notice for a transient proxy 503", async () => {
     const sessionId = "claude:monitor-down";
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ domain: "session-summary", sessionId, revision: 0, readiness: "unavailable", observedAt: null }), { status: 503 }));
-    render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard initialSessionId={sessionId} initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     expect(await screen.findByRole("heading", { name: "Session evidence unavailable" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Session unavailable" })).not.toBeInTheDocument();
   });
@@ -104,11 +105,11 @@ describe("progressive readiness (ported)", () => {
       const url = new URL(String(input), "http://local");
       return json(bodies[url.searchParams.get("sessionId") || ""]);
     });
-    const view = render(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard key="claude:first" initialSessionId="claude:first" initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    const view = render(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard key="claude:first" initialSessionId="claude:first" initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     expect(await screen.findByRole("heading", { name: "First session" })).toBeInTheDocument();
     // The route page keys Dashboard by sessionId (app/sessions/[sessionId]/page.tsx), so a
     // session change is a full remount, not an in-place update.
-    view.rerender(<DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard key="claude:second" initialSessionId="claude:second" initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider>);
+    view.rerender(<LiveClockProvider running={false}><DisplayPreferencesProvider><SessionCatalogProvider sessions={[]}><Dashboard key="claude:second" initialSessionId="claude:second" initialQuery={{}} /></SessionCatalogProvider></DisplayPreferencesProvider></LiveClockProvider>);
     expect(screen.queryByRole("heading", { name: "First session" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Loading session…" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Second session" })).toBeInTheDocument();

@@ -78,7 +78,12 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
   onSelect: (result: PaletteResult) => void;
   inputRef: RefObject<HTMLInputElement | null>;
 }) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  // The highlight tracks the query it was computed for. When the query changes (typing
+  // narrows or widens the results) we adjust the highlight back to the top result during
+  // render instead of in an effect, per React's "adjust state during render" pattern.
+  const [highlight, setHighlight] = useState({ query, index: 0 });
+  const activeIndex = highlight.query === query ? highlight.index : 0;
+  if (highlight.query !== query) setHighlight({ query, index: 0 });
   const selectedIndex = Math.min(activeIndex, Math.max(0, results.length - 1));
   useEffect(() => {
     if (!open) return;
@@ -86,8 +91,8 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
       if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
       if (event.key === "Tab") { event.preventDefault(); inputRef.current?.focus(); return; }
       if (!results.length) return;
-      if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex((current) => (current + 1) % results.length); }
-      if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex((current) => (current - 1 + results.length) % results.length); }
+      if (event.key === "ArrowDown") { event.preventDefault(); setHighlight((current) => ({ query: current.query, index: (current.index + 1) % results.length })); }
+      if (event.key === "ArrowUp") { event.preventDefault(); setHighlight((current) => ({ query: current.query, index: (current.index - 1 + results.length) % results.length })); }
       if (event.key === "Enter") { event.preventDefault(); const selected = results[selectedIndex]; if (selected) onSelect(selected); }
     };
     document.addEventListener("keydown", onKeyDown);
@@ -99,7 +104,7 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
     <section className="commandPalette" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
       <header><CommandIcon name="search" /><label id="command-palette-title" className="commandVisuallyHidden" htmlFor="command-palette-input">Search Pomegr</label><input ref={inputRef} id="command-palette-input" role="combobox" aria-expanded="true" aria-controls="command-palette-results" aria-activedescendant={results[selectedIndex] ? `command-palette-${results[selectedIndex].id}` : undefined} value={query} onChange={(event) => onQueryChange(event.currentTarget.value)} placeholder="Search destinations, sessions, and repositories" autoComplete="off" /><kbd>Esc</kbd></header>
       <div className="commandPaletteResults" id="command-palette-results" role="listbox" aria-label="Search results">
-        {results.map((result, index) => <button type="button" id={`command-palette-${result.id}`} key={result.id} role="option" tabIndex={-1} aria-selected={index === selectedIndex} className={`commandQuietAction commandPaletteOption${index === selectedIndex ? " active" : ""}`} onMouseEnter={() => setActiveIndex(index)} onMouseDown={(event) => { event.preventDefault(); onSelect(result); }}><CommandIcon name={result.icon} /><span><strong>{result.label}</strong><small>{result.detail}</small></span><CommandIcon name="arrow" size="small" /></button>)}
+        {results.map((result, index) => <button type="button" id={`command-palette-${result.id}`} key={result.id} role="option" tabIndex={-1} aria-selected={index === selectedIndex} className={`commandQuietAction commandPaletteOption${index === selectedIndex ? " active" : ""}`} onMouseEnter={() => setHighlight((current) => ({ query: current.query, index }))} onMouseDown={(event) => { event.preventDefault(); onSelect(result); }}><CommandIcon name={result.icon} /><span><strong>{result.label}</strong><small>{result.detail}</small></span><CommandIcon name="arrow" size="small" /></button>)}
         {!results.length && <p>No destinations match that search.</p>}
       </div>
       <footer><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span></footer>
@@ -126,7 +131,7 @@ function NavigationLink({ item, pathname, onNavigate }: { item: NavigationItem; 
   );
 }
 
-export type SidebarLimit = { provider: string; percent: number; label: string };
+export type SidebarLimit = { provider: string; percent: number; label: string; severity: "normal" | "warning" | "critical" };
 
 export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: ReturnType<typeof useUsageLimits>["providers"], referenceTime: number): SidebarLimit[] {
   const after = referenceTime - 7 * 24 * 60 * 60 * 1000;
@@ -137,7 +142,9 @@ export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: R
   return providers.flatMap((entry) => {
     if (!recentProviders.has(entry.provider)) return [];
     const tightest = [...(entry.usageLimits?.limits || [])].sort((left, right) => right.percent - left.percent)[0];
-    return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: tightest.window || tightest.label }] : [];
+    // Severity is reconstructed monitor-side (see AGENTS.md); mirror the Usage limits page and
+    // trust the provided value instead of re-deriving thresholds from the percent here.
+    return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: tightest.window || tightest.label, severity: tightest.severity ?? "normal" }] : [];
   });
 }
 
@@ -286,7 +293,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
         <div className="commandSidebarFoot">
           <div className="commandNavDivider" aria-hidden="true" />
           {update?.version && (update.status === "ready" || update.status === "installing") ? <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} /> : null}
-          {sidebarLimits.length > 0 && <section className="commandSidebarLimits" aria-label="Usage limits"><header><span>Usage limits</span><Link href="/usage-limits">View</Link></header>{sidebarLimits.map((limit) => <div key={limit.provider} className={`commandSidebarLimit ${limit.percent >= 85 ? "critical" : limit.percent >= 75 ? "warning" : "normal"}`}><span>{limit.provider}</span><strong>{Math.round(limit.percent)}% · {limit.label}</strong><i aria-hidden="true"><b style={{ width: `${limit.percent}%` }} /></i></div>)}</section>}
+          {sidebarLimits.length > 0 && <section className="commandSidebarLimits" aria-label="Usage limits"><header><span>Usage limits</span><Link href="/usage-limits">View</Link></header>{sidebarLimits.map((limit) => <div key={limit.provider} className={`commandSidebarLimit ${limit.severity}`}><span>{limit.provider}</span><strong>{Math.round(limit.percent)}% · {limit.label}</strong><i aria-hidden="true"><b style={{ width: `${limit.percent}%` }} /></i></div>)}</section>}
           <span>{loading ? "Connecting to the local observer." : connected ? "Session data remains on this machine." : "Local observer unavailable. Showing last known-good state."}</span>
           <strong>Pomegr v{pomegrPackageManifest.version}</strong>
           <small>MCP v{pomegrPluginManifest.version}</small>

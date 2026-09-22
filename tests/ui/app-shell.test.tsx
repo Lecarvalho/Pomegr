@@ -16,6 +16,16 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
   return { ...actual, useProviderStatus: () => actual.EMPTY_PROVIDER_STATUS };
 });
 
+// Isolate the independent usage-limits feed so the sidebar-tone test can hand it a fixed
+// provider snapshot without racing the real polling store's network calls.
+const usageLimitsState = vi.hoisted(() => ({
+  snapshot: { revision: null, generatedAt: null, providers: [], readiness: { claude: "loading", codex: "loading" } } as UsageLimitsSnapshot,
+}));
+vi.mock("../../app/usage-limits-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/usage-limits-client")>();
+  return { ...actual, useUsageLimits: () => usageLimitsState.snapshot };
+});
+
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
 import { AppShell } from "../../app/components/AppShell";
 import { ClientAccessProvider } from "../../app/hooks/ClientAccessContext";
@@ -26,7 +36,7 @@ import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
 import pomegrPackageManifest from "../../package.json";
 import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
-import type { HomeProviderUsageLimits, SessionSummary } from "../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, SessionSummary, UsageLimitsSnapshot } from "../../shared/monitor-contract";
 
 function response(body: object) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
@@ -79,6 +89,7 @@ afterEach(() => {
   delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop;
   navigation.pathname = "/";
   navigation.push.mockReset();
+  usageLimitsState.snapshot = { revision: null, generatedAt: null, providers: [], readiness: { claude: "loading", codex: "loading" } };
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   window.localStorage.clear();
@@ -186,6 +197,37 @@ describe("Command Center app shell", () => {
     expect(screen.queryByRole("dialog", { name: "Search Pomegr" })).not.toBeInTheDocument();
   });
 
+  it("resets the palette highlight when a narrower query follows arrow-key navigation", async () => {
+    const user = userEvent.setup();
+    // A session whose title also matches "usage" so narrowing to that query leaves two
+    // results: the "Usage limits" destination (first) and this session (second).
+    const auditSession = { ...sessions[0], id: "claude:usage-audit", title: "Usage audit", project: "Pomegr" };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [auditSession] }));
+    render(<AppShell><main>Home content</main></AppShell>);
+
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    const search = screen.getByRole("combobox", { name: "Search Pomegr" });
+    expect(search).toHaveFocus();
+
+    // Arrow down to the 5th destination (index 4, "Usage limits") while the query is empty.
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(screen.getByRole("option", { name: /Usage limits/ })).toHaveAttribute("aria-selected", "true");
+
+    // Narrowing to "usage" leaves two matches in this order: "Usage limits" (first) and
+    // "Usage audit" (second). The stale numeric index (4) would clamp onto the second match;
+    // the highlight must reset back to the first one instead.
+    await user.type(search, "usage");
+    const options = screen.getAllByRole("option");
+    expect(options).toHaveLength(2);
+    expect(options[0]).toHaveAccessibleName(/Usage limits/);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+    expect(options[1]).toHaveAttribute("aria-selected", "false");
+
+    await user.keyboard("{Enter}");
+    expect(navigation.push).toHaveBeenCalledWith("/usage-limits");
+    expect(screen.queryByRole("dialog", { name: "Search Pomegr" })).not.toBeInTheDocument();
+  });
+
   it("uses the palette opener for Ctrl K and closes other shell layers", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
@@ -221,10 +263,67 @@ describe("Command Center app shell", () => {
     ] satisfies HomeProviderUsageLimits[];
 
     expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
-      { provider: "Claude Code", percent: 85, label: "7 days" },
-      { provider: "Codex", percent: 78, label: "7 days" },
+      { provider: "Claude Code", percent: 85, label: "7 days", severity: "critical" },
+      { provider: "Codex", percent: 78, label: "7 days", severity: "warning" },
     ]);
     expect(sidebarLimitsForCatalog(recent, [{ ...providers[1], usageLimits: { ...providers[1].usageLimits, limits: [] } }], Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([]);
+  });
+
+  it("carries the monitor-provided severity through instead of re-deriving it from the percent", () => {
+    const recent = [{ ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" }];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        // A high percent that would trip the old local ">= 85" threshold, but the monitor
+        // has classified it as "normal" (e.g. a window that is not the active/binding one).
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 90, resetsAt: null, severity: "normal", active: false },
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 90, label: "7 days", severity: "normal" },
+    ]);
+  });
+
+  it("falls back to normal severity when a window omits it", () => {
+    const recent = [{ ...sessions[0], createdAt: "2026-08-24T12:00:00.000Z" }];
+    const providers = [
+      { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 95, resetsAt: null, active: false } as HomeProviderUsageLimits["usageLimits"]["limits"][number],
+      ] } },
+    ] satisfies HomeProviderUsageLimits[];
+
+    expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
+      { provider: "Claude Code", percent: 95, label: "7 days", severity: "normal" },
+    ]);
+  });
+
+  it("renders the sidebar usage tone from the monitor-provided severity, not local percent thresholds", async () => {
+    const recentSession = { ...sessions[0], createdAt: new Date().toISOString() };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [recentSession] }));
+    usageLimitsState.snapshot = {
+      revision: 1,
+      generatedAt: null,
+      providers: [{
+        provider: "claude",
+        source: "Claude Code",
+        readiness: "ready",
+        usageLimits: {
+          available: true,
+          fetchedAt: null,
+          attemptedAt: null,
+          // 90% would trip the old local ">= 85" threshold and render "critical", but the
+          // monitor has classified this window as "normal" — the sidebar must follow it.
+          limits: [{ id: "seven-day", label: "Seven day", window: "7 days", percent: 90, resetsAt: null, severity: "normal", active: true }],
+        },
+      }],
+      readiness: { claude: "ready", codex: "ready" },
+    };
+    render(<AppShell><main>Home content</main></AppShell>);
+    const strong = await screen.findByText("90% · 7 days");
+    const row = strong.closest(".commandSidebarLimit");
+    expect(row).toHaveClass("normal");
+    expect(row).not.toHaveClass("critical");
+    expect(row).not.toHaveClass("warning");
   });
 
   it("keeps the desktop update offer in the persistent rail", async () => {

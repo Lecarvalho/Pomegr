@@ -60,10 +60,20 @@ function queryKey(query: SessionDomainQuery) {
   return `${query.sessionId}|${query.domain}|${query.domain === "agent" ? query.agentId || "" : ""}`;
 }
 
+/**
+ * A retained revision identifies its body only within the live-event epoch that accepted it: a
+ * restarted monitor's revision clocks restart, so an equal number from a later epoch can name
+ * different evidence.
+ */
+function retainedRevision(entry: Entry) {
+  return entry.snapshot.data && entry.dataEpoch === currentEpoch ? entry.snapshot.data.revision : null;
+}
+
 function endpoint(entry: Entry) {
   const params = new URLSearchParams({ sessionId: entry.query.sessionId, domain: entry.query.domain });
   if (entry.query.domain === "agent" && entry.query.agentId) params.set("agentId", entry.query.agentId);
-  if (entry.snapshot.data) params.set("revision", String(entry.snapshot.data.revision));
+  const revision = retainedRevision(entry);
+  if (revision !== null) params.set("revision", String(revision));
   return `/api/session-domain?${params}`;
 }
 
@@ -249,7 +259,7 @@ function onLiveEvent(event: LiveEvent) {
   }
   for (const entry of entries.values()) {
     if (!entry.listeners.size || event.sessionId !== entry.query.sessionId || event.domain !== entry.query.domain) continue;
-    if (entry.snapshot.data?.revision === event.revision || entry.invalidatedRevision === event.revision) continue;
+    if (retainedRevision(entry) === event.revision || entry.invalidatedRevision === event.revision) continue;
     entry.invalidatedRevision = event.revision;
     if (typeof document !== "undefined" && document.hidden) {
       if (hasLiveSubscriber(entry)) schedule(entry, 30_000);

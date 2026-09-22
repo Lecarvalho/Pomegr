@@ -3,6 +3,10 @@ import type { MonitorState } from "../../../shared/monitor-contract";
 import { stateEndpoint } from "../../dashboard-utils";
 import { subscribeLiveEvents } from "../../live-events";
 
+// One commit publishes a revision event per session domain; a short settle folds that burst into
+// one composed-state poll instead of a poll per domain.
+const REVISION_BURST_SETTLE_MS = 100;
+
 /**
  * Composed `/api/state` polling for transitional session tabs. Callers key their component on
  * sessionId, so a session change remounts and resets `state`/`error`/refs instead of reusing them;
@@ -12,7 +16,6 @@ import { subscribeLiveEvents } from "../../live-events";
 export function useTransitionalSessionState({ sessionId, historical, paused }: { sessionId: string; historical: boolean; paused: boolean }) {
   const [state, setState] = useState<MonitorState | null>(null);
   const [error, setError] = useState(false);
-  const [refreshRequest, setRefreshRequest] = useState(0);
   const revision = useRef<number | string | null>(null);
   const retainedState = useRef<MonitorState | null>(null);
   useEffect(() => {
@@ -93,10 +96,11 @@ export function useTransitionalSessionState({ sessionId, historical, paused }: {
         return;
       }
       if (event.sessionId !== sessionId || document.hidden) return;
-      void poll();
+      if (inFlight) refreshAfterFlight = true;
+      else schedule(REVISION_BURST_SETTLE_MS, { force: true });
     });
     void poll();
     return () => { controller.abort(); if (timer !== null) window.clearTimeout(timer); release(); window.removeEventListener("focus", foreground); document.removeEventListener("visibilitychange", foreground); };
-  }, [historical, paused, sessionId, refreshRequest]);
-  return { state, error, refresh: () => setRefreshRequest((value) => value + 1) };
+  }, [historical, paused, sessionId]);
+  return { state, error };
 }

@@ -136,8 +136,12 @@ flag used only to decide whether the Resources tab can be hidden. `signals` owns
 committed Efficiency, Cache lifetime, and agent-reported Reported signals sections.
 Deterministic evidence and labeled inferences remain distinct from
 agent-reported signals, which may be stale. Missing source evidence remains unavailable;
-historical and current projections remain isolated. The other domains retain their
-corresponding normalized public state. The inspector
+historical and current projections remain isolated. Current-agent fallbacks come from
+committed normalized tool calls attributed by agent ID, never from display labels, and the
+repository summary carries a branch comparison only after its remote check succeeded, as the
+Repository tab does. `agents` also carries the roster's per-agent history marks: insights,
+loop patterns, possible full refills, cache-read drops and context boundaries. The other
+domains retain their corresponding normalized public state. The inspector
 also carries bounded selected-agent request, insight, cache and task evidence. Each
 composed domain preserves the readiness of its source sections: a ready core does not
 make missing agent, context, activity or request evidence ready. Request-strip readiness

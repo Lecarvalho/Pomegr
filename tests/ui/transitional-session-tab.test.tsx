@@ -27,7 +27,6 @@ async function flush() { for (let i = 0; i < 6; i += 1) await Promise.resolve();
 function readiness(overrides: Partial<SessionReadiness> = {}): SessionReadiness {
   return { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready", repository: "ready", resources: "ready", usageLimits: "ready", ...overrides };
 }
-const noop = () => {};
 
 function baseState(sessionId: string, overrides: Partial<MonitorState> = {}): MonitorState {
   const state = createEmptyMonitorState({ connected: true });
@@ -79,7 +78,7 @@ function detailedState(sessionId: string, options: {
 }
 
 function tabElement(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
-  return <LiveClockProvider running={false}><LegacySessionTab historical={false} paused={false} showEstimatedCost onNavigateAgent={noop} {...props} /></LiveClockProvider>;
+  return <LiveClockProvider running={false}><LegacySessionTab historical={false} paused={false} showEstimatedCost {...props} /></LiveClockProvider>;
 }
 function renderTab(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
   return render(tabElement(props));

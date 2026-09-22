@@ -6,7 +6,7 @@ import { ActivityFeedPanel } from "./activity-feed/ActivityFeedPanel";
 import { useActivityFeed } from "./activity-feed/useActivityFeed";
 import { RequestsActionsPanel } from "./RequestsActionsPanel";
 import { useSessionRequestSelection, type RequestSelectionRoute } from "./requests-actions/useSessionRequestSelection";
-import { useTransitionalSessionState } from "./useTransitionalSessionState";
+import { TransitionalSessionPanel } from "./TransitionalSessionPanel";
 
 type ActivitiesTabProps = {
   sessionId: string; historical: boolean; paused: boolean;
@@ -14,19 +14,11 @@ type ActivitiesTabProps = {
   onOpenAgent: (agentId: string) => void;
 };
 
-// Keyed on sessionId so a session change remounts the polled state, selection and feed.
-export function ActivitiesTab(props: ActivitiesTabProps) {
-  return <ActivitiesTabPanel key={props.sessionId} {...props} />;
-}
-
-function ActivitiesTabPanel({ sessionId, historical, paused, route, onRouteChange, onOpenAgent }: ActivitiesTabProps) {
-  const { state, error } = useTransitionalSessionState({ sessionId, historical, paused });
-  const visibleState = state?.session?.id === sessionId ? state : null;
-  if (!visibleState) return <div className="sessionTabState">{error ? "This session panel is temporarily unavailable." : "Loading activities…"}</div>;
-  return <>
-    {error && <div className="notice" role="status"><span aria-hidden="true">!</span>Update failed. Showing the last recorded panel state.</div>}
-    <ActivitiesContent state={visibleState} historical={historical} paused={paused} route={route} onRouteChange={onRouteChange} onOpenAgent={onOpenAgent} />
-  </>;
+// The panel is keyed on sessionId, so a session change also remounts the selection and feed.
+export function ActivitiesTab({ sessionId, historical, paused, route, onRouteChange, onOpenAgent }: ActivitiesTabProps) {
+  return <TransitionalSessionPanel sessionId={sessionId} historical={historical} paused={paused} loadingLabel="activities">
+    {(state) => <ActivitiesContent state={state} historical={historical} paused={paused} route={route} onRouteChange={onRouteChange} onOpenAgent={onOpenAgent} />}
+  </TransitionalSessionPanel>;
 }
 
 /** One shared selection drives the chart, request details and the grouped feed; agent scope applies to all. */

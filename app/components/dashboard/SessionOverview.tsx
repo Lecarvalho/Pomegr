@@ -3,7 +3,7 @@
 import type { AgentRole } from "../../../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
 import { WORK_LABELS } from "../agents/agent-presentation";
-import { compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
+import { agentRoleLabel, compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
@@ -18,13 +18,8 @@ function Unavailable({ readiness, label }: { readiness: "loading" | "ready" | "u
   return <p className="sessionOverviewEmpty" role={readiness === "loading" ? "status" : undefined}>{readiness === "loading" ? `Loading ${label}…` : `${label} unavailable.`}</p>;
 }
 
-function roleLabel(role: AgentRole) {
-  return role === "general-purpose" ? "General" : role === "workflow-worker" ? "Workflow" : role.replaceAll("_", " ");
-}
-
 export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   summary: SessionSummaryDomain;
-  query: SessionRouteQuery;
   showEstimatedCost: boolean;
   onNavigate: (changes: Partial<SessionRouteQuery>) => void;
 }) {
@@ -83,7 +78,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
             && (Boolean(agent.currentActivity) || agent.activityFallback?.state === "current");
           return <li key={agent.id}>
             <span className={`sessionAgentStatus status-${agent.status}`} aria-hidden="true" />
-            <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{roleLabel(agent.role)} · {agent.model}</small></span>
+            <span className="sessionAgentIdentity"><button className="commandTextLink" type="button" title={agent.label} onClick={() => onNavigate({ tab: "agents", agent: agent.id })}>{agent.label}</button><small>{agentRoleLabel(agent)} · {agent.model}</small></span>
             <span className="sessionAgentActivity"><i className={`sessionCurrentActivityMark${activityIsCurrent ? " isCurrent" : ""}`} aria-hidden="true" /><span className={`sessionAgentActivityLabel${activityIsCurrent ? " currentActivityShimmer" : ""}`} data-text={activityIsCurrent ? activityLabel : undefined}>{activityLabel}</span></span>
             <span className="sessionRightNowTokens"><span className="sessionRightNowTokensLabel">Latest context</span><strong>{compactNumber(agent.tokens.total)}</strong></span>
             <time dateTime={agent.lastSeen}>{sessionRelativeTime(agent.lastSeen)}</time>
@@ -112,7 +107,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
             {requests.map((request) => <i key={request.id} className={`sessionRequestRoleSegment ${roleFamilyPresentation(request.agentRole).className}`} />)}
             {Array.from({ length: emptySlots }, (_, index) => <i className="sessionRequestRoleSegment isEmpty" key={`empty-role-${index}`} />)}
           </div>
-          <div className="sessionRoleLegend" aria-label="Agent role legend"><span className="sessionEyebrow">Agent role</span>{[...roleCounts].map(([role, agents]) => <span key={role}><i className={roleFamilyPresentation(role).className} aria-hidden="true" />{roleLabel(role)}{agents.size > 1 ? ` ×${agents.size}` : ""}</span>)}</div>
+          <div className="sessionRoleLegend" aria-label="Agent role legend"><span className="sessionEyebrow">Agent role</span>{[...roleCounts].map(([role, agents]) => <span key={role}><i className={roleFamilyPresentation(role).className} aria-hidden="true" />{agentRoleLabel({ role, customType: null })}{agents.size > 1 ? ` ×${agents.size}` : ""}</span>)}</div>
         </>}
     </section>
 

@@ -34,11 +34,11 @@ function treeView({ agents, cacheRefills = [], cacheReadDrops = [], contextBound
  *
  * - "places the workflow summary card before agent activity": obsolete by design. It asserted
  *   `.sessionSummaryCards` placement directly ahead of `.contentGrid` in the old single-page
- *   Dashboard composition. `SessionSummaryCards.tsx` is no longer imported anywhere under
- *   `app/` (confirmed by repository-wide search); the T04 session page replaced that card with
- *   `SessionOverview`'s "Right now" panel and the KPI strip, and workflow context now surfaces
- *   through `AgentsTab`. There is nothing left to port: the component and layout it described
- *   are gone, not relocated.
+ *   Dashboard composition. `SessionSummaryCards.tsx` was unused under `app/` after the T04
+ *   session page replaced that card with `SessionOverview`'s "Right now" panel and the KPI
+ *   strip, with workflow context now surfacing through `AgentsTab`; the orphaned component and
+ *   its test were later deleted. There is nothing left to port: the component and layout it
+ *   described are gone, not relocated.
  * - "coerces a stored Tree view to List and persists the Grid choice": ported to
  *   `tests/ui/agents-tab.test.tsx` ("coerces a stored Tree view to List and persists the Grid
  *   choice per session"). `AgentsTab.tsx` now owns the `pomegr-agent-activity-view-<sessionId>`

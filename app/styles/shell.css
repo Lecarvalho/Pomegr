@@ -76,7 +76,6 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandSessionConnection.attention i { background: var(--command-amber); }
 .commandHeaderTools { grid-column: 5; justify-self: end; display: flex; align-items: center; gap: 6px; }
 .commandIconButton { width: var(--control-height); height: var(--control-height); padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--control-radius); background: transparent; color: var(--command-muted); cursor: pointer; }
-.commandHeader .commandMobileSearchButton, .commandHeader .commandMobileSearchClose { display: none; }
 .commandHeader .commandMenuButton { display: none; }
 .commandIconButton:hover, .commandIconButton[aria-expanded="true"] { border-color: var(--command-line); background: var(--command-panel-2); color: var(--command-ink); }
 .commandPaletteBackdrop { position: fixed; z-index: 120; inset: 0; display: grid; place-items: start center; padding: min(15vh, 120px) 16px 16px; background: color-mix(in srgb, var(--command-ground) 48%, transparent); }
@@ -237,9 +236,7 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandMetricPanel.context > b { color: var(--command-lavender); }
 .commandMetricPanel > p { margin: 9px 0 0; color: var(--command-muted); font-size: var(--text-xs); }
 .commandEmptyState { margin: 14px 0; padding: 26px; border: 1px solid var(--command-line); background: var(--command-panel); }
-.commandSessionBar { min-height: 44px; margin-bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 0; }
 .commandSessionConnection { display: inline-flex; align-items: center; gap: 7px; color: var(--command-muted); font: 400 var(--text-xs)/1.5 var(--font-ui); text-transform: none; letter-spacing: 0; }
-.commandSessionBar .desktopControls > summary { min-height: 36px; border-color: var(--command-line-strong); border-radius: var(--control-radius); background: transparent; color: var(--command-ink); font-size: var(--text-xs); }
 .commandSessionView { width: min(1400px, 100%); margin: 0 auto; }
 .commandSettingsLayout { margin-top: 14px; display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--command-line); background: var(--command-panel); }
 .commandSettingsNav { padding: 10px; border-right: 1px solid var(--command-line); }
@@ -353,7 +350,6 @@ html[data-theme="dark"] body { background: var(--paper); }
   .providerSettingsAdvanced > summary { min-height: 44px; }
   .providerSettingActions { justify-content: flex-start; }
   .providerSettingsFooter { justify-content: space-between; }
-  .commandSessionBar { align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 0; }
 }
 
 @media (max-width: 520px) {
@@ -369,7 +365,6 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandIconButton { width: 44px; height: 44px; }
   .commandProfileButton { width: 44px; height: 44px; }
   .commandMain { padding: 16px 12px 26px; }
-  .commandSessionBar .desktopControls > summary { min-height: 36px; }
   .commandAttention { align-items: flex-start; padding-block: 10px; }
   .commandPageHeader h1 { font-size: 24px; }
   .commandNotificationTray { width: calc(100% - 16px); }
@@ -383,7 +378,6 @@ html[data-theme="dark"] body { background: var(--paper); }
   .commandSidebar { transition: none; }
   .commandHeader .commandMenuButton,
   .commandHeaderTools,
-  .commandHeader .commandMobileSearchClose,
   .commandHeader > .commandSearch { transform: none; transition: none; }
 }
 

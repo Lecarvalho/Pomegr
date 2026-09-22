@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import type { MonitorState, SessionActivityStatus } from "../shared/monitor-contract";
+import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../shared/session-domain-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
@@ -16,8 +16,9 @@ import { SessionTabs } from "./components/dashboard/SessionTabs";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
 import { CommandBreadcrumbSeparator, CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
 import type { DesktopState } from "./components/DesktopControls";
+import { SessionWallTimeText } from "./components/LiveTime";
 import { ProviderBadge } from "./components/ProviderBadge";
-import { compactNumber, formatDuration, sessionListTime, stateEndpoint } from "./dashboard-utils";
+import { compactNumber, sessionListTime, sessionState, stateEndpoint } from "./dashboard-utils";
 import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
@@ -31,13 +32,6 @@ type DesktopBridge = {
 
 function desktopBridge() { return (window as Window & { pomegrDesktop?: DesktopBridge }).pomegrDesktop; }
 
-function statusPresentation(status: SessionActivityStatus) {
-  if (status === "working") return { label: "In progress", state: "active" as const };
-  if (status === "needs_input") return { label: "Needs input", state: "attention" as const };
-  if (status === "idle" || status === "closed") return { label: status === "idle" ? "Idle" : "Closed", state: "idle" as const };
-  return { label: status === "open" ? "Open" : status === "stopped" ? "Stopped" : "Unknown", state: "unknown" as const };
-}
-
 function SessionKpis({ summary, historical }: { summary: SessionSummaryDomain; historical: boolean }) {
   const agentsReady = summary.sectionReadiness.agentEvidence === "ready";
   const statusCountsReady = agentsReady && summary.metrics.idleAgents !== null && summary.metrics.finishedAgents !== null
@@ -48,7 +42,7 @@ function SessionKpis({ summary, historical }: { summary: SessionSummaryDomain; h
   return <section className="sessionKpiStrip sessionSummaryKpis" aria-label="Session totals">
     <div className="sessionKpi"><span className="sessionEyebrow">Agents</span><strong>{agentsReady ? summary.metrics.agents.toLocaleString() : "—"}</strong><small>{statusCountsReady ? <><span className={summary.metrics.activeAgents ? "sessionPositive" : undefined}>{summary.metrics.activeAgents} active</span><span className="sessionDesktopLabel"> · {summary.metrics.idleAgents} idle · {summary.metrics.finishedAgents} finished</span></> : "Agent status counts unavailable"}</small></div>
     <div className="sessionKpi"><span className="sessionEyebrow"><span className="sessionDesktopLabel">All-agent context</span><span className="sessionPhoneLabel">Context</span></span><strong className="sessionContextValue">{contextReady ? compactNumber(summary.allAgentContext) : "—"}</strong><small>{contextReady ? <><span className="sessionDesktopLabel">Latest snapshots · not spend</span><span className="sessionPhoneLabel">Sum of latest</span></> : "Context evidence unavailable"}</small></div>
-    <div className="sessionKpi sessionKpiWall"><span className="sessionEyebrow">{historical ? "Recorded wall time" : "Wall time"}</span><strong>{session ? formatDuration(session.durationMs) : "—"}</strong><small>Includes idle gaps</small></div>
+    <div className="sessionKpi sessionKpiWall"><span className="sessionEyebrow">{historical ? "Recorded wall time" : "Wall time"}</span><strong>{session ? <SessionWallTimeText session={session} historical={historical} /> : "—"}</strong><small>Includes idle gaps</small></div>
     <div className="sessionKpi sessionKpiCalls"><span className="sessionEyebrow">Calls</span><strong>{activityReady ? summary.metrics.toolCalls.toLocaleString() : "—"}</strong><small>{activityReady ? `${summary.metrics.repeatedCalls.toLocaleString()} repeated` : "Activity evidence unavailable"}</small></div>
     <div className="sessionKpi sessionKpiDesktopOnly"><span className="sessionEyebrow">Agent estimate</span><strong>{activityReady && session?.progress ? `${session.progress.percent}%` : "—"}</strong><small>{activityReady && session?.progress ? `${session.progress.phase.replaceAll("_", " ")} · ${session.progress.confidence} confidence` : "No estimate recorded"}</small></div>
   </section>;
@@ -71,11 +65,16 @@ function SessionUnavailable({ meta }: { meta: string }) {
   return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<Link href="/sessions">Sessions</Link>} title="Session unavailable" meta={meta} /><div className="sessionTabState">Choose another session from the Sessions page.</div></section>;
 }
 
-export function Dashboard({ initialSessionId = null, initialQuery = {} }: { initialSessionId?: string | null; initialQuery?: SessionRouteQuery }) {
+// A detected session whose provider has not recorded anything yet is not unavailable: keep its
+// catalog identity and say that its evidence will appear once the provider records it.
+function SessionAwaitingActivity({ session }: { session: SessionSummary }) {
+  return <section className="commandView commandSessionView"><CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{session.project}</span></>} title={session.title} meta={<div className="sessionHeaderMeta"><ProviderBadge source={session.source} /></div>} /><div className="sessionTabState" role="status">No recorded activity yet. Activity and context appear here once the provider records them.</div></section>;
+}
+
+export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { initialSessionId: string; initialQuery?: SessionRouteQuery }) {
   const router = useRouter();
   const { sessions } = useSessionCatalog();
   const { preferences } = useDisplayPreferences();
-  const sessionId = initialSessionId || "__current__";
   const catalogSession = sessions.find((session) => session.id === sessionId);
   const catalogHistorical = Boolean(catalogSession && !catalogSession.isLive && catalogSession.activityStatus !== "open");
   const [paused, setPaused] = useState(false);
@@ -88,7 +87,7 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
   const [knownHistorical, setKnownHistorical] = useState(catalogHistorical);
   if (sessionId !== trackedSessionId) { setTrackedSessionId(sessionId); setKnownHistorical(catalogHistorical); }
   const domainHistorical = catalogHistorical || knownHistorical;
-  const summaryResult = useSessionDomain({ sessionId, domain: "session-summary" }, { historical: domainHistorical, enabled: !paused && Boolean(initialSessionId) });
+  const summaryResult = useSessionDomain({ sessionId, domain: "session-summary" }, { historical: domainHistorical, enabled: !paused });
   const summary = summaryResult.data;
   if (summary?.view === "history" && !knownHistorical) setKnownHistorical(true);
   const historical = summary?.view === "history" || catalogHistorical;
@@ -145,9 +144,11 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
   // showing "Loading session…" forever; the next successful response clears `summaryResult.error`
   // on its own (see session-domain-store.ts), so no local retry bookkeeping is needed here either.
   if (summary.readiness === "loading" && !summary.session) return <SessionLoading error={summaryResult.error} />;
-  if (!summary.session || summary.readiness === "unavailable") return <SessionUnavailable meta="Pomegr has no committed summary for this session." />;
+  if (!summary.session || summary.readiness === "unavailable") return catalogSession
+    ? <SessionAwaitingActivity session={catalogSession} />
+    : <SessionUnavailable meta="Pomegr has no committed summary for this session." />;
 
-  const status = statusPresentation(summary.lifecycle.activityStatus);
+  const status = sessionState(summary.lifecycle);
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
   const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><SessionIdChip sessionId={nativeId} />{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? sessionListTime(summary.session.startedAt) : "time unavailable"}</span></div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
@@ -158,11 +159,11 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
     <SessionKpis summary={summary} historical={historical} />
     <SessionTabs active={activeTab} summary={summary} onSelect={selectTab} />
     <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
-      {activeTab === "overview" && <SessionOverview summary={summary} query={initialQuery} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
-      {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} summary={summary} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
+      {activeTab === "overview" && <SessionOverview summary={summary} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
+      {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
       {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
-      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>
   </section>;
 }

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, isAgentWallTimeAdvancing, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorEventStream, proxyMonitorJson } from "../../app/api/monitor-proxy";
-import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, retryCountdown, sessionNeedingAttention, sessionRelativeTime } from "../../app/dashboard-utils";
+import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, retryCountdown, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
@@ -70,19 +70,6 @@ describe("wall-time formatting", () => {
 
     expect(labels).toEqual(["<1m ago", "less than a minute ago", "just now", "<1m"]);
     expect(labels.join(" ")).not.toMatch(/\b\d+s(?:econds?)?\b/i);
-  });
-});
-
-describe("session attention", () => {
-  const sessions: SessionSummary[] = [
-    { id: "waiting", provider: "claude", source: "Claude Code", title: "Waiting session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: true, activityStatus: "needs_input", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: 1_000, progress: null, currentActivity: null },
-    { id: "working", provider: "claude", source: "Claude Code", title: "Working session", project: "Pomegr", updatedAt: "2026-08-10T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: 1_000, progress: null, currentActivity: null },
-  ];
-
-  it("shows attention only while viewing the live session that needs input", () => {
-    expect(sessionNeedingAttention(sessions, "waiting", false)).toEqual(sessions[0]);
-    expect(sessionNeedingAttention(sessions, "working", false)).toBeNull();
-    expect(sessionNeedingAttention(sessions, "waiting", true)).toBeNull();
   });
 });
 
