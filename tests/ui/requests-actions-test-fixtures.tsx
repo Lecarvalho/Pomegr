@@ -90,3 +90,9 @@ export function setPhone(matches: boolean) {
     dispatchEvent: vi.fn(),
   })));
 }
+
+/** The pressed chart bar is the one place the panel shows the selected request; returns its marker. */
+export function selectedRequest(): string | null {
+  const label = document.querySelector('.requestsActionsBar[aria-pressed="true"]')?.getAttribute("aria-label");
+  return label?.match(/^Request (.+?),/u)?.[1] ?? null;
+}

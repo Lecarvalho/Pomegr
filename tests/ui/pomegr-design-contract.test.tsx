@@ -69,9 +69,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).not.toMatch(/\.(contextHistory|requestSnapshot|contextArea|contextSeriesLine|contextChartPoint|contextBoundary)/);
     expect(styles).toMatch(/\.requestsActionsCompaction line\s*\{[^}]*stroke-dasharray:\s*3 4/);
     expect(styles).toMatch(/\.requestsActionsBar:focus-visible \.requestsActionsHit\s*\{[^}]*stroke:\s*var\(--focus-ring\)/);
-    expect(styles).toMatch(/\.requestsActionsPanel \.requestsActionsLargestRow\s*\{[^}]*grid-template-columns:\s*92px minmax\(36px, 1fr\) minmax\(4ch, max-content\)/);
-    expect(styles).toMatch(/\.requestsActionsLargest > div\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-    expect(styles).toMatch(/\.requestsActionsLargestLabel\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
+    expect(styles).toMatch(/\.requestsActionsLargest\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*wrap/);
+    expect(styles).toMatch(/\.requestsActionsLargestName\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/);
     expect(layoutSource).toMatch(/<html[^>]*className=\{`\$\{inter.variable\} \$\{geistMono.variable\}`\}/);
     expect(styles).toMatch(/--control-radius:\s*4px/);
     expect(styles).toMatch(/--panel-radius:\s*6px/);

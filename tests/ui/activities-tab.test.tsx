@@ -20,7 +20,7 @@ import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 import type { HistoryActivity } from "../../shared/session-history-contract";
 import type { RequestSelectionRoute, SessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
-import { setPhone } from "./requests-actions-test-fixtures";
+import { setPhone, selectedRequest } from "./requests-actions-test-fixtures";
 
 const SESSION = "claude:activities";
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", executionTasks: [] };
@@ -71,7 +71,7 @@ function feedCalls(server: ReturnType<typeof historyServer>) {
 }
 
 async function ready(latest = 40) {
-  await screen.findByRole("heading", { name: `Request #${latest}` });
+  await waitFor(() => expect(selectedRequest()).toBe(`#${latest}`));
   const feed = screen.getByRole("region", { name: "Activity feed" });
   await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
   return feed;
@@ -88,7 +88,7 @@ describe("Activities tab", () => {
     expect(within(feed).getAllByRole("article").map((group) => group.getAttribute("aria-label"))).toEqual(["Request #36", "Request #37", "Request #38", "Request #39", "Request #40"]);
 
     await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
-    await screen.findByRole("heading", { name: "Request #39" });
+    await waitFor(() => expect(selectedRequest()).toBe("#39"));
     feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(server.of("requests").at(-1)?.get("scope")).toBe("child");
@@ -164,7 +164,7 @@ describe("Activities tab", () => {
     await waitFor(() => expect(feedCalls(server).at(-1)?.get("workKind")).toBe("read"));
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(within(feed).getByRole("button", { name: /^Reading/u })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("heading", { name: "Request #38" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#38");
     expect(within(feed).getByRole("button", { name: /Request #38/u })).toHaveAttribute("aria-pressed", "true");
     expect(within(feed).getByRole("article", { name: "Request #37" })).toHaveTextContent("No reading calls for this request.");
     expect(within(feed).getByRole("article", { name: "Request #38" })).not.toHaveTextContent("Editing");
@@ -180,14 +180,14 @@ describe("Activities tab", () => {
     expect(Array.from(pagination.children, (child) => child.tagName)).toEqual(["SPAN", "NAV"]);
     expect(within(range).getByRole("button", { name: "Jump to latest" })).toBeDisabled();
     await user.click(within(range).getByRole("button", { name: "Previous" }));
-    expect(await screen.findByRole("heading", { name: "Request #35" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#35"));
     await waitFor(() => expect(within(feed).getAllByRole("article").map((group) => group.getAttribute("aria-label"))).toEqual(["Request #33", "Request #34", "Request #35", "Request #36", "Request #37"]));
     await user.click(within(range).getByRole("button", { name: "Next" }));
-    expect(await screen.findByRole("heading", { name: "Request #40" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#40"));
     await user.click(within(range).getByRole("button", { name: "Previous" }));
-    await screen.findByRole("heading", { name: "Request #35" });
+    await waitFor(() => expect(selectedRequest()).toBe("#35"));
     await user.click(within(range).getByRole("button", { name: "Jump to latest" }));
-    expect(await screen.findByRole("heading", { name: "Request #40" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#40"));
     await waitFor(() => expect(within(range).getByRole("button", { name: "Jump to latest" })).toBeDisabled());
   });
 
@@ -196,17 +196,17 @@ describe("Activities tab", () => {
     const { container, server } = fixture({ count: 130, overview: false });
     const feed = await ready(130);
     await user.click(screen.getByRole("button", { name: /^Request #71,/u }));
-    await screen.findByRole("heading", { name: "Request #71" });
+    await waitFor(() => expect(selectedRequest()).toBe("#71"));
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     server.holdWhen((params) => params.get("kind") === "requests" && params.get("offset") === "6");
     await user.click(within(within(feed).getByRole("navigation", { name: "Request range" })).getByRole("button", { name: "Previous" }));
     await waitFor(() => expect(server.deferred).toHaveLength(1));
     expect(feed).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("heading", { name: "Request #71" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#71");
     expect(container.querySelector(".requestsActionsBar.isSelected")?.getAttribute("aria-label")).toMatch(/^Request #71,/u);
     server.holdWhen(null);
     server.deferred[0].resolve();
-    expect(await screen.findByRole("heading", { name: "Request #66" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#66"));
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(container.querySelector(".requestsActionsBar.isSelected")?.getAttribute("aria-label")).toMatch(/^Request #66,/u);
     expect(within(feed).getAllByRole("article").map((group) => group.getAttribute("aria-label"))).toEqual(["Request #64", "Request #65", "Request #66", "Request #67", "Request #68"]);
@@ -217,7 +217,7 @@ describe("Activities tab", () => {
     { name: "opaque request id", request: "request-12" },
   ])("resolves a $name deep link under StrictMode with a settled feed", async ({ request }) => {
     const { server } = fixture({ count: 130, route: { agent: null, request }, strict: true });
-    expect(await screen.findByRole("heading", { name: "Request #12" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#12"));
     const feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     expect(within(feed).getByRole("button", { name: /Request #12/u })).toHaveAttribute("aria-pressed", "true");
@@ -230,7 +230,7 @@ describe("Activities tab", () => {
     const feed = await ready();
     serverState.activity = 503;
     await user.click(within(within(feed).getByRole("navigation", { name: "Request range" })).getByRole("button", { name: "Previous" }));
-    await screen.findByRole("heading", { name: "Request #35" });
+    await waitFor(() => expect(selectedRequest()).toBe("#35"));
     expect(await within(feed).findByText(/could not update\. Showing the previous requests\./u)).toBeInTheDocument();
     expect(within(feed).getAllByRole("article").map((group) => group.getAttribute("aria-label"))).toEqual(["Request #36", "Request #37", "Request #38", "Request #39", "Request #40"]);
     expect(feed).toHaveAttribute("aria-busy", "true");
@@ -249,7 +249,7 @@ describe("Activities tab", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
     expect(feedCalls(server)).toHaveLength(1);
     await user.click(within(within(feed).getByRole("navigation", { name: "Request range" })).getByRole("button", { name: "Previous" }));
-    await screen.findByRole("heading", { name: "Request #35" });
+    await waitFor(() => expect(selectedRequest()).toBe("#35"));
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
     expect(feedCalls(server)).toHaveLength(2);
@@ -290,7 +290,7 @@ describe("Activities tab", () => {
     expect(within(group).queryByRole("button", { name: "Open Primary agent in the Agents inspector" })).toBeNull();
 
     await user.click(line);
-    await screen.findByRole("heading", { name: "Request #38" });
+    await waitFor(() => expect(selectedRequest()).toBe("#38"));
     expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #38, Primary agent,/u));
     const selected = Array.from(feed.querySelectorAll(".activityTableFrame.isSelectedRequest"));
     expect(selected).toEqual([group]);
@@ -325,7 +325,7 @@ describe("Activities tab", () => {
     const fetches = feedCalls(server).length;
 
     await user.click(within(feed).getByRole("button", { name: /^Request #38, Primary agent,/u }));
-    await screen.findByRole("heading", { name: "Request #38" });
+    await waitFor(() => expect(selectedRequest()).toBe("#38"));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
 
     // Re-anchoring the served window on every selection would slide all five lines under the finger.
@@ -528,7 +528,7 @@ describe("Activities tab", () => {
 
   it("shows the unavailable state with Retry, not invented zero counts, when the first feed query fails", async () => {
     fixture({ activity: 503 });
-    await screen.findByRole("heading", { name: "Request #40" });
+    await waitFor(() => expect(selectedRequest()).toBe("#40"));
     const region = await screen.findByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(within(region).getByText(/Activity feed is unavailable\./u)).toBeInTheDocument());
     expectNoInventedZeros(region);

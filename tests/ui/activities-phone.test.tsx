@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent, ContextHistoryBoundary, RequestSnapshot } from "../../shared/monitor-contract";
 import { agent } from "./dashboard-test-fixtures";
-import { renderPanel, requestFeed, RequestsActionsPanel, setPhone, snapshot } from "./requests-actions-test-fixtures";
+import { renderPanel, requestFeed, RequestsActionsPanel, selectedRequest, setPhone, snapshot } from "./requests-actions-test-fixtures";
 
 const builder: Agent = { ...agent, id: "builder", parentId: "primary", label: "Builder", role: "builder", model: "small-model" };
 const AGENTS = [agent, builder];
@@ -43,14 +43,15 @@ describe("phone Activities chart", () => {
     expect(legend.children).toHaveLength(2);
     const minimap = screen.getByRole("slider", { name: "Request window" });
     const largest = screen.getByRole("region", { name: "Largest requests" });
-    expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(5);
+    expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(3);
     expect(follows(svg, legend) && follows(legend, minimap) && follows(minimap, largest)).toBe(true);
 
     await user.click(screen.getByRole("button", { name: /^Request #2,/u }));
     expect(container.querySelector(".requestRoleNamed")).toHaveTextContent("#2Builderbuilder");
 
-    await user.click(within(largest).getAllByRole("button", { name: /^Locate request/u })[0]);
-    expect(screen.getByRole("heading", { name: /^Request #\d+$/u })).toBeInTheDocument();
+    const first = within(largest).getAllByRole("button", { name: /^Locate request/u })[0];
+    await user.click(first);
+    expect(first).toHaveAccessibleName(new RegExp(`^Locate request ${selectedRequest()},`, "u"));
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
   });
 

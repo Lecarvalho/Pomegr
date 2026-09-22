@@ -710,15 +710,6 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsRefillLabel { fill: var(--command-amber); stroke: var(--command-panel); stroke-width: 4px; paint-order: stroke; font: 11px var(--font-ui); pointer-events: none; }
 .requestsActionsMiniRefill { stroke: var(--command-amber); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .requestsActionsMiniRefill.isInferred { stroke-dasharray: 1 2; }
-.requestsActionsCacheDetail { padding-top: 12px; border-top: 1px solid var(--command-line); font-size: 12px; line-height: 1.5; }
-.requestsActionsCacheDetail h4 { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--command-amber); font-size: 13px; font-weight: 600; }
-.requestsActionsCacheDetail .cacheRefillIcon { width: 18px; height: 20px; }
-.requestsActionsCacheDetail p { margin: 6px 0 0; color: var(--command-muted); }
-.requestsActionsCacheDetail .requestsActionsCacheProvenance { color: var(--command-amber); }
-.requestsActionsCacheDetail dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 10px 0; }
-.requestsActionsCacheDetail dt { color: var(--command-muted); }
-.requestsActionsCacheDetail dd { margin: 2px 0 0; color: var(--command-ink); font-family: var(--font-data); }
-.requestsActionsCacheDetail a { display: inline-flex; align-items: center; margin-top: 8px; color: var(--command-brand-text); }
 .requestsActionsMinimap { margin-top: 6px; color: var(--command-faint); font: var(--text-caption) var(--font-data); }
 .requestsActionsMinimap svg { display: block; width: 100%; height: 26px; cursor: grab; touch-action: none; outline: none; }
 .requestsActionsMinimap.isLoading svg { cursor: default; }
@@ -731,44 +722,16 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 /* The minimap stays neutral grey: no brand or role tint; only cache-evidence ticks keep amber. */
 .requestsActionsMiniWindow { fill: color-mix(in srgb, var(--command-muted) 12%, transparent); stroke: var(--command-muted); stroke-width: 1; }
 .requestsActionsMiniWindow.isWhole { fill: color-mix(in srgb, var(--command-line-strong) 12%, transparent); stroke: var(--command-line-strong); }
-.requestsActionsDetails { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--command-line); }
-.requestsActionsDetail { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 20px; }
-.requestsActionsDetail > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
-.requestsActionsDetail > header > div { min-width: 0; }
-.requestsActionsDetail h3 { margin: 0; font-size: var(--text-heading); font-weight: 600; }
-.requestsActionsDetail header p { margin: 3px 0 0; color: var(--command-muted); font-size: 12px; overflow-wrap: anywhere; }
-.requestsActionsPrompt { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0; color: var(--command-muted); font-size: 12px; }
-.requestsActionsPrompt strong { color: var(--command-ink); font: 500 14px var(--font-data); font-variant-numeric: tabular-nums; }
 .requestsActionsNumber { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
-.requestsActionsNavigation { display: flex; flex: 0 0 auto; gap: 8px; }
-.requestsActionsStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.requestsActionsStats.withoutWrite { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.requestsActionsStat { min-width: 0; padding: 10px 12px; border: 1px solid var(--command-line); border-radius: var(--control-radius); }
-.requestsActionsStat .sessionEyebrow { display: flex; align-items: center; gap: 5px; font-size: var(--text-caption); }
-.requestsActionsStat strong { display: block; margin-top: 4px; font: 500 20px/1.4 var(--font-data); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.requestsActionsStat.read strong { color: var(--command-muted); }
-.requestsActionsWork { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.requestsActionsWork > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.requestsActionsWork > div + div { border-left: 1px solid var(--command-line); padding-left: 12px; }
-.requestsActionsWork h4 { margin: 0; }
-.requestsActionsWork h4 span { text-transform: none; letter-spacing: 0; color: var(--command-muted); font-weight: 400; }
-.requestsActionsChips { display: flex; flex-wrap: wrap; gap: 6px; }
-.requestsActionsNone { color: var(--command-muted); font-size: 12px; }
-.requestsActionsCaveat { margin: auto 0 0; padding-top: 12px; color: var(--command-faint); font-size: var(--text-caption); line-height: 1.5; }
-.requestsActionsLargest { display: flex; flex-direction: column; gap: 10px; min-width: 0; margin: 0 -20px; padding: 20px; border-top: 1px solid var(--command-line); }
-.requestsActionsLargest > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.requestsActionsLargest h3 { margin: 0; }
-.requestsActionsLargest > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; }
-.requestsActionsPanel .requestsActionsLargestRow { display: grid; grid-template-columns: 92px minmax(36px, 1fr) minmax(4ch, max-content); align-items: center; gap: 8px; width: 100%; min-height: 28px; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: var(--control-radius); background: transparent; text-align: left; font-size: 12px; cursor: pointer; }
-/* Equal tracks retain an empty final slot instead of stretching a fifth ranked request. */
-.requestsActionsPlot .requestsActionsLargestRow { width: auto; }
-.requestsActionsLargestRow:hover, .requestsActionsLargestRow.isSelected { background: var(--command-panel-2); }
-.requestsActionsLargestRow.isSelected > span:first-child { color: var(--command-brand-text); }
-.requestsActionsLargestRow:focus-visible { outline-offset: -3px; }
-.requestsActionsLargestLabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.requestsActionsLargestValue { min-width: 4ch; text-align: right; }
-.requestsActionsLargestBar { display: block; height: 5px; background: var(--command-panel-2); }
-.requestsActionsLargestBar i { display: block; height: 100%; background: var(--command-line-strong); }
+/* Largest strip: one wrapping line under the minimap. The metric label cycles in place; each item
+   selects its request. Quiet actions bleed into the plot padding so their text aligns with the minimap. */
+.requestsActionsLargest { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; margin: var(--space-2) -6px 0; }
+.requestsActionsLargestRow { gap: 6px; min-width: 0; max-width: 100%; }
+.requestsActionsLargestRow.isSelected { background: color-mix(in srgb, var(--command-ink) 10%, transparent); }
+.requestsActionsLargestRow:focus-visible, .requestsActionsLargestSort:focus-visible { outline-offset: -2px; }
+.requestsActionsLargestMarker, .requestsActionsLargestValue { color: var(--command-ink); font-weight: 400; }
+.requestsActionsLargestRow.isSelected .requestsActionsLargestMarker { color: var(--command-brand-text); }
+.requestsActionsLargestName { min-width: 0; max-width: 32ch; overflow: hidden; color: var(--command-muted); font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .requestsActionsRetention { margin: 0; padding: 8px 20px; border-top: 1px solid var(--command-line); color: var(--command-faint); font-size: var(--text-caption); }
 @media (max-width: 1200px) {
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) auto; gap: 12px; }
@@ -780,10 +743,9 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsModes { grid-column: 2; grid-row: 2; justify-self: end; }
 }
 @media (max-width: 760px) {
-  /* Phone keeps the Largest strip under the minimap: one full-width 44px row per request. */
-  .requestsActionsLargest { gap: 4px; margin: 4px -14px 0; padding: 12px 14px 0; }
-  .requestsActionsLargest > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .requestsActionsPanel .requestsActionsLargestRow { min-height: 44px; }
+  /* Phone keeps the Largest strip under the minimap; each item keeps a 44px touch target. */
+  .requestsActionsLargest .commandQuietAction { min-height: 44px; }
+  .requestsActionsLargestName { max-width: 18ch; }
   .requestsActionsHeader { grid-template-columns: minmax(0, 1fr) minmax(100px, 130px); gap: 10px; padding: 12px 14px 8px; border-bottom: 1px solid var(--command-line); }
   .requestsActionsHeading { max-width: none; }
   .requestsActionsHeading .sessionEyebrow { display: none; }
@@ -792,17 +754,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsGuide { align-items: flex-start; }
   .requestsActionsGuide .requestsActionsLegend { width: 100%; justify-content: flex-start; margin-left: 0; gap: 5px 10px; }
   .requestsActionsScope .commandSelect select { min-height: 44px; }
-  .requestsActionsLargest > header .commandQuietAction { width: auto; }
   .requestsActionsPlot { padding: 10px 14px 12px; }
   .requestsActionsChart { height: 196px; touch-action: pan-y pinch-zoom; user-select: none; }
-  .requestsActionsCacheDetail a { min-height: 44px; }
   .requestsActionsAxis text { font-size: var(--text-caption); }
-  .requestsActionsDetail { gap: 12px; padding: 14px; }
-  .requestsActionsStats, .requestsActionsStats.withoutWrite { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .requestsActionsStat strong { font-size: var(--text-heading); }
-  .requestsActionsStat .sessionEyebrow { font-size: var(--text-caption); }
-  .requestsActionsWork { gap: 8px; }
-  .requestsActionsWork h4 { margin: 0; }
-  .requestsActionsCaveat { padding-top: 0; }
   .requestsActionsRetention { padding: 8px 14px; }
 }

@@ -103,6 +103,14 @@ export function compactNumber(value: number) {
   }).format(value);
 }
 
+/**
+ * The one request-local token count format: print `compactNumber(value)` (139.7K) and put this
+ * exact value in the hover title, so every compact count keeps its exact reading.
+ */
+export function requestTokenTitle(label: string, value: number) {
+  return `${label}: ${value.toLocaleString()} ${value === 1 ? "token" : "tokens"}, this request only`;
+}
+
 export function formatDuration(milliseconds: number) {
   const totalMinutes = Math.max(0, Math.floor(milliseconds / 60_000));
   const hours = Math.floor(totalMinutes / 60);

@@ -1,4 +1,4 @@
-import { RequestsActionsPanel, snapshot, requestFeed, overviewPoint, fullRefill, renderPanel, HistoryLocateHarness, chart, axisLabels, setPhone } from "./requests-actions-test-fixtures";
+import { RequestsActionsPanel, snapshot, requestFeed, overviewPoint, fullRefill, renderPanel, HistoryLocateHarness, chart, axisLabels, setPhone, selectedRequest } from "./requests-actions-test-fixtures";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ describe("RequestsActionsPanel", () => {
     }) }));
     vi.stubGlobal("fetch", fetchPage);
     render(<StrictMode><HistoryLocateHarness sessionId="strict-loading" requests={[snapshot(1)]} /></StrictMode>);
-    expect(await screen.findByRole("heading", { name: "Request #999" })).toBeInTheDocument();
+    await waitFor(() => expect(selectedRequest()).toBe("#999"));
     expect(screen.getByRole("img", { name: "Request map loading" })).toBeInTheDocument();
     expect(fetchPage).toHaveBeenCalledTimes(2);
   });
@@ -50,7 +50,7 @@ describe("RequestsActionsPanel", () => {
     await act(async () => resolve({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "1", total: 100, offset: first - 1, linkedCount: 0,
       items: requests.slice(first - 1).map((row, index) => ({ ...row, number: 1000 + first + index })), overview: requests.map(overviewPoint),
     }) }));
-    expect(screen.getByRole("heading", { name: `Request #${1000 + first}` })).toBeInTheDocument();
+    expect(selectedRequest()).toBe(`#${1000 + first}`);
     expect(screen.getByRole("slider", { name: "Request window" })).toBeInTheDocument();
     expect(screen.queryByText(/Showing recent requests by time/)).not.toBeInTheDocument();
   });
@@ -66,7 +66,7 @@ describe("RequestsActionsPanel", () => {
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(1);
     expect(screen.getByText(/Full history is unavailable; retrying/)).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-    expect(screen.getByRole("heading", { name: "Request #99" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#99");
   });
 
   it("distinguishes loading history from a session with no observations", () => {
@@ -92,7 +92,7 @@ describe("RequestsActionsPanel", () => {
     count = 4;
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(fetchPage).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("heading", { name: "Request #4" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#4");
   });
 
   it.each([false, true])("slides preloaded history immediately during a held pointer without network requests (phone: %s)", async (phone) => {
@@ -168,7 +168,7 @@ describe("RequestsActionsPanel", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(fetchPage).toHaveBeenCalledTimes(3);
     expect(fetchPage.mock.calls[2][0]).toContain("requestId=request-10");
-    expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#10");
   });
 
   it("keeps persistent request labels across pages and loads an absent selection around its stable id", async () => {
@@ -184,10 +184,10 @@ describe("RequestsActionsPanel", () => {
       return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "history-r1", total: 100, offset: selected ? 0 : 80, linkedCount: 0, items }) };
     }));
     const { container } = render(<HistoryLocateHarness sessionId="history-one" requests={Array.from({ length: 100 }, (_, index) => snapshot(index + 1))} />);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument());
+    await waitFor(() => expect(selectedRequest()).toBe("#100"));
     expect(axisLabels(container)).toEqual(["#81", "#100"]);
     await user.click(screen.getByRole("button", { name: "Locate absent request" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #10" })).toBeInTheDocument());
+    await waitFor(() => expect(selectedRequest()).toBe("#10"));
     expect(axisLabels(container)).toEqual(["#1", "#20"]);
     expect(calls.at(-1)).toContain("requestId=request-10");
     expect(screen.queryByText("Request numbers are stable labels within this session, not provider ids.", { exact: false })).not.toBeInTheDocument();
@@ -204,12 +204,12 @@ describe("RequestsActionsPanel", () => {
     rerender(<HistoryLocateHarness sessionId="history-two" requests={requests} />);
     await waitFor(() => expect(deferred).toHaveLength(2));
     deferred[1]({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "two", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(200), number: 200 }] }) });
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+    await waitFor(() => expect(selectedRequest()).toBe("#200"));
     deferred[0]({ ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "one", total: 1, offset: 0, linkedCount: 0, items: [{ ...snapshot(1), number: 1 }] }) });
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+    await waitFor(() => expect(selectedRequest()).toBe("#200"));
   });
 
-  it("uses detail Prev and Next across pages even when stable labels have gaps", async () => {
+  it("steps with arrow keys across pages even when stable labels have gaps", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const offset = new URL(url, "http://localhost").searchParams.get("offset");
@@ -217,13 +217,13 @@ describe("RequestsActionsPanel", () => {
       return { ok: true, json: async () => ({ status: "ready", kind: "requests", revision: "history-r1", total: 100, offset: start - 1, linkedCount: 0, items: Array.from({ length: 60 }, (_, index) => ({ ...snapshot(start + index), number: (start + index) * 2 })) }) };
     }));
     const { container } = render(<HistoryLocateHarness sessionId="history-steps" requests={Array.from({ length: 100 }, (_, index) => snapshot(index + 1))} />);
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #200" })).toBeInTheDocument());
+    await waitFor(() => expect(selectedRequest()).toBe("#200"));
     await user.click(within(container).getByRole("button", { name: /^Request #82,/ }));
-    await user.click(screen.getByRole("button", { name: "Prev" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #80" })).toBeInTheDocument());
+    fireEvent.keyDown(chart(container), { key: "ArrowLeft" });
+    await waitFor(() => expect(selectedRequest()).toBe("#80"));
     await user.click(within(container).getByRole("button", { name: /^Request #120,/ }));
-    await user.click(screen.getByRole("button", { name: "Next" }));
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Request #122" })).toBeInTheDocument());
+    fireEvent.keyDown(chart(container), { key: "ArrowRight" });
+    await waitFor(() => expect(selectedRequest()).toBe("#122"));
   });
 
   it("navigates the global history minimap across unloaded pages and keeps its last page while a newer move wins", async () => {
@@ -308,8 +308,7 @@ describe("RequestsActionsPanel", () => {
     expect(marker.querySelector("title")).toHaveTextContent("Possible full refill · request #44");
     expect(container.querySelectorAll(".requestsActionsMiniRefill")).toHaveLength(1);
     fireEvent.click(marker.closest(".requestsActionsBar")!);
-    expect(screen.getByRole("heading", { name: "Request #44" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
+    expect(selectedRequest()).toBe("#44");
   });
 
   it.each([
@@ -359,10 +358,10 @@ describe("RequestsActionsPanel", () => {
     const { container } = renderPanel(Array.from({ length: 1_000 }, (_, index) => snapshot(index + 1)));
     expect(container.querySelectorAll(".requestsActionsBar")).toHaveLength(60);
     expect(axisLabels(container)).toEqual(["#941", "#1000"]);
-    expect(screen.getByRole("heading", { name: "Request #1000" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#1000");
     expect(screen.queryByText(/Request numbers are positions/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "About request links" }));
-    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids. Before and Issued come from transcript adjacency and recorded links; they do not establish token cost per operation.");
+    expect(screen.getByRole("dialog", { name: "About request links" })).toHaveTextContent("Request numbers are positions in the retained feed (latest 100 per agent), not provider ids.");
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "About request links" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Showing \d/)).not.toBeInTheDocument();
@@ -375,12 +374,12 @@ describe("RequestsActionsPanel", () => {
     const items = Array.from({ length: 10 }, (_, index) => snapshot(index + 1, index % 2 ? "child" : "primary"));
     const { container } = renderPanel(items, { agents: [agent, childAgent] });
     await user.selectOptions(screen.getByLabelText("Agent scope"), "primary");
-    expect(screen.getByRole("heading", { name: "Request #5" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#5");
     expect(axisLabels(container)).toEqual(["#1", "#5"]);
 
     const bars = container.querySelectorAll(".requestsActionsBar");
     fireEvent.click(bars[2]);
-    expect(screen.getByRole("heading", { name: "Request #3" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#3");
     expect(axisLabels(container)).toEqual(["#1", "#5"]);
     expect(bars[2]).toHaveClass("isSelected");
     expect(bars[2].querySelector(".requestsActionsSelection")).toBeInTheDocument();
@@ -392,32 +391,33 @@ describe("RequestsActionsPanel", () => {
     const largest = screen.getByRole("button", { name: /Locate request #1,/ });
     largest.focus();
     await user.keyboard("{Enter}");
-    expect(screen.getByRole("heading", { name: "Request #1" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#1");
     expect(axisLabels(container)).toEqual(["#1", "#60"]);
   });
 
-  it("keeps the largest-request rail compact and scoped", () => {
+  it("keeps the Largest strip to one metric button and three requests, with no request detail", () => {
     const { container } = renderPanel(Array.from({ length: 10 }, (_, index) => snapshot(index + 1)));
     const largest = screen.getByRole("region", { name: "Largest requests" });
-    expect(largest).toHaveTextContent("Largest requests · All agents");
-    expect(largest).not.toHaveTextContent(/before:|Show 20|Individual request measurements/);
-    expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(5);
-    expect(largest.querySelector(".requestsActionsLargestIdentity")).toBeNull();
-    expect(largest.querySelectorAll(".requestsActionsLargestBar")).toHaveLength(5);
-    expect(container.querySelector(".requestsActionsLargest footer")).toBeNull();
+    expect(within(largest).getByRole("button", { name: "Largest by uncached input" })).toBeInTheDocument();
+    expect(largest).not.toHaveTextContent(/All agents|before:|Show 20|click one/);
+    expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(3);
+    expect(largest.querySelector(".requestsActionsLargestBar")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Selected request" })).toBeNull();
+    expect(screen.queryByText("Full prompt")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Prev" })).toBeNull();
+    expect(container.querySelector(".requestsActionsDetails")).toBeNull();
   });
 
-  it("moves selection and the window by one at the boundary with Prev and ArrowLeft", async () => {
-    const user = userEvent.setup();
+  it("moves selection and the window by one at the boundary with ArrowLeft", () => {
     const { container } = renderPanel(Array.from({ length: 100 }, (_, index) => snapshot(index + 1)));
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[0]);
-    expect(screen.getByRole("heading", { name: "Request #41" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Prev" }));
-    expect(screen.getByRole("heading", { name: "Request #40" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#41");
+    fireEvent.keyDown(chart(container), { key: "ArrowLeft" });
+    expect(selectedRequest()).toBe("#40");
     expect(axisLabels(container)).toEqual(["#40", "#99"]);
 
     fireEvent.keyDown(chart(container), { key: "ArrowLeft" });
-    expect(screen.getByRole("heading", { name: "Request #39" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#39");
     expect(axisLabels(container)).toEqual(["#39", "#98"]);
   });
 
@@ -428,12 +428,12 @@ describe("RequestsActionsPanel", () => {
     fireEvent.click(first);
     chart(container).focus();
     fireEvent.keyDown(chart(container), { key: "ArrowLeft" });
-    expect(screen.getByRole("heading", { name: "Request #40" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#40");
     expect(document.activeElement).toHaveClass("requestsActionsBar");
     expect(document.activeElement).toHaveAttribute("aria-label", expect.stringContaining("Request #40"));
 
     await user.keyboard("{ArrowLeft}");
-    expect(screen.getByRole("heading", { name: "Request #39" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#39");
     expect(document.activeElement).toHaveClass("requestsActionsBar");
     expect(document.activeElement).toHaveAttribute("aria-label", expect.stringContaining("Request #39"));
     expect(axisLabels(container)).toEqual(["#39", "#98"]);
@@ -445,14 +445,13 @@ describe("RequestsActionsPanel", () => {
       uncachedInputTokens: 1_000, cacheReadTokens: 90_000,
     })));
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[9]);
-    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#50");
     const labels = axisLabels(container);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(0);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.getByText("Per-lane scales")).toBeInTheDocument();
     expect(screen.getByText("max 8,000")).toBeInTheDocument();
     expect(screen.getByText("Rescaled · cache reads excluded")).toBeInTheDocument();
-    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
     const freshHeight = Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"));
     expect(freshHeight).toBeCloseTo(84);
     const selectedBar = container.querySelector(".requestsActionsBar.isSelected .requestsActionsSegment")!;
@@ -463,16 +462,15 @@ describe("RequestsActionsPanel", () => {
     expect(Number(selectedLabel.getAttribute("y"))).toBeCloseTo(17);
 
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
-    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#50");
     expect(axisLabels(container)).toEqual(labels);
     expect(container.querySelectorAll(".requestsActionsSegment.read")).toHaveLength(60);
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.getByText("max 120K")).toBeInTheDocument();
     expect(screen.getByText("All input + output")).toBeInTheDocument();
-    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("93,000 tokens");
 
     await user.click(screen.getByRole("button", { name: "Fresh tokens" }));
-    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#50");
     expect(axisLabels(container)).toEqual(labels);
     expect(Number(container.querySelector(".requestsActionsSelection")!.getAttribute("height"))).toBe(freshHeight);
     fireEvent.keyDown(screen.getByRole("slider", { name: "Request window" }), { key: "Home" });
@@ -491,18 +489,16 @@ describe("RequestsActionsPanel", () => {
     expect(heights[1]).toBeCloseTo(4.4);
   });
 
-  it("rescales on phones while preserving prompt size and selection", async () => {
+  it("rescales on phones while preserving selection", async () => {
     setPhone(true);
     const user = userEvent.setup();
     const { container } = renderPanel([snapshot(1, "primary", {
       uncachedInputTokens: 2_000, cacheWriteTokens: 0, cacheReadTokens: 90_000, outputTokens: 1_000,
     })], { cacheWriteAvailable: false });
     expect(screen.getByText("0–3,000 tokens")).toBeInTheDocument();
-    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("92,000 tokens");
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(screen.getByText("0–120K tokens")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Request #1" })).toBeInTheDocument();
-    expect(screen.getByText("Full prompt").parentElement).toHaveTextContent("92,000 tokens");
+    expect(selectedRequest()).toBe("#1");
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
   });
@@ -513,36 +509,15 @@ describe("RequestsActionsPanel", () => {
     })], { cacheWriteAvailable: false });
     expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
     expect(container.querySelectorAll(".requestsActionsSegment.write")).toHaveLength(0);
-    expect(container.querySelectorAll(".requestsActionsStat.write")).toHaveLength(0);
     expect(container.innerHTML).not.toMatch(/NaN|Infinity/);
   });
 
-  it("renders bounded action associations and explicit empty states", () => {
-    const actionRow = snapshot(1, "primary", {
-      precedingWork: [{ kind: "read", count: 2 }, { kind: "test", count: 1 }],
-      precedingAssociation: "transcript_adjacency",
-      issuedWork: [{ kind: "write", count: 1 }],
-      issuedAssociation: "recorded_link",
-    });
-    const { rerender } = renderPanel([actionRow]);
-    const detail = screen.getByRole("region", { name: "Selected request" });
-    expect(within(detail).getByText("Before")).toBeInTheDocument();
-    expect(within(detail).getByText("Issued")).toBeInTheDocument();
-    expect(screen.getByText("Reading ×2")).toBeInTheDocument();
-    expect(screen.getByText("Running tests")).toBeInTheDocument();
-    expect(screen.getByText("Editing")).toBeInTheDocument();
-
-    rerender(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([snapshot(2)])} contextBoundaries={[]} cacheWriteAvailable historical={false} />);
-    expect(screen.getAllByText("None recorded")).toHaveLength(2);
-  });
-
-  it("renders older monitor snapshots without action fields as no recorded work", () => {
+  it("renders older monitor snapshots without action fields", () => {
     const legacySnapshot = snapshot(1);
     for (const field of ["precedingWork", "precedingAssociation", "issuedWork", "issuedAssociation"]) Reflect.deleteProperty(legacySnapshot, field);
     renderPanel([legacySnapshot]);
-    expect(screen.getByRole("region", { name: "Selected request" })).toBeInTheDocument();
-    expect(screen.getAllByText("None recorded")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Locate request #1, 1,999,000 uncached input" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#1");
+    expect(screen.getByRole("button", { name: "Locate request #1, Primary agent, 1,999,000 uncached input" })).toBeInTheDocument();
   });
 
   it("shows the unavailable and ready-empty states without rendering a chart", () => {
@@ -561,9 +536,9 @@ describe("RequestsActionsPanel", () => {
     const { container, rerender } = render(<RequestsActionsPanel key="session-one" {...props} />);
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[0]);
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
-    expect(screen.getByRole("heading", { name: "Request #41" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#41");
     rerender(<RequestsActionsPanel key="session-two" {...props} />);
-    expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#100");
     expect(screen.getByRole("button", { name: "Fresh tokens" })).toHaveAttribute("aria-pressed", "true");
     expect(axisLabels(container)).toEqual(["#41", "#100"]);
   });
@@ -572,15 +547,14 @@ describe("RequestsActionsPanel", () => {
     const initial = Array.from({ length: 100 }, (_, index) => snapshot(index + 1));
     const { container, rerender } = renderPanel(initial);
     rerender(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([...initial, snapshot(101)])} contextBoundaries={[]} cacheWriteAvailable historical={false} />);
-    expect(screen.getByRole("heading", { name: "Request #101" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#101");
     expect(axisLabels(container)).toEqual(["#42", "#101"]);
 
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[8]);
-    expect(screen.getByRole("heading", { name: "Request #50" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#50");
     const retained = [...initial.slice(1), snapshot(102)];
     rerender(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed(retained)} contextBoundaries={[]} cacheWriteAvailable historical={false} />);
-    expect(screen.getByRole("heading", { name: "Request #49" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Request #49" }).closest("section")).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#49");
   });
 
   it("moves the minimap window and transfers a hidden selection to the nearest visible request", () => {
@@ -592,13 +566,14 @@ describe("RequestsActionsPanel", () => {
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 1, clientX: 50, clientY: 10 });
     fireEvent.pointerMove(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
     fireEvent.pointerUp(minimap, { pointerId: 1, clientX: 60, clientY: 10 });
-    expect(screen.getByRole("heading", { name: "Request #100" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#100");
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 41 to 100 of 100");
 
     fireEvent.pointerDown(minimap, { button: 0, isPrimary: true, pointerId: 2, clientX: 0, clientY: 10 });
     expect(minimap).toHaveAttribute("aria-valuetext", "Request positions 1 to 60 of 100");
-    // The window moved older, so the right-edge bar is nearest; no detail survives without its bar.
-    expect(container.querySelector(".requestsActionsDetail")).toHaveTextContent("Request #60");
+    // The window moved older, so the right-edge bar is nearest; no selection survives without its bar.
+    expect(selectedRequest()).toBe("#60");
+    expect(container.querySelector(".requestsActionsBar.isSelected")).toBeInTheDocument();
   });
 
   it("canonicalizes equivalent cache timestamps and rejects invalid join keys", () => {
@@ -607,15 +582,13 @@ describe("RequestsActionsPanel", () => {
     expect(snapshotEventKey("primary", "2026-08-09T12:04:00.000Z")).not.toBe(snapshotEventKey("child", "2026-08-09T12:04:00.000Z"));
   });
 
-  it("keeps ordinary cache writes in bars and details without refill lines", () => {
+  it("keeps ordinary cache writes in bars without refill lines", () => {
     const target = snapshot(1, "primary", { uncachedInputTokens: 2, cacheWriteTokens: 40415, cacheReadTokens: 0 });
     const event: CacheEvent = { id: "initial", agentId: "primary", kind: "refill", observedAt: target.observedAt, promptInputTokens: 40417, cacheReadPercent: 0, cacheWriteTokens: 40415, previousCacheReadPercent: null, gapMs: null, relatedEventId: null };
     const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([target])} contextBoundaries={[]} cacheWriteAvailable historical cacheEvents={{ status: "ready", items: [event], possibleFullRefills: [] }} />);
     expect(container.querySelector(".requestsActionsRefill")).toBeNull();
     expect(container.querySelector(".requestsActionsMiniRefill")).toBeNull();
     expect(container.querySelector(".requestsActionsSegment.write")).toBeInTheDocument();
-    expect(container.querySelector(".requestsActionsStat.write")).toHaveTextContent("40,415");
-    expect(screen.queryByRole("region", { name: "Request cache evidence" })).not.toBeInTheDocument();
   });
 
   it("marks recorded and inferred refills, selects their request, and preserves markers across modes", async () => {
@@ -637,13 +610,11 @@ describe("RequestsActionsPanel", () => {
     expect(bar).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
     expect(marker).not.toHaveClass("isInferred");
     fireEvent.keyDown(bar, { key: "Enter" });
-    expect(screen.getByRole("heading", { name: "Request #2" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#2");
     expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsRefill")).toBeInTheDocument();
     fireEvent.click(marker);
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(container.querySelector(".requestsActionsRefill")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
-    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("90% → 5%");
     expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
   });
 
@@ -658,16 +629,13 @@ describe("RequestsActionsPanel", () => {
     expect(marker.closest(".requestsActionsBar")).toHaveAttribute("aria-label", expect.stringContaining("Possible refill"));
     expect(container.querySelector(".requestsActionsMiniRefill.isInferred")).toBeInTheDocument();
     fireEvent.click(marker);
-    expect(screen.getByRole("heading", { name: "Request #2" })).toBeInTheDocument();
-    const evidence = screen.getByRole("region", { name: "Request cache evidence" });
-    expect(evidence).toHaveTextContent("Possible refill");
-    expect(evidence).toHaveTextContent(/Inference/i);
-    expect(evidence).toHaveTextContent("90% → 5%");
+    expect(selectedRequest()).toBe("#2");
+    expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringContaining("Possible refill"));
     await user.click(screen.getByRole("button", { name: "Full breakdown" }));
     expect(container.querySelector(".requestsActionsRefill.isInferred")).toBeInTheDocument();
   });
 
-  it("renders compaction and refill markers together and refreshes selected evidence", () => {
+  it("renders compaction and refill markers together and refreshes the selected bar evidence", () => {
     const first = snapshot(1);
     const target = snapshot(2);
     const event: CacheEvent = {
@@ -681,11 +649,11 @@ describe("RequestsActionsPanel", () => {
     const { container, rerender } = render(<RequestsActionsPanel {...props} />);
     fireEvent.click(container.querySelectorAll(".requestsActionsBar")[1]);
     expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsCompaction")).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Request cache evidence" })).not.toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsRefill")).toBeNull();
     rerender(<RequestsActionsPanel {...props} cacheEvents={{ status: "ready", items: [event], possibleFullRefills: fullRefill("primary", target.observedAt) }} />);
     expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsCompaction")).toBeInTheDocument();
     expect(container.querySelector(".requestsActionsBar.isSelected .requestsActionsRefill")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Request cache evidence" })).toHaveTextContent("Possible full refill");
+    expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
   });
 
   it("keeps a tappable phone minimap without Prev/Next", () => {

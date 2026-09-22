@@ -21,7 +21,6 @@ function rows(count: number, first = 1): RequestRow[] {
       issuedWork: [],
       issuedAssociation: null,
       ordinal: index + 1,
-      promptTokens: 3,
       freshTokens: 3,
       compactionBefore: false,
     };

@@ -228,7 +228,7 @@ Every button in the application belongs to one of six roles, implemented as shar
 - **Primary** (`.commandPrimaryAction`): 36px, pomegranate fill, white text, 13px/500. One per view, for real commitments only: install, reconnect, confirm.
 - **Secondary** (`.commandSecondaryAction`): 32px, one-pixel panel-line rule, application text at 12px/500, transparent background. Hover, pressed, and selected all move to the raised panel tone with the stronger line. Used for Prev/Next, Copy, toolbar actions, and independent toggles such as Group by workflow.
 - **Segmented** (`.commandSegmented` with `> button`): mutually exclusive views share one frame with a panel-line border and 4px radius; segments are 30px, borderless, muted 12px/500, divided by one-pixel lines, and the segment with `aria-pressed="true"` takes the raised tone and application text. Used for Fresh tokens / Full breakdown, List / Grid, Ancestors / Whole session, and the tile-bar metric.
-- **Quiet** (`.commandQuietAction`): no border, no fill, muted 12px/500, 28px minimum height, 6px horizontal padding, optional 14px icon. Hover tints the background with 6% ink and lifts the text to application ink; pressed uses 10%. Used for optional actions such as Download report and sort cycling ("by uncached input"). A panel heading that opens the tab continuing its evidence composes this role as `.panelHeadingLink`: heading type and ink color, a 14px muted chevron after the title, no hover fill, chevron lifts to ink on hover, 44px tap box on phone. It is not a seventh role.
+- **Quiet** (`.commandQuietAction`): no border, no fill, muted 12px/500, 28px minimum height, 6px horizontal padding, optional 14px icon. Hover tints the background with 6% ink and lifts the text to application ink; pressed uses 10%. Used for optional actions such as Download report and sort cycling ("Largest by uncached input"). A panel heading that opens the tab continuing its evidence composes this role as `.panelHeadingLink`: heading type and ink color, a 14px muted chevron after the title, no hover fill, chevron lifts to ink on hover, 44px tap box on phone. It is not a seventh role.
 - **Text link** (`.commandTextLink`): brand-text color, 12px/400, inline with content, no border or fill. Hover underlines with a 3px offset. Used for "Show 20", "Show more", "Expand all", and other section expanders; never a standalone action. Use it for at most one in-content pointer per panel. Panel-to-tab navigation uses the panel heading link, and a row's second destination uses the quiet role; never place a text link on the right of a panel header.
 - **Icon** (`.commandIconAction`): 32px square quiet button with a 16px stroke icon. Requires a `title` or `aria-label`. Same hover as quiet.
 
@@ -289,15 +289,21 @@ Role tint is the only exception that colors normalized agent roles. It appears o
 Overview and Signals follow the link rule: panel headings open their tab, and Show agent is a quiet action. Efficiency signals appear only on the Signals tab, not on Overview. On desktop Overview uses a six-column grid: Right now spans the full width, or four columns with Work by kind beside it while at most two agents are listed; Requests takes four columns with Repository beside it; and a bottom panel (Progress, Work by kind, Cost) renders only when it has evidence or a readiness message to show. The request strip always draws 48 slots so a bar keeps its width in a new session, with a separate 6px role-track row beneath the bars. Work by kind omits medians under one minute. Repository is one wrapping line with the branch, a comparison chip toned green only for Up to date or integrated comparisons, and a muted changes/pull-request summary. Progress, Work by kind, and Cost use eyebrow headings with compact 12px/16px padding.
 
 Activities is a grouped request feed below the Requests chart and its scoped
-Largest strip. The strip uses two equal columns; an odd fifth item remains in one
-column rather than stretching across the row. A 360px Actions by kind rail with
+Largest strip. The strip is one wrapping line under the minimap, with no request
+detail panel below it. Its quiet **Largest by uncached input** button cycles the
+metric through uncached input, cache write (only when the provider records it),
+total, and output. Up to three requests with a non-zero value follow, each a quiet
+action showing `#n`, the agent name, and the request-local count; selecting one
+selects its request. Counts use the shared request-token format: `compactNumber`
+text (139.7K), the exact value in the hover title (`requestTokenTitle`), and the
+exact value in the accessible name, matching the feed's token cells. A 360px Actions by kind rail with
 Shell tasks and Failed shell runs precedes the five request groups around the
 selected request; compact desktop widths stack the rail above the groups. Groups
 contain only request-linked calls and retain their stable session request numbers.
 The range/window label appears before **Previous**, **Next**, and **Jump to
 latest**; those controls navigate committed request groups rather than numbered
-activity pages. Selecting a group, chart bar, or supported call keeps the chart,
-selected-request details, and feed correlated. A newer navigation cancels an
+activity pages. Selecting a group, chart bar, Largest item, or supported call keeps
+the chart, strip, and feed correlated. A newer navigation cancels an
 older pending request window; an older selection remains anchored while live
 history grows. The selected request uses the only brand accent and the scoped
 selected-request left rule. Agent scope applies consistently to the chart, strip,
@@ -373,16 +379,16 @@ with the shared stack-refill icon and the label Possible full refill. Ordinary
 cache growth and initial cache creation remain in the cache-write bars and details;
 read-drop inferences use an open arrowhead and the label Possible refill. Their
 model-change observations reuse the open arrowhead with the compact chart label
-Reuse drop · model change. Request details and agent occurrence popovers say
+Reuse drop · model change. Agent occurrence popovers say
 Cache reuse dropped across a model change and distinguish the observation from
 refill or expiry inferences. Mixed agent counts describe cache-read drops, with
 each occurrence explaining its own evidence. These reuse existing controls.
 The cache-evidence
 symbol and label lane sits above compaction labels. Show marker labels on selection,
-focus, or hover, with matching minimap ticks and request-local evidence in
-the selected-request details. Match only unambiguous normalized agent/timestamp pairs.
+focus, or hover, with matching minimap ticks; the bar's accessible name carries the
+same label. Match only unambiguous normalized agent/timestamp pairs.
 
-Requests is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, selected-request detail and action labels, and a scoped Largest requests ranking. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Show each mode's numeric scale and label Fresh as rescaled with cache reads excluded. Full prompt in request details represents uncached input + cache write + cache read, excluding output. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
+Requests is the shipped SP05 session evidence panel: one bar per model request in a fixed 60-request desktop window (20 on phone), with a minimap on desktop and phone plus direct chart dragging on phone, and a scoped Largest strip. The default Fresh tokens mode uses request-local uncached input, cache write, and output bars, with no prompt outline and a scale excluding cache reads; Full breakdown adds cache read. Show each mode's numeric scale and label Fresh as rescaled with cache reads excluded. The minimap follows the selected mode's token categories, including output. Compaction boundaries appear as dashed ticks. Rankings and scale are computed over the selected agent scope, while every displayed number remains request-local.
 
 The desktop request header keeps its title and one-bar explanation inline, with
 the legend and controls alongside when space permits. The chart retains its scale

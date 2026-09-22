@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Agent } from "../../../../shared/monitor-contract";
 import type { HistoryRequest } from "../../../../shared/session-history-contract";
-import { agentDisplayName, agentRoleLabel, compactNumber, shortTime } from "../../../dashboard-utils";
+import { agentDisplayName, agentRoleLabel, compactNumber, requestTokenTitle, shortTime } from "../../../dashboard-utils";
 import { DottedInfoPopover } from "../../DottedInfoPopover";
 import { WorkKindIcon } from "../../WorkKindIcon";
 import { WORK_LABELS } from "../../agents/agent-presentation";
@@ -25,11 +25,6 @@ function requestTokens(request: HistoryRequest, cacheWriteAvailable: boolean) {
   if (!Number.isSafeInteger(outputTokens) || outputTokens < 0) return null;
   if (cacheWriteAvailable && (!Number.isSafeInteger(cacheWriteTokens) || cacheWriteTokens < 0)) return null;
   return { uncachedInputTokens, cacheWriteTokens, outputTokens };
-}
-
-/** The desktop cells print compact counts; the hover names the count and keeps its exact value. */
-function tokenTitle(label: string, value: number) {
-  return `${label}: ${value.toLocaleString()} ${value === 1 ? "token" : "tokens"}, this request only`;
 }
 
 /** A request's recorded model, or null when the monitor reported none for it. */
@@ -145,9 +140,9 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
             {/* The counts sit above the select control's row-wide hit area so each can show its own
                 hover; a pointer click on them still selects the request, as anywhere else on the row. */}
             <span className="activityRequestTokens" onClick={selectRequest}>{tokens && <>
-              <span className="activityTokenValue uncached" title={tokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
-              {cacheWriteAvailable && <span className="activityTokenValue write" title={tokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
-              <span className="activityTokenValue output" title={tokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
+              <span className="activityTokenValue uncached" title={requestTokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
+              {cacheWriteAvailable && <span className="activityTokenValue write" title={requestTokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
+              <span className="activityTokenValue output" title={requestTokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
             </>}</span>
           </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}

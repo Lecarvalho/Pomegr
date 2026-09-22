@@ -346,7 +346,7 @@ const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p
     id: `sample-request-${index + 1}`, agentId, observedAt: new Date(SAMPLE_TIME + index * 45_000).toISOString(), cacheLifetime: "1h",
     uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens, totalTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens + outputTokens,
     precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null,
-    ordinal: index + 1, number: index + 1, promptTokens: uncachedInputTokens + cacheWriteTokens + cacheReadTokens, freshTokens: uncachedInputTokens + cacheWriteTokens + outputTokens,
+    ordinal: index + 1, number: index + 1, freshTokens: uncachedInputTokens + cacheWriteTokens + outputTokens,
     // The primary rows after each compaction-agent request, and one recorded refill.
     compactionBefore: index === 16 || index === 33,
     ...(index === 37 ? { cacheEvidence: { kind: "refill" as const } } : {}),

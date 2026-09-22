@@ -21,7 +21,7 @@ import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot, Workflow } from "../../shared/monitor-contract";
 import { historyCall, historyRequest, historyServer } from "./activities-test-server";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
-import { renderPanel, requestFeed, RequestsActionsPanel, setPhone, snapshot } from "./requests-actions-test-fixtures";
+import { renderPanel, requestFeed, RequestsActionsPanel, setPhone, snapshot, selectedRequest } from "./requests-actions-test-fixtures";
 
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", model: "small-model" };
 const compactA: Agent = { ...agent, id: "compact-a", parentId: "primary", label: "Compactor A", role: "compaction" };
@@ -133,17 +133,17 @@ describe("request lanes", () => {
   it("selects a subagent bar and steps across lanes with arrow keys, keeping focus on the selected bar", () => {
     const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
     fireEvent.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #6,/u }));
-    expect(screen.getByRole("heading", { name: "Request #6" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#6");
     expect(laneNamed(container, "Builder").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6,/u));
 
     const group = screen.getByRole("group", { name: "Model requests by agent, positions 1 to 12" });
     fireEvent.keyDown(group, { key: "ArrowRight" });
-    expect(screen.getByRole("heading", { name: "Request #7" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#7");
     expect(document.activeElement).toHaveAttribute("aria-label", expect.stringMatching(/^Request #7,/u));
     expect(document.activeElement?.closest(".requestLane")).toBe(laneNamed(container, "Compactions"));
     fireEvent.keyDown(group, { key: "ArrowLeft" });
     fireEvent.keyDown(group, { key: "ArrowLeft" });
-    expect(screen.getByRole("heading", { name: "Request #5" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#5");
     expect(document.activeElement?.closest(".requestLane")).toBe(laneNamed(container, "Primary agent"));
   });
 
@@ -162,17 +162,17 @@ describe("request lanes", () => {
       ? Promise.resolve(new Response(JSON.stringify(state), { status: 200, headers: { "content-type": "application/json" } }))
       : server.fetcher(input, init)));
     const { container } = render(<LiveClockProvider running={false}><ActivitiesTab sessionId={sessionId} historical={false} paused={false} route={{ agent: null, request: null }} onRouteChange={vi.fn()} onOpenAgent={vi.fn()} /></LiveClockProvider>);
-    await screen.findByRole("heading", { name: "Request #40" });
+    await waitFor(() => expect(selectedRequest()).toBe("#40"));
     const feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
     await waitFor(() => expect(lanes(container).map((lane) => lane.querySelector(".requestLaneName")?.textContent)).toEqual(["Primary agent", "Builder"]));
 
     await user.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #37,/u }));
-    await screen.findByRole("heading", { name: "Request #37" });
+    await waitFor(() => expect(selectedRequest()).toBe("#37"));
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
 
     fireEvent.keyDown(screen.getByRole("group", { name: /^Model requests by agent/u }), { key: "ArrowRight" });
-    await screen.findByRole("heading", { name: "Request #38" });
+    await waitFor(() => expect(selectedRequest()).toBe("#38"));
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #38/u })).toHaveAttribute("aria-pressed", "true"));
     expect(laneNamed(container, "Primary agent").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #38,/u));
   });
@@ -361,7 +361,7 @@ describe("request lane collapse and focus", () => {
   it("reaches label buttons by keyboard without letting arrow keys step from them", async () => {
     const user = userEvent.setup();
     renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
-    const heading = screen.getByRole("heading", { name: /^Request #\d+$/u }).textContent ?? "";
+    const heading = selectedRequest();
     const group = screen.getByRole("button", { name: "Research sweep · workflow · 6 agents" });
     expect(group.tabIndex).toBe(0);
     group.focus();
@@ -369,7 +369,7 @@ describe("request lane collapse and focus", () => {
     expect(group).toHaveAttribute("aria-expanded", "true");
     fireEvent.keyDown(group, { key: "ArrowRight" });
     expect(document.activeElement).toBe(group);
-    expect(screen.getByRole("heading", { name: /^Request #\d+$/u })).toHaveTextContent(heading);
+    expect(selectedRequest()).toBe(heading);
 
     const primary = screen.getByRole("button", { name: /^Focus Primary agent · /u });
     primary.focus();
@@ -381,16 +381,16 @@ describe("request lane collapse and focus", () => {
     const { container } = renderPanel(cycleSnapshots(MANY), { agents: MANY, workflows: WORKFLOWS });
     const sweep = () => screen.getByRole("group", { name: "Research sweep · workflow · 6 agents" });
     fireEvent.click(within(sweep()).getByRole("button", { name: /^Request #6,/u }));
-    expect(screen.getByRole("heading", { name: "Request #6" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#6");
     expect(sweep().querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6,/u));
     expect(sweep().querySelector(".requestsActionsSelectedLabel")).toHaveTextContent("#6");
 
     const chartGroup = screen.getByRole("group", { name: /^Model requests by agent/u });
     fireEvent.keyDown(chartGroup, { key: "ArrowRight" });
-    expect(screen.getByRole("heading", { name: "Request #7" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#7");
     expect(document.activeElement?.closest(".requestLane")).toBe(sweep());
     fireEvent.keyDown(chartGroup, { key: "ArrowRight" });
-    expect(screen.getByRole("heading", { name: "Request #8" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#8");
     expect(document.activeElement?.closest(".requestLane")).toBe(screen.getByRole("group", { name: "Direct subagents · 3 agents" }));
     expect(laneNames(container)).toEqual(COLLAPSED);
   });
@@ -412,7 +412,7 @@ describe("request lane focus in Activities", () => {
       ? Promise.resolve(new Response(JSON.stringify(state), { status: 200, headers: { "content-type": "application/json" } }))
       : server.fetcher(input, init)));
     const { container } = render(<LiveClockProvider running={false}><ActivitiesTab sessionId={sessionId} historical={false} paused={false} route={{ agent: null, request: null }} onRouteChange={vi.fn()} onOpenAgent={vi.fn()} /></LiveClockProvider>);
-    await screen.findByRole("heading", { name: "Request #40" });
+    await waitFor(() => expect(selectedRequest()).toBe("#40"));
     const feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(laneNames(container)).toEqual(["Primary agent", "Builder"]));
     await user.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #37,/u }));
@@ -420,14 +420,14 @@ describe("request lane focus in Activities", () => {
 
     await user.click(screen.getByRole("button", { name: "Focus Builder · builder · small-model" }));
     await waitFor(() => expect(laneNames(container)).toEqual(["Builder"]));
-    expect(screen.getByRole("heading", { name: "Request #37" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#37");
     expect(laneNamed(container, "Builder").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #37,/u));
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
     expect(within(feed).queryByRole("button", { name: /Request #38/u })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Focus Builder · builder · small-model", pressed: true }));
     await waitFor(() => expect(laneNames(container)).toEqual(["Primary agent", "Builder"]));
-    expect(screen.getByRole("heading", { name: "Request #37" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#37");
     await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #37/u })).toHaveAttribute("aria-pressed", "true"));
   });
 });
@@ -509,7 +509,7 @@ describe("request single chart and role track", () => {
     const { container, unmount } = renderPanel(laneSnapshots(), { agents: AGENTS });
     fireEvent.click(within(laneNamed(container, "Builder")).getByRole("button", { name: /^Request #6,/u }));
     await user.click(screen.getByRole("button", { name: "Single chart" }));
-    expect(screen.getByRole("heading", { name: "Request #6" })).toBeInTheDocument();
+    expect(selectedRequest()).toBe("#6");
     expect(container.querySelector("svg.requestsActionsChart .requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6, Builder,/u));
     await user.click(screen.getByRole("button", { name: "Lanes" }));
     expect(laneNamed(container, "Builder").querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringMatching(/^Request #6,/u));

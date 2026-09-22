@@ -21,8 +21,6 @@ export type RequestRow = RequestSnapshot & {
   number?: number;
   /** Summary preview has no stable history number yet. Never label its ordinal as one. */
   numberPending?: boolean;
-  /** Full request-local input, displayed numerically in request details. */
-  promptTokens: number;
   /** The stacked fresh-token segments in the default chart mode. */
   freshTokens: number;
   /** Whether a recognized compaction occurred after the prior same-agent row. */
@@ -87,7 +85,6 @@ export function scopedRows(
       number: typeof (snapshot as RequestSnapshot & { number?: unknown }).number === "number"
         ? (snapshot as RequestSnapshot & { number: number }).number
         : undefined,
-      promptTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.cacheReadTokens,
       freshTokens: snapshot.uncachedInputTokens + snapshot.cacheWriteTokens + snapshot.outputTokens,
       compactionBefore: hasCompactionBetween(boundaries, snapshot.agentId, previous?.observedAt, snapshot.observedAt),
       cacheEvidence: evidence.get(snapshot.id),

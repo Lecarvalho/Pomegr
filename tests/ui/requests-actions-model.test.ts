@@ -81,8 +81,8 @@ describe("requests and actions model", () => {
     ]), [], "primary");
 
     expect(result.map((row) => row.ordinal)).toEqual([1, 2]);
-    expect(result[0]).toMatchObject({ id: "one", promptTokens: 150, freshTokens: 160, compactionBefore: false });
-    expect(result[1]).toMatchObject({ id: "three", promptTokens: 150, freshTokens: 170, compactionBefore: false });
+    expect(result[0]).toMatchObject({ id: "one", freshTokens: 160, compactionBefore: false });
+    expect(result[1]).toMatchObject({ id: "three", freshTokens: 170, compactionBefore: false });
   });
 
   it("matches compactions to the prior scoped row for the same agent", () => {
@@ -135,14 +135,13 @@ describe("requests and actions model", () => {
     expect(scaleMax([], "fresh")).toBe(0);
   });
 
-  it("excludes cached input from the fresh scale while retaining full prompt values", () => {
+  it("excludes cached input from the fresh scale", () => {
     const result = scopedRows(feed([request("cached", "primary", "2026-08-01T12:00:00Z", {
       uncachedInputTokens: 2_000, cacheWriteTokens: 500, cacheReadTokens: 90_000,
       outputTokens: 500, totalTokens: 93_000,
     })]), [], "all");
     expect(scaleMax(result, "fresh")).toBe(3_000);
     expect(scaleMax(result, "full")).toBe(120_000);
-    expect(result[0].promptTokens).toBe(92_500);
 
     const cachedOnly = scopedRows(feed([request("cached-only", "primary", "2026-08-01T12:00:00Z", {
       uncachedInputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 90_000,
@@ -159,7 +158,6 @@ describe("requests and actions model", () => {
     })]), [], "all");
     expect(scaleMax(result, "fresh", false)).toBe(3_000);
     expect(scaleMax(result, "full", false)).toBe(4_500);
-    expect(result[0].promptTokens).toBe(93_000);
   });
 
   it("sorts largest requests descending with stable ordinal tie breaks", () => {
