@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, and `/api/repository-inventory` handlers
+- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, `/api/repository-inventory`, and `/api/storage` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -1349,6 +1349,7 @@ remain the source of truth.
 | `/api/session-history?sessionId=...` | Committed activity or request pages, including bounded grouped request-range activity | Activity and request navigation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Retained aggregate API; the Home page no longer requests this domain |
 | `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Usage limits and session views |
+| `/api/storage` | Committed monitor SQLite store readiness, size, retention, and cleanup status (see "Monitor SQLite store") | Settings storage/retention display |
 
 Callers send their current revision. When the relevant committed revision is unchanged, S
 returns `204 No Content` with no state body. A known uncached session returns its safe
@@ -2006,6 +2007,64 @@ served unchanged for historical views. Missing, failed, partial, or over-bound e
 remains unavailable and does not erase the last complete valid snapshot. Historical GETs
 never inspect Git or GitHub and never substitute the current branch, working tree,
 comparison, files, commits, or pull-request state for recorded evidence.
+
+## Monitor SQLite store
+
+The monitor owns one `node:sqlite` database, `monitor-store-v1/monitor.sqlite` under the
+Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never under
+`outputs/` (development diagnostics only). It hosts the file-change index and resource
+history described in the approved persistence contract above; `files`, `file_paths`, and
+`file_changes` are populated by future file-change indexing, and `resource_minutes`,
+`resource_peaks`, and `resource_peak_samples` by future resource-history writers (both
+pending). The database path and any raw SQLite error text never appear in browser state,
+logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.
+
+The store is a rebuildable index, never a migration target. It rebuilds (recreating an
+empty schema) whenever the file is missing, fails `PRAGMA quick_check`, or carries a
+different schema version than the running monitor expects. While a rebuilt store has
+registered contributors that have not finished repopulating it, `/api/storage` reports
+`rebuilding`; with no registered contributors it reports `rebuilding` until the first
+checkpoint-triggered cycle completes, then `ready`. A store that opens cleanly (not
+rebuilt) is `ready` immediately. A disabled or failed-to-open store is `unavailable` with
+null size and day fields. Node prints an `ExperimentalWarning` on every `node:sqlite`
+import; the monitor installs a one-time `process.emitWarning` filter that drops only the
+warning whose type is `ExperimentalWarning` and whose message starts with `SQLite is an
+experimental feature`, leaving every other warning, including a differently-typed or
+differently-worded one, untouched.
+
+Retention runs monitor-side only after a checkpoint write commits, never in a GET, IPC, or
+HTTP handler, and at most once every five minutes. Two settings govern it: an age choice
+of 30, 90, 180, or 365 days, or keep all (default 90), and a soft database-size threshold
+of 250, 500, 1024, or 2048 MB (default 500). Desktop passes both through private desktop
+settings and a fixed-key IPC; web development reads `POMEGR_RETENTION_DAYS`
+(`30`, `90`, `180`, `365`, or `all`) and `POMEGR_STORE_MAX_MB` (`250`, `500`, `1024`, or
+`2048`), silently falling back to the default for any other value. Browser and LAN
+requests can never change retention or trigger a prune.
+
+Age retention drops a session's `resource_minutes` and `resource_peak_samples` once its
+latest sample is older than the configured age. Size retention, once the database meets
+or exceeds the effective byte threshold, deletes the oldest sessions' `resource_minutes`
+first, then their `resource_peak_samples`, running an incremental vacuum between batches
+and stopping after a bounded number of sessions per cycle. `resource_peaks`,
+`file_changes`, `files`, `file_paths`, and `meta` are never deleted by retention; if
+protected rows alone keep the database at or above the threshold, the database is allowed
+to exceed it rather than deleting protected history. The committed storage-readiness
+response distinguishes `normal` usage, `cleanup_pending` (the threshold is met but the
+per-cycle cap has not yet cleared it), and `protected_excess` (only protected rows remain
+and the threshold still cannot be met).
+
+`/api/storage` serves the committed storage-readiness object and nothing else:
+
+```
+revision, readiness ("loading" | "rebuilding" | "ready" | "unavailable"),
+databaseBytes (number | null), thresholdBytes, percent (databaseBytes / thresholdBytes,
+may exceed 100; null when bytes are unknown), oldestRetainedDay ("YYYY-MM-DD" UTC or null),
+lastPrunedAt (ISO timestamp or null), retentionDays (30 | 90 | 180 | 365 | null),
+cleanupStatus ("normal" | "cleanup_pending" | "protected_excess" | null)
+```
+
+Checkpoint/prune work owns measurement; GETs serve only the committed result and never
+touch SQLite.
 
 ## Repository context inventory
 

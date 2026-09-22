@@ -661,6 +661,7 @@ export function createMonitorRuntime(options = {}) {
     serveSessionHistory: observation.serveSessionHistory,
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
+    serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
     readRepositoryInventory: observation.readRepositoryInventory,
     captureRepositoryInventory: observation.captureRepositoryInventory,

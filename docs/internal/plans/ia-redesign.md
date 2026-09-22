@@ -555,6 +555,20 @@ active-or-reached flag as a visibility gate. UI coverage includes ordinary
 unreached Claude and Codex windows; Session 4 remains the next implementation
 session.
 
+### Session 4 checkpoint
+
+2026-09-22 · **Session 4 part 1 of 5 done: T07 store foundation.** ACOS run
+`runs/2026-09-22-ia-session-4/1-store-foundation`. `node:sqlite` loads inside a
+`worker_threads` worker under Electron 43.3.0 (Node 24.18.1, SQLite 3.53.1) without
+printing a warning, so T07 needs no SQLite fallback. System Node 24 still prints the
+`ExperimentalWarning`; `monitor/monitor-store.mjs` filters only that warning. The store
+(`monitor-store-v1/monitor.sqlite` under the data root) holds the full T07 schema, rebuilds
+when missing, corrupt or on another schema version, and runs age/size retention after
+checkpoint writes. It serves committed readiness through `GET /api/storage`.
+`monitor/monitor-store-runtime.mjs` `registerContributor` is the seam that parts 2 and 3
+extend. `npm run verify:fast` and `npm run test:node` passed (1,189 passing tests, one
+skipped). Committed on branch `feat/persistence-and-storage`. Session 4 stays unchecked.
+
 ### Session 3 checkpoint
 
 2026-09-20 · **Session 3 complete — T06 Activities and T06b Signals.** ACOS run

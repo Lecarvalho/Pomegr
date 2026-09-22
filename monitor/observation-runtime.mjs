@@ -1,5 +1,7 @@
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
+import { createMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
+import { resolveRetentionSettings } from "./store-retention.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -93,6 +95,17 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
+  const storageSettings = resolveRetentionSettings({ environment: options.environment || process.env, desktop: options.storageSettings || null });
+  // An injected checkpoint store means a test or embedded runtime; it never gets the real data-root database.
+  const monitorStoreDirectory = options.checkpointStore !== undefined || options.monitorStore === false
+    ? null
+    : path.join(resolvePomegrDataRoot(pomegrPaths), "monitor-store-v1");
+  const monitorStoreRuntime = options.monitorStoreRuntime || createMonitorStoreRuntime({
+    directory: monitorStoreDirectory,
+    settings: storageSettings,
+    now,
+  });
+  const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, () => monitorStoreRuntime.afterCheckpointWrite());
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
     now,
@@ -458,7 +471,7 @@ export function createObservationRuntime(options = {}) {
   const observationCoordinator = createSessionObservationCoordinator({
     registry,
     store: observationStore,
-    checkpointStore,
+    checkpointStore: checkpointStoreForCoordinator,
     schedule: scheduleObservation,
     cancel: cancelObservation,
     commitDelayMs: options.observationCommitDelayMs,
@@ -593,6 +606,7 @@ export function createObservationRuntime(options = {}) {
     // invokes observers, hydration, parsing, or any provider read.
     agentsObservation.start();
     providerStatus.start();
+    void monitorStoreRuntime.start();
     usageResponseCache.commit({
       generatedAt: null,
       readiness: Object.fromEntries((registry.providers || []).map((provider) => [provider.id, "loading"])),
@@ -659,6 +673,7 @@ export function createObservationRuntime(options = {}) {
       await repositoryInventory.stopPluginObservation?.();
       agentsObservation.stop();
       await providerStatus.stop();
+      await monitorStoreRuntime.stop();
       observationStartPromise = null;
       unsubscribeObservation?.();
       unsubscribeObservation = null;
@@ -671,6 +686,7 @@ export function createObservationRuntime(options = {}) {
     await repositoryInventory.stopPluginObservation?.();
     agentsObservation.stop();
     await providerStatus.stop();
+    await monitorStoreRuntime.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
     if (resourceRefreshTimer) clearInterval(resourceRefreshTimer);
     usageRefreshTimer = null;
@@ -756,6 +772,8 @@ export function createObservationRuntime(options = {}) {
     },
     serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
+    serveStorage: (revision) => monitorStoreRuntime.serveStorage(revision),
+    monitorStore: monitorStoreRuntime,
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
     readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
     captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),

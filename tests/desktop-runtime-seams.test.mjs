@@ -15,6 +15,16 @@ import { createProductionBuildFixture } from "./helpers/production-build.mjs";
 const productionBuild = await createProductionBuildFixture();
 after(() => productionBuild.close());
 
+// Started monitors open the SQLite store under the data root; keep it off the real profile.
+const isolatedDataRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-seams-data-"));
+const previousDataRoot = process.env.POMEGR_DATA_DIR;
+process.env.POMEGR_DATA_DIR = isolatedDataRoot;
+after(async () => {
+  if (previousDataRoot === undefined) delete process.env.POMEGR_DATA_DIR;
+  else process.env.POMEGR_DATA_DIR = previousDataRoot;
+  await rm(isolatedDataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
+
 const quietLogger = Object.freeze({ log() {} });
 
 function waitForOutput(stream, pattern, timeoutMs = 5_000) {
