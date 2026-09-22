@@ -9,6 +9,7 @@ import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
 import { AgentsTab } from "./components/dashboard/AgentsTab";
 import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
+import { SessionIdChip } from "./components/dashboard/SessionIdChip";
 import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
@@ -148,8 +149,7 @@ export function Dashboard({ initialSessionId = null, initialQuery = {} }: { init
 
   const status = statusPresentation(summary.lifecycle.activityStatus);
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
-  const shortId = nativeId.length > 11 ? `${nativeId.slice(0, 5)}…${nativeId.slice(-5)}` : nativeId;
-  const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><span className="commandChip sessionIdChip" title={summary.session.id}>{shortId}</span>{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? sessionListTime(summary.session.startedAt) : "time unavailable"}</span></div>;
+  const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><SessionIdChip sessionId={nativeId} />{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? sessionListTime(summary.session.startedAt) : "time unavailable"}</span></div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
     <CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{summary.session.project}</span></>} title={summary.session.title} meta={meta}
       actions={<button type="button" className="commandQuietAction" disabled={reportGenerating} onClick={() => void generateReport()}>{reportGenerating ? "Preparing…" : "Download report"}</button>} />

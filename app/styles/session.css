@@ -130,6 +130,9 @@
 .sessionHeaderMeta .commandChip .commandStatusText { font-size: var(--text-caption); }
 .sessionBranchChip .commandIcon { width: 13px; height: 13px; }
 .sessionIdChip { font-family: var(--font-data); text-transform: none; }
+button.sessionIdChip { cursor: copy; }
+button.sessionIdChip:hover:not(.positive, .negative) { border-color: var(--command-line-strong); color: var(--command-ink); }
+button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .commandSessionView .sessionSummaryKpis { padding: 14px 18px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .sessionTabsShell { position: relative; min-width: 0; }
 .sessionTabs { min-width: 0; display: flex; align-items: end; gap: 24px; border-bottom: 1px solid var(--command-line); }
