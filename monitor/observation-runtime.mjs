@@ -1,7 +1,7 @@
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
-import { createMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
-import { resolveRetentionSettings } from "./store-retention.mjs";
+import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
+import { attachResourceHistory } from "./resource-history.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -96,16 +96,8 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
-  const storageSettings = resolveRetentionSettings({ environment: options.environment || process.env, desktop: options.storageSettings || null });
-  // An injected checkpoint store means a test or embedded runtime; it never gets the real data-root database.
-  const monitorStoreDirectory = options.checkpointStore !== undefined || options.monitorStore === false
-    ? null
-    : path.join(resolvePomegrDataRoot(pomegrPaths), "monitor-store-v1");
-  const monitorStoreRuntime = options.monitorStoreRuntime || createMonitorStoreRuntime({
-    directory: monitorStoreDirectory,
-    settings: storageSettings,
-    now,
-  });
+  const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
+  const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
   const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
@@ -354,7 +346,7 @@ export function createObservationRuntime(options = {}) {
     const refresh = registry.inspectSessions()
       .then(async (inspected) => {
         const resourceTargets = inspected.resourceTargets || [];
-        await resourceUsageSampler.sample(resourceTargets);
+        await resourceHistory.sampleAndSchedule(resourceTargets);
         for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
       })
       .catch(() => {})

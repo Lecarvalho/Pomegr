@@ -1,6 +1,7 @@
+import path from "node:path";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
 import { openMonitorStore } from "./monitor-store.mjs";
-import { buildStorageReadiness, readStorageFacts, runRetention } from "./store-retention.mjs";
+import { buildStorageReadiness, readStorageFacts, resolveRetentionSettings, runRetention } from "./store-retention.mjs";
 
 const DEFAULT_PRUNE_MIN_INTERVAL_MS = 5 * 60_000;
 const MAX_PENDING_SNAPSHOTS = 256;
@@ -208,4 +209,17 @@ export function createMonitorStoreRuntime({
     registerContributor,
     store: () => openedStore,
   });
+}
+
+/**
+ * The observation runtime's monitor store: desktop retention settings win over the
+ * environment, and an injected checkpoint store (a test or embedded runtime) or
+ * `monitorStore: false` never opens the real data-root database.
+ */
+export function createObservationMonitorStoreRuntime({ options = {}, dataRoot, now }) {
+  const settings = resolveRetentionSettings({ environment: options.environment || process.env, desktop: options.storageSettings || null });
+  const directory = options.checkpointStore !== undefined || options.monitorStore === false
+    ? null
+    : path.join(dataRoot, "monitor-store-v1");
+  return createMonitorStoreRuntime({ directory, settings, now });
 }
