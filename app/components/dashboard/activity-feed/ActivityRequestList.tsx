@@ -54,14 +54,6 @@ function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFee
   return clauses.join(" · ");
 }
 
-/** Artboard copy for the phone caveat: what each line holds and what it never prints. */
-const PHONE_HOW_TO_READ = <>
-  Request line: agent and role where the agent changes, model where it changes, uncached input, time. Tap it for the four request-local counts.<br />
-  Call line: kind icon, target, wall duration. Tap it for kind, status, exit code and times.<br />
-  Icons match Actions by kind below. Failed or running calls tint only the duration text.<br />
-  Targets are Bash descriptions and file basenames only. Counts are never summed.
-</>;
-
 /**
  * Right side of the Activity feed: request groups with nested recorded calls. Only bounded,
  * browser-safe metadata renders here: kind, label, target basename and wall duration.
@@ -176,8 +168,6 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
         <button type="button" className="commandSecondaryAction" disabled={selection.mode === "follow"} onClick={selection.jumpToLatest}>Jump to latest</button>
       </nav>
     </footer>
-    {phone
-      ? <p className="activityFeedCaveat">Requests with their tool calls · tap a call for details · <DottedInfoPopover ariaLabel="How to read this feed" content={PHONE_HOW_TO_READ}>how to read this</DottedInfoPopover></p>
-      : <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Never summed across requests; hover a count for its exact value.">Request-local counts</DottedInfoPopover></p>}
+    <p className="activityFeedCaveat"><DottedInfoPopover className="activityFeedInfo" ariaLabel="About request rows" content="Never summed across requests; hover a count for its exact value.">Request-local counts</DottedInfoPopover></p>
   </div>;
 }

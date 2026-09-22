@@ -110,7 +110,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
         <RequestMinimap rows={rows} overview={overview} start={requestHistory.enabled ? requestHistory.windowStart : start} end={requestHistory.enabled ? Math.min(requestHistory.total, requestHistory.windowStart + size - 1) : end} total={requestHistory.enabled ? requestHistory.total : rows.length} offset={requestHistory.enabled ? requestHistory.offset : 0} mode={mode} cacheWriteAvailable={cacheWriteAvailable} onMove={requestHistory.enabled ? requestHistory.moveWindow : moveWindow} interactive={!requestHistory.enabled || isCompleteRequestOverview(overview, requestHistory.total)} />
         <div className={`requestsActionsFooter${single ? "" : " isLanes"}`}>
           <LargestRequestsList rows={rows} agents={agents} selectedId={selected.id} cacheWriteAvailable={cacheWriteAvailable} onSelect={locate} />
-          {notes.length > 0 && <DottedInfoPopover className="requestsActionsInfo" ariaLabel="About this chart" content={notes.map((note) => <span key={note}>{note}</span>)}>How to read this</DottedInfoPopover>}
+          {!phone && notes.length > 0 && <DottedInfoPopover className="requestsActionsInfo" ariaLabel="About this chart" content={notes.map((note) => <span key={note}>{note}</span>)}>How to read this</DottedInfoPopover>}
         </div>
       </div>
       {requestHistory.preview && <p className="requestsActionsRetention">{historyStatus === "unavailable" ? "Showing recent requests by time. Full history is unavailable; retrying…" : "Showing recent requests by time while full history loads…"}</p>}

@@ -332,7 +332,9 @@ the documented 32px exception: its icon, target, and wall duration form one
 compact line. Tapping it expands its already-bounded detail in place beneath the
 line; only one disclosure is open, Escape collapses it, and it creates no sheet,
 scroll lock, or URL state. The shared request-association caveat remains available
-from the Requests panel.
+from the Requests panel. The feed footer carries the same quiet **Request-local
+counts** popover on phone as on desktop; phone adds no walkthrough of what each
+line holds.
 
 Signals is a separate tab, reachable on phone through **More**, with three ordered
 sections: **Efficiency**, **Cache lifetime**, and **Reported signals**. The first
@@ -417,12 +419,15 @@ request number, neutral bar, and request-local value. Its heading identifies the
 scope, with a quiet button cycling uncached input (default), output, cache write,
 and total; skip cache write when unavailable. Omit repeated agent and Before
 metadata, expansion controls, and the ranking footer. Phone keeps the strip under the minimap
-with one full-width row per request at the 44px touch height.
+as the same wrapping line, never a stacked list: the items stay inline instead of taking the
+full-width phone quiet action, and they are a documented caption-size 32px exception to the phone
+44px target so three ranked requests read as two short lines.
 
 The Requests title and range line stay plain text. Their explanations (why Fresh
 tokens leaves out cache reads, request numbering, and in lanes the per-lane scales)
 share one quiet How to read this dotted popover at the bottom right of the panel,
-beside the Largest strip: caption size, muted, with a faded dotted underline. The
+beside the Largest strip: caption size, muted, with a faded dotted underline. Phone
+drops that popover; the strip is the whole footer there. The
 Actions by kind rail caveat uses the same quiet treatment. Popover text states only
 what a technical reader cannot discover from the controls: one or two short
 sentences, no walkthrough of clicks or privacy boundaries.

@@ -326,16 +326,24 @@ describe("Activities tab", () => {
     expect(feedCalls(server)).toHaveLength(fetches);
   });
 
-  it("replaces the desktop counts caveat with the phone tap caveat and its popover", async () => {
+  it("keeps the desktop counts caveat on the phone instead of a phone-only prose popover", async () => {
     setPhone(true);
-    const user = userEvent.setup();
     fixture();
     const feed = await ready();
 
-    expect(within(feed).queryByText("Local counts only.")).toBeNull();
-    expect(feed.querySelector(".activityFeedCaveat")).toHaveTextContent("Requests with their tool calls · tap a call for details · how to read this");
-    await user.click(within(feed).getByRole("button", { name: "How to read this feed" }));
-    expect(screen.getByRole("dialog", { name: "How to read this feed" })).toHaveTextContent("Request line: agent and role where the agent changes, model where it changes, uncached input, time. Tap it for the four request-local counts.");
+    expect(within(feed).queryByText("how to read this")).toBeNull();
+    expect(within(feed).queryByRole("button", { name: "How to read this feed" })).toBeNull();
+    expect(feed.querySelector(".activityFeedCaveat")).toHaveTextContent("Request-local counts");
+  });
+
+  it("drops the chart How to read this popover on the phone and keeps the Largest strip inline", async () => {
+    setPhone(true);
+    const { container } = fixture();
+    await ready();
+
+    expect(screen.queryByRole("button", { name: "About this chart" })).toBeNull();
+    expect(container.querySelector(".requestsActionsInfo")).not.toBeInTheDocument();
+    expect(container.querySelector(".requestsActionsLargest")).toBeInTheDocument();
   });
 
   it("keeps Previous, Next and Jump to latest as phone touch targets", async () => {
