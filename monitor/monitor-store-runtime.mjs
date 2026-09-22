@@ -3,6 +3,7 @@ import { openMonitorStore } from "./monitor-store.mjs";
 import { buildStorageReadiness, readStorageFacts, runRetention } from "./store-retention.mjs";
 
 const DEFAULT_PRUNE_MIN_INTERVAL_MS = 5 * 60_000;
+const MAX_PENDING_SNAPSHOTS = 256;
 
 function readLastPrunedAt(store) {
   try {
@@ -23,18 +24,19 @@ function persistLastPrunedAt(store, prunedAtMs) {
 }
 
 /**
- * Wraps a checkpoint store so a successful write() also notifies the store runtime.
- * Every other method (load, stats, and any future addition) stays bound to the original
- * instance so its private fields keep resolving correctly. A falsy input passes through.
+ * Wraps a checkpoint store so a successful write() also notifies the store runtime with
+ * the written snapshot. Every other method (load, stats, and any future addition) stays
+ * bound to the original instance so its private fields keep resolving correctly. A falsy
+ * input passes through.
  */
 export function wrapCheckpointStoreForStore(checkpointStore, notifyWrite) {
   if (!checkpointStore) return checkpointStore;
   return new Proxy(checkpointStore, {
     get(target, property, receiver) {
       if (property === "write") {
-        return async (...args) => {
-          const result = await target.write(...args);
-          try { notifyWrite(); } catch { /* store scheduling never blocks checkpoint writes */ }
+        return async (snapshot, ...rest) => {
+          const result = await target.write(snapshot, ...rest);
+          try { notifyWrite(snapshot); } catch { /* store scheduling never blocks checkpoint writes */ }
           return result;
         };
       }
@@ -62,6 +64,9 @@ export function createMonitorStoreRuntime({
   }
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const contributors = new Map();
+  // Deduped (by providerId+localSessionId) checkpoint snapshots waiting for the next
+  // cycle; contributors (the file-change indexer) read them off `onCheckpoint`'s options.
+  const pendingSnapshots = new Map();
   let openedStore = null;
   let openFailed = !directory;
   let lastPrunedAtMs = null;
@@ -102,11 +107,25 @@ export function createMonitorStoreRuntime({
   // before any real lifecycle event (start, a cycle) runs.
   commitReadiness({ observedAt: 0 });
 
+  function queueSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== "object") return;
+    const { providerId, localSessionId } = snapshot;
+    if (typeof providerId !== "string" || !providerId || typeof localSessionId !== "string" || !localSessionId) return;
+    const key = `${providerId}\u0000${localSessionId}`;
+    if (!pendingSnapshots.has(key) && pendingSnapshots.size >= MAX_PENDING_SNAPSHOTS) {
+      const oldestKey = pendingSnapshots.keys().next().value;
+      pendingSnapshots.delete(oldestKey);
+    }
+    pendingSnapshots.set(key, snapshot); // dedupe by identity, keep the latest write
+  }
+
   async function runOneCycle() {
     if (!openedStore) return;
     const nowMs = now();
+    const snapshots = [...pendingSnapshots.values()];
+    pendingSnapshots.clear();
     for (const contributor of contributors.values()) {
-      try { await contributor.onCheckpoint(openedStore, { now: nowMs }); }
+      try { await contributor.onCheckpoint(openedStore, { now: nowMs, snapshots }); }
       catch { /* a failing contributor degrades alone; other contributors and retention still run */ }
     }
     const dueForPrune = lastPrunedAtMs === null || (nowMs - lastPrunedAtMs) >= pruneMinIntervalMs;
@@ -133,7 +152,8 @@ export function createMonitorStoreRuntime({
     cycleState = "idle";
   }
 
-  function afterCheckpointWrite() {
+  function afterCheckpointWrite(snapshot) {
+    queueSnapshot(snapshot);
     if (!openedStore) return;
     if (cycleState === "running") { pendingAfterRunning = true; return; }
     if (cycleState === "idle") {

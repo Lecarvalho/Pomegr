@@ -7,6 +7,85 @@ function boundedOneLine(value, maximum = 54) {
     : "";
 }
 
+const FILE_EDIT_TOOLS = new Set(["Edit", "MultiEdit", "NotebookEdit"]);
+// No pipes/redirects/chaining/globs/variables/backticks: only a whole, plain
+// `mv a b` or `git mv a b` is unambiguous enough to record as a move.
+const FORBIDDEN_MOVE_COMMAND_CHARS = /[|;&<>$`*?[\]\r\n]/u;
+
+function unwrapPlainArgument(token) {
+  if (token.length >= 2) {
+    const first = token[0];
+    const last = token[token.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      const inner = token.slice(1, -1);
+      return inner && !inner.includes(first) ? inner : null;
+    }
+  }
+  return token.startsWith("-") ? null : token;
+}
+
+/**
+ * Recognize only an unambiguous whole-command `mv a b` or `git mv a b`: two
+ * plain, optionally quoted arguments and nothing else. The command text
+ * itself never leaves this function.
+ */
+export function claudeMoveCommandCandidate(command) {
+  if (typeof command !== "string" || !command.trim() || FORBIDDEN_MOVE_COMMAND_CHARS.test(command)) return null;
+  const tokens = command.trim().split(/\s+/u);
+  const rest = tokens[0] === "git" && tokens[1] === "mv" ? tokens.slice(2)
+    : tokens[0] === "mv" ? tokens.slice(1)
+    : null;
+  if (!rest || rest.length !== 2) return null;
+  const from = unwrapPlainArgument(rest[0]);
+  const to = unwrapPlainArgument(rest[1]);
+  return from && to ? { from, to } : null;
+}
+
+/** Candidate {target, kind, previousTarget} file changes for one successful Claude tool call. */
+export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
+  if (tool === "Write") {
+    const target = input.file_path || input.path;
+    if (typeof target !== "string" || !target) return [];
+    const kind = toolUseResult && typeof toolUseResult === "object" && toolUseResult.type === "create" ? "created" : "edited";
+    return [{ target, kind }];
+  }
+  if (FILE_EDIT_TOOLS.has(tool)) {
+    const target = input.file_path || input.path;
+    return typeof target === "string" && target ? [{ target, kind: "edited" }] : [];
+  }
+  if (tool === "Bash") {
+    const move = claudeMoveCommandCandidate(input.command);
+    return move ? [{ target: move.to, kind: "moved", previousTarget: move.from }] : [];
+  }
+  return [];
+}
+
+/** Per tool_use_id outcome index built once per transcript file: ordered {timestamp, isError, toolUseResult}. */
+export function claudeToolOutcomes(records) {
+  const outcomes = new Map();
+  for (const record of records) {
+    if (record?.type !== "user") continue;
+    const rawTimestamp = record.timestamp ?? record.message?.timestamp;
+    const time = typeof rawTimestamp === "string" ? Date.parse(rawTimestamp) : NaN;
+    if (!Number.isFinite(time)) continue;
+    for (const part of Array.isArray(record.message?.content) ? record.message.content : []) {
+      if (part?.type !== "tool_result" || typeof part.tool_use_id !== "string" || !part.tool_use_id) continue;
+      const list = outcomes.get(part.tool_use_id) || [];
+      list.push({ timestamp: new Date(time).toISOString(), isError: part.is_error === true, toolUseResult: record.toolUseResult });
+      outcomes.set(part.tool_use_id, list);
+    }
+  }
+  return outcomes;
+}
+
+/** The first non-error outcome recorded at or after a call's start, or null when nothing succeeded. */
+export function firstSuccessfulClaudeToolOutcome(outcomes, toolUseId, startedAt) {
+  const start = Date.parse(startedAt || "");
+  if (!Number.isFinite(start)) return null;
+  const match = (outcomes.get(toolUseId) || []).find((entry) => Date.parse(entry.timestamp) >= start);
+  return match && !match.isError ? match : null;
+}
+
 export function safeDetail(tool, input = {}) {
   const skill = tool === "Skill" ? normalizedSkillName(input) : "";
   if (skill) return skill;

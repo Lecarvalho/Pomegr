@@ -166,8 +166,8 @@ retained privately by background enrichment, including when the session working
 directory is nested. The dedicated validator rejects traversal, absolute and Windows
 special forms, configured provider roots, and link escapes. An unknown root or uncertain
 containment cannot admit a path. This does not introduce file-change persistence:
-`fileHistory` and retained resource tables remain explicitly unavailable until their
-producers are implemented. Existing committed live repository/resource evidence remains
+The `fileHistory` browser domain and retained resource tables remain explicitly
+unavailable until their serving and producers are implemented. Existing committed live repository/resource evidence remains
 available, and missing historical evidence never falls back to today's working tree.
 
 ### Paged session evidence history
@@ -1963,11 +1963,21 @@ than arbitrary exception text.
 
 ### Approved file-history persistence contract
 
-This subsection approves prerequisite policy for the planned file-history and historical
-Repository work; it does not describe a currently shipped checkpoint, index, or browser
-surface. Until that implementation lands, provider mutation targets still do not enter
-checkpoints or browser responses, and historical Git state retains its current narrower
-behavior.
+This subsection approves the policy for file-history and historical Repository work. The
+checkpoint evidence and monitor-private index described below ship; no browser surface
+reads them yet, and historical Git state retains its current narrower behavior. Provider
+mutation targets still never enter browser responses.
+
+Shipped evidence shape: a normalized tool call may carry `fileChanges`, at most 64 entries
+of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated, at most
+512 characters, and relative to the session's recorded working directory; `previousPath`
+is present only for `moved`. Only a call with recorded success evidence carries it (Claude:
+a non-error tool result, with `Write` classified `created` from the structured result type;
+Codex: a completed patch or file-change item). A Claude shell move is recognized only from
+a whole `mv <a> <b>` or `git mv <a> <b>` command with two plain arguments; anything else
+is ignored and command text stays in the parser. `assertCheckpointPayload` rejects any
+absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
+or over-bound path.
 
 A future L1 revision and L2 checkpoint may retain bounded normalized file evidence
 consisting only of a normalized repository identity, safe repository-relative path, fixed
@@ -1991,8 +2001,20 @@ is not a path validator. Invalid or over-bound candidates are dropped rather tha
 truncated into a different path. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
-The planned monitor-owned file-history index is a derivative of committed file-change
-evidence plus Git state acquired asynchronously outside S Serving. It must be rebuildable
+The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a derivative of
+committed file-change evidence plus Git state acquired asynchronously outside S Serving.
+It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
+written since the last cycle. Each snapshot's paths are rebased from the session working
+directory onto the private Git root and revalidated; that session's `file_changes` rows
+are then replaced, so replaying a checkpoint is idempotent. Git renames come from
+`git diff --name-status -M` against the last recorded head, at most once per repository
+per minute and 512 renames per read; the first observation records the head only. A
+Git rename updates `files.current_path` and opens a `file_paths` row with source `git`,
+never a `file_changes` row. A missing, rebuilt, or unversioned index is repopulated
+once from retained checkpoints, and storage readiness stays `rebuilding` until that pass
+completes. Session 5 queries `listSessionFileChanges`, `listRepositoryFiles`, and
+`fileHistory` (page size 100, maximum 200); `request_number` stays null until a
+monitor-side request mapping is threaded to the index. It must be rebuildable
 from retained checkpoints and independently committed Git evidence. Index loss or rebuild
 cannot trigger provider acquisition from a GET, change a committed evidence revision, or
 weaken last-known-good retention. Git can establish repository-scoped path and file-
@@ -2014,7 +2036,7 @@ The monitor owns one `node:sqlite` database, `monitor-store-v1/monitor.sqlite` u
 Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never under
 `outputs/` (development diagnostics only). It hosts the file-change index and resource
 history described in the approved persistence contract above; `files`, `file_paths`, and
-`file_changes` are populated by future file-change indexing, and `resource_minutes`,
+`file_changes` are populated by the file-change index, and `resource_minutes`,
 `resource_peaks`, and `resource_peak_samples` by future resource-history writers (both
 pending). The database path and any raw SQLite error text never appear in browser state,
 logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.
