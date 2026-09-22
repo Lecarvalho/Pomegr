@@ -11,7 +11,7 @@ html[data-theme="dark"] body { background: var(--paper); }
   color: var(--command-ink);
 }
 .commandShell :where(button, a, input, summary, select):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.commandShell :where(button:not(.agentChip), input, select) { font: inherit; }
+.commandShell :where(button:not(.agentChip, .commandChip), input, select) { font: inherit; }
 .commandShell :where(button, a) { -webkit-tap-highlight-color: transparent; }
 .commandShell :where(input, code, time, b, em) { font-variant-numeric: tabular-nums; }
 .commandShell ::-webkit-scrollbar { width: 10px; height: 10px; }
