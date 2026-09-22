@@ -96,9 +96,9 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="Smoother live sessions, clearer cache evidence"
-          description="See recent requests and activity while older history loads. Live updates keep flowing, and cache reuse drops across model changes now have their own label."
-          details="The session you open gets loading priority, with recent requests visible while full history catches up. Requests and Activity preserve your place during updates; selecting the newest request resumes following live work. Restored sessions refresh their status more reliably. Cache evidence now distinguishes reuse drops across model changes from possible refills, without inferring a refill or expiry from a model change."
+          title="A redesigned workspace for every session"
+          description="Sessions now open in a clearer tabbed workspace, with a compact overview and correlated Activities and Signals views across desktop and phone."
+          details="Open a session to scan current agents, recent requests, repository state, progress, and available cost estimates from Overview. Activities keeps the selected request aligned across agent lanes or the single chart, Largest requests, and the grouped feed; scope the view by agent or jump to the latest work. Signals brings efficiency, cache evidence, cache lifetime, and agent-reported updates together while keeping deterministic evidence separate from potentially stale reports."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

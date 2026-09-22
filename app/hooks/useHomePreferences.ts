@@ -5,7 +5,7 @@ import { encodeSessionRoute } from "../../shared/session-route.mjs";
 
 export const HOME_PREFERENCES_STORAGE_KEY = "pomegr-home-v1";
 export const HOME_PIN_LIMIT = 6;
-export const HOME_UPDATE_ID = "progressive-live-sessions-v1";
+export const HOME_UPDATE_ID = "redesigned-session-workspace-v1";
 
 const HOME_PREFERENCES_EVENT = "pomegr:home-preferences-change";
 const MAX_STORED_LENGTH = 16_384;
