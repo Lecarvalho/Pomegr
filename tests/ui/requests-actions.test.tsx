@@ -114,8 +114,7 @@ describe("RequestsActionsPanel", () => {
     const { container } = render(<HistoryLocateHarness sessionId="preload-drag" requests={[]} />);
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(phone ? 4 : 3));
     const calls = fetchPage.mock.calls.length;
-    // Phone and desktop lanes scale over their visible requests; desktop single-chart mode uses
-    // the whole-history overview.
+    // Phone single-chart mode and desktop lanes scale over the visible requests.
     expect(rangeLine(container)).toBe(`Showing #${(total - size + 1) * 10}–#1800 of 180`);
     if (phone) expect(scaleTop(container)).toBe("2M");
     if (phone) {
@@ -501,6 +500,26 @@ describe("RequestsActionsPanel", () => {
     expect(selectedRequest()).toBe("#1");
     expect(container.querySelectorAll(".requestsActionsOutline")).toHaveLength(0);
     expect(screen.queryByText("Cache write")).not.toBeInTheDocument();
+  });
+
+  it("rescales the desktop single chart from the visible window", async () => {
+    const user = userEvent.setup();
+    const requests = Array.from({ length: 61 }, (_, index) => snapshot(index + 1, "primary", {
+      uncachedInputTokens: index === 0 ? 100_000 : 1_000,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 0,
+      outputTokens: 0,
+    }));
+    const { container } = renderPanel(requests);
+    await user.click(screen.getByRole("button", { name: "Single chart" }));
+
+    expect(rangeLine(container)).toBe("Showing #2–#61 of 61");
+    expect(scaleTop(container)).toBe("1,200");
+    expect(Number(container.querySelector(".requestsActionsBar.isSelected .requestsActionsSegment.uncached")!.getAttribute("height"))).toBeCloseTo(155);
+
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Request window" }), { key: "Home" });
+    expect(rangeLine(container)).toBe("Showing #1–#60 of 61");
+    expect(scaleTop(container)).toBe("120K");
   });
 
   it("hides cache-write evidence for Codex and keeps zero-valued geometry finite", () => {

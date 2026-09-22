@@ -461,9 +461,9 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   chevron rotating 90°) expands the group into a header plus member lanes indented one
   `--space-4` step. Primary and Compactions never collapse. Selecting a request inside a
   collapsed group does not expand it.
-- **Single chart.** On desktop, one whole-history scale (`0–N tokens`) stays stable while the
-  window moves. On phone, the scale follows the 20 requests currently visible so the bars use
-  the available plot height as the window moves. Under the bars runs the role-family agent
+- **Single chart.** On desktop and phone, the scale follows the requests currently visible so
+  off-window requests cannot compress its bars as the window moves. The minimap retains its
+  stable whole-history scale. Under the bars runs the role-family agent
   track: one `.requestRoleSegment` per visible bar, 4px high after a 3px gap (3px on phone).
   The `.sessionRoleLegend.requestRoleLegend` below lists the role labels in view,
   ordered by family, with distinct agent counts. It keeps each label's case, so `custom: <type>`
@@ -476,8 +476,7 @@ Both layouts share request order, the window, selection, arrow-key stepping, and
   minimap while it is being touched. Compaction, selected-number, and cache-evidence text share one
   reserved row just above the plot top, which bars never reach, placed with the lane band
   priority and dropped rather than overlapping. Evidence icons sit above that row. Its numeric
-  scale recomputes from the visible window in both Fresh tokens and Full breakdown modes; the
-  minimap retains its stable whole-history scale.
+  scale recomputes from the visible window in both Fresh tokens and Full breakdown modes.
 - **Role tint scope.** In Activities, role tints appear only on `.requestRoleSegment` and the
   legend swatches. Lanes, lane labels, group rows, and the minimap use no `roleFamily-*` classes
   and no `--session-role` or `--role-*` values.

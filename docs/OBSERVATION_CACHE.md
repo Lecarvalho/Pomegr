@@ -1702,12 +1702,13 @@ valid committed repository files or current live resource samples.
   accompanied by the compact committed overview. No provider acquisition or
   synthetic token history is added. The overview's bar geometry is reused while
   the window moves, rather than rebuilding every miniature bar per pointer event.
-  The detail chart uses the full-scope overview to keep its scale stable during
-  navigation, recalculating for scope, mode, capability, or revision changes.
+  The detail chart recalculates its scale from the committed visible window during
+  navigation so off-window requests cannot compress its bars. Scope, mode,
+  capability, window, or revision changes may change that scale.
   The thumb previews the requested position while the chart keeps its last
   committed page; aborted or stale responses cannot replace a newer navigation.
-  Miniature bars cover all scoped requests and use one full-overview maximum for
-  the selected mode, independent of the detail page. Page and overview replace
+  Miniature bars cover all scoped requests and use one stable full-overview maximum
+  for the selected mode, independent of the detail page. Page and overview replace
   together, retaining the last committed revision during loading or failure.
   Older monitors without an overview show only loaded positions, which do not
   imply zero usage elsewhere. Scope/session changes discard the prior overview.

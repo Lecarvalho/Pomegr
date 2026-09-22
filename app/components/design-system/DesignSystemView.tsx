@@ -352,7 +352,6 @@ const SAMPLE_ROWS: RequestRow[] = "p p e e p l p 1 2 3 1 4 5 2 p c p r r p p e p
   };
 });
 const SAMPLE_LANES = buildRequestLanes(SAMPLE_ROWS, SAMPLE_AGENTS, "fresh", true).lanes;
-const SAMPLE_MAXIMUM = Math.max(1, scaleMax(SAMPLE_ROWS, "fresh", true));
 const SAMPLE_PANEL_STYLE = { marginTop: "var(--space-4)" };
 function ignoreFocus() {}
 
@@ -378,6 +377,7 @@ function RequestChartsSection() {
     if (!next.delete(groupId)) next.add(groupId);
     return next;
   });
+  const visibleMaximum = Math.max(1, scaleMax(SAMPLE_ROWS.slice(windowStart - 1, end), "fresh", true));
   const chart = { rows: SAMPLE_ROWS, start: windowStart, end, size: SAMPLE_WINDOW, mode: "fresh" as const, selectedId: selected.id, cacheWriteAvailable: true,
     onSelect: (row: RequestRow) => selectIndex(row.ordinal - 1), onStep: (delta: number) => selectIndex(selectedIndex + delta), windowStart, total: SAMPLE_ROWS.length };
   return <Section id="request-charts" title="Request charts" lede="Activities draws one lane per agent on desktop; Single chart stacks every request on one scale above the role-family agent track. Both share request order, window, selection, arrow keys, and the neutral minimap. Static data only.">
@@ -392,11 +392,11 @@ function RequestChartsSection() {
     <section className="panel requestsActionsPanel" aria-label="Single chart sample" style={SAMPLE_PANEL_STYLE}>
       <div className="requestsActionsPlot">
         <p className="requestsActionsRange">Showing #{windowStart}–#{end} of {SAMPLE_ROWS.length}</p>
-        <RequestBarsChart {...chart} maximum={SAMPLE_MAXIMUM} phone={false} onMove={moveWindow} agents={SAMPLE_AGENTS} onInspect={setInspectedId} />
+        <RequestBarsChart {...chart} maximum={visibleMaximum} phone={false} onMove={moveWindow} agents={SAMPLE_AGENTS} onInspect={setInspectedId} />
         <RequestRoleLegend rows={SAMPLE_ROWS.slice(windowStart - 1, end)} agents={SAMPLE_AGENTS} named={SAMPLE_ROWS.find((row) => row.id === inspectedId) ?? selected} />
       </div>
     </section>
-    <p className="designSystemNote">Single chart: one whole-history scale, a 4px role-family segment under each bar, and a legend of the roles in view with distinct agent counts. Hovering or focusing a bar names its agent beside the legend, else the selected request&apos;s agent. Phone draws only the single chart and has no layout toggle.</p>
+    <p className="designSystemNote">Single chart: one visible-window scale so off-window requests cannot compress its bars, a 4px role-family segment under each bar, and a legend of the roles in view with distinct agent counts. Hovering or focusing a bar names its agent beside the legend, else the selected request&apos;s agent. Phone draws only the single chart and has no layout toggle.</p>
     <section className="activityPanel" aria-label="Phone Activities exceptions sample" style={SAMPLE_PANEL_STYLE}>
       <header className="activityPanelHeader"><div><h2>Phone Activities exceptions</h2><p>Static selected request and nested call-line sample.</p></div></header>
       <div className="activityLayout isPhone designSystemActivityPhoneSample">

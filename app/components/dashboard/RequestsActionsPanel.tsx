@@ -49,14 +49,10 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   // One status for every line the five-second history retry would otherwise flicker.
   const historyStatus = useStableHistoryStatus(requestHistory.status);
   const overview = requestHistory.enabled ? requestHistory.overview : null;
-  const scaleRows = useMemo(() => isCompleteRequestOverview(overview, requestHistory.total)
-    ? overview.map(([uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens]) => ({ uncachedInputTokens, cacheWriteTokens, cacheReadTokens, outputTokens }))
-    : null, [overview, requestHistory.total]);
-  // Phone bars use the requests currently visible in the viewport, matching the desktop lane
-  // behavior. Desktop single-chart mode retains its stable whole-history overview scale.
   const visibleRows = useMemo(() => rows.slice(start - 1, end), [rows, start, end]);
-  const scaleInput = phone ? visibleRows : scaleRows ?? rows;
-  const maximum = useMemo(() => Math.max(1, scaleMax(scaleInput, mode, cacheWriteAvailable)), [scaleInput, mode, cacheWriteAvailable]);
+  // The single chart follows its visible window so off-window requests cannot compress its bars.
+  // The minimap keeps the separate whole-history overview scale.
+  const maximum = useMemo(() => Math.max(1, scaleMax(visibleRows, mode, cacheWriteAvailable)), [visibleRows, mode, cacheWriteAvailable]);
   const lanes = useMemo(() => buildRequestLanes(single ? [] : rows, agents, mode, cacheWriteAvailable), [single, rows, agents, mode, cacheWriteAvailable]);
   const toggleGroup = (groupId: string) => setExpandedGroups((current) => {
     const next = new Set(current);

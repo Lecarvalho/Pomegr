@@ -131,11 +131,12 @@ evidence; retaining the API does not introduce a Home request or change its cade
 
 The default Fresh tokens mode stacks uncached input, cache write (when available),
 and output, with no prompt-size outline. Its scale excludes cache reads so smaller
-components remain readable. Full breakdown also stacks cache read. Each mode's fixed
-scope-wide scale fits its stacked components, rounded upward to a readable step;
-moving the window never changes that scale. A visible scale caption identifies the
-range and whether cache reads are excluded. The desktop minimap uses the same
-components as the selected mode, including output in Full breakdown.
+components remain readable. Full breakdown also stacks cache read. Each mode's
+visible-window scale fits its stacked components, rounded upward to a readable step;
+moving the window recomputes that scale so off-window requests cannot compress the
+visible bars. A visible scale caption identifies the range and whether cache reads are
+excluded. The desktop minimap uses the same components as the selected mode,
+including output in Full breakdown, but retains one stable full-scope scale.
 Uncached input describes the recorded cache classification, not proof that the model
 had never seen that content. The Largest strip ranks independent requests within the
 selected agent scope, including those outside the visible window, with ordinal order
