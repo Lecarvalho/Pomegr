@@ -65,11 +65,14 @@ const inventoryDetails: Record<string, ContextInventoryRevisionDetail> = {
 };
 
 describe("repository detail shell", () => {
-  it("renders the header, observed providers, five tabs, and View sessions link", async () => {
+  it("renders the titleless header, observed providers, five tabs, and View sessions link", async () => {
     serve();
     render(<RepositoryDetailView repositoryId={repositoryId} />);
-    expect(await screen.findByRole("heading", { name: "Example project" })).toBeInTheDocument();
-    expect(within(screen.getByRole("heading", { name: "Example project" }).closest("header")!).getByText("Codex")).toBeInTheDocument();
+    const repositoryRegion = await screen.findByRole("region", { name: "Example project" });
+    const header = repositoryRegion.querySelector(".commandPageHeader") as HTMLElement | null;
+    expect(header).toBeInTheDocument();
+    expect(within(header!).queryByRole("heading", { name: "Example project" })).not.toBeInTheDocument();
+    expect(within(header!).getByText("Codex")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View sessions" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
     expect(screen.getAllByRole("tab")).toHaveLength(5);
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
@@ -103,7 +106,7 @@ describe("repository detail shell", () => {
     serve();
     navigation.search = "tab=inventory&provider=claude&revision=ctx-001&logo=outline";
     const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
-    await screen.findByRole("heading", { name: "Example project" });
+    await screen.findByRole("region", { name: "Example project" });
     expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveAttribute("aria-selected", "true");
     await userEvent.click(screen.getByRole("tab", { name: "Git Soon" }));
     expect(navigation.replace).toHaveBeenCalledWith(`/repositories/${repositoryId}?tab=git&provider=claude&revision=ctx-001&logo=outline`, { scroll: false });
@@ -120,7 +123,7 @@ describe("repository detail shell", () => {
   it("supports keyboard movement and associates tabs with their panel", async () => {
     serve();
     render(<RepositoryDetailView repositoryId={repositoryId} />);
-    await screen.findByRole("heading", { name: "Example project" });
+    await screen.findByRole("region", { name: "Example project" });
     screen.getByRole("tab", { name: "Overview" }).focus();
     await userEvent.keyboard("{ArrowRight}");
     expect(screen.getByRole("tab", { name: "Plugin" })).toHaveFocus();

@@ -5,16 +5,11 @@
 .commandPageHeading h1 { margin: 0; font: 600 var(--text-title)/1.25 var(--font-ui); letter-spacing: -.025em; }
 .commandPageHeading p { max-width: 66ch; margin: 7px 0 0; color: var(--command-muted); font-size: var(--text-base); line-height: 1.55; }
 .commandViewActions { flex: 0 0 auto; }
-.repositoryDetailIdentity { display: flex; align-items: flex-start; gap: 14px; min-width: 0; }
 .repositoryDetail .repositoryDetailHeader { align-items: flex-start; }
-.repositoryDetailIdentity .commandPageHeading { min-width: 0; }
-.repositoryDetailIdentity h1 { overflow-wrap: anywhere; }
-.repositoryDetailIcon { display: grid; place-items: center; flex: 0 0 42px; height: 42px; margin-top: 2px; border: 1px solid var(--command-line-strong); color: var(--command-muted); }
 .repositoryDetailMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 7px; color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryDetailCount { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .repositoryDetailCount strong { font-weight: 500; color: var(--command-ink); }
 .repositoryDetailCount strong.live { color: var(--command-green); }
-.repositoryDetail .repositoryDetailLayout { margin-top: 24px; }
 .repositoryDetailLayout .commandSettingsNav { display: flex; flex-direction: column; gap: 2px; }
 .repositoryDetailLayout .commandSettingsNav button { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .repositoryDetailSoon { color: var(--command-faint); font: var(--text-caption)/1 var(--font-data); }

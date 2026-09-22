@@ -9,7 +9,7 @@ export function CommandBreadcrumbSeparator() {
 
 export function CommandPageHeader({ breadcrumb, title, meta, actions, tabs, headingId, className = "" }: {
   breadcrumb?: ReactNode;
-  title: ReactNode;
+  title?: ReactNode;
   meta?: ReactNode;
   actions?: ReactNode;
   tabs?: ReactNode;
@@ -19,7 +19,7 @@ export function CommandPageHeader({ breadcrumb, title, meta, actions, tabs, head
   return <header className={`commandPageHeader${className ? ` ${className}` : ""}`}>
     <div className="commandPageTitleBlock">
       {breadcrumb && <div className="commandPageBreadcrumb">{breadcrumb}</div>}
-      <h1 id={headingId}>{title}</h1>
+      {title !== undefined && title !== null && <h1 id={headingId}>{title}</h1>}
       {meta && <div className="commandPageMeta">{meta}</div>}
     </div>
     {actions && <div className="commandPageActions">{actions}</div>}

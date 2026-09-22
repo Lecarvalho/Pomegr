@@ -340,9 +340,10 @@ activity, and one bounded Pomegr setup summary. The toolbar combines repository
 search with All, Needs attention, and Live now filters; on phones the rows reflow
 into a compact layout while search and filters retain at least 44px targets.
 Repository detail is a linked `/repositories/<repositoryId>` route. Its header
-uses a 42px outlined repository icon, the repository's live and history counts,
-observed provider badges, and the existing secondary-button role for View
-sessions. The shell uses the shared session breadcrumb for
+uses the shared breadcrumb as its only repository name, followed by the repository's
+live and history counts, observed provider badges, and the existing secondary-button
+role for View sessions. It does not repeat the repository name as a page title or
+show a repository icon. The shell uses the shared session breadcrumb for
 `Repositories › {displayName}`. Detail navigation uses the existing Settings
 layout: a 210px five-tab rail on desktop and its horizontal mobile strip, with
 the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
