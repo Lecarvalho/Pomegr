@@ -123,7 +123,7 @@ export function createCodexAppServerSessionReader({
     return { metadata: mergeCodexMetadata(discovered), descendantIds, freshIds };
   }
 
-  async function readThreadEvidence(threadId, actor, fallbackTimestamp) {
+  async function readThreadEvidence(threadId, actor, fallbackTimestamp, fileChangeOptions = {}) {
     const unavailable = { available: false, toolCalls: [], activity: [], executionTasks: [], skills: [], pullRequestCreations: [] };
     if (!appServer) return unavailable;
     try {
@@ -132,7 +132,9 @@ export function createCodexAppServerSessionReader({
       if (!thread || thread.id !== threadId || !Array.isArray(thread.turns)) return unavailable;
       return {
         available: true,
-        toolCalls: parseCodexCanonicalTurns(thread.turns, { actor, fallbackTimestamp }),
+        toolCalls: parseCodexCanonicalTurns(thread.turns, {
+          actor, fallbackTimestamp, cwd: fileChangeOptions.cwd, forbiddenRoots: fileChangeOptions.forbiddenRoots,
+        }),
         activity: parseCodexCanonicalActivityEvents(thread.turns, { actor }),
         executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
         skills: parseCodexCanonicalSkillUsage(thread.turns),

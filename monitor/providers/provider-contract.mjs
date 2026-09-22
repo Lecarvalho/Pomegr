@@ -362,6 +362,11 @@ const evidenceSignal = z.object({
   description: evidenceOneLine(512).optional(),
 }).strict();
 const evidenceWorkKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
+const evidenceFileChange = z.object({
+  path: evidenceOneLine(512),
+  kind: z.enum(["created", "edited", "deleted", "moved"]),
+  previousPath: evidenceOneLine(512).nullable(),
+}).strict();
 const evidenceTask = z.object({
   id: evidenceId, label: evidenceOneLine(512), kind: z.literal("shell"),
   workKind: evidenceWorkKind.optional(),
@@ -418,6 +423,7 @@ const evidenceToolCall = z.object({
   workKind: evidenceWorkKind.optional(),
   status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512), durationMs: evidenceActivityDuration, requestId: evidenceRequestId,
   mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)).max(64) }).strict().nullable(),
+  fileChanges: z.array(evidenceFileChange).max(64).nullable().optional(),
 }).strict();
 const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable(), durationMs: evidenceActivityDuration, requestId: evidenceRequestId }).strict();
 const evidencePlanTask = z.object({ id: evidenceId, subject: evidenceOneLine(512), status: z.enum(["pending", "in_progress", "completed"]), blocks: z.array(evidenceId).max(128), blockedBy: z.array(evidenceId).max(128) }).strict();

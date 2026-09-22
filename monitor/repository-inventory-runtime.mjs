@@ -259,6 +259,22 @@ export function createRepositoryInventoryRuntime(options = {}) {
     return { repositoryId, name };
   }
 
+  /**
+   * Monitor-private repository resolution for the file-change index: the opaque
+   * repository ID plus the real Git (or fallback) root, reusing the same identity
+   * `identify` computes. The root never leaves this function's callers.
+   */
+  async function resolveRepository(cwd) {
+    if (typeof cwd !== "string" || cwd.length === 0) return null;
+    try {
+      const { repositoryId } = await identify(cwd);
+      const target = targets.get(repositoryId);
+      return target ? { repositoryId, root: target.root } : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function associateSession({ sessionId, provider, startedAt, cwd, previousReference = null }) {
     await ready;
     const { repositoryId } = await identify(cwd);
@@ -419,6 +435,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   return Object.freeze({
     ready,
     identify,
+    resolveRepository,
     associateSession,
     reconcile,
     capture,
