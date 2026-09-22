@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed, WorkKind } from "../../../../shared/monitor-contract";
+import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed } from "../../../../shared/monitor-contract";
 import type { RequestHistoryPage } from "../../../../shared/session-history-contract";
 import { subscribeLiveEvents } from "../../../live-events";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
@@ -95,7 +95,6 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   const interrupted = useRef<HistoryQuery | null>(null);
   const [pendingLocate, setPendingLocate] = useState<PendingLocate>(null);
   const [pendingPageSelection, setPendingPageSelection] = useState<PendingPageSelection>(null);
-  const [workKind, setWorkKind] = useState<WorkKind | null>(null);
   const [retry, setRetry] = useState(0);
   const queuedPublication = useRef<{ revision: number } | null>(null);
   const hiddenPublication = useRef(false);
@@ -396,11 +395,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
     return () => window.clearTimeout(timer);
   }, [historical, history.loading, history.key, historyEnabled, transportVersion]);
 
-  /** Scope changes clear the kind filter: the new scope's kinds may not include it. */
-  const setPreferredScope = (value: string) => {
-    if (value !== resolvedScope) setWorkKind(null);
-    setPreference({ sessionId, scope: value });
-  };
+  const setPreferredScope = (value: string) => setPreference({ sessionId, scope: value });
   const cancelHistoryNavigation = () => {
     routeLookup.current?.abort();
     routeLookup.current = null;
@@ -631,7 +626,7 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
   return {
     ...selection, select, step: stepBy, selectScope, rows, allRows, agents, scope: resolvedScope, setScope, phone, size, locate,
     moveWindow,
-    mode, selectedNumber, selectedIndex, workKind, setWorkKind,
+    mode, selectedNumber, selectedIndex,
     /** The value to send as the history `scope` parameter. */
     historyScope: historyScope(resolvedScope, agents),
     pending,

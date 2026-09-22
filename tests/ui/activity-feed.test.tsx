@@ -14,7 +14,7 @@ function mount(server: ReturnType<typeof historyServer>, initial: Partial<Activi
   vi.stubGlobal("fetch", vi.fn(server.fetcher));
   return renderHook((props: Partial<ActivityFeedQuery> & { historyRevision?: string; enabled?: boolean }) => useActivityFeed({
     enabled: props.enabled ?? true,
-    query: { sessionId: SESSION, scope: props.scope ?? "all", selected: props.selected === undefined ? null : props.selected, workKind: props.workKind ?? null },
+    query: { sessionId: SESSION, scope: props.scope ?? "all", selected: props.selected === undefined ? null : props.selected },
     historyRevision: props.historyRevision ?? "r1",
   }), { initialProps: initial });
 }
@@ -36,21 +36,15 @@ describe("grouped activity feed", () => {
     expect(Object.fromEntries(server.calls[0])).toEqual({ sessionId: SESSION, kind: "activity", scope: "all", offset: "latest", limit: "1", selected: String(selected) });
   });
 
-  it("keeps empty and unresolved associations explicit, and filtered headers with noMatchingCalls", async () => {
+  it("keeps empty and unresolved associations explicit with noMatchingCalls", async () => {
     const all = requests(5);
     const calls = [historyCall("call-1", all[1], "read", 1), historyCall("call-2", all[1], "shell", 2), historyCall("call-orphan", null, "read", 3)];
     const server = historyServer({ requests: all, calls, revision: "1" });
-    const { result, rerender } = mount(server, { selected: 3 });
+    const { result } = mount(server, { selected: 3 });
     await waitFor(() => expect(result.current.status).toBe("ready"));
     expect(result.current.groups.map((group) => [group.request.number, group.calls.map((call) => call.id), group.noMatchingCalls])).toEqual([
       [1, [], true], [2, ["call-1", "call-2"], false], [3, [], true], [4, [], true], [5, [], true],
     ]);
-    rerender({ selected: 3, workKind: "shell" });
-    await waitFor(() => expect(result.current.correlated).toBe(true));
-    expect(server.calls.at(-1)?.get("workKind")).toBe("shell");
-    expect(result.current.groups.map((group) => group.request.number)).toEqual([1, 2, 3, 4, 5]);
-    expect(result.current.groups[1].calls.map((call) => call.id)).toEqual(["call-2"]);
-    expect(result.current.groups[2].noMatchingCalls).toBe(true);
   });
 
   it("merges continuation calls and discards them when the served revision changes", async () => {
@@ -141,7 +135,7 @@ describe("grouped activity feed", () => {
   it("waits for the next revision after a loading response and reports unavailable bodies", async () => {
     let body: unknown = { kind: "activity", status: "loading", revision: "0", items: [] };
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
-    const { result, rerender } = renderHook(({ revision }: { revision: string }) => useActivityFeed({ enabled: true, query: { sessionId: SESSION, scope: "all", selected: 1, workKind: null }, historyRevision: revision }), { initialProps: { revision: "r1" } });
+    const { result, rerender } = renderHook(({ revision }: { revision: string }) => useActivityFeed({ enabled: true, query: { sessionId: SESSION, scope: "all", selected: 1 }, historyRevision: revision }), { initialProps: { revision: "r1" } });
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     rerender({ revision: "r1" });
     expect(result.current.status).toBe("loading");

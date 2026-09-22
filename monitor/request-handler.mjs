@@ -3,10 +3,8 @@ import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "./session-domain-store.mjs";
-import { WORK_KINDS } from "./work-kind.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
-const WORK_KIND_SET = new Set(WORK_KINDS);
 
 function requestRevision(requestUrl, request) {
   const query = requestUrl.searchParams.get("revision");
@@ -363,7 +361,7 @@ export function createRequestHandler({
     if (requestUrl.pathname === "/api/session-history") {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
       const allowed = new Set(["sessionId", "kind", "scope", "offset", "limit", "requestId", "filterRequestId", "anchor", "overview",
-        "revision", "from", "to", "selected", "workKind", "continuation"]);
+        "revision", "from", "to", "selected", "continuation"]);
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
       const kind = requestUrl.searchParams.get("kind") || "activity";
       const scope = requestUrl.searchParams.get("scope") || "all";
@@ -376,7 +374,6 @@ export function createRequestHandler({
       const from = requestUrl.searchParams.get("from") || "";
       const to = requestUrl.searchParams.get("to") || "";
       const selected = requestUrl.searchParams.get("selected") || "";
-      const workKind = requestUrl.searchParams.get("workKind") || "";
       const continuation = requestUrl.searchParams.get("continuation") || "";
       const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
       const validScope = scope === "all" || scope === "primary" || scope === "subagents" || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(scope);
@@ -390,17 +387,16 @@ export function createRequestHandler({
       const validRange = !rangePresent || /^(?:[1-9]\d{0,6})$/u.test(from) && /^(?:[1-9]\d{0,6})$/u.test(to)
         && Number(from) <= Number(to) && Number(to) - Number(from) < 64;
       const validSelected = !selected || /^(?:[1-9]\d{0,6})$/u.test(selected);
-      const validWorkKind = !workKind || WORK_KIND_SET.has(workKind);
       const validContinuation = !continuation || /^[A-Za-z0-9_-]{1,96}$/u.test(continuation);
       if (!oneEach || !/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionId)
         || !["activity", "requests"].includes(kind) || !validScope || !validOffset || !validLimit || !validRequest || !validFilter || !validAnchor || !validOverview
-        || !validRange || !validSelected || !validWorkKind || !validContinuation) {
+        || !validRange || !validSelected || !validContinuation) {
         response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ error: "Invalid session history query" })); return;
       }
       try {
         const page = await runtime.serveSessionHistory?.(sessionId, {
           kind, scope, offset, limit, requestId, filterRequestId, anchor, overview,
-          from, to, selected, workKind, continuation,
+          from, to, selected, continuation,
         });
         const pageRevision = /^\d+$/u.test(page?.revision || "") ? Number(page.revision) : null;
         const historyHeaders = Number.isSafeInteger(pageRevision) ? {

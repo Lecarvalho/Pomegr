@@ -187,16 +187,16 @@ reports still exclude request-level model identities. Older committed generation
 `null` until a complete replay commits a replacement revision; a GET never backfills it.
 
 Activity history additionally accepts a positive request-number `from`/`to` range
-covering at most 64 consecutive numbers, `selected`, one recognized `workKind`, and
-an opaque continuation. Range endpoints must be supplied together; reversed or
-out-of-bound ranges, duplicate query keys and unrecognized work kinds are rejected. It returns at most five
+covering at most 64 consecutive numbers, `selected`, and an opaque continuation. Range
+endpoints must be supplied together; reversed or out-of-bound ranges, duplicate query
+keys and unrecognized query keys are rejected. It returns at most five
 scoped request headers around the selection, adjusted at either end, with calls nested
-under their recorded request. A work-kind filter retains each request header and reports
-`noMatchingCalls` when no nested call matches. Each group carries at most 50 calls and a
+under their recorded request. A retained request header without request-linked calls
+reports `noMatchingCalls`. Each group carries at most 50 calls and a
 page carries at most 200; remaining calls use explicit continuation. A continuation
 reserves budget for its target group before other groups, so dense preceding groups
 cannot prevent progress. Nested calls retain chronological order. Stable request
-numbers do not change across filters. Calls without a recorded request association stay
+numbers do not change across agent scopes. Calls without a recorded request association stay
 in the legacy flat feed but never enter a request group. Agent scope is applied
 consistently to request headers, nested calls, work-kind counts, median wall durations,
 and shell-task totals. A request-linked call with no normalized actor participates only

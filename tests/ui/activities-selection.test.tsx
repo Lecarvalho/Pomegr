@@ -162,19 +162,6 @@ describe("shared request selection: navigation", () => {
     expect(result.current.mode).toBe("follow");
   });
 
-  it("changes the kind filter without changing selection or viewport", async () => {
-    const server = historyServer({ requests: requests(100), calls: [], revision: "1" });
-    const { result } = mount(server);
-    await waitFor(() => expect(result.current.selectedNumber).toBe(100));
-    act(() => result.current.select(result.current.rows[10]));
-    const before = { number: result.current.selectedNumber, offset: result.current.history.offset, mode: result.current.mode };
-    const fetches = server.calls.length;
-    act(() => result.current.setWorkKind("read"));
-    expect(result.current.workKind).toBe("read");
-    expect({ number: result.current.selectedNumber, offset: result.current.history.offset, mode: result.current.mode }).toEqual(before);
-    expect(server.calls.length).toBe(fetches);
-  });
-
   it("cancels rapid navigation, ignores stale responses and retains the previous view while pending", async () => {
     const server = historyServer({ requests: requests(300), calls: [], revision: "1", overview: false });
     const { result } = mount(server);
@@ -329,16 +316,6 @@ describe("shared request selection: URL write-back and route retries", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 400)); });
     expect(onRouteChange).toHaveBeenCalledTimes(2);
     expect(onRouteChange).toHaveBeenLastCalledWith({ agent: null, request: "64" });
-  });
-
-  it("clears the kind filter when the agent scope changes", async () => {
-    const server = historyServer({ requests: requests(40, (number) => number % 2 ? "child" : "primary"), calls: [], revision: "1" });
-    const { result } = mount(server);
-    await waitFor(() => expect(result.current.selectedNumber).toBe(40));
-    act(() => result.current.setWorkKind("shell"));
-    act(() => result.current.setScope("child"));
-    await waitFor(() => expect(result.current.scope).toBe("child"));
-    expect(result.current.workKind).toBeNull();
   });
 
   it("waits for the next request-page revision after a number lookup answers loading", async () => {

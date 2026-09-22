@@ -71,11 +71,10 @@ export function historyServer(state: HistoryServerState) {
     const center = preferred < 0 ? requests.length - 1 : preferred;
     const start = Math.max(0, Math.min(center - 2, Math.max(0, requests.length - 5)));
     const headers = requests.slice(start, start + 5);
-    const workKind = params.get("workKind");
     const scopedCalls = state.calls.filter((item) => matches(item.agentId, scope));
     const limit = state.callLimit ?? 50;
     const requestGroups = headers.map((request) => {
-      const matched = scopedCalls.filter((item) => item.requestId === request.id && (!workKind || item.workKind === workKind))
+      const matched = scopedCalls.filter((item) => item.requestId === request.id)
         .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id));
       const offset = cursor && cursor[0] === request.number ? cursor[1] : 0;
       const shown = matched.slice(offset, offset + limit);

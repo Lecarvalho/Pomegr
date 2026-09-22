@@ -102,8 +102,8 @@ describe("Activities tab", () => {
     // One agent in scope: the first line prints it, and every line's accessible name still names it.
     expect(groups[0]).toHaveTextContent("Builder");
     for (const group of groups) expect(within(group).getByRole("button", { name: /^Request #\d+, Builder, builder,/u })).toBeInTheDocument();
-    const kinds = within(within(feed).getByRole("group", { name: "Filter calls by kind" })).getAllByRole("button");
-    expect(kinds.map((button) => button.textContent)).toEqual([expect.stringMatching(/^Shell.*20/u)]);
+    const kinds = within(within(feed).getByRole("list", { name: "Recorded calls by kind" })).getAllByRole("listitem");
+    expect(kinds.map((row) => row.textContent)).toEqual([expect.stringMatching(/^Shell.*20/u)]);
     expect(feed).toHaveTextContent("Failed shell runs");
   });
 
@@ -154,20 +154,13 @@ describe("Activities tab", () => {
     expect(feed).toHaveTextContent("Failed shell runs");
   });
 
-  it("filters nested calls by kind without losing the selected request header", async () => {
-    const user = userEvent.setup();
+  it("renders Actions by kind as read-only summary rows that never filter the feed", async () => {
     const { server } = fixture();
     const feed = await ready();
-    await user.click(within(feed).getByRole("button", { name: /Request #38/u }));
-    await waitFor(() => expect(within(feed).getByRole("button", { name: /Request #38/u })).toHaveAttribute("aria-pressed", "true"));
-    await user.click(within(feed).getByRole("button", { name: /^Reading/u }));
-    await waitFor(() => expect(feedCalls(server).at(-1)?.get("workKind")).toBe("read"));
-    await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
-    expect(within(feed).getByRole("button", { name: /^Reading/u })).toHaveAttribute("aria-pressed", "true");
-    expect(selectedRequest()).toBe("#38");
-    expect(within(feed).getByRole("button", { name: /Request #38/u })).toHaveAttribute("aria-pressed", "true");
-    expect(within(feed).getByRole("article", { name: "Request #37" })).toHaveTextContent("No reading calls for this request.");
-    expect(within(feed).getByRole("article", { name: "Request #38" })).not.toHaveTextContent("Editing");
+    const rail = feed.querySelector(".activityBreakdown") as HTMLElement;
+    expect(within(rail).getAllByRole("listitem").length).toBeGreaterThan(1);
+    expect(rail.querySelector(".activityKindRows button")).toBeNull();
+    expect(feedCalls(server).every((params) => !params.has("workKind"))).toBe(true);
   });
 
   it("moves the request range with Previous and Next and returns with Jump to latest", async () => {
@@ -367,7 +360,7 @@ describe("Activities tab", () => {
     fixture();
     const feed = await ready();
     const rail = feed.querySelector(".activityBreakdown")!;
-    const group = within(rail as HTMLElement).getByRole("group", { name: "Filter calls by kind" });
+    const group = within(rail as HTMLElement).getByRole("list", { name: "Recorded calls by kind" });
     expect(group).toHaveClass("activityKindRows");
     const rows = Array.from(group.children) as HTMLElement[];
     expect(rows.length).toBeGreaterThan(1);

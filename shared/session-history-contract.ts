@@ -1,4 +1,4 @@
-import type { Activity, ActivityFeed, RequestSnapshot, WorkKind } from "./monitor-contract";
+import type { Activity, ActivityFeed, RequestSnapshot } from "./monitor-contract";
 
 /** Public normalized history pages; source identities and content stay private. */
 export type HistoryActivity = Activity & { agentId: string | null; requestNumber: number | null };
@@ -20,7 +20,7 @@ type HistoryPageBase = {
 export type ActivityRequestGroup = {
   request: HistoryRequest;
   calls: HistoryActivity[];
-  /** True when the selected work-kind filter leaves this retained request header without calls. */
+  /** True when this retained request header has no recorded request-linked calls. */
   noMatchingCalls: boolean;
   continuation: { cursor: string; remaining: number } | null;
 };
@@ -48,6 +48,5 @@ export type ActivityHistoryQuery = {
   from?: number;
   to?: number;
   selected?: number;
-  workKind?: WorkKind;
   continuation?: string;
 };

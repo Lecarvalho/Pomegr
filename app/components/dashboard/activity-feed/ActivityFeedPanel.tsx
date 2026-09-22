@@ -37,7 +37,7 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
   const tasks = scopedAgents.flatMap((candidate) => candidate.executionTasks || []);
   // Phone reads the request groups first and keeps the kind and shell aggregates below them; the
   // desktop rail keeps its leading 360px column. Same components, same props, one order decision.
-  const rail = <ActivityKindRail feed={feed} selection={selection} tasks={tasks} />;
+  const rail = <ActivityKindRail feed={feed} tasks={tasks} />;
   const list = <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} onSelectRequest={onSelectRequest} />;
   return <section className="panel activityPanel" aria-label="Activity feed" aria-busy={busy || undefined}>
     <header className="activityPanelHeader">

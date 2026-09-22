@@ -145,7 +145,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
               <span className="activityTokenValue output" title={requestTokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
             </>}</span>
           </div>}
-        {group.noMatchingCalls && <p className="activityLinkNote">{selection.workKind ? `No ${WORK_LABELS[selection.workKind].toLowerCase()} calls for this request.` : "No recorded calls for this request."}</p>}
+        {group.noMatchingCalls && <p className="activityLinkNote">No recorded calls for this request.</p>}
         {group.calls.length > 0 && <ul className="activityTable">
           {group.calls.map((call) => phone
             // Tapping a call line still selects its request and chart bar exactly as a request line

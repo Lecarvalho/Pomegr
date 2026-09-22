@@ -57,7 +57,7 @@ function ActivitiesContent({ state, historical, paused, route, onRouteChange, on
   }
   const feed = useActivityFeed({
     enabled: selection.history.enabled && !selection.history.preview && Boolean(historyRevision),
-    query: { sessionId: state.session?.id ?? "", scope: selection.historyScope, selected: feedAnchor ?? selectedNumber, workKind: selection.workKind },
+    query: { sessionId: state.session?.id ?? "", scope: selection.historyScope, selected: feedAnchor ?? selectedNumber },
     historyRevision,
   });
   if (!state.session) return <div className="sessionTabState">Activity evidence is unavailable.</div>;

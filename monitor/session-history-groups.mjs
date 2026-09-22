@@ -4,7 +4,6 @@ const REQUEST_LIMIT = 5;
 const CALL_LIMIT = 50;
 const PAGE_CALL_LIMIT = 200;
 const MAX_CURSOR_OFFSET = 100_000;
-const WORK_KIND_SET = new Set(WORK_KINDS);
 
 function isObject(value) { return value !== null && typeof value === "object" && !Array.isArray(value); }
 function positiveInteger(value) {
@@ -58,8 +57,7 @@ export function activityGroupPlan(requests, activity, query) {
   const allScopedCalls = activity.filter((item) => scopeMatches(item, scope));
   const headers = requestWindow(scopedRequests, query);
   const headerIds = new Set(headers.map((item) => item.id));
-  const workKind = typeof query.workKind === "string" && WORK_KIND_SET.has(query.workKind) ? query.workKind : null;
-  const scopedCalls = allScopedCalls.filter((item) => headerIds.has(item.requestId) && (!workKind || item.workKind === workKind));
+  const scopedCalls = allScopedCalls.filter((item) => headerIds.has(item.requestId));
   const cursor = groupCursor(query.continuation);
   let remainingPage = PAGE_CALL_LIMIT;
   const prioritizedHeaders = cursor

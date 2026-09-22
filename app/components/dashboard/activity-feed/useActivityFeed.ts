@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ActivityFeed, WorkKind } from "../../../../shared/monitor-contract";
+import type { ActivityFeed } from "../../../../shared/monitor-contract";
 import type { ActivityRequestGroup, HistoryActivity } from "../../../../shared/session-history-contract";
 import { mergeCalls, parseActivityFeedPage, type ActivityFeedPage } from "./feed-model";
 
@@ -9,7 +9,6 @@ export type ActivityFeedQuery = {
   scope: string;
   /** Null only while selection follows latest without a stable number. */
   selected: number | null;
-  workKind: WorkKind | null;
 };
 
 export type ActivityFeedView = {
@@ -37,7 +36,6 @@ const EMPTY_SHELL = { total: 0, failed: 0 };
 function feedParams(query: ActivityFeedQuery) {
   const params = new URLSearchParams({ sessionId: query.sessionId, kind: "activity", scope: query.scope, offset: "latest", limit: "1" });
   if (query.selected !== null) params.set("selected", String(query.selected));
-  if (query.workKind) params.set("workKind", query.workKind);
   return params;
 }
 
@@ -47,13 +45,13 @@ function feedParams(query: ActivityFeedQuery) {
  * query, and a historical session fetches once per query.
  */
 export function useActivityFeed({ enabled, query, historyRevision }: { enabled: boolean; query: ActivityFeedQuery; historyRevision: string }): ActivityFeedView {
-  const { sessionId, scope, selected, workKind } = query;
-  const queryKey = JSON.stringify([sessionId, scope, selected, workKind]);
+  const { sessionId, scope, selected } = query;
+  const queryKey = JSON.stringify([sessionId, scope, selected]);
   // The selected number only slides the five-group window, so a retained body still describes the
-  // right requests while the next page loads. Scope and kind change which requests exist at all,
-  // and the feed is disabled while the chart previews, so a body from another scope would sit
-  // there unlabelled until history recovered. It is dropped instead.
-  const scopeKey = JSON.stringify([sessionId, scope, workKind]);
+  // right requests while the next page loads. Scope changes which requests exist at all, and the
+  // feed is disabled while the chart previews, so a body from another scope would sit there
+  // unlabelled until history recovered. It is dropped instead.
+  const scopeKey = JSON.stringify([sessionId, scope]);
   const [body, setBody] = useState<Body | null>(null);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [more, setMore] = useState<More | null>(null);
@@ -81,7 +79,7 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
       failureRef.current = next;
       setFailure(next);
     };
-    const params = feedParams({ sessionId, scope, selected, workKind });
+    const params = feedParams({ sessionId, scope, selected });
     // Only an exact retained query may ask for a bodyless unchanged-revision response.
     if (sameQuery && retained.page.revision) params.set("revision", retained.page.revision);
     fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
@@ -107,7 +105,7 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
       })
       .catch(() => { if (current()) fail("unavailable"); });
     return () => controller.abort();
-  }, [enabled, historyRevision, queryKey, retryVersion, scope, scopeKey, selected, sessionId, workKind]);
+  }, [enabled, historyRevision, queryKey, retryVersion, scope, scopeKey, selected, sessionId]);
 
   const shown = body && body.scopeKey === scopeKey ? body : null;
   const current = shown?.queryKey === queryKey;
@@ -130,7 +128,7 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
     const controller = new AbortController();
     moreRequest.current = { controller, number: requestNumber };
     setLoadingMore({ queryKey, number: requestNumber });
-    const params = feedParams({ sessionId, scope, selected, workKind });
+    const params = feedParams({ sessionId, scope, selected });
     params.set("continuation", group.continuation.cursor);
     const finish = () => {
       if (moreRequest.current?.controller !== controller) return;

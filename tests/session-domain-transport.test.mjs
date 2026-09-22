@@ -70,7 +70,7 @@ test("session-domain and range-history requests reject invalid methods, identiti
     "from=1",
     "from=4&to=2",
     "from=1&to=65",
-    "from=1&to=2&workKind=private-command",
+    "from=1&to=2&workKind=shell",
     "from=1&to=2&continuation=..%2Fprivate",
   ]) assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3Ax&kind=activity&${query}`)).status, 400);
 });

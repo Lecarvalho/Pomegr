@@ -82,7 +82,7 @@ Dragging past selection hands it to the nearest visible bar (left edge when movi
 
 ### Activities, Signals and agent inspection
 
-Activities combines the Requests chart, Largest strip and five request groups around selection, with calls nested under each request. Agent scope applies to the whole tab. Desktop puts Actions by kind, Shell tasks and Failed shell runs in the left rail; kind toggles filter nested calls without removing the selected request header. Previous / Next / Jump to latest keep the chart and feed aligned. Fed by / Called tallies are removed.
+Activities combines the Requests chart, Largest strip and five request groups around selection, with calls nested under each request. Agent scope applies to the whole tab. Desktop puts Actions by kind, Shell tasks and Failed shell runs in the left rail as read-only summaries. Previous / Next / Jump to latest keep the chart and feed aligned. Fed by / Called tallies are removed.
 
 Signals owns efficiency signals, cache evidence, flow score with its inputs, per-agent cache lifetime and agent-reported MCP signals. Preserve observed/inference/attributed qualifiers and distinguish agent reports from deterministic rules. Signals links to the matching request in Activities, never to a separate Requests tab.
 
