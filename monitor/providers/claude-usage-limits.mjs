@@ -173,3 +173,29 @@ export function createClaudeUsageLimitsReader(options = {}) {
     return { ...remoteUsage, origin: "provider_api", freshness: "stale" };
   };
 }
+
+const MAX_USAGE_LIMIT_REJECTION_WINDOWS = 16;
+
+/**
+ * The earliest recorded five-hour rejection per reset window. Only the normalized local
+ * observation time and its reset timestamp are retained; raw quota payloads stay private.
+ */
+export function claudeFiveHourLimitRejections(recordGroups = []) {
+  const earliestByReset = new Map();
+  for (const records of recordGroups) {
+    if (!Array.isArray(records)) continue;
+    for (const record of records) {
+      const quota = record?.quotaLimits;
+      if (!quota || quota.rateLimitType !== "five_hour" || quota.status !== "rejected") continue;
+      const observedMs = Date.parse(record.timestamp || "");
+      const resetsAt = normalizedClaudeResetTimestamp(quota.resetsAt);
+      if (!Number.isFinite(observedMs) || !resetsAt) continue;
+      const observedAt = new Date(observedMs).toISOString();
+      const previous = earliestByReset.get(resetsAt);
+      if (!previous || observedMs < Date.parse(previous.observedAt)) earliestByReset.set(resetsAt, { observedAt, resetsAt });
+    }
+  }
+  return [...earliestByReset.values()]
+    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
+    .slice(-MAX_USAGE_LIMIT_REJECTION_WINDOWS);
+}

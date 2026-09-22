@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import readline from "node:readline";
 import {
   agentTiming,
   applyWaitingStatus,
@@ -17,7 +16,7 @@ import { boundedActivityDuration, recentActivityEvents } from "../activity-event
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
-import { listSessionFiles, liveSessionFiles, repositoryProjectName, statSafe, walkJsonl } from "../session-discovery.mjs";
+import { listSessionFiles, liveSessionFiles, statSafe, walkJsonl } from "../session-discovery.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
@@ -33,15 +32,28 @@ import { createClaudeSourceEventRouter } from "./claude-source-routing.mjs";
 import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from "./claude-registry-observation.mjs";
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
-import { parseClaudeContextRecords } from "./claude-context.mjs";
-import { claudeToolResultTimestamps, firstClaudeToolResultAfter, mergeClaudeRequestFragments, splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
+import { claudeToolResultTimestamps, firstClaudeToolResultAfter, splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
 import { safeDetail } from "./claude-tool-detail.mjs";
 import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
 import { createClaudeAgentLifecycleReader, applyClaudeAgentTerminals } from "./claude-agent-lifecycle.mjs";
 import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifecycle.mjs";
-import { createClaudeUsageLimitsReader, normalizedClaudeResetTimestamp } from "./claude-usage-limits.mjs";
+import { claudeFiveHourLimitRejections, createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
+import { createClaudeLiveUsageSnapshotReader } from "./claude-live-usage-snapshots.mjs";
+import { FILE_SUFFIX_SAMPLE_BYTES, fileIdentity, readFileSuffix } from "./claude-file-generation.mjs";
+import {
+  MAX_SESSION_TITLE_RECORD_BYTES,
+  actorFor,
+  projectCwd,
+  projectName,
+  recordedGitBranch,
+  runtimeMetadata,
+  scanSessionTitleState,
+  sessionTitle,
+  statusFor,
+} from "./claude-session-identity.mjs";
+export { claudeFiveHourLimitRejections };
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
 import {
   claudeLifecycleSource, createClaudeSessionStatusReader,
@@ -53,30 +65,7 @@ import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 import { readClaudeHistoryRecords } from "./claude-history-reader.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
-const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
-const LIVE_USAGE_SUFFIX_BYTES = 256;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
-const MAX_SESSION_TITLE_RECORD_BYTES = 16 * 1024;
-const MAX_USAGE_LIMIT_REJECTION_WINDOWS = 16;
-export function claudeFiveHourLimitRejections(recordGroups = []) {
-  const earliestByReset = new Map();
-  for (const records of recordGroups) {
-    if (!Array.isArray(records)) continue;
-    for (const record of records) {
-      const quota = record?.quotaLimits;
-      if (!quota || quota.rateLimitType !== "five_hour" || quota.status !== "rejected") continue;
-      const observedMs = Date.parse(record.timestamp || "");
-      const resetsAt = normalizedClaudeResetTimestamp(quota.resetsAt);
-      if (!Number.isFinite(observedMs) || !resetsAt) continue;
-      const observedAt = new Date(observedMs).toISOString();
-      const previous = earliestByReset.get(resetsAt);
-      if (!previous || observedMs < Date.parse(previous.observedAt)) earliestByReset.set(resetsAt, { observedAt, resetsAt });
-    }
-  }
-  return [...earliestByReset.values()]
-    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
-    .slice(-MAX_USAGE_LIMIT_REJECTION_WINDOWS);
-}
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
   const stat = statSafe(file);
   if (!stat) return [];
@@ -91,155 +80,6 @@ function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
     try { return [JSON.parse(line)]; } catch { return []; }
   });
 }
-function fileIdentity(stat) {
-  const device = Number.isFinite(stat?.dev) ? stat.dev : null;
-  const inode = Number.isFinite(stat?.ino) && stat.ino > 0 ? stat.ino : null;
-  return inode !== null
-    ? `${device ?? "device"}:${inode}`
-    : `birth:${Number.isFinite(stat?.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
-}
-function digestBuffer(buffer) {
-  return crypto.createHash("sha256").update(buffer).digest("hex");
-}
-function readFileSuffix(file, size, suffixBytes) {
-  if (!Number.isInteger(size) || size < 1 || !Number.isInteger(suffixBytes) || suffixBytes < 1) return null;
-  const bytes = Math.min(size, suffixBytes);
-  let descriptor;
-  try {
-    descriptor = fs.openSync(file, "r");
-    const buffer = Buffer.alloc(bytes);
-    const read = fs.readSync(descriptor, buffer, 0, bytes, size - bytes);
-    return read === bytes ? { bytes, digest: digestBuffer(buffer) } : null;
-  } catch {
-    return null;
-  } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor);
-  }
-}
-function priorFileSuffixStillMatches(file, generation) {
-  if (!generation?.suffixDigest || !Number.isInteger(generation.size) || generation.size < 1) return false;
-  const suffix = readFileSuffix(file, generation.size, generation.suffixBytes);
-  return suffix?.bytes === generation.suffixBytes && suffix.digest === generation.suffixDigest;
-}
-function usageSnapshotGeneration(file, stat) {
-  const suffix = readFileSuffix(file, stat.size, LIVE_USAGE_SUFFIX_BYTES);
-  return suffix ? {
-    identity: fileIdentity(stat),
-    size: stat.size,
-    mtimeMs: stat.mtimeMs,
-    suffixBytes: suffix.bytes,
-    suffixDigest: suffix.digest,
-  } : null;
-}
-function mergeLiveUsageSnapshots(previous, current) {
-  const byId = new Map(previous.map((snapshot) => [snapshot.dedupeId, snapshot]));
-  for (const snapshot of current) byId.set(snapshot.dedupeId, mergeClaudeRequestFragments(byId.get(snapshot.dedupeId), snapshot));
-  return [...byId.values()]
-    .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.dedupeId.localeCompare(right.dedupeId))
-    .slice(-MAX_LIVE_USAGE_SNAPSHOTS);
-}
-function actorFor(file, mainFile, metadata, workflowFiles = new Map()) {
-  if (file === mainFile) return { id: "primary", label: "Primary agent", kind: "orchestrator", parentId: null };
-  const workflowAgent = workflowFiles.get(file);
-  if (workflowAgent) return {
-    id: workflowAgent.id,
-    label: workflowAgent.fallbackLabel,
-    kind: workflowAgent.metadata?.agentType || "workflow-subagent",
-    parentId: "primary",
-  };
-  const id = path.basename(file, ".jsonl");
-  const agentId = id.replace(/^agent-/, "");
-  const resolved = metadata.get(agentId);
-  return {
-    id,
-    label: resolved?.description || "Unnamed subagent",
-    kind: resolved?.kind || "subagent",
-    parentId: resolved?.parentId || null,
-  };
-}
-function statusFor(mtimeMs, now = Date.now()) {
-  const age = now - mtimeMs;
-  if (age < 45_000) return "active";
-  if (age < 5 * 60_000) return "warm";
-  return "idle";
-}
-function projectCwd(records) {
-  return records.find((record) => typeof record.cwd === "string")?.cwd || "";
-}
-function projectName(mainFile, records) {
-  const cwd = projectCwd(records);
-  if (cwd) return repositoryProjectName(cwd);
-  return path.basename(path.dirname(mainFile)).replace(/^[A-Z]--/, "").replaceAll("-", " ");
-}
-function recordedGitBranch(records) {
-  let branch = "";
-  for (const record of records) {
-    if (typeof record.gitBranch === "string") branch = record.gitBranch;
-  }
-  return branch;
-}
-function sessionTitleState(records, initial = {}) {
-  let aiTitle = initial.aiTitle || "";
-  let customTitle = initial.customTitle || "";
-  let createdAt = initial.createdAt || "";
-  for (const record of records) {
-    const timestamp = record.timestamp || record.message?.timestamp;
-    const timestampMs = Date.parse(timestamp || "");
-    if (Number.isFinite(timestampMs) && (!createdAt || timestampMs < Date.parse(createdAt))) {
-      createdAt = new Date(timestampMs).toISOString();
-    }
-    if (record.type === "ai-title" && typeof record.aiTitle === "string") aiTitle = record.aiTitle;
-    if (record.type === "custom-title") customTitle = record.customTitle || record.title || record.name || customTitle;
-  }
-  return { aiTitle, customTitle, createdAt };
-}
-function sessionTitle(records) {
-  const { aiTitle, customTitle } = sessionTitleState(records);
-  return customTitle || aiTitle || "Untitled session";
-}
-async function scanSessionTitleState(file, stat, initial = {}, start = 0) {
-  if (!stat?.isFile() || stat.size <= 0) return sessionTitleState([], initial);
-  let input;
-  let lines;
-  let firstLine = true;
-  const state = sessionTitleState([], initial);
-  try {
-    input = fs.createReadStream(file, {
-      encoding: "utf8",
-      start,
-      end: stat.size - 1,
-    });
-    lines = readline.createInterface({ input, crlfDelay: Infinity });
-    for await (const line of lines) {
-      if (firstLine) {
-        firstLine = false;
-        if (start > 0) continue;
-      }
-      if ((state.createdAt && !line.includes("ai-title") && !line.includes("custom-title"))
-        || Buffer.byteLength(line, "utf8") > MAX_SESSION_TITLE_RECORD_BYTES) continue;
-      let record;
-      try { record = JSON.parse(line); } catch { continue; }
-      const next = sessionTitleState([record], state);
-      state.aiTitle = next.aiTitle;
-      state.customTitle = next.customTitle;
-      state.createdAt = next.createdAt;
-    }
-    return state;
-  } finally {
-    lines?.close();
-    input?.destroy();
-  }
-}
-function runtimeMetadata(records) {
-  let model = "unknown";
-  let effort = "unspecified";
-  for (const record of records) {
-    if (record.type !== "assistant" || record.message?.model === "<synthetic>") continue;
-    if (typeof record.message?.model === "string") model = record.message.model;
-    if (typeof record.effort === "string") effort = record.effort;
-  }
-  return { model, effort };
-}
 
 export function createClaudeProvider(options = {}) {
   const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
@@ -253,7 +93,7 @@ export function createClaudeProvider(options = {}) {
   const sessionTitleCache = new Map();
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
-  const liveUsageSnapshotCache = new Map();
+  const liveUsageSnapshots = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: MAX_BYTES_PER_FILE });
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const historyCache = new Map();
@@ -290,7 +130,7 @@ export function createClaudeProvider(options = {}) {
     if (!main) return null;
     const subagents = walkJsonl(path.join(path.dirname(main), path.basename(main, ".jsonl"), "subagents"), 1);
     const workflows = discoverClaudeWorkflowAgents(path.join(path.dirname(main), path.basename(main, ".jsonl"), "subagents")).files.map((item) => item.file);
-    return [main, ...subagents, ...workflows].map((file) => { const stat = statSafe(file); const suffix = stat && readFileSuffix(file, stat.size, LIVE_USAGE_SUFFIX_BYTES); return stat && suffix ? `${fileIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${suffix.digest}` : "invalid"; }).sort().join("|");
+    return [main, ...subagents, ...workflows].map((file) => { const stat = statSafe(file); const suffix = stat && readFileSuffix(file, stat.size, FILE_SUFFIX_SAMPLE_BYTES); return stat && suffix ? `${fileIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${suffix.digest}` : "invalid"; }).sort().join("|");
   }
   async function cachedSessionTitle(file, stat) {
     const identity = fileIdentity(stat);
@@ -319,45 +159,6 @@ export function createClaudeProvider(options = {}) {
     } catch {
       return sessionTitle(readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES));
     }
-  }
-  function liveUsageSnapshots(file, records, actor, stat, historical, sessionId, compactionTimestamps, unlimited = false) {
-    const parsed = parseClaudeContextRecords(records, {
-      actorId: actor.id,
-      sourceKey: actor.id,
-      fallbackTimestamp: stat.mtime.toISOString(),
-      completeHistory: unlimited || stat.size <= MAX_BYTES_PER_FILE,
-      expectedSessionId: sessionId,
-      compactionTimestamps,
-      includeToolUseIds: true,
-      unlimited,
-    });
-    if (historical || unlimited) return parsed;
-    const generation = usageSnapshotGeneration(file, stat);
-    if (!generation) {
-      liveUsageSnapshotCache.delete(file);
-      return parsed;
-    }
-    const cached = liveUsageSnapshotCache.get(file);
-    if (!cached || cached.actorId !== actor.id) {
-      liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots: parsed });
-      return parsed;
-    }
-    const previous = cached.generation;
-    const monotonic = previous
-      && previous.identity === generation.identity
-      && generation.size >= previous.size
-      && generation.mtimeMs >= previous.mtimeMs
-      && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
-    if (!monotonic || !priorFileSuffixStillMatches(file, previous)) {
-      liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots: parsed });
-      return parsed;
-    }
-
-    const snapshots = generation.size === previous.size && generation.mtimeMs === previous.mtimeMs
-      ? cached.snapshots
-      : mergeLiveUsageSnapshots(cached.snapshots, parsed);
-    liveUsageSnapshotCache.set(file, { actorId: actor.id, generation, snapshots });
-    return snapshots;
   }
 
   function discoveredSessions() {
@@ -445,9 +246,7 @@ export function createClaudeProvider(options = {}) {
   }
 
   async function readSession(localSessionId = "", readOptions = {}) {
-    for (const file of liveUsageSnapshotCache.keys()) {
-      if (!statSafe(file)) liveUsageSnapshotCache.delete(file);
-    }
+    liveUsageSnapshots.pruneMissingFiles();
     const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
     const mainFile = localSessionId ? selectedSessionFile(localSessionId, sessionFiles) : liveFile;
     if (!mainFile) return null;
@@ -541,7 +340,7 @@ export function createClaudeProvider(options = {}) {
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
       contextCompactionsCache.set(file, observedCompactions);
-      const requestEvidence = splitClaudeRequestCorrelationEvidence(liveUsageSnapshots(file, records, actor, stat, historical, sessionId,
+      const requestEvidence = splitClaudeRequestCorrelationEvidence(liveUsageSnapshots.read(file, records, actor, stat, historical, sessionId,
         observedCompactions.map((compaction) => compaction.timestamp), completeHistory));
       for (const [key, toolUseIds] of requestEvidence.toolUseIdsByRequest) activityRequestLinks.toolUseIdsByRequest.set(key, toolUseIds);
       for (const [key, replyId] of requestEvidence.replyIdsByRequest) activityRequestLinks.replyIdsByRequest.set(key, replyId);
