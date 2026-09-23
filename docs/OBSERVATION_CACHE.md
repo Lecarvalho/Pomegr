@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, `/api/repository-inventory`, and `/api/storage` handlers
+- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, `/api/repository-inventory`, `/api/repository-files`, and `/api/storage` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -165,10 +165,26 @@ Repository paths in the new projection are checked against the canonical Git roo
 retained privately by background enrichment, including when the session working
 directory is nested. The dedicated validator rejects traversal, absolute and Windows
 special forms, configured provider roots, and link escapes. An unknown root or uncertain
-containment cannot admit a path. This does not introduce file-change persistence:
-The `fileHistory` browser domain and retained resource tables remain explicitly
-unavailable until their serving and producers are implemented. Existing committed live repository/resource evidence remains
-available, and missing historical evidence never falls back to today's working tree.
+containment cannot admit a path. Existing committed live repository/resource evidence
+remains available, and missing historical evidence never falls back to today's working tree.
+
+The `repository` domain's `fileHistory` block is served from the `file-history-domain`
+source (see "Approved file-history persistence contract"), and `recordedAt`,
+`commitsInSession`, and `gitTasks` accompany it. A historical session's repository block
+is the recorded snapshot described there when one exists; without one it keeps the
+branch-only recorded state. The `resources` domain's `retained` block is committed by the
+`resource-domain` monitor-store contributor, registered after `resource-history` so it
+reads the same cycle's committed rows. For each demanded session (at most 32 per cycle) it
+reads the newest 1,440 minute rows (`minutesTruncated` marks a longer curve), the
+`resource_curve_removals` record, and the top three peaks per display field with their
+sample windows and matched execution-task IDs, then keeps the normalized block in memory.
+`retained()` is a pure map lookup and `request()` only nudges the store to schedule a
+cycle; a GET never reads SQLite. Readiness is `unavailable` without a store, `rebuilding`
+while the store rebuilds, `loading` until a block commits, then `ready`. A failed read
+keeps the session's previous block. `curveRemoval` carries `age_retention` or
+`size_cleanup` from the removal table, or `not_recorded` when peaks exist but no curve
+rows or removal record do; missing rows are never presented as zero. The Resources tab is
+offered when live samples or stored rows exist.
 
 ### Paged session evidence history
 
@@ -1364,6 +1380,7 @@ remain the source of truth.
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Retained aggregate API; the Home page no longer requests this domain |
 | `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Usage limits and session views |
 | `/api/storage` | Committed monitor SQLite store readiness, size, retention, and cleanup status (see "Monitor SQLite store") | Settings storage/retention display |
+| `/api/repository-files?repositoryId=...` | Committed repository file listing, or with `fileId` or `path` one file's grouped session history (see "Approved file-history persistence contract"); `no-store`, revision in the body | Repository Files tab and the session Repository tab's history panel |
 
 Callers send their current revision. When the relevant committed revision is unchanged, S
 returns `204 No Content` with no state body. A known uncached session returns its safe
@@ -1785,6 +1802,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
 | Historical session and history | Mounted queries hydrate through events and reconnect revalidation; ready queries have no periodic timer; navigation, focus and reconnect may revalidate |
 | Repository inventory | Repository events and the same 30/5/30-second fallback; shared consumers and desktop Pause do not create extra pollers |
+| Repository files and file history | Separate shared store: 1.5 seconds unresolved, backing off to 5 seconds while loading or rebuilding, 15 seconds ready and visible, paused while hidden |
 | Request-history preload | Readiness/revision-driven sequential pages; no fixed preload timer |
 | Personal Home | No page-owned polling; destination labels reuse the shell catalog |
 | Provider/account usage | Separate shared store: 1 second unresolved, 60 seconds ready, 30 seconds hidden |
@@ -1978,9 +1996,9 @@ than arbitrary exception text.
 ### Approved file-history persistence contract
 
 This subsection approves the policy for file-history and historical Repository work. The
-checkpoint evidence and monitor-private index described below ship; no browser surface
-reads them yet, and historical Git state retains its current narrower behavior. Provider
-mutation targets still never enter browser responses.
+checkpoint evidence, the monitor-private index, the historical repository snapshot, and
+their browser serving described below ship. Provider mutation targets still never enter
+browser responses.
 
 Shipped evidence shape: a normalized tool call may carry `fileChanges`, at most 64 entries
 of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated, at most
@@ -2037,14 +2055,53 @@ weaken last-known-good retention. Git can establish repository-scoped path and f
 identity continuity in the index's file-path records; it cannot establish which session,
 agent, or request made a change or add a session-level file-change count.
 
-Future historical repository snapshots may additionally checkpoint the bounded recorded
-uncommitted-file list, branch comparison state (branch, comparison kind, ahead, and
-behind), and the allowlisted pull-request state with its original last-check timestamp.
-The snapshot is committed while the session is eligible for live Git observation and is
-served unchanged for historical views. Missing, failed, partial, or over-bound evidence
-remains unavailable and does not erase the last complete valid snapshot. Historical GETs
-never inspect Git or GitHub and never substitute the current branch, working tree,
-comparison, files, commits, or pull-request state for recorded evidence.
+The `file-history-domain` source (`monitor/file-history-domain.mjs`) serves the index. It
+registers after the file-change-index contributor, so each cycle groups already-committed
+rows, and reports `rebuildComplete: true` because it is a derived cache, never a rebuild
+target. Per cycle it builds at most 32 demanded sessions' touched-file summaries (at most
+200 files, folded into the `repository` domain's `fileHistory`), 8 repository listings
+(at most 5,000 files), and 32 per-file histories (at most 100 sessions). It retains at
+most 64 listings and 256 histories in LRU order and drops an entry idle for ten minutes.
+Each cycle spends its budget on keys with no committed block first, then on rebuilds of
+existing blocks, newest-touched first, so a new selection is never starved by older ones.
+Every lookup is a pure map read that returns `loading` and queues hydration on a miss;
+readiness is `unavailable` without a store and `rebuilding` while it rebuilds. Paths are
+re-validated with `isSafeRecordedRepositoryPath`; a stored path that fails is served as no
+match, never exposed. Session and agent attribution come only from recorded
+`file_changes` rows; a Git-only `file_paths` move yields "as <old path>" continuity,
+never attribution. Agent labels in history entries are null today.
+
+`GET /api/repository-files?repositoryId=<repo-…>` returns the repository listing;
+adding exactly one of `fileId=<f…>` or `path=<repository-relative path>` returns that
+file's grouped history. Unknown or repeated keys, both selectors, or an invalid ID or
+path return `400`; other methods `405`; a serving failure `503` with an `unavailable`
+body. Responses are `Cache-Control: no-store` and carry their own `revision` in the body
+(no ETag or `X-Pomegr-Revision`). The same-origin proxy forwards it and the LAN gateway
+allowlists it. The browser store polls 1.5 seconds while unresolved, backing off to 5
+seconds while `loading` or `rebuilding`, 15 seconds while `ready` and visible, and pauses
+while hidden. A failed or non-OK poll, including a `503` with an `unavailable` body, keeps
+the last resolved response; only a still-loading placeholder becomes `unavailable`.
+
+Historical repository snapshots ship as a sidecar next to each session checkpoint:
+`repository-<checkpoint identity sha256>.json` in the checkpoint directory, at most 64 KiB,
+versioned, and validated as a whole record (any invalid field rejects the file, never a
+partial read). It holds the recorded branch, `isMain`, at most 200 recorded uncommitted
+files with their status, branch comparison and its check time, at most 10 allowlisted pull
+requests with their check time, `commitsInSession`, and the check timestamp. The
+checkpoint payload schema is unchanged. The monitor's observation runtime loads every
+valid sidecar at startup into a bounded in-memory recorder. Each live Git check calls
+`onRepositoryCheck` once observation serving is active; the recorder writes a changed
+snapshot atomically and the session domains recommit. A check whose remote, pull-request,
+or commit count was not observed carries the previous recorded value forward, and an
+invalid candidate never replaces the last complete valid snapshot. `prune()` removes a
+sidecar with the checkpoint that prune evicted, an invalid sidecar, and an orphan sidecar
+with no checkpoint for more than 24 hours; a sidecar recorded before its session's first
+checkpoint write is kept. Historical serving prefers the recorded snapshot and otherwise
+keeps the branch-only recorded state. GETs never inspect Git or GitHub, and a recorded
+snapshot is never refreshed from them; only the no-snapshot fallback projection may ask
+the pull-request reader asynchronously for recorded association evidence. Nothing
+substitutes the current branch, working tree, comparison, files, commits,
+or pull-request state for recorded evidence.
 
 ## Monitor SQLite store
 
@@ -2119,7 +2176,8 @@ the tie-breaker; session activity timestamps and counts never determine reposito
 Their GETs never resolve Git roots, read providers, capture diagnostics, parse
 output, persist data, or hydrate sessions. `/api/repositories` serves the committed list
 revision and `/api/repository-inventory` serves one already-committed immutable detail.
-Both are safe for read-only LAN presentation. Repository revision events only tell the
+Both are safe for read-only LAN presentation; the LAN gateway allowlists `/api/repositories`
+so the repository page, including its Files and Git tabs, loads for a paired LAN browser. Repository revision events only tell the
 browser to fetch a newer committed response.
 
 Claude Code capture is an explicit desktop action. The renderer supplies only a bounded

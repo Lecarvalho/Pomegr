@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: active; Sessions 1–4 are complete. Session 5 (T08 and T09) is the next unchecked implementation session.
+> Status: active; Sessions 1–5 are complete. Session 6 (T10, T11 and T12) is the next unchecked implementation session.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Start Session 5 (T08 and T09) in a fresh user-requested session, from the Session 4 checkpoint handoff below.
+> Next task or decision: Start Session 6 (T10, T11 and T12) in a fresh user-requested session, from the Session 5 checkpoint handoff below.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -221,7 +221,7 @@ Resolve any SQLite fallback before marking this session complete.
 
 ### Session 5 — Repository and Resources
 
-- [ ] Session 5 complete — T08 and T09.
+- [x] Session 5 complete — T08 and T09.
 
 With Session 4's contracts integrated, two Terra workers may implement T08 and
 T09 in parallel if their files are disjoint. The coordinator owns any shared
@@ -554,6 +554,93 @@ highest-percentage available window without treating the provider's
 active-or-reached flag as a visibility gate. UI coverage includes ordinary
 unreached Claude and Codex windows. Session 4 is now complete; Session 5 is the next
 implementation session.
+
+### Session 5 checkpoint
+
+2026-09-23 · **Session 5 complete: T09 and T08.** ACOS plan `runs/2026-09-22-ia-session-5`
+(four parts). Parts 1–3 are committed on branch `feat/ia-session-5`: `372eba1` Resources
+tab served from the monitor store (T09), `a80af09` historical repository snapshots, the
+Repository tab bar and the repository Git tab (T08), and `d483655` file-history serving,
+the repository Files tab and path deep links (T08). Part 4 (evidence, independent review,
+docs and closure) is uncommitted on top of `d483655`.
+
+**Review.** One independent Opus review of `git diff main...HEAD` returned FAIL with one
+blocker, now fixed: `monitor/file-history-domain.mjs` spent its per-cycle budget (8
+listings, 32 histories) oldest-first on keys that already had blocks, so a new selection
+could stay loading for up to ten minutes. Keys without a block are now built first,
+newest-touched first. Also fixed from the review: `tests/resource-domain.test.mjs` was not
+registered in `test:node`; a failed or `503` repository-files poll replaced a ready body
+(it now keeps the last resolved response); checkpoint prune deleted a repository-snapshot
+sidecar written before its session's first checkpoint (it now removes only sidecars of
+evicted checkpoints, invalid ones, and orphans older than 24 hours); a historical
+session's recorded file status read "in working tree" (now "at last live check"); and the
+Resources retention message called the global setting "this session's". Each fix has a
+regression test that fails on the old code.
+
+**Evidence.** The first pass returned FAIL on two real defects, now fixed: `monitor/server.mjs`
+never forwarded `serveRepositoryFiles`, so `/api/repository-files` answered an empty `200`
+and every file-history panel and repository tree read "unavailable" (the handler now
+returns `503` for a missing hook, and a source test checks that every observation serve
+hook is forwarded); and the session-side panel header overlapped at 390px (the title row
+now wraps). The second pass returned `VERDICT: PASS` for claims G-A..G-D and F-A..F-H;
+see `runs/2026-09-22-ia-session-5/4-evidence-review-closure/artifacts/try-it.md`. Part 1's
+evidence verdict was PASS against the Resources artboard.
+
+**Part 4 changed files.** `monitor/file-history-domain.mjs`, `monitor/request-handler.mjs`,
+`monitor/server.mjs`, `monitor/session-observation-checkpoints.mjs`,
+`app/repository-files-store.ts`, `app/components/repositories/FileHistoryPanel.tsx`,
+`app/components/dashboard/RepositoryTab.tsx`, `app/components/dashboard/ResourcesTab.tsx`,
+`app/styles/file-history.css`, `package.json`, `tests/file-history-domain.test.mjs`,
+`tests/session-observation-checkpoints.test.mjs`, `tests/ui/file-tree.test.tsx`,
+`tests/ui/repository-files-store.test.tsx` (new), `AGENTS.md`, `docs/OBSERVATION_CACHE.md`,
+`docs/METRICS.md`, and this plan.
+
+**Verification.** `npm run verify:fast` exited 0 after the fixes. `npm test` exited 0:
+node 1,333 tests, 1,332 passed, 1 skipped, 0 failed; UI 91 files and 962 tests passed.
+The evidence recapture ran after the final source change.
+
+**Interface decisions.** Resources: the `resource-domain` contributor commits the
+`retained` block (newest 1,440 minutes, top three peaks per field, removal reason) on the
+store cycle; GETs read an in-memory map. Repository: the historical snapshot is a 64 KiB
+`repository-<hash>.json` sidecar beside the checkpoint, validated as a whole record, with
+the checkpoint schema unchanged; `RepositoryDomain` gains `recordedAt`,
+`commitsInSession`, `gitTasks` and a served `fileHistory`. File history:
+`GET /api/repository-files` (listing, or one file's history by `fileId` or `path`),
+`no-store` with the revision in the body, LAN-allowlisted. Repository tab order is
+Overview, Files, Git, Plugin, Context inventory, Reporting. Docs: OBSERVATION_CACHE.md
+(session response domains, file-history serving, endpoint, snapshot sidecar, client
+cadence), METRICS.md (historical snapshot, commits during the session, Git tasks, peak
+link wording) and AGENTS.md (file-change serving, historical snapshot fields).
+
+**Accepted visual differences.** G14's interim uncommitted list is superseded by part 3's
+tree. Times render in the app's 12-hour format rather than the artboards' 24-hour examples
+(F11). Not capturable for lack of live data, confirmed only through `/design-system` or code:
+G4 (PR chip), G7 (tab count), G11/G12 (no-repository and loading states), G18 (no live
+session), F3 NEW/DEL/REN chips, and F-F/F13 (a real recorded move).
+
+**Carried to Session 6 or later (not blocking).**
+- `/api/repository-inventory` is not in the LAN gateway `API_PATHS`, so the Context
+  inventory tab does not load over LAN. `/api/repositories` was added at the user's
+  request during closure (the list is documented as safe for read-only LAN presentation).
+- Session blocks in `resource-domain` and `file-history-domain`, and the client
+  repository-files `stores` map, are never evicted.
+- `truncated` and `minutesTruncated` are served but not rendered.
+- The FileTree deep link does not scroll into view, and a collapse override can keep a new
+  target's ancestors closed.
+- `shared/monitor-contract.ts` lacks `recordedAt`/`commitsInSession` on `/api/state`
+  `session.repository`.
+- Dead CSS in `app/styles/evidence.css` (`.gitPanel`, `.branchComparison`, `.pullRequest*`,
+  `.gitCommit*`, `.gitFile*`), removed together with its design-contract assertion.
+- Copy tied to the design contract: "N commits in this session" counts every commit on
+  HEAD in the window; "(moves seen in Git)" on unattributed changes is inaccurate;
+  "Status from the working tree" in the session tree footer ignores historical sessions;
+  a loading repository tree says "No files match this filter."
+- Nits: the path validator accepts Windows reserved names and `:`; the recorder can
+  carry an older `previous` across two quick checks; each prune re-reads every sidecar;
+  `resource_curve_removals` rows are never pruned; the Repository tab count shows
+  uncommitted files while the tab opens on "Touched here".
+- Still null: peak request links, file-change request numbers and history agent labels;
+  the repository Files panel has no working-tree status.
 
 ### Session 4 checkpoint
 

@@ -314,6 +314,13 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
     }
   }
 
+  // Per-cycle build order: keys with no committed block first, then rebuilds of existing
+  // blocks, each newest-touched first, so a fresh selection is never starved by older keys.
+  function cycleOrder(requestedAt, blocks) {
+    const newestFirst = [...requestedAt.keys()].reverse();
+    return [...newestFirst.filter((key) => !blocks.has(key)), ...newestFirst.filter((key) => blocks.has(key))];
+  }
+
   function historyKey(repositoryId, target) {
     return typeof target.fileId === "string"
       ? `${repositoryId}\u0000f\u0000${target.fileId}`
@@ -344,7 +351,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
       listingRequestedAt.delete(key); listingBlocks.delete(key); listingSerialized.delete(key); listingRevisions.delete(key);
     }
     let listingBudget = MAX_LISTING_REQUESTS_PER_CYCLE;
-    for (const repositoryId of listingRequestedAt.keys()) {
+    for (const repositoryId of cycleOrder(listingRequestedAt, listingBlocks)) {
       if (listingBudget <= 0) break;
       listingBudget -= 1;
       let candidate;
@@ -363,7 +370,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
       historyRevisions.delete(key); historyTargets.delete(key);
     }
     let historyBudget = MAX_HISTORY_REQUESTS_PER_CYCLE;
-    for (const key of historyRequestedAt.keys()) {
+    for (const key of cycleOrder(historyRequestedAt, historyBlocks)) {
       if (historyBudget <= 0) break;
       historyBudget -= 1;
       const info = historyTargets.get(key);

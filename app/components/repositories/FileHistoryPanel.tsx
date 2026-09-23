@@ -17,6 +17,8 @@ export type FileHistoryPanelProps = {
   path: string | null;
   /** Git porcelain status of the path in the working tree, when currently modified. */
   workingTreeStatus: string | null;
+  /** The status was recorded at the session's last live check (historical session), not read now. */
+  statusRecorded?: boolean;
   /** null while loading the selected file's history. */
   history: FileHistoryResponse | null;
   /** Session side: the session whose entry is highlighted as "this session". */
@@ -93,7 +95,7 @@ function FileHistoryEntry({ session, linkPath, currentSessionId }: {
   </article>;
 }
 
-export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, workingTreeStatus, history, currentSessionId, className = "" }: FileHistoryPanelProps) {
+export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, history, currentSessionId, className = "" }: FileHistoryPanelProps) {
   const [resetKey, setResetKey] = useState(path);
   const [providerFilter, setProviderFilter] = useState<"all" | FileHistoryProvider>("all");
   const [copied, setCopied] = useState(false);
@@ -146,7 +148,7 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
         <div className="fileHistoryTitle">
           <FileGlyphIcon />
           <b className="fileHistoryFileName">{filename}</b>
-          {statusChip && <span className={`commandChip${statusChip.tone ? ` ${statusChip.tone}` : ""}`}>{statusChip.label} in working tree</span>}
+          {statusChip && <span className={`commandChip${statusChip.tone ? ` ${statusChip.tone}` : ""}`}>{statusChip.label} {statusRecorded ? "at last live check" : "in working tree"}</span>}
         </div>
         {side === "session"
           ? <Link className="commandQuietAction fileHistoryHeaderAction" href={`/repositories/${repositoryId}?tab=files&path=${encodeURIComponent(linkPath)}`}>

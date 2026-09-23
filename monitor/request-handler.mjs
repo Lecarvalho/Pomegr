@@ -542,6 +542,8 @@ export function createRequestHandler({
       response.setHeader("Cache-Control", "no-store");
       try {
         const result = runtime.serveRepositoryFiles?.({ repositoryId, fileId: fileId || undefined, path: filePath || undefined });
+        // A missing serving hook or a non-object result is unavailable, never an empty 200.
+        if (!result || typeof result !== "object") throw new Error("repository files unavailable");
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(result));
       } catch {

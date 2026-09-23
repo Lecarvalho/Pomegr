@@ -8,6 +8,8 @@ export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPOSITORY_SNAPSHOT_BYTES = 64 * 1024;
+// A sidecar written before its session's first checkpoint survives prunes for this long.
+const ORPHAN_SIDECAR_GRACE_MS = 24 * 60 * 60 * 1000;
 const MAX_COLLECTION_ENTRIES = 4_096;
 const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
   "MUST_NOT_LEAK",
@@ -334,10 +336,11 @@ export class SessionObservationCheckpointStore {
     }
     this.qa.pruned += removed.length;
     const removedSet = new Set(removed);
-    const survivingHashes = new Set(files
-      .filter((file) => !removedSet.has(file.filename))
-      .map((file) => file.filename.slice("checkpoint-".length, -".json".length)));
-    await this.#pruneRepositorySnapshots(survivingHashes);
+    const hashOf = (filename) => filename.slice("checkpoint-".length, -".json".length);
+    await this.#pruneRepositorySnapshots(
+      new Set(removed.map(hashOf)),
+      new Set(files.filter((file) => !removedSet.has(file.filename)).map((file) => hashOf(file.filename))),
+    );
     return Object.freeze({ entries: retained, bytes, removed: Object.freeze(removed) });
   }
 
@@ -372,22 +375,30 @@ export class SessionObservationCheckpointStore {
     }
   }
 
-  /** A repository-snapshot sidecar is retained only while its checkpoint survives and it is itself valid. */
-  async #pruneRepositorySnapshots(survivingHashes) {
+  /**
+   * A repository-snapshot sidecar is removed with a checkpoint this prune evicted, when it is
+   * invalid, or when it has had no checkpoint for longer than the orphan grace. A sidecar
+   * recorded before its session's first checkpoint write is therefore kept.
+   */
+  async #pruneRepositorySnapshots(removedHashes, survivingHashes) {
     for (const filename of await this.#repositorySnapshotFilenames()) {
       const hash = filename.slice("repository-".length, -".json".length);
-      let valid = false;
-      if (survivingHashes.has(hash)) {
+      const filePath = path.join(this.directory, filename);
+      let remove = removedHashes.has(hash);
+      if (!remove && !survivingHashes.has(hash)) {
+        try { remove = Date.now() - (await stat(filePath)).mtimeMs > ORPHAN_SIDECAR_GRACE_MS; } catch { remove = false; }
+      }
+      if (!remove) {
         try {
-          const payload = JSON.parse(await readFile(path.join(this.directory, filename), "utf8"));
-          valid = isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
-            && Boolean(normalizeRepositorySnapshot(payload.snapshot));
-        } catch {
-          valid = false;
+          const payload = JSON.parse(await readFile(filePath, "utf8"));
+          remove = !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
+            && Boolean(normalizeRepositorySnapshot(payload.snapshot)));
+        } catch (error) {
+          remove = error?.code !== "ENOENT";
         }
       }
-      if (!valid) {
-        try { await unlink(path.join(this.directory, filename)); } catch { /* A concurrent writer may have already removed it. */ }
+      if (remove) {
+        try { await unlink(filePath); } catch { /* A concurrent writer may have already removed it. */ }
       }
     }
   }

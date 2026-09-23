@@ -346,6 +346,34 @@ test("repositoryFiles: LRU-bounded to 64 concurrently retained listings", async 
   assert.equal(source.repositoryFiles(repoId(0)).readiness, "loading", "evicted by the 64-entry cap, requires a fresh build");
 });
 
+test("fileHistory: a new selection is built in the next cycle even after 32 files already hold blocks", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(8);
+  for (let index = 1; index <= 33; index += 1) {
+    insertFile(store, { id: index, repositoryId, path: `f${index}.txt` });
+    insertChange(store, { fileId: index, sessionId: "claude:s1", agentId: "agent-1", kind: "created", observedAt: index });
+  }
+  const { stub, source } = await buildSource(store);
+  for (let index = 1; index <= 32; index += 1) source.fileHistory(repositoryId, { path: `f${index}.txt` });
+  await stub.runCycle();
+  // All 32 keys now hold blocks and fill the per-cycle budget; select a 33rd.
+  for (let index = 1; index <= 32; index += 1) assert.equal(source.fileHistory(repositoryId, { path: `f${index}.txt` }).readiness, "ready");
+  assert.equal(source.fileHistory(repositoryId, { path: "f33.txt" }).readiness, "loading");
+  await stub.runCycle();
+  assert.equal(source.fileHistory(repositoryId, { path: "f33.txt" }).readiness, "ready", "a new key is built before existing blocks spend the budget");
+});
+
+test("repositoryFiles: a newly opened repository is built in the next cycle even after 8 listings hold blocks", async (t) => {
+  const store = await openStore(t);
+  const { stub, source } = await buildSource(store);
+  for (let index = 0; index < 8; index += 1) source.repositoryFiles(repoId(100 + index));
+  await stub.runCycle();
+  for (let index = 0; index < 8; index += 1) assert.equal(source.repositoryFiles(repoId(100 + index)).readiness, "ready");
+  source.repositoryFiles(repoId(200));
+  await stub.runCycle();
+  assert.equal(source.repositoryFiles(repoId(200)).readiness, "ready");
+});
+
 test("fileHistory: idle keys (10+ minutes untouched) are dropped and rebuilt fresh on the next request", async (t) => {
   const store = await openStore(t);
   const repositoryId = repoId(7);
@@ -394,6 +422,25 @@ async function withServer(t, runtime) {
   t.after(() => server.close());
   return `http://127.0.0.1:${server.address().port}`;
 }
+
+test("GET /api/repository-files: 503 with an unavailable body, never an empty 200, when serving is not wired", async (t) => {
+  const repositoryId = repoId(10);
+  const origin = await withServer(t, {});
+  const response = await fetch(`${origin}/api/repository-files?repositoryId=${repositoryId}`);
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.readiness, "unavailable");
+  assert.equal(body.kind, "files");
+});
+
+test("the monitor server forwards every observation serve hook to the request handler", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const runtimeSource = await readFile(new URL("../monitor/observation-runtime.mjs", import.meta.url), "utf8");
+  const serverSource = await readFile(new URL("../monitor/server.mjs", import.meta.url), "utf8");
+  const hooks = [...new Set([...runtimeSource.matchAll(/^ {4}(serve[A-Za-z]+):/gmu)].map((match) => match[1]))];
+  assert.ok(hooks.includes("serveRepositoryFiles"));
+  for (const hook of hooks) assert.match(serverSource, new RegExp(`${hook}: observation\.${hook},`), hook);
+});
 
 test("GET /api/repository-files: 400 on an invalid query, 405 on a non-GET method", async (t) => {
   const repositoryId = repoId(9);

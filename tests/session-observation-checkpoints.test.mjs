@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -326,6 +326,25 @@ test("checkpoint schema stays version 1 and unchanged by the repository-snapshot
     ["evidence", "localSessionId", "observedAt", "providerId", "readiness", "revision", "source", "version"],
   );
   assert.equal(payload.version, 1);
+});
+
+test("prune keeps a sidecar recorded before its session's first checkpoint, and drops a day-old orphan", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 10, maxBytes: 100_000 });
+  await checkpoints.writeRepositorySnapshot("provider-a", "early", repositorySnapshot());
+  await checkpoints.writeRepositorySnapshot("provider-a", "stale", repositorySnapshot());
+  const stale = path.join(directory, repositorySnapshotFilename("provider-a", "stale"));
+  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+  await utimes(stale, dayAgo, dayAgo);
+
+  await checkpoints.write(snapshot("provider-a", "other", 1));
+  const afterPrune = await readdir(directory);
+  assert.ok(afterPrune.includes(repositorySnapshotFilename("provider-a", "early")), "a fresh sidecar without a checkpoint yet is kept");
+  assert.equal(afterPrune.includes(repositorySnapshotFilename("provider-a", "stale")), false, "a day-old orphan is removed");
+
+  await checkpoints.write(snapshot("provider-a", "early", 1));
+  const records = await checkpoints.loadRepositorySnapshots();
+  assert.deepEqual(records.map((record) => record.localSessionId), ["early"]);
 });
 
 test("prune removes a repository-snapshot sidecar once its checkpoint is evicted, and keeps a surviving pair", async (t) => {

@@ -371,7 +371,8 @@ matches and every matching task, including any beyond that cap, resolves to the 
 disagreement, or no matching task carrying a request at all, leaves the request link empty.
 Usage-observation timestamps are never part of this matching and cannot by themselves give
 a request an execution interval. The monitor does not yet resolve request numbers when it
-records peaks, so every persisted peak currently carries an empty request link.
+records peaks, so every persisted peak currently carries an empty request link. Where a
+link exists, the UI labels it "Request observed near this peak".
 
 This association is temporal coincidence between a session's process-tree aggregate measurement and
 the tasks or request that happened to be running at the same time, never a measurement of
@@ -678,17 +679,24 @@ Current-window correlation considers bounded live and recently updated completed
 
 Live branch metadata comes from read-only Git commands against the primary session's working directory. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
 
-The approved future historical Repository contract will preserve a bounded last complete
-snapshot of recorded uncommitted files, branch comparison, and pull-request state at its
-original last-check time. This is prerequisite policy, not shipped behavior; current
-historical views retain only the narrower evidence described above. After implementation,
-missing recorded fields will remain unavailable rather than being filled from the current
-working tree or current branch.
+A historical session shows the last complete snapshot recorded while it was live: recorded
+uncommitted files, branch comparison, and pull-request state at their original check
+times. A session with no recorded snapshot keeps only the transcript branch. Missing
+recorded fields remain unavailable rather than being filled from the current working tree
+or current branch.
+
+**Commits in session** counts commits on the live HEAD whose committer time falls inside
+the session's wall-time window, measured at the last live Git check. It includes merges and
+commits by anyone on that branch, so it is not attribution to the session. It is null when the
+session's recorded branch differs from HEAD or the count failed, and it is a point count,
+not a cumulative total. On an idle live session it can lag until the next re-derivation.
+**Git tasks** counts the session's execution tasks whose work kind is `git`, `git_push`, or
+`pull_request`; failed counts those with status `failed`.
 
 ## File-change history
 
-File-change history is approved future behavior and is not currently produced by Pomegr.
-It will report bounded recorded file operations, grouped by normalized repository,
+File-change history is served on the session Repository tab and the repository Files tab.
+It reports bounded recorded file operations, grouped by normalized repository,
 session, file identity, and safe repository-relative path. The fixed kinds are created,
 edited, deleted, and moved. Session, agent, and request labels mean that recorded provider
 evidence proved each association. A move observed only through Git may preserve
@@ -710,12 +718,11 @@ limits wherever totals or empty states are presented.
 
 Pomegr currently associates a pull request with a session only when a successful, recognized pull-request creation tool result contains a canonical GitHub pull-request URL, or when GitHub reports a pull request for the live session's current branch. Historical sessions never infer associations from the current working tree or branch. Under the current legacy behavior, a transcript-recorded association may refresh its current GitHub status; the UI labels that refresh with its local observation time and does not present it as recorded historical state.
 
-The approved future Repository domain uses a different historical rule. It snapshots the
-allowlisted pull-request state and original last-check time while the session is eligible
-for live observation, then serves that recorded snapshot unchanged after the session
-becomes historical. Implementing that domain replaces the legacy refresh behavior for its
-historical Repository view; it must not rewrite the recorded snapshot with current GitHub
-state.
+A historical session with a recorded repository snapshot uses a different rule. The
+snapshot holds the allowlisted pull-request state and original last-check time recorded
+while the session was live, and it is served unchanged; Pomegr never rewrites it with
+current GitHub state or calls GitHub for it. Only a historical session without a recorded
+snapshot keeps the legacy refresh behavior above.
 
 The monitor parses tool results privately and returns only an allowlist: host, repository slug, pull-request number, bounded title, canonical URL, open/draft/merged/closed state, head and base branch names, non-negative additions and deletions, association source, and timestamps. Commands, raw tool output, PR bodies, authors, comments, reviews, checks, and credentials never enter the browser API. GitHub CLI and network failures degrade independently; a safely parsed transcript link can remain visible without current metadata.
 

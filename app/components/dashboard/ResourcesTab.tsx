@@ -23,7 +23,7 @@ export type ResourcesTabProps = { sessionId: string; historical: boolean; paused
 type WindowKind = "5min" | "30min" | "session";
 const LIVE_WINDOW_MS: Record<"5min" | "30min", number> = { "5min": 5 * 60_000, "30min": 30 * 60_000 };
 const RETENTION_MESSAGES: Record<ResourceRetentionReason, string> = {
-  age_retention: "Stored minute curves were removed by this session's retention-age setting.",
+  age_retention: "Stored minute curves were removed by the retention-age setting.",
   size_cleanup: "Stored minute curves were removed when the local store's size threshold triggered cleanup.",
   not_recorded: "No minute curves were recorded for this session, and no removal was recorded either.",
 };

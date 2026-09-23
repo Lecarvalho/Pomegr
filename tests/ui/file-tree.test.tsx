@@ -177,6 +177,12 @@ describe("FileHistoryPanel", () => {
     expect(link).toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
   });
 
+  it("labels a historical session's recorded status as at last live check, never the working tree", () => {
+    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" statusRecorded history={historyFixture({ path: "a.ts" })} />);
+    expect(screen.getByText("MOD at last live check")).toHaveClass("commandChip", "warning");
+    expect(screen.queryByText(/in working tree/)).not.toBeInTheDocument();
+  });
+
   it("shows Copy path on the repository side and copies the selected path", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");

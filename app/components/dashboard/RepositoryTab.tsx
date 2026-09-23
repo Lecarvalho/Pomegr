@@ -174,6 +174,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
         repositoryLabel={rootLabel}
         path={selectedPath}
         workingTreeStatus={workingTreeStatus}
+        statusRecorded={historical}
         history={history}
         currentSessionId={sessionId}
         className="repositoryTabFilesPanel"

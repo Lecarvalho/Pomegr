@@ -111,6 +111,8 @@ class KeyedFilesStore<T extends Loadable> {
       try {
         const response = await fetch(this.url, { cache: "no-store", signal: controller.signal });
         if (controller.signal.aborted) return;
+        // A failed poll (for example a 503 "unavailable" body) keeps the last resolved response.
+        if (!response.ok) throw new Error("file-history request failed");
         const next = (await response.json().catch(() => null)) as T | null;
         if (controller.signal.aborted) return;
         if (!next || typeof next.readiness !== "string") throw new Error("invalid file-history response");
