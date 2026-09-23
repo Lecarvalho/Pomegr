@@ -261,7 +261,6 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
         readBytesPerSecond: 400,
         writeBytesPerSecond: 200,
       },
-      observedPeak: { memoryBytes: 4_096 },
       samples: [{
         timestamp: "2026-08-10T13:00:18.000Z",
         cpuCores: 1.25,

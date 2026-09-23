@@ -13,6 +13,7 @@ import type {
   SessionCurrentActivity,
   SessionReadiness,
   ToolPattern,
+  WorkKind,
   Workflow,
 } from "./monitor-contract";
 import type { RequestSnapshot, RequestSnapshotFeed } from "./request-snapshot-contract";
@@ -136,10 +137,62 @@ export type RepositoryDomain = SessionDomainBase & {
   fileHistory: { readiness: "unavailable"; items: [] };
 };
 
+/** Display fields. cpu_machine_percent stays in live samples only; peaks and curves use these four. */
+export type ResourceField = "cpu_cores" | "memory_bytes" | "read_bps" | "write_bps";
+
+/** Why stored minute curves are absent or incomplete for this session. */
+export type ResourceRetentionReason =
+  | "age_retention" // removed by the retention-days setting
+  | "size_cleanup" // removed by the soft size threshold cleanup
+  | "not_recorded"; // no curve rows and no recorded removal (session predates the store, or the store was rebuilt)
+
+export type ResourceMinuteAggregate = { min: number; avg: number; max: number; maxAt: string };
+
+export type ResourceMinute = {
+  minuteStart: string; // ISO
+  // For each field: min/avg/max and ISO timestamp of the max sample; null when no sample in that minute.
+  cpuCores: ResourceMinuteAggregate | null;
+  memoryBytes: ResourceMinuteAggregate | null;
+  readBytesPerSecond: ResourceMinuteAggregate | null;
+  writeBytesPerSecond: ResourceMinuteAggregate | null;
+};
+
+export type ResourcePeakTask = {
+  id: string; // normalized execution-task ID
+  workKind: WorkKind;
+  label: string; // the normalized ExecutionTask.label (Bash description), already browser-safe
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null; // wall duration; null while running
+};
+
+export type ResourcePeak = {
+  id: string; // opaque, `p<integer>` from resource_peaks.id
+  field: ResourceField;
+  observedAt: string; // ISO, second-level instant of the peak sample
+  value: number;
+  tasks: ResourcePeakTask[]; // matched tasks resolved from committed normalized task metadata; unresolved IDs dropped
+  matchedTaskCount: number; // count of matched task IDs, including unresolved ones
+  request: { number: number; uncachedInputTokens: number | null } | null; // always null in this part (see below)
+  window: {
+    // retained full-resolution samples of this peak's field, 2 min each side
+    status: "retained" | "not_retained";
+    samples: Array<{ at: string; value: number | null }>; // empty when not_retained
+    minute: ResourceMinute | null; // the minute row containing the peak, for the not_retained fallback
+  };
+};
+
 export type ResourcesDomain = SessionDomainBase & {
   domain: "resources";
   live: MonitorState["metrics"]["resources"];
-  retained: { readiness: "unavailable"; reason: "producer_not_implemented"; minutes: []; peaks: []; peakSamples: [] };
+  retained: {
+    readiness: "loading" | "ready" | "unavailable" | "rebuilding";
+    minutes: ResourceMinute[]; // ascending, newest 1440 at most
+    minutesTruncated: boolean; // true when older minutes exist beyond the bound
+    curveRemoval: { reason: ResourceRetentionReason; removedAt: string | null } | null;
+    // non-null when minutes are empty but peaks exist, or when a recorded removal exists
+    peaks: ResourcePeak[]; // top 3 per ResourceField by value (12 max), sorted by observedAt desc
+  };
 };
 
 export type DetailsDomain = SessionDomainBase & {

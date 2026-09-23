@@ -439,7 +439,6 @@ test("session feed and home snapshot coalesce a cold live summary without sharin
           status: "ready",
           reason: null,
           current: { cpuCores: 1, cpuMachinePercent: 2, memoryBytes: 3, readBytesPerSecond: 4, writeBytesPerSecond: 5 },
-          observedPeak: { memoryBytes: 8 },
           samples: [],
         };
       },

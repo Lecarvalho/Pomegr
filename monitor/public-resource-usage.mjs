@@ -13,7 +13,6 @@ export function unavailableResourceUsage() {
     status: "unavailable",
     reason: "collection_failed",
     current: null,
-    observedPeak: null,
     samples: [],
   };
 }
@@ -38,7 +37,6 @@ export function publicResourceUsage(value) {
     readBytesPerSecond: resourceNumber(value.current.readBytesPerSecond, true),
     writeBytesPerSecond: resourceNumber(value.current.writeBytesPerSecond, true),
   } : null;
-  const peakMemoryBytes = resourceNumber(value.observedPeak?.memoryBytes);
   const samples = Array.isArray(value.samples) ? value.samples.flatMap((sample) => {
     const timestamp = typeof sample?.timestamp === "string" && Number.isFinite(Date.parse(sample.timestamp))
       ? sample.timestamp
@@ -57,7 +55,6 @@ export function publicResourceUsage(value) {
     status,
     reason,
     current,
-    observedPeak: peakMemoryBytes === null ? null : { memoryBytes: peakMemoryBytes },
     samples,
   };
 }

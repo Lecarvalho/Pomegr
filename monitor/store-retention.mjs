@@ -93,8 +93,14 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
       store.transaction(() => {
         const deleteMinutes = database.prepare("DELETE FROM resource_minutes WHERE session_id = ?");
         const deleteSamples = database.prepare("DELETE FROM resource_peak_samples WHERE session_id = ?");
+        const recordRemoval = database.prepare(
+          "INSERT OR IGNORE INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'age_retention', ?)",
+        );
         for (const sessionId of staleSessionIds) {
-          if (deleteMinutes.run(sessionId).changes > 0) removedMinuteSessions += 1;
+          if (deleteMinutes.run(sessionId).changes > 0) {
+            removedMinuteSessions += 1;
+            recordRemoval.run(sessionId, now);
+          }
           if (deleteSamples.run(sessionId).changes > 0) removedSampleSessions += 1;
         }
       });
@@ -116,7 +122,13 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
     if (minuteSessionIds.length > 0) {
       store.transaction(() => {
         const deleteMinutes = database.prepare("DELETE FROM resource_minutes WHERE session_id = ?");
-        for (const sessionId of minuteSessionIds) deleteMinutes.run(sessionId);
+        const recordRemoval = database.prepare(
+          "INSERT OR IGNORE INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'size_cleanup', ?)",
+        );
+        for (const sessionId of minuteSessionIds) {
+          deleteMinutes.run(sessionId);
+          recordRemoval.run(sessionId, now);
+        }
       });
       removedMinuteSessions += minuteSessionIds.length;
       sessionsProcessed += minuteSessionIds.length;

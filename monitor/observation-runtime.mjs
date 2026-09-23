@@ -2,6 +2,7 @@ import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
 import { attachResourceHistory } from "./resource-history.mjs";
+import { createResourceDomainSource } from "./resource-domain.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -98,6 +99,12 @@ export function createObservationRuntime(options = {}) {
     });
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
+  // Registered after resource-history so its cycle contributor reads fresh writes; onChange
+  // commits directly (refreshProjection no-ops on byte-identical re-derivation).
+  const resourceDomainSource = createResourceDomainSource({
+    monitorStoreRuntime, demandedSessionIds: () => sessionDomains.sessionIds(), now,
+    onChange: (sessionId) => sessionDomainServing.commit(sessionId),
+  });
   const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
@@ -120,6 +127,7 @@ export function createObservationRuntime(options = {}) {
     isProtected: (sessionId) => sessionDomainServing.protectedSessionIds().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
+    retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), onDemand: (sessionId) => resourceDomainSource.request(sessionId),
   });
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();

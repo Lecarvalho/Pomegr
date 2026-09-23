@@ -60,7 +60,6 @@ test("aggregates an owner process tree and derives rates after the first sample"
       readBytesPerSecond: null,
       writeBytesPerSecond: null,
     },
-    observedPeak: { memoryBytes: 3_000 },
     samples: [{
       timestamp: "2026-08-14T12:00:00.000Z",
       cpuCores: null,
@@ -80,7 +79,7 @@ test("aggregates an owner process tree and derives rates after the first sample"
   assert.equal(ready.current.memoryBytes, 4_000);
   assert.equal(ready.current.readBytesPerSecond, 100);
   assert.equal(ready.current.writeBytesPerSecond, 60);
-  assert.deepEqual(ready.observedPeak, { memoryBytes: 4_000 });
+  assert.equal("observedPeak" in ready, false);
   assert.equal(reads, 2);
   assert.doesNotMatch(JSON.stringify(ready), /session-a|processStart|parentPid|\"pid\"|command|path/i);
 });
@@ -190,7 +189,6 @@ test("degrades unsupported platforms and snapshot failures without leaking error
     status: "unavailable",
     reason: "unsupported_platform",
     current: null,
-    observedPeak: null,
     samples: [],
   });
 
@@ -299,7 +297,7 @@ test("retains transient gaps, expires the rolling window, and resets when owners
   const changed = sampler.get("a");
   assert.equal(changed.samples.length, 1);
   assert.equal(changed.current.memoryBytes, 200);
-  assert.deepEqual(changed.observedPeak, { memoryBytes: 200 });
+  assert.equal("observedPeak" in changed, false);
 
   await sampler.sample([]);
   assert.equal(sampler.get("a"), null);

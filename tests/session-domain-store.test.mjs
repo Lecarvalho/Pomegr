@@ -322,7 +322,7 @@ test("retains committed repository live evidence while future resource history s
     total: { used: "1", limit: "2", percentage: 50, rawPrompt: "PRIVATE_TOTAL" }, categories: [],
     groups: [{ id: "group", label: "Group", items: [{ name: "Item", detail: "Safe", tokens: "1", rawPrompt: "PRIVATE_CONTEXT_ITEM" }], rawPrompt: "PRIVATE_GROUP" }],
     rawPrompt: "PRIVATE_MACHINERY" };
-  publicState.metrics.resources = { status: "ready", reason: null, current: null, observedPeak: null,
+  publicState.metrics.resources = { status: "ready", reason: null, current: null,
     samples: [{ timestamp: OBSERVED_AT, cpuCores: 1, cpuMachinePercent: 2, memoryBytes: 3, readBytesPerSecond: 4, writeBytesPerSecond: 5, rawPrompt: "PRIVATE_RESOURCE" }] };
   store.commit(SESSION_ID, snapshot(publicState));
 
@@ -331,7 +331,7 @@ test("retains committed repository live evidence while future resource history s
   assert.equal(repository.repository.available, true);
   assert.deepEqual(repository.repository.files, [{ status: "modified", path: "app/file.ts" }]);
   assert.deepEqual(repository.fileHistory, { readiness: "unavailable", items: [] });
-  assert.deepEqual(resources.retained, { readiness: "unavailable", reason: "producer_not_implemented", minutes: [], peaks: [], peakSamples: [] });
+  assert.deepEqual(resources.retained, { readiness: "unavailable", minutes: [], minutesTruncated: false, curveRemoval: null, peaks: [] });
   for (const domain of SESSION_DOMAIN_NAMES) {
     const serialized = store.read(SESSION_ID, domain, domain === "agent" ? "primary" : null).snapshot.serialized;
     assert.doesNotMatch(serialized, /PRIVATE_/u, domain);
