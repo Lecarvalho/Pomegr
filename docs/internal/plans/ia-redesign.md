@@ -1,12 +1,12 @@
 # Information architecture redesign
 
-> Status: active; Sessions 1–3 are complete. Session 4 (T07 then T13) is the next unchecked implementation session.
+> Status: active; Sessions 1–4 are complete. Session 5 (T08 and T09) is the next unchecked implementation session.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
 > Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
-> Next task or decision: Start Session 4 (T07 then T13) in a fresh user-requested session. First verify SQLite in the actual Electron monitor worker, then implement persistence/retention before native storage settings.
+> Next task or decision: Start Session 5 (T08 and T09) in a fresh user-requested session, from the Session 4 checkpoint handoff below.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
 > Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
@@ -205,7 +205,7 @@ any shared controls or contracts that Session 5 must reuse.
 
 ### Session 4 — Persistence and storage
 
-- [ ] Session 4 complete — T07 then T13.
+- [x] Session 4 complete — T07 then T13.
 
 A Sol worker first verifies SQLite in the actual Electron monitor worker, then
 owns T07's persistence schemas, concrete bounds, validated evidence, rebuild and
@@ -552,8 +552,103 @@ No unresolved product decision blocks implementation. The latest approved rules 
 approved one-row-per-recent-provider rule and selects each provider's
 highest-percentage available window without treating the provider's
 active-or-reached flag as a visibility gate. UI coverage includes ordinary
-unreached Claude and Codex windows; Session 4 remains the next implementation
-session.
+unreached Claude and Codex windows. Session 4 is now complete; Session 5 is the next
+implementation session.
+
+### Session 4 checkpoint
+
+2026-09-22 · **Session 4 complete: T07 and T13.** ACOS plan `runs/2026-09-22-ia-session-4`
+(five parts). Parts 1–4 are committed on branch `feat/persistence-and-storage`:
+`6795017` store foundation, `00b944e` file-change evidence and index (PR #26), `d370b10`
+resource history and peak matching (PR #27), and `b447828` native storage settings with
+the Settings → Storage usage bar. Part 5 (independent review and closure) is uncommitted
+on top of `b447828`.
+
+**Review.** One independent Opus review of `git diff main...HEAD` returned FAIL with one
+blocker, now fixed. `monitor/file-change-index.mjs` replaced a session's `file_changes`
+on every snapshot. Live evidence is a bounded tail, so older changes were deleted once
+they left the window. Writes are now additive and skip changes that are already recorded.
+Also fixed: a confirmed `protected_excess` no longer flips back to `cleanup_pending`
+between prunes; a rebuilt store schedules its own first cycle, so an idle start leaves
+`rebuilding`; the storage percentage uses a floor, so 99.5% never reads 100%; and the
+unused `options.storageSettings` monitor path is removed (the desktop maps saved values to
+`POMEGR_RETENTION_DAYS`/`POMEGR_STORE_MAX_MB`). Each fix has a regression test that fails
+on the old code. Docs changed in the same pass: the storage IPC subsection in
+`docs/OBSERVATION_CACHE.md` next to provider-folder settings, the additive-index rule,
+AGENTS.md (file-change history now ships monitor-side; the two desktop storage enums),
+and the METRICS.md peak-to-request wording.
+
+**Part 5 changed files.** `monitor/file-change-index.mjs`, `monitor/monitor-store-runtime.mjs`,
+`monitor/store-retention.mjs`, `tests/file-change-index.test.mjs`,
+`tests/monitor-store.test.mjs`, `tests/store-retention.test.mjs`, `AGENTS.md`,
+`docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, and this plan.
+
+**Verification.** Focused suites passed 91/91 at review. After the fixes,
+`npm run verify:fast` exited 0, and `npm test` exited 0: node 1,283 passed, 0 failed,
+1 skipped; UI 87 files and 912 tests passed. The part 4 evidence verdict was PASS against
+contract lines D1–D21.
+
+**Interface decisions.** SQLite loads in the Electron 43 monitor worker; there is no
+fallback. Retention deletes only `resource_minutes` and `resource_peak_samples`, after
+checkpoint writes and at most every 5 minutes, never from a GET or IPC. Desktop settings
+are version 6 with `storage: { retentionDays, storeMaxMb }`; saving triggers one native
+confirmation and an app restart. Browser and LAN clients read `GET /api/storage` only.
+
+**Accepted visual differences (T13 vs `SettingsStorage.html`).** The usage bar is an
+addition (D8–D10). The copy uses the soft-threshold wording: "Resource history cleanup
+threshold", the bar copy, and the cleanup status (D6, D11, D12). "Save and restart
+Pomegr" replaces "Save" (D16). There is a browser read-only note (D17), and the meter
+track is unrounded (the off-scale 3px radius was rejected).
+
+**Session 5 handoff: committed query interfaces.** No HTTP route or domain serves these
+yet. Serve them through committed domain caches filled on the store cycle, never as
+synchronous SQLite reads inside a GET. The store handle is `monitorStore.store()` on the
+observation runtime; it is null while loading or unavailable.
+- `monitor/file-change-index.mjs` (store first; page default 100, max 200; ISO timestamps):
+  `listSessionFileChanges(store, sessionId, { limit, before })`,
+  `listRepositoryFiles(store, repositoryId, { historical, limit, after })`,
+  `fileHistory(store, fileId, { limit, before })`.
+- `monitor/resource-history.mjs` `createResourceHistoryQueries(store)`:
+  `sessionResourceCurves(sessionId, { fromMs, toMs })`, `sessionResourcePeaks(sessionId)`,
+  `peakSampleWindow(peakId)`. These use epoch-ms fields; normalize them to the file index's
+  ISO form. `peakSampleWindow` is not session-scoped, so check ownership first.
+- Monitor-private helpers: `repositoryInventory.resolveRepository(cwd)` and
+  `readGitRenamesAsync`.
+
+**Carried to Session 5 or later (not blocking).**
+- `file_changes.request_number` and `resource_peaks.matched_request_number` are always
+  null. Session 5 threads request numbers from the committed session history or keeps
+  the links empty.
+- `resource_peaks` and `file_changes` for sessions that leave the catalog are kept
+  forever; no removal is implemented.
+- Size cleanup can remove a live session's curves once protected rows alone exceed the
+  threshold. Consider excluding sessions the sampler tracks.
+- Index revalidation and Git renames do not receive provider `forbiddenRoots`; only
+  `.claude`/`.codex` segments are blocked there.
+- `mv a dir` records a file move onto the directory path, and a Bash `cd` can misplace
+  cwd-relative paths.
+- Resource-history `stop()` does not flush, and a restart within the same minute
+  overwrites that minute row.
+- `PRAGMA quick_check` runs synchronously at open.
+- The desktop reads env `POMEGR_RETENTION_DAYS=0` as keep-all; the monitor reads it as
+  the default.
+- Saving one settings section restarts the app and drops the other section's unsaved
+  draft.
+- A rebuild restores file history only for sessions still in the retained checkpoints.
+- Growth is measured only synthetically (about 272 KB per session-hour, dominated by peak
+  windows); re-measure with real data.
+
+2026-09-22 · **Session 4 part 1 of 5 done: T07 store foundation.** ACOS run
+`runs/2026-09-22-ia-session-4/1-store-foundation`. `node:sqlite` loads inside a
+`worker_threads` worker under Electron 43.3.0 (Node 24.18.1, SQLite 3.53.1) without
+printing a warning, so T07 needs no SQLite fallback. System Node 24 still prints the
+`ExperimentalWarning`; `monitor/monitor-store.mjs` filters only that warning. The store
+(`monitor-store-v1/monitor.sqlite` under the data root) holds the full T07 schema, rebuilds
+when missing, corrupt or on another schema version, and runs age/size retention after
+checkpoint writes. It serves committed readiness through `GET /api/storage`.
+`monitor/monitor-store-runtime.mjs` `registerContributor` is the seam that parts 2 and 3
+extend. `npm run verify:fast` and `npm run test:node` passed (1,189 passing tests, one
+skipped). Committed on branch `feat/persistence-and-storage`. Session 4 stays unchecked.
 
 ### Session 3 checkpoint
 

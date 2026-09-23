@@ -3,8 +3,20 @@ import { safeProviderFolder } from "./provider-folders.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "./session-domain-store.mjs";
+import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "./store-retention.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
+const UNAVAILABLE_STORAGE_SNAPSHOT = Object.freeze({
+  revision: 0,
+  readiness: "unavailable",
+  databaseBytes: null,
+  thresholdBytes: DEFAULT_THRESHOLD_MB * 1024 * 1024,
+  percent: null,
+  oldestRetainedDay: null,
+  lastPrunedAt: null,
+  retentionDays: DEFAULT_RETENTION_DAYS,
+  cleanupStatus: null,
+});
 
 function requestRevision(requestUrl, request) {
   const query = requestUrl.searchParams.get("revision");
@@ -460,6 +472,20 @@ export function createRequestHandler({
       } catch {
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(createEmptyProviderStatusSnapshot("unavailable")));
+      }
+      return;
+    }
+    if (requestUrl.pathname === "/api/storage") {
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end();
+        return;
+      }
+      try {
+        writeCommitted(runtime.serveStorage?.(requestedRevision), UNAVAILABLE_STORAGE_SNAPSHOT);
+      } catch {
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(UNAVAILABLE_STORAGE_SNAPSHOT));
       }
       return;
     }

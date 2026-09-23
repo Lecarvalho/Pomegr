@@ -12,7 +12,7 @@ import {
   resolveAgentMetadata,
 } from "../agent-metadata.mjs";
 import { claudeConversationActivity, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "./claude-activity-events.mjs";
-import { boundedActivityDuration, recentActivityEvents } from "../activity-events.mjs";
+import { boundedActivityDuration, boundedFileChanges, recentActivityEvents } from "../activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
@@ -33,7 +33,7 @@ import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { claudeToolResultTimestamps, firstClaudeToolResultAfter, splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
-import { safeDetail } from "./claude-tool-detail.mjs";
+import { claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./claude-tool-detail.mjs";
 import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
@@ -87,6 +87,8 @@ export function createClaudeProvider(options = {}) {
   const homeDir = options.homeDir || os.homedir();
   const { configRoot, projectsRoot, registryRoot, tasksRoot } = resolveClaudeProfileRoots({ ...options, env: environment, homeDir });
   const readRepositoryPluginSetup = createClaudePluginSetupReader({ env: environment, homeDir, configRoot });
+  // File-change evidence never rebases into the adapter's own config/session roots.
+  const fileChangeForbiddenRoots = [configRoot, projectsRoot].filter(Boolean);
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const now = options.now || (() => Date.now());
   const sessionSummaryCache = new Map();
@@ -277,6 +279,7 @@ export function createClaudeProvider(options = {}) {
     const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || readJsonlTail(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
     const mainRecords = recordsByFile.get(mainFile) || [];
+    const cwd = projectCwd(mainRecords);
     const mainStat = statSafe(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
     const signalsByFile = new Map(/** @type {Array<[string, any]>} */ (await Promise.all(files.map(async (file) => [
@@ -353,6 +356,7 @@ export function createClaudeProvider(options = {}) {
       })));
       const requestedInputIds = new Set();
       const resultTimes = claudeToolResultTimestamps(records);
+      const toolOutcomes = claudeToolOutcomes(records);
       let calls = 0;
       for (const record of records) {
         const timestamp = record.timestamp || record.message?.timestamp;
@@ -382,6 +386,10 @@ export function createClaudeProvider(options = {}) {
           const scopes = typeof target === "string"
             ? mutationScopes(tool, input).map((scope) => crypto.createHash("sha256").update(scope).digest("hex").slice(0, 20))
             : [];
+          const successfulOutcome = firstSuccessfulClaudeToolOutcome(toolOutcomes, content.id, timestamp);
+          const fileChanges = successfulOutcome
+            ? boundedFileChanges(claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult), cwd, { forbiddenRoots: fileChangeForbiddenRoots })
+            : null;
           toolCalls.push({
             id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),
             timestamp: timestamp || stat.mtime.toISOString(),
@@ -394,6 +402,7 @@ export function createClaudeProvider(options = {}) {
             requestId: null,
             repetitionSignature: repetitionSignature(tool, input),
             mutation: scopes.length ? { display: path.basename(target), scopes } : null,
+            fileChanges,
           });
         }
       }
@@ -480,7 +489,7 @@ export function createClaudeProvider(options = {}) {
       session: {
         title: mainStat ? await cachedSessionTitle(mainFile, mainStat) : sessionTitle(mainRecords),
         project: projectName(mainFile, mainRecords),
-        cwd: projectCwd(mainRecords),
+        cwd,
         startedAt,
         updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
         recordedGitBranch: recordedGitBranch(mainRecords),

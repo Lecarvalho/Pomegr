@@ -10,7 +10,7 @@ document and `AGENTS.md` govern repository changes.
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, and `/api/repository-inventory` handlers
+- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, `/api/repository-inventory`, and `/api/storage` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -166,8 +166,8 @@ retained privately by background enrichment, including when the session working
 directory is nested. The dedicated validator rejects traversal, absolute and Windows
 special forms, configured provider roots, and link escapes. An unknown root or uncertain
 containment cannot admit a path. This does not introduce file-change persistence:
-`fileHistory` and retained resource tables remain explicitly unavailable until their
-producers are implemented. Existing committed live repository/resource evidence remains
+The `fileHistory` browser domain and retained resource tables remain explicitly
+unavailable until their serving and producers are implemented. Existing committed live repository/resource evidence remains
 available, and missing historical evidence never falls back to today's working tree.
 
 ### Paged session evidence history
@@ -854,6 +854,19 @@ fingerprints, and retry deadlines are unchanged. Snapshot destination paths and
 profile digests never enter browser state or reports; the separate settings view
 exposes only the three configured provider roots described above.
 
+### Desktop storage settings
+
+`desktop/storage-settings.mjs` owns the native **Settings → Storage** action.
+Version 6 desktop settings may persist only two bounded enum overrides:
+`retentionDays` (30, 90, 180, 365, or keep all) and `storeMaxMb` (250, 500, 1024,
+or 2048), each null or a fixed choice. Versions 1–5 migrate with null storage.
+Only the trusted main desktop frame may set a draft field, discard, or request
+save/restart; IPC returns only enum values, pending state, and status. After the
+native confirmation the app restarts, and the monitor applies the saved values
+(else `POMEGR_RETENTION_DAYS`/`POMEGR_STORE_MAX_MB`, else 90 days / 500 MB) only
+at its next start and prune cycle, never from IPC or a GET. Browser and LAN
+clients read `GET /api/storage` only and render the controls read-only.
+
 ## Provider observer contract
 
 Every provider adapter must expose the observation lifecycle required by
@@ -1330,6 +1343,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
 | Routine checkpoint | Backend writer / P | Reads L1 evidence and atomically replaces L2 JSON | Five seconds after quiet; at least once per 60 seconds during continuous activity |
+| Resource history | Monitor store contributor / P | Aggregates the private sampler's in-memory raw samples (30-minute window) into `resource_minutes`, bounded peaks, and peak sample windows in one transaction per session; never read or written by a GET | On the coalesced post-checkpoint store cycle, which the resource observation also schedules at most once per 60 seconds while sessions are sampled |
 | Graceful shutdown | Backend writer / P | Flushes the latest committed L1 revision for every pending checkpoint | After uncommitted scheduled candidates are cancelled and before the observer lifecycle is released |
 | Usage observation coordinator | Backend / U1 through D | Refreshes the centralized usage response cache | Check for due work every 60 seconds; each provider's authenticated request cache permits at most one request per five minutes and honors longer `Retry-After` cooldowns |
 
@@ -1349,6 +1363,7 @@ remain the source of truth.
 | `/api/session-history?sessionId=...` | Committed activity or request pages, including bounded grouped request-range activity | Activity and request navigation |
 | `/api/home` | Cross-session aggregates and per-limit local activity correlation | Retained aggregate API; the Home page no longer requests this domain |
 | `/api/usage-limits` | Central provider/account-scoped usage values, bounded refresh-failure kind, earliest local retry eligibility, and per-provider readiness | Shared frontend usage store used by Usage limits and session views |
+| `/api/storage` | Committed monitor SQLite store readiness, size, retention, and cleanup status (see "Monitor SQLite store") | Settings storage/retention display |
 
 Callers send their current revision. When the relevant committed revision is unchanged, S
 returns `204 No Content` with no state body. A known uncached session returns its safe
@@ -1962,11 +1977,21 @@ than arbitrary exception text.
 
 ### Approved file-history persistence contract
 
-This subsection approves prerequisite policy for the planned file-history and historical
-Repository work; it does not describe a currently shipped checkpoint, index, or browser
-surface. Until that implementation lands, provider mutation targets still do not enter
-checkpoints or browser responses, and historical Git state retains its current narrower
-behavior.
+This subsection approves the policy for file-history and historical Repository work. The
+checkpoint evidence and monitor-private index described below ship; no browser surface
+reads them yet, and historical Git state retains its current narrower behavior. Provider
+mutation targets still never enter browser responses.
+
+Shipped evidence shape: a normalized tool call may carry `fileChanges`, at most 64 entries
+of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated, at most
+512 characters, and relative to the session's recorded working directory; `previousPath`
+is present only for `moved`. Only a call with recorded success evidence carries it (Claude:
+a non-error tool result, with `Write` classified `created` from the structured result type;
+Codex: a completed patch or file-change item). A Claude shell move is recognized only from
+a whole `mv <a> <b>` or `git mv <a> <b>` command with two plain arguments; anything else
+is ignored and command text stays in the parser. `assertCheckpointPayload` rejects any
+absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
+or over-bound path.
 
 A future L1 revision and L2 checkpoint may retain bounded normalized file evidence
 consisting only of a normalized repository identity, safe repository-relative path, fixed
@@ -1990,8 +2015,22 @@ is not a path validator. Invalid or over-bound candidates are dropped rather tha
 truncated into a different path. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
-The planned monitor-owned file-history index is a derivative of committed file-change
-evidence plus Git state acquired asynchronously outside S Serving. It must be rebuildable
+The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a derivative of
+committed file-change evidence plus Git state acquired asynchronously outside S Serving.
+It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
+written since the last cycle. Each snapshot's paths are rebased from the session working
+directory onto the private Git root and revalidated. Writes are additive: a change
+already recorded for the same session, agent, kind, timestamp, and path is skipped, so
+replaying a checkpoint is idempotent, and a later snapshot whose bounded evidence tail no
+longer carries earlier tool calls never removes their committed rows. Git renames come from
+`git diff --name-status -M` against the last recorded head, at most once per repository
+per minute and 512 renames per read; the first observation records the head only. A
+Git rename updates `files.current_path` and opens a `file_paths` row with source `git`,
+never a `file_changes` row. A missing, rebuilt, or unversioned index is repopulated
+once from retained checkpoints, and storage readiness stays `rebuilding` until that pass
+completes. Session 5 queries `listSessionFileChanges`, `listRepositoryFiles`, and
+`fileHistory` (page size 100, maximum 200); `request_number` stays null until a
+monitor-side request mapping is threaded to the index. It must be rebuildable
 from retained checkpoints and independently committed Git evidence. Index loss or rebuild
 cannot trigger provider acquisition from a GET, change a committed evidence revision, or
 weaken last-known-good retention. Git can establish repository-scoped path and file-
@@ -2006,6 +2045,64 @@ served unchanged for historical views. Missing, failed, partial, or over-bound e
 remains unavailable and does not erase the last complete valid snapshot. Historical GETs
 never inspect Git or GitHub and never substitute the current branch, working tree,
 comparison, files, commits, or pull-request state for recorded evidence.
+
+## Monitor SQLite store
+
+The monitor owns one `node:sqlite` database, `monitor-store-v1/monitor.sqlite` under the
+Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never under
+`outputs/` (development diagnostics only). It hosts the file-change index and resource
+history described in the approved persistence contract above; `files`, `file_paths`, and
+`file_changes` are populated by the file-change index, and `resource_minutes`,
+`resource_peaks`, and `resource_peak_samples` by the resource-history contributor
+(`monitor/resource-history.mjs`). The database path and any raw SQLite error text never appear in browser state,
+logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.
+
+The store is a rebuildable index, never a migration target. It rebuilds (recreating an
+empty schema) whenever the file is missing, fails `PRAGMA quick_check`, or carries a
+different schema version than the running monitor expects. While a rebuilt store has
+registered contributors that have not finished repopulating it, `/api/storage` reports
+`rebuilding`; with no registered contributors it reports `rebuilding` until the first
+checkpoint-triggered cycle completes, then `ready`. A store that opens cleanly (not
+rebuilt) is `ready` immediately. A disabled or failed-to-open store is `unavailable` with
+null size and day fields. Node prints an `ExperimentalWarning` on every `node:sqlite`
+import; the monitor installs a one-time `process.emitWarning` filter that drops only the
+warning whose type is `ExperimentalWarning` and whose message starts with `SQLite is an
+experimental feature`, leaving every other warning, including a differently-typed or
+differently-worded one, untouched.
+
+Retention runs monitor-side only after a checkpoint write commits, never in a GET, IPC, or
+HTTP handler, and at most once every five minutes. Two settings govern it: an age choice
+of 30, 90, 180, or 365 days, or keep all (default 90), and a soft database-size threshold
+of 250, 500, 1024, or 2048 MB (default 500). Desktop passes both through private desktop
+settings and a fixed-key IPC; web development reads `POMEGR_RETENTION_DAYS`
+(`30`, `90`, `180`, `365`, or `all`) and `POMEGR_STORE_MAX_MB` (`250`, `500`, `1024`, or
+`2048`), silently falling back to the default for any other value. Browser and LAN
+requests can never change retention or trigger a prune.
+
+Age retention drops a session's `resource_minutes` and `resource_peak_samples` once its
+latest sample is older than the configured age. Size retention, once the database meets
+or exceeds the effective byte threshold, deletes the oldest sessions' `resource_minutes`
+first, then their `resource_peak_samples`, running an incremental vacuum between batches
+and stopping after a bounded number of sessions per cycle. `resource_peaks`,
+`file_changes`, `files`, `file_paths`, and `meta` are never deleted by retention; if
+protected rows alone keep the database at or above the threshold, the database is allowed
+to exceed it rather than deleting protected history. The committed storage-readiness
+response distinguishes `normal` usage, `cleanup_pending` (the threshold is met but the
+per-cycle cap has not yet cleared it), and `protected_excess` (only protected rows remain
+and the threshold still cannot be met).
+
+`/api/storage` serves the committed storage-readiness object and nothing else:
+
+```
+revision, readiness ("loading" | "rebuilding" | "ready" | "unavailable"),
+databaseBytes (number | null), thresholdBytes, percent (databaseBytes / thresholdBytes,
+may exceed 100; null when bytes are unknown), oldestRetainedDay ("YYYY-MM-DD" UTC or null),
+lastPrunedAt (ISO timestamp or null), retentionDays (30 | 90 | 180 | 365 | null),
+cleanupStatus ("normal" | "cleanup_pending" | "protected_excess" | null)
+```
+
+Checkpoint/prune work owns measurement; GETs serve only the committed result and never
+touch SQLite.
 
 ## Repository context inventory
 

@@ -59,6 +59,41 @@ function assertIdentity(payload) {
   }
 }
 
+const FILE_CHANGE_CONTROL = /[\u0000-\u001f\u007f]/u;
+const FILE_CHANGE_DRIVE = /^[A-Za-z]:/u;
+
+// Shape-only: this never resolves against a real filesystem root, so it
+// rejects every forbidden spelling (absolute, drive, UNC/device, traversal,
+// backslashes, control characters, private-root segments) independent of
+// repositoryRelativePath, which validates against an actual session cwd.
+function assertSafeFileChangePath(value, label) {
+  if (typeof value !== "string" || value.length < 1 || value.length > 512
+    || FILE_CHANGE_CONTROL.test(value) || value.includes("\\") || FILE_CHANGE_DRIVE.test(value)) {
+    throw new TypeError(`checkpoint ${label} is invalid`);
+  }
+  const segments = value.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === ".."
+    || [".claude", ".codex"].includes(segment.toLowerCase()))) {
+    throw new TypeError(`checkpoint ${label} is invalid`);
+  }
+}
+
+function assertFileChanges(evidence) {
+  const toolCalls = Array.isArray(evidence?.toolCalls) ? evidence.toolCalls : [];
+  for (const toolCall of toolCalls) {
+    const fileChanges = toolCall?.fileChanges;
+    if (fileChanges === null || fileChanges === undefined) continue;
+    if (!Array.isArray(fileChanges)) throw new TypeError("checkpoint file change evidence is invalid");
+    for (const change of fileChanges) {
+      assertSafeFileChangePath(change?.path, "file change path");
+      if (change?.kind === "moved") assertSafeFileChangePath(change?.previousPath, "file change previous path");
+      else if (change?.previousPath !== null && change?.previousPath !== undefined) {
+        throw new TypeError("checkpoint file change previous path is invalid");
+      }
+    }
+  }
+}
+
 function assertPrivacy(payload, sentinels) {
   const serialized = JSON.stringify(payload);
   for (const sentinel of sentinels) {
@@ -120,6 +155,7 @@ export function assertCheckpointPayload(payload, privacySentinels = DEFAULT_PRIV
   }
   sourceForCheckpoint(payload.source);
   if (!isPlainObject(payload.readiness) || payload.evidence === undefined) throw new TypeError("checkpoint evidence is invalid");
+  assertFileChanges(payload.evidence);
   assertPrivacy(payload, privacySentinels);
   return payload;
 }

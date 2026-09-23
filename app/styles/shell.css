@@ -281,6 +281,22 @@ html[data-theme="dark"] body { background: var(--paper); }
 .providerSettingsProblem, .providerSettingsLoading { margin: var(--space-4) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .providerSettingsUnavailable { display: flex; align-items: center; gap: var(--space-3); }
 .providerSettingsUnavailable .providerSettingsProblem { margin: 0; }
+.storageSettings > header h2 { margin: 0; font: 650 var(--text-base)/1.3 var(--font-ui); }
+.storageSettings > header p { margin: 6px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.storageSettings > header .providerSettingsGuidance { margin-top: var(--space-3); }
+.storageSettingsPanel { margin-top: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.storageSettingsPanel .commandSettingRow { padding: 14px 16px; }
+.storageSettingsPanel .commandSettingRow:first-child { border-top: 0; }
+.storageSettingsPanel .commandSelect { min-width: 120px; }
+.storageUsageRow { grid-template-columns: minmax(0, 1fr); }
+.storageUsageBar { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
+.storageUsageText { margin: 0; color: var(--command-ink); font: var(--text-xs) var(--font-data); font-variant-numeric: tabular-nums; }
+.storageUsageTrack { width: 100%; height: 6px; overflow: hidden; background: var(--command-panel-2); }
+.storageUsageTrack > b { display: block; height: 100%; background: var(--command-muted); }
+.storageUsageCopy { margin: 0; max-width: 64ch; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.storageUsageCleanupStatus { margin: 0; color: var(--command-muted); font-size: var(--text-xs); }
+.storageStatusValue { color: var(--command-muted); font: var(--text-xs) var(--font-data); }
+.storageSettingsFootnote { margin: 0; padding: 10px 16px 12px; color: var(--command-muted); font-size: var(--text-caption); }
 
 @media (max-width: 1080px) {
   .commandShell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: 56px minmax(0, 1fr); }
@@ -350,6 +366,10 @@ html[data-theme="dark"] body { background: var(--paper); }
   .providerSettingsAdvanced > summary { min-height: 44px; }
   .providerSettingActions { justify-content: flex-start; }
   .providerSettingsFooter { justify-content: space-between; }
+  .storageSettingsPanel .commandSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  .storageSettingsPanel .commandSegmented { flex-wrap: wrap; width: auto; }
+  .storageSettingsPanel .commandSegmented > button { flex: 0 1 auto; }
+  .storageSettingsPanel .commandSelect, .storageSettingsPanel .commandSelect select { min-height: 44px; }
 }
 
 @media (max-width: 520px) {

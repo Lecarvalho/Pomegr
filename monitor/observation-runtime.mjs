@@ -1,5 +1,7 @@
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
+import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
+import { attachResourceHistory } from "./resource-history.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -12,6 +14,7 @@ import { createProviderStatusObservation } from "./provider-status-observation.m
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
+import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
@@ -93,6 +96,9 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
+  const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
+  const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
+  const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
     registry,
     now,
@@ -100,6 +106,7 @@ export function createObservationRuntime(options = {}) {
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
+  registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now });
   const historyStore = options.historyStore || new SessionHistoryStore({
     directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),
     maxSessions: options.historyMaxSessions,
@@ -339,7 +346,7 @@ export function createObservationRuntime(options = {}) {
     const refresh = registry.inspectSessions()
       .then(async (inspected) => {
         const resourceTargets = inspected.resourceTargets || [];
-        await resourceUsageSampler.sample(resourceTargets);
+        await resourceHistory.sampleAndSchedule(resourceTargets);
         for (const target of resourceTargets) observationCoordinator.refreshProjection(target.sessionId);
       })
       .catch(() => {})
@@ -458,7 +465,7 @@ export function createObservationRuntime(options = {}) {
   const observationCoordinator = createSessionObservationCoordinator({
     registry,
     store: observationStore,
-    checkpointStore,
+    checkpointStore: checkpointStoreForCoordinator,
     schedule: scheduleObservation,
     cancel: cancelObservation,
     commitDelayMs: options.observationCommitDelayMs,
@@ -593,6 +600,7 @@ export function createObservationRuntime(options = {}) {
     // invokes observers, hydration, parsing, or any provider read.
     agentsObservation.start();
     providerStatus.start();
+    void monitorStoreRuntime.start();
     usageResponseCache.commit({
       generatedAt: null,
       readiness: Object.fromEntries((registry.providers || []).map((provider) => [provider.id, "loading"])),
@@ -659,6 +667,7 @@ export function createObservationRuntime(options = {}) {
       await repositoryInventory.stopPluginObservation?.();
       agentsObservation.stop();
       await providerStatus.stop();
+      await monitorStoreRuntime.stop();
       observationStartPromise = null;
       unsubscribeObservation?.();
       unsubscribeObservation = null;
@@ -671,6 +680,7 @@ export function createObservationRuntime(options = {}) {
     await repositoryInventory.stopPluginObservation?.();
     agentsObservation.stop();
     await providerStatus.stop();
+    await monitorStoreRuntime.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
     if (resourceRefreshTimer) clearInterval(resourceRefreshTimer);
     usageRefreshTimer = null;
@@ -756,6 +766,8 @@ export function createObservationRuntime(options = {}) {
     },
     serveAgents: (query, revision) => agentsObservation.read(query, revision),
     serveProviderStatus: (revision) => providerStatus.read(revision),
+    serveStorage: (revision) => monitorStoreRuntime.serveStorage(revision),
+    monitorStore: monitorStoreRuntime,
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
     readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
     captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),

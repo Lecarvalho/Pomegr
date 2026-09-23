@@ -8,6 +8,7 @@ import { PhoneAccessControls, usePhoneAccessDesktopAvailable } from "../componen
 import { DesktopUpdateSettings, useDesktopUpdates } from "./DesktopUpdateSettings";
 import { AboutDetails } from "./AboutDetails";
 import { ProviderSettings, useProviderSettingsAvailable } from "./ProviderSettings";
+import { StorageSettings } from "./StorageSettings";
 import { CommandPageHeader } from "../components/command-center/CommandPage";
 
 function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
@@ -42,7 +43,7 @@ function PreferenceRow({ id, label, description, checked, onChange }: {
   );
 }
 
-export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "providers" | "about" }) {
+export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "providers" | "storage" | "about" }) {
   const updates = useDesktopUpdates();
   const phoneAccessAvailable = usePhoneAccessDesktopAvailable();
   const providerSettingsAvailable = useProviderSettingsAvailable();
@@ -51,6 +52,7 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
     ["notifications", "Notifications"],
     ...(phoneAccessAvailable ? [["phone", "Phone access"]] as const : []),
     ...(providerSettingsAvailable ? [["providers", "Providers"]] as const : []),
+    ["storage", "Storage"],
     ["data", "Data display"],
     ["about", "About"],
   ] as const;
@@ -85,6 +87,7 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
         {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>Notification controls are available in the desktop runtime and will move here in a future release.</p><SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow><SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
         {section === "phone" && <section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
         {section === "providers" && <section id="settings-panel-providers" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-providers"><ProviderSettings /></section>}
+        {section === "storage" && <section id="settings-panel-storage" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-storage"><StorageSettings /></section>}
         {section === "data" && <section id="settings-panel-data" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-data"><h2>Data display</h2><p>These preferences apply to every live and historical session.</p><div className="displayPreferenceList"><PreferenceRow id="estimated-cost-visible" label="API list-rate estimate" description="Show the provider-reported reference estimate when available. This is not a bill or subscription spend." checked={preferences.estimatedCost} onChange={(checked) => setPreference("estimatedCost", checked)} /></div></section>}
         {section === "about" && <section id="settings-panel-about" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-about"><div className="commandAboutIdentity"><PomegrMark className="commandAboutIdentityMark" /><div className="commandAboutIdentityText"><h2>About Pomegr</h2><p>A local-first, read-only observer for coding-agent sessions.</p></div></div>{updates.available && <><SettingRow label="Application version" description="Pomegr desktop"><span className="commandMonoValue">{updates.state?.applicationVersion ? `v${updates.state.applicationVersion}` : "Version unavailable"}</span></SettingRow><DesktopUpdateSettings updates={updates} /></>}<SettingRow label="Monitor boundary" description="Normalized metadata is served from the loopback monitor. Conversation content remains private."><span className="commandReadyState">Read-only</span></SettingRow><AboutDetails /></section>}
       </div>

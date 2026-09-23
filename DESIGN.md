@@ -138,6 +138,31 @@ Local browsers and authenticated,
 paired LAN browsers may view these paths. This replaces the temporary synthetic web preview. Desktop path
 display remains in native dialogs.
 
+Settings includes a **Storage** section directly after **Providers** and before **Data display**,
+always present in desktop, browser, and paired LAN — unlike Providers and Phone access, it is never
+conditionally hidden. It reuses the settings-row geometry inside one bordered panel: a five-way
+`.commandSegmented` retention-age control (`30 days`, `90 days`, `180 days`, `365 days`, `Keep all`), a
+`CommandSelect` cleanup-threshold field (`250 MB`, `500 MB`, `1 GB`, `2 GB`), the shared storage usage
+meter described below, and a read-only storage-status line sourced from `GET /api/storage`. Retention and
+threshold are desktop-only edits through the native storage-settings bridge, applied on the monitor's next
+prune cycle; the browser and paired LAN views render the identical controls disabled, showing the
+monitor's current values, with the existing `.providerSettingsGuidance` read-only note and no footer. The
+desktop footer reuses `.providerSettingsFooter`'s **Discard changes** / **Save and restart Pomegr** roles
+and messaging exactly as Providers does. This is a feature composition of existing controls, not a new
+shared control or visual authority.
+
+The storage usage meter (`StorageUsageBar`, `.storageUsageBar`) is a small shared informational pattern
+also rendered at `/design-system`: a `--font-data` numeric line reading `<used> / <threshold> · <pct>%`, a
+6px `--command-panel-2` track (`.storageUsageTrack`) with its fill clamped to 0–100%, and a muted
+explanatory line. The track carries `role="meter"` with `aria-valuemin`, `aria-valuemax`, and
+`aria-valuenow` all clamped to 100, and `aria-valuetext` equal to the numeric line; it is informational
+only, never focusable and never a slider. A store over its threshold still prints its real percentage in
+text (`550 MB / 500 MB · 110%`) while the fill visually clamps at 100%. When readiness is missing,
+`loading`, `unavailable`, or the byte/percent fields are `null`, the meter reads **Storage usage
+unavailable** with an empty track, no `role="meter"`, and no `aria-valuenow` — it never renders `0%` for
+missing evidence. A `role="status"` line beneath it names `cleanupStatus`: **Cleanup pending** or
+**Preserved history exceeds the cleanup threshold.**; the ordinary state renders nothing.
+
 **Creative North Star: "The Measured Command Center"**
 
 Pomegr is a local-first, read-only observer that makes coding-agent activity legible without exposing the underlying conversation. The application is a calm evidence workspace: a compact branded header, persistent route rail, flat panels, one-pixel rules, and restrained semantic color give the operator a reliable scan order. The approved HTML preview in `docs/design/pomegr-ui-preview.html` is the code-led authority for this application refresh; no generated component or seed is required.

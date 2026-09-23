@@ -1,12 +1,63 @@
+import path from "node:path";
+import { repositoryRelativePath } from "./repository-path.mjs";
 import { normalizedWorkKind, toolWorkKind } from "./work-kind.mjs";
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1_000;
+const FILE_CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
+const MAX_FILE_CHANGES = 64;
+const MAX_FILE_CHANGE_PATH = 512;
 
 export function boundedActivityDuration(startedAt, finishedAt) {
   const start = Date.parse(startedAt || "");
   const finish = Date.parse(finishedAt || "");
   const duration = finish - start;
   return Number.isFinite(duration) && duration >= 0 && duration <= MAX_DURATION_MS ? duration : null;
+}
+
+function cwdRelativeCandidate(target, cwd) {
+  if (typeof target !== "string" || !target) return null;
+  if (!path.isAbsolute(target)) return target;
+  const relative = path.relative(cwd, target);
+  return relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+    ? relative
+    : null;
+}
+
+function safeFileChangePath(target, cwd, forbiddenRoots) {
+  const relative = cwdRelativeCandidate(target, cwd);
+  if (relative === null) return null;
+  const safePath = repositoryRelativePath(relative, cwd, { forbiddenRoots });
+  return safePath && safePath.length <= MAX_FILE_CHANGE_PATH ? safePath : null;
+}
+
+/**
+ * Map one tool call's raw {target, kind, previousTarget} candidates (absolute
+ * or cwd-relative native spellings) to validated, repository-relative file-
+ * change evidence rebased onto the session cwd. Anything outside cwd,
+ * invalid, over-bound, or of an unrecognized kind is silently dropped;
+ * absent evidence returns null so it never enters the checkpointed record.
+ */
+export function boundedFileChanges(candidates, cwd, { forbiddenRoots = [] } = {}) {
+  if (!Array.isArray(candidates) || typeof cwd !== "string" || !cwd) return null;
+  const seen = new Set();
+  const changes = [];
+  for (const candidate of candidates) {
+    if (changes.length >= MAX_FILE_CHANGES) break;
+    const kind = candidate?.kind;
+    if (!FILE_CHANGE_KINDS.has(kind)) continue;
+    const changePath = safeFileChangePath(candidate?.target, cwd, forbiddenRoots);
+    if (!changePath) continue;
+    let previousPath = null;
+    if (kind === "moved") {
+      previousPath = safeFileChangePath(candidate?.previousTarget, cwd, forbiddenRoots);
+      if (!previousPath) continue;
+    }
+    const dedupeKey = `${changePath}\u0000${kind}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    changes.push({ path: changePath, kind, previousPath });
+  }
+  return changes.length ? changes : null;
 }
 
 export function shellFailureActivityEvents(executionTasks, actor = "Primary agent") {

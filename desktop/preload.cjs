@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const DESKTOP_THEME_CHANNEL = "pomegr:set-native-theme";
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
+const STORAGE_SETTING_ENUMS = {
+  retentionDays: new Set([30, 90, 180, 365, 0]),
+  storeMaxMb: new Set([250, 500, 1024, 2048]),
+};
 
 function setNativeTheme(source) {
   if (source !== "light" && source !== "dark" && source !== "system") return Promise.resolve(false);
@@ -21,6 +25,15 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   resetProviderFolder(key) { return ipcRenderer.invoke("pomegr:reset-provider-folder", key); },
   discardProviderSettings() { return ipcRenderer.invoke("pomegr:discard-provider-settings"); },
   saveProviderSettings() { return ipcRenderer.invoke("pomegr:save-provider-settings"); },
+  getStorageSettings() { return ipcRenderer.invoke("pomegr:storage-settings"); },
+  setStorageSetting(key, value) {
+    if (!Object.prototype.hasOwnProperty.call(STORAGE_SETTING_ENUMS, key) || !STORAGE_SETTING_ENUMS[key].has(value)) {
+      return Promise.resolve({ status: "unavailable", state: null });
+    }
+    return ipcRenderer.invoke("pomegr:set-storage-setting", key, value);
+  },
+  discardStorageSettings() { return ipcRenderer.invoke("pomegr:discard-storage-settings"); },
+  saveStorageSettings() { return ipcRenderer.invoke("pomegr:save-storage-settings"); },
   getPhoneAccessState() { return ipcRenderer.invoke("pomegr:phone-access-state"); },
   setPhoneSharing(enabled, networkId) { return ipcRenderer.invoke("pomegr:set-phone-sharing", enabled, networkId); },
   setPhoneAutoStart(enabled) { return ipcRenderer.invoke("pomegr:set-phone-auto-start", enabled); },

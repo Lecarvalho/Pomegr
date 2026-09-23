@@ -378,6 +378,9 @@ export function createCodexProvider(options = {}) {
         stableFallbackIdentity: true,
         priorUsageSnapshots: !historical && hasLiveContextContinuity(thread.rolloutFile, generation)
           ? previousContext?.snapshots : [],
+        // File-change evidence rebases onto this thread's own recorded cwd and
+        // never resolves into the adapter's own Codex home.
+        cwd: thread.cwd, forbiddenRoots: [codexHome],
       });
       let existingState = historical
         ? null
@@ -468,7 +471,9 @@ export function createCodexProvider(options = {}) {
     });
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
-      appServerSessions.readThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt)
+      appServerSessions.readThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt, {
+        cwd: allMetadata.find((thread) => thread.localId === threadId)?.cwd, forbiddenRoots: [codexHome],
+      })
     )));
     const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
