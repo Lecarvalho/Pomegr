@@ -403,6 +403,63 @@ Legacy repository query links redirect to the Context inventory tab. Setup
 mutations require native confirmation, with browser clients receiving setup
 instructions.
 
+### File tree and file history panel
+
+FileTree and FileHistoryPanel (`app/components/repositories/FileTree.tsx`,
+`FileHistoryPanel.tsx`) are shared, fetch-free presentation controls behind the session
+Repository tab's Touched here / Uncommitted / Changed elsewhere tree and the repository
+Files tab. FileTree is a `panel` (1px border, 6px radius) in a column with overflow
+hidden: an 8px/14px header row shows the repository name as a muted 11px uppercase
+eyebrow, with a right eyebrow **Sessions** in repository scope. Rows are 13px with
+6px/14px padding and indent 14/30/46/62px per depth (folders first, then files,
+alphabetical); folder rows carry a 12px chevron (right collapsed, down expanded) and a
+mono folder name, file rows carry no chevron. Rows are keyboard-reachable buttons;
+Enter/Space selects. Folders default collapsed except ancestors of the current
+selection and top-level folders with 12 or fewer files total; `expandAll` (search
+active) opens every folder. The selected row alone takes the raised surface and ink
+text — nothing else marks selection. Session scope shows a status chip (the small
+`.commandChip.small` variant: 16px tall, the existing `--text-caption` 11px chip text,
+0 4px padding) before the mono file name — amber **MOD**, green **NEW** (added or
+untracked), neutral **DEL**/**REN**, no chip when the working tree reports no status —
+and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
+(full path, indent 14, their own status chip) that is hidden when empty. Repository
+scope shows each file and folder's distinct-session count right-aligned in muted 11px
+mono from the monitor's rollup; files with no recorded session history show no count
+and render muted. A pinned footer rule reads **Status from the working tree · select a
+file for its history** in session scope and **Folders roll up distinct sessions** in
+repository scope.
+
+FileHistoryPanel renders the selected file's committed session history, never fetching
+it itself. Its header holds a muted 11px mono breadcrumb (`<repository> / <dir>/`),
+then a row with a file glyph, the mono 14px bold file name, and — only when the file
+currently has a working-tree status — a working-tree chip (**MOD in working tree**
+amber, **NEW in working tree** green), plus a right-aligned header action: session side
+links **All history on repository page** (quiet action, trailing chevron) to
+`/repositories/<id>?tab=files&path=<path>`; repository side offers **Copy path**
+(secondary action) that copies the repository-relative path and shows a brief
+**Copied** state. A third row reads **N recorded sessions · newest first** beside a
+`.commandSegmented` provider filter that appears only when more than one provider is
+present among the sessions. Each entry shows a kind chip (**Edited** green, **Created**
+the context/lavender tone, **Deleted** amber, **Moved** neutral), an **N edits** count
+when the session recorded more than zero edits, and either a neutral **this session**
+chip (session side, the current session's entry) or a green **live** chip (another
+live session) — never both; the session title links to
+`/sessions/<id>?tab=repository&path=<path>`; a third line lists the provider chip and
+agent names (or **N agents** when names are not individually known), with no per-agent
+role dots; a moved entry additionally shows a muted mono **as `<old path>`** line. Only
+the current session's entry sits on the raised surface. A footer states the honest
+Write/Edit coverage caveat with a **How to read this** dotted info popover holding the
+longer Git-move and retention explanation. The panel shares one frame across its
+states: no file selected, a loading skeleton, **File history is rebuilding.**, **File
+history is unavailable.**, **No recorded sessions changed this file.**, and — whenever
+evidence includes changes with no session attribution — a muted **N changes without
+session attribution (moves seen in Git)** line.
+
+`/design-system` renders both components with static data: a session-scope tree with a
+Changed elsewhere group and a selected row, a repository-scope tree with counts and a
+muted no-history file, and a file history panel sample for each side plus the
+empty/loading state.
+
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary
 cache growth and initial cache creation remain in the cache-write bars and details;

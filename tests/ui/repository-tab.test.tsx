@@ -1,21 +1,44 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PullRequest } from "../../shared/monitor-contract";
+import type { PullRequest, SessionSummary } from "../../shared/monitor-contract";
 import type { RepositoryDomain } from "../../shared/session-domain-contract";
+import type { FileHistoryResponse } from "../../shared/repository-files-contract";
 import { RepositoryTab, type RepositoryTabProps } from "../../app/components/dashboard/RepositoryTab";
+import type { FileHistoryPanelProps } from "../../app/components/repositories/FileHistoryPanel";
+import type { FileTreeProps } from "../../app/components/repositories/FileTree";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
-
-function renderTab(props: RepositoryTabProps) {
-  return render(<LiveClockProvider running={false}><RepositoryTab {...props} /></LiveClockProvider>);
-}
+import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 
 const { useSessionDomain } = vi.hoisted(() => ({ useSessionDomain: vi.fn() }));
 vi.mock("../../app/session-domain-store", () => ({ useSessionDomain }));
+
+const { useFileHistory } = vi.hoisted(() => ({ useFileHistory: vi.fn<(...args: unknown[]) => FileHistoryResponse | null>(() => null) }));
+vi.mock("../../app/repository-files-store", () => ({ useFileHistory }));
+
+// FileTree and FileHistoryPanel are being written in parallel (implement-controls); this file
+// tests RepositoryTab's own toolbar/segment/selection/fetch-target logic and the props it hands
+// them, never their rendered internals (see the plan's implement-tabs brief).
+const { FileTreeMock, FileHistoryPanelMock } = vi.hoisted(() => ({
+  FileTreeMock: vi.fn<(props: FileTreeProps) => void>(),
+  FileHistoryPanelMock: vi.fn<(props: FileHistoryPanelProps) => void>(),
+}));
+vi.mock("../../app/components/repositories/FileTree", () => ({
+  FileTree: (props: FileTreeProps) => { FileTreeMock(props); return null; },
+}));
+vi.mock("../../app/components/repositories/FileHistoryPanel", () => ({
+  FileHistoryPanel: (props: FileHistoryPanelProps) => { FileHistoryPanelMock(props); return null; },
+}));
+
+function renderTab(props: RepositoryTabProps, sessions: SessionSummary[] = []) {
+  return render(<LiveClockProvider running={false}><SessionCatalogProvider sessions={sessions}><RepositoryTab {...props} /></SessionCatalogProvider></LiveClockProvider>);
+}
 
 const SESSION_ID = "claude:repo-tab";
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 
 type Repository = NonNullable<RepositoryDomain["repository"]>;
+type FileHistoryFiles = RepositoryDomain["fileHistory"]["files"];
 
 function repository(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -56,9 +79,13 @@ function domain(overrides: Record<string, unknown> = {}): RepositoryDomain {
     recordedAt: null,
     commitsInSession: 2,
     gitTasks: { total: 9, failed: 0 },
-    fileHistory: { readiness: "unavailable", items: [] },
+    fileHistory: { readiness: "unavailable", files: [], truncated: false },
     ...overrides,
   } as RepositoryDomain;
+}
+
+function touchedFile(overrides: Partial<FileHistoryFiles[number]> = {}): FileHistoryFiles[number] {
+  return { fileId: "f1", path: "app/Dashboard.tsx", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-22T12:00:00.000Z", ...overrides };
 }
 
 function result(data: RepositoryDomain | null, error: string | null = null, unavailable = false) {
@@ -66,7 +93,13 @@ function result(data: RepositoryDomain | null, error: string | null = null, unav
 }
 
 describe("RepositoryTab", () => {
-  beforeEach(() => { useSessionDomain.mockReset(); });
+  beforeEach(() => {
+    useSessionDomain.mockReset();
+    useFileHistory.mockReset();
+    useFileHistory.mockReturnValue(null);
+    FileTreeMock.mockReset();
+    FileHistoryPanelMock.mockReset();
+  });
 
   it("renders the live top bar with comparison, PR, and line-2 evidence, and no commit list", () => {
     useSessionDomain.mockReturnValue(result(domain()));
@@ -105,7 +138,7 @@ describe("RepositoryTab", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("shows the recorded files and the recorded-snapshot caption for a historical session with a snapshot", () => {
+  it("shows the recorded-snapshot caption for a historical session with a snapshot", () => {
     useSessionDomain.mockReturnValue(result(domain({
       repository: repository({
         historical: true,
@@ -117,8 +150,6 @@ describe("RepositoryTab", () => {
     renderTab({ sessionId: SESSION_ID, historical: true });
 
     expect(screen.getByText("Recorded at the session's last live check")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
-    expect(within(screen.getByText("Uncommitted files").closest("section")!).getByText("MOD")).toBeInTheDocument();
   });
 
   it("shows only the branch and the unrecorded notice for a historical session with no snapshot", () => {
@@ -131,8 +162,9 @@ describe("RepositoryTab", () => {
 
     expect(screen.getByText("feat/ia-progressive-disclosure")).toBeInTheDocument();
     expect(screen.getByText("Repository state was not recorded for this session.")).toBeInTheDocument();
-    expect(screen.queryByText("Uncommitted files")).not.toBeInTheDocument();
     expect(screen.queryByText(/PR #/)).not.toBeInTheDocument();
+    // No files toolbar without a recorded snapshot.
+    expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
   });
 
   it("shows the empty-repository message when no repository was detected", () => {
@@ -147,8 +179,10 @@ describe("RepositoryTab", () => {
     expect(screen.getByRole("link", { name: /Git tab on repository page/ })).toHaveAttribute("href", `/repositories/${REPOSITORY_ID}?tab=git`);
 
     useSessionDomain.mockReturnValue(result(domain({ repositoryId: null })));
-    rerender(<LiveClockProvider running={false}><RepositoryTab sessionId={SESSION_ID} historical={false} /></LiveClockProvider>);
+    rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
     expect(screen.queryByRole("link", { name: /Git tab on repository page/ })).not.toBeInTheDocument();
+    // File history needs a linked repository id; the files body does not render without one.
+    expect(screen.getByText("File history requires a linked repository.")).toBeInTheDocument();
   });
 
   it("shows a loading state before evidence arrives and an unavailable state once the monitor confirms none", () => {
@@ -160,5 +194,142 @@ describe("RepositoryTab", () => {
     useSessionDomain.mockReturnValue(result(null, null, true));
     renderTab({ sessionId: SESSION_ID, historical: false });
     expect(screen.getByText("Repository evidence is unavailable for this session.")).toBeInTheDocument();
+  });
+
+  describe("files body (F17/F18)", () => {
+    function domainWithFiles(overrides: Record<string, unknown> = {}) {
+      return domain({
+        repository: repository({
+          files: [
+            { status: " M", path: "app/Dashboard.tsx" }, // touched, currently modified
+            { status: "??", path: "app/new-file.ts" }, // uncommitted, not touched this session
+          ],
+        }),
+        fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
+        ...overrides,
+      });
+    }
+
+    it("renders the search field and segmented counts, defaulting to Touched here", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+
+      expect(screen.getByRole("searchbox", { name: "Find a file touched in this session" })).toBeInTheDocument();
+      const segment = screen.getByRole("group", { name: "File segment" });
+      expect(within(segment).getByRole("button", { name: "Touched here 1" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toHaveAttribute("aria-pressed", "false");
+      expect(within(segment).getByRole("button", { name: "Changed elsewhere 1" })).toHaveAttribute("aria-pressed", "false");
+
+      const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      expect(treeProps.scope).toBe("session");
+      expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M" }]);
+      expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
+    });
+
+    it("switches to Uncommitted and Changed elsewhere on click, changing the files passed to FileTree", async () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+
+      await userEvent.click(screen.getByRole("button", { name: "Uncommitted 2" }));
+      let treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      expect(treeProps.files).toEqual([
+        { path: "app/Dashboard.tsx", fileId: "f1", status: " M" },
+        { path: "app/new-file.ts", fileId: null, status: "??" },
+      ]);
+      expect(treeProps.elsewhere).toBeUndefined();
+
+      await userEvent.click(screen.getByRole("button", { name: "Changed elsewhere 1" }));
+      treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      expect(treeProps.files).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
+      expect(treeProps.elsewhere).toBeUndefined();
+    });
+
+    it("filters the active segment by the search query and expands matches", async () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find a file touched in this session" }), "new-file");
+      const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      // Search stays on the current segment (Touched here); "new-file" only matches the elsewhere group.
+      expect(treeProps.files).toEqual([]);
+      expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
+      expect(treeProps.expandAll).toBe(true);
+    });
+
+    it("calls onSelectPath when a tree row is selected", () => {
+      const onSelectPath = vi.fn();
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, onSelectPath });
+
+      const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      treeProps.onSelect({ path: "app/Dashboard.tsx", fileId: "f1" });
+      expect(onSelectPath).toHaveBeenCalledWith("app/Dashboard.tsx");
+    });
+
+    it("resolves the file-history target by fileId when the path is touched, else by path, and passes it to useFileHistory", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
+      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, { fileId: "f1" }, { paused: false });
+
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/new-file.ts" });
+      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, { path: "app/new-file.ts" }, { paused: false });
+
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: null });
+      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, null, { paused: false });
+    });
+
+    it("rejects an unsafe deep-linked path before selecting or fetching anything", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "../secret" });
+      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, null, { paused: false });
+      const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+      expect(treeProps.selectedPath).toBeNull();
+    });
+
+    it("passes the working-tree status, history, and current session id to FileHistoryPanel", () => {
+      useFileHistory.mockReturnValue({ kind: "history", revision: 1, readiness: "ready", repositoryId: REPOSITORY_ID, fileId: "f1", path: "app/Dashboard.tsx", sessions: [], unattributedChanges: 0, truncated: false });
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
+
+      const panelProps = FileHistoryPanelMock.mock.calls.at(-1)![0];
+      expect(panelProps.side).toBe("session");
+      expect(panelProps.repositoryId).toBe(REPOSITORY_ID);
+      expect(panelProps.path).toBe("app/Dashboard.tsx");
+      expect(panelProps.workingTreeStatus).toBe(" M");
+      expect(panelProps.currentSessionId).toBe(SESSION_ID);
+      expect(panelProps.history?.fileId).toBe("f1");
+    });
+
+    it("uses the catalog project as the tree root label, falling back to Repository when unknown", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false }, [{
+        id: SESSION_ID, provider: "claude", source: "Claude Code", title: "t", project: "pomegr",
+        updatedAt: "2026-09-22T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working",
+        summaryReadiness: "ready", agentCount: 1, activeAgentCount: 1, latestContextTotal: 100, progress: null, currentActivity: null,
+      }]);
+      expect(FileTreeMock.mock.calls.at(-1)![0].rootLabel).toBe("pomegr");
+
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+      expect(FileTreeMock.mock.calls.at(-1)![0].rootLabel).toBe("Repository");
+    });
+
+    it("shows a loading skeleton for Touched here while file history is still loading, without rendering FileTree", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "loading", files: [], truncated: false } })));
+      FileTreeMock.mockClear();
+      renderTab({ sessionId: SESSION_ID, historical: false });
+      expect(screen.getByLabelText("Loading file history")).toBeInTheDocument();
+      expect(FileTreeMock).not.toHaveBeenCalled();
+    });
+
+    it("gives an unavailable/rebuilding empty text without a skeleton once file history has answered", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "unavailable", files: [], truncated: false } })));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+      expect(FileTreeMock.mock.calls.at(-1)![0].emptyText).toBe("File history is unavailable.");
+
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "rebuilding", files: [], truncated: false } })));
+      renderTab({ sessionId: SESSION_ID, historical: false });
+      expect(FileTreeMock.mock.calls.at(-1)![0].emptyText).toBe("File history is rebuilding.");
+    });
   });
 });

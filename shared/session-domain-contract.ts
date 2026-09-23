@@ -143,7 +143,20 @@ export type RepositoryDomain = SessionDomainBase & {
   /** Execution tasks whose workKind is git, git_push or pull_request; null until activity
    *  evidence is ready. */
   gitTasks: { total: number; failed: number } | null;
-  fileHistory: { readiness: "unavailable"; items: [] };
+  fileHistory: SessionFileHistory;
+};
+
+/** Files this session changed, from the committed file-history cache (never a GET-time read). */
+export type SessionFileHistory = {
+  readiness: "loading" | "ready" | "unavailable" | "rebuilding";
+  files: Array<{
+    fileId: string; // opaque `f<integer>`, see shared/repository-files-contract.ts
+    path: string; // current repository-relative path
+    kind: "created" | "edited" | "deleted" | "moved"; // newest kind in this session
+    changeCount: number;
+    lastObservedAt: string; // ISO
+  }>; // newest change first, bounded
+  truncated: boolean;
 };
 
 /** Display fields. cpu_machine_percent stays in live samples only; peaks and curves use these four. */

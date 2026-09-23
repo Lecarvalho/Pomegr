@@ -146,6 +146,27 @@ function gitTaskTally(executionTasks) {
   const relevant = (Array.isArray(executionTasks) ? executionTasks : []).filter((task) => GIT_TASK_WORK_KINDS.has(task?.workKind));
   return { total: relevant.length, failed: relevant.filter((task) => task?.status === "failed").length };
 }
+const FILE_HISTORY_READINESS = new Set(["loading", "ready", "unavailable", "rebuilding"]);
+const FILE_CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
+const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
+const MAX_SESSION_FILE_HISTORY_FILES = 200;
+function publicSessionFileHistoryEntry(value) {
+  if (!value || typeof value.fileId !== "string" || !FILE_ID_PATTERN.test(value.fileId)) return null;
+  if (!isSafeRecordedRepositoryPath(value.path) || !FILE_CHANGE_KINDS.has(value.kind)) return null;
+  if (!Number.isSafeInteger(value.changeCount) || value.changeCount < 0) return null;
+  if (typeof value.lastObservedAt !== "string" || !Number.isFinite(Date.parse(value.lastObservedAt))) return null;
+  return { fileId: value.fileId, path: value.path, kind: value.kind, changeCount: value.changeCount, lastObservedAt: value.lastObservedAt };
+}
+// Re-validates the committed file-history-domain block: an invalid or missing block degrades
+// to unavailable rather than ever letting an unvalidated path or count reach the browser.
+function publicFileHistory(value) {
+  const readiness = FILE_HISTORY_READINESS.has(value?.readiness) ? value.readiness : "unavailable";
+  return {
+    readiness,
+    files: list(value?.files, publicSessionFileHistoryEntry).slice(0, MAX_SESSION_FILE_HISTORY_FILES),
+    truncated: Boolean(value?.truncated),
+  };
+}
 function publicPullRequests(value) {
   if (!value) return null;
   return { ...fields(value, ["status", "checkedAt"]), items: list(value.items, (item) => fields(item,
@@ -464,7 +485,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),
     gitTasks: ready.activityEvidence === "ready" ? gitTaskTally(state.executionTasks) : null,
-    fileHistory: { readiness: "unavailable", items: [] },
+    fileHistory: publicFileHistory(options.fileHistory),
   });
   const executionTasksById = new Map((Array.isArray(state.executionTasks) ? state.executionTasks : [])
     .filter((task) => typeof task?.id === "string")

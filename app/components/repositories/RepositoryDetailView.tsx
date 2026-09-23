@@ -8,9 +8,10 @@ import type { RepositoryPluginAction } from "../../../shared/repository-plugin-c
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
 import { ProviderBadge } from "../ProviderBadge";
 import { CommandBreadcrumbSeparator, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
-import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
+import { repositoryFilePath, repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
+import { RepositoryFilesTab } from "./RepositoryFilesTab";
 import { RepositoryGitTab } from "./RepositoryGitTab";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
 import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
@@ -18,11 +19,12 @@ import { RepositoryOverviewTab } from "./RepositoryOverviewTab";
 
 const subscribeDesktopBridge = () => () => {};
 
-export function RepositoryDetailView({ repositoryId, initialTab = "overview", initialProvider, initialRevisionId }: {
+export function RepositoryDetailView({ repositoryId, initialTab = "overview", initialProvider, initialRevisionId, initialPath }: {
   repositoryId: string;
   initialTab?: RepositoryTab;
   initialProvider?: ProviderId;
   initialRevisionId?: string;
+  initialPath?: string;
 }) {
   const { snapshot, loading, connected, refresh } = useRepositoryInventory();
   const [confirming, setConfirming] = useState<ProviderId | null>(null);
@@ -58,6 +60,13 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     provider: searchParams.get("provider") ?? initialProvider,
     revision: searchParams.has("tab") ? searchParams.get("revision") ?? undefined : initialRevisionId,
   });
+  const filesPath = repositoryFilePath(searchParams.has("tab") ? searchParams.get("path") ?? undefined : initialPath) ?? null;
+  const selectFilesPath = (path: string | null) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("tab", "files");
+    if (path) query.set("path", path); else query.delete("path");
+    router.replace(`/repositories/${repositoryId}?${query}`, { scroll: false });
+  };
   const selectRevision = (provider: ProviderId, revisionId: string) => {
     const query = new URLSearchParams(searchParams.toString());
     query.set("tab", "inventory");
@@ -146,7 +155,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
-        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "plugin" ? <>
+        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "files" ? <RepositoryFilesTab repositoryId={repositoryId} repositoryLabel={repository.displayName} path={filesPath} onSelectPath={selectFilesPath} /> : tab === "plugin" ? <>
           <div className="repositoryPaneHead"><div><h2>Plugin</h2><p>Install and manage the Pomegr plugin for each provider. Installation and updates run natively on this machine after a confirmation.</p></div></div>
           {repository.providers.map((provider) => {
             const key = `${repositoryId}:${provider.provider}`;

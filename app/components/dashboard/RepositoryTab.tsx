@@ -1,15 +1,39 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PullRequest } from "../../../shared/monitor-contract";
 import type { RepositoryDomain } from "../../../shared/session-domain-contract";
-import { gitPathParts, gitStatusLabel, timelineTime } from "../../dashboard-utils";
+import { timelineTime } from "../../dashboard-utils";
+import { useFileHistory } from "../../repository-files-store";
+import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { useSessionDomain } from "../../session-domain-store";
+import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
+import { FileTree } from "../repositories/FileTree";
+import { repositoryFilePath } from "../repositories/repository-route";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { RelativeTimeText } from "../LiveTime";
+import {
+  bestRepositoryTabFilesSegment,
+  buildRepositoryTabFilesSegments,
+  ELSEWHERE_SEGMENT_EMPTY_TEXT,
+  filterFilesByPath,
+  REPOSITORY_TAB_FILES_SEGMENTS,
+  resolveRepositoryTabFileTarget,
+  segmentCount,
+  touchedSegmentEmptyText,
+  uncommittedSegmentEmptyText,
+  type RepositoryTabFilesSegment,
+} from "./repository-files-view";
 
-export type RepositoryTabProps = { sessionId: string; historical: boolean; paused?: boolean };
+export type RepositoryTabProps = {
+  sessionId: string;
+  historical: boolean;
+  paused?: boolean;
+  /** Deep-linked or previously selected repository-relative path (F21); null selects nothing. */
+  selectedPath?: string | null;
+  onSelectPath?: (path: string | null) => void;
+};
 
 type Repository = NonNullable<RepositoryDomain["repository"]>;
 type Comparison = Repository["comparison"];
@@ -78,31 +102,93 @@ function RepositoryTabBarSkeleton() {
   </div>;
 }
 
-function UncommittedFiles({ files, historical }: { files: Repository["files"]; historical: boolean }) {
-  return <section className="panel repositoryFilesPanel" aria-label="Uncommitted files">
-    <h2 className="repositoryFilesHeading">Uncommitted files</h2>
-    {files.length === 0
-      ? <p className="repositoryFilesEmpty">{historical ? "No uncommitted files were recorded." : "No uncommitted files."}</p>
-      : <ul className="repositoryFilesList">
-        {files.map((file) => {
-          const pathParts = gitPathParts(file.path);
-          const status = gitStatusLabel(file.status);
-          const tone = status === "NEW" || status === "ADD" ? "positive" : status === "DEL" || status === "CONFLICT" ? "negative" : "warning";
-          return <li className="repositoryFileRow" key={`${file.status}-${file.path}`}>
-            <span className={`commandChip repositoryFileStatus ${tone}`}>{status}</span>
-            <code title={file.path}><span className="repositoryFilePathDirectory">{pathParts.directory}</span><span className="repositoryFilePathName">{pathParts.filename}</span></code>
-          </li>;
-        })}
-      </ul>}
-  </section>;
+function FilesTreeSkeleton() {
+  return <div className="panel repositoryTabFilesTree repositoryTabFilesSkeleton" role="status" aria-label="Loading file history" aria-busy="true">
+    <span className="repositoryTabFilesSkeletonLine" />
+    <span className="repositoryTabFilesSkeletonLine" />
+    <span className="repositoryTabFilesSkeletonLine" />
+  </div>;
 }
 
-/** The session Repository tab: a top bar (branch, comparison, PR, git-task summary) plus an
- * interim uncommitted-files list. The commit list moved to the repository page Git tab
+/** The session Repository tab's body (F17/F18): a search field, a Touched here / Uncommitted /
+ * Changed elsewhere segment, and the shared FileTree / FileHistoryPanel pair in session scope. */
+function RepositoryTabFiles({ domain, repository, repositoryId, historical, sessionId, selectedPath, onSelectPath, paused }: {
+  domain: RepositoryDomain;
+  repository: Repository;
+  repositoryId: string;
+  historical: boolean;
+  sessionId: string;
+  selectedPath: string | null;
+  onSelectPath: (path: string | null) => void;
+  paused: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
+  const { sessions } = useSessionCatalog();
+  const rootLabel = sessions.find((session) => session.id === sessionId)?.project ?? "Repository";
+  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, repository.files);
+  const segment = manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments);
+  const query = search.trim();
+  const target = resolveRepositoryTabFileTarget(selectedPath, domain.fileHistory.files);
+  const history = useFileHistory(repositoryId, target, { paused });
+  const workingTreeStatus = selectedPath ? repository.files.find((file) => file.path === selectedPath)?.status ?? null : null;
+
+  const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);
+  const selectFile = (path: string) => onSelectPath(path);
+
+  const treeArea = segment === "touched" && domain.fileHistory.readiness === "loading"
+    ? <FilesTreeSkeleton />
+    : <FileTree
+        scope="session"
+        rootLabel={rootLabel}
+        files={filterFilesByPath(segments[segment], query)}
+        elsewhere={segment === "touched" ? filterFilesByPath(segments.touchedElsewhere, query) : undefined}
+        selectedPath={selectedPath}
+        onSelect={(file) => selectFile(file.path)}
+        expandAll={query.length > 0}
+        emptyText={segment === "touched"
+          ? touchedSegmentEmptyText(domain.fileHistory.readiness) ?? "No files touched in this session yet."
+          : segment === "uncommitted" ? uncommittedSegmentEmptyText(historical) : ELSEWHERE_SEGMENT_EMPTY_TEXT}
+        className="repositoryTabFilesTree"
+      />;
+
+  return <div className="repositoryTabFiles">
+    <div className="repositoryTabFilesToolbar">
+      <input
+        type="search"
+        className="repositoryTabFilesSearch"
+        aria-label="Find a file touched in this session"
+        placeholder="Find a file touched in this session"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+      />
+      <div className="commandSegmented" role="group" aria-label="File segment">
+        {REPOSITORY_TAB_FILES_SEGMENTS.map(({ id, label }) => <button key={id} type="button" aria-pressed={segment === id} onClick={() => selectSegment(id)}>{label} {segmentCount(segments, id)}</button>)}
+      </div>
+    </div>
+    <div className="repositoryTabFilesBody">
+      {treeArea}
+      <FileHistoryPanel
+        side="session"
+        repositoryId={repositoryId}
+        repositoryLabel={rootLabel}
+        path={selectedPath}
+        workingTreeStatus={workingTreeStatus}
+        history={history}
+        currentSessionId={sessionId}
+        className="repositoryTabFilesPanel"
+      />
+    </div>
+  </div>;
+}
+
+/** The session Repository tab: a top bar (branch, comparison, PR, git-task summary) plus the
+ * file tree / file history body (F17/F18). The commit list moved to the repository page Git tab
  * (RepositoryGitTab.tsx); see docs/internal/plans/ia-redesign for the design contract. */
-export function RepositoryTab({ sessionId, historical, paused = false }: RepositoryTabProps) {
+export function RepositoryTab({ sessionId, historical, paused = false, selectedPath: selectedPathInput = null, onSelectPath = () => {} }: RepositoryTabProps) {
   const result = useSessionDomain({ sessionId, domain: "repository" }, { historical, enabled: !paused });
   const domain = result.data;
+  const selectedPath = repositoryFilePath(selectedPathInput) ?? null;
 
   if (!domain) return <div className="sessionTabState" role="status">{result.unavailable ? "Repository evidence is unavailable for this session." : result.error ? "Repository evidence is temporarily unavailable." : "Loading repository evidence…"}</div>;
   if (domain.readiness === "loading") return <RepositoryTabBarSkeleton />;
@@ -162,6 +248,8 @@ export function RepositoryTab({ sessionId, historical, paused = false }: Reposit
         Git tab on repository page<CommandIcon name="arrow" size="small" />
       </Link>}
     </section>
-    <UncommittedFiles files={repository.files} historical={historical} />
+    {domain.repositoryId
+      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} paused={paused} />
+      : <p className="repositoryTabFilesUnavailable">File history requires a linked repository.</p>}
   </div>;
 }

@@ -165,7 +165,7 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
       {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
-      {activeTab === "repository" && <RepositoryTab sessionId={sessionId} historical={historical} paused={paused} />}
+      {activeTab === "repository" && <RepositoryTab sessionId={sessionId} historical={historical} paused={paused} selectedPath={initialQuery.path || null} onSelectPath={(path) => navigate({ path })} />}
       {activeTab === "resources" && <ResourcesTab sessionId={sessionId} historical={historical} paused={paused} />}
       {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>

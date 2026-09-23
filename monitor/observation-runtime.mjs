@@ -15,7 +15,7 @@ import { createProviderStatusObservation } from "./provider-status-observation.m
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
-import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
+import { attachFileHistory } from "./file-history-domain.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
@@ -106,32 +106,31 @@ export function createObservationRuntime(options = {}) {
   // Registered after resource-history so its cycle contributor reads fresh writes; onChange
   // commits directly (refreshProjection no-ops on byte-identical re-derivation).
   const resourceDomainSource = createResourceDomainSource({
-    monitorStoreRuntime, demandedSessionIds: () => sessionDomains.sessionIds(), now,
-    onChange: (sessionId) => sessionDomainServing.commit(sessionId),
+    monitorStoreRuntime, demandedSessionIds: () => sessionDomains.sessionIds(), now, onChange: (sessionId) => sessionDomainServing.commit(sessionId),
   });
   const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
-    registry,
-    now,
-    persistence: options.checkpointStore !== false,
+    registry, now, persistence: options.checkpointStore !== false,
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
-  registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now });
+  // Registers the file-change index contributor plus this committed cache; forward-references sessionDomains/observationCoordinator below, same pattern as resourceDomainSource above.
+  const fileHistorySource = attachFileHistory(monitorStoreRuntime, {
+    resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now, demandedSessionIds: () => sessionDomains.sessionIds(),
+    catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [], onSessionChange: (sessionId) => sessionDomainServing.commit(sessionId),
+  });
   const historyStore = options.historyStore || new SessionHistoryStore({
     directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),
-    maxSessions: options.historyMaxSessions,
-    maxResident: options.historyMaxResident ?? 0,
+    maxSessions: options.historyMaxSessions, maxResident: options.historyMaxResident ?? 0,
   });
   let sessionDomainServing; // assigned once observationCoordinator exists below; the store only calls it later
   const sessionDomains = options.sessionDomainStore || createSessionDomainStore({
-    now,
-    maxSessions: options.sessionDomainMaxSessions,
-    idleMs: options.sessionDomainIdleMs,
+    now, maxSessions: options.sessionDomainMaxSessions, idleMs: options.sessionDomainIdleMs,
     isProtected: (sessionId) => sessionDomainServing.protectedSessionIds().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
-    retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), onDemand: (sessionId) => resourceDomainSource.request(sessionId),
+    retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
+    onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();
@@ -772,6 +771,7 @@ export function createObservationRuntime(options = {}) {
     serveStorage: (revision) => monitorStoreRuntime.serveStorage(revision),
     monitorStore: monitorStoreRuntime,
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
+    serveRepositoryFiles: (query) => ((query?.fileId || query?.path) ? fileHistorySource.fileHistory(query.repositoryId, query.fileId ? { fileId: query.fileId } : { path: query.path }) : fileHistorySource.repositoryFiles(query?.repositoryId)),
     readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
     captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),
     refreshRepositoryPluginSetup: (repositoryId, provider) => repositoryInventory.refreshPluginSetup(repositoryId, provider),

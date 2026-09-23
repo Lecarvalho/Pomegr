@@ -1,11 +1,13 @@
 import { createHomeReadiness } from "./observation-readiness.mjs";
 import { safeProviderFolder } from "./provider-folders.mjs";
+import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "./session-domain-store.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "./store-retention.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
+const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
 const UNAVAILABLE_STORAGE_SNAPSHOT = Object.freeze({
   revision: 0,
   readiness: "unavailable",
@@ -519,6 +521,36 @@ export function createRequestHandler({
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(detail));
       } catch { response.writeHead(503); response.end(); }
+      return;
+    }
+    if (requestUrl.pathname === "/api/repository-files") {
+      if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
+      const allowedKeys = new Set(["repositoryId", "fileId", "path"]);
+      const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
+      const fileId = requestUrl.searchParams.get("fileId");
+      const filePath = requestUrl.searchParams.get("path");
+      const validQuery = [...requestUrl.searchParams.keys()].every((key) => allowedKeys.has(key) && requestUrl.searchParams.getAll(key).length === 1)
+        && !(fileId !== null && filePath !== null)
+        && /^repo-[a-f0-9]{24}$/u.test(repositoryId)
+        && (fileId === null || FILE_ID_PATTERN.test(fileId))
+        && (filePath === null || isSafeRecordedRepositoryPath(filePath));
+      if (!validQuery) {
+        response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({ error: "Invalid repository files query" }));
+        return;
+      }
+      response.setHeader("Cache-Control", "no-store");
+      try {
+        const result = runtime.serveRepositoryFiles?.({ repositoryId, fileId: fileId || undefined, path: filePath || undefined });
+        response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(result));
+      } catch {
+        const unavailable = (fileId || filePath)
+          ? { kind: "history", revision: 0, readiness: "unavailable", repositoryId, fileId: null, path: filePath || null, sessions: [], unattributedChanges: 0, truncated: false }
+          : { kind: "files", revision: 0, readiness: "unavailable", repositoryId, files: [], folders: [], historicalFolders: [], truncated: false };
+        response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify(unavailable));
+      }
       return;
     }
     if (requestUrl.pathname === "/api/usage-limits") {

@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot, SessionSummary } from "../../shared/monitor-contract";
 import type { RepositoryDomain } from "../../shared/session-domain-contract";
+import type { FileHistoryPanelProps } from "../../app/components/repositories/FileHistoryPanel";
+import type { FileTreeProps } from "../../app/components/repositories/FileTree";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { encodeSessionRoute } from "../../shared/session-route.mjs";
@@ -22,6 +24,22 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
 // fetch/polling behavior, matching tests/ui/resources-tab.test.tsx's pattern.
 const { useSessionDomain } = vi.hoisted(() => ({ useSessionDomain: vi.fn() }));
 vi.mock("../../app/session-domain-store", () => ({ useSessionDomain }));
+
+// The repository page Files tab (RepositoryFilesTab.tsx) reads these; mocked so this file tests
+// RepositoryDetailView's own tab-switching and prop-wiring, not the store's fetch/polling
+// behavior or FileTree/FileHistoryPanel's rendered internals (both are written in parallel).
+const { useRepositoryFiles, useFileHistory } = vi.hoisted(() => ({ useRepositoryFiles: vi.fn(() => null), useFileHistory: vi.fn(() => null) }));
+vi.mock("../../app/repository-files-store", () => ({ useRepositoryFiles, useFileHistory }));
+const { FileTreeMock, FileHistoryPanelMock } = vi.hoisted(() => ({
+  FileTreeMock: vi.fn<(props: FileTreeProps) => void>(),
+  FileHistoryPanelMock: vi.fn<(props: FileHistoryPanelProps) => void>(),
+}));
+vi.mock("../../app/components/repositories/FileTree", () => ({
+  FileTree: (props: FileTreeProps) => { FileTreeMock(props); return null; },
+}));
+vi.mock("../../app/components/repositories/FileHistoryPanel", () => ({
+  FileHistoryPanel: (props: FileHistoryPanelProps) => { FileHistoryPanelMock(props); return null; },
+}));
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import RepositoryPage from "../../app/repositories/[repositoryId]/page";
@@ -52,6 +70,8 @@ beforeEach(() => {
   navigation.search = "";
   vi.clearAllMocks();
   useSessionDomain.mockReturnValue({ data: null, fetching: false, connected: true, error: null, unavailable: false, revalidate: vi.fn() });
+  useRepositoryFiles.mockReturnValue(null);
+  useFileHistory.mockReturnValue(null);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -76,7 +96,7 @@ const inventoryDetails: Record<string, ContextInventoryRevisionDetail> = {
 };
 
 describe("repository detail shell", () => {
-  it("renders the titleless header, observed providers, five tabs, and View sessions link", async () => {
+  it("renders the titleless header, observed providers, six tabs, and View sessions link", async () => {
     serve();
     render(<RepositoryDetailView repositoryId={repositoryId} />);
     const repositoryRegion = await screen.findByRole("region", { name: "Example project" });
@@ -85,7 +105,7 @@ describe("repository detail shell", () => {
     expect(within(header!).queryByRole("heading", { name: "Example project" })).not.toBeInTheDocument();
     expect(within(header!).getByText("Codex")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View sessions" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getAllByRole("tab")).toHaveLength(6);
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tabpanel", { name: "Overview" })).toHaveAttribute("id", "repository-panel-overview");
   });
@@ -137,13 +157,42 @@ describe("repository detail shell", () => {
     await screen.findByRole("region", { name: "Example project" });
     screen.getByRole("tab", { name: "Overview" }).focus();
     await userEvent.keyboard("{ArrowRight}");
-    expect(screen.getByRole("tab", { name: "Plugin" })).toHaveFocus();
-    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=plugin`, { scroll: false });
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveFocus();
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=files`, { scroll: false });
     await userEvent.keyboard("{End}");
-    expect(screen.getByRole("tab", { name: "Git" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Reporting" })).toHaveFocus();
     await userEvent.keyboard("{Home}");
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveFocus();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-controls", screen.getByRole("tabpanel").id);
+  });
+
+  it("mounts the Files tab wired to this repository, selects a deep-linked path, and updates the URL on selection (F19-F21)", async () => {
+    serve();
+    navigation.search = "tab=files&path=app%2FDashboard.tsx";
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="files" initialPath="app/Dashboard.tsx" />);
+    await screen.findByRole("region", { name: "Example project" });
+
+    expect(screen.getByRole("tab", { name: "Files" })).toHaveAttribute("aria-selected", "true");
+    expect(useRepositoryFiles).toHaveBeenCalledWith(repositoryId);
+    const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+    expect(treeProps.scope).toBe("repository");
+    expect(treeProps.rootLabel).toBe("Example project");
+    expect(treeProps.selectedPath).toBe("app/Dashboard.tsx");
+    const panelProps = FileHistoryPanelMock.mock.calls.at(-1)![0];
+    expect(panelProps.side).toBe("repository");
+    expect(panelProps.repositoryId).toBe(repositoryId);
+    expect(panelProps.path).toBe("app/Dashboard.tsx");
+
+    treeProps.onSelect({ path: "app/other.ts", fileId: "f9" });
+    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=files&path=app%2Fother.ts`, { scroll: false });
+  });
+
+  it("rejects an unsafe path on the Files route before it reaches RepositoryFilesTab (F19-F21)", async () => {
+    serve();
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="files" initialPath="../secret" />);
+    await screen.findByRole("region", { name: "Example project" });
+    const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+    expect(treeProps.selectedPath).toBeNull();
   });
 
   it("uses the shared page-header breadcrumb on repository routes", async () => {
@@ -175,7 +224,7 @@ describe("repository detail git", () => {
       domain: "repository", sessionId: "claude:live-git", revision: 1, readiness: "ready", observedAt: "2026-09-22T12:00:05.000Z",
       repositoryId, contextInventoryRef: null, repository: baseRepository,
       pullRequests: { status: "ready", checkedAt: "2026-09-22T12:00:00.000Z", items: [] },
-      recordedAt: null, commitsInSession: 1, gitTasks: null, fileHistory: { readiness: "unavailable", items: [] },
+      recordedAt: null, commitsInSession: 1, gitTasks: null, fileHistory: { readiness: "unavailable", files: [], truncated: false },
       ...overrides,
     } as RepositoryDomain;
   }
@@ -697,6 +746,16 @@ describe("repository routes", () => {
     expect(legacy.props).toMatchObject({ repositoryId, initialTab: "plugin" });
     const invalid = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: ["git"], provider: "other", revision: "ctx-12" }) });
     expect(invalid.props).toMatchObject({ initialTab: "overview", initialProvider: undefined, initialRevisionId: undefined });
+  });
+  it("passes a validated Files deep-link path and discards an unsafe one (F21)", async () => {
+    const page = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "files", path: "app/Dashboard.tsx" }) });
+    expect(page.props).toMatchObject({ repositoryId, initialTab: "files", initialPath: "app/Dashboard.tsx" });
+    const traversal = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "files", path: "../secret" }) });
+    expect(traversal.props.initialPath).toBeUndefined();
+    const absolute = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "files", path: "/etc/passwd" }) });
+    expect(absolute.props.initialPath).toBeUndefined();
+    const repeated = await RepositoryPage({ params: Promise.resolve({ repositoryId }), searchParams: Promise.resolve({ tab: "files", path: ["app/a.ts", "app/b.ts"] }) });
+    expect(repeated.props.initialPath).toBe("app/a.ts");
   });
   it("redirects legacy links to inventory with only validated parameters", async () => {
     await expect(RepositoriesPage({ searchParams: Promise.resolve({ repository: repositoryId, provider: "codex", revision: "ctx-123" }) })).rejects.toThrow(`REDIRECT:/repositories/${repositoryId}?tab=inventory&provider=codex&revision=ctx-123`);

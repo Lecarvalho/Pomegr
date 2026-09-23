@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsPage } from "../../app/settings/SettingsPage";
+import { FileHistoryPanel } from "../../app/components/repositories/FileHistoryPanel";
+import { FileTree } from "../../app/components/repositories/FileTree";
 import { RepositoryRow } from "../../app/components/repositories/RepositoryRow";
 import { StorageUsageBar } from "../../app/settings/StorageSettings";
 import type { StorageSnapshot } from "../../shared/storage-contract";
@@ -25,6 +27,10 @@ const activityStyles = readFileSync(join(process.cwd(), "app", "styles", "activi
 const evidenceStyles = readFileSync(join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
 const signalsTabStyles = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SignalsTab.module.css"), "utf8");
 const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
+const repositoriesComponentsPath = join(process.cwd(), "app", "components", "repositories");
+const fileTreeSource = readFileSync(join(repositoriesComponentsPath, "FileTree.tsx"), "utf8");
+const fileTreeModelSource = readFileSync(join(repositoriesComponentsPath, "file-tree-model.ts"), "utf8");
+const fileHistoryPanelSource = readFileSync(join(repositoriesComponentsPath, "FileHistoryPanel.tsx"), "utf8");
 /** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
@@ -282,5 +288,41 @@ describe("Pomegr visual contract", () => {
     rerender(<StorageUsageBar snapshot={null} />);
     expect(screen.queryByRole("meter")).not.toBeInTheDocument();
     expect(container.querySelector(".storageUsageText")?.textContent).toBe("Storage usage unavailable");
+  });
+
+  it("keeps FileTree and FileHistoryPanel fetch-free, documented, and on the small chip variant", () => {
+    // Pure presentation: neither component reads the repository-files store or fetches directly.
+    for (const source of [fileTreeSource, fileTreeModelSource, fileHistoryPanelSource]) {
+      expect(source).not.toMatch(/repository-files-store|useSyncExternalStore|fetch\(/);
+    }
+
+    expect(designContract).toMatch(/### File tree and file history panel/);
+    expect(designContract).toMatch(/`\.commandChip\.small`/);
+    expect(designContract).toMatch(/16px tall/);
+    expect(designContract).toMatch(/indent 14\/30\/46\/62px per depth/);
+    expect(designContract).toMatch(/ancestors of the current\s+selection and top-level folders with 12 or fewer files/);
+    expect(designContract).toMatch(/\*\*Changed elsewhere\*\*/);
+    expect(designContract).toMatch(/\*\*Status from the working tree · select a\s+file for its history\*\*/);
+    expect(designContract).toMatch(/\*\*Folders roll up distinct sessions\*\*/);
+    expect(designContract).toMatch(/\*\*How to read this\*\*/);
+    expect(designContract).toMatch(/never both/);
+    expect(designContract).toMatch(/\*\*N changes without\s+session attribution \(moves seen in Git\)\*\*/);
+
+    expect(styles).toMatch(/\.commandChip\.small\s*\{\s*min-height:\s*16px;\s*padding:\s*0 4px;\s*\}/);
+    expect(styles).toMatch(/\.fileTreeRow\s*\{[^}]*padding-left:\s*calc\(14px \+ var\(--tree-depth\) \* 16px\)/);
+    expect(styles).toMatch(/\.fileTreeRow\.isSelected\s*\{\s*background:\s*var\(--command-panel-2\);\s*color:\s*var\(--command-ink\);\s*\}/);
+    expect(styles).toMatch(/\.fileTreeFolderRow\[aria-expanded="true"\] \.fileTreeChevron\s*\{\s*transform:\s*rotate\(90deg\);\s*\}/);
+    expect(styles).toMatch(/\.fileTreeFileRow\.isMuted \.fileTreeFileName\s*\{\s*color:\s*var\(--command-muted\);\s*\}/);
+    expect(styles).toMatch(/\.fileHistoryEntry\.isCurrentSession\s*\{\s*background:\s*var\(--command-panel-2\);\s*\}/);
+    expect(styles).not.toMatch(/\.(?:fileTree|fileHistory)[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
+
+    // Session scope renders the small status chip; repository scope shows counts and mutes.
+    const { rerender } = render(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: "f1", status: "M" }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
+    expect(screen.getByText("MOD")).toHaveClass("commandChip", "small", "warning");
+    rerender(<FileTree scope="repository" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: "f1", sessionCount: 2 }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
+    expect(screen.getByText("2")).toBeInTheDocument();
+
+    render(<FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
+    expect(screen.getByText("Select a file to see its recorded sessions.")).toBeInTheDocument();
   });
 });
