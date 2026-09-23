@@ -9,6 +9,10 @@ export type FileTreeFile = {
   status?: string | null; // session scope: working-tree status chip
   sessionCount?: number | null; // repository scope: distinct recorded sessions
   muted?: boolean; // repository scope: no recorded session history, or deleted
+  /** Session scope only: this row is not a recorded tool edit, only seen in Git during the
+   *  session window (committed on the live HEAD branch, or turned uncommitted between the
+   *  session's first and latest live Git checks). Renders a quiet glyph, never a chip. */
+  gitObserved?: "committed" | "uncommitted";
 };
 
 export type FileTreeFolderNode = {

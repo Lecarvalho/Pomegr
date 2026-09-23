@@ -141,6 +141,25 @@ function repositoryRecordedAt(value) {
 function repositoryCommitsInSession(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
+const GIT_OBSERVED_SOURCES = new Set(["committed", "uncommitted"]);
+const MAX_GIT_OBSERVED_FILES = 200;
+function publicGitObservedFile(value) {
+  if (!isSafeRecordedRepositoryPath(value?.path) || !GIT_OBSERVED_SOURCES.has(value?.source)) return null;
+  return { path: value.path, source: value.source };
+}
+// Re-validates the already recorded Git-observed block passed in via options.gitObserved (the
+// recorder's persisted snapshot for this session, live or historical); never reads the current
+// working tree itself, so a historical session can never pick up live drift here.
+function publicGitObservedFiles(value) {
+  if (!value || !Array.isArray(value.files) || value.files.length > MAX_GIT_OBSERVED_FILES || typeof value.truncated !== "boolean") return null;
+  const files = [];
+  for (const file of value.files) {
+    const normalized = publicGitObservedFile(file);
+    if (!normalized) return null;
+    files.push(normalized);
+  }
+  return { files, truncated: value.truncated };
+}
 const GIT_TASK_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 function gitTaskTally(executionTasks) {
   const relevant = (Array.isArray(executionTasks) ? executionTasks : []).filter((task) => GIT_TASK_WORK_KINDS.has(task?.workKind));
@@ -486,6 +505,10 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),
     gitTasks: ready.activityEvidence === "ready" ? gitTaskTally(state.executionTasks) : null,
     fileHistory: publicFileHistory(options.fileHistory),
+    // Never read from session.repository: that object is publicState.session.repository, which
+    // /api/state serializes verbatim, and gitObserved must never reach that endpoint. It arrives
+    // here only through options.gitObserved, a side channel exactly like options.fileHistory.
+    gitObservedFiles: publicGitObservedFiles(options.gitObserved),
   });
   const executionTasksById = new Map((Array.isArray(state.executionTasks) ? state.executionTasks : [])
     .filter((task) => typeof task?.id === "string")

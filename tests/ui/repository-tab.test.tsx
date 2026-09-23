@@ -79,6 +79,7 @@ function domain(overrides: Record<string, unknown> = {}): RepositoryDomain {
     recordedAt: null,
     commitsInSession: 2,
     gitTasks: { total: 9, failed: 0 },
+    gitObservedFiles: null,
     fileHistory: { readiness: "unavailable", files: [], truncated: false },
     ...overrides,
   } as RepositoryDomain;
@@ -330,6 +331,64 @@ describe("RepositoryTab", () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "rebuilding", files: [], truncated: false } })));
       renderTab({ sessionId: SESSION_ID, historical: false });
       expect(FileTreeMock.mock.calls.at(-1)![0].emptyText).toBe("File history is rebuilding.");
+    });
+
+    describe("Git-observed files", () => {
+      it("merges a new Git-observed path into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
+        useSessionDomain.mockReturnValue(result(domainWithFiles({
+          gitObservedFiles: {
+            files: [
+              { path: "app/Dashboard.tsx", source: "committed" }, // already recorded; stays a plain recorded row
+              { path: "app/new-file.ts", source: "uncommitted" }, // not recorded; gains the glyph, moves out of elsewhere
+            ],
+            truncated: false,
+          },
+        })));
+        renderTab({ sessionId: SESSION_ID, historical: false });
+
+        const segment = screen.getByRole("group", { name: "File segment" });
+        expect(within(segment).getByRole("button", { name: "Touched here 2" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Changed elsewhere 0" })).toBeInTheDocument();
+
+        const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+        expect(treeProps.files).toEqual([
+          { path: "app/Dashboard.tsx", fileId: "f1", status: " M" },
+          { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted" },
+        ]);
+        expect(treeProps.elsewhere).toEqual([]);
+      });
+
+      it("ignores gitObservedFiles when null, matching prior behavior", () => {
+        useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: null })));
+        renderTab({ sessionId: SESSION_ID, historical: false });
+
+        const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+        expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M" }]);
+        expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
+      });
+
+      it("keeps Git-observed rows on a historical session with a recorded snapshot", () => {
+        useSessionDomain.mockReturnValue(result(domainWithFiles({
+          repository: repository({
+            historical: true,
+            files: [
+              { status: " M", path: "app/Dashboard.tsx" },
+              { status: "??", path: "app/new-file.ts" },
+            ],
+          }),
+          recordedAt: "2026-09-21T09:00:05.000Z",
+          gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed" }], truncated: false },
+        })));
+        renderTab({ sessionId: SESSION_ID, historical: true });
+
+        const segment = screen.getByRole("group", { name: "File segment" });
+        expect(within(segment).getByRole("button", { name: "Touched here 2" })).toBeInTheDocument();
+        const treeProps = FileTreeMock.mock.calls.at(-1)![0];
+        expect(treeProps.files).toEqual(expect.arrayContaining([
+          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed" },
+        ]));
+      });
     });
   });
 });

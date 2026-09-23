@@ -20,7 +20,7 @@ import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
 import { createSessionDomainServing } from "./session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, resolveCheckpointRepository, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveCheckpointRepository, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) { return `${providerId}:${localSessionId}`; }
 
@@ -130,7 +130,7 @@ export function createObservationRuntime(options = {}) {
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
-    onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
+    gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(repositorySnapshotRecorder?.recorded(sessionId) || null), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();

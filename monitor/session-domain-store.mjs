@@ -192,6 +192,7 @@ export function createSessionDomainStore(options = {}) {
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
         retainedResources: options.retainedResourcesForSession?.(sessionId) ?? null,
         fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
+        gitObserved: options.gitObservedForSession?.(sessionId) ?? null,
       }), "evidence");
     },
     commitUnavailable(sessionId, catalogEntry, source, capabilities) {

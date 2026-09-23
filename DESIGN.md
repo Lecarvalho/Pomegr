@@ -422,12 +422,21 @@ text — nothing else marks selection. Session scope shows a status chip (the sm
 0 4px padding) before the mono file name — amber **MOD**, green **NEW** (added or
 untracked), neutral **DEL**/**REN**, no chip when the working tree reports no status —
 and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
-(full path, indent 14, their own status chip) that is hidden when empty. Repository
-scope shows each file and folder's distinct-session count right-aligned in muted 11px
-mono from the monitor's rollup; files with no recorded session history show no count
-and render muted. A pinned footer rule reads **Status from the working tree · select a
-file for its history** in session scope and **Folders roll up distinct sessions** in
-repository scope.
+(full path, indent 14, their own status chip) that is hidden when empty. A touched row
+Git observed during the session window but no tool ever recorded — changed by a commit
+on the live branch, or turned uncommitted between the session's first and latest live
+Git checks — carries a quiet 14px git glyph after the file name instead of a chip:
+muted text color, never amber, shown on historical rows too, with `title` and an
+accessible name reading **Seen in Git during this session (committed) - not a recorded
+tool edit** or the uncommitted variant; selecting the row still opens file history as
+usual. Repository scope shows each file and folder's distinct-session count
+right-aligned in muted 11px mono from the monitor's rollup; files with no recorded
+session history show no count and render muted. A pinned footer rule reads **Status from the working tree · select a
+file for its history** in session scope, with a quiet **How to read this** popover
+appearing only when a Git-observed row is visible (*Rows with the Git glyph come from
+commits and working-tree changes during the session window. They may include other
+people's or tools' changes and have no agent or request.*), and
+**Folders roll up distinct sessions** in repository scope.
 
 FileHistoryPanel renders the selected file's committed session history, never fetching
 it itself. Its header holds a muted 11px mono breadcrumb (`<repository> / <dir>/`),
@@ -456,9 +465,9 @@ evidence includes changes with no session attribution — a muted **N changes wi
 session attribution (moves seen in Git)** line.
 
 `/design-system` renders both components with static data: a session-scope tree with a
-Changed elsewhere group and a selected row, a repository-scope tree with counts and a
-muted no-history file, and a file history panel sample for each side plus the
-empty/loading state.
+Changed elsewhere group, a selected row, and a Git-observed row, a repository-scope
+tree with counts and a muted no-history file, and a file history panel sample for each
+side plus the empty/loading state.
 
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary

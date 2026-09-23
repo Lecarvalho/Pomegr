@@ -126,7 +126,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
   const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
   const { sessions } = useSessionCatalog();
   const rootLabel = sessions.find((session) => session.id === sessionId)?.project ?? "Repository";
-  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, repository.files);
+  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, repository.files, domain.gitObservedFiles);
   const segment = manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments);
   const query = search.trim();
   const target = resolveRepositoryTabFileTarget(selectedPath, domain.fileHistory.files);

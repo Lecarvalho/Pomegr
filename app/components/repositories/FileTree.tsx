@@ -1,4 +1,6 @@
 import { useMemo, useState, type CSSProperties } from "react";
+import { CommandIcon } from "../command-center/CommandIcon";
+import { DottedInfoPopover } from "../DottedInfoPopover";
 import {
   buildFileTree,
   defaultOpenFolders,
@@ -40,6 +42,20 @@ function FileTreeStatusChip({ status }: { status: string | null | undefined }) {
   return <span className={`commandChip small${chip.tone ? ` ${chip.tone}` : ""}`}>{chip.label}</span>;
 }
 
+const GIT_OBSERVED_LABEL: Record<"committed" | "uncommitted", string> = {
+  committed: "Seen in Git during this session (committed) - not a recorded tool edit",
+  uncommitted: "Seen in Git during this session (uncommitted) - not a recorded tool edit",
+};
+
+/** Quiet glyph-only marker (never a chip, never amber) for a row Git observed during the session
+ * window but no recorded tool ever touched. Shown on historical rows too; see DESIGN.md. */
+function FileTreeGitObservedGlyph({ source }: { source: "committed" | "uncommitted" }) {
+  const label = GIT_OBSERVED_LABEL[source];
+  return <span className="fileTreeGitObservedGlyph" role="img" aria-label={label} title={label}>
+    <CommandIcon name="git" size="small" />
+  </span>;
+}
+
 function FileTreeFileRow({ scope, depth, name, file, selected, onSelect }: {
   scope: "session" | "repository";
   depth: number;
@@ -58,6 +74,7 @@ function FileTreeFileRow({ scope, depth, name, file, selected, onSelect }: {
   >
     {scope === "session" && <FileTreeStatusChip status={file.status} />}
     <span className="fileTreeFileName">{name}</span>
+    {file.gitObserved && <FileTreeGitObservedGlyph source={file.gitObserved} />}
     {showCount && <span className="fileTreeCount">{file.sessionCount}</span>}
   </button>;
 }
@@ -76,6 +93,7 @@ export function FileTree({ scope, rootLabel, files, elsewhere = [], folderCounts
   );
   const sortedElsewhere = useMemo(() => sortByPath(elsewhere), [elsewhere]);
   const isEmpty = files.length === 0 && sortedElsewhere.length === 0;
+  const hasGitObserved = scope === "session" && files.some((file) => file.gitObserved);
 
   return <div className={`panel fileTree ${className}`.trim()}>
     <div className="fileTreeHeader">
@@ -121,7 +139,12 @@ export function FileTree({ scope, rootLabel, files, elsewhere = [], folderCounts
       </>}
     </div>
     <div className="fileTreeFooter">
-      {scope === "session" ? "Status from the working tree · select a file for its history" : "Folders roll up distinct sessions"}
+      {scope === "session"
+        ? <>
+            <span>Status from the working tree · select a file for its history</span>
+            {hasGitObserved && <DottedInfoPopover ariaLabel="How Git-observed rows are chosen" className="fileTreeFooterInfo" content="Rows with the Git glyph come from commits and working-tree changes during the session window. They may include other people's or tools' changes and have no agent or request.">How to read this</DottedInfoPopover>}
+          </>
+        : "Folders roll up distinct sessions"}
     </div>
   </div>;
 }

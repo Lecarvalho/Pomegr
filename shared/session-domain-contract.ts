@@ -144,6 +144,21 @@ export type RepositoryDomain = SessionDomainBase & {
    *  evidence is ready. */
   gitTasks: { total: number; failed: number } | null;
   fileHistory: SessionFileHistory;
+  /** Files seen in Git during the session window: changed by commits on the live HEAD branch
+   *  whose committer time lies in the session wall-time window ("committed"), or that became
+   *  uncommitted between the session's first and latest live Git checks ("uncommitted").
+   *  Never recorded tool edits: no agent, request, or edit count. A historical session serves
+   *  its recorded snapshot values only. null when never measured. */
+  gitObservedFiles: RepositoryGitObservedFiles | null;
+};
+
+export type RepositoryGitObservedFile = {
+  path: string; // safe repository-relative path, same root as repository.files and fileHistory
+  source: "committed" | "uncommitted"; // "committed" wins when a path is both
+};
+export type RepositoryGitObservedFiles = {
+  files: RepositoryGitObservedFile[]; // sorted by path, at most 200
+  truncated: boolean;
 };
 
 /** Files this session changed, from the committed file-history cache (never a GET-time read). */

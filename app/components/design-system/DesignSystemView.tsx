@@ -291,6 +291,8 @@ const FILE_TREE_SESSION_FILES: FileTreeFile[] = [
   { path: "app/components/dashboard/SessionTabs.tsx", fileId: "f102", status: "??" },
   { path: "app/components/dashboard/RequestLanes.tsx", fileId: "f103", status: "??" },
   { path: "app/Dashboard.tsx", fileId: "f104", status: "M" },
+  // Git-observed, not a recorded tool edit (F/plan "2026-09-23-session-file-coverage" part 2).
+  { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed" },
 ];
 const FILE_TREE_SESSION_ELSEWHERE: FileTreeFile[] = [
   { path: "docs/OBSERVATION_CACHE.md", fileId: null, status: "M" },
@@ -309,9 +311,9 @@ const FILE_TREE_REPOSITORY_FOLDER_COUNTS = new Map([
 function FileTreeSection() {
   const [sessionSelected, setSessionSelected] = useState("app/components/command-center/CommandCenterShell.tsx");
   const [repositorySelected, setRepositorySelected] = useState("app/components/dashboard/Dashboard.tsx");
-  return <Section id="file-tree" title="File tree" lede="FileTree (app/components/repositories/FileTree.tsx) builds folders from a flat file list and fetches nothing. Session scope shows the small .commandChip.small status variant and a Changed elsewhere group; repository scope shows distinct-session counts and mutes files with no recorded history.">
+  return <Section id="file-tree" title="File tree" lede="FileTree (app/components/repositories/FileTree.tsx) builds folders from a flat file list and fetches nothing. Session scope shows the small .commandChip.small status variant, a quiet Git-observed glyph for rows no tool recorded, and a Changed elsewhere group; repository scope shows distinct-session counts and mutes files with no recorded history.">
     <div className="designSystemGrid">
-      <Sample label="Session scope">
+      <Sample label="Session scope" note="GitObservedSample.tsx carries the quiet Git-observed glyph and the footer's How to read this popover.">
         <FileTree
           scope="session"
           rootLabel="Pomegr"

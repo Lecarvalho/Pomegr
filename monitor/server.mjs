@@ -5,7 +5,7 @@ import { homeSessionSummary, median, unavailableHomeSessionSummary } from "./hom
 import { readGitStateAsync } from "./git-state.mjs";
 import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
-import { countCommitsInWindow } from "./repository-snapshot.mjs";
+import { readCommitsInWindow } from "./repository-snapshot.mjs";
 import { publicResourceUsage, unavailableResourceUsage } from "./public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -144,12 +144,10 @@ export function createMonitorRuntime(options = {}) {
     // branch switch between checks never mixes commits from two different branches.
     const branchKnown = typeof input.recordedGitBranch === "string" && input.recordedGitBranch.length > 0;
     let commitsInSession = entry.commitsInSession ?? null;
+    let committedPaths = null;
     if (repository.available && entry.repositoryRoot && (!branchKnown || repository.branch === input.recordedGitBranch)) {
-      const measured = await countCommitsInWindow(entry.repositoryRoot, {
-        since: input.startedAt,
-        until: new Date(refreshedAt).toISOString(),
-      });
-      if (Number.isSafeInteger(measured)) commitsInSession = measured;
+      const windowRead = await readCommitsInWindow(entry.repositoryRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
+      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; }
     }
     // Omitted (not just null) when never measured, so an unavailable-repository
     // refresh keeps producing the exact same sanitized placeholder shape as before.
@@ -159,7 +157,7 @@ export function createMonitorRuntime(options = {}) {
       entry.commitsInSession = commitsInSession;
       entry.refreshedAt = refreshedAt;
       onRepositoryCheck?.(entry.sessionId, {
-        repository, pullRequests, commitsInSession, checkedAt: new Date(refreshedAt).toISOString(),
+        repository, pullRequests, commitsInSession, committedPaths, checkedAt: new Date(refreshedAt).toISOString(),
       });
     }
   }

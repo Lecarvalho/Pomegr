@@ -93,6 +93,42 @@ describe("FileTree", () => {
     expect(within(cleanRow).queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
   });
 
+  it("shows a quiet Git-observed glyph with a title and accessible name, leaving status chips unchanged", () => {
+    const files: FileTreeFile[] = [
+      { path: "gitobserved-clean.ts", fileId: null, status: null, gitObserved: "committed" },
+      { path: "gitobserved-dirty.ts", fileId: null, status: "??", gitObserved: "uncommitted" },
+      { path: "recorded-only.ts", fileId: "f1", status: "M" },
+    ];
+    render(<FileTree scope="session" rootLabel="Pomegr" files={files} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
+
+    const committedGlyph = screen.getByRole("img", { name: "Seen in Git during this session (committed) - not a recorded tool edit" });
+    expect(committedGlyph).toHaveAttribute("title", "Seen in Git during this session (committed) - not a recorded tool edit");
+    const uncommittedGlyph = screen.getByRole("img", { name: "Seen in Git during this session (uncommitted) - not a recorded tool edit" });
+    expect(uncommittedGlyph).toHaveAttribute("title", "Seen in Git during this session (uncommitted) - not a recorded tool edit");
+
+    // The committed row has no working-tree status, so it carries no status chip alongside the glyph.
+    const committedRow = screen.getByRole("button", { name: /gitobserved-clean\.ts/ });
+    expect(within(committedRow).queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
+    // The uncommitted row keeps its ordinary NEW status chip unchanged, plus the glyph.
+    const uncommittedRow = screen.getByRole("button", { name: /gitobserved-dirty\.ts/ });
+    expect(within(uncommittedRow).getByText("NEW")).toHaveClass("commandChip", "small", "positive");
+    // A plain recorded row never carries the glyph.
+    const recordedRow = screen.getByRole("button", { name: /recorded-only\.ts/ });
+    expect(within(recordedRow).queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  it("shows the footer's quiet Git-observed popover only when a Git-observed row is visible", () => {
+    const { rerender } = render(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "recorded.ts", fileId: "f1", status: "M" }]} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
+    expect(screen.queryByText("How to read this")).not.toBeInTheDocument();
+
+    rerender(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "committed.ts", fileId: null, status: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
+    expect(screen.getByText("How to read this")).toBeInTheDocument();
+
+    // Repository scope never shows the session-only Git-observed popover.
+    rerender(<FileTree scope="repository" rootLabel="Pomegr" files={[{ path: "committed.ts", fileId: null, sessionCount: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
+    expect(screen.queryByText("How to read this")).not.toBeInTheDocument();
+  });
+
   it("hides Changed elsewhere when empty and renders it flat and sorted, with status chips, otherwise", () => {
     const { rerender } = render(<FileTree scope="session" rootLabel="Pomegr" files={[]} selectedPath={null} onSelect={() => {}} emptyText="Nothing touched" />);
     expect(screen.queryByText("Changed elsewhere")).not.toBeInTheDocument();

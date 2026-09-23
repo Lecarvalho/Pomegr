@@ -325,4 +325,23 @@ describe("Pomegr visual contract", () => {
     render(<FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
     expect(screen.getByText("Select a file to see its recorded sessions.")).toBeInTheDocument();
   });
+
+  it("marks a Git-observed touched row with a quiet, non-chip glyph and documents it", () => {
+    expect(designContract).toMatch(/quiet 14px git glyph/);
+    expect(designContract).toMatch(/muted text color, never amber/);
+    expect(designContract).toMatch(/Seen in Git during this session \(committed\) - not a recorded\s+tool edit/);
+    expect(designContract).toMatch(/Rows\s+with\s+the\s+Git\s+glyph\s+come\s+from\s+commits\s+and\s+working-tree\s+changes\s+during\s+the\s+session\s+window\./);
+    expect(designContract).toMatch(/have no agent or\s+request/);
+
+    expect(styles).toMatch(/\.fileTreeGitObservedGlyph\s*\{[^}]*color:\s*var\(--command-muted\)/);
+    expect(styles).not.toMatch(/\.fileTreeGitObservedGlyph[^}]*(amber|#[0-9a-fA-F]{3,8})/);
+
+    render(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: null, status: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
+    const glyph = screen.getByRole("img", { name: "Seen in Git during this session (committed) - not a recorded tool edit" });
+    expect(glyph).toHaveAttribute("title", "Seen in Git during this session (committed) - not a recorded tool edit");
+    // No status chip renders alongside the glyph when the working tree reports no status.
+    expect(screen.queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
+    // The footer's quiet popover trigger appears only when a Git-observed row is visible.
+    expect(screen.getByText("How to read this")).toBeInTheDocument();
+  });
 });

@@ -4,7 +4,7 @@
  * runs/2026-09-22-ia-session-5/3-file-history/artifacts/plan.md ("implement-tabs").
  */
 import type { FileHistoryTarget } from "../../repository-files-store";
-import type { RepositoryDomain } from "../../../shared/session-domain-contract";
+import type { RepositoryDomain, RepositoryGitObservedFiles } from "../../../shared/session-domain-contract";
 import type { FileTreeFile } from "../repositories/FileTree";
 
 export type RepositoryTabFilesSegment = "touched" | "uncommitted" | "elsewhere";
@@ -27,17 +27,30 @@ export type RepositoryTabFilesSegments = {
   elsewhere: FileTreeFile[];
 };
 
-/** Builds the three segments from the session's touched-file history and its working-tree status. */
-export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], workingTreeFiles: WorkingTreeFile[]): RepositoryTabFilesSegments {
+/** Builds the three segments from the session's touched-file history, its working-tree status,
+ * and (session scope only) files Git observed during the session window. A Git-observed path
+ * already recorded stays a plain recorded row; only paths Git saw but no tool ever touched gain
+ * the quiet glyph, and they are removed from Uncommitted/Changed elsewhere so a path shows once. */
+export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], workingTreeFiles: WorkingTreeFile[], gitObservedFiles: RepositoryGitObservedFiles | null = null): RepositoryTabFilesSegments {
   const workingTreeByPath = new Map(workingTreeFiles.map((file) => [file.path, file.status]));
   const touchedPaths = new Set(touchedFiles.map((file) => file.path));
-  const touched: FileTreeFile[] = touchedFiles.map((file) => ({
+  const recorded: FileTreeFile[] = touchedFiles.map((file) => ({
     path: file.path,
     fileId: file.fileId,
     status: workingTreeByPath.get(file.path) ?? null,
   }));
-  const untouched: FileTreeFile[] = workingTreeFiles
+  const gitObservedExtra: FileTreeFile[] = (gitObservedFiles?.files ?? [])
     .filter((file) => !touchedPaths.has(file.path))
+    .map((file) => ({
+      path: file.path,
+      fileId: null,
+      status: workingTreeByPath.get(file.path) ?? null,
+      gitObserved: file.source,
+    }));
+  const gitObservedPaths = new Set(gitObservedExtra.map((file) => file.path));
+  const touched: FileTreeFile[] = [...recorded, ...gitObservedExtra].sort((left, right) => left.path.localeCompare(right.path));
+  const untouched: FileTreeFile[] = workingTreeFiles
+    .filter((file) => !touchedPaths.has(file.path) && !gitObservedPaths.has(file.path))
     .map((file) => ({ path: file.path, fileId: null, status: file.status }));
   const uncommitted: FileTreeFile[] = workingTreeFiles.map((file) => ({
     path: file.path,

@@ -22,7 +22,11 @@
 .fileTreeCount { margin-left: auto; flex: 0 0 auto; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
 .fileTreeGroupHeading { padding: 10px 14px 4px; font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--command-faint); }
 .fileTreeEmpty { margin: 0; padding: var(--space-3) 14px; color: var(--command-muted); font-size: var(--text-xs); }
-.fileTreeFooter { padding: var(--space-2) 14px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-caption); }
+.fileTreeGitObservedGlyph { display: inline-flex; flex: 0 0 auto; align-items: center; color: var(--command-muted); cursor: help; }
+.fileTreeFooter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 14px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-caption); }
+.fileTreeFooterInfo { flex: 0 0 auto; color: var(--command-muted); }
+.fileTreeFooterInfo .dottedInfoPopoverLabel { text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.fileTreeFooterInfo .dottedInfoPopoverTrigger:hover .dottedInfoPopoverLabel { text-decoration-color: currentColor; }
 
 /* FileHistoryPanel (F8-F15) */
 .fileHistoryPanel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
