@@ -1,4 +1,5 @@
 import { repositoryRelativePath } from "./repository-path.mjs";
+import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
@@ -116,6 +117,14 @@ function publicInventoryRef(value) {
   const result = fields(value, ["repositoryId", "provider", "revisionId", "capturedAt", "model", "machineryTokens", "categoryCount", "itemCount", "detailRetained"]);
   return result ? { ...result, contextAllocation: publicContextAllocation(value.contextAllocation) } : null;
 }
+function publicRepositoryFile(value, cwd, forbiddenRoots, historical) {
+  // A historical repository has no live root to resolve against (cwd is null), so it is
+  // validated shape-only against the recorded snapshot's own path rule; a live repository
+  // keeps validating against its actual session cwd.
+  if (historical === true) return isSafeRecordedRepositoryPath(value?.path) ? { status: value.status, path: value.path } : null;
+  const safePath = repositoryRelativePath(value?.path, cwd, { forbiddenRoots });
+  return safePath ? { status: value.status, path: safePath } : null;
+}
 function publicRepository(value, cwd, forbiddenRoots) {
   if (!value) return null;
   return {
@@ -123,11 +132,19 @@ function publicRepository(value, cwd, forbiddenRoots) {
     comparison: fields(value.comparison, ["branch", "kind", "ahead", "behind", "integrated"]),
     commits: list(value.commits, (commit) => fields(commit, ["hash", "subject", "committedAt"])),
     remote: fields(value.remote, ["status", "checkedAt"]),
-    files: list(value.files, (file) => {
-      const safePath = repositoryRelativePath(file?.path, cwd, { forbiddenRoots });
-      return safePath ? { status: file.status, path: safePath } : null;
-    }),
+    files: list(value.files, (file) => publicRepositoryFile(file, cwd, forbiddenRoots, value.historical)),
   };
+}
+function repositoryRecordedAt(value) {
+  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
+}
+function repositoryCommitsInSession(value) {
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+const GIT_TASK_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
+function gitTaskTally(executionTasks) {
+  const relevant = (Array.isArray(executionTasks) ? executionTasks : []).filter((task) => GIT_TASK_WORK_KINDS.has(task?.workKind));
+  return { total: relevant.length, failed: relevant.filter((task) => task?.status === "failed").length };
 }
 function publicPullRequests(value) {
   if (!value) return null;
@@ -444,6 +461,9 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     contextInventoryRef: publicInventoryRef(session?.contextInventoryRef),
     repository,
     pullRequests,
+    recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
+    commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),
+    gitTasks: ready.activityEvidence === "ready" ? gitTaskTally(state.executionTasks) : null,
     fileHistory: { readiness: "unavailable", items: [] },
   });
   const executionTasksById = new Map((Array.isArray(state.executionTasks) ? state.executionTasks : [])

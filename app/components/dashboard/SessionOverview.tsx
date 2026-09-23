@@ -3,11 +3,10 @@
 import type { AgentRole } from "../../../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
 import { WORK_LABELS } from "../agents/agent-presentation";
-import { agentRoleLabel, compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
+import { agentRoleLabel, comparisonLabel, compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
-import { comparisonLabel } from "./RepositoryPanel";
 import type { SessionRouteQuery } from "./session-route";
 
 const REQUEST_STRIP_SLOTS = 48;

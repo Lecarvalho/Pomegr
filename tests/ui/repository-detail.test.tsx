@@ -2,6 +2,8 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextInventoryRevisionDetail, RepositoryInventorySnapshot, SessionSummary } from "../../shared/monitor-contract";
+import type { RepositoryDomain } from "../../shared/session-domain-contract";
+import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { encodeSessionRoute } from "../../shared/session-route.mjs";
 
@@ -15,6 +17,11 @@ vi.mock("../../app/provider-status-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/provider-status-client")>();
   return { ...actual, useProviderStatus: () => actual.EMPTY_PROVIDER_STATUS };
 });
+// The repository page Git tab (RepositoryGitTab.tsx) reads the `repository` session domain
+// through this hook; mocking it here keeps the Git-tab tests independent of the store's own
+// fetch/polling behavior, matching tests/ui/resources-tab.test.tsx's pattern.
+const { useSessionDomain } = vi.hoisted(() => ({ useSessionDomain: vi.fn() }));
+vi.mock("../../app/session-domain-store", () => ({ useSessionDomain }));
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import RepositoryPage from "../../app/repositories/[repositoryId]/page";
@@ -41,7 +48,11 @@ const setupSnapshot: RepositoryInventorySnapshot = { revision: 2, readiness: "re
   ],
 }] };
 
-beforeEach(() => { navigation.search = ""; vi.clearAllMocks(); });
+beforeEach(() => {
+  navigation.search = "";
+  vi.clearAllMocks();
+  useSessionDomain.mockReturnValue({ data: null, fetching: false, connected: true, error: null, unavailable: false, revalidate: vi.fn() });
+});
 afterEach(() => {
   vi.restoreAllMocks();
   Reflect.deleteProperty(window, "pomegrDesktop");
@@ -108,13 +119,13 @@ describe("repository detail shell", () => {
     const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
     await screen.findByRole("region", { name: "Example project" });
     expect(screen.getByRole("tab", { name: "Context inventory" })).toHaveAttribute("aria-selected", "true");
-    await userEvent.click(screen.getByRole("tab", { name: "Git Soon" }));
+    await userEvent.click(screen.getByRole("tab", { name: "Git" }));
     expect(navigation.replace).toHaveBeenCalledWith(`/repositories/${repositoryId}?tab=git&provider=claude&revision=ctx-001&logo=outline`, { scroll: false });
     navigation.search = "tab=git&provider=claude&revision=ctx-001&logo=outline";
     view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="git" />);
-    expect(screen.getByRole("heading", { name: "Detailed repository evidence is coming soon" })).toBeInTheDocument();
-    expect(screen.getByText("Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only.")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Git Soon" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Commits appear while a session in this repository is live.")).toBeInTheDocument();
+    expect(screen.queryByText("Detailed repository evidence is coming soon")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveAttribute("aria-selected", "true");
     navigation.search = "";
     view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="overview" />);
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
@@ -129,7 +140,7 @@ describe("repository detail shell", () => {
     expect(screen.getByRole("tab", { name: "Plugin" })).toHaveFocus();
     expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=plugin`, { scroll: false });
     await userEvent.keyboard("{End}");
-    expect(screen.getByRole("tab", { name: "Git Soon" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Git" })).toHaveFocus();
     await userEvent.keyboard("{Home}");
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveFocus();
     expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-controls", screen.getByRole("tabpanel").id);
@@ -145,6 +156,67 @@ describe("repository detail shell", () => {
     expect(await within(breadcrumb).findByText("Example project")).toHaveAttribute("aria-current", "page");
     expect(within(breadcrumb).getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repositories");
     expect(breadcrumb.closest(".commandPageHeader")).toBeInTheDocument();
+  });
+});
+
+describe("repository detail git", () => {
+  const liveSession = (overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+    id: "claude:live-git", provider: "claude", source: "Claude Code", title: "Live repository session", project: "Example project", repositoryId,
+    createdAt: "2026-09-22T10:00:00.000Z", updatedAt: "2026-09-22T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready",
+    agentCount: 1, activeAgentCount: 1, latestContextTotal: 1000, progress: null, currentActivity: null, ...overrides,
+  });
+  const baseRepository = {
+    available: true, branch: "main", files: [], historical: false, isMain: true, comparison: null,
+    commits: [{ hash: "abc1234", subject: "Add commit history", committedAt: "2026-09-22T11:00:00.000Z" }],
+    remote: { status: "ready" as const, checkedAt: "2026-09-22T12:00:00.000Z" },
+  };
+  function repositoryDomain(overrides: Record<string, unknown> = {}): RepositoryDomain {
+    return {
+      domain: "repository", sessionId: "claude:live-git", revision: 1, readiness: "ready", observedAt: "2026-09-22T12:00:05.000Z",
+      repositoryId, contextInventoryRef: null, repository: baseRepository,
+      pullRequests: { status: "ready", checkedAt: "2026-09-22T12:00:00.000Z", items: [] },
+      recordedAt: null, commitsInSession: 1, gitTasks: null, fileHistory: { readiness: "unavailable", items: [] },
+      ...overrides,
+    } as RepositoryDomain;
+  }
+  function domainResult(data: RepositoryDomain | null, unavailable = false) {
+    return { data, fetching: false, connected: true, error: null, unavailable, revalidate: vi.fn() };
+  }
+
+  it("lists commits and the live source line from the newest live session, with no Soon chip", async () => {
+    serve();
+    useSessionDomain.mockReturnValue(domainResult(repositoryDomain()));
+    render(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[liveSession()]}><RepositoryDetailView repositoryId={repositoryId} initialTab="git" /></SessionCatalogProvider></LiveClockProvider>);
+    await screen.findByRole("tabpanel", { name: "Git" });
+    expect(screen.queryByText("Soon")).not.toBeInTheDocument();
+    expect(screen.getByText("Recent commits on the default branch")).toBeInTheDocument();
+    expect(screen.getByText("1 shown")).toBeInTheDocument();
+    expect(screen.getByText("Add commit history")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Live repository session" })).toHaveAttribute("href", `/sessions/${encodeSessionRoute("claude:live-git")}?tab=repository`);
+    expect(useSessionDomain).toHaveBeenCalledWith({ sessionId: "claude:live-git", domain: "repository" }, { historical: false, enabled: true });
+  });
+
+  it("picks the newest of several live sessions in the repository", async () => {
+    serve();
+    useSessionDomain.mockImplementation(({ sessionId }: { sessionId: string }) => domainResult(sessionId === "claude:newer"
+      ? repositoryDomain({ sessionId: "claude:newer", repository: { ...baseRepository, commits: [{ hash: "newer12", subject: "Newer commit", committedAt: "2026-09-22T11:30:00.000Z" }] } })
+      : null));
+    render(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[
+      liveSession({ id: "claude:older", title: "Older live session", updatedAt: "2026-09-22T10:00:00.000Z" }),
+      liveSession({ id: "claude:newer", title: "Newer live session", updatedAt: "2026-09-22T13:00:00.000Z" }),
+    ]}><RepositoryDetailView repositoryId={repositoryId} initialTab="git" /></SessionCatalogProvider></LiveClockProvider>);
+    await screen.findByRole("tabpanel", { name: "Git" });
+    expect(screen.getByText("Newer commit")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Newer live session" })).toBeInTheDocument();
+    expect(screen.queryByText("Add commit history")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state when no session in this repository is live, never a historical session's recorded commits", async () => {
+    serve();
+    render(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[liveSession({ id: "codex:historical", isLive: false, activityStatus: "closed" })]}><RepositoryDetailView repositoryId={repositoryId} initialTab="git" /></SessionCatalogProvider></LiveClockProvider>);
+    await screen.findByRole("tabpanel", { name: "Git" });
+    expect(screen.getByText("Commits appear while a session in this repository is live.")).toBeInTheDocument();
+    expect(screen.queryByText("Add commit history")).not.toBeInTheDocument();
   });
 });
 

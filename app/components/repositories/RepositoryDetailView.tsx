@@ -7,10 +7,11 @@ import type { ProviderId, RepositoryProviderInventory } from "../../../shared/mo
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
 import { ProviderBadge } from "../ProviderBadge";
-import { CommandBreadcrumbSeparator, CommandComingSoon, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
+import { CommandBreadcrumbSeparator, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
 import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
+import { RepositoryGitTab } from "./RepositoryGitTab";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
 import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
 import { RepositoryOverviewTab } from "./RepositoryOverviewTab";
@@ -141,7 +142,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     <div className="commandSettingsLayout repositoryDetailLayout">
       <div className="commandSettingsNav" role="tablist" aria-label="Repository sections">
         {repositoryTabs.map(([id, label], index) => <button key={id} ref={(node) => { tabsRef.current[index] = node; }} type="button" role="tab" id={`repository-tab-${id}`} aria-controls={`repository-panel-${id}`} aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} className={`commandQuietAction${tab === id ? " active" : ""}`} onClick={() => switchTab(id)} onKeyDown={(event) => handleTabKey(event, index)}>
-          <span>{label}</span>{id === "git" && <> <span className="repositoryDetailSoon">Soon</span></>}
+          <span>{label}</span>
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
@@ -158,7 +159,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={cancelCapture} onCapture={(provider) => void capture(provider)} /> : tab === "reporting" ? <>
           <header className="repositoryPaneHead"><div><h2>Repository reporting</h2><p>One policy, shared by Claude Code and Codex, that chooses what agents report about this repository.</p></div></header>
           <RepositoryReportingRow reporting={repository.reporting} />
-        </> : <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" />}
+        </> : <RepositoryGitTab repositoryId={repositoryId} />}
       </div>
     </div>
   </section>;

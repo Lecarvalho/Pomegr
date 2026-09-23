@@ -96,6 +96,8 @@ export function SessionTabs({ active, summary, onSelect }: {
   const count = (tab: SessionTab) => {
     if (tab === "agents" && summary.sectionReadiness.agentEvidence === "ready") return summary.metrics.agents;
     if (tab === "activities" && summary.sectionReadiness.activityEvidence === "ready") return summary.activity.total;
+    // Repository omits its count chip for a zero or unknown value rather than showing "0".
+    if (tab === "repository" && summary.repository.changedFiles) return summary.repository.changedFiles;
     return null;
   };
 

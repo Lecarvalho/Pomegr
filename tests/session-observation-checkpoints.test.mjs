@@ -7,6 +7,7 @@ import { buildCacheReadDrops } from "../monitor/cache-read-drops.mjs";
 import {
   SessionObservationCheckpointStore,
   checkpointFilename,
+  repositorySnapshotFilename,
 } from "../monitor/session-observation-checkpoints.mjs";
 import { SessionObservationStore } from "../monitor/session-observation-store.mjs";
 import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
@@ -260,4 +261,90 @@ test("uses the validation hook before persisting a candidate", async (t) => {
   });
   await assert.rejects(checkpoints.write(snapshot("provider-a", "rejected")), /rejected/);
   assert.equal((await readdir(directory).catch(() => [])).length, 0);
+});
+
+function repositorySnapshot(overrides = {}) {
+  return {
+    version: 1,
+    branch: "feat/sidecar",
+    isMain: false,
+    files: [{ status: " M", path: "app/file.ts" }],
+    comparison: null,
+    comparisonCheckedAt: null,
+    pullRequests: null,
+    commitsInSession: 2,
+    checkedAt: "2026-08-28T12:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("writes an atomic repository-snapshot sidecar sharing its checkpoint's identity hash, and loads it back", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  await checkpoints.write(snapshot("provider-a", "sidecar-session", 1));
+  const written = await checkpoints.writeRepositorySnapshot("provider-a", "sidecar-session", repositorySnapshot());
+  assert.equal(written.filename, repositorySnapshotFilename("provider-a", "sidecar-session"));
+  assert.equal(written.filename.replace(/^repository-/, ""), checkpointFilename("provider-a", "sidecar-session").replace(/^checkpoint-/, ""));
+  assert.doesNotMatch(written.filename, /provider-a|sidecar-session/);
+  assert.equal((await readdir(directory)).some((file) => file.endsWith(".tmp")), false);
+
+  const records = await checkpoints.loadRepositorySnapshots();
+  assert.equal(records.length, 1);
+  assert.equal(records[0].providerId, "provider-a");
+  assert.equal(records[0].localSessionId, "sidecar-session");
+  assert.equal(records[0].snapshot.branch, "feat/sidecar");
+
+  await assert.rejects(checkpoints.writeRepositorySnapshot("provider-a", "sidecar-session", { ...repositorySnapshot(), branch: "" }), /repository snapshot/);
+});
+
+test("ignores an invalid or corrupted repository-snapshot sidecar without blocking other valid ones", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  await checkpoints.write(snapshot("provider-a", "good-sidecar", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "good-sidecar", repositorySnapshot());
+  await checkpoints.write(snapshot("provider-a", "corrupt-sidecar", 1));
+  await writeFile(path.join(directory, repositorySnapshotFilename("provider-a", "corrupt-sidecar")), "{not-json", "utf8");
+  await checkpoints.write(snapshot("provider-a", "invalid-shape-sidecar", 1));
+  await writeFile(
+    path.join(directory, repositorySnapshotFilename("provider-a", "invalid-shape-sidecar")),
+    JSON.stringify({ version: 1, providerId: "provider-a", localSessionId: "invalid-shape-sidecar", snapshot: { branch: "no other fields" } }),
+    "utf8",
+  );
+
+  const records = await checkpoints.loadRepositorySnapshots();
+  assert.deepEqual(records.map((record) => record.localSessionId), ["good-sidecar"]);
+});
+
+test("checkpoint schema stays version 1 and unchanged by the repository-snapshot sidecar", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  const written = await checkpoints.write(snapshot("provider-a", "schema-session", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "schema-session", repositorySnapshot());
+  const payload = JSON.parse(await readFile(path.join(directory, written.filename), "utf8"));
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ["evidence", "localSessionId", "observedAt", "providerId", "readiness", "revision", "source", "version"],
+  );
+  assert.equal(payload.version, 1);
+});
+
+test("prune removes a repository-snapshot sidecar once its checkpoint is evicted, and keeps a surviving pair", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1, maxBytes: 10_000 });
+  await checkpoints.write(snapshot("provider-a", "evicted", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "evicted", repositorySnapshot());
+  const evictedSidecar = repositorySnapshotFilename("provider-a", "evicted");
+  assert.ok((await readdir(directory)).includes(evictedSidecar));
+
+  // Writing a second checkpoint exceeds maxEntries: 1, evicting the first checkpoint and,
+  // through the same prune pass, its now-orphaned repository-snapshot sidecar.
+  await checkpoints.write(snapshot("provider-a", "current", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "current", repositorySnapshot({ branch: "feat/current" }));
+  const afterEviction = await readdir(directory);
+  assert.equal(afterEviction.includes(evictedSidecar), false, "the orphaned sidecar is pruned with its checkpoint");
+  const currentSidecar = repositorySnapshotFilename("provider-a", "current");
+  assert.ok(afterEviction.includes(currentSidecar), "a sidecar whose checkpoint survives is kept");
+
+  const records = await checkpoints.loadRepositorySnapshots();
+  assert.deepEqual(records.map((record) => record.localSessionId), ["current"]);
 });

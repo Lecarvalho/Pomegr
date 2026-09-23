@@ -149,6 +149,33 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionRepositoryLine { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sessionRepositoryLineBranch { color: var(--command-ink); font: var(--text-sm) var(--font-data); }
 .sessionRepositoryLineMeta { min-width: 0; color: var(--command-muted); font-size: var(--text-sm); }
+
+/* Session Repository tab top bar (G1-G14 in the repository-snapshot design contract). */
+.repositoryTab { display: grid; gap: var(--space-4); }
+.repositoryTabBar { padding: 10px var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.repositoryTabBarLeft { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.repositoryTabBarLine1 { min-width: 0; display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
+.repositoryTabBarLine1 > .commandIcon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--command-muted); }
+.repositoryTabBarBranch { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--command-ink); font: var(--text-sm) var(--font-data); }
+.repositoryTabBarRemoteState { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryTabBarLine2 { min-width: 0; margin: 0; overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); white-space: nowrap; text-overflow: ellipsis; }
+.repositoryTabBarRecordedCaption { margin: 0; color: var(--command-faint); font-size: var(--text-caption); }
+.repositoryTabBarAction { flex: 0 0 auto; }
+.repositoryTabBarEmpty { padding: var(--space-4); }
+.repositoryTabBarEmptyText, .repositoryTabBarUnrecorded { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
+.repositoryTabBarSkeleton { height: 64px; display: flex; flex-direction: column; justify-content: center; gap: var(--space-2); }
+.repositoryTabBarSkeletonLine { height: 12px; width: 40%; border-radius: var(--control-radius); background: var(--command-panel-2); }
+.repositoryTabBarSkeletonLine + .repositoryTabBarSkeletonLine { width: 60%; }
+
+.repositoryFilesPanel { padding: var(--space-4); }
+.repositoryFilesHeading { margin: 0 0 var(--space-2); color: var(--command-ink); font: 600 var(--text-heading)/1.35 var(--font-ui); }
+.repositoryFilesEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
+.repositoryFilesList { margin: 0; padding: 0; display: grid; gap: var(--space-2); list-style: none; }
+.repositoryFileRow { min-width: 0; display: flex; align-items: center; gap: var(--space-2); }
+.repositoryFileRow code { min-width: 0; display: flex; overflow: hidden; color: var(--command-muted); font-family: var(--font-data); font-size: var(--text-xs); }
+.repositoryFilePathDirectory { min-width: 0; flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.repositoryFilePathDirectory:empty { display: none; }
+.repositoryFilePathName { min-width: 0; max-width: 100%; flex: 0 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--command-ink); font-weight: 600; }
 .sessionRequestStrip { grid-column: 1 / 5; padding: 14px 16px; }
 .sessionRequestHeading { align-items: flex-start; margin-bottom: 8px; }
 .sessionRequestHeadingMain { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
@@ -284,6 +311,9 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .sessionRoleLegend { margin-top: 8px; }
   .sessionRightNow li { min-height: 44px; }
   .sessionTabState { min-height: 180px; padding: 24px 16px; }
+  .repositoryTabBar { flex-direction: column; align-items: stretch; }
+  .repositoryTabBarLine1 { flex-wrap: wrap; white-space: normal; }
+  .repositoryTabBarLine2 { white-space: normal; }
 }
 
 @media (prefers-reduced-motion: reduce) {

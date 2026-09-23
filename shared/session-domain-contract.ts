@@ -134,6 +134,15 @@ export type RepositoryDomain = SessionDomainBase & {
   contextInventoryRef: NonNullable<MonitorState["session"]>["contextInventoryRef"] | null;
   repository: NonNullable<MonitorState["session"]>["repository"] | null;
   pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] | null;
+  /** ISO time of the live check a historical view is served from; null for live views and
+   *  for historical sessions without a recorded snapshot. */
+  recordedAt: string | null;
+  /** Commits whose committer time lies inside the session wall-time window on the session's
+   *  branch, measured at the (last) live check; null when not measured. */
+  commitsInSession: number | null;
+  /** Execution tasks whose workKind is git, git_push or pull_request; null until activity
+   *  evidence is ready. */
+  gitTasks: { total: number; failed: number } | null;
   fileHistory: { readiness: "unavailable"; items: [] };
 };
 

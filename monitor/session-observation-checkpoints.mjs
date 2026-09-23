@@ -1,11 +1,13 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isSafeRecordedRepositoryPath, normalizeRepositorySnapshot } from "./repository-snapshot.mjs";
 
 export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
+const MAX_REPOSITORY_SNAPSHOT_BYTES = 64 * 1024;
 const MAX_COLLECTION_ENTRIES = 4_096;
 const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
   "MUST_NOT_LEAK",
@@ -59,23 +61,14 @@ function assertIdentity(payload) {
   }
 }
 
-const FILE_CHANGE_CONTROL = /[\u0000-\u001f\u007f]/u;
-const FILE_CHANGE_DRIVE = /^[A-Za-z]:/u;
-
 // Shape-only: this never resolves against a real filesystem root, so it
 // rejects every forbidden spelling (absolute, drive, UNC/device, traversal,
 // backslashes, control characters, private-root segments) independent of
 // repositoryRelativePath, which validates against an actual session cwd.
+// Shared with repository-snapshot.mjs's recorded repository files so the
+// two checkpoint-adjacent sidecars apply one identical path rule.
 function assertSafeFileChangePath(value, label) {
-  if (typeof value !== "string" || value.length < 1 || value.length > 512
-    || FILE_CHANGE_CONTROL.test(value) || value.includes("\\") || FILE_CHANGE_DRIVE.test(value)) {
-    throw new TypeError(`checkpoint ${label} is invalid`);
-  }
-  const segments = value.split("/");
-  if (segments.some((segment) => !segment || segment === "." || segment === ".."
-    || [".claude", ".codex"].includes(segment.toLowerCase()))) {
-    throw new TypeError(`checkpoint ${label} is invalid`);
-  }
+  if (!isSafeRecordedRepositoryPath(value)) throw new TypeError(`checkpoint ${label} is invalid`);
 }
 
 function assertFileChanges(evidence) {
@@ -134,9 +127,17 @@ function payloadFromSnapshot(snapshot) {
   return payload;
 }
 
+function identityHash(providerId, localSessionId) {
+  return crypto.createHash("sha256").update(`${providerId}\u0000${localSessionId}`).digest("hex");
+}
+
 export function checkpointFilename(providerId, localSessionId) {
-  const identity = `${providerId}\u0000${localSessionId}`;
-  return `checkpoint-${crypto.createHash("sha256").update(identity).digest("hex")}.json`;
+  return `checkpoint-${identityHash(providerId, localSessionId)}.json`;
+}
+
+/** The repository-snapshot sidecar shares its checkpoint's identity hash, never its filename. */
+export function repositorySnapshotFilename(providerId, localSessionId) {
+  return `repository-${identityHash(providerId, localSessionId)}.json`;
 }
 
 /** Validate the versioned, bounded and privacy-filtered L2 schema. */
@@ -216,6 +217,49 @@ export class SessionObservationCheckpointStore {
   }
 
   /**
+   * Write one bounded historical repository snapshot sidecar for a checkpointed
+   * session, atomically like `write`. The sidecar is validated independently
+   * (contract shape, byte budget, privacy sentinels) and never touches the
+   * checkpoint payload itself; `prune` later removes it once its checkpoint
+   * is gone.
+   */
+  async writeRepositorySnapshot(providerId, localSessionId, snapshot) {
+    const normalized = normalizeRepositorySnapshot(snapshot);
+    if (!normalized) throw new TypeError("repository snapshot is invalid");
+    assertIdentity({ providerId, localSessionId });
+    const payload = { version: SESSION_OBSERVATION_CHECKPOINT_VERSION, providerId, localSessionId, snapshot: normalized };
+    assertPrivacy(payload, this.privacySentinels);
+    const serialized = JSON.stringify(payload);
+    if (Buffer.byteLength(serialized) > MAX_REPOSITORY_SNAPSHOT_BYTES) throw new TypeError("repository snapshot exceeds byte budget");
+    await mkdir(this.directory, { recursive: true });
+    const filename = repositorySnapshotFilename(providerId, localSessionId);
+    const target = path.join(this.directory, filename);
+    const temporary = path.join(this.directory, `.${filename}.${crypto.randomUUID()}.tmp`);
+    await writeFile(temporary, serialized, { encoding: "utf8", flag: "wx" });
+    await rename(temporary, target);
+    return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
+  }
+
+  /** Read every valid repository-snapshot sidecar on startup; invalid ones are silently ignored. */
+  async loadRepositorySnapshots() {
+    const records = [];
+    for (const filename of await this.#repositorySnapshotFilenames()) {
+      try {
+        const payload = JSON.parse(await readFile(path.join(this.directory, filename), "utf8"));
+        if (!isPlainObject(payload) || payload.version !== SESSION_OBSERVATION_CHECKPOINT_VERSION) continue;
+        assertIdentity(payload);
+        const snapshot = normalizeRepositorySnapshot(payload.snapshot);
+        if (!snapshot) continue;
+        assertPrivacy(payload, this.privacySentinels);
+        records.push(Object.freeze({ providerId: payload.providerId, localSessionId: payload.localSessionId, snapshot }));
+      } catch {
+        // An unreadable or invalid sidecar contributes nothing at restart.
+      }
+    }
+    return Object.freeze(records);
+  }
+
+  /**
    * Read compatible records on startup. The caller supplies projection because
    * public response state is intentionally not stored in the checkpoint.
    */
@@ -289,6 +333,11 @@ export class SessionObservationCheckpointStore {
       }
     }
     this.qa.pruned += removed.length;
+    const removedSet = new Set(removed);
+    const survivingHashes = new Set(files
+      .filter((file) => !removedSet.has(file.filename))
+      .map((file) => file.filename.slice("checkpoint-".length, -".json".length)));
+    await this.#pruneRepositorySnapshots(survivingHashes);
     return Object.freeze({ entries: retained, bytes, removed: Object.freeze(removed) });
   }
 
@@ -307,6 +356,39 @@ export class SessionObservationCheckpointStore {
     } catch (error) {
       if (error?.code === "ENOENT") return [];
       throw error;
+    }
+  }
+
+  async #repositorySnapshotFilenames() {
+    try {
+      const directory = await readdir(this.directory, { withFileTypes: true });
+      return directory
+        .filter((entry) => entry.isFile() && /^repository-[a-f0-9]{64}\.json$/u.test(entry.name))
+        .map((entry) => entry.name)
+        .sort();
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      throw error;
+    }
+  }
+
+  /** A repository-snapshot sidecar is retained only while its checkpoint survives and it is itself valid. */
+  async #pruneRepositorySnapshots(survivingHashes) {
+    for (const filename of await this.#repositorySnapshotFilenames()) {
+      const hash = filename.slice("repository-".length, -".json".length);
+      let valid = false;
+      if (survivingHashes.has(hash)) {
+        try {
+          const payload = JSON.parse(await readFile(path.join(this.directory, filename), "utf8"));
+          valid = isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
+            && Boolean(normalizeRepositorySnapshot(payload.snapshot));
+        } catch {
+          valid = false;
+        }
+      }
+      if (!valid) {
+        try { await unlink(path.join(this.directory, filename)); } catch { /* A concurrent writer may have already removed it. */ }
+      }
     }
   }
 
