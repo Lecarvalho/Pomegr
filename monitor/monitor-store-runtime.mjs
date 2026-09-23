@@ -137,8 +137,12 @@ export function createMonitorStoreRuntime({
       facts = { databaseBytes: result.databaseBytes, oldestRetainedDay: result.oldestRetainedDay, cleanupStatus: result.cleanupStatus };
     } else {
       const read = await retention.readStorageFacts(openedStore);
-      const pending = Number.isFinite(read.databaseBytes) && read.databaseBytes >= settings.thresholdBytes;
-      facts = { databaseBytes: read.databaseBytes, oldestRetainedDay: read.oldestRetainedDay, cleanupStatus: pending ? "cleanup_pending" : "normal" };
+      const atThreshold = Number.isFinite(read.databaseBytes) && read.databaseBytes >= settings.thresholdBytes;
+      // Only a prune can confirm protected-history excess; keep that confirmation between
+      // prunes while the store is still at or above the threshold.
+      const cleanupStatus = !atThreshold ? "normal"
+        : facts.cleanupStatus === "protected_excess" ? "protected_excess" : "cleanup_pending";
+      facts = { databaseBytes: read.databaseBytes, oldestRetainedDay: read.oldestRetainedDay, cleanupStatus };
     }
   }
 
@@ -182,6 +186,9 @@ export function createMonitorStoreRuntime({
         openFailed = true;
       }
       commitReadiness();
+      // A rebuilt store leaves readiness at "rebuilding" until a cycle lets contributors
+      // repopulate; schedule one so an idle start does not wait for the first checkpoint.
+      if (openedStore?.rebuilt) afterCheckpointWrite(null);
     })();
     return startPromise;
   }
@@ -212,12 +219,12 @@ export function createMonitorStoreRuntime({
 }
 
 /**
- * The observation runtime's monitor store: desktop retention settings win over the
- * environment, and an injected checkpoint store (a test or embedded runtime) or
+ * The observation runtime's monitor store: retention comes from the environment (the
+ * desktop maps its saved storage settings onto it before start), and an injected checkpoint store (a test or embedded runtime) or
  * `monitorStore: false` never opens the real data-root database.
  */
 export function createObservationMonitorStoreRuntime({ options = {}, dataRoot, now }) {
-  const settings = resolveRetentionSettings({ environment: options.environment || process.env, desktop: options.storageSettings || null });
+  const settings = resolveRetentionSettings({ environment: options.environment || process.env });
   const directory = options.checkpointStore !== undefined || options.monitorStore === false
     ? null
     : path.join(dataRoot, "monitor-store-v1");

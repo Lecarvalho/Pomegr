@@ -255,6 +255,43 @@ test("runtime readiness stays rebuilding while a registered contributor has not 
   assert.equal(runtime.serveStorage(null).snapshot.value.readiness, "rebuilding");
 });
 
+test("a rebuilt store schedules its own cycle so an idle start leaves rebuilding", async (t) => {
+  const { directory, onClose } = await temporaryDirectory(t);
+  const runtime = createMonitorStoreRuntime({ directory, settings: defaultSettings, retention: fakeRetention() });
+  let repopulated = false;
+  runtime.registerContributor({ name: "file-history", onCheckpoint: async () => { repopulated = true; }, rebuildComplete: () => repopulated });
+  await runtime.start();
+  onClose(() => runtime.stop());
+  // No afterCheckpointWrite: nothing but start() schedules the cycle.
+  await waitFor(() => runtime.serveStorage(null).snapshot.value.readiness === "ready");
+});
+
+test("a confirmed protected_excess survives the between-prune fact refresh", async (t) => {
+  const { directory, onClose } = await temporaryDirectory(t);
+  const settings = { ...defaultSettings, thresholdBytes: 1 };
+  let refreshes = 0;
+  const runtime = createMonitorStoreRuntime({
+    directory, settings, pruneMinIntervalMs: 60_000,
+    retention: fakeRetention({
+      runRetention: (store, _settings, { now }) => Object.freeze({
+        prunedAt: now, cleanupStatus: "protected_excess", databaseBytes: store.sizeBytes(),
+        oldestRetainedDay: null, removedMinuteSessions: 0, removedSampleSessions: 0,
+      }),
+      readStorageFacts: (store) => { refreshes += 1; return { databaseBytes: store.sizeBytes(), oldestRetainedDay: null }; },
+    }),
+  });
+  await runtime.start();
+  onClose(() => runtime.stop());
+  runtime.afterCheckpointWrite();
+  await waitFor(() => runtime.serveStorage(null).snapshot.value.cleanupStatus === "protected_excess");
+  const before = refreshes;
+  runtime.afterCheckpointWrite();
+  await waitFor(() => refreshes > before && runtime.serveStorage(null).snapshot.value.readiness === "ready");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(runtime.serveStorage(null).snapshot.value.cleanupStatus, "protected_excess",
+    "a between-prune refresh must not flip a confirmed excess back to cleanup pending");
+});
+
 test("serveStorage answers unchanged for the currently committed revision", async (t) => {
   const { directory, onClose } = await temporaryDirectory(t);
   const runtime = createMonitorStoreRuntime({ directory, settings: defaultSettings, retention: fakeRetention() });

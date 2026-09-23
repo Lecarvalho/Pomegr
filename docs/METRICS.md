@@ -367,7 +367,7 @@ observation, or one no later than its start, does not match anything). A task ma
 peak when its interval and the peak's measurement window share any instant, including a
 touching endpoint. The peak's matched task IDs are every matching task's ID, deduplicated
 and sorted, capped at 20. The peak links a request number only when at least one task
-matches and every matching task before that cap resolves to the same request; any
+matches and every matching task, including any beyond that cap, resolves to the same request; any
 disagreement, or no matching task carrying a request at all, leaves the request link empty.
 Usage-observation timestamps are never part of this matching and cannot by themselves give
 a request an execution interval. The monitor does not yet resolve request numbers when it

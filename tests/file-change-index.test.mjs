@@ -113,8 +113,22 @@ test("created, edited, deleted, and recreated resolve in one apply; re-apply is 
   assert.equal(filesAgain.length, 1);
   assert.equal(filesAgain[0].id, files[0].id, "re-applying the same snapshot must not create a duplicate file row");
   const historyAgain = fileHistory(store, files[0].id);
-  assert.equal(historyAgain.length, 4, "a session's file_changes are replaced, not accumulated, on re-apply");
+  assert.equal(historyAgain.length, 4, "re-applying the same snapshot must not duplicate file_changes");
   assert.deepEqual(historyAgain.map((entry) => entry.kind), ["created", "deleted", "edited", "created"]);
+});
+
+test("a later snapshot whose bounded tail omits earlier tool calls keeps their committed changes", async (t) => {
+  const store = await openTestStore(t);
+  const root = await temporaryPlainDirectory(t);
+  const contributor = createFileChangeIndexContributor({ resolveRepository: stubResolver("repo-a", root), checkpointStore: null });
+  const early = toolCall({ timestamp: "2026-09-22T10:00:00.000Z", fileChanges: [{ path: "early.txt", kind: "created" }] });
+  const later = toolCall({ timestamp: "2026-09-22T11:00:00.000Z", fileChanges: [{ path: "later.txt", kind: "edited" }] });
+  await contributor.onCheckpoint(store, { now: 1, snapshots: [snapshot({ cwd: root, toolCalls: [early] })] });
+  // The evidence tail advanced: the early call fell out of the window.
+  await contributor.onCheckpoint(store, { now: 2, snapshots: [snapshot({ cwd: root, toolCalls: [later] })] });
+
+  const changes = listSessionFileChanges(store, "claude:session-1");
+  assert.deepEqual(changes.map((entry) => entry.path), ["later.txt", "early.txt"]);
 });
 
 // --- shell move continuity, with attribution ---
@@ -226,8 +240,7 @@ test("Git-only rename: continuity with no file_changes row and no session attrib
   git(root, "mv", "a.txt", "b.txt");
   git(root, "commit", "-m", "rename to b.txt");
 
-  // A distinct session id: reusing "session-1" here would replace (empty) its own
-  // file_changes and mask what this assertion is actually testing.
+  // A distinct session id keeps this trigger snapshot from touching session-1's changes.
   const idleSnap = snapshot({ localSessionId: "idle-trigger", cwd: root, toolCalls: [] });
   // Past the contributor's 60s per-repository Git-check interval.
   await contributor.onCheckpoint(store, { now: baseMs + 61_000, snapshots: [idleSnap] });

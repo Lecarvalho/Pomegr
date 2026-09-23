@@ -254,6 +254,8 @@ test("buildStorageReadiness: percent rounding over 100, null bytes, and the exac
     oldestRetainedDay: "2026-01-01", lastPrunedAt: "2026-09-22T00:00:00.000Z", cleanupStatus: "cleanup_pending",
   });
   assert.equal(ready.percent, 110);
+  const almost = buildStorageReadiness({ readiness: "ready", settings, databaseBytes: Math.ceil(settings.thresholdBytes * 0.995), cleanupStatus: "normal" });
+  assert.equal(almost.percent, 99, "below the threshold never reads 100%");
   const allowedKeys = ["cleanupStatus", "databaseBytes", "lastPrunedAt", "oldestRetainedDay", "percent", "readiness", "retentionDays", "thresholdBytes"];
   assert.deepEqual(Object.keys(ready).sort(), allowedKeys);
   assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(ready))).sort(), allowedKeys);

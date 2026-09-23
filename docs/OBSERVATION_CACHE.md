@@ -854,6 +854,19 @@ fingerprints, and retry deadlines are unchanged. Snapshot destination paths and
 profile digests never enter browser state or reports; the separate settings view
 exposes only the three configured provider roots described above.
 
+### Desktop storage settings
+
+`desktop/storage-settings.mjs` owns the native **Settings → Storage** action.
+Version 6 desktop settings may persist only two bounded enum overrides:
+`retentionDays` (30, 90, 180, 365, or keep all) and `storeMaxMb` (250, 500, 1024,
+or 2048), each null or a fixed choice. Versions 1–5 migrate with null storage.
+Only the trusted main desktop frame may set a draft field, discard, or request
+save/restart; IPC returns only enum values, pending state, and status. After the
+native confirmation the app restarts, and the monitor applies the saved values
+(else `POMEGR_RETENTION_DAYS`/`POMEGR_STORE_MAX_MB`, else 90 days / 500 MB) only
+at its next start and prune cycle, never from IPC or a GET. Browser and LAN
+clients read `GET /api/storage` only and render the controls read-only.
+
 ## Provider observer contract
 
 Every provider adapter must expose the observation lifecycle required by
@@ -2006,8 +2019,10 @@ The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a deri
 committed file-change evidence plus Git state acquired asynchronously outside S Serving.
 It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
 written since the last cycle. Each snapshot's paths are rebased from the session working
-directory onto the private Git root and revalidated; that session's `file_changes` rows
-are then replaced, so replaying a checkpoint is idempotent. Git renames come from
+directory onto the private Git root and revalidated. Writes are additive: a change
+already recorded for the same session, agent, kind, timestamp, and path is skipped, so
+replaying a checkpoint is idempotent, and a later snapshot whose bounded evidence tail no
+longer carries earlier tool calls never removes their committed rows. Git renames come from
 `git diff --name-status -M` against the last recorded head, at most once per repository
 per minute and 512 renames per read; the first observation records the head only. A
 Git rename updates `files.current_path` and opens a `file_paths` row with source `git`,
@@ -2038,8 +2053,8 @@ Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never u
 `outputs/` (development diagnostics only). It hosts the file-change index and resource
 history described in the approved persistence contract above; `files`, `file_paths`, and
 `file_changes` are populated by the file-change index, and `resource_minutes`,
-`resource_peaks`, and `resource_peak_samples` by future resource-history writers (both
-pending). The database path and any raw SQLite error text never appear in browser state,
+`resource_peaks`, and `resource_peak_samples` by the resource-history contributor
+(`monitor/resource-history.mjs`). The database path and any raw SQLite error text never appear in browser state,
 logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.
 
 The store is a rebuildable index, never a migration target. It rebuilds (recreating an

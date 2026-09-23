@@ -179,7 +179,8 @@ export function buildStorageReadiness({
     readiness: STORAGE_READINESS_VALUES.has(readiness) ? readiness : "unavailable",
     databaseBytes: bytes,
     thresholdBytes: settings.thresholdBytes,
-    percent: bytes === null ? null : Math.round((bytes / settings.thresholdBytes) * 100),
+    // Floor so 99.5% never reads "100%" while the status is still normal.
+    percent: bytes === null ? null : Math.floor((bytes / settings.thresholdBytes) * 100),
     oldestRetainedDay: safeDay(oldestRetainedDay),
     lastPrunedAt: safeTimestamp(lastPrunedAt),
     retentionDays: settings.retentionDays,

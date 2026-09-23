@@ -93,7 +93,25 @@ function applyMove(store, repositoryId, change) {
   recordChange(store, liveSource.id, change);
 }
 
+/**
+ * True when this exact recorded change (session, agent, kind, timestamp, path) is already
+ * indexed. The path matches the file's current path or any path it ever held, so a later
+ * Git or shell move does not make a replayed change look new.
+ */
+function isRecorded(store, repositoryId, change) {
+  return Boolean(store.database.prepare(`
+    SELECT 1 AS present
+    FROM file_changes fc
+    JOIN files f ON f.id = fc.file_id
+    WHERE fc.session_id = ? AND fc.agent_id = ? AND fc.kind = ? AND fc.observed_at = ?
+      AND f.repository_id = ?
+      AND (f.current_path = ? OR EXISTS (SELECT 1 FROM file_paths p WHERE p.file_id = f.id AND p.path = ?))
+    LIMIT 1
+  `).get(change.sessionId, change.agentId, change.kind, change.observedAt, repositoryId, change.path, change.path));
+}
+
 function applyChange(store, repositoryId, change) {
+  if (isRecorded(store, repositoryId, change)) return;
   if (change.kind === "moved") applyMove(store, repositoryId, change);
   else applyMutation(store, repositoryId, change);
 }
@@ -150,10 +168,10 @@ async function applySnapshot(store, snapshot, resolveRepository) {
     || typeof resolved.root !== "string" || !resolved.root) return;
   const sessionId = `${providerId}:${localSessionId}`;
   const changes = collectChanges(snapshot, sessionId, resolved.root, cwd);
-  // A session's file_changes are fully replaced on every apply so re-indexing the same
-  // checkpoint (a rebuild, or a coalesced re-write of the same revision) is idempotent.
+  // Additive: live evidence is a bounded tail (Claude transcript tail, Codex tool-call cap),
+  // so a snapshot that no longer carries early tool calls must never delete their committed
+  // rows. Already-recorded changes are skipped, which keeps replaying a checkpoint idempotent.
   store.transaction(() => {
-    store.database.prepare("DELETE FROM file_changes WHERE session_id = ?").run(sessionId);
     for (const change of changes) applyChange(store, resolved.repositoryId, change);
   });
 }
