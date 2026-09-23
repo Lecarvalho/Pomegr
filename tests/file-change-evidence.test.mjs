@@ -200,6 +200,48 @@ test("Claude adapter end-to-end: recognized file changes on success, none on fai
   assertNoPrivateFixtureSentinels(evidence, "Claude file-change evidence");
 });
 
+test("Claude PowerShell tool call: recognized file changes on success, none on failure", async (t) => {
+  const root = await realTempDir(t, "pomegr-claude-powershell-file-change-");
+  const projectsRoot = path.join(root, "projects");
+  const cwd = await realTempDir(t, "pomegr-claude-powershell-file-change-cwd-");
+  const localId = "claude-powershell-file-change-fixture";
+  const mainFile = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+
+  const records = [
+    { type: "user", timestamp: "2026-09-22T10:00:00.000Z", cwd, message: { content: "Rename the config" } },
+    claudeAssistantToolUse("ps-rename", "PowerShell", {
+      command: "Rename-Item -Path src/old.ts -NewName new.ts", description: "Rename",
+    }, "2026-09-22T10:00:01.000Z"),
+    claudeUserToolResult("ps-rename", { toolUseResult: {}, timestamp: "2026-09-22T10:00:01.500Z" }),
+    claudeAssistantToolUse("ps-failed", "PowerShell", {
+      command: "Remove-Item -Path src/oops.ts", description: "Delete",
+    }, "2026-09-22T10:00:02.000Z"),
+    claudeUserToolResult("ps-failed", { isError: true, toolUseResult: {}, timestamp: "2026-09-22T10:00:02.500Z" }),
+    claudeAssistantToolUse("ps-ambiguous", "PowerShell", {
+      command: "New-Item -Path src/ambiguous.ts", description: "Create without a type",
+    }, "2026-09-22T10:00:03.000Z"),
+    claudeUserToolResult("ps-ambiguous", { toolUseResult: {}, timestamp: "2026-09-22T10:00:03.500Z" }),
+  ];
+  await mkdir(path.dirname(mainFile), { recursive: true });
+  await writeFile(mainFile, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+
+  const provider = createClaudeProvider({
+    homeDir: root,
+    projectsRoot,
+    registryRoot: path.join(root, "registry"),
+    tasksRoot: path.join(root, "tasks"),
+    explicitSession: mainFile,
+    usageRequest: async () => { throw new Error("not requested"); },
+  });
+  const evidence = await provider.readSession(localId, { historical: true });
+  const byId = new Map(evidence.toolCalls.map((call) => [call.id, call]));
+
+  assert.deepEqual(byId.get("ps-rename").fileChanges, [{ path: "src/new.ts", kind: "moved", previousPath: "src/old.ts" }]);
+  assert.equal(byId.get("ps-failed").fileChanges, null, "a failed PowerShell call records no file change");
+  assert.equal(byId.get("ps-ambiguous").fileChanges, null, "New-Item without -ItemType records no file change");
+  assertNoPrivateFixtureSentinels(evidence, "Claude PowerShell file-change evidence");
+});
+
 // ---------------------------------------------------------------------------
 // Codex: apply_patch headers and canonical fileChange items.
 // ---------------------------------------------------------------------------
@@ -268,6 +310,40 @@ test("Codex apply_patch headers become created/edited/moved/deleted only for a c
   ], { actor: ACTOR, sourceKey: "apply-patch-no-cwd" });
   assert.equal(noCwd[0].status, "completed");
   assert.equal(noCwd[0].fileChanges, null, "without a cwd, evidence degrades to null instead of throwing");
+});
+
+test("Codex shell/exec command items record file changes only for a completed call with exit code 0", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-shell-file-change-");
+  const forbiddenRoot = path.join(os.tmpdir(), "codex-home-fixture");
+
+  const shellCall = (callId, { exitCode, isError = false } = {}) => parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "function_call", name: "shell_command", call_id: callId,
+      arguments: JSON.stringify({ command: "mv src/old.ts src/new.ts", description: "Rename" }),
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: {
+      type: "function_call_output", call_id: callId, output: "PRIVATE_OUTPUT_MUST_NOT_LEAK",
+      ...(exitCode === undefined ? {} : { exit_code: exitCode }), ...(isError ? { is_error: true } : {}),
+    } },
+  ], { actor: ACTOR, sourceKey: `shell-${callId}`, cwd, forbiddenRoots: [forbiddenRoot] });
+
+  const zeroExit = shellCall("shell-exit-0", { exitCode: 0 });
+  assert.equal(zeroExit[0].status, "completed");
+  assert.deepEqual(zeroExit[0].fileChanges, [{ path: "src/new.ts", kind: "moved", previousPath: "src/old.ts" }]);
+  assert.equal(Object.hasOwn(zeroExit[0], "fileChangeCandidates"), false, "the private working field never survives sealing");
+  assert.equal(Object.hasOwn(zeroExit[0], "exitCode"), false, "the private exit-code field never survives sealing");
+  assertNoPrivateFixtureSentinels(zeroExit, "Codex shell command success");
+
+  const nonZeroExit = shellCall("shell-exit-1", { exitCode: 1 });
+  assert.equal(nonZeroExit[0].status, "completed");
+  assert.equal(nonZeroExit[0].fileChanges, null, "a non-zero exit code records no file change even though the call completed");
+
+  const unknownExit = shellCall("shell-exit-unknown");
+  assert.equal(unknownExit[0].fileChanges, null, "a missing exit code records no file change (fail closed)");
+
+  const failedCall = shellCall("shell-exit-failed", { isError: true });
+  assert.equal(failedCall[0].status, "failed");
+  assert.equal(failedCall[0].fileChanges, null, "a failed shell call records no file change");
 });
 
 test("Codex canonical fileChange items map add/update/delete kinds and ignore unrecognized ones", async (t) => {

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { normalizedSkillName } from "../skill-usage.mjs";
+import { shellFileChangeCandidates } from "./shell-file-writes.mjs";
 
 function boundedOneLine(value, maximum = 54) {
   return typeof value === "string"
@@ -8,37 +9,18 @@ function boundedOneLine(value, maximum = 54) {
 }
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "MultiEdit", "NotebookEdit"]);
-// No pipes/redirects/chaining/globs/variables/backticks: only a whole, plain
-// `mv a b` or `git mv a b` is unambiguous enough to record as a move.
-const FORBIDDEN_MOVE_COMMAND_CHARS = /[|;&<>$`*?[\]\r\n]/u;
-
-function unwrapPlainArgument(token) {
-  if (token.length >= 2) {
-    const first = token[0];
-    const last = token[token.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      const inner = token.slice(1, -1);
-      return inner && !inner.includes(first) ? inner : null;
-    }
-  }
-  return token.startsWith("-") ? null : token;
-}
 
 /**
- * Recognize only an unambiguous whole-command `mv a b` or `git mv a b`: two
- * plain, optionally quoted arguments and nothing else. The command text
- * itself never leaves this function.
+ * Recognize only an unambiguous whole-command `mv a b` or `git mv a b`: the
+ * POSIX shell-file-writes grammar applied to the whole command, kept to
+ * exactly this shape by requiring it to be the command's only candidate and
+ * that candidate to be a move. The command text itself never leaves this
+ * function.
  */
 export function claudeMoveCommandCandidate(command) {
-  if (typeof command !== "string" || !command.trim() || FORBIDDEN_MOVE_COMMAND_CHARS.test(command)) return null;
-  const tokens = command.trim().split(/\s+/u);
-  const rest = tokens[0] === "git" && tokens[1] === "mv" ? tokens.slice(2)
-    : tokens[0] === "mv" ? tokens.slice(1)
-    : null;
-  if (!rest || rest.length !== 2) return null;
-  const from = unwrapPlainArgument(rest[0]);
-  const to = unwrapPlainArgument(rest[1]);
-  return from && to ? { from, to } : null;
+  const candidates = shellFileChangeCandidates(command, { shell: "posix" });
+  if (candidates.length !== 1 || candidates[0].kind !== "moved") return null;
+  return { from: candidates[0].previousTarget, to: candidates[0].target };
 }
 
 /** Candidate {target, kind, previousTarget} file changes for one successful Claude tool call. */
@@ -53,10 +35,8 @@ export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
     const target = input.file_path || input.path;
     return typeof target === "string" && target ? [{ target, kind: "edited" }] : [];
   }
-  if (tool === "Bash") {
-    const move = claudeMoveCommandCandidate(input.command);
-    return move ? [{ target: move.to, kind: "moved", previousTarget: move.from }] : [];
-  }
+  if (tool === "Bash") return shellFileChangeCandidates(input.command, { shell: "posix" });
+  if (tool === "PowerShell") return shellFileChangeCandidates(input.command, { shell: "powershell" });
   return [];
 }
 

@@ -270,6 +270,42 @@ test("Codex gives a call its recorded output duration and leaves unmatched calls
   assertNoPrivateFixtureSentinels(calls, "Codex activity duration");
 });
 
+test("Codex shell commands select PowerShell or POSIX grammar from the argv shape, with no explicit shell field", async (context) => {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-shell-kind-"));
+  context.after(() => rm(cwd, { recursive: true, force: true }));
+
+  const shellCall = (callId, command) => parseCodexActivityRecords([
+    { timestamp: "2026-08-10T20:00:00.000Z", type: "response_item", payload: {
+      type: "function_call", name: "shell_command", call_id: callId, arguments: JSON.stringify({ command }),
+    } },
+    { timestamp: "2026-08-10T20:00:01.000Z", type: "response_item", payload: {
+      type: "function_call_output", call_id: callId, output: "PRIVATE_OUTPUT_MUST_NOT_LEAK", exit_code: 0,
+    } },
+  ], { actor: ACTOR, sourceKey: `shell-kind-${callId}`, cwd });
+
+  // A bare PowerShell cmdlet with no interpreter prefix: Codex's argv is
+  // already tokenized (not a `bash -lc "..."`-style wrapped string), so the
+  // Verb-Noun cmdlet shape is the only available signal.
+  const bareCmdlet = shellCall("bare-cmdlet", ["Remove-Item", "src/old.ts"]);
+  assert.deepEqual(bareCmdlet[0].fileChanges, [{ path: "src/old.ts", kind: "deleted", previousPath: null }]);
+
+  // An explicit interpreter prefix selects PowerShell even though the rest
+  // of the argv (a bare script invocation) is not itself recognized.
+  const explicitPowershell = shellCall("explicit-powershell", ["powershell", "restart-pomegr.ps1"]);
+  assert.equal(explicitPowershell[0].fileChanges, null);
+
+  // A plain POSIX-shaped argv still defaults to posix grammar.
+  const posixArgv = shellCall("posix-argv", ["mv", "src/a.ts", "src/b.ts"]);
+  assert.deepEqual(posixArgv[0].fileChanges, [{ path: "src/b.ts", kind: "moved", previousPath: "src/a.ts" }]);
+
+  // A command element that cannot be safely re-quoted (embedded single
+  // quote) is left unrecognized rather than risk corrupting a target.
+  const unsafeQuote = shellCall("unsafe-quote", ["Remove-Item", "src/o'boy.ts"]);
+  assert.equal(unsafeQuote[0].fileChanges, null);
+
+  assertNoPrivateFixtureSentinels([...bareCmdlet, ...explicitPowershell, ...posixArgv, ...unsafeQuote], "Codex shell-kind detection");
+});
+
 test("provider merges rollout and canonical duplicates while agent and grouped totals agree", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-activity-"));
   context.after(() => rm(root, { recursive: true, force: true }));
