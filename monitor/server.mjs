@@ -248,6 +248,7 @@ export function createMonitorRuntime(options = {}) {
       progress: summary?.progress ?? null,
       currentActivity: reconcileSessionCurrentActivity(entry, summary?.currentActivity),
       activityFallback: reconcileSessionActivityFallback(entry, summary?.activityFallback, summary?.lastObservedActivity),
+      cacheTiming: summary?.cacheTiming ?? null,
     };
   }
 
@@ -513,6 +514,7 @@ export function createMonitorRuntime(options = {}) {
           delete session.currentActivity;
           delete session.activityFallback;
           delete session.lastObservedActivity;
+          delete session.cacheTiming;
           return session;
         }),
         history: {

@@ -16,6 +16,7 @@ import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
+import { SessionCacheTiming } from "./SessionCacheTiming";
 import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
 export { AgentsView } from "../agents/AgentsView";
@@ -120,7 +121,7 @@ function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<
   {
     id: "updated", label: "Updated", cellLabel: "Updated", className: "commandTableUpdated", colClassName: "commandSessionColUpdated",
     sortValue: (session) => Date.parse(session.updatedAt),
-    renderCell: (session) => sessionTimestamp(session.updatedAt),
+    renderCell: (session) => <>{sessionTimestamp(session.updatedAt)}<SessionCacheTiming session={session} /></>,
   },
   {
     id: "open", label: "Open session", hideLabel: true, colClassName: "commandSessionColAction",

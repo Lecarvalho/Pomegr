@@ -146,7 +146,7 @@ as a compact request-local count with its exact value in the hover. Ordinals are
 Automatic and manual compaction ticks compare successive requests for the same agent;
 snapshot drops are not drawn. No request amounts are summed across observations.
 
-The Agent activity presentation derives **Last request** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`.
+The Agent activity presentation derives **Last request** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`CACHE_TIMING.md`](CACHE_TIMING.md). Neither timestamp uses `Agent.lastSeen`. The Sessions directory repeats the same nearing/elapsed evaluation for the primary agent only, from the catalog's bounded `cacheTiming` evidence, and renders nothing at rest; see [`CACHE_TIMING.md`](CACHE_TIMING.md#sessions-page-indication).
 
 ## Context history
 

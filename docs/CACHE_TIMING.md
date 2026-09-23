@@ -60,6 +60,31 @@ can exceed a documented minimum, and cache availability can also change because
 of prefix changes, routing, eviction, model changes, or a prefix that was never
 written. Pomegr therefore keeps the indication amber and uses cautious wording.
 
+## Sessions page indication
+
+The Sessions directory carries the same evaluation for the session's **primary
+agent** only, because that is the conversation a person resumes. Every row with
+retained evidence, live or historical, includes the primary agent's newest
+cache-touch time and its allowlisted lifetime (`SessionSummary.cacheTiming`); the
+browser evaluates the state against its live clock, so a row changes without a
+new catalog revision. Historical rows keep the evidence because a resumed session
+still depends on that cache.
+
+- Within the lifetime, the row shows nothing: the Updated column stays the
+  relative time.
+- While a `5m` or `1h` lifetime is nearing its threshold, a 12px amber timer
+  glyph follows the Updated time. Its accessible name reads **Cache ~Nm left**,
+  where N is the whole-minute ceiling of the remaining time (never below 1).
+- After the recorded lifetime passes, the glyph turns faint and its name reads
+  **Cache lifetime elapsed**. Elapsed is a settled observation, not a call to
+  act, so it never uses the amber attention color.
+
+The glyph carries no visible text. It is the shared dotted disclosure: hover or
+tap shows **Last cache touch**, **Observed lifetime**, the state, and the
+reminder that an elapsed lifetime is not proof the provider dropped the entry. Rows without a primary
+agent, subagent-only cache activity, and mixed, minimum-only, or missing
+lifetimes render no note. Subagent caches never drive the session indication.
+
 ## Privacy boundary
 
 The browser receives only the normalized request timestamp, normalized agent
@@ -67,3 +92,8 @@ ID, allowlisted cache lifetime, and request-local token counts already defined
 by the request-snapshot contract. Raw prompts, cache-control blocks, provider
 request identifiers, cache keys, model identifiers, and provider diagnostics
 remain monitor-private.
+
+The session catalog adds only `cacheTiming.lastCacheTouchAt` (a normalized
+request timestamp) and `cacheTiming.cacheLifetime` (the same allowlisted
+lifetime enum), or `null`. It never carries request IDs, token counts, agent
+IDs beyond the fixed primary scope, or any other request-snapshot field.

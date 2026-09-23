@@ -427,6 +427,16 @@ export type SessionActivityFallback = {
   actor: "primary" | "subagent" | "multiple" | "unknown";
 };
 /** Bounded session-directory row derived from committed normalized evidence. */
+/**
+ * Primary agent's newest retained request with cache activity, live or
+ * recorded. The browser derives the nearing/elapsed indication; null when
+ * unavailable. See docs/CACHE_TIMING.md.
+ */
+export type SessionCacheTiming = {
+  lastCacheTouchAt: string;
+  cacheLifetime: CacheLifetime | null;
+};
+
 export type SessionSummary = {
   id: string;
   provider: ProviderId;
@@ -447,6 +457,8 @@ export type SessionSummary = {
   currentActivity: SessionCurrentActivity | null;
   /** Separate from provider-authored activity; optional for older monitor responses. */
   activityFallback?: SessionActivityFallback | null;
+  /** Optional for older monitor responses. */
+  cacheTiming?: SessionCacheTiming | null;
   repositoryId?: string | null;
   contextInventoryRef?: ContextInventoryReference | null;
 };

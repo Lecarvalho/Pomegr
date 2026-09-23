@@ -147,6 +147,11 @@
 .commandTable tbody tr:hover { background: var(--command-panel-2); }
 .commandSessionMetadata { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
 .commandSessionMetadata > span { min-width: 0; overflow-wrap: anywhere; }
+.commandTableUpdated { white-space: nowrap; }
+.commandTableUpdated .commandSessionCacheTiming { margin-left: 6px; vertical-align: -2px; color: var(--command-muted); opacity: .55; }
+.commandTableUpdated .commandSessionCacheTiming .commandIcon { width: 12px; height: 12px; display: block; }
+.commandTableUpdated .commandSessionCacheTiming.cacheTimingNear { color: var(--amber); opacity: 1; }
+.commandTableUpdated .commandSessionCacheTiming .dottedInfoPopoverTrigger { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; min-height: 20px; }
 .commandTablePrimary { min-width: 210px; display: block; color: var(--command-ink); text-decoration: none; }
 .commandTablePrimary strong, .commandTablePrimary small { display: block; }
 .commandTablePrimary strong { font-size: var(--text-base); font-weight: 500; }
@@ -396,6 +401,8 @@
   .commandSessionTable td:nth-child(7) { grid-column: 1 / 3; grid-row: 4; display: flex; align-items: baseline; gap: 8px; }
   .commandSessionTable td:last-child { grid-column: 3; grid-row: 1; }
   .commandSessionTable td[data-label]:not(.commandTableUpdated) { display: grid; align-content: start; gap: 6px; }
+  .commandTableUpdated .commandSessionCacheTiming { margin-left: -2px; }
+  .commandTableUpdated .commandSessionCacheTiming .dottedInfoPopoverTrigger { min-width: 28px; min-height: 28px; justify-content: flex-start; }
   .commandSessionTable td[data-label]::before { color: var(--command-faint); content: attr(data-label); font: var(--text-xs)/1 var(--font-ui); letter-spacing: 0; text-transform: none; }
   .commandTablePrimary { min-width: 0; }
   .commandTablePrimary strong { overflow-wrap: anywhere; }

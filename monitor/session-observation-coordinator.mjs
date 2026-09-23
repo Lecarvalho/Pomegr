@@ -3,6 +3,7 @@ import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
+import { projectSessionCacheTiming } from "./session-cache-timing.mjs";
 
 const OPEN_LIVE_WINDOW_MS = 5 * 60_000;
 
@@ -248,6 +249,8 @@ export function createSessionObservationCoordinator(options = {}) {
         activityFallback: retainPrevious ? reconcileSessionActivityFallback(entry, previous.activityFallback)
           : projectSessionActivityFallback(restoredActivitySessions.has(entry.id) ? { ...entry, isLive: false } : entry,
             state?.agents, snapshot?.evidence?.toolCalls),
+        cacheTiming: snapshot ? projectSessionCacheTiming(state?.agents, state?.metrics?.tokens?.requestSnapshots)
+          : retainPrevious ? previous.cacheTiming ?? null : null,
         repositoryId: state?.session?.repositoryId || previous?.repositoryId || null,
         contextInventoryRef: state?.session?.contextInventoryRef || previous?.contextInventoryRef || null,
       };

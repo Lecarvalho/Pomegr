@@ -1356,7 +1356,7 @@ remain the source of truth.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries and per-row summary readiness | Application shell, Sessions directory, sidebar, Home destination labels |
+| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries, per-row summary readiness, and the primary agent's bounded `cacheTiming` (newest cache-touch timestamp plus allowlisted lifetime, or `null`) derived in D from committed request snapshots for live and retained historical rows alike; the browser evaluates nearing/elapsed against its own clock | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |
