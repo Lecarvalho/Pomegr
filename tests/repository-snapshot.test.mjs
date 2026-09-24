@@ -512,6 +512,48 @@ test("the recorder never erases a snapshot on a failed live check and skips an u
   assert.equal(recorder.recorded(42), null);
 });
 
+test("the recorder derives an overlapping check after the prior session write settles", async () => {
+  let releaseFirstWrite;
+  const firstWriteHeld = new Promise((resolve) => { releaseFirstWrite = resolve; });
+  let firstWriteStarted;
+  const firstWriteStartedPromise = new Promise((resolve) => { firstWriteStarted = resolve; });
+  const writes = [];
+  const store = {
+    loadRepositorySnapshots: async () => [],
+    writeRepositorySnapshot: async (_providerId, _localSessionId, candidate) => {
+      writes.push(candidate);
+      if (writes.length === 1) {
+        firstWriteStarted();
+        await firstWriteHeld;
+      }
+    },
+  };
+  const recorder = createRepositorySnapshotRecorder({ store });
+  const live = (files, checkedAt) => ({
+    repository: {
+      available: true, branch: "main", historical: false, isMain: true, files,
+      comparison: null, remote: { status: "unavailable", checkedAt: null },
+    },
+    pullRequests: { status: "unavailable", checkedAt: null, items: [] },
+    commitsInSession: 1,
+    checkedAt,
+  });
+
+  const first = recorder.record("claude:overlap", live([{ status: " M", path: "app/baseline.ts" }], "2026-09-20T12:00:00.000Z"));
+  await firstWriteStartedPromise;
+  const second = recorder.record("claude:overlap", live([
+    { status: " M", path: "app/baseline.ts" },
+    { status: "??", path: "app/newly-dirty.ts" },
+  ], "2026-09-20T12:01:00.000Z"));
+  releaseFirstWrite();
+  assert.deepEqual(await Promise.all([first, second]), [true, true]);
+
+  const recorded = recorder.recorded("claude:overlap");
+  assert.deepEqual(writes[0].dirtyAtFirstCheck, ["app/baseline.ts"]);
+  assert.deepEqual(recorded.dirtyAtFirstCheck, ["app/baseline.ts"], "the first persisted check remains the dirty baseline");
+  assert.deepEqual(recorded.becameDirty, ["app/newly-dirty.ts"], "the overlapping second check is compared with that baseline");
+});
+
 test("the recorder restores its snapshots after a restart via the same checkpoint directory", async (context) => {
   const directory = await temporaryCheckpointDirectory(context);
   const firstStore = new SessionObservationCheckpointStore({ directory });

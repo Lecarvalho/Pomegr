@@ -34,7 +34,6 @@ const MAX_HISTORY_SESSIONS = 100;
 // Defensive resource-exhaustion guards; the contract above only bounds files/sessions, not
 // these intermediate row counts, so a pathological repository or file cannot balloon memory.
 const MAX_FOLDER_PAIRS = 50_000;
-const MAX_FILE_HISTORY_ROWS = 20_000;
 
 function isoOrNull(ms) {
   return typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : null;
@@ -206,44 +205,61 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
       fileId: null, path: requestedPath, sessions: [], unattributedChanges: 0, truncated: false,
     };
   }
+  // Aggregate in SQLite before applying the public 100-session bound. A raw-row
+  // limit here would let a busy recent session hide older history and undercount
+  // edits while reporting the result as complete.
   const rows = store.database.prepare(`
-    SELECT session_id AS sessionId, agent_id AS agentId, kind, observed_at AS observedAt
-    FROM file_changes
-    WHERE file_id = ?
-    ORDER BY observed_at DESC, id DESC
+    WITH sessions AS (
+      SELECT session_id AS sessionId, MAX(observed_at) AS newestAt,
+             MAX(id) AS newestId,
+             SUM(CASE WHEN kind = 'edited' THEN 1 ELSE 0 END) AS editCount,
+             MAX(CASE WHEN kind = 'created' THEN 1 ELSE 0 END) AS createdInSession
+      FROM file_changes
+      WHERE file_id = ? AND session_id IS NOT NULL
+      GROUP BY session_id
+    )
+    SELECT sessions.sessionId, sessions.newestAt, sessions.newestId,
+           sessions.editCount, sessions.createdInSession, newest.kind AS newestKind
+    FROM sessions
+    JOIN file_changes newest ON newest.id = (
+      SELECT id FROM file_changes
+      WHERE file_id = ? AND session_id = sessions.sessionId
+      ORDER BY observed_at DESC, id DESC LIMIT 1
+    )
+    ORDER BY sessions.newestAt DESC, sessions.newestId DESC
     LIMIT ?
-  `).all(resolved.fileId, MAX_FILE_HISTORY_ROWS);
-
-  const bySession = new Map();
-  let unattributedChanges = 0;
-  for (const row of rows) {
-    if (row.sessionId === null || row.sessionId === undefined) { unattributedChanges += 1; continue; }
-    let entry = bySession.get(row.sessionId);
-    if (!entry) {
-      // Rows arrive newest-first, so a session's first occurrence here is its newest change.
-      entry = { newestAt: row.observedAt, newestKind: row.kind, editCount: 0, createdInSession: false, agentIds: new Set() };
-      bySession.set(row.sessionId, entry);
-    }
-    if (row.kind === "edited") entry.editCount += 1;
-    if (row.kind === "created") entry.createdInSession = true;
-    if (typeof row.agentId === "string" && row.agentId) entry.agentIds.add(row.agentId);
-  }
-
-  const sessionIds = [...bySession.keys()]; // already newest-session-first, see comment above
+  `).all(resolved.fileId, resolved.fileId, MAX_HISTORY_SESSIONS + 1);
+  const sessionIds = rows.map((row) => row.sessionId);
   const truncated = sessionIds.length > MAX_HISTORY_SESSIONS;
+  const selectedRows = rows.slice(0, MAX_HISTORY_SESSIONS);
+  const selectedSessionIds = selectedRows.map((row) => row.sessionId);
+  const agentIdsBySession = new Map(selectedSessionIds.map((sessionId) => [sessionId, new Set()]));
+  if (selectedSessionIds.length) {
+    const placeholders = selectedSessionIds.map(() => "?").join(", ");
+    const agentRows = store.database.prepare(`
+      SELECT DISTINCT session_id AS sessionId, agent_id AS agentId
+      FROM file_changes
+      WHERE file_id = ? AND session_id IN (${placeholders}) AND agent_id IS NOT NULL
+    `).all(resolved.fileId, ...selectedSessionIds);
+    for (const row of agentRows) {
+      if (typeof row.agentId === "string" && row.agentId) agentIdsBySession.get(row.sessionId)?.add(row.agentId);
+    }
+  }
+  const unattributedChanges = store.database.prepare(
+    "SELECT COUNT(*) AS count FROM file_changes WHERE file_id = ? AND session_id IS NULL",
+  ).get(resolved.fileId)?.count || 0;
   const catalogById = new Map(safeArray(catalogFn).map((entry) => [entry?.id, entry]));
   const pathAtTimeStatement = store.database.prepare(`
     SELECT path FROM file_paths WHERE file_id = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?)
     ORDER BY valid_from DESC LIMIT 1
   `);
-  const sessions = sessionIds.slice(0, MAX_HISTORY_SESSIONS).map((sessionId) => {
-    const entry = bySession.get(sessionId);
+  const sessions = selectedRows.map((entry) => {
+    const sessionId = entry.sessionId;
     const catalogEntry = catalogById.get(sessionId) || null;
     const provider = catalogEntry?.provider === "claude" || catalogEntry?.provider === "codex" ? catalogEntry.provider : null;
     const pathAtTimeRow = pathAtTimeStatement.get(resolved.fileId, entry.newestAt, entry.newestAt);
     const pathAtTime = pathAtTimeRow && pathAtTimeRow.path !== resolved.currentPath && isSafeRecordedRepositoryPath(pathAtTimeRow.path)
       ? pathAtTimeRow.path : null;
-    const agents = [...entry.agentIds].map((agentId) => ({ id: agentId, label: safeAgentLabel(agentLabelFn, sessionId, agentId) }));
     return {
       sessionId,
       title: typeof catalogEntry?.title === "string" ? catalogEntry.title : null,
@@ -252,7 +268,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
       kind: entry.createdInSession ? "created" : entry.newestKind,
       editCount: entry.editCount,
       newestAt: isoOrNull(entry.newestAt),
-      agents,
+      agents: [...(agentIdsBySession.get(sessionId) || [])].map((agentId) => ({ id: agentId, label: safeAgentLabel(agentLabelFn, sessionId, agentId) })),
       pathAtTime,
     };
   });
@@ -330,11 +346,18 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
   async function onCheckpoint(store, { now: cycleNow } = {}) {
     const nowMs = Number.isFinite(cycleNow) ? cycleNow : now();
 
-    let sessionIds;
-    try { sessionIds = demandedSessionIds(); } catch { sessionIds = null; }
-    if (Array.isArray(sessionIds)) {
+    let demandedIds;
+    try { demandedIds = demandedSessionIds(); } catch { demandedIds = null; }
+    if (Array.isArray(demandedIds)) {
+      // Explicit on-demand requests lead the cycle. The retained-session list
+      // can be longer than 32, so slicing it first would starve a requested
+      // session merely because it is older than the current retention prefix.
+      const sessionIds = [...new Set([...pendingSessionRequests, ...demandedIds])];
       for (const sessionId of sessionIds.slice(0, MAX_DEMANDED_SESSIONS_PER_CYCLE)) {
-        if (typeof sessionId !== "string" || sessionId.length === 0) continue;
+        if (typeof sessionId !== "string" || sessionId.length === 0) {
+          pendingSessionRequests.delete(sessionId);
+          continue;
+        }
         pendingSessionRequests.delete(sessionId);
         let nextBlock;
         try { nextBlock = buildSessionFiles(store, sessionId); } catch { continue; }
@@ -344,6 +367,11 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
         sessionSerialized.set(sessionId, nextSerialized);
         try { onSessionChange(sessionId); } catch { /* one failing subscriber cannot break the cycle */ }
       }
+      // A checkpoint runtime coalesces request nudges. When more explicit
+      // requests exist than this cycle can build, schedule exactly the next
+      // pass; entries are removed before their build so failed builds cannot
+      // keep re-scheduling themselves forever.
+      if (pendingSessionRequests.size > 0) nudge();
     }
 
     for (const [key, at] of listingRequestedAt) {

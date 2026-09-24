@@ -178,6 +178,11 @@ reads the same cycle's committed rows. For each demanded session (at most 32 per
 reads the newest 1,440 minute rows (`minutesTruncated` marks a longer curve), the
 `resource_curve_removals` record, and the top three peaks per display field with their
 sample windows and matched execution-task IDs, then keeps the normalized block in memory.
+An explicit retained-resource request is scheduled before the ordinary demanded sessions,
+so a selected session is not delayed behind older retained sessions when the cycle bound
+applies. When more newly requested sessions remain after that bound, the contributor queues
+one further checkpoint pass; a failed read never self-schedules a retry loop. Remaining
+ordinary sessions keep their ordinary demand order.
 `retained()` is a pure map lookup and `request()` only nudges the store to schedule a
 cycle; a GET never reads SQLite. Readiness is `unavailable` without a store, `rebuilding`
 while the store rebuilds, `loading` until a block commits, then `ready`. A failed read
@@ -2068,8 +2073,13 @@ target. Per cycle it builds at most 32 demanded sessions' touched-file summaries
 200 files, folded into the `repository` domain's `fileHistory`), 8 repository listings
 (at most 5,000 files), and 32 per-file histories (at most 100 sessions). It retains at
 most 64 listings and 256 histories in LRU order and drops an entry idle for ten minutes.
-Each cycle spends its budget on keys with no committed block first, then on rebuilds of
-existing blocks, newest-touched first, so a new selection is never starved by older ones.
+Explicitly requested session summaries lead the 32-session budget; when requested
+summaries remain beyond that bound, the source schedules one further bounded pass. Each
+cycle otherwise spends its budget on keys with no committed block first, then on rebuilds
+of existing blocks, newest-touched first, so a new selection is never starved by older
+ones. Per-file histories aggregate rows by session in SQLite before applying the 100-session
+limit, so a session with many raw file changes neither hides older sessions nor undercounts
+its edits.
 Every lookup is a pure map read that returns `loading` and queues hydration on a miss;
 readiness is `unavailable` without a store and `rebuilding` while it rebuilds. Paths are
 re-validated with `isSafeRecordedRepositoryPath`; a stored path that fails is served as no
@@ -2184,6 +2194,11 @@ to exceed it rather than deleting protected history. The committed storage-readi
 response distinguishes `normal` usage, `cleanup_pending` (the threshold is met but the
 per-cycle cap has not yet cleared it), and `protected_excess` (only protected rows remain
 and the threshold still cannot be met).
+
+When retention deletes a session's minute curve, it records the bounded reason and removal
+time in `resource_curve_removals`. If the session later records new minute data and a later
+age or size cleanup deletes that new curve, the record is replaced so the browser describes
+the latest actual removal rather than an earlier cleanup.
 
 `/api/storage` serves the committed storage-readiness object and nothing else:
 

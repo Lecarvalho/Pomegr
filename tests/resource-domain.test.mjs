@@ -348,18 +348,99 @@ test("last-known-good: a failed build for one session keeps its previous block a
   assert.deepEqual(changed, ["s1"], "onChange is not called again for the failed session");
 });
 
-test("demanded sessions are bounded per cycle", async (t) => {
+test("an explicitly requested resource session is prioritized within the 32-session cycle bound", async (t) => {
   const store = await openStore(t);
   const ids = Array.from({ length: 40 }, (_, index) => `s${index}`);
   const stub = createStubRuntime({ store });
   const changed = [];
-  createResourceDomainSource({
+  const source = createResourceDomainSource({
     monitorStoreRuntime: stub.runtime,
     demandedSessionIds: () => ids,
     onChange: (id) => changed.push(id),
   });
+  source.request("s39");
   await stub.runCycle();
   assert.equal(changed.length, 32, "at most 32 demanded sessions are processed in one cycle");
+  assert.equal(changed[0], "s39", "the explicitly requested retained block is hydrated before older demanded sessions");
+  assert.ok(changed.includes("s30"));
+  assert.ok(!changed.includes("s31"));
+});
+
+test("more than 32 requested resource sessions schedule bounded follow-up cycles until every new request hydrates", async (t) => {
+  const store = await openStore(t);
+  const ids = Array.from({ length: 40 }, (_, index) => `s${index}`);
+  const stub = createStubRuntime({ store });
+  const changed = [];
+  const source = createResourceDomainSource({
+    monitorStoreRuntime: stub.runtime,
+    demandedSessionIds: () => ids,
+    onChange: (id) => changed.push(id),
+  });
+  for (const id of ids) source.request(id);
+  const nudgesBeforeCycle = stub.afterCheckpointWriteCalls();
+
+  await stub.runCycle();
+  assert.equal(changed.length, 32);
+  assert.equal(stub.afterCheckpointWriteCalls(), nudgesBeforeCycle + 1, "remaining fresh requests queue one follow-up cycle");
+
+  await stub.runCycle();
+  assert.equal(changed.length, 40);
+  assert.deepEqual(new Set(changed), new Set(ids));
+  assert.equal(stub.afterCheckpointWriteCalls(), nudgesBeforeCycle + 1, "once all fresh requests hydrate, no empty follow-up cycle is queued");
+  assert.ok(ids.every((id) => source.retained(id).readiness === "ready"));
+});
+
+test("a failed requested resource read does not queue an automatic retry loop", async () => {
+  const brokenStore = { get database() { throw new Error("simulated read failure"); } };
+  const stub = createStubRuntime({ store: brokenStore });
+  const source = createResourceDomainSource({
+    monitorStoreRuntime: stub.runtime,
+    demandedSessionIds: () => ["s1"],
+    onChange: () => {},
+  });
+  source.request("s1");
+  const nudgesBeforeCycle = stub.afterCheckpointWriteCalls();
+
+  await stub.runCycle();
+  assert.equal(stub.afterCheckpointWriteCalls(), nudgesBeforeCycle);
+});
+
+test("failed explicit requests cannot starve a healthy retained block on later checkpoints", async (t) => {
+  const store = await openStore(t);
+  let demanded = ["healthy"];
+  const stub = createStubRuntime({ store });
+  const source = createResourceDomainSource({
+    monitorStoreRuntime: stub.runtime,
+    demandedSessionIds: () => demanded,
+    onChange: () => {},
+  });
+  await stub.runCycle();
+  assert.equal(source.retained("healthy").readiness, "ready");
+
+  const failed = Array.from({ length: 32 }, (_, index) => `failed-${index}`);
+  demanded = ["healthy", ...failed];
+  for (const id of failed) source.request(id);
+  const failingStore = {
+    database: {
+      prepare(sql) {
+        const statement = store.database.prepare(sql);
+        return {
+          all(...args) {
+            if (sql.includes("FROM resource_minutes WHERE session_id = ?") && failed.includes(args[0])) {
+              throw new Error("simulated session read failure");
+            }
+            return statement.all(...args);
+          },
+          get(...args) { return statement.get(...args); },
+        };
+      },
+    },
+  };
+  await stub.runCycle(failingStore);
+
+  insertMinuteRow(store, "healthy", 60_000, { cpu_cores_min: 1, cpu_cores_avg: 1, cpu_cores_max: 1, cpu_cores_max_at: 60_000 });
+  await stub.runCycle(failingStore);
+  assert.equal(source.retained("healthy").minutes.length, 1, "failed requests no longer occupy every later cycle slot");
 });
 
 test("sessionResourceCurvesRecent: newest-N with a truncated flag, ascending order preserved", async (t) => {

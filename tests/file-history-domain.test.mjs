@@ -335,6 +335,78 @@ test("requestSessionFiles: nudges afterCheckpointWrite once per session (coalesc
   assert.equal(stub.afterCheckpointWriteCalls(), 1, "a session with a block never nudges again");
 });
 
+test("requestSessionFiles: an explicitly requested retained session is hydrated ahead of the 32-session cycle bound", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(11);
+  for (let index = 1; index <= 40; index += 1) {
+    insertFile(store, { id: index, repositoryId, path: `f${index}.txt` });
+    insertChange(store, { fileId: index, sessionId: `claude:s${index}`, agentId: "agent-1", kind: "created", observedAt: index });
+  }
+  const retained = Array.from({ length: 40 }, (_value, index) => `claude:s${index + 1}`);
+  const { stub, source } = await buildSource(store, { demandedSessionIds: () => retained });
+
+  source.requestSessionFiles("claude:s40");
+  await stub.runCycle();
+
+  assert.equal(source.sessionFiles("claude:s40").readiness, "ready");
+  assert.equal(source.sessionFiles("claude:s32").readiness, "loading", "the requested session takes one of the bounded hydration slots");
+});
+
+test("requestSessionFiles: more than 32 explicit requests stay queued until every session is hydrated", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(13);
+  const retained = Array.from({ length: 40 }, (_value, index) => `claude:queued-${index + 1}`);
+  for (let index = 1; index <= 40; index += 1) {
+    insertFile(store, { id: index, repositoryId, path: `queued-${index}.txt` });
+    insertChange(store, { fileId: index, sessionId: retained[index - 1], agentId: "agent-1", kind: "created", observedAt: index });
+  }
+  const { stub, source } = await buildSource(store, { demandedSessionIds: () => retained });
+  for (const sessionId of retained) source.requestSessionFiles(sessionId);
+
+  const nudgesBeforeFirstCycle = stub.afterCheckpointWriteCalls();
+  await stub.runCycle();
+  assert.equal(source.sessionFiles(retained[31]).readiness, "ready");
+  assert.equal(source.sessionFiles(retained[32]).readiness, "loading");
+  assert.equal(
+    stub.afterCheckpointWriteCalls(),
+    nudgesBeforeFirstCycle + 1,
+    "the remaining explicit requests schedule their own next checkpoint after the coalesced first cycle",
+  );
+
+  await stub.runCycle();
+  for (const sessionId of retained) assert.equal(source.sessionFiles(sessionId).readiness, "ready", sessionId);
+});
+
+test("fileHistory: SQL aggregation retains older sessions and full edit counts beyond 20,000 changes", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(12);
+  insertFile(store, { id: 1, repositoryId, path: "busy.txt" });
+  insertChange(store, { fileId: 1, sessionId: "claude:older", agentId: "agent-1", kind: "created", observedAt: 1 });
+  const insertBusyChange = store.database.prepare(
+    "INSERT INTO file_changes (file_id, session_id, agent_id, kind, observed_at, request_number) VALUES (?, ?, ?, ?, ?, NULL)",
+  );
+  store.database.exec("BEGIN IMMEDIATE");
+  try {
+    for (let index = 0; index < 20_001; index += 1) {
+      insertBusyChange.run(1, "claude:busy", "agent-1", "edited", index + 2);
+    }
+    store.database.exec("COMMIT");
+  } catch (error) {
+    try { store.database.exec("ROLLBACK"); } catch { /* best effort */ }
+    throw error;
+  }
+
+  const { stub, source } = await buildSource(store);
+  source.fileHistory(repositoryId, { path: "busy.txt" });
+  await stub.runCycle();
+  const history = source.fileHistory(repositoryId, { path: "busy.txt" });
+
+  assert.equal(history.readiness, "ready");
+  assert.equal(history.truncated, false);
+  assert.deepEqual(history.sessions.map((session) => session.sessionId), ["claude:busy", "claude:older"]);
+  assert.equal(history.sessions[0].editCount, 20_001);
+});
+
 // --- LRU and idle bounds for repository listings and file histories ---
 
 test("repositoryFiles: LRU-bounded to 64 concurrently retained listings", async (t) => {

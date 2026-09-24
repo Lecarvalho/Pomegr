@@ -545,26 +545,32 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
   function record(qualifiedId, live) {
     const parsed = parseQualifiedSessionId(qualifiedId);
     if (!parsed) return Promise.resolve(false);
-    const previous = entries.get(qualifiedId)?.snapshot || null;
-    let next = null;
-    try {
-      next = snapshotFromLiveCheck({
-        repository: live?.repository,
-        pullRequests: live?.pullRequests,
-        commitsInSession: live?.commitsInSession,
-        committedPaths: live?.committedPaths,
-        committedChanges: live?.committedChanges,
-        checkedAt: live?.checkedAt,
-        previous,
-      });
-    } catch {
-      next = null;
-    }
-    if (!next || (previous && JSON.stringify(previous) === JSON.stringify(next))) return Promise.resolve(false);
     const chain = (pending.get(qualifiedId) || Promise.resolve())
       .catch(() => {})
-      .then(() => store.writeRepositorySnapshot(parsed.providerId, parsed.localSessionId, next))
-      .then(() => { retain(qualifiedId, next); return true; })
+      // Derive only after the prior write for this session settles. A concurrent
+      // second check must see the first check's retained dirty baseline rather
+      // than independently treating its own working tree as the first check.
+      .then(async () => {
+        const previous = entries.get(qualifiedId)?.snapshot || null;
+        let next = null;
+        try {
+          next = snapshotFromLiveCheck({
+            repository: live?.repository,
+            pullRequests: live?.pullRequests,
+            commitsInSession: live?.commitsInSession,
+            committedPaths: live?.committedPaths,
+            committedChanges: live?.committedChanges,
+            checkedAt: live?.checkedAt,
+            previous,
+          });
+        } catch {
+          next = null;
+        }
+        if (!next || (previous && JSON.stringify(previous) === JSON.stringify(next))) return false;
+        await store.writeRepositorySnapshot(parsed.providerId, parsed.localSessionId, next);
+        retain(qualifiedId, next);
+        return true;
+      })
       .catch(() => false)
       .finally(() => {
         if (pending.get(qualifiedId) === chain) pending.delete(qualifiedId);

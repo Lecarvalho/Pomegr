@@ -216,7 +216,7 @@ test("runRetention: size cleanup falls through to resource_peak_samples once no 
   assert.equal(result.cleanupStatus, "normal");
 });
 
-test("runRetention: a session's first recorded curve removal wins and is never overwritten by a later cleanup", () => {
+test("runRetention: a later cleanup replaces a curve-removal record when it deletes newly recorded minutes", () => {
   const store = createFakeStore({ bytesPerRow: 100 });
   const settings = { retentionDays: 90, thresholdMb: 500, thresholdBytes: 500 * 1024 * 1024 };
   const now = 1_000 * MS_PER_DAY;
@@ -230,8 +230,7 @@ test("runRetention: a session's first recorded curve removal wins and is never o
   const later = now + MS_PER_DAY;
   runRetention(store, laterSettings, { now: later });
   assert.deepEqual(distinctSessionIds(store, "resource_minutes"), []);
-  // INSERT OR IGNORE keeps the original age_retention record and timestamp.
-  assert.deepEqual(curveRemovals(store), [{ sessionId: "stale", reason: "age_retention", removedAt: now }]);
+  assert.deepEqual(curveRemovals(store), [{ sessionId: "stale", reason: "size_cleanup", removedAt: later }]);
 });
 
 test("runRetention: cleanup_pending when the per-cycle session cap stops the cleanup short", () => {

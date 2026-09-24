@@ -94,7 +94,8 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
         const deleteMinutes = database.prepare("DELETE FROM resource_minutes WHERE session_id = ?");
         const deleteSamples = database.prepare("DELETE FROM resource_peak_samples WHERE session_id = ?");
         const recordRemoval = database.prepare(
-          "INSERT OR IGNORE INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'age_retention', ?)",
+          `INSERT INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'age_retention', ?)
+           ON CONFLICT(session_id) DO UPDATE SET reason = excluded.reason, removed_at = excluded.removed_at`,
         );
         for (const sessionId of staleSessionIds) {
           if (deleteMinutes.run(sessionId).changes > 0) {
@@ -123,7 +124,8 @@ export function runRetention(store, settings, { now = Date.now(), maxSessionsPer
       store.transaction(() => {
         const deleteMinutes = database.prepare("DELETE FROM resource_minutes WHERE session_id = ?");
         const recordRemoval = database.prepare(
-          "INSERT OR IGNORE INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'size_cleanup', ?)",
+          `INSERT INTO resource_curve_removals (session_id, reason, removed_at) VALUES (?, 'size_cleanup', ?)
+           ON CONFLICT(session_id) DO UPDATE SET reason = excluded.reason, removed_at = excluded.removed_at`,
         );
         for (const sessionId of minuteSessionIds) {
           deleteMinutes.run(sessionId);

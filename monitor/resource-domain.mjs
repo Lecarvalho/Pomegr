@@ -168,6 +168,26 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
   const serialized = new Map(); // sessionId -> last committed block's JSON, for change detection
   const requestedSessionIds = new Set(); // sessions with an outstanding, coalesced hydration nudge
 
+  // An explicit retained-resource request wins the next bounded cycle. The remaining
+  // demanded IDs retain their supplied order, which lets normal catalog recency decide
+  // among sessions that were not explicitly selected by the user.
+  function cycleSessionIds(sessionIds) {
+    const demanded = new Set();
+    for (const sessionId of sessionIds) {
+      if (typeof sessionId === "string" && sessionId.length > 0) demanded.add(sessionId);
+    }
+    const requested = [];
+    for (const sessionId of requestedSessionIds) {
+      if (!demanded.delete(sessionId)) continue;
+      requested.push(sessionId);
+    }
+    const ordered = [...requested];
+    for (const sessionId of sessionIds) {
+      if (demanded.delete(sessionId)) ordered.push(sessionId);
+    }
+    return ordered;
+  }
+
   async function onCheckpoint(store) {
     let sessionIds;
     try {
@@ -176,8 +196,11 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
       return;
     }
     if (!Array.isArray(sessionIds)) return;
-    for (const sessionId of sessionIds.slice(0, MAX_DEMANDED_SESSIONS_PER_CYCLE)) {
-      if (typeof sessionId !== "string" || sessionId.length === 0) continue;
+    const demanded = new Set(sessionIds.filter((sessionId) => typeof sessionId === "string" && sessionId.length > 0));
+    const selectedSessionIds = cycleSessionIds(sessionIds).slice(0, MAX_DEMANDED_SESSIONS_PER_CYCLE);
+    for (const sessionId of selectedSessionIds) {
+      // Consume explicit priority on the first attempt. A failed read can be
+      // requested again by a later GET, but cannot monopolize every future cycle.
       requestedSessionIds.delete(sessionId);
       let nextBlock;
       try {
@@ -192,6 +215,15 @@ export function createResourceDomainSource({ monitorStoreRuntime, demandedSessio
       blocks.set(sessionId, nextBlock);
       serialized.set(sessionId, nextSerialized);
       try { onChange(sessionId); } catch { /* one failing subscriber cannot break the cycle */ }
+    }
+
+    // The store runtime turns this into at most one extra pass after the current cycle.
+    // Only requests beyond this cycle's budget cause it. Failed reads have
+    // consumed their priority, so they cannot create an automatic retry loop.
+    for (const sessionId of requestedSessionIds) {
+      if (!demanded.has(sessionId)) continue;
+      try { monitorStoreRuntime.afterCheckpointWrite?.(); } catch { /* best-effort nudge */ }
+      break;
     }
   }
 
