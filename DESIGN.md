@@ -427,7 +427,10 @@ accessible name) — amber **M** (Modified), green **U** (Untracked) and **A** (
 neutral **D**/**R** (Deleted/Renamed). When the working tree reports no status (committed
 or reverted), a touched row falls back to this session's recorded kind as a neutral
 muted letter — **C** (**Created in this session**) or **M** (**Edited in this session**),
-never amber because nothing is pending; deleted and moved kinds show no letter —
+never amber because nothing is pending; deleted and moved kinds show no letter. A
+Git-observed row without a recorded kind uses its Git net change the same neutral way:
+**A** (**Added in a commit during this session**), **M** (**Modified in a commit during
+this session**), or **D** (**Deleted in a commit during this session**) —
 and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
 (full path, indent 14, their own status letter) that is hidden when empty. A touched row
 Git observed during the session window but no tool ever recorded — changed by a commit
@@ -480,8 +483,12 @@ action, trailing chevron) linking to `/repositories/<id>?tab=files&path=<path>`.
 follows: **Recorded in this session** with the kind chip (**Edited**, **Created**,
 **Deleted**, or **Moved**, always shown here), a muted
 **N changes** run, and the latest change time; or, for a file only Git saw, **Seen in Git
-during this session** with **Committed on the session branch** or **Became uncommitted
-during the session** plus **· not a recorded tool edit**. Otherwise it reads **No
+· no recorded agent edit** with **Added in a commit on the session branch**, **Modified in
+a commit on the session branch**, **Deleted in a commit on the session branch**,
+**Committed on the session branch** (change not recorded), or **Became uncommitted during
+the session**, then a muted caption **Could be the agent through a command Pomegr can't
+read, a build or generated file, or someone else.** It never names who changed the file.
+Otherwise it reads **No
 recorded change in this session.**, shows the loading skeleton while recorded changes
 load, or **Recorded changes are unavailable.**
 

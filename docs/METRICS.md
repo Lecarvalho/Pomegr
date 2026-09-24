@@ -726,9 +726,14 @@ check. Files already uncommitted at that first check form a baseline and are nev
 shown. Commits are read only while the live branch matches the recorded branch. Paths
 that already have a recorded file-change row are not repeated. Git-observed files come
 from repository state, not provider evidence, so they may include changes made by
-other people, other sessions, or other tools during the window. They name no agent or
-request, carry no kind or chip color, are not recorded edits, and do not count toward
-edit totals or the repository file history.
+other people, other sessions, or other tools during the window. A committed file carries
+Git's net change across the window's commits: added when any commit in the window added
+it, deleted when the newest change deleted it, otherwise modified. That describes what the
+commits did to the file, not who made the change. Git-observed files name no agent or
+request, are not recorded edits, and do not count toward edit totals or the repository
+file history. A file without a recorded edit is not evidence that someone else changed
+it: the agent may have written it through a command Pomegr cannot attribute, or a build
+or generator may have produced it.
 
 ## Pull-request associations
 

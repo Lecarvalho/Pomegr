@@ -46,6 +46,7 @@ export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], wor
       fileId: null,
       status: workingTreeByPath.get(file.path) ?? null,
       gitObserved: file.source,
+      gitChange: file.change,
     }));
   const gitObservedPaths = new Set(gitObservedExtra.map((file) => file.path));
   const touched: FileTreeFile[] = [...recorded, ...gitObservedExtra].sort((left, right) => left.path.localeCompare(right.path));

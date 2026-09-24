@@ -145,9 +145,10 @@ export function createMonitorRuntime(options = {}) {
     const branchKnown = typeof input.recordedGitBranch === "string" && input.recordedGitBranch.length > 0;
     let commitsInSession = entry.commitsInSession ?? null;
     let committedPaths = null;
+    let committedChanges = null;
     if (repository.available && entry.repositoryRoot && (!branchKnown || repository.branch === input.recordedGitBranch)) {
       const windowRead = await readCommitsInWindow(entry.repositoryRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
-      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; }
+      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; }
     }
     // Omitted (not just null) when never measured, so an unavailable-repository
     // refresh keeps producing the exact same sanitized placeholder shape as before.
@@ -157,7 +158,7 @@ export function createMonitorRuntime(options = {}) {
       entry.commitsInSession = commitsInSession;
       entry.refreshedAt = refreshedAt;
       onRepositoryCheck?.(entry.sessionId, {
-        repository, pullRequests, commitsInSession, committedPaths, checkedAt: new Date(refreshedAt).toISOString(),
+        repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt: new Date(refreshedAt).toISOString(),
       });
     }
   }

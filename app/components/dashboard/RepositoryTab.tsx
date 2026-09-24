@@ -127,7 +127,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
   const segment = manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments);
   const query = search.trim();
   const recorded = selectedPath ? domain.fileHistory.files.find((file) => file.path === selectedPath) ?? null : null;
-  const gitObserved = selectedPath ? domain.gitObservedFiles?.files.find((file) => file.path === selectedPath)?.source ?? null : null;
+  const gitObserved = selectedPath ? domain.gitObservedFiles?.files.find((file) => file.path === selectedPath) ?? null : null;
   const workingTreeStatus = selectedPath ? repository.files.find((file) => file.path === selectedPath)?.status ?? null : null;
 
   const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);

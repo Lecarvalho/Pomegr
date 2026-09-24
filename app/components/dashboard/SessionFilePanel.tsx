@@ -5,12 +5,18 @@ import { FileHistoryLoadingRows, FilePanelHeader, KIND_LABELS } from "../reposit
 import { sessionTimeLabel } from "../repositories/file-history-format";
 
 type RecordedFile = RepositoryDomain["fileHistory"]["files"][number];
-type GitObservedSource = NonNullable<RepositoryDomain["gitObservedFiles"]>["files"][number]["source"];
+type GitObservedFile = NonNullable<RepositoryDomain["gitObservedFiles"]>["files"][number];
 
-const GIT_OBSERVED_TEXT: Record<GitObservedSource, string> = {
-  committed: "Committed on the session branch",
-  uncommitted: "Became uncommitted during the session",
-};
+const COMMITTED_CHANGE_TEXT = {
+  added: "Added in a commit on the session branch",
+  modified: "Modified in a commit on the session branch",
+  deleted: "Deleted in a commit on the session branch",
+} as const;
+
+function gitObservedText(file: GitObservedFile): string {
+  if (file.source === "uncommitted") return "Became uncommitted during the session";
+  return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Committed on the session branch";
+}
 
 /** The session Repository tab's right panel: what this session did to the selected file, built
  * only from the repository domain the tab already holds, so selecting a file never waits on a
@@ -27,7 +33,7 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
   recorded: RecordedFile | null;
   recordedReadiness: RepositoryDomain["fileHistory"]["readiness"];
   /** How Git saw the path change in the session window, when no tool recorded it. */
-  gitObserved: GitObservedSource | null;
+  gitObserved: GitObservedFile | null;
   className?: string;
 }) {
   if (path === null) {
@@ -51,10 +57,11 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
     : gitObserved
       ? <article className="fileHistoryEntry">
           <div className="fileHistoryEntryBody">
-            <span className="fileHistoryEntryTitle">Seen in Git during this session</span>
+            <span className="fileHistoryEntryTitle">Seen in Git · no recorded agent edit</span>
             <div className="fileHistoryEntryMeta">
-              <span className="fileHistoryEntryMetaText">{GIT_OBSERVED_TEXT[gitObserved]} · not a recorded tool edit</span>
+              <span className="fileHistoryEntryMetaText">{gitObservedText(gitObserved)}</span>
             </div>
+            <p className="fileHistoryEntryNote">Could be the agent through a command Pomegr can't read, a build or generated file, or someone else.</p>
           </div>
         </article>
       : recordedReadiness === "loading"

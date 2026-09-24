@@ -295,12 +295,13 @@ describe("RepositoryTab", () => {
       expect(panelProps.gitObserved).toBeNull();
     });
 
-    it("passes a Git-observed source when no tool recorded the selected file", () => {
-      useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed" }], truncated: false } })));
+    it("passes the Git-observed entry when no tool recorded the selected file", () => {
+      const committedOnly = { path: "app/committed-only.ts", source: "committed", change: "added" } as const;
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: { files: [committedOnly], truncated: false } })));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/committed-only.ts" });
       const panelProps = SessionFilePanelMock.mock.calls.at(-1)![0];
       expect(panelProps.recorded).toBeNull();
-      expect(panelProps.gitObserved).toBe("committed");
+      expect(panelProps.gitObserved).toEqual(committedOnly);
     });
 
     it("uses the catalog project as the tree root label, falling back to Repository when unknown", () => {
@@ -340,8 +341,8 @@ describe("RepositoryTab", () => {
         useSessionDomain.mockReturnValue(result(domainWithFiles({
           gitObservedFiles: {
             files: [
-              { path: "app/Dashboard.tsx", source: "committed" }, // already recorded; stays a plain recorded row
-              { path: "app/new-file.ts", source: "uncommitted" }, // not recorded; gains the glyph, moves out of elsewhere
+              { path: "app/Dashboard.tsx", source: "committed", change: "modified" }, // already recorded; stays a plain recorded row
+              { path: "app/new-file.ts", source: "uncommitted", change: null }, // not recorded; gains the glyph, moves out of elsewhere
             ],
             truncated: false,
           },
@@ -356,7 +357,7 @@ describe("RepositoryTab", () => {
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual([
           { path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" },
-          { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted" },
+          { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted", gitChange: null },
         ]);
         expect(treeProps.elsewhere).toEqual([]);
       });
@@ -380,7 +381,7 @@ describe("RepositoryTab", () => {
             ],
           }),
           recordedAt: "2026-09-21T09:00:05.000Z",
-          gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed" }], truncated: false },
+          gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed", change: "added" }], truncated: false },
         })));
         renderTab({ sessionId: SESSION_ID, historical: true });
 
@@ -388,7 +389,7 @@ describe("RepositoryTab", () => {
         expect(within(segment).getByRole("button", { name: "Touched here 2" })).toBeInTheDocument();
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual(expect.arrayContaining([
-          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed" },
+          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
         ]));
       });
     });

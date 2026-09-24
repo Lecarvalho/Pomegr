@@ -2126,18 +2126,27 @@ Snapshot version 2 adds the Git-observed lists. `dirtyAtFirstCheck` is set once,
 first live check under version 2, and never replaced or shown; it survives restarts in the
 sidecar. `becameDirty` is the sticky union of status paths absent from that baseline.
 `committedInWindow` is the latest successful `readCommitsInWindow` result (`git log
---format=%H --name-only --no-renames --since --until HEAD` with `core.quotepath=false`
+--format=%H --name-status --no-renames --since --until HEAD` with `core.quotepath=false`
 and an argument array, 3
 seconds, 256 KiB), read only when the live branch equals the recorded branch and carried
 forward when a read fails. `gitObservedTruncated` is sticky. Each list holds at most 200
 paths and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap. A
-version 1 record loads as version 2 with null sentinels, meaning "never measured". A
+version 1 record loads as version 3 with null sentinels, meaning "never measured". A
 session already in progress when it first meets version 2 takes its then-current dirty
 set as the baseline, so earlier edits are not Git-observed.
 
-The monitor derives `gitObservedFiles: { files: [{ path, source }], truncated } | null`
+Snapshot version 3 adds `committedChanges`: null, or one fixed `added`/`modified`/`deleted`
+per `committedInWindow` path, aligned index for index. Each path's net change comes from its
+name-status letters across the window's commits, newest first: `deleted` when the newest
+change deleted it, `added` when any commit in the window added it, otherwise `modified` (a
+type change counts as modified). It travels with `committedInWindow`: carried forward when a
+read fails, replaced on a successful read, and null when a read returned paths without
+change kinds. A version 2 record loads as version 3 with `committedChanges` null.
+
+The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
 from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in
-both. It travels through the `gitObservedForSession` side channel (observation runtime to
+both. `change` is the committed path's recorded net change, else null; the projection
+drops any other value, and an uncommitted path always carries null. It travels through the `gitObservedForSession` side channel (observation runtime to
 session-domain store to projection), like `fileHistory`, and the projection re-validates
 every path with the repository-path validator. It appears only in the `repository`
 domain, never on `/api/state` `session.repository`. The UI drops a path that already has

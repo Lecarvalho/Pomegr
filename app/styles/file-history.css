@@ -50,6 +50,7 @@
 .fileHistoryEntryTitle { font: 400 var(--text-sm)/1.4 var(--font-ui); color: var(--command-ink); }
 a.fileHistoryEntryTitle:hover { text-decoration: underline; }
 .fileHistoryEntryTitle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.fileHistoryEntryNote { margin: 0; font-size: var(--text-caption); color: var(--command-muted); }
 .fileHistoryEntryOldPath { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
 .fileHistoryEntryTime { align-self: flex-start; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); white-space: nowrap; }
 .fileHistoryUnattributed { margin: 0; padding: var(--space-2) 16px; color: var(--command-muted); font-size: var(--text-xs); }

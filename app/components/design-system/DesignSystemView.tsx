@@ -296,7 +296,7 @@ const FILE_TREE_SESSION_FILES: FileTreeFile[] = [
   { path: "app/components/dashboard/SessionFilePanel.tsx", fileId: "f105", status: null, recordedKind: "created" },
   { path: "app/components/dashboard/RepositoryTab.tsx", fileId: "f106", status: null, recordedKind: "edited" },
   // Git-observed, not a recorded tool edit (F/plan "2026-09-23-session-file-coverage" part 2).
-  { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed" },
+  { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
 ];
 const FILE_TREE_SESSION_ELSEWHERE: FileTreeFile[] = [
   { path: "docs/OBSERVATION_CACHE.md", fileId: null, status: "M" },
@@ -385,7 +385,7 @@ function FileHistoryPanelSection() {
           recorded={{ fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z" }} />
       </Sample>
       <Sample label="Session file panel, Git-observed" note="No tool recorded the file; Git saw it change in the session window.">
-        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved="committed" />
+        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "app/committed.ts", source: "committed", change: "added" }} />
       </Sample>
       <Sample label="Repository side" note="Copy path action.">
         <FileHistoryPanel repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE} />

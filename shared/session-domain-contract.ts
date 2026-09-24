@@ -157,6 +157,8 @@ export type RepositoryDomain = SessionDomainBase & {
 export type RepositoryGitObservedFile = {
   path: string; // safe repository-relative path, same root as repository.files and fileHistory
   source: "committed" | "uncommitted"; // "committed" wins when a path is both
+  /** Net Git change across the window's commits; committed paths only, null when not recorded. */
+  change: "added" | "modified" | "deleted" | null;
 };
 export type RepositoryGitObservedFiles = {
   files: RepositoryGitObservedFile[]; // sorted by path, at most 200

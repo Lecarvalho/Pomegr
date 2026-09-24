@@ -22,7 +22,7 @@ import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
 
 function validSnapshot(overrides = {}) {
   return {
-    version: 2,
+    version: 3,
     branch: "feat/example",
     isMain: false,
     files: [{ status: " M", path: "app/file.ts" }],
@@ -34,6 +34,7 @@ function validSnapshot(overrides = {}) {
     dirtyAtFirstCheck: ["app/file.ts"],
     becameDirty: [],
     committedInWindow: null,
+    committedChanges: null,
     gitObservedTruncated: false,
     ...overrides,
   };
@@ -125,14 +126,15 @@ test("normalizeRepositorySnapshot rejects unsafe file paths, over-bound lists, f
   assert.equal(normalizeRepositorySnapshot("not-an-object"), null);
 });
 
-test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 2 with a never-measured Git-observed baseline", () => {
+test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 3 with a never-measured Git-observed baseline", () => {
   const upgraded = normalizeRepositorySnapshot(validSnapshotV1());
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 2);
+  assert.equal(upgraded.version, 3);
   assert.equal(upgraded.branch, "feat/example");
   assert.equal(upgraded.dirtyAtFirstCheck, null, "never measured");
   assert.deepEqual(upgraded.becameDirty, []);
   assert.equal(upgraded.committedInWindow, null);
+  assert.equal(upgraded.committedChanges, null);
   assert.equal(upgraded.gitObservedTruncated, false);
   assert.equal(gitObservedFilesFromSnapshot(upgraded), null, "gitObservedFilesFromSnapshot is null for a v1-upgraded record");
 
@@ -140,6 +142,22 @@ test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to 
   // rejected rather than silently accepted through either shape's key set.
   assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), dirtyAtFirstCheck: [] }), null);
   assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), extraField: 1 }), null);
+});
+
+test("normalizeRepositorySnapshot upgrades a version-2 record with committedChanges null, and validates version-3 committedChanges against committedInWindow", () => {
+  const { committedChanges: _omitted, ...v2Shape } = validSnapshot({ committedInWindow: ["app/a.ts"] });
+  const upgraded = normalizeRepositorySnapshot({ ...v2Shape, version: 2 });
+  assert.ok(upgraded);
+  assert.equal(upgraded.version, 3);
+  assert.deepEqual(upgraded.committedInWindow, ["app/a.ts"]);
+  assert.equal(upgraded.committedChanges, null, "a v2 record never recorded change kinds");
+  assert.equal(normalizeRepositorySnapshot({ ...v2Shape, version: 2, committedChanges: ["added"] }), null, "a v3-only key under version 2 is rejected");
+
+  const aligned = normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts", "app/b.ts"], committedChanges: ["added", "deleted"] }));
+  assert.deepEqual(aligned.committedChanges, ["added", "deleted"]);
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["added", "modified"] })), null, "length mismatch");
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["renamed"] })), null, "unknown change");
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: null, committedChanges: [] })), null, "changes without measured paths");
 });
 
 test("normalizeRepositorySnapshot enforces the Git-observed field bounds: nullable dirtyAtFirstCheck/committedInWindow, always-array becameDirty, path/count/character caps", () => {
@@ -161,16 +179,19 @@ test("gitObservedFilesFromSnapshot merges committed and uncommitted paths, commi
   assert.equal(gitObservedFilesFromSnapshot({ dirtyAtFirstCheck: null, becameDirty: [], committedInWindow: null, gitObservedTruncated: false }), null);
 
   const measured = gitObservedFilesFromSnapshot({
-    dirtyAtFirstCheck: [], becameDirty: ["app/b.ts", "app/shared.ts"], committedInWindow: ["app/a.ts", "app/shared.ts"], gitObservedTruncated: false,
+    dirtyAtFirstCheck: [], becameDirty: ["app/b.ts", "app/shared.ts"], committedInWindow: ["app/a.ts", "app/shared.ts"], committedChanges: ["added", "modified"], gitObservedTruncated: false,
   });
   assert.deepEqual(measured, {
     files: [
-      { path: "app/a.ts", source: "committed" },
-      { path: "app/b.ts", source: "uncommitted" },
-      { path: "app/shared.ts", source: "committed" },
+      { path: "app/a.ts", source: "committed", change: "added" },
+      { path: "app/b.ts", source: "uncommitted", change: null },
+      { path: "app/shared.ts", source: "committed", change: "modified" },
     ],
     truncated: false,
   });
+  assert.equal(gitObservedFilesFromSnapshot({
+    dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: ["app/a.ts"], committedChanges: null, gitObservedTruncated: false,
+  }).files[0].change, null, "a record without change kinds (upgraded v2) projects change null");
 
   assert.deepEqual(
     gitObservedFilesFromSnapshot({ dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: [], gitObservedTruncated: false }),
@@ -213,13 +234,27 @@ test("nextGitObserved carries committedInWindow forward on an unmeasured check a
   assert.deepEqual(measuredEmpty.committedInWindow, [], "an actual empty read replaces the previous value rather than carrying it forward");
 });
 
+test("nextGitObserved aligns committedChanges with the kept paths, carries them forward unmeasured, and drops them when a read has none", () => {
+  const first = nextGitObserved(null, { files: [], committedPaths: ["app/b.ts", "app/a.ts"], committedChanges: ["deleted", "added"] });
+  assert.deepEqual(first.committedInWindow, ["app/a.ts", "app/b.ts"]);
+  assert.deepEqual(first.committedChanges, ["added", "deleted"], "re-aligned after the path list is sorted");
+  const unmeasured = nextGitObserved(first, { files: [] });
+  assert.deepEqual(unmeasured.committedChanges, ["added", "deleted"]);
+  const withoutKinds = nextGitObserved(first, { files: [], committedPaths: ["app/a.ts"] });
+  assert.equal(withoutKinds.committedChanges, null, "paths read without change kinds never guess one");
+  const mismatched = nextGitObserved(first, { files: [], committedPaths: ["app/a.ts"], committedChanges: ["added", "modified"] });
+  assert.equal(mismatched.committedChanges, null);
+});
+
 test("nextGitObserved bounds a maxed set of long paths so the resulting record stays under the repository-snapshot byte cap", () => {
   const longPaths = (prefix, count) => Array.from({ length: count }, (_, index) => `app/${prefix}/${"a".repeat(480)}-${index}.ts`);
   const files = longPaths("dirty", 400).map((filePath) => ({ status: " M", path: filePath }));
-  const result = nextGitObserved(null, { files, committedPaths: longPaths("committed", 400) });
+  const committedPaths = longPaths("committed", 400);
+  const result = nextGitObserved(null, { files, committedPaths, committedChanges: committedPaths.map(() => "modified") });
   assert.ok(result.dirtyAtFirstCheck.length < 400, "the character budget truncated the baseline well under the 400 candidates");
   assert.ok(result.committedInWindow.length < 400, "the character budget truncated the committed list well under the 400 candidates");
   assert.equal(result.gitObservedTruncated, true);
+  assert.equal(result.committedChanges.length, result.committedInWindow.length);
 
   const snapshot = normalizeRepositorySnapshot(validSnapshot({ ...result }));
   assert.ok(snapshot, "the bounded output is itself a valid record");
@@ -256,6 +291,7 @@ test("snapshotFromLiveCheck threads committedPaths into committedInWindow, and o
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
     commitsInSession: 1,
     committedPaths: ["app/committed.ts"],
+    committedChanges: ["added"],
     checkedAt: previous ? "2026-09-20T12:10:00.000Z" : "2026-09-20T12:00:05.000Z",
     previous,
   });
@@ -264,7 +300,7 @@ test("snapshotFromLiveCheck threads committedPaths into committedInWindow, and o
   assert.ok(firstCheck);
   assert.deepEqual(firstCheck.dirtyAtFirstCheck, ["app/dirty.ts"]);
   assert.deepEqual(gitObservedFilesFromSnapshot(firstCheck), {
-    files: [{ path: "app/committed.ts", source: "committed" }],
+    files: [{ path: "app/committed.ts", source: "committed", change: "added" }],
     truncated: false,
   }, "the baseline-dirty file is not itself reported as uncommitted");
 
@@ -274,8 +310,8 @@ test("snapshotFromLiveCheck threads committedPaths into committedInWindow, and o
   assert.deepEqual(secondCheck.becameDirty, ["app/new.ts"]);
   assert.deepEqual(gitObservedFilesFromSnapshot(secondCheck), {
     files: [
-      { path: "app/committed.ts", source: "committed" },
-      { path: "app/new.ts", source: "uncommitted" },
+      { path: "app/committed.ts", source: "committed", change: "added" },
+      { path: "app/new.ts", source: "uncommitted", change: null },
     ],
     truncated: false,
   });
@@ -406,20 +442,37 @@ async function commitFixture(context) {
 test("readCommitsInWindow reads the commit count and distinct changed paths on HEAD within [since, until], sorted, using an argument array, and resolves null on failure", async (context) => {
   const root = await commitFixture(context);
   const result = await readCommitsInWindow(root, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" });
-  assert.deepEqual(result, { count: 2, paths: ["app/inside-one.ts", "app/inside-two.ts"], truncated: false });
+  assert.deepEqual(result, { count: 2, paths: ["app/inside-one.ts", "app/inside-two.ts"], changes: ["added", "added"], truncated: false });
 
   const none = await readCommitsInWindow(root, { since: "2026-10-01T00:00:00.000Z", until: "2026-10-02T00:00:00.000Z" });
-  assert.deepEqual(none, { count: 0, paths: [], truncated: false });
+  assert.deepEqual(none, { count: 0, paths: [], changes: [], truncated: false });
 
   assert.equal(await readCommitsInWindow(path.join(os.tmpdir(), "pomegr-not-a-repo-xyz"), { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" }), null);
   assert.equal(await readCommitsInWindow(root, { since: "not-a-date", until: "2026-09-20T00:00:00.000Z" }), null);
   assert.equal(await readCommitsInWindow(null, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" }), null);
 });
 
+test("readCommitsInWindow nets each path's change across the window: added wins over later edits, a final delete wins, and edits of older files are modified", async (context) => {
+  const root = await commitFixture(context);
+  const env = { ...process.env, GIT_AUTHOR_NAME: "Pomegr Test", GIT_AUTHOR_EMAIL: "pomegr@example.test", GIT_COMMITTER_NAME: "Pomegr Test", GIT_COMMITTER_EMAIL: "pomegr@example.test" };
+  const commitAll = async (message, iso, change) => {
+    await change();
+    execFileSync("git", ["-C", root, "add", "-A"], { stdio: ["ignore", "pipe", "pipe"], env });
+    execFileSync("git", ["-C", root, "commit", "-m", message], { stdio: ["ignore", "pipe", "pipe"], env: { ...env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso } });
+  };
+  await commitAll("edit added file", "2026-09-26T00:00:00Z", () => writeFile(path.join(root, "app/inside-one.ts"), "one edited"));
+  await commitAll("edit older file", "2026-09-27T00:00:00Z", () => writeFile(path.join(root, "before.txt"), "before edited"));
+  await commitAll("delete file", "2026-09-28T00:00:00Z", () => rm(path.join(root, "app/inside-two.ts")));
+
+  const result = await readCommitsInWindow(root, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-30T00:00:00.000Z" });
+  assert.deepEqual(result.paths, ["after.txt", "app/inside-one.ts", "app/inside-two.ts", "before.txt"]);
+  assert.deepEqual(result.changes, ["added", "added", "deleted", "modified"]);
+});
+
 test("readCommitsInWindow and git status report paths relative to the same repository root (the top level), from a subdirectory cwd", async (context) => {
   const root = await commitFixture(context);
   // Confirms the path-root finding: git status --porcelain (repository.files) and git log
-  // --name-only (readCommitsInWindow) both report paths relative to the repository's top level
+  // --name-status (readCommitsInWindow) both report paths relative to the repository's top level
   // even when invoked from a nested subdirectory, so a live check's repositoryRoot needs no
   // remapping between the two.
   const subdirectory = path.join(root, "app");
@@ -600,9 +653,15 @@ test("the repository domain's gitObservedFiles comes only from options.gitObserv
   state.session.pullRequests = pullRequests;
   const baseArgs = [{ publicState: state, readiness: state.readiness, observedAt: state.session.updatedAt }];
 
-  const gitObserved = { files: [{ path: "app/new.ts", source: "committed" }], truncated: false };
+  const gitObserved = { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/dirty.ts", source: "uncommitted", change: null }], truncated: false };
   const withGitObserved = projectSessionDomains("claude:historical-session", ...baseArgs, { gitObserved });
   assert.deepEqual(withGitObserved.domains.get("repository").gitObservedFiles, gitObserved);
+
+  // An unknown change, or a change on an uncommitted path, degrades to null rather than leaking.
+  const oddChanges = projectSessionDomains("claude:historical-session", ...baseArgs, {
+    gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "renamed" }, { path: "app/dirty.ts", source: "uncommitted", change: "added" }], truncated: false },
+  });
+  assert.deepEqual(oddChanges.domains.get("repository").gitObservedFiles.files.map((file) => file.change), [null, null]);
   assert.equal(Object.hasOwn(state.session.repository, "gitObserved"), false, "never attached to the raw session.repository object");
   assert.doesNotMatch(JSON.stringify(state.session), /gitObserved/, "gitObserved never enters the object /api/state would serialize verbatim");
 

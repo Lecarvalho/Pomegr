@@ -199,6 +199,21 @@ describe("FileTree recorded-kind letters", () => {
     expect(screen.getByRole("img", { name: "Modified" })).toHaveClass("warning");
     expect(screen.getAllByRole("img").filter((node) => node.classList.contains("fileTreeStatusLetter"))).toHaveLength(3);
   });
+
+  it("shows a neutral A/M/D from the Git change for a Git-observed row with no working-tree status", () => {
+    render(<FileTree scope="session" rootLabel="Pomegr" selectedPath={null} onSelect={() => {}} emptyText="Nothing" files={[
+      { path: "added.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
+      { path: "modified.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "modified" },
+      { path: "deleted.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "deleted" },
+      { path: "unknown.ts", fileId: null, status: null, gitObserved: "committed", gitChange: null },
+    ]} />);
+    const added = screen.getByRole("img", { name: "Added in a commit during this session" });
+    expect(added).toHaveTextContent("A");
+    expect(added).not.toHaveClass("positive");
+    expect(screen.getByRole("img", { name: "Modified in a commit during this session" })).toHaveTextContent("M");
+    expect(screen.getByRole("img", { name: "Deleted in a commit during this session" })).toHaveTextContent("D");
+    expect(screen.getAllByRole("img").filter((node) => node.classList.contains("fileTreeStatusLetter"))).toHaveLength(3);
+  });
 });
 
 describe("FileHistoryPanel", () => {
@@ -344,10 +359,11 @@ describe("SessionFilePanel", () => {
       .toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
   });
 
-  it("labels a Git-observed file as not a recorded tool edit", () => {
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved="committed" />);
-    expect(screen.getByText("Seen in Git during this session")).toBeInTheDocument();
-    expect(screen.getByText("Committed on the session branch · not a recorded tool edit")).toBeInTheDocument();
+  it("labels a Git-observed file with its Git change and never attributes it", () => {
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change: "added" }} />);
+    expect(screen.getByText("Seen in Git · no recorded agent edit")).toBeInTheDocument();
+    expect(screen.getByText("Added in a commit on the session branch")).toBeInTheDocument();
+    expect(screen.getByText(/Could be the agent through a command Pomegr can't read/)).toBeInTheDocument();
   });
 
   it("says when the session recorded no change, and waits while recorded changes load", () => {

@@ -142,10 +142,13 @@ function repositoryCommitsInSession(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 const GIT_OBSERVED_SOURCES = new Set(["committed", "uncommitted"]);
+const GIT_OBSERVED_CHANGES = new Set(["added", "modified", "deleted"]);
 const MAX_GIT_OBSERVED_FILES = 200;
 function publicGitObservedFile(value) {
   if (!isSafeRecordedRepositoryPath(value?.path) || !GIT_OBSERVED_SOURCES.has(value?.source)) return null;
-  return { path: value.path, source: value.source };
+  // Only a committed path carries a net Git change; anything else degrades to null.
+  const change = value.source === "committed" && GIT_OBSERVED_CHANGES.has(value.change) ? value.change : null;
+  return { path: value.path, source: value.source, change };
 }
 // Re-validates the already recorded Git-observed block passed in via options.gitObserved (the
 // recorder's persisted snapshot for this session, live or historical); never reads the current
