@@ -115,19 +115,25 @@ export function visibleFileTreeRows(entries: FileTreeEntry[], isOpen: (path: str
 }
 
 export type FileStatusTone = "positive" | "warning" | null;
-export type FileStatusChip = { label: "MOD" | "NEW" | "DEL" | "REN"; tone: FileStatusTone };
+export type FileStatus = {
+  letter: "M" | "U" | "A" | "D" | "R";
+  label: "Modified" | "Untracked" | "Added" | "Deleted" | "Renamed";
+  tone: FileStatusTone;
+};
 
 /**
- * Maps a git porcelain status code to the bounded four-value status chip (F3): amber MOD,
- * green NEW (added or untracked), neutral DEL/REN. Unrecognized codes fall back to MOD.
+ * Maps a git porcelain status code to the bounded five-value working-tree status (F3), shown as
+ * a single editor-style letter in the tree: amber M, green U (untracked) and A (added), neutral
+ * D/R. Unrecognized codes fall back to M.
  */
-export function fileStatusChip(status: string | null | undefined): FileStatusChip | null {
+export function fileStatus(status: string | null | undefined): FileStatus | null {
   const code = status?.trim();
   if (!code) return null;
-  if (code === "??" || code.includes("A")) return { label: "NEW", tone: "positive" };
-  if (code.includes("D")) return { label: "DEL", tone: null };
-  if (code.includes("R")) return { label: "REN", tone: null };
-  return { label: "MOD", tone: "warning" };
+  if (code === "??") return { letter: "U", label: "Untracked", tone: "positive" };
+  if (code.includes("A")) return { letter: "A", label: "Added", tone: "positive" };
+  if (code.includes("D")) return { letter: "D", label: "Deleted", tone: null };
+  if (code.includes("R")) return { letter: "R", label: "Renamed", tone: null };
+  return { letter: "M", label: "Modified", tone: "warning" };
 }
 
 /** Alphabetical order for the flat "Changed elsewhere" group (F4), which is never nested. */

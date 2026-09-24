@@ -65,7 +65,7 @@ export function RepositoryFilesTab({ repositoryId, repositoryLabel, path, onSele
       </div>
       <span className="repositoryFilesTabCaption">Counts are recorded sessions per file</span>
     </div>
-    <div className="repositoryFilesTabBody">
+    <div className="panel repositoryFilesTabBody">
       <FileTree
         scope="repository"
         rootLabel={repositoryLabel}

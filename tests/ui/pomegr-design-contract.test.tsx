@@ -290,15 +290,15 @@ describe("Pomegr visual contract", () => {
     expect(container.querySelector(".storageUsageText")?.textContent).toBe("Storage usage unavailable");
   });
 
-  it("keeps FileTree and FileHistoryPanel fetch-free, documented, and on the small chip variant", () => {
+  it("keeps FileTree and FileHistoryPanel fetch-free, documented, and on the single-letter status", () => {
     // Pure presentation: neither component reads the repository-files store or fetches directly.
     for (const source of [fileTreeSource, fileTreeModelSource, fileHistoryPanelSource]) {
       expect(source).not.toMatch(/repository-files-store|useSyncExternalStore|fetch\(/);
     }
 
     expect(designContract).toMatch(/### File tree and file history panel/);
-    expect(designContract).toMatch(/`\.commandChip\.small`/);
-    expect(designContract).toMatch(/16px tall/);
+    expect(designContract).toMatch(/`\.fileTreeStatusLetter`/);
+    expect(designContract).toMatch(/amber \*\*M\*\* \(Modified\)/);
     expect(designContract).toMatch(/indent 14\/30\/46\/62px per depth/);
     expect(designContract).toMatch(/ancestors of the current\s+selection and top-level folders with 12 or fewer files/);
     expect(designContract).toMatch(/\*\*Changed elsewhere\*\*/);
@@ -308,7 +308,7 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/never both/);
     expect(designContract).toMatch(/\*\*N changes without\s+session attribution \(moves seen in Git\)\*\*/);
 
-    expect(styles).toMatch(/\.commandChip\.small\s*\{\s*min-height:\s*16px;\s*padding:\s*0 4px;\s*\}/);
+    expect(styles).toMatch(/\.fileTreeStatusLetter\s*\{[^}]*margin-left:\s*auto;[^}]*font:\s*600 var\(--text-caption\)/);
     expect(styles).toMatch(/\.fileTreeRow\s*\{[^}]*padding-left:\s*calc\(14px \+ var\(--tree-depth\) \* 16px\)/);
     expect(styles).toMatch(/\.fileTreeRow\.isSelected\s*\{\s*background:\s*var\(--command-panel-2\);\s*color:\s*var\(--command-ink\);\s*\}/);
     expect(styles).toMatch(/\.fileTreeFolderRow\[aria-expanded="true"\] \.fileTreeChevron\s*\{\s*transform:\s*rotate\(90deg\);\s*\}/);
@@ -316,9 +316,9 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.fileHistoryEntry\.isCurrentSession\s*\{\s*background:\s*var\(--command-panel-2\);\s*\}/);
     expect(styles).not.toMatch(/\.(?:fileTree|fileHistory)[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
 
-    // Session scope renders the small status chip; repository scope shows counts and mutes.
+    // Session scope renders the single-letter status; repository scope shows counts and mutes.
     const { rerender } = render(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: "f1", status: "M" }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
-    expect(screen.getByText("MOD")).toHaveClass("commandChip", "small", "warning");
+    expect(screen.getByRole("img", { name: "Modified" })).toHaveClass("fileTreeStatusLetter", "warning");
     rerender(<FileTree scope="repository" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: "f1", sessionCount: 2 }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
     expect(screen.getByText("2")).toBeInTheDocument();
 
@@ -340,7 +340,7 @@ describe("Pomegr visual contract", () => {
     const glyph = screen.getByRole("img", { name: "Seen in Git during this session (committed) - not a recorded tool edit" });
     expect(glyph).toHaveAttribute("title", "Seen in Git during this session (committed) - not a recorded tool edit");
     // No status chip renders alongside the glyph when the working tree reports no status.
-    expect(screen.queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
+    expect(document.querySelector(".fileTreeStatusLetter")).toBeNull();
     // The footer's quiet popover trigger appears only when a Git-observed row is visible.
     expect(screen.getByText("How to read this")).toBeInTheDocument();
   });

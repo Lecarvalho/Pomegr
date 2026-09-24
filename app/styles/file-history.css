@@ -1,9 +1,5 @@
 /* Shared file tree and file history panel (FileTree.tsx, FileHistoryPanel.tsx). Tokens only; see DESIGN.md. */
 
-/* Small outline status-chip variant (F3): 16px tall, --text-caption text (already the .commandChip
-   base size), padding 0 4px. Tone stays in text only, same as every other .commandChip modifier. */
-.commandChip.small { min-height: 16px; padding: 0 4px; }
-
 /* FileTree (F1-F7) */
 .fileTree { display: flex; flex-direction: column; overflow: hidden; }
 .fileTreeHeader { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 14px; }
@@ -22,6 +18,10 @@
 .fileTreeCount { margin-left: auto; flex: 0 0 auto; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
 .fileTreeGroupHeading { padding: 10px 14px 4px; font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--command-faint); }
 .fileTreeEmpty { margin: 0; padding: var(--space-3) 14px; color: var(--command-muted); font-size: var(--text-xs); }
+/* Editor-style working-tree status letter (F3): right-aligned, no chip frame, tone in text only. */
+.fileTreeStatusLetter { margin-left: auto; flex: 0 0 auto; min-width: 12px; text-align: center; font: 600 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); cursor: default; }
+.fileTreeStatusLetter.warning { color: var(--command-amber); }
+.fileTreeStatusLetter.positive { color: var(--command-green); }
 .fileTreeGitObservedGlyph { display: inline-flex; flex: 0 0 auto; align-items: center; color: var(--command-muted); cursor: help; }
 .fileTreeFooter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 14px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-caption); }
 .fileTreeFooterInfo { flex: 0 0 auto; color: var(--command-muted); }
@@ -47,12 +47,10 @@
 .fileHistoryEntry.isCurrentSession { background: var(--command-panel-2); }
 .fileHistoryEntryBody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .fileHistoryEntryMeta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); color: var(--command-muted); }
-.fileHistoryEntryEdits { color: var(--command-muted); }
-.fileHistoryEntryTitle { font: 600 var(--text-sm)/1.4 var(--font-ui); color: var(--command-ink); }
+.fileHistoryEntryMetaText { color: var(--command-muted); }
+.fileHistoryEntryTitle { font: 400 var(--text-sm)/1.4 var(--font-ui); color: var(--command-ink); }
 .fileHistoryEntryTitle:hover { text-decoration: underline; }
 .fileHistoryEntryTitle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.fileHistoryEntryAgents { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--text-xs); color: var(--command-muted); }
-.fileHistoryEntryAgentsText { color: var(--command-muted); }
 .fileHistoryEntryOldPath { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
 .fileHistoryEntryTime { align-self: flex-start; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); white-space: nowrap; }
 .fileHistoryUnattributed { margin: 0; padding: var(--space-2) 16px; color: var(--command-muted); font-size: var(--text-xs); }

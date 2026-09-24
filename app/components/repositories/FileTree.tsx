@@ -4,7 +4,7 @@ import { DottedInfoPopover } from "../DottedInfoPopover";
 import {
   buildFileTree,
   defaultOpenFolders,
-  fileStatusChip,
+  fileStatus,
   sortByPath,
   visibleFileTreeRows,
   type FileTreeFile,
@@ -36,10 +36,11 @@ function TreeChevron() {
   return <svg className="fileTreeChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
 }
 
-function FileTreeStatusChip({ status }: { status: string | null | undefined }) {
-  const chip = fileStatusChip(status);
-  if (!chip) return null;
-  return <span className={`commandChip small${chip.tone ? ` ${chip.tone}` : ""}`}>{chip.label}</span>;
+/** Editor-style single-letter working-tree status, right-aligned at the end of the row. */
+function FileTreeStatusLetter({ status }: { status: string | null | undefined }) {
+  const info = fileStatus(status);
+  if (!info) return null;
+  return <span className={`fileTreeStatusLetter${info.tone ? ` ${info.tone}` : ""}`} role="img" aria-label={info.label} title={info.label}>{info.letter}</span>;
 }
 
 const GIT_OBSERVED_LABEL: Record<"committed" | "uncommitted", string> = {
@@ -72,9 +73,9 @@ function FileTreeFileRow({ scope, depth, name, file, selected, onSelect }: {
     aria-current={selected ? "true" : undefined}
     onClick={() => onSelect(file)}
   >
-    {scope === "session" && <FileTreeStatusChip status={file.status} />}
     <span className="fileTreeFileName">{name}</span>
     {file.gitObserved && <FileTreeGitObservedGlyph source={file.gitObserved} />}
+    {scope === "session" && <FileTreeStatusLetter status={file.status} />}
     {showCount && <span className="fileTreeCount">{file.sessionCount}</span>}
   </button>;
 }

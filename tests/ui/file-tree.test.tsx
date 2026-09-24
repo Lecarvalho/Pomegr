@@ -75,7 +75,7 @@ describe("FileTree", () => {
     expect(screen.getByText("file-0.ts")).toBeInTheDocument();
   });
 
-  it("shows the small status chip with the right tone, and no chip when there is no status", () => {
+  it("shows the single-letter status with the right tone and full-word name, and nothing when there is no status", () => {
     const files: FileTreeFile[] = [
       { path: "mod.ts", fileId: "f1", status: "M" },
       { path: "new.ts", fileId: "f2", status: "??" },
@@ -83,14 +83,17 @@ describe("FileTree", () => {
       { path: "clean.ts", fileId: "f4", status: null },
     ];
     render(<FileTree scope="session" rootLabel="Pomegr" files={files} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
-    expect(screen.getByText("MOD")).toHaveClass("commandChip", "small", "warning");
-    expect(screen.getByText("NEW")).toHaveClass("commandChip", "small", "positive");
-    const del = screen.getByText("DEL");
-    expect(del).toHaveClass("commandChip", "small");
+    const modified = screen.getByRole("img", { name: "Modified" });
+    expect(modified).toHaveTextContent("M");
+    expect(modified).toHaveClass("fileTreeStatusLetter", "warning");
+    expect(modified).toHaveAttribute("title", "Modified");
+    expect(screen.getByRole("img", { name: "Untracked" })).toHaveClass("fileTreeStatusLetter", "positive");
+    const del = screen.getByRole("img", { name: "Deleted" });
+    expect(del).toHaveTextContent("D");
     expect(del).not.toHaveClass("warning");
     expect(del).not.toHaveClass("positive");
     const cleanRow = screen.getByRole("button", { name: "clean.ts" });
-    expect(within(cleanRow).queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
+    expect(cleanRow.querySelector(".fileTreeStatusLetter")).toBeNull();
   });
 
   it("shows a quiet Git-observed glyph with a title and accessible name, leaving status chips unchanged", () => {
@@ -106,15 +109,15 @@ describe("FileTree", () => {
     const uncommittedGlyph = screen.getByRole("img", { name: "Seen in Git during this session (uncommitted) - not a recorded tool edit" });
     expect(uncommittedGlyph).toHaveAttribute("title", "Seen in Git during this session (uncommitted) - not a recorded tool edit");
 
-    // The committed row has no working-tree status, so it carries no status chip alongside the glyph.
+    // The committed row has no working-tree status, so it carries no status letter alongside the glyph.
     const committedRow = screen.getByRole("button", { name: /gitobserved-clean\.ts/ });
-    expect(within(committedRow).queryByText(/^(MOD|NEW|DEL|REN)$/)).not.toBeInTheDocument();
-    // The uncommitted row keeps its ordinary NEW status chip unchanged, plus the glyph.
+    expect(committedRow.querySelector(".fileTreeStatusLetter")).toBeNull();
+    // The uncommitted row keeps its ordinary Untracked status letter unchanged, plus the glyph.
     const uncommittedRow = screen.getByRole("button", { name: /gitobserved-dirty\.ts/ });
-    expect(within(uncommittedRow).getByText("NEW")).toHaveClass("commandChip", "small", "positive");
+    expect(within(uncommittedRow).getByRole("img", { name: "Untracked" })).toHaveClass("fileTreeStatusLetter", "positive");
     // A plain recorded row never carries the glyph.
     const recordedRow = screen.getByRole("button", { name: /recorded-only\.ts/ });
-    expect(within(recordedRow).queryByRole("img")).not.toBeInTheDocument();
+    expect(recordedRow.querySelector(".fileTreeGitObservedGlyph")).toBeNull();
   });
 
   it("shows the footer's quiet Git-observed popover only when a Git-observed row is visible", () => {
@@ -208,14 +211,14 @@ describe("FileHistoryPanel", () => {
     render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={path} workingTreeStatus="M" history={historyFixture({ path })} />);
     expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
     expect(screen.getByText("app/components/")).toBeInTheDocument();
-    expect(screen.getByText("MOD in working tree")).toHaveClass("commandChip", "warning");
+    expect(screen.getByText("Modified in working tree")).toHaveClass("commandChip", "warning");
     const link = screen.getByRole("link", { name: /All history on repository page/ });
     expect(link).toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
   });
 
   it("labels a historical session's recorded status as at last live check, never the working tree", () => {
     render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" statusRecorded history={historyFixture({ path: "a.ts" })} />);
-    expect(screen.getByText("MOD at last live check")).toHaveClass("commandChip", "warning");
+    expect(screen.getByText("Modified at last live check")).toHaveClass("commandChip", "warning");
     expect(screen.queryByText(/in working tree/)).not.toBeInTheDocument();
   });
 
@@ -234,7 +237,7 @@ describe("FileHistoryPanel", () => {
     }
   });
 
-  it("renders entries with kind tone, edit counts, the this-session/live chips, and a moved entry's old path", () => {
+  it("renders entries with kind tone for non-edit kinds, edit counts, the this-session/live chips, and a moved entry's old path", () => {
     const history = historyFixture({
       sessions: [
         sessionFixture({ sessionId: "claude:current", title: "Current work", kind: "edited", editCount: 2 }),
@@ -247,12 +250,13 @@ describe("FileHistoryPanel", () => {
 
     expect(screen.getByText("this session")).toBeInTheDocument();
     expect(screen.getByText("live")).toHaveClass("commandChip", "positive");
-    expect(screen.getByText("Edited")).toHaveClass("commandChip", "positive");
+    // Edited is the common kind, so it renders as plain meta text rather than a chip.
+    expect(screen.queryByText("Edited")).not.toBeInTheDocument();
     expect(screen.getByText("Created")).toHaveClass("commandChip", "info");
     expect(screen.getByText("Moved")).toHaveClass("commandChip");
     expect(screen.getByText("Deleted")).toHaveClass("commandChip", "warning");
-    expect(screen.getByText("2 edits")).toBeInTheDocument();
-    expect(screen.getByText("1 edit")).toBeInTheDocument();
+    expect(screen.getByText(/^2 edits( · |$)/)).toHaveClass("fileHistoryEntryMetaText");
+    expect(screen.getByText(/^1 edit( · |$)/)).toBeInTheDocument();
     expect(screen.getByText("as app/OldDashboard.tsx")).toBeInTheDocument();
     expect(screen.getByText("2 agents")).toBeInTheDocument();
     const currentEntry = screen.getByText("Current work").closest("article");

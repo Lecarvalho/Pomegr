@@ -311,7 +311,7 @@ const FILE_TREE_REPOSITORY_FOLDER_COUNTS = new Map([
 function FileTreeSection() {
   const [sessionSelected, setSessionSelected] = useState("app/components/command-center/CommandCenterShell.tsx");
   const [repositorySelected, setRepositorySelected] = useState("app/components/dashboard/Dashboard.tsx");
-  return <Section id="file-tree" title="File tree" lede="FileTree (app/components/repositories/FileTree.tsx) builds folders from a flat file list and fetches nothing. Session scope shows the small .commandChip.small status variant, a quiet Git-observed glyph for rows no tool recorded, and a Changed elsewhere group; repository scope shows distinct-session counts and mutes files with no recorded history.">
+  return <Section id="file-tree" title="File tree" lede="FileTree (app/components/repositories/FileTree.tsx) builds folders from a flat file list and fetches nothing. Session scope shows a right-aligned editor-style status letter, a quiet Git-observed glyph for rows no tool recorded, and a Changed elsewhere group; repository scope shows distinct-session counts and mutes files with no recorded history.">
     <div className="designSystemGrid">
       <Sample label="Session scope" note="GitObservedSample.tsx carries the quiet Git-observed glyph and the footer's How to read this popover.">
         <FileTree

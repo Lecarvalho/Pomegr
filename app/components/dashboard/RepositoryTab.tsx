@@ -167,7 +167,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
       </div>
       <span className="commandChip repositoryTabFilesBeta" title="File coverage is still being expanded.">Beta</span>
     </div>
-    <div className="repositoryTabFilesBody">
+    <div className="panel repositoryTabFilesBody">
       {treeArea}
       <FileHistoryPanel
         side="session"

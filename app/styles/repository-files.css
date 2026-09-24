@@ -7,7 +7,7 @@
 .repositoryTabFilesSearch { width: 320px; max-width: 100%; height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .repositoryTabFilesSearch::placeholder { color: var(--command-muted); }
 .repositoryTabFilesBeta { margin-left: auto; }
-.repositoryTabFilesBody { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.repositoryTabFilesBody { grid-template-columns: 340px minmax(0, 1fr); }
 .repositoryTabFilesSkeleton { height: 160px; display: flex; flex-direction: column; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
 .repositoryTabFilesSkeletonLine { height: 12px; width: 70%; border-radius: var(--control-radius); background: var(--command-panel-2); }
 .repositoryTabFilesSkeletonLine:nth-child(2) { width: 50%; }
@@ -22,7 +22,13 @@
 .repositoryFilesTabSearch::placeholder { color: var(--command-muted); }
 .repositoryFilesTabToggles { display: flex; align-items: center; gap: var(--space-2); }
 .repositoryFilesTabCaption { margin-left: auto; color: var(--command-muted); font-size: var(--text-xs); }
-.repositoryFilesTabBody { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.repositoryFilesTabBody { grid-template-columns: 300px minmax(0, 1fr); }
+
+/* Both Files layouts render the tree and history as one panel split by a divider: the body owns
+   the panel chrome, and the nested tree/history panels drop theirs. */
+.repositoryTabFilesBody, .repositoryFilesTabBody { display: grid; gap: 0; align-items: stretch; overflow: hidden; }
+.repositoryTabFilesBody > .panel, .repositoryFilesTabBody > .panel { border: 0; border-radius: 0; background: transparent; }
+.repositoryTabFilesBody > .panel:first-child, .repositoryFilesTabBody > .panel:first-child { border-right: 1px solid var(--command-line); }
 
 /* Phone (F22): toolbars wrap, search and segment/toggles go full width, tree and panel stack in
    one column with the tree first and a bounded scrollable height. */
@@ -34,5 +40,6 @@
   .repositoryFilesTabToggles .commandSecondaryAction { flex: 1 1 0; }
   .repositoryFilesTabCaption { margin-left: 0; }
   .repositoryTabFilesBody, .repositoryFilesTabBody { grid-template-columns: 1fr; }
+  .repositoryTabFilesBody > .panel:first-child, .repositoryFilesTabBody > .panel:first-child { border-right: 0; border-bottom: 1px solid var(--command-line); }
   .repositoryTabFilesTree, .repositoryFilesTabTree { max-height: 50vh; overflow: auto; }
 }

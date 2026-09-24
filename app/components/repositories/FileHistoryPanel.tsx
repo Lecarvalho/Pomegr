@@ -7,7 +7,7 @@ import { DottedInfoPopover } from "../DottedInfoPopover";
 import { ProviderBadge } from "../ProviderBadge";
 import { CommandIcon } from "../command-center/CommandPage";
 import { providerSourceLabel, sessionTimeLabel } from "./file-history-format";
-import { fileStatusChip } from "./file-tree-model";
+import { fileStatus } from "./file-tree-model";
 
 export type FileHistoryPanelProps = {
   side: "session" | "repository";
@@ -74,20 +74,22 @@ function FileHistoryEntry({ session, linkPath, currentSessionId }: {
   const kind = KIND_LABELS[session.kind];
   const providerSource = providerSourceLabel(session.provider);
   const agentsText = agentsSummary(session);
+  const editsText = session.editCount > 0
+    ? `${session.editCount} edit${session.editCount === 1 ? "" : "s"}`
+    : session.kind === "edited" ? kind.label : null;
+  const metaText = [editsText, agentsText].filter(Boolean).join(" · ");
   const href = sessionHrefFor(session.sessionId, linkPath);
   const title = session.title ?? "Untitled session";
 
   return <article className={`fileHistoryEntry${isCurrent ? " isCurrentSession" : ""}`}>
     <div className="fileHistoryEntryBody">
-      <div className="fileHistoryEntryMeta">
-        <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>
-        {session.editCount > 0 && <span className="fileHistoryEntryEdits">{session.editCount} edit{session.editCount === 1 ? "" : "s"}</span>}
-        {isCurrent ? <span className="commandChip">this session</span> : session.live ? <span className="commandChip positive">live</span> : null}
-      </div>
       {href ? <Link className="fileHistoryEntryTitle" href={href}>{title}</Link> : <span className="fileHistoryEntryTitle">{title}</span>}
-      <div className="fileHistoryEntryAgents">
+      <div className="fileHistoryEntryMeta">
+        {/* Edited is the common case, so only the rarer kinds earn a chip; an edited row reads as plain text. */}
+        {session.kind !== "edited" && <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>}
         {providerSource && <ProviderBadge source={providerSource} />}
-        {agentsText && <span className="fileHistoryEntryAgentsText">{agentsText}</span>}
+        {metaText && <span className="fileHistoryEntryMetaText">{metaText}</span>}
+        {isCurrent ? <span className="commandChip">this session</span> : session.live ? <span className="commandChip positive">live</span> : null}
       </div>
       {session.pathAtTime && <p className="fileHistoryEntryOldPath">as {session.pathAtTime}</p>}
     </div>
@@ -127,7 +129,7 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
   const linkPath = (history?.path ?? path);
   const providers = [...new Set(sessions.map((session) => session.provider).filter((provider): provider is FileHistoryProvider => provider !== null))];
   const filteredSessions = providerFilter === "all" ? sessions : sessions.filter((session) => session.provider === providerFilter);
-  const statusChip = fileStatusChip(workingTreeStatus);
+  const statusChip = fileStatus(workingTreeStatus);
 
   const copyPath = () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) return;

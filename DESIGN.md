@@ -419,15 +419,16 @@ mono folder name, file rows carry no chevron. Rows are keyboard-reachable button
 Enter/Space selects. Folders default collapsed except ancestors of the current
 selection and top-level folders with 12 or fewer files total; `expandAll` (search
 active) opens every folder. The selected row alone takes the raised surface and ink
-text — nothing else marks selection. Session scope shows a status chip (the small
-`.commandChip.small` variant: 16px tall, the existing `--text-caption` 11px chip text,
-0 4px padding) before the mono file name — amber **MOD**, green **NEW** (added or
-untracked), neutral **DEL**/**REN**, no chip when the working tree reports no status —
+text — nothing else marks selection. Session scope shows an editor-style working-tree
+status letter right-aligned at the end of the row (`.fileTreeStatusLetter`: 11px
+semibold mono, no chip frame, tone in text only, with the full word as its `title` and
+accessible name) — amber **M** (Modified), green **U** (Untracked) and **A** (Added),
+neutral **D**/**R** (Deleted/Renamed), nothing when the working tree reports no status —
 and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
-(full path, indent 14, their own status chip) that is hidden when empty. A touched row
+(full path, indent 14, their own status letter) that is hidden when empty. A touched row
 Git observed during the session window but no tool ever recorded — changed by a commit
 on the live branch, or turned uncommitted between the session's first and latest live
-Git checks — carries a quiet 14px git glyph after the file name instead of a chip:
+Git checks — carries a quiet 14px git glyph after the file name:
 muted text color, never amber, shown on historical rows too, with `title` and an
 accessible name reading **Seen in Git during this session (committed) - not a recorded
 tool edit** or the uncommitted variant; selecting the row still opens file history as
@@ -443,21 +444,23 @@ people's or tools' changes and have no agent or request.*), and
 FileHistoryPanel renders the selected file's committed session history, never fetching
 it itself. Its header holds a muted 11px mono breadcrumb (`<repository> / <dir>/`),
 then a row with a file glyph, the mono 14px bold file name, and — only when the file
-currently has a working-tree status — a working-tree chip (**MOD in working tree**
-amber, **NEW in working tree** green), plus a right-aligned header action: session side
+currently has a working-tree status — a working-tree chip spelling the status out
+(**Modified in working tree** amber, **Untracked in working tree** or **Added in
+working tree** green), plus a right-aligned header action: session side
 links **All history on repository page** (quiet action, trailing chevron) to
 `/repositories/<id>?tab=files&path=<path>`; repository side offers **Copy path**
 (secondary action) that copies the repository-relative path and shows a brief
 **Copied** state. A third row reads **N recorded sessions · newest first** beside a
 `.commandSegmented` provider filter that appears only when more than one provider is
-present among the sessions. Each entry shows a kind chip (**Edited** green, **Created**
-the context/lavender tone, **Deleted** amber, **Moved** neutral), an **N edits** count
-when the session recorded more than zero edits, and either a neutral **this session**
-chip (session side, the current session's entry) or a green **live** chip (another
-live session) — never both; the session title links to
-`/sessions/<id>?tab=repository&path=<path>`; a third line lists the provider chip and
-agent names (or **N agents** when names are not individually known), with no per-agent
-role dots; a moved entry additionally shows a muted mono **as `<old path>`** line. Only
+present among the sessions. Each entry leads with the session title in regular-weight
+ink, linking to `/sessions/<id>?tab=repository&path=<path>`, so the bold file name stays
+the panel's heading. A single meta line below it holds a kind chip only for the rarer
+kinds (**Created** the context/lavender tone, **Deleted** amber, **Moved** neutral —
+edited is the common case and gets no chip), the provider chip, one muted text run
+joining **N edits** (or **Edited** when an edit recorded no count) and the agent names
+(or **N agents** when names are not individually known) with ` · `, and either a
+neutral **this session** chip (session side, the current session's entry) or a green
+**live** chip (another live session) — never both; there are no per-agent role dots; a moved entry additionally shows a muted mono **as `<old path>`** line. Only
 the current session's entry sits on the raised surface. A footer states the honest
 Write/Edit coverage caveat with a **How to read this** dotted info popover holding the
 longer Git-move and retention explanation. The panel shares one frame across its
