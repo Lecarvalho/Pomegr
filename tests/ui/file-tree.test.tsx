@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FileHistoryPanel } from "../../app/components/repositories/FileHistoryPanel";
+import { SessionFilePanel } from "../../app/components/dashboard/SessionFilePanel";
 import { FileTree, type FileTreeFile } from "../../app/components/repositories/FileTree";
 import type { FileHistoryResponse, FileHistorySession } from "../../shared/repository-files-contract";
 
@@ -181,43 +182,60 @@ describe("FileTree", () => {
   });
 });
 
+describe("FileTree recorded-kind letters", () => {
+  it("falls back to a neutral C or M from the recorded kind only when the working tree reports no status", () => {
+    render(<FileTree scope="session" rootLabel="Pomegr" selectedPath={null} onSelect={() => {}} emptyText="Nothing" files={[
+      { path: "created.ts", fileId: "f1", status: null, recordedKind: "created" },
+      { path: "edited.ts", fileId: "f2", status: null, recordedKind: "edited" },
+      { path: "dirty.ts", fileId: "f3", status: "M", recordedKind: "created" },
+      { path: "deleted.ts", fileId: "f4", status: null, recordedKind: "deleted" },
+    ]} />);
+    const created = screen.getByRole("img", { name: "Created in this session" });
+    expect(created).toHaveTextContent("C");
+    expect(created).toHaveClass("fileTreeStatusLetter");
+    expect(created).not.toHaveClass("warning");
+    expect(screen.getByRole("img", { name: "Edited in this session" })).toHaveTextContent("M");
+    // A working-tree status wins over the recorded kind.
+    expect(screen.getByRole("img", { name: "Modified" })).toHaveClass("warning");
+    expect(screen.getAllByRole("img").filter((node) => node.classList.contains("fileTreeStatusLetter"))).toHaveLength(3);
+  });
+});
+
 describe("FileHistoryPanel", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-23T18:00:00.000Z")); });
   afterEach(() => vi.useRealTimers());
 
   it("renders the no-file-selected state", () => {
-    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
     expect(screen.getByText("Select a file to see its recorded sessions.")).toBeInTheDocument();
   });
 
   it("shows a loading skeleton while history is null, and readiness text for rebuilding/unavailable", () => {
-    const { rerender } = render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={null} />);
+    const { rerender } = render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={null} />);
     expect(screen.getByText("Loading file history…")).toBeInTheDocument();
 
-    rerender(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "rebuilding", sessions: [] })} />);
+    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "rebuilding", sessions: [] })} />);
     expect(screen.getByText("File history is rebuilding.")).toBeInTheDocument();
 
-    rerender(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "unavailable", sessions: [] })} />);
+    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "unavailable", sessions: [] })} />);
     expect(screen.getByText("File history is unavailable.")).toBeInTheDocument();
   });
 
   it("shows the empty-evidence message when ready with zero sessions", () => {
-    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ sessions: [], fileId: null })} />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ sessions: [], fileId: null })} />);
     expect(screen.getByText("No recorded sessions changed this file.")).toBeInTheDocument();
   });
 
-  it("renders the header breadcrumb, working-tree chip, and session-side link with the encoded path", () => {
+  it("renders the header breadcrumb and working-tree chip", () => {
     const path = "app/components/Dashboard.tsx";
-    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={path} workingTreeStatus="M" history={historyFixture({ path })} />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path={path} workingTreeStatus="M" history={historyFixture({ path })} />);
     expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
     expect(screen.getByText("app/components/")).toBeInTheDocument();
     expect(screen.getByText("Modified in working tree")).toHaveClass("commandChip", "warning");
-    const link = screen.getByRole("link", { name: /All history on repository page/ });
-    expect(link).toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
   });
 
   it("labels a historical session's recorded status as at last live check, never the working tree", () => {
-    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" statusRecorded history={historyFixture({ path: "a.ts" })} />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" statusRecorded history={historyFixture({ path: "a.ts" })} />);
     expect(screen.getByText("Modified at last live check")).toHaveClass("commandChip", "warning");
     expect(screen.queryByText(/in working tree/)).not.toBeInTheDocument();
   });
@@ -227,7 +245,7 @@ describe("FileHistoryPanel", () => {
     const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     try {
-      render(<FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture()} />);
+      render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture()} />);
       fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
       expect(writeText).toHaveBeenCalledWith("app/Dashboard.tsx");
       await vi.waitFor(() => expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument());
@@ -237,7 +255,7 @@ describe("FileHistoryPanel", () => {
     }
   });
 
-  it("renders entries with kind tone for non-edit kinds, edit counts, the this-session/live chips, and a moved entry's old path", () => {
+  it("renders entries with kind tone for non-edit kinds, edit counts, the live chip, and a moved entry's old path", () => {
     const history = historyFixture({
       sessions: [
         sessionFixture({ sessionId: "claude:current", title: "Current work", kind: "edited", editCount: 2 }),
@@ -246,9 +264,8 @@ describe("FileHistoryPanel", () => {
         sessionFixture({ sessionId: "claude:unknown-agents", title: "Unknown agents", kind: "deleted", editCount: 0, agents: [{ id: "a1", label: null }, { id: "a2", label: null }] }),
       ],
     });
-    render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={history} currentSessionId="claude:current" />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={history} />);
 
-    expect(screen.getByText("this session")).toBeInTheDocument();
     expect(screen.getByText("live")).toHaveClass("commandChip", "positive");
     // Edited is the common kind, so it renders as plain meta text rather than a chip.
     expect(screen.queryByText("Edited")).not.toBeInTheDocument();
@@ -259,13 +276,11 @@ describe("FileHistoryPanel", () => {
     expect(screen.getByText(/^1 edit( · |$)/)).toBeInTheDocument();
     expect(screen.getByText("as app/OldDashboard.tsx")).toBeInTheDocument();
     expect(screen.getByText("2 agents")).toBeInTheDocument();
-    const currentEntry = screen.getByText("Current work").closest("article");
-    expect(currentEntry).toHaveClass("isCurrentSession");
   });
 
   it("shows a provider filter only when more than one provider is present, and narrows the entries", () => {
     const single = historyFixture({ sessions: [sessionFixture({ provider: "claude" })] });
-    const { rerender } = render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={single} />);
+    const { rerender } = render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={single} />);
     expect(screen.queryByRole("group", { name: "Filter by provider" })).not.toBeInTheDocument();
 
     const mixed = historyFixture({
@@ -274,7 +289,7 @@ describe("FileHistoryPanel", () => {
         sessionFixture({ sessionId: "codex:b", title: "Codex session", provider: "codex" }),
       ],
     });
-    rerender(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={mixed} />);
+    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={mixed} />);
     expect(screen.getByText("Claude session")).toBeInTheDocument();
     expect(screen.getByText("Codex session")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Codex" }));
@@ -283,10 +298,10 @@ describe("FileHistoryPanel", () => {
   });
 
   it("shows the unattributed-changes line only when the count is positive", () => {
-    const { rerender } = render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ unattributedChanges: 0 })} />);
+    const { rerender } = render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ unattributedChanges: 0 })} />);
     expect(screen.queryByText(/without session attribution/)).not.toBeInTheDocument();
 
-    rerender(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ unattributedChanges: 3 })} />);
+    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ unattributedChanges: 3 })} />);
     expect(screen.getByText("3 changes without session attribution (moves seen in Git)")).toBeInTheDocument();
   });
 
@@ -297,12 +312,48 @@ describe("FileHistoryPanel", () => {
         sessionFixture({ sessionId: "codex:b", title: "Codex session", provider: "codex" }),
       ],
     });
-    const { rerender } = render(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={mixed} />);
+    const { rerender } = render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={mixed} />);
     fireEvent.click(screen.getByRole("button", { name: "Codex" }));
     expect(screen.queryByText("Claude session")).not.toBeInTheDocument();
 
-    rerender(<FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/Other.tsx" workingTreeStatus={null} history={mixed} />);
+    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Other.tsx" workingTreeStatus={null} history={mixed} />);
     expect(screen.getByText("Claude session")).toBeInTheDocument();
     expect(screen.getByText("Codex session")).toBeInTheDocument();
+  });
+});
+
+describe("SessionFilePanel", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-23T18:00:00.000Z")); });
+  afterEach(() => vi.useRealTimers());
+  const repositoryId = "repo-0123456789abcdef01234567";
+
+  it("renders the no-file-selected state", () => {
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={null} workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={null} />);
+    expect(screen.getByText("Select a file to see what this session changed.")).toBeInTheDocument();
+  });
+
+  it("shows this session's recorded change and links the full history to the repository page", () => {
+    const path = "app/components/Dashboard.tsx";
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
+      recorded={{ fileId: "f7", path, kind: "created", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z" }} />);
+    expect(screen.getByText("Recorded in this session")).toBeInTheDocument();
+    expect(screen.getByText("Created")).toHaveClass("commandChip", "info");
+    expect(screen.getByText("3 changes")).toBeInTheDocument();
+    expect(screen.getByText("Modified in working tree")).toHaveClass("commandChip", "warning");
+    expect(screen.getByRole("link", { name: /All history on repository page/ }))
+      .toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
+  });
+
+  it("labels a Git-observed file as not a recorded tool edit", () => {
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved="committed" />);
+    expect(screen.getByText("Seen in Git during this session")).toBeInTheDocument();
+    expect(screen.getByText("Committed on the session branch · not a recorded tool edit")).toBeInTheDocument();
+  });
+
+  it("says when the session recorded no change, and waits while recorded changes load", () => {
+    const { rerender } = render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" recorded={null} recordedReadiness="ready" gitObserved={null} />);
+    expect(screen.getByText("No recorded change in this session.")).toBeInTheDocument();
+    rerender(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" recorded={null} recordedReadiness="loading" gitObserved={null} />);
+    expect(screen.getByText("Loading file history…")).toBeInTheDocument();
   });
 });

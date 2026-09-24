@@ -160,6 +160,15 @@ function publicGitObservedFiles(value) {
   }
   return { files, truncated: value.truncated };
 }
+// The session tab chip's count of the Repository tab's Touched here list: recorded file-history
+// paths plus Git-observed paths no tool touched. Only a count leaves here; null until the
+// recorded history is ready so the chip never shows a partial or unknown figure.
+function touchedFileCount(fileHistory, gitObserved) {
+  if (fileHistory.readiness !== "ready") return null;
+  const paths = new Set(fileHistory.files.map((file) => file.path));
+  for (const file of gitObserved?.files || []) paths.add(file.path);
+  return paths.size;
+}
 const GIT_TASK_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 function gitTaskTally(executionTasks) {
   const relevant = (Array.isArray(executionTasks) ? executionTasks : []).filter((task) => GIT_TASK_WORK_KINDS.has(task?.workKind));
@@ -326,7 +335,7 @@ function base(domain, sessionId, observedAt, state, domainReadiness) {
   };
 }
 
-function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData) {
+function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFiles) {
   const session = state?.session;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const sections = sectionReadiness(ready, ["core", "agentEvidence", "contextEvidence", "activityEvidence", "repository"]);
@@ -400,6 +409,7 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       available: repository?.available === true,
       branch: typeof repository?.branch === "string" ? repository.branch : null,
       changedFiles: repository?.available === true && Array.isArray(repository.files) ? repository.files.length : null,
+      touchedFiles,
       pullRequestCount: pullRequests?.status === "ready" && Array.isArray(pullRequests.items) ? pullRequests.items.length : null,
       // Like the Repository tab, a comparison counts only after its remote check succeeded.
       comparison: repository?.remote?.status === "ready" ? repository.comparison : null,
@@ -466,8 +476,10 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const insights = list(state.insights, publicInsight);
   const loops = list(state.loops, publicLoop);
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
+  const fileHistory = publicFileHistory(options.fileHistory);
+  const gitObservedFiles = publicGitObservedFiles(options.gitObserved);
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(fileHistory, gitObservedFiles)));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,
@@ -504,11 +516,11 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),
     gitTasks: ready.activityEvidence === "ready" ? gitTaskTally(state.executionTasks) : null,
-    fileHistory: publicFileHistory(options.fileHistory),
+    fileHistory,
     // Never read from session.repository: that object is publicState.session.repository, which
     // /api/state serializes verbatim, and gitObserved must never reach that endpoint. It arrives
     // here only through options.gitObserved, a side channel exactly like options.fileHistory.
-    gitObservedFiles: publicGitObservedFiles(options.gitObserved),
+    gitObservedFiles,
   });
   const executionTasksById = new Map((Array.isArray(state.executionTasks) ? state.executionTasks : [])
     .filter((task) => typeof task?.id === "string")

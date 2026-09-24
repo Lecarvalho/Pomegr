@@ -179,8 +179,6 @@ describe("repository detail shell", () => {
     expect(treeProps.rootLabel).toBe("Example project");
     expect(treeProps.selectedPath).toBe("app/Dashboard.tsx");
     const panelProps = FileHistoryPanelMock.mock.calls.at(-1)![0];
-    expect(panelProps.side).toBe("repository");
-    expect(panelProps.repositoryId).toBe(repositoryId);
     expect(panelProps.path).toBe("app/Dashboard.tsx");
 
     treeProps.onSelect({ path: "app/other.ts", fileId: "f9" });

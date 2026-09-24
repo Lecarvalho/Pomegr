@@ -44,12 +44,11 @@
 .fileHistoryEntries { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .fileHistoryEntry { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); padding: 10px 16px; border-top: 1px solid var(--command-line); }
 .fileHistoryEntries > .fileHistoryEntry:first-child { border-top: 0; }
-.fileHistoryEntry.isCurrentSession { background: var(--command-panel-2); }
 .fileHistoryEntryBody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .fileHistoryEntryMeta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); color: var(--command-muted); }
 .fileHistoryEntryMetaText { color: var(--command-muted); }
 .fileHistoryEntryTitle { font: 400 var(--text-sm)/1.4 var(--font-ui); color: var(--command-ink); }
-.fileHistoryEntryTitle:hover { text-decoration: underline; }
+a.fileHistoryEntryTitle:hover { text-decoration: underline; }
 .fileHistoryEntryTitle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .fileHistoryEntryOldPath { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
 .fileHistoryEntryTime { align-self: flex-start; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); white-space: nowrap; }

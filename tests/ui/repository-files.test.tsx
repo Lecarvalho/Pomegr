@@ -135,8 +135,6 @@ describe("RepositoryFilesTab", () => {
     useFileHistory.mockReturnValue(history);
     renderFilesTab({ path: "app/Dashboard.tsx" });
     const panelProps = FileHistoryPanelMock.mock.calls.at(-1)![0];
-    expect(panelProps.side).toBe("repository");
-    expect(panelProps.repositoryId).toBe(REPOSITORY_ID);
     expect(panelProps.repositoryLabel).toBe("pomegr");
     expect(panelProps.path).toBe("app/Dashboard.tsx");
     expect(panelProps.workingTreeStatus).toBeNull();

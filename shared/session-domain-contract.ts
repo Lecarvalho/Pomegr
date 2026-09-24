@@ -72,6 +72,8 @@ export type SessionSummaryDomain = SessionDomainBase & {
     available: boolean;
     branch: string | null;
     changedFiles: number | null;
+    /** Size of the Repository tab's Touched here list (recorded plus Git-observed paths); null until file history is ready. */
+    touchedFiles: number | null;
     pullRequestCount: number | null;
     comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"] | null;
   };

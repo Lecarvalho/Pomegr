@@ -78,8 +78,6 @@ export function RepositoryFilesTab({ repositoryId, repositoryLabel, path, onSele
         className="repositoryFilesTabTree"
       />
       <FileHistoryPanel
-        side="repository"
-        repositoryId={repositoryId}
         repositoryLabel={repositoryLabel}
         path={path}
         // Repository scope has no working-tree status without a new fetch (plan, implement-tabs).

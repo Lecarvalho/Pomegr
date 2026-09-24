@@ -9,6 +9,7 @@ import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
 import { ProviderBadge } from "../ProviderBadge";
 import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
+import { SessionFilePanel } from "../dashboard/SessionFilePanel";
 import { FileTree, type FileTreeFile } from "../repositories/FileTree";
 import { RepositoryRow } from "../repositories/RepositoryRow";
 import { StorageUsageBar } from "../../settings/StorageSettings";
@@ -291,6 +292,9 @@ const FILE_TREE_SESSION_FILES: FileTreeFile[] = [
   { path: "app/components/dashboard/SessionTabs.tsx", fileId: "f102", status: "??" },
   { path: "app/components/dashboard/RequestLanes.tsx", fileId: "f103", status: "??" },
   { path: "app/Dashboard.tsx", fileId: "f104", status: "M" },
+  // Committed after the session recorded it: neutral C/M from the recorded kind.
+  { path: "app/components/dashboard/SessionFilePanel.tsx", fileId: "f105", status: null, recordedKind: "created" },
+  { path: "app/components/dashboard/RepositoryTab.tsx", fileId: "f106", status: null, recordedKind: "edited" },
   // Git-observed, not a recorded tool edit (F/plan "2026-09-23-session-file-coverage" part 2).
   { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed" },
 ];
@@ -374,19 +378,23 @@ const FILE_HISTORY_SAMPLE_EMPTY: FileHistoryResponse = {
 };
 
 function FileHistoryPanelSection() {
-  return <Section id="file-history-panel" title="File history panel" lede="FileHistoryPanel (app/components/repositories/FileHistoryPanel.tsx) renders committed session history the caller already fetched; it never fetches on its own. The current session sits on the raised surface, a moved entry shows its old path, and every state shares one panel frame.">
+  return <Section id="file-history-panel" title="File history panel" lede="FileHistoryPanel (app/components/repositories/FileHistoryPanel.tsx) renders on the repository Files tab the committed session history the caller already fetched; it never fetches on its own. A moved entry shows its old path, and every state shares one panel frame. The session Repository tab uses SessionFilePanel instead, showing only that session's change.">
     <div className="designSystemGrid">
-      <Sample label="Session side" note="Current session highlighted, a moved entry, and the header's repository-page link.">
-        <FileHistoryPanel side="session" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus="M" history={FILE_HISTORY_SAMPLE} currentSessionId="claude:design-system-current" />
+      <Sample label="Session file panel" note="SessionFilePanel: this session's recorded change only, fetch-free, with the repository-page link for full history.">
+        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
+          recorded={{ fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z" }} />
       </Sample>
-      <Sample label="Repository side" note="Copy path action; no current-session highlight.">
-        <FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE} />
+      <Sample label="Session file panel, Git-observed" note="No tool recorded the file; Git saw it change in the session window.">
+        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved="committed" />
+      </Sample>
+      <Sample label="Repository side" note="Copy path action.">
+        <FileHistoryPanel repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE} />
       </Sample>
       <Sample label="No recorded sessions" note="Ready readiness with zero sessions for the selected path.">
-        <FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/unseen.ts" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE_EMPTY} />
+        <FileHistoryPanel repositoryLabel="Pomegr" path="app/unseen.ts" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE_EMPTY} />
       </Sample>
       <Sample label="Loading" note="history is null until the first committed response arrives.">
-        <FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={null} />
+        <FileHistoryPanel repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={null} />
       </Sample>
     </div>
   </Section>;

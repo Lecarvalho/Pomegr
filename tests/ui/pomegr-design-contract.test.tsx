@@ -31,6 +31,7 @@ const repositoriesComponentsPath = join(process.cwd(), "app", "components", "rep
 const fileTreeSource = readFileSync(join(repositoriesComponentsPath, "FileTree.tsx"), "utf8");
 const fileTreeModelSource = readFileSync(join(repositoriesComponentsPath, "file-tree-model.ts"), "utf8");
 const fileHistoryPanelSource = readFileSync(join(repositoriesComponentsPath, "FileHistoryPanel.tsx"), "utf8");
+const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SessionFilePanel.tsx"), "utf8");
 /** Innermost rules only: the selector is whatever precedes a brace-free declaration block. */
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
@@ -290,9 +291,9 @@ describe("Pomegr visual contract", () => {
     expect(container.querySelector(".storageUsageText")?.textContent).toBe("Storage usage unavailable");
   });
 
-  it("keeps FileTree and FileHistoryPanel fetch-free, documented, and on the single-letter status", () => {
+  it("keeps FileTree, FileHistoryPanel, and SessionFilePanel fetch-free, documented, and on the single-letter status", () => {
     // Pure presentation: neither component reads the repository-files store or fetches directly.
-    for (const source of [fileTreeSource, fileTreeModelSource, fileHistoryPanelSource]) {
+    for (const source of [fileTreeSource, fileTreeModelSource, fileHistoryPanelSource, sessionFilePanelSource]) {
       expect(source).not.toMatch(/repository-files-store|useSyncExternalStore|fetch\(/);
     }
 
@@ -305,7 +306,8 @@ describe("Pomegr visual contract", () => {
     expect(designContract).toMatch(/\*\*Status from the working tree · select a\s+file for its history\*\*/);
     expect(designContract).toMatch(/\*\*Folders roll up distinct sessions\*\*/);
     expect(designContract).toMatch(/\*\*How to read this\*\*/);
-    expect(designContract).toMatch(/never both/);
+    expect(designContract).toMatch(/SessionFilePanel \(`app\/components\/dashboard\/SessionFilePanel\.tsx`\)/);
+    expect(designContract).toMatch(/selecting a file never waits\s+on a fetch/);
     expect(designContract).toMatch(/\*\*N changes without\s+session attribution \(moves seen in Git\)\*\*/);
 
     expect(styles).toMatch(/\.fileTreeStatusLetter\s*\{[^}]*margin-left:\s*auto;[^}]*font:\s*600 var\(--text-caption\)/);
@@ -313,7 +315,6 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.fileTreeRow\.isSelected\s*\{\s*background:\s*var\(--command-panel-2\);\s*color:\s*var\(--command-ink\);\s*\}/);
     expect(styles).toMatch(/\.fileTreeFolderRow\[aria-expanded="true"\] \.fileTreeChevron\s*\{\s*transform:\s*rotate\(90deg\);\s*\}/);
     expect(styles).toMatch(/\.fileTreeFileRow\.isMuted \.fileTreeFileName\s*\{\s*color:\s*var\(--command-muted\);\s*\}/);
-    expect(styles).toMatch(/\.fileHistoryEntry\.isCurrentSession\s*\{\s*background:\s*var\(--command-panel-2\);\s*\}/);
     expect(styles).not.toMatch(/\.(?:fileTree|fileHistory)[^{]*\{[^}]*#[0-9a-fA-F]{3,8}/);
 
     // Session scope renders the single-letter status; repository scope shows counts and mutes.
@@ -322,7 +323,7 @@ describe("Pomegr visual contract", () => {
     rerender(<FileTree scope="repository" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: "f1", sessionCount: 2 }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
     expect(screen.getByText("2")).toBeInTheDocument();
 
-    render(<FileHistoryPanel side="repository" repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
     expect(screen.getByText("Select a file to see its recorded sessions.")).toBeInTheDocument();
   });
 

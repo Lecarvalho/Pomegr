@@ -13,6 +13,9 @@ export type FileTreeFile = {
    *  session window (committed on the live HEAD branch, or turned uncommitted between the
    *  session's first and latest live Git checks). Renders a quiet glyph, never a chip. */
   gitObserved?: "committed" | "uncommitted";
+  /** Session scope only: this session's latest recorded change kind. Shown as a neutral letter
+   *  when the working tree reports no status, so a committed file keeps its C/M. */
+  recordedKind?: "created" | "edited" | "deleted" | "moved" | null;
 };
 
 export type FileTreeFolderNode = {
@@ -139,4 +142,12 @@ export function fileStatus(status: string | null | undefined): FileStatus | null
 /** Alphabetical order for the flat "Changed elsewhere" group (F4), which is never nested. */
 export function sortByPath(files: FileTreeFile[]): FileTreeFile[] {
   return [...files].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** This session's recorded kind as a neutral single letter, for a touched row the working tree
+ * no longer reports (committed or reverted). Only created and edited get a letter. */
+export function recordedKindStatus(kind: FileTreeFile["recordedKind"]): { letter: "C" | "M"; label: string } | null {
+  if (kind === "created") return { letter: "C", label: "Created in this session" };
+  if (kind === "edited") return { letter: "M", label: "Edited in this session" };
+  return null;
 }

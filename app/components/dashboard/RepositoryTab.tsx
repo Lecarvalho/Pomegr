@@ -5,11 +5,10 @@ import { useState, type ReactNode } from "react";
 import type { PullRequest } from "../../../shared/monitor-contract";
 import type { RepositoryDomain } from "../../../shared/session-domain-contract";
 import { timelineTime } from "../../dashboard-utils";
-import { useFileHistory } from "../../repository-files-store";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { useSessionDomain } from "../../session-domain-store";
-import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
 import { FileTree } from "../repositories/FileTree";
+import { SessionFilePanel } from "./SessionFilePanel";
 import { repositoryFilePath } from "../repositories/repository-route";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { RelativeTimeText } from "../LiveTime";
@@ -19,7 +18,6 @@ import {
   ELSEWHERE_SEGMENT_EMPTY_TEXT,
   filterFilesByPath,
   REPOSITORY_TAB_FILES_SEGMENTS,
-  resolveRepositoryTabFileTarget,
   segmentCount,
   touchedSegmentEmptyText,
   uncommittedSegmentEmptyText,
@@ -111,8 +109,8 @@ function FilesTreeSkeleton() {
 }
 
 /** The session Repository tab's body (F17/F18): a search field, a Touched here / Uncommitted /
- * Changed elsewhere segment, and the shared FileTree / FileHistoryPanel pair in session scope. */
-function RepositoryTabFiles({ domain, repository, repositoryId, historical, sessionId, selectedPath, onSelectPath, paused }: {
+ * Changed elsewhere segment, and the shared FileTree plus the fetch-free SessionFilePanel. */
+function RepositoryTabFiles({ domain, repository, repositoryId, historical, sessionId, selectedPath, onSelectPath }: {
   domain: RepositoryDomain;
   repository: Repository;
   repositoryId: string;
@@ -120,7 +118,6 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
   sessionId: string;
   selectedPath: string | null;
   onSelectPath: (path: string | null) => void;
-  paused: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
@@ -129,8 +126,8 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
   const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, repository.files, domain.gitObservedFiles);
   const segment = manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments);
   const query = search.trim();
-  const target = resolveRepositoryTabFileTarget(selectedPath, domain.fileHistory.files);
-  const history = useFileHistory(repositoryId, target, { paused });
+  const recorded = selectedPath ? domain.fileHistory.files.find((file) => file.path === selectedPath) ?? null : null;
+  const gitObserved = selectedPath ? domain.gitObservedFiles?.files.find((file) => file.path === selectedPath)?.source ?? null : null;
   const workingTreeStatus = selectedPath ? repository.files.find((file) => file.path === selectedPath)?.status ?? null : null;
 
   const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);
@@ -169,15 +166,15 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
     </div>
     <div className="panel repositoryTabFilesBody">
       {treeArea}
-      <FileHistoryPanel
-        side="session"
+      <SessionFilePanel
         repositoryId={repositoryId}
         repositoryLabel={rootLabel}
         path={selectedPath}
         workingTreeStatus={workingTreeStatus}
         statusRecorded={historical}
-        history={history}
-        currentSessionId={sessionId}
+        recorded={recorded}
+        recordedReadiness={domain.fileHistory.readiness}
+        gitObserved={gitObserved}
         className="repositoryTabFilesPanel"
       />
     </div>
@@ -251,7 +248,7 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
       </Link>}
     </section>
     {domain.repositoryId
-      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} paused={paused} />
+      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} />
       : <p className="repositoryTabFilesUnavailable">File history requires a linked repository.</p>}
   </div>;
 }

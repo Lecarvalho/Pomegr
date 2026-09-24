@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import type { FileChangeKind, FileHistoryProvider, FileHistoryResponse, FileHistorySession } from "../../../shared/repository-files-contract";
 import { gitPathParts } from "../../dashboard-utils";
 import { DottedInfoPopover } from "../DottedInfoPopover";
 import { ProviderBadge } from "../ProviderBadge";
-import { CommandIcon } from "../command-center/CommandPage";
 import { providerSourceLabel, sessionTimeLabel } from "./file-history-format";
 import { fileStatus } from "./file-tree-model";
 
 export type FileHistoryPanelProps = {
-  side: "session" | "repository";
-  repositoryId: string;
   repositoryLabel: string; // breadcrumb root
   /** Selected repository-relative path; null renders the "no file selected" state. */
   path: string | null;
@@ -21,12 +18,10 @@ export type FileHistoryPanelProps = {
   statusRecorded?: boolean;
   /** null while loading the selected file's history. */
   history: FileHistoryResponse | null;
-  /** Session side: the session whose entry is highlighted as "this session". */
-  currentSessionId?: string;
   className?: string;
 };
 
-const KIND_LABELS: Record<FileChangeKind, { label: string; tone: "positive" | "info" | "warning" | null }> = {
+export const KIND_LABELS: Record<FileChangeKind, { label: string; tone: "positive" | "info" | "warning" | null }> = {
   edited: { label: "Edited", tone: "positive" },
   created: { label: "Created", tone: "info" },
   deleted: { label: "Deleted", tone: "warning" },
@@ -39,7 +34,7 @@ function FileGlyphIcon() {
   </svg>;
 }
 
-function LoadingRows() {
+export function FileHistoryLoadingRows() {
   return <div className="fileHistorySkeleton" aria-busy="true">
     <span className="visuallyHidden">Loading file history…</span>
     {[0, 1, 2].map((row) => <div key={row} className="fileHistorySkeletonRow" aria-hidden="true">
@@ -65,12 +60,10 @@ function sessionHrefFor(sessionId: string, linkPath: string): string | null {
   }
 }
 
-function FileHistoryEntry({ session, linkPath, currentSessionId }: {
+function FileHistoryEntry({ session, linkPath }: {
   session: FileHistorySession;
   linkPath: string;
-  currentSessionId?: string;
 }) {
-  const isCurrent = currentSessionId !== undefined && session.sessionId === currentSessionId;
   const kind = KIND_LABELS[session.kind];
   const providerSource = providerSourceLabel(session.provider);
   const agentsText = agentsSummary(session);
@@ -81,7 +74,7 @@ function FileHistoryEntry({ session, linkPath, currentSessionId }: {
   const href = sessionHrefFor(session.sessionId, linkPath);
   const title = session.title ?? "Untitled session";
 
-  return <article className={`fileHistoryEntry${isCurrent ? " isCurrentSession" : ""}`}>
+  return <article className="fileHistoryEntry">
     <div className="fileHistoryEntryBody">
       {href ? <Link className="fileHistoryEntryTitle" href={href}>{title}</Link> : <span className="fileHistoryEntryTitle">{title}</span>}
       <div className="fileHistoryEntryMeta">
@@ -89,7 +82,7 @@ function FileHistoryEntry({ session, linkPath, currentSessionId }: {
         {session.kind !== "edited" && <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>}
         {providerSource && <ProviderBadge source={providerSource} />}
         {metaText && <span className="fileHistoryEntryMetaText">{metaText}</span>}
-        {isCurrent ? <span className="commandChip">this session</span> : session.live ? <span className="commandChip positive">live</span> : null}
+        {session.live && <span className="commandChip positive">live</span>}
       </div>
       {session.pathAtTime && <p className="fileHistoryEntryOldPath">as {session.pathAtTime}</p>}
     </div>
@@ -97,7 +90,36 @@ function FileHistoryEntry({ session, linkPath, currentSessionId }: {
   </article>;
 }
 
-export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, history, currentSessionId, className = "" }: FileHistoryPanelProps) {
+/** Breadcrumb, file name, and working-tree chip shared by the repository Files tab's history
+ * panel and the session Repository tab's file panel; `action` fills the right of the title row. */
+export function FilePanelHeader({ repositoryLabel, path, workingTreeStatus, statusRecorded = false, action, children }: {
+  repositoryLabel: string;
+  path: string;
+  workingTreeStatus: string | null;
+  statusRecorded?: boolean;
+  action: ReactNode;
+  children?: ReactNode;
+}) {
+  const { directory, filename } = gitPathParts(path);
+  const statusChip = fileStatus(workingTreeStatus);
+  return <header className="fileHistoryHeader">
+    <div className="fileHistoryBreadcrumb">
+      <span>{repositoryLabel}</span>
+      {directory && <><span aria-hidden="true">/</span><span>{directory}</span></>}
+    </div>
+    <div className="fileHistoryTitleRow">
+      <div className="fileHistoryTitle">
+        <FileGlyphIcon />
+        <b className="fileHistoryFileName">{filename}</b>
+        {statusChip && <span className={`commandChip${statusChip.tone ? ` ${statusChip.tone}` : ""}`}>{statusChip.label} {statusRecorded ? "at last live check" : "in working tree"}</span>}
+      </div>
+      {action}
+    </div>
+    {children}
+  </header>;
+}
+
+export function FileHistoryPanel({ repositoryLabel, path, workingTreeStatus, statusRecorded = false, history, className = "" }: FileHistoryPanelProps) {
   const [resetKey, setResetKey] = useState(path);
   const [providerFilter, setProviderFilter] = useState<"all" | FileHistoryProvider>("all");
   const [copied, setCopied] = useState(false);
@@ -121,7 +143,6 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
     </section>;
   }
 
-  const { directory, filename } = gitPathParts(path);
   const ready = history !== null && history.readiness === "ready";
   const readiness = history?.readiness ?? "loading";
   const sessions = ready && history ? history.sessions : [];
@@ -129,7 +150,6 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
   const linkPath = (history?.path ?? path);
   const providers = [...new Set(sessions.map((session) => session.provider).filter((provider): provider is FileHistoryProvider => provider !== null))];
   const filteredSessions = providerFilter === "all" ? sessions : sessions.filter((session) => session.provider === providerFilter);
-  const statusChip = fileStatus(workingTreeStatus);
 
   const copyPath = () => {
     if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -141,23 +161,8 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
   };
 
   return <section className={`panel fileHistoryPanel ${className}`.trim()} aria-label="File history">
-    <header className="fileHistoryHeader">
-      <div className="fileHistoryBreadcrumb">
-        <span>{repositoryLabel}</span>
-        {directory && <><span aria-hidden="true">/</span><span>{directory}</span></>}
-      </div>
-      <div className="fileHistoryTitleRow">
-        <div className="fileHistoryTitle">
-          <FileGlyphIcon />
-          <b className="fileHistoryFileName">{filename}</b>
-          {statusChip && <span className={`commandChip${statusChip.tone ? ` ${statusChip.tone}` : ""}`}>{statusChip.label} {statusRecorded ? "at last live check" : "in working tree"}</span>}
-        </div>
-        {side === "session"
-          ? <Link className="commandQuietAction fileHistoryHeaderAction" href={`/repositories/${repositoryId}?tab=files&path=${encodeURIComponent(linkPath)}`}>
-              All history on repository page<CommandIcon name="chevron" size="small" />
-            </Link>
-          : <button type="button" className="commandSecondaryAction fileHistoryHeaderAction" onClick={copyPath}>{copied ? "Copied" : "Copy path"}</button>}
-      </div>
+    <FilePanelHeader repositoryLabel={repositoryLabel} path={path} workingTreeStatus={workingTreeStatus} statusRecorded={statusRecorded}
+      action={<button type="button" className="commandSecondaryAction fileHistoryHeaderAction" onClick={copyPath}>{copied ? "Copied" : "Copy path"}</button>}>
       {ready && <div className="fileHistoryMetaRow">
         <span className="fileHistorySessionCount">{sessions.length} recorded session{sessions.length === 1 ? "" : "s"} · newest first</span>
         {providers.length > 1 && <div className="commandSegmented" role="group" aria-label="Filter by provider">
@@ -165,17 +170,17 @@ export function FileHistoryPanel({ side, repositoryId, repositoryLabel, path, wo
           {providers.map((provider) => <button key={provider} type="button" aria-pressed={providerFilter === provider} onClick={() => setProviderFilter(provider)}>{providerSourceLabel(provider)}</button>)}
         </div>}
       </div>}
-    </header>
+    </FilePanelHeader>
     <div className="fileHistoryEntries">
       {!ready
         ? (readiness === "rebuilding"
           ? <p className="fileHistoryEmptyState">File history is rebuilding.</p>
           : readiness === "unavailable"
             ? <p className="fileHistoryEmptyState">File history is unavailable.</p>
-            : <LoadingRows />)
+            : <FileHistoryLoadingRows />)
         : (filteredSessions.length === 0
           ? <p className="fileHistoryEmptyState">No recorded sessions changed this file.</p>
-          : filteredSessions.map((session) => <FileHistoryEntry key={session.sessionId} session={session} linkPath={linkPath} currentSessionId={currentSessionId} />))}
+          : filteredSessions.map((session) => <FileHistoryEntry key={session.sessionId} session={session} linkPath={linkPath} />))}
       {ready && unattributedChanges > 0 && <p className="fileHistoryUnattributed">{unattributedChanges} change{unattributedChanges === 1 ? "" : "s"} without session attribution (moves seen in Git)</p>}
     </div>
     <div className="fileHistoryFooter">

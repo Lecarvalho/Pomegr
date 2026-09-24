@@ -5,6 +5,7 @@ import {
   buildFileTree,
   defaultOpenFolders,
   fileStatus,
+  recordedKindStatus,
   sortByPath,
   visibleFileTreeRows,
   type FileTreeFile,
@@ -36,10 +37,14 @@ function TreeChevron() {
   return <svg className="fileTreeChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>;
 }
 
-/** Editor-style single-letter working-tree status, right-aligned at the end of the row. */
-function FileTreeStatusLetter({ status }: { status: string | null | undefined }) {
+/** Editor-style single-letter working-tree status, right-aligned at the end of the row. With no
+ * working-tree status, falls back to the session's recorded kind as a neutral C or M. */
+function FileTreeStatusLetter({ status, recordedKind }: { status: string | null | undefined; recordedKind: FileTreeFile["recordedKind"] }) {
   const info = fileStatus(status);
-  if (!info) return null;
+  if (!info) {
+    const recorded = recordedKindStatus(recordedKind);
+    return recorded && <span className="fileTreeStatusLetter" role="img" aria-label={recorded.label} title={recorded.label}>{recorded.letter}</span>;
+  }
   return <span className={`fileTreeStatusLetter${info.tone ? ` ${info.tone}` : ""}`} role="img" aria-label={info.label} title={info.label}>{info.letter}</span>;
 }
 
@@ -75,7 +80,7 @@ function FileTreeFileRow({ scope, depth, name, file, selected, onSelect }: {
   >
     <span className="fileTreeFileName">{name}</span>
     {file.gitObserved && <FileTreeGitObservedGlyph source={file.gitObserved} />}
-    {scope === "session" && <FileTreeStatusLetter status={file.status} />}
+    {scope === "session" && <FileTreeStatusLetter status={file.status} recordedKind={file.recordedKind} />}
     {showCount && <span className="fileTreeCount">{file.sessionCount}</span>}
   </button>;
 }

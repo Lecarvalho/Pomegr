@@ -616,3 +616,21 @@ test("the repository domain's gitObservedFiles comes only from options.gitObserv
   const missing = projectSessionDomains("claude:historical-session", ...baseArgs, {});
   assert.equal(missing.domains.get("repository").gitObservedFiles, null);
 });
+
+test("the session summary counts the Touched here files (recorded plus Git-observed, deduplicated) only once file history is ready", () => {
+  const snapshot = normalizeRepositorySnapshot(validSnapshot());
+  const { repository, pullRequests } = historicalRepositoryFromSnapshot(snapshot);
+  const state = stateWithRepository(repository);
+  state.session.pullRequests = pullRequests;
+  const baseArgs = [{ publicState: state, readiness: state.readiness, observedAt: state.session.updatedAt }];
+  const recorded = (path, fileId) => ({ fileId, path, kind: "edited", changeCount: 1, lastObservedAt: "2026-09-14T12:00:00.000Z" });
+  const fileHistory = { readiness: "ready", files: [recorded("app/a.ts", "f1"), recorded("app/b.ts", "f2")], truncated: false };
+  const gitObserved = { files: [{ path: "app/b.ts", source: "committed" }, { path: "app/c.ts", source: "uncommitted" }], truncated: false };
+
+  const ready = projectSessionDomains("claude:historical-session", ...baseArgs, { fileHistory, gitObserved });
+  assert.equal(ready.domains.get("session-summary").repository.touchedFiles, 3);
+  assert.doesNotMatch(JSON.stringify(ready.domains.get("session-summary")), /app\/[abc]\.ts/, "only the count reaches the summary");
+
+  const loading = projectSessionDomains("claude:historical-session", ...baseArgs, { fileHistory: { ...fileHistory, readiness: "loading" }, gitObserved });
+  assert.equal(loading.domains.get("session-summary").repository.touchedFiles, null);
+});

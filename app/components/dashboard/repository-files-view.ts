@@ -3,7 +3,6 @@
  * Changed elsewhere). Kept out of RepositoryTab.tsx so that file stays focused on rendering; see
  * runs/2026-09-22-ia-session-5/3-file-history/artifacts/plan.md ("implement-tabs").
  */
-import type { FileHistoryTarget } from "../../repository-files-store";
 import type { RepositoryDomain, RepositoryGitObservedFiles } from "../../../shared/session-domain-contract";
 import type { FileTreeFile } from "../repositories/FileTree";
 
@@ -38,6 +37,7 @@ export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], wor
     path: file.path,
     fileId: file.fileId,
     status: workingTreeByPath.get(file.path) ?? null,
+    recordedKind: file.kind,
   }));
   const gitObservedExtra: FileTreeFile[] = (gitObservedFiles?.files ?? [])
     .filter((file) => !touchedPaths.has(file.path))
@@ -90,12 +90,3 @@ export function uncommittedSegmentEmptyText(historical: boolean): string {
 }
 
 export const ELSEWHERE_SEGMENT_EMPTY_TEXT = "No uncommitted files outside those touched in this session.";
-
-/** Prefers the touched file's own recorded identity; falls back to a path lookup so an untouched
- * or not-yet-loaded selection still resolves (see plan: "history via useFileHistory(repositoryId,
- * fileId ? {fileId} : {path})"). */
-export function resolveRepositoryTabFileTarget(selectedPath: string | null, touchedFiles: TouchedFile[]): FileHistoryTarget | null {
-  if (!selectedPath) return null;
-  const touched = touchedFiles.find((file) => file.path === selectedPath);
-  return touched ? { fileId: touched.fileId } : { path: selectedPath };
-}

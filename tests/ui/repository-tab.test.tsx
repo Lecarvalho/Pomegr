@@ -5,7 +5,7 @@ import type { PullRequest, SessionSummary } from "../../shared/monitor-contract"
 import type { RepositoryDomain } from "../../shared/session-domain-contract";
 import type { FileHistoryResponse } from "../../shared/repository-files-contract";
 import { RepositoryTab, type RepositoryTabProps } from "../../app/components/dashboard/RepositoryTab";
-import type { FileHistoryPanelProps } from "../../app/components/repositories/FileHistoryPanel";
+import type { SessionFilePanel } from "../../app/components/dashboard/SessionFilePanel";
 import type { FileTreeProps } from "../../app/components/repositories/FileTree";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
@@ -16,18 +16,18 @@ vi.mock("../../app/session-domain-store", () => ({ useSessionDomain }));
 const { useFileHistory } = vi.hoisted(() => ({ useFileHistory: vi.fn<(...args: unknown[]) => FileHistoryResponse | null>(() => null) }));
 vi.mock("../../app/repository-files-store", () => ({ useFileHistory }));
 
-// FileTree and FileHistoryPanel are being written in parallel (implement-controls); this file
-// tests RepositoryTab's own toolbar/segment/selection/fetch-target logic and the props it hands
-// them, never their rendered internals (see the plan's implement-tabs brief).
-const { FileTreeMock, FileHistoryPanelMock } = vi.hoisted(() => ({
+// This file tests RepositoryTab's own toolbar/segment/selection logic and the props it hands
+// FileTree and SessionFilePanel, never their rendered internals.
+type SessionFilePanelProps = Parameters<typeof SessionFilePanel>[0];
+const { FileTreeMock, SessionFilePanelMock } = vi.hoisted(() => ({
   FileTreeMock: vi.fn<(props: FileTreeProps) => void>(),
-  FileHistoryPanelMock: vi.fn<(props: FileHistoryPanelProps) => void>(),
+  SessionFilePanelMock: vi.fn<(props: SessionFilePanelProps) => void>(),
 }));
 vi.mock("../../app/components/repositories/FileTree", () => ({
   FileTree: (props: FileTreeProps) => { FileTreeMock(props); return null; },
 }));
-vi.mock("../../app/components/repositories/FileHistoryPanel", () => ({
-  FileHistoryPanel: (props: FileHistoryPanelProps) => { FileHistoryPanelMock(props); return null; },
+vi.mock("../../app/components/dashboard/SessionFilePanel", () => ({
+  SessionFilePanel: (props: SessionFilePanelProps) => { SessionFilePanelMock(props); return null; },
 }));
 
 function renderTab(props: RepositoryTabProps, sessions: SessionSummary[] = []) {
@@ -99,7 +99,7 @@ describe("RepositoryTab", () => {
     useFileHistory.mockReset();
     useFileHistory.mockReturnValue(null);
     FileTreeMock.mockReset();
-    FileHistoryPanelMock.mockReset();
+    SessionFilePanelMock.mockReset();
   });
 
   it("renders the live top bar with comparison, PR, and line-2 evidence, and no commit list", () => {
@@ -224,7 +224,7 @@ describe("RepositoryTab", () => {
 
       const treeProps = FileTreeMock.mock.calls.at(-1)![0];
       expect(treeProps.scope).toBe("session");
-      expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M" }]);
+      expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" }]);
       expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
     });
 
@@ -268,38 +268,39 @@ describe("RepositoryTab", () => {
       expect(onSelectPath).toHaveBeenCalledWith("app/Dashboard.tsx");
     });
 
-    it("resolves the file-history target by fileId when the path is touched, else by path, and passes it to useFileHistory", () => {
+    it("never fetches cross-session file history; the panel gets only this session's evidence", () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles()));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
-      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, { fileId: "f1" }, { paused: false });
-
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/new-file.ts" });
-      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, { path: "app/new-file.ts" }, { paused: false });
-
-      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: null });
-      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, null, { paused: false });
+      expect(useFileHistory).not.toHaveBeenCalled();
     });
 
-    it("rejects an unsafe deep-linked path before selecting or fetching anything", () => {
+    it("rejects an unsafe deep-linked path before selecting anything", () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles()));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "../secret" });
-      expect(useFileHistory).toHaveBeenLastCalledWith(REPOSITORY_ID, null, { paused: false });
       const treeProps = FileTreeMock.mock.calls.at(-1)![0];
       expect(treeProps.selectedPath).toBeNull();
+      expect(SessionFilePanelMock.mock.calls.at(-1)![0].path).toBeNull();
     });
 
-    it("passes the working-tree status, history, and current session id to FileHistoryPanel", () => {
-      useFileHistory.mockReturnValue({ kind: "history", revision: 1, readiness: "ready", repositoryId: REPOSITORY_ID, fileId: "f1", path: "app/Dashboard.tsx", sessions: [], unattributedChanges: 0, truncated: false });
+    it("passes the working-tree status and this session's recorded change to SessionFilePanel", () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles()));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
 
-      const panelProps = FileHistoryPanelMock.mock.calls.at(-1)![0];
-      expect(panelProps.side).toBe("session");
+      const panelProps = SessionFilePanelMock.mock.calls.at(-1)![0];
       expect(panelProps.repositoryId).toBe(REPOSITORY_ID);
       expect(panelProps.path).toBe("app/Dashboard.tsx");
       expect(panelProps.workingTreeStatus).toBe(" M");
-      expect(panelProps.currentSessionId).toBe(SESSION_ID);
-      expect(panelProps.history?.fileId).toBe("f1");
+      expect(panelProps.recorded?.fileId).toBe("f1");
+      expect(panelProps.gitObserved).toBeNull();
+    });
+
+    it("passes a Git-observed source when no tool recorded the selected file", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed" }], truncated: false } })));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/committed-only.ts" });
+      const panelProps = SessionFilePanelMock.mock.calls.at(-1)![0];
+      expect(panelProps.recorded).toBeNull();
+      expect(panelProps.gitObserved).toBe("committed");
     });
 
     it("uses the catalog project as the tree root label, falling back to Repository when unknown", () => {
@@ -354,7 +355,7 @@ describe("RepositoryTab", () => {
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual([
-          { path: "app/Dashboard.tsx", fileId: "f1", status: " M" },
+          { path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" },
           { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted" },
         ]);
         expect(treeProps.elsewhere).toEqual([]);
@@ -365,7 +366,7 @@ describe("RepositoryTab", () => {
         renderTab({ sessionId: SESSION_ID, historical: false });
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
-        expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M" }]);
+        expect(treeProps.files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" }]);
         expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       });
 
