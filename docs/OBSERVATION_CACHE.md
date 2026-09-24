@@ -2005,24 +2005,11 @@ of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated
 512 characters, and relative to the session's recorded working directory; `previousPath`
 is present only for `moved`. Only a call with recorded success evidence carries it (Claude:
 a non-error tool result, with `Write` classified `created` from the structured result type;
-Codex: a completed patch or file-change item, or a completed shell item with exit code 0).
-Claude `Bash`/`PowerShell` calls and Codex shell items are passed to the provider-neutral
-recognizer `shellFileChangeCandidates` (`monitor/providers/shell-file-writes.mjs`). It
-recognizes POSIX `>`, `>>`, `tee`, `cp`, `mv`/`git mv`, `touch`, `rm`/`git rm`, and
-`sed -i`, and PowerShell `Set-Content`, `Add-Content`, `Out-File`,
-`New-Item -ItemType File`, `Remove-Item`, `Copy-Item`, `Move-Item`, `Rename-Item`, and
-redirects, joined by `&&` or `;`. Only `New-Item -ItemType File` yields `created`; the
-other writers yield `edited` because their outcome is ambiguous. It fails closed: `$`,
-backticks, globs, `<` and heredocs, `#`, `~`, braces, parentheses, backslashes,
-PowerShell `,` and `@`, any directory change (`cd`, `pushd`, `popd`, `Set-Location`, and
-similar) anywhere in the command, `||`, `&`, unknown options, unrecognized segments, and
-unbalanced quotes reject the whole command, so nothing is recorded. Targets resolve
-against the session working directory, so a shell call counts only when it ran there: a
-Claude record's `cwd` must equal the session cwd, and a Codex shell item's `workdir` or
-`cwd` must be absent or resolve to it. Codex
-shell kind comes from an explicit interpreter token or a PowerShell Verb-Noun head token,
-else POSIX; a `[shell, flag, "script"]` wrapper is not recognized. Command text never
-leaves the recognizer; callers get only targets. `assertCheckpointPayload` rejects any
+Codex: a completed patch or file-change item). Only structured file tools with an explicit
+target contribute: Claude `Write`, `Edit`, `MultiEdit`, and `NotebookEdit`, and Codex patch
+and file-change items. Claude `Bash`/`PowerShell` calls and Codex shell items never carry
+`fileChanges`: the files a command writes cannot be known reliably from its text, so those
+changes surface only through the Git-observed lists below. `assertCheckpointPayload` rejects any
 absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
 or over-bound path.
 

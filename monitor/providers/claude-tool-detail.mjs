@@ -1,6 +1,5 @@
 import path from "node:path";
 import { normalizedSkillName } from "../skill-usage.mjs";
-import { shellFileChangeCandidates } from "./shell-file-writes.mjs";
 
 function boundedOneLine(value, maximum = 54) {
   return typeof value === "string"
@@ -10,10 +9,11 @@ function boundedOneLine(value, maximum = 54) {
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "MultiEdit", "NotebookEdit"]);
 
-/** Claude tools whose file changes come from the shell-file-writes recognizer. */
-export const CLAUDE_SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
-
-/** Candidate {target, kind, previousTarget} file changes for one successful Claude tool call. */
+/**
+ * Candidate {target, kind} file changes for one successful Claude tool call. Only structured
+ * file tools with an explicit path contribute; shell commands never do, because the files a
+ * command writes cannot be known reliably from its text.
+ */
 export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
   if (tool === "Write") {
     const target = input.file_path || input.path;
@@ -25,8 +25,6 @@ export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {
     const target = input.file_path || input.path;
     return typeof target === "string" && target ? [{ target, kind: "edited" }] : [];
   }
-  if (tool === "Bash") return shellFileChangeCandidates(input.command, { shell: "posix" });
-  if (tool === "PowerShell") return shellFileChangeCandidates(input.command, { shell: "powershell" });
   return [];
 }
 

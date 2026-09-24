@@ -4,7 +4,6 @@ import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { boundedActivityDuration, boundedFileChanges } from "../activity-events.mjs";
-import { sameWorkingDirectory, shellFileChangeCandidates } from "./shell-file-writes.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -214,59 +213,12 @@ function canonicalFileChangeCandidates(changes) {
   });
 }
 
-// Codex's `command` field is already tokenized (e.g. ["Remove-Item",
-// "file.ts"], not a `bash -lc "..."`-style wrapped string): reconstructing a
-// command line for the shared parser only needs to make each element into
-// exactly one quoted word, never to unwrap a shell-wrapper prefix. Anything
-// that cannot be safely re-quoted (a non-string, empty, or single-quote-
-// bearing element) is left unrecognized rather than risk corrupting targets.
-function codexCommandLine(command) {
-  if (typeof command === "string") return command;
-  if (!Array.isArray(command) || !command.length) return null;
-  const parts = command.filter((item) => typeof item === "string" && item);
-  if (parts.length !== command.length || parts.some((part) => part.includes("'"))) return null;
-  return parts.map((part) => `'${part}'`).join(" ");
-}
-
-const POWERSHELL_INTERPRETERS = new Set(["powershell", "powershell.exe", "pwsh", "pwsh.exe"]);
-const POSIX_INTERPRETERS = new Set(["bash", "sh", "zsh", "bash.exe", "sh.exe"]);
-// Every PowerShell writer this module recognizes follows the Verb-Noun
-// PascalCase cmdlet convention (Remove-Item, Set-Content, ...); no
-// recognized POSIX command does. That shape is the one concrete signal
-// available from an already-tokenized argv with no explicit interpreter
-// prefix, so it is treated as PowerShell; everything else defaults to
-// posix, matching every plain-string shell_command fixture observed here.
-const POWERSHELL_CMDLET_SHAPE = /^[A-Z][A-Za-z]*-[A-Z][A-Za-z]*$/;
-
-function codexShellKind(command) {
-  const head = Array.isArray(command) ? command[0] : typeof command === "string" ? command.trim().split(/\s+/u)[0] : "";
-  const normalizedHead = String(head || "").toLowerCase();
-  if (POWERSHELL_INTERPRETERS.has(normalizedHead)) return "powershell";
-  if (POSIX_INTERPRETERS.has(normalizedHead)) return "posix";
-  if (typeof head === "string" && POWERSHELL_CMDLET_SHAPE.test(head)) return "powershell";
-  return "posix";
-}
-
-/** Structured candidates from a Codex shell/exec command's raw command field. */
-function shellDescriptorFileChangeCandidates(command) {
-  const line = codexCommandLine(command);
-  return line ? shellFileChangeCandidates(line, { shell: codexShellKind(command) }) : [];
-}
-
-function shellExitCode(value) {
-  return Number.isInteger(value) ? value : null;
-}
-
 function functionDescriptor(name, input, namespace = "") {
   const normalized = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const collaboration = collaborationTool(name);
   if (collaboration) return { tool: collaboration, detail: "", repetitionInput: input, mutationInput: null };
   if (["shellcommand", "execcommand", "commandexecution"].includes(normalized)) {
-    return {
-      tool: "Shell", detail: "Command execution", repetitionInput: input, mutationInput: null,
-      fileChangeCandidates: shellDescriptorFileChangeCandidates(input?.command),
-      shellCwd: input?.workdir ?? input?.cwd,
-    };
+    return { tool: "Shell", detail: "Command execution", repetitionInput: input, mutationInput: null };
   }
   if (["applypatch", "filechange"].includes(normalized)) {
     const patch = typeof input === "string" ? input : input?.patch ?? input?.input;
@@ -310,9 +262,6 @@ function canonicalDescriptor(item) {
     detail: "Command execution",
     repetitionInput: { command: item.command, commandActions: item.commandActions, cwd: item.cwd },
     mutationInput: null,
-    fileChangeCandidates: shellDescriptorFileChangeCandidates(item.command),
-    exitCode: item.exitCode,
-    shellCwd: item.cwd,
   };
   if (item.type === "fileChange") {
     const changes = Array.isArray(item.changes) ? item.changes : [];
@@ -388,9 +337,6 @@ function responseDescriptor(payload) {
     detail: "Command execution",
     repetitionInput: { action: payload.action },
     mutationInput: null,
-    fileChangeCandidates: shellDescriptorFileChangeCandidates(payload.action?.command),
-    exitCode: payload.exit_code ?? payload.exitCode,
-    shellCwd: payload.action?.working_directory,
   };
   if (payload?.type === "tool_search_call") return {
     tool: "Tool search",
@@ -473,18 +419,11 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     requestId: null,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
     mutation: mutationEvidence(descriptor),
-    // Private working fields: raw candidates awaiting the finalized status
-    // (and, for Shell, exit code) that decides fileChanges. Sealed away by
+    // Private working field: raw candidates from a structured file-change item
+    // awaiting the finalized status that decides fileChanges. Sealed away by
     // sealCodexFileChanges before any call crosses this module's boundary.
-    // A non-Shell tool has no exit-code concept, so it always passes that
-    // gate (0); a Shell call starts unresolved (null, fails the gate) until
-    // its recorded output supplies a real exit code.
+    // Shell commands never contribute: their written files cannot be known reliably.
     fileChangeCandidates: descriptor.fileChangeCandidates || null,
-    exitCode: descriptor.tool === "Shell" ? shellExitCode(descriptor.exitCode) : 0,
-    // The directory a Shell command ran in, when the record names one.
-    // Targets resolve against the session cwd, so a Shell call that ran
-    // elsewhere records nothing. Absent means Codex's default: the session cwd.
-    shellCwd: descriptor.tool === "Shell" ? descriptor.shellCwd ?? null : null,
   };
 }
 
@@ -528,34 +467,20 @@ export function mergeCodexToolCalls(callGroups) {
 
 /**
  * Convert a call's raw fileChangeCandidates into checkpointed fileChanges
- * once its status is truly final -- and, for a Shell call, once its exit
- * code is known to be exactly 0 -- and strip the private working fields so
- * neither ever reaches evidence.toolCalls (the schema is strict). A
- * non-Shell call's exitCode is always the "not applicable" value 0, so this
- * gate only narrows Shell evidence.
+ * once its status is truly final, and strip the private working field so it
+ * never reaches evidence.toolCalls (the schema is strict).
  */
 /** @param {{ cwd?: string, forbiddenRoots?: string[] }} [options] */
 function sealCodexFileChanges(call, status, options = {}) {
   const { cwd, forbiddenRoots = [] } = options;
-  const { fileChangeCandidates, exitCode, shellCwd, ...sealed } = call;
-  const ranInSessionCwd = shellCwd === null || shellCwd === undefined || sameWorkingDirectory(shellCwd, cwd);
+  const { fileChangeCandidates, ...sealed } = call;
   return {
     ...sealed,
     status,
-    fileChanges: status === "completed" && exitCode === 0 && ranInSessionCwd && fileChangeCandidates?.length
+    fileChanges: status === "completed" && fileChangeCandidates?.length
       ? boundedFileChanges(fileChangeCandidates, cwd, { forbiddenRoots })
       : null,
   };
-}
-
-/**
- * Record a call's latest output update. A later output record without an
- * exit code (a function_call_output carries it only inside its text) keeps
- * the exit code an earlier exec_command_end already supplied.
- */
-function setCallUpdate(updates, id, next) {
-  const previous = updates.get(id);
-  updates.set(id, { ...next, exitCode: next.exitCode ?? previous?.exitCode ?? null });
 }
 
 export function parseCodexCanonicalTurns(turns, options = {}) {
@@ -659,9 +584,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     if (record.type === "response_item") {
       if (["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload.type)) {
         const id = responseCallId(payload);
-        if (id) setCallUpdate(updates, stableCodexCallId(actor.id, id), {
-          status: outputStatus(payload), timestamp: observedTimestamp, exitCode: shellExitCode(payload.exit_code ?? payload.exitCode),
-        });
+        if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
         continue;
       }
       const descriptor = responseDescriptor(payload);
@@ -682,9 +605,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     const eventType = String(payload.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(eventType)) {
       const id = eventCallId(payload);
-      if (id) setCallUpdate(updates, stableCodexCallId(actor.id, id), {
-        status: outputStatus(payload), timestamp: observedTimestamp, exitCode: shellExitCode(payload.exit_code ?? payload.exitCode),
-      });
+      if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
       continue;
     }
     const descriptor = eventDescriptor(payload);
@@ -701,11 +622,7 @@ export function parseCodexActivityRecords(records, options = {}) {
   }
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
-    // Only a Shell call's private exitCode is still unresolved at this
-    // point (a non-Shell call already carries its "not applicable" 0, and
-    // must keep it even when its own output record has no exit_code field).
-    const resolvedCall = update && call.tool === "Shell" ? { ...call, exitCode: update.exitCode ?? call.exitCode } : call;
-    const sealed = sealCodexFileChanges(resolvedCall, update ? update.status : call.status, { cwd, forbiddenRoots });
+    const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots });
     return update ? { ...sealed, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : sealed;
   });
 }

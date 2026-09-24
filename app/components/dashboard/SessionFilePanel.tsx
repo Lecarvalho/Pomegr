@@ -75,7 +75,7 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
       </Link>} />
     <div className="fileHistoryEntries">{body}</div>
     <div className="fileHistoryFooter">
-      <span>Covers recorded Write and Edit operations. Shell scripts and external edits may be missing.</span>
+      <span>Agent edits come from Write and Edit tools only. Shell commands and builds show as seen in Git.</span>
     </div>
   </section>;
 }

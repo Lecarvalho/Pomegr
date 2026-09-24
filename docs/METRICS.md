@@ -704,10 +704,10 @@ repository-scoped path continuity, but it does not create a session file-change 
 identify a session, agent, or request, and it does not contribute to session edit counts.
 Path or timestamp proximity is not attribution.
 
-Coverage is intentionally partial. Recognized structured Write and Edit operations and
-recognized shell commands (for example `>`, `tee`, `cp`, `mv`, `rm`, `sed -i`, and the
-PowerShell content and item cmdlets) can contribute records. Unrecognized commands, and
-any chain that contains an unsupported segment, record nothing. Other shell scripts,
+Coverage is intentionally partial. Only structured file tools with an explicit target
+(Write and Edit, and Codex patch and file-change items) contribute records. Shell
+commands never do, because the files a command writes cannot be known reliably from its
+text; those changes appear only as Git-observed files. Shell commands, scripts, builds,
 external editors, unrecognized tools, incomplete or
 invalid provider records, paths rejected by the repository-path policy, retention bounds,
 and observation gaps can leave changes missing. Git comparison can add repository-scoped
