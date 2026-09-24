@@ -18,6 +18,8 @@
 // that is entirely read-only (no recognized writer anywhere) also returns
 // [] as a matter of course.
 
+import path from "node:path";
+
 const MAX_CANDIDATES = 64;
 
 // Characters that make a command unrecognizable no matter where they
@@ -29,7 +31,23 @@ const MAX_CANDIDATES = 64;
 // inside quotes trades a few falsely-rejected literal filenames (a path
 // that legitimately contains "*") for a parser with no expansion semantics
 // left to get wrong -- consistent with this module's fail-closed contract.
-const ALWAYS_FORBIDDEN = /[`$*?[\]<\u0000-\u0008\u000a-\u001f\u007f]/u;
+// Also rejected everywhere: `#` (a comment would hide the rest of the
+// line), `~` (home expansion), braces and parentheses (brace expansion,
+// subshells, script blocks), and backslash (a POSIX escape; the checkpoint
+// path policy rejects backslash paths anyway).
+const ALWAYS_FORBIDDEN = /[`$*?[\]<#~{}()\\\u0000-\u0008\u000a-\u001f\u007f]/u;
+
+// PowerShell array and splatting syntax: `a.txt,b.txt` is two paths and
+// `@args` a splat, so neither may be read as one literal path.
+const POWERSHELL_FORBIDDEN = /[,@]/u;
+
+// Commands that change the working directory for the rest of the command,
+// in either grammar. Any stage whose words include one rejects the whole
+// command, wherever it appears (`pushd sub > log && touch a`,
+// `builtin cd sub`), because later targets would resolve elsewhere.
+const DIRECTORY_CHANGERS = new Set([
+  "cd", "chdir", "pushd", "popd", "set-location", "sl", "push-location", "pop-location",
+]);
 
 /**
  * Hand-rolled lexer for the narrow command grammar this module supports:
@@ -37,7 +55,8 @@ const ALWAYS_FORBIDDEN = /[`$*?[\]<\u0000-\u0008\u000a-\u001f\u007f]/u;
  * expansion), and the operators &&, ;, |, >>, >. Returns null the moment it
  * meets anything outside that grammar so the caller can fail closed.
  */
-function tokenize(command) {
+function tokenize(command, shell) {
+  if (shell === "powershell" && POWERSHELL_FORBIDDEN.test(command)) return null;
   const tokens = [];
   const n = command.length;
   let i = 0;
@@ -365,8 +384,8 @@ function pipedCandidates(stages, shell) {
   return teeResult;
 }
 
-function commandStages(command) {
-  const tokens = tokenize(command);
+function commandStages(command, shell) {
+  const tokens = tokenize(command, shell);
   if (!tokens) return null;
   const chainSegments = splitOnAny(tokens, [";", "&&"]);
   const stagesBySegment = [];
@@ -388,13 +407,12 @@ function commandStages(command) {
 export function shellFileChangeCandidates(command, { shell = "posix" } = {}) {
   if (typeof command !== "string" || !command.trim()) return [];
   if (shell !== "posix" && shell !== "powershell") return [];
-  const stagesBySegment = commandStages(command);
+  const stagesBySegment = commandStages(command, shell);
   if (!stagesBySegment) return [];
 
   for (const pipeStages of stagesBySegment) {
     for (const stage of pipeStages) {
-      const first = stage.find((token) => token.type === "word");
-      if (first && first.value.toLowerCase() === "cd") return [];
+      if (words(stage).some((word) => DIRECTORY_CHANGERS.has(word.toLowerCase()))) return [];
     }
   }
 
@@ -406,4 +424,18 @@ export function shellFileChangeCandidates(command, { shell = "posix" } = {}) {
     if (candidates.length >= MAX_CANDIDATES) break;
   }
   return candidates.slice(0, MAX_CANDIDATES);
+}
+
+/**
+ * Whether the directory a shell command ran in is the session working
+ * directory its targets are resolved against. A relative command directory
+ * resolves against the session directory; anything unusable is "no", so a
+ * caller that gates on this records nothing (fail closed).
+ */
+export function sameWorkingDirectory(commandCwd, sessionCwd) {
+  if (typeof commandCwd !== "string" || !commandCwd || commandCwd.length > 4096) return false;
+  if (typeof sessionCwd !== "string" || !sessionCwd || sessionCwd.length > 4096) return false;
+  const base = path.resolve(sessionCwd);
+  const resolved = path.resolve(base, commandCwd);
+  return process.platform === "win32" ? resolved.toLowerCase() === base.toLowerCase() : resolved === base;
 }

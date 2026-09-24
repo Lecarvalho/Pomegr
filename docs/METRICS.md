@@ -704,8 +704,11 @@ repository-scoped path continuity, but it does not create a session file-change 
 identify a session, agent, or request, and it does not contribute to session edit counts.
 Path or timestamp proximity is not attribution.
 
-Coverage is intentionally partial. Recognized structured Write and Edit operations can
-contribute records; shell scripts, external editors, unrecognized tools, incomplete or
+Coverage is intentionally partial. Recognized structured Write and Edit operations and
+recognized shell commands (for example `>`, `tee`, `cp`, `mv`, `rm`, `sed -i`, and the
+PowerShell content and item cmdlets) can contribute records. Unrecognized commands, and
+any chain that contains an unsupported segment, record nothing. Other shell scripts,
+external editors, unrecognized tools, incomplete or
 invalid provider records, paths rejected by the repository-path policy, retention bounds,
 and observation gaps can leave changes missing. Git comparison can add repository-scoped
 path and move continuity when acquired asynchronously, but it cannot recover the
@@ -713,6 +716,19 @@ responsible session, agent, or request. A recorded absence therefore does not pr
 file was unchanged, and an edit count is a count of retained recorded operations rather
 than lines changed, commits, or all filesystem writes. History must disclose these coverage
 limits wherever totals or empty states are presented.
+
+### Git-observed files
+
+A session's Touched here list also shows Git-observed files, marked with a Git glyph.
+A file is Git-observed when it was committed on the session's recorded branch during
+the session window, or when it became uncommitted after the session's first live Git
+check. Files already uncommitted at that first check form a baseline and are never
+shown. Commits are read only while the live branch matches the recorded branch. Paths
+that already have a recorded file-change row are not repeated. Git-observed files come
+from repository state, not provider evidence, so they may include changes made by
+other people, other sessions, or other tools during the window. They name no agent or
+request, carry no kind or chip color, are not recorded edits, and do not count toward
+edit totals or the repository file history.
 
 ## Pull-request associations
 

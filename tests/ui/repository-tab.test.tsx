@@ -216,6 +216,7 @@ describe("RepositoryTab", () => {
       renderTab({ sessionId: SESSION_ID, historical: false });
 
       expect(screen.getByRole("searchbox", { name: "Find a file touched in this session" })).toBeInTheDocument();
+      expect(screen.getByText("Beta")).toHaveClass("commandChip");
       const segment = screen.getByRole("group", { name: "File segment" });
       expect(within(segment).getByRole("button", { name: "Touched here 1" })).toHaveAttribute("aria-pressed", "true");
       expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toHaveAttribute("aria-pressed", "false");

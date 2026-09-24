@@ -408,7 +408,9 @@ instructions.
 FileTree and FileHistoryPanel (`app/components/repositories/FileTree.tsx`,
 `FileHistoryPanel.tsx`) are shared, fetch-free presentation controls behind the session
 Repository tab's Touched here / Uncommitted / Changed elsewhere tree and the repository
-Files tab. FileTree is a `panel` (1px border, 6px radius) in a column with overflow
+Files tab. The session Repository tab's file toolbar ends with a neutral **Beta** `.commandChip`
+(right-aligned on desktop, left-aligned below the segments on phone, `title` **File coverage is
+still being expanded.**) while file coverage is still in progress. FileTree is a `panel` (1px border, 6px radius) in a column with overflow
 hidden: an 8px/14px header row shows the repository name as a muted 11px uppercase
 eyebrow, with a right eyebrow **Sessions** in repository scope. Rows are 13px with
 6px/14px padding and indent 14/30/46/62px per depth (folders first, then files,

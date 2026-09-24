@@ -4,7 +4,7 @@ import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { boundedActivityDuration, boundedFileChanges } from "../activity-events.mjs";
-import { shellFileChangeCandidates } from "./shell-file-writes.mjs";
+import { sameWorkingDirectory, shellFileChangeCandidates } from "./shell-file-writes.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -265,6 +265,7 @@ function functionDescriptor(name, input, namespace = "") {
     return {
       tool: "Shell", detail: "Command execution", repetitionInput: input, mutationInput: null,
       fileChangeCandidates: shellDescriptorFileChangeCandidates(input?.command),
+      shellCwd: input?.workdir ?? input?.cwd,
     };
   }
   if (["applypatch", "filechange"].includes(normalized)) {
@@ -311,6 +312,7 @@ function canonicalDescriptor(item) {
     mutationInput: null,
     fileChangeCandidates: shellDescriptorFileChangeCandidates(item.command),
     exitCode: item.exitCode,
+    shellCwd: item.cwd,
   };
   if (item.type === "fileChange") {
     const changes = Array.isArray(item.changes) ? item.changes : [];
@@ -388,6 +390,7 @@ function responseDescriptor(payload) {
     mutationInput: null,
     fileChangeCandidates: shellDescriptorFileChangeCandidates(payload.action?.command),
     exitCode: payload.exit_code ?? payload.exitCode,
+    shellCwd: payload.action?.working_directory,
   };
   if (payload?.type === "tool_search_call") return {
     tool: "Tool search",
@@ -478,6 +481,10 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     // its recorded output supplies a real exit code.
     fileChangeCandidates: descriptor.fileChangeCandidates || null,
     exitCode: descriptor.tool === "Shell" ? shellExitCode(descriptor.exitCode) : 0,
+    // The directory a Shell command ran in, when the record names one.
+    // Targets resolve against the session cwd, so a Shell call that ran
+    // elsewhere records nothing. Absent means Codex's default: the session cwd.
+    shellCwd: descriptor.tool === "Shell" ? descriptor.shellCwd ?? null : null,
   };
 }
 
@@ -530,14 +537,25 @@ export function mergeCodexToolCalls(callGroups) {
 /** @param {{ cwd?: string, forbiddenRoots?: string[] }} [options] */
 function sealCodexFileChanges(call, status, options = {}) {
   const { cwd, forbiddenRoots = [] } = options;
-  const { fileChangeCandidates, exitCode, ...sealed } = call;
+  const { fileChangeCandidates, exitCode, shellCwd, ...sealed } = call;
+  const ranInSessionCwd = shellCwd === null || shellCwd === undefined || sameWorkingDirectory(shellCwd, cwd);
   return {
     ...sealed,
     status,
-    fileChanges: status === "completed" && exitCode === 0 && fileChangeCandidates?.length
+    fileChanges: status === "completed" && exitCode === 0 && ranInSessionCwd && fileChangeCandidates?.length
       ? boundedFileChanges(fileChangeCandidates, cwd, { forbiddenRoots })
       : null,
   };
+}
+
+/**
+ * Record a call's latest output update. A later output record without an
+ * exit code (a function_call_output carries it only inside its text) keeps
+ * the exit code an earlier exec_command_end already supplied.
+ */
+function setCallUpdate(updates, id, next) {
+  const previous = updates.get(id);
+  updates.set(id, { ...next, exitCode: next.exitCode ?? previous?.exitCode ?? null });
 }
 
 export function parseCodexCanonicalTurns(turns, options = {}) {
@@ -641,7 +659,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     if (record.type === "response_item") {
       if (["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload.type)) {
         const id = responseCallId(payload);
-        if (id) updates.set(stableCodexCallId(actor.id, id), {
+        if (id) setCallUpdate(updates, stableCodexCallId(actor.id, id), {
           status: outputStatus(payload), timestamp: observedTimestamp, exitCode: shellExitCode(payload.exit_code ?? payload.exitCode),
         });
         continue;
@@ -664,7 +682,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     const eventType = String(payload.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     if (["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(eventType)) {
       const id = eventCallId(payload);
-      if (id) updates.set(stableCodexCallId(actor.id, id), {
+      if (id) setCallUpdate(updates, stableCodexCallId(actor.id, id), {
         status: outputStatus(payload), timestamp: observedTimestamp, exitCode: shellExitCode(payload.exit_code ?? payload.exitCode),
       });
       continue;
@@ -686,7 +704,7 @@ export function parseCodexActivityRecords(records, options = {}) {
     // Only a Shell call's private exitCode is still unresolved at this
     // point (a non-Shell call already carries its "not applicable" 0, and
     // must keep it even when its own output record has no exit_code field).
-    const resolvedCall = update && call.tool === "Shell" ? { ...call, exitCode: update.exitCode } : call;
+    const resolvedCall = update && call.tool === "Shell" ? { ...call, exitCode: update.exitCode ?? call.exitCode } : call;
     const sealed = sealCodexFileChanges(resolvedCall, update ? update.status : call.status, { cwd, forbiddenRoots });
     return update ? { ...sealed, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : sealed;
   });

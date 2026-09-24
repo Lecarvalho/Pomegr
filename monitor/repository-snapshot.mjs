@@ -411,6 +411,7 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
     }
     try {
       execFile("git", [
+        "-c", "core.quotepath=false",
         "-C", repositoryRoot,
         "log", "--format=%H", "--name-only", "--no-renames", `--since=${since}`, `--until=${until}`, "HEAD",
       ], {

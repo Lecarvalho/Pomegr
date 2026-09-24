@@ -6,7 +6,6 @@ import test from "node:test";
 import { boundedFileChanges, buildActivityFeed } from "../monitor/activity-events.mjs";
 import {
   claudeFileChangeCandidates,
-  claudeMoveCommandCandidate,
   claudeToolOutcomes,
   firstSuccessfulClaudeToolOutcome,
 } from "../monitor/providers/claude-tool-detail.mjs";
@@ -80,22 +79,8 @@ test("boundedFileChanges rebases absolute targets, drops forbidden shapes, and b
 });
 
 // ---------------------------------------------------------------------------
-// Claude: move-command parsing, candidate mapping, and success-outcome gating.
+// Claude: candidate mapping and success-outcome gating.
 // ---------------------------------------------------------------------------
-
-test("claudeMoveCommandCandidate accepts only an unambiguous whole mv/git mv command", () => {
-  assert.deepEqual(claudeMoveCommandCandidate("mv src/old.ts src/new.ts"), { from: "src/old.ts", to: "src/new.ts" });
-  assert.deepEqual(claudeMoveCommandCandidate("git mv src/old.ts src/new.ts"), { from: "src/old.ts", to: "src/new.ts" });
-  assert.deepEqual(claudeMoveCommandCandidate('mv "src/old.ts" "src/new.ts"'), { from: "src/old.ts", to: "src/new.ts" });
-  assert.equal(claudeMoveCommandCandidate("mv -f src/old.ts src/new.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts src/c.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts && rm -rf /"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts | cat"), null);
-  assert.equal(claudeMoveCommandCandidate("mv $HOME/a.ts src/b.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/*.ts src/dest/"), null);
-  assert.equal(claudeMoveCommandCandidate("cp src/a.ts src/b.ts"), null);
-  assert.equal(claudeMoveCommandCandidate(""), null);
-});
 
 test("claudeFileChangeCandidates maps Write/Edit/Bash to the right candidate kind", () => {
   assert.deepEqual(claudeFileChangeCandidates("Write", { file_path: "src/a.ts" }, { type: "create" }), [
@@ -138,8 +123,13 @@ test("claudeToolOutcomes only reports the first non-error result at or after a c
   assert.equal(firstSuccessfulClaudeToolOutcome(outcomes, "ok", "2026-09-22T10:05:00.000Z"), null);
 });
 
-function claudeAssistantToolUse(id, name, input, timestamp) {
-  return { type: "assistant", timestamp, message: { model: "claude-test", content: [{ type: "tool_use", id, name, input }] } };
+function claudeAssistantToolUse(id, name, input, timestamp, cwd) {
+  return { type: "assistant", timestamp, ...(cwd === undefined ? {} : { cwd }), message: { model: "claude-test", content: [{ type: "tool_use", id, name, input }] } };
+}
+
+/** Real Claude records carry the process cwd; give it to every record that has none. */
+function withRecordCwd(records, cwd) {
+  return records.map((record) => (Object.hasOwn(record, "cwd") ? record : { ...record, cwd }));
 }
 
 function claudeUserToolResult(id, { isError = false, toolUseResult = null, timestamp }) {
@@ -174,9 +164,16 @@ test("Claude adapter end-to-end: recognized file changes on success, none on fai
     claudeUserToolResult("bash-ambiguous", { toolUseResult: {}, timestamp: "2026-09-22T10:00:06.500Z" }),
     claudeAssistantToolUse("write-outside", "Write", { file_path: path.join(os.tmpdir(), "outside-evil.ts"), content: "z" }, "2026-09-22T10:00:07.000Z"),
     claudeUserToolResult("write-outside", { toolUseResult: { type: "create" }, timestamp: "2026-09-22T10:00:07.500Z" }),
+    // Bash keeps its directory across calls: after a separate `cd sub`, the record's cwd moves.
+    claudeAssistantToolUse("bash-other-cwd", "Bash", { command: "touch a.txt", description: "Touch" }, "2026-09-22T10:00:08.000Z", path.join(cwd, "sub")),
+    claudeUserToolResult("bash-other-cwd", { toolUseResult: {}, timestamp: "2026-09-22T10:00:08.500Z" }),
+    claudeAssistantToolUse("bash-no-cwd", "Bash", { command: "touch b.txt", description: "Touch" }, "2026-09-22T10:00:09.000Z", null),
+    claudeUserToolResult("bash-no-cwd", { toolUseResult: {}, timestamp: "2026-09-22T10:00:09.500Z" }),
+    claudeAssistantToolUse("write-other-cwd", "Write", { file_path: path.join(cwd, "src", "abs.ts"), content: "w" }, "2026-09-22T10:00:10.000Z", path.join(cwd, "sub")),
+    claudeUserToolResult("write-other-cwd", { toolUseResult: { type: "create" }, timestamp: "2026-09-22T10:00:10.500Z" }),
   ];
   await mkdir(path.dirname(mainFile), { recursive: true });
-  await writeFile(mainFile, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(mainFile, `${withRecordCwd(records, cwd).map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
 
   const provider = createClaudeProvider({
     homeDir: root,
@@ -197,6 +194,10 @@ test("Claude adapter end-to-end: recognized file changes on success, none on fai
   assert.equal(byId.get("bash-mv-failed").fileChanges, null, "a failed call records no file change");
   assert.equal(byId.get("bash-ambiguous").fileChanges, null, "an ambiguous mv command records no file change");
   assert.equal(byId.get("write-outside").fileChanges, null, "a target outside cwd is dropped");
+  assert.equal(byId.get("bash-other-cwd").fileChanges, null, "a shell write run outside the session cwd records nothing");
+  assert.equal(byId.get("bash-no-cwd").fileChanges, null, "a shell write with no recorded cwd records nothing");
+  assert.deepEqual(byId.get("write-other-cwd").fileChanges, [{ path: "src/abs.ts", kind: "created", previousPath: null }],
+    "structured writes with absolute targets are unaffected by the shell cwd gate");
   assertNoPrivateFixtureSentinels(evidence, "Claude file-change evidence");
 });
 
@@ -223,7 +224,7 @@ test("Claude PowerShell tool call: recognized file changes on success, none on f
     claudeUserToolResult("ps-ambiguous", { toolUseResult: {}, timestamp: "2026-09-22T10:00:03.500Z" }),
   ];
   await mkdir(path.dirname(mainFile), { recursive: true });
-  await writeFile(mainFile, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(mainFile, `${withRecordCwd(records, cwd).map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
 
   const provider = createClaudeProvider({
     homeDir: root,
@@ -344,6 +345,49 @@ test("Codex shell/exec command items record file changes only for a completed ca
   const failedCall = shellCall("shell-exit-failed", { isError: true });
   assert.equal(failedCall[0].status, "failed");
   assert.equal(failedCall[0].fileChanges, null, "a failed shell call records no file change");
+});
+
+test("Codex shell writes record nothing when the command ran outside the session cwd", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-shell-cwd-");
+  const shellCall = (callId, args) => parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "function_call", name: "shell_command", call_id: callId, arguments: JSON.stringify({ command: "touch a.txt", ...args }),
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: {
+      type: "function_call_output", call_id: callId, output: "PRIVATE_OUTPUT_MUST_NOT_LEAK", exit_code: 0,
+    } },
+  ], { actor: ACTOR, sourceKey: `shell-cwd-${callId}`, cwd });
+
+  assert.deepEqual(shellCall("same", { workdir: cwd })[0].fileChanges, [{ path: "a.txt", kind: "edited", previousPath: null }]);
+  assert.deepEqual(shellCall("dot", { workdir: "." })[0].fileChanges, [{ path: "a.txt", kind: "edited", previousPath: null }]);
+  assert.equal(shellCall("sub", { workdir: path.join(cwd, "sub") })[0].fileChanges, null);
+  assert.equal(shellCall("relative-sub", { workdir: "sub" })[0].fileChanges, null);
+  assert.equal(shellCall("bogus", { workdir: 42 })[0].fileChanges, null);
+
+  const execEvents = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "event_msg", payload: {
+      type: "exec_command_begin", call_id: "exec-sub", command: ["touch", "a.txt"], cwd: path.join(cwd, "sub"),
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "event_msg", payload: { type: "exec_command_end", call_id: "exec-sub", exit_code: 0 } },
+  ], { actor: ACTOR, sourceKey: "exec-sub", cwd });
+  assert.equal(execEvents[0].fileChanges, null, "exec_command_begin cwd outside the session cwd records nothing");
+  assert.equal(Object.hasOwn(execEvents[0], "shellCwd"), false, "the private cwd field never survives sealing");
+});
+
+test("Codex keeps an exec_command_end exit code when a later function_call_output has none", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-shell-exit-merge-");
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "function_call", name: "shell_command", call_id: "merged", arguments: JSON.stringify({ command: "touch a.txt" }),
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "event_msg", payload: { type: "exec_command_end", call_id: "merged", exit_code: 0 } },
+    { timestamp: "2026-09-22T11:00:01.100Z", type: "response_item", payload: {
+      type: "function_call_output", call_id: "merged", output: "PRIVATE_OUTPUT_MUST_NOT_LEAK",
+    } },
+  ], { actor: ACTOR, sourceKey: "exit-merge", cwd });
+  const merged = calls.find((call) => call.tool === "Shell");
+  assert.deepEqual(merged.fileChanges, [{ path: "a.txt", kind: "edited", previousPath: null }]);
+  assertNoPrivateFixtureSentinels(calls, "Codex exit-code merge");
 });
 
 test("Codex canonical fileChange items map add/update/delete kinds and ignore unrecognized ones", async (t) => {

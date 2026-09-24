@@ -170,7 +170,7 @@ remains available, and missing historical evidence never falls back to today's w
 
 The `repository` domain's `fileHistory` block is served from the `file-history-domain`
 source (see "Approved file-history persistence contract"), and `recordedAt`,
-`commitsInSession`, and `gitTasks` accompany it. A historical session's repository block
+`commitsInSession`, `gitTasks`, and the recorded `gitObservedFiles` accompany it. A historical session's repository block
 is the recorded snapshot described there when one exists; without one it keeps the
 branch-only recorded state. The `resources` domain's `retained` block is committed by the
 `resource-domain` monitor-store contributor, registered after `resource-history` so it
@@ -2005,9 +2005,24 @@ of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated
 512 characters, and relative to the session's recorded working directory; `previousPath`
 is present only for `moved`. Only a call with recorded success evidence carries it (Claude:
 a non-error tool result, with `Write` classified `created` from the structured result type;
-Codex: a completed patch or file-change item). A Claude shell move is recognized only from
-a whole `mv <a> <b>` or `git mv <a> <b>` command with two plain arguments; anything else
-is ignored and command text stays in the parser. `assertCheckpointPayload` rejects any
+Codex: a completed patch or file-change item, or a completed shell item with exit code 0).
+Claude `Bash`/`PowerShell` calls and Codex shell items are passed to the provider-neutral
+recognizer `shellFileChangeCandidates` (`monitor/providers/shell-file-writes.mjs`). It
+recognizes POSIX `>`, `>>`, `tee`, `cp`, `mv`/`git mv`, `touch`, `rm`/`git rm`, and
+`sed -i`, and PowerShell `Set-Content`, `Add-Content`, `Out-File`,
+`New-Item -ItemType File`, `Remove-Item`, `Copy-Item`, `Move-Item`, `Rename-Item`, and
+redirects, joined by `&&` or `;`. Only `New-Item -ItemType File` yields `created`; the
+other writers yield `edited` because their outcome is ambiguous. It fails closed: `$`,
+backticks, globs, `<` and heredocs, `#`, `~`, braces, parentheses, backslashes,
+PowerShell `,` and `@`, any directory change (`cd`, `pushd`, `popd`, `Set-Location`, and
+similar) anywhere in the command, `||`, `&`, unknown options, unrecognized segments, and
+unbalanced quotes reject the whole command, so nothing is recorded. Targets resolve
+against the session working directory, so a shell call counts only when it ran there: a
+Claude record's `cwd` must equal the session cwd, and a Codex shell item's `workdir` or
+`cwd` must be absent or resolve to it. Codex
+shell kind comes from an explicit interpreter token or a PowerShell Verb-Noun head token,
+else POSIX; a `[shell, flag, "script"]` wrapper is not recognized. Command text never
+leaves the recognizer; callers get only targets. `assertCheckpointPayload` rejects any
 absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
 or over-bound path.
 
@@ -2020,7 +2035,11 @@ when recorded provider evidence establishes each attribution. A move
 observed only through asynchronous Git inspection may preserve repository-scoped path,
 time, kind, and opaque file continuity, but it cannot itself create a session file-change
 record, populate session, agent, or request identity, or contribute to session edit counts.
-Joining by time, path, branch, or nearby activity must not fill those fields.
+Joining by time, path, branch, or nearby activity must not fill those fields. The single
+approved exception (product owner, 2026-09-23) is the separately labeled Git-observed
+category below: a session window and recorded-branch join may list paths as Git-observed,
+but it never fills session, agent, or request identity, never creates a `file_changes`
+row, and never contributes to edit counts.
 
 U2 validates each candidate with a dedicated repository-path validator before C commits
 it. The validator uses the monitor-private recognized repository root and rejects absolute
@@ -2102,6 +2121,28 @@ snapshot is never refreshed from them; only the no-snapshot fallback projection 
 the pull-request reader asynchronously for recorded association evidence. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
+
+Snapshot version 2 adds the Git-observed lists. `dirtyAtFirstCheck` is set once, at the
+first live check under version 2, and never replaced or shown; it survives restarts in the
+sidecar. `becameDirty` is the sticky union of status paths absent from that baseline.
+`committedInWindow` is the latest successful `readCommitsInWindow` result (`git log
+--format=%H --name-only --no-renames --since --until HEAD` with `core.quotepath=false`
+and an argument array, 3
+seconds, 256 KiB), read only when the live branch equals the recorded branch and carried
+forward when a read fails. `gitObservedTruncated` is sticky. Each list holds at most 200
+paths and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap. A
+version 1 record loads as version 2 with null sentinels, meaning "never measured". A
+session already in progress when it first meets version 2 takes its then-current dirty
+set as the baseline, so earlier edits are not Git-observed.
+
+The monitor derives `gitObservedFiles: { files: [{ path, source }], truncated } | null`
+from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in
+both. It travels through the `gitObservedForSession` side channel (observation runtime to
+session-domain store to projection), like `fileHistory`, and the projection re-validates
+every path with the repository-path validator. It appears only in the `repository`
+domain, never on `/api/state` `session.repository`. The UI drops a path that already has
+a recorded `fileHistory` row. GETs never run Git for it, and a historical session serves
+only its recorded lists, never the current tree.
 
 ## Monitor SQLite store
 

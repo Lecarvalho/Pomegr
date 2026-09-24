@@ -165,6 +165,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
       <div className="commandSegmented" role="group" aria-label="File segment">
         {REPOSITORY_TAB_FILES_SEGMENTS.map(({ id, label }) => <button key={id} type="button" aria-pressed={segment === id} onClick={() => selectSegment(id)}>{label} {segmentCount(segments, id)}</button>)}
       </div>
+      <span className="commandChip repositoryTabFilesBeta" title="File coverage is still being expanded.">Beta</span>
     </div>
     <div className="repositoryTabFilesBody">
       {treeArea}

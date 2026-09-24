@@ -10,18 +10,8 @@ function boundedOneLine(value, maximum = 54) {
 
 const FILE_EDIT_TOOLS = new Set(["Edit", "MultiEdit", "NotebookEdit"]);
 
-/**
- * Recognize only an unambiguous whole-command `mv a b` or `git mv a b`: the
- * POSIX shell-file-writes grammar applied to the whole command, kept to
- * exactly this shape by requiring it to be the command's only candidate and
- * that candidate to be a move. The command text itself never leaves this
- * function.
- */
-export function claudeMoveCommandCandidate(command) {
-  const candidates = shellFileChangeCandidates(command, { shell: "posix" });
-  if (candidates.length !== 1 || candidates[0].kind !== "moved") return null;
-  return { from: candidates[0].previousTarget, to: candidates[0].target };
-}
+/** Claude tools whose file changes come from the shell-file-writes recognizer. */
+export const CLAUDE_SHELL_TOOLS = new Set(["Bash", "PowerShell"]);
 
 /** Candidate {target, kind, previousTarget} file changes for one successful Claude tool call. */
 export function claudeFileChangeCandidates(tool, input = {}, toolUseResult) {

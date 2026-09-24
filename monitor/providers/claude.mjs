@@ -33,7 +33,8 @@ import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
 import { claudeToolResultTimestamps, firstClaudeToolResultAfter, splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
-import { claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./claude-tool-detail.mjs";
+import { CLAUDE_SHELL_TOOLS, claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./claude-tool-detail.mjs";
+import { sameWorkingDirectory } from "./shell-file-writes.mjs";
 import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
@@ -387,7 +388,10 @@ export function createClaudeProvider(options = {}) {
             ? mutationScopes(tool, input).map((scope) => crypto.createHash("sha256").update(scope).digest("hex").slice(0, 20))
             : [];
           const successfulOutcome = firstSuccessfulClaudeToolOutcome(toolOutcomes, content.id, timestamp);
-          const fileChanges = successfulOutcome
+          // Bash keeps its directory across calls, so a shell write counts only
+          // when the record shows it ran in the session cwd its targets resolve against.
+          const shellCwdMatches = !CLAUDE_SHELL_TOOLS.has(tool) || sameWorkingDirectory(record.cwd, cwd);
+          const fileChanges = successfulOutcome && shellCwdMatches
             ? boundedFileChanges(claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult), cwd, { forbiddenRoots: fileChangeForbiddenRoots })
             : null;
           toolCalls.push({
