@@ -61,7 +61,7 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
             <div className="fileHistoryEntryMeta">
               <span className="fileHistoryEntryMetaText">{gitObservedText(gitObserved)}</span>
             </div>
-            <p className="fileHistoryEntryNote">Could be the agent through a command Pomegr can't read, a build or generated file, or someone else.</p>
+            <p className="fileHistoryEntryNote">Could be the agent through a command Pomegr can&apos;t read, a build or generated file, or someone else.</p>
           </div>
         </article>
       : recordedReadiness === "loading"
