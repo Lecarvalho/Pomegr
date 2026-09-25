@@ -139,6 +139,13 @@
 .commandChip.negative > i { background: var(--command-error); }
 .commandUnavailableNote, .commandUsageCaution { margin: 12px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.55; }
 .commandTableWrap { margin-top: 16px; overflow: auto; border: 1px solid var(--command-line); background: var(--command-panel); border-radius: var(--panel-radius); }
+.commandSessionsSkeleton { margin-top: 16px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.commandSessionsSkeleton > p { margin: 0; padding: 12px 13px; color: var(--command-muted); font: var(--text-sm)/1.5 var(--font-ui); }
+.commandSessionsSkeletonRow { min-height: 72px; padding: 13px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(60px, 18%); grid-template-rows: 16px 10px; align-content: center; gap: 8px 16px; border-top: 1px solid var(--command-line); }
+.commandSessionsSkeletonRow .uiSkeleton { min-width: 0; min-height: 0; height: 100%; border-radius: var(--control-radius); }
+.commandSessionsSkeletonTitle { width: min(220px, 65%); }
+.commandSessionsSkeletonDetail { grid-column: 1; grid-row: 2; width: min(160px, 48%); }
+.commandSessionsSkeletonMeta { grid-column: 2; grid-row: 1; width: 75%; justify-self: end; }
 .commandTable { width: 100%; border-collapse: collapse; color: var(--command-muted); font-size: var(--text-sm); }
 .commandSessionTable { min-width: 1180px; table-layout: fixed; }
 .commandSessionColSession { width: auto; }

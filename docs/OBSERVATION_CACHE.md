@@ -1765,6 +1765,19 @@ valid committed repository files or current live resource samples.
   revisions; they do not change hydration, serving, checkpointing, or polling.
 - Use geometry-matched skeletons only when a region has no committed value and readiness
   is `loading`.
+- The Sessions directory shows a labeled, neutral list skeleton while it has no catalog
+  rows and either its first browser request or the monitor catalog is still loading.
+  It hides zero result/filter counts and source-configuration advice until the catalog
+  settles. A confirmed unavailable catalog or disconnected monitor takes precedence
+  over loading when no rows are retained; committed rows remain visible during refresh
+  and reconnect. This is presentation behavior only and does not alter acquisition,
+  polling, revisions, cache-only GETs, or checkpoint contents.
+- An empty combined session catalog remains `loading` while any configured provider
+  has not reported its first discovery result. Once all providers have reported, it
+  becomes `ready` if any succeeded, or `unavailable` if all failed. Available catalog
+  rows are served immediately even if another provider is still discovering. A
+  readiness-only transition commits a new catalog revision and uses the existing
+  revision notifications; GETs still read committed caches only.
 - Session loading shells use the loaded session header's shared typography, identity
   styling, and responsive rules; known catalog titles must not flash a different type scale.
 - Keep existing data visible during refresh, observer failure, API failure, and retry

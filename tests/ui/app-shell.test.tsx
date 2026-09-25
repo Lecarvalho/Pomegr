@@ -96,6 +96,38 @@ afterEach(() => {
 });
 
 describe("Command Center app shell", () => {
+  it.each(["populated", "empty"])("keeps the Sessions skeleton through loading catalog responses and 204s until %s readiness", async (result) => {
+    vi.useFakeTimers();
+    CatalogEventSource.instances = [];
+    vi.stubGlobal("EventSource", CatalogEventSource);
+    let catalogRequests = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (!String(input).startsWith("/api/sessions")) return response({ providers: [], repositories: [] });
+      catalogRequests += 1;
+      if (catalogRequests === 1) return response({ revision: 1, sessions: [], readiness: { catalog: "loading" } });
+      if (catalogRequests === 2) return Promise.resolve(new Response(null, { status: 204 }));
+      return response({ revision: 2, sessions: result === "populated" ? sessions : [], readiness: { catalog: "ready" } });
+    });
+    const view = render(<AppShell><SessionsView /></AppShell>);
+    const assertLoading = () => {
+      expect(screen.getByRole("status", { name: "Loading sessions" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "No sessions observed" })).not.toBeInTheDocument();
+      expect(screen.queryByText("0 matches")).not.toBeInTheDocument();
+    };
+    assertLoading();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    assertLoading();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(catalogRequests).toBe(2);
+    assertLoading();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(catalogRequests).toBe(3);
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
+    if (result === "populated") expect(screen.getByRole("table", { name: "Observed Pomegr sessions" })).toBeInTheDocument();
+    else expect(screen.getByRole("heading", { name: "No sessions observed" })).toBeInTheDocument();
+    view.unmount();
+  });
+
   it("keeps route breadcrumbs inside the shared page header", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
     render(<AppShell><CommandPageHeader title="Pomegr" breadcrumb={<><Link href="/sessions">Sessions</Link><span aria-current="page">Pomegr</span></>} /></AppShell>);

@@ -158,18 +158,19 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const updateFilter = (value: typeof filter) => { setFilter(value); setPage(1); };
   const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;
   const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
+  const catalogLoading = !sessions.length && !catalogUnavailable && (loading || readiness.catalog === "loading");
   const providerSettingsAvailable = useProviderSettingsAvailable();
-  return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={loading && !sessions.length}>
+  return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={catalogLoading}>
     <div className="commandSessionsDirectory">
       <div className="commandSessionsToolbar"><CommandToolbar label="Filter sessions">
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <div className="commandSessionFilters" role="group" aria-label="Session scope">
           {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
-          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={sessions.length}>All</CommandFilter>
-          <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={liveSessionCount}>Live</CommandFilter>
-          <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={needsInputCount}>Needs input</CommandFilter>
+          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={catalogLoading ? undefined : sessions.length}>All</CommandFilter>
+          <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
+          <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
-        <span className="commandToolbarCount" aria-live="polite">{filteredSessions.length} matches</span>
+        {!catalogLoading && <span className="commandToolbarCount" aria-live="polite">{filteredSessions.length} matches</span>}
       </CommandToolbar></div>
       <CommandTable
         caption="Observed Pomegr sessions"
@@ -178,9 +179,16 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         getRowKey={(session) => session.id}
         className="commandSessionTable"
         pagination={{ page, pageSize: SESSION_PAGE_SIZE, onPageChange: setPage, label: "Session pages" }}
-        emptyState={catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+        emptyState={catalogLoading ? <div className="commandSessionsSkeleton" role="status" aria-label="Loading sessions">
+          <p>Loading sessions</p>
+          <div aria-hidden="true">{[0, 1, 2].map((row) => <div className="commandSessionsSkeletonRow" key={row}>
+            <span className="uiSkeleton commandSessionsSkeletonTitle" />
+            <span className="uiSkeleton commandSessionsSkeletonDetail" />
+            <span className="uiSkeleton commandSessionsSkeletonMeta" />
+          </div>)}</div>
+        </div> : catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
-      {!sessions.length && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
+      {!sessions.length && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
       {catalogUnavailable && sessions.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;

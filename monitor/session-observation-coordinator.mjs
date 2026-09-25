@@ -255,10 +255,15 @@ export function createSessionObservationCoordinator(options = {}) {
         contextInventoryRef: state?.session?.contextInventoryRef || previous?.contextInventoryRef || null,
       };
     });
-    const providerStates = [...catalogReadinessByProvider.values()];
-    const catalogReadiness = providerStates.length > 0 && providerStates.every((value) => value === "unavailable")
-      ? "unavailable"
-      : "ready";
+    const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
+    // One provider's empty result cannot establish that the combined catalog is
+    // empty while another is still discovering sessions. Available rows can be
+    // shown immediately, independently of slower providers or detail hydration.
+    const catalogReadiness = !sessions.length && providerStates.includes("loading")
+      ? "loading"
+      : providerStates.length > 0 && providerStates.every((value) => value === "unavailable")
+        ? "unavailable"
+        : "ready";
     const committed = catalogCache.commit({
       readiness: {
         catalog: catalogReadiness,

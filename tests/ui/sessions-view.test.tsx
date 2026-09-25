@@ -35,6 +35,56 @@ function visibleSessionTitles() {
 }
 
 describe("Sessions view", () => {
+  it.each([
+    { label: "client request", loading: true, readiness: "ready" as const },
+    { label: "monitor catalog after response", loading: false, readiness: "loading" as const },
+  ])("shows an honest skeleton during $label", ({ loading, readiness }) => {
+    const view = render(<SessionCatalogProvider sessions={[]} loading={loading} readiness={{ catalog: readiness }}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("region", { name: "Sessions" })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status", { name: "Loading sessions" })).toHaveTextContent("Loading sessions");
+    expect(view.container.querySelectorAll(".commandSessionsSkeletonRow")).toHaveLength(3);
+    expect(view.container.querySelector(".commandSessionsSkeletonRow")?.parentElement).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByText(/\b0 matches\b/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No sessions observed|Session catalog unavailable|Configure session sources/)).not.toBeInTheDocument();
+    for (const label of ["All", "Live", "Needs input"]) expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+  });
+
+  it("replaces initial loading with rows, then a factual ready empty state", () => {
+    const view = render(<SessionCatalogProvider sessions={[]} loading><SessionsView /></SessionCatalogProvider>);
+    view.rerender(<SessionCatalogProvider sessions={[session(1)]}><SessionsView /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
+    view.rerender(<SessionCatalogProvider sessions={[]} readiness={{ catalog: "ready" }}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("heading", { name: "No sessions observed" })).toBeInTheDocument();
+    expect(screen.getByText("0 matches")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sessions" })).not.toHaveAttribute("aria-busy");
+  });
+
+  it.each([
+    { label: "unavailable catalog", connected: true, readiness: "unavailable" as const },
+    { label: "disconnected monitor", connected: false, readiness: "loading" as const },
+  ])("shows the unavailable state during $label without an indefinite skeleton", ({ connected, readiness }) => {
+    render(<SessionCatalogProvider sessions={[]} loading connected={connected} readiness={{ catalog: readiness }}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("heading", { name: "Session catalog unavailable" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sessions" })).not.toHaveAttribute("aria-busy");
+  });
+
+  it("keeps retained rows, filters, and sorting during refresh and reconnect", async () => {
+    const user = userEvent.setup();
+    const rows = [session(1), session(2)];
+    const view = render(<SessionCatalogProvider sessions={rows}><SessionsView /></SessionCatalogProvider>);
+    await user.click(screen.getByRole("button", { name: "Agents" }));
+    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 1");
+    view.rerender(<SessionCatalogProvider sessions={rows} loading readiness={{ catalog: "loading" }}><SessionsView /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.getByRole("columnheader", { name: "Agents" })).toHaveAttribute("aria-sort", "descending");
+    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
+    view.rerender(<SessionCatalogProvider sessions={rows} loading connected={false} readiness={{ catalog: "unavailable" }}><SessionsView /></SessionCatalogProvider>);
+    expect(visibleSessionTitles()).toEqual(["Session 1"]);
+    expect(screen.getByText(/Showing the last known session catalog/)).toBeInTheDocument();
+  });
+
   it("keeps search, scope presets, and the result count in one filter toolbar", () => {
     render(<SessionCatalogProvider sessions={[session(1), session(2)]}><SessionsView /></SessionCatalogProvider>);
     const toolbar = screen.getByRole("toolbar", { name: "Filter sessions" });
