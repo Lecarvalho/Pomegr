@@ -43,16 +43,15 @@ import { claudeFiveHourLimitRejections, createClaudeUsageLimitsReader } from "./
 import { createClaudeLiveUsageSnapshotReader } from "./claude-live-usage-snapshots.mjs";
 import { FILE_SUFFIX_SAMPLE_BYTES, fileIdentity, readFileSuffix } from "./claude-file-generation.mjs";
 import {
-  MAX_SESSION_TITLE_RECORD_BYTES,
   actorFor,
   projectCwd,
   projectName,
   recordedGitBranch,
   runtimeMetadata,
-  scanSessionTitleState,
   sessionTitle,
   statusFor,
 } from "./claude-session-identity.mjs";
+import { createClaudeCatalogTitleEnrichment } from "./claude-catalog-title-enrichment.mjs";
 export { claudeFiveHourLimitRejections };
 import { buildClaudeWorkflows, discoverClaudeWorkflowAgents, terminalClaudeWorkflowAgentStates } from "./claude-workflows.mjs";
 import {
@@ -92,7 +91,7 @@ export function createClaudeProvider(options = {}) {
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const now = options.now || (() => Date.now());
   const sessionSummaryCache = new Map();
-  const sessionTitleCache = new Map();
+  const titleEnrichment = createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState: options.scanTitleState });
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
   const liveUsageSnapshots = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: MAX_BYTES_PER_FILE });
@@ -134,33 +133,8 @@ export function createClaudeProvider(options = {}) {
     const workflows = discoverClaudeWorkflowAgents(path.join(path.dirname(main), path.basename(main, ".jsonl"), "subagents")).files.map((item) => item.file);
     return [main, ...subagents, ...workflows].map((file) => { const stat = statSafe(file); const suffix = stat && readFileSuffix(file, stat.size, FILE_SUFFIX_SAMPLE_BYTES); return stat && suffix ? `${fileIdentity(stat)}:${stat.size}:${stat.mtimeMs}:${suffix.digest}` : "invalid"; }).sort().join("|");
   }
-  async function cachedSessionTitle(file, stat) {
-    const identity = fileIdentity(stat);
-    const cached = sessionTitleCache.get(file);
-    if (cached
-      && cached.identity === identity
-      && cached.size === stat.size
-      && cached.mtimeMs === stat.mtimeMs) {
-      sessionTitleCache.delete(file);
-      sessionTitleCache.set(file, cached);
-      return cached.customTitle || cached.aiTitle || "Untitled session";
-    }
-    const appendOnly = cached
-      && cached.identity === identity
-      && stat.size > cached.size
-      && stat.mtimeMs >= cached.mtimeMs;
-    const start = appendOnly ? Math.max(0, cached.size - MAX_SESSION_TITLE_RECORD_BYTES) : 0;
-    const initial = appendOnly ? cached : {};
-    try {
-      const state = await scanSessionTitleState(file, stat, initial, start);
-      const value = { identity, size: stat.size, mtimeMs: stat.mtimeMs, ...state };
-      sessionTitleCache.delete(file);
-      sessionTitleCache.set(file, value);
-      while (sessionTitleCache.size > 64) sessionTitleCache.delete(sessionTitleCache.keys().next().value);
-      return value.customTitle || value.aiTitle || "Untitled session";
-    } catch {
-      return sessionTitle(readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES));
-    }
+  async function cachedSessionTitle(file, stat, records, { fast = false } = {}) {
+    return fast ? titleEnrichment.fast(file, stat, records) : titleEnrichment.exact(file, stat, records);
   }
 
   function discoveredSessions() {
@@ -181,16 +155,18 @@ export function createClaudeProvider(options = {}) {
     return { files, liveFile, liveFiles, registry, closedSessionIds };
   }
 
-  async function listSessions() {
+  async function listSessions(listOptions = {}) {
+    const fastCatalog = listOptions.fastCatalog === true;
     const { files, liveFiles, registry, closedSessionIds } = discoveredSessions();
     backgroundLifecycle.prune(registry);
     const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));
     nativeStatus.apply(registry, transcriptStatusIds);
-    await nativeStatus.refresh(registry, transcriptStatusIds);
+    // Local provider evidence is sufficient for initial catalog publication.
+    // Remote Control lifecycle is optional enrichment; its reader wakes the
+    // observer after a changed normalized lifecycle arrives later.
+    if (transcriptStatusIds.length) void nativeStatus.refresh(registry, transcriptStatusIds).catch(() => {});
     const visibleFiles = new Set(files.slice(0, 50).map(({ file }) => file));
-    for (const file of sessionTitleCache.keys()) {
-      if (!visibleFiles.has(file) && !statSafe(file)) sessionTitleCache.delete(file);
-    }
+    titleEnrichment.prune(visibleFiles);
     const sessions = [];
     for (const { file, activityMs } of files.slice(0, 50)) {
       const stat = statSafe(file);
@@ -199,7 +175,10 @@ export function createClaudeProvider(options = {}) {
       const cached = sessionSummaryCache.get(file);
       const registryEntry = registry.get(path.basename(file, ".jsonl"));
       const isLive = liveFiles.has(file);
-      const backgroundRunning = isLive ? await backgroundLifecycle.observe(file, registryEntry) : null;
+      const backgroundRunning = isLive
+        ? fastCatalog ? backgroundLifecycle.peek(file, registryEntry) : await backgroundLifecycle.observe(file, registryEntry)
+        : null;
+      if (fastCatalog && isLive) void backgroundLifecycle.observe(file, registryEntry).catch(() => {});
       const liveState = {
         isLive,
         needsInput: Boolean(registryEntry?.needsInput),
@@ -208,18 +187,18 @@ export function createClaudeProvider(options = {}) {
         ...(isLive && registryEntry?.resourceOwner ? { resourceOwner: registryEntry.resourceOwner } : {}),
       };
       if (cached?.key === cacheKey) {
+        if (fastCatalog) titleEnrichment.ensure(file, stat);
         sessions.push({ ...cached.value, ...liveState });
         continue;
       }
       const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
-      const title = await cachedSessionTitle(file, stat);
-      const cachedMetadata = sessionTitleCache.get(file);
+      const titleMetadata = await cachedSessionTitle(file, stat, records, { fast: fastCatalog });
       const fallbackCreatedAtMs = Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
       const value = {
         localId: path.basename(file, ".jsonl"),
-        title,
+        title: titleMetadata.title,
         project: projectName(file, records),
-        createdAt: cachedMetadata?.createdAt || new Date(fallbackCreatedAtMs).toISOString(),
+        createdAt: titleMetadata.createdAt || new Date(fallbackCreatedAtMs).toISOString(),
         updatedAt: new Date(activityMs || stat.mtimeMs).toISOString(),
       };
       sessionSummaryCache.set(file, { key: cacheKey, value });
@@ -273,6 +252,7 @@ export function createClaudeProvider(options = {}) {
     fileByAgentId.set("primary", mainFile);
     for (const file of ordinaryAgentFiles) fileByAgentId.set(path.basename(file, ".jsonl"), file);
     const completeHistory = readOptions.completeHistory === true;
+    const fastCatalog = readOptions.fastCatalog === true;
     const completeReads = new Map();
     for (const file of files) completeReads.set(file, completeHistory ? await readClaudeHistoryRecords(file, options.yieldControl) : null);
     if (completeHistory && [...completeReads.values()].some((item) => !item.complete)) return null;
@@ -487,7 +467,7 @@ export function createClaudeProvider(options = {}) {
       localId: sessionId,
       historical,
       session: {
-        title: mainStat ? await cachedSessionTitle(mainFile, mainStat) : sessionTitle(mainRecords),
+        title: mainStat ? (await cachedSessionTitle(mainFile, mainStat, mainRecords, { fast: fastCatalog })).title : sessionTitle(mainRecords),
         project: projectName(mainFile, mainRecords),
         cwd,
         startedAt,
@@ -546,15 +526,30 @@ export function createClaudeProvider(options = {}) {
     const agentDir = path.join(path.dirname(file), localSessionId, "subagents");
     const workflowFiles = discoverClaudeWorkflowAgents(agentDir).files.map((item) => item.file);
     const historical = !discovered.liveFiles.has(file);
-    if (!historical) await nativeStatus.refresh(discovered.registry, [localSessionId]);
+    if (!historical) {
+      nativeStatus.apply(discovered.registry, [localSessionId]);
+      void nativeStatus.refresh(discovered.registry, [localSessionId]).catch(() => {});
+    }
     const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
     // Rebuild pre-fix checkpoints even when the native transcript is unchanged.
-    return source ? { ...source, identity: `${source.identity}:conversation-activity-v6` } : null;
+    const entry = historical ? null : discovered.registry.get(localSessionId);
+    return source ? {
+      ...source,
+      identity: `${source.identity}:conversation-activity-v6:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+    } : null;
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {
     registryRoot, liveSessionIds: catalogPresence.liveSessionIds,
   });
+  const catalogTitleUpdates = {
+    subscribe(listener) {
+      return titleEnrichment.subscribe((file) => {
+        sessionSummaryCache.delete(file);
+        listener([path.basename(file, ".jsonl")]);
+      });
+    },
+  };
 
   return defineProvider({
     id: "claude",
@@ -594,10 +589,10 @@ export function createClaudeProvider(options = {}) {
     captureRepositoryContextInventory,
     readRepositoryPluginSetup,
     createObserver() {
-      return observeClaudeRegistryDepartures(createIncrementalProviderObserver({
+      const observer = observeClaudeRegistryDepartures(createIncrementalProviderObserver({
         providerId: "claude",
-        list: listSessions,
-        readEvidence: readSession,
+        list: (listOptions) => listSessions({ ...listOptions, fastCatalog: true }),
+        readEvidence: (localSessionId, readOptions) => readSession(localSessionId, { ...readOptions, fastCatalog: true }),
         resolveSource: observerSource,
         routeSourceEvent: routeClaudeSourceEvent,
         intervalMs: options.observerIntervalMs ?? 10_000,
@@ -606,7 +601,31 @@ export function createClaudeProvider(options = {}) {
         backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
         watchTargets: [projectsRoot, registryRoot],
         watchSource: options.observerWatchSource,
-      }), registryObservation, nativeStatus);
+      }), registryObservation, nativeStatus, backgroundLifecycle, catalogTitleUpdates);
+      let cleanup = () => {};
+      return Object.freeze({
+        ...observer,
+        async start(...args) {
+          titleEnrichment.activate();
+          backgroundLifecycle.activate();
+          const signal = args[1];
+          const stopEnrichment = () => {
+            titleEnrichment.stop();
+            backgroundLifecycle.stop();
+          };
+          cleanup = () => {
+            signal?.removeEventListener?.("abort", stopEnrichment);
+            stopEnrichment();
+          };
+          signal?.addEventListener?.("abort", stopEnrichment, { once: true });
+          try { return await observer.start(...args); }
+          catch (error) { cleanup(); throw error; }
+        },
+        stop() {
+          cleanup();
+          observer.stop();
+        },
+      });
     },
     readTranscriptPath,
     readUsageLimits: usageLimits,

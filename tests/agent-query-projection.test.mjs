@@ -310,6 +310,67 @@ test("query cache reuses exact serialized response until a D refresh", () => {
   assert.notStrictEqual(cache.read("listSessions", { scope: "live" }).snapshot, first.snapshot);
 });
 
+test("query cache reuses an immutable report template but derives its timestamp and failures on every refresh", () => {
+  let clock = NOW;
+  const entry = retained();
+  let reportRenderReads = 0;
+  let contextDetailReads = 0;
+  entry.publicState.session.startedAt = "2000-01-01T00:00:00.000Z";
+  entry.publicState.agents[0].executionTasks = [];
+  entry.evidence.toolCalls[0].timestamp = at(-1_440 * 60_000 + 1);
+  entry.evidence.toolCalls = [entry.evidence.toolCalls[0]];
+  entry.publicState.metrics = { get tokens() { reportRenderReads += 1; return {}; } };
+  const usageSnapshots = entry.evidence.usageSnapshots;
+  Object.defineProperty(entry.evidence, "usageSnapshots", { enumerable: true, get() { contextDetailReads += 1; return usageSnapshots; } });
+  let entries = [entry];
+  const cache = createAgentQueryProjectionCache({ now: () => clock, sources: {
+    catalog: () => [{ id: entry.qualifiedId, provider: "codex", isLive: true }],
+    entries: () => entries, providerStatus: {}, usageLimits: {},
+  } });
+  const coldReportRenderReads = reportRenderReads;
+  const coldContextDetailReads = contextDetailReads;
+  cache.refresh();
+  cache.refresh();
+  assert.equal(reportRenderReads, coldReportRenderReads, "unchanged committed snapshots must skip the report renderer");
+  assert.equal(contextDetailReads, coldContextDetailReads, "unchanged committed snapshots must skip latest-context normalization");
+  const first = cache.read("getSessionReport", { sessionRef: entry.qualifiedId }).snapshot.value;
+  const firstFailures = cache.read("getRecentFailures", { sessionRef: entry.qualifiedId, withinMinutes: 1_440, limit: 10 }).snapshot.value;
+  assert.match(first.report, /\*\*Recorded interval:\*\* 2000-01-01T00:00:00\.000Z/u);
+  assert.match(first.report, /\*\*Generated:\*\* 2026-09-03T12:00:00\.000Z/u);
+  assert.equal(firstFailures.failures.length, 1);
+
+  clock += 2;
+  cache.refresh();
+  const second = cache.read("getSessionReport", { sessionRef: entry.qualifiedId }).snapshot.value;
+  const secondFailures = cache.read("getRecentFailures", { sessionRef: entry.qualifiedId, withinMinutes: 1_440, limit: 10 }).snapshot.value;
+  assert.match(second.report, /\*\*Generated:\*\* 2026-09-03T12:00:00\.002Z/u);
+  assert.equal(second.report.includes("**Generated:** 2000-01-01T00:00:00.000Z"), false);
+  assert.equal(secondFailures.failures.length, 0, "failure eligibility must use the new projection time");
+
+  clock += 24 * 60 * 60_000;
+  cache.refresh();
+  const nextDay = cache.read("getSessionReport", { sessionRef: entry.qualifiedId }).snapshot.value;
+  assert.equal(nextDay.filename, "pomegr-safe-title-2026-09-04.md");
+  assert.match(nextDay.report, /\*\*Generated:\*\* 2026-09-04T12:00:00\.002Z/u);
+
+  const replacement = retained();
+  replacement.publicState.agents[0].model = "gpt-6-sol";
+  replacement.publicState.metrics = { get tokens() { reportRenderReads += 1; return {}; } };
+  const replacementUsageSnapshots = replacement.evidence.usageSnapshots;
+  Object.defineProperty(replacement.evidence, "usageSnapshots", { enumerable: true, get() { contextDetailReads += 1; return replacementUsageSnapshots; } });
+  entries = [replacement];
+  cache.refresh();
+  assert.equal(reportRenderReads, coldReportRenderReads + 1, "a new committed snapshot identity must render a new report");
+  assert.ok(contextDetailReads > coldContextDetailReads, "a new committed snapshot identity must normalize latest context");
+  assert.match(cache.read("getSessionReport", { sessionRef: replacement.qualifiedId }).snapshot.value.report, /gpt-6-sol/u, "a different committed snapshot must not reuse a prior report");
+
+  replacement.revision += 1;
+  const replacementContextDetailReads = contextDetailReads;
+  cache.refresh();
+  assert.equal(reportRenderReads, coldReportRenderReads + 2, "a new committed revision must render a new report");
+  assert.ok(contextDetailReads > replacementContextDetailReads, "a new committed revision must normalize latest context");
+});
+
 test("usage refreshes retain committed catalog observation time and last known-good local activity", () => {
   let usageGeneratedAt = at(-1);
   let rejectRefresh = false;

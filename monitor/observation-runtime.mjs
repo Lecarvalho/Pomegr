@@ -20,7 +20,9 @@ import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
 import { createSessionDomainServing } from "./session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveCheckpointRepository, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
+import { createObservationStartupRepository } from "./observation-startup-repository.mjs";
+import { createCheckpointStateProjector } from "./checkpoint-state-projector.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) { return `${providerId}:${localSessionId}`; }
 
@@ -257,32 +259,11 @@ export function createObservationRuntime(options = {}) {
     );
   }
 
-  function checkpointPublicState({ providerId, localSessionId, evidence }) {
-    const provider = registry.providers?.find((candidate) => candidate.id === providerId) || registry.defaultProvider;
-    const historical = Boolean(evidence.historical);
-    const sessionId = qualifiedSessionId(providerId, localSessionId);
-    try {
-      const { repository, pullRequests } = resolveCheckpointRepository({
-        historical, evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
-        recordedGitState, unavailableGitState, unavailablePullRequests,
-      });
-      return {
-        ...projectProviderSessionEvidence({
-          evidence, sessionId, source: provider.source, capabilities: provider.capabilities,
-          repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
-          repository, pullRequests,
-          usageLimits: createEmptyUsageLimits(),
-          resources: historical ? null : unavailableResourceUsage(),
-        }),
-        readiness: createSessionReadiness("loading", { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" }),
-      };
-    } catch {
-      return {
-        ...createEmptyMonitorState({ connected: true, source: provider.source, view: historical ? "history" : "live" }),
-        readiness: createSessionReadiness("loading"),
-      };
-    }
-  }
+  const checkpointPublicState = createCheckpointStateProjector({
+    registry, recordedSnapshot: (sessionId) => repositorySnapshotRecorder?.recorded(sessionId) || null,
+    recordedGitState, unavailableGitState, unavailablePullRequests, repositoryRoleMappings,
+    createEmptyMonitorState, createEmptyUsageLimits, unavailableResourceUsage,
+  });
 
   function observedUsageLimits(providerId, historical = false) {
     if (historical) return createEmptyUsageLimits();
@@ -420,6 +401,10 @@ export function createObservationRuntime(options = {}) {
     let pullRequests;
     let enqueueLiveEnrichment = null;
     if (historical) {
+      // A live historical source can arrive while the private sidecar cache is
+      // still loading. Wait only for that projection dependency so its saved
+      // repository state wins over the no-snapshot Git fallback.
+      await repositoryStartup.checkpointRestoreReady();
       // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
       ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
         evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
@@ -463,6 +448,16 @@ export function createObservationRuntime(options = {}) {
     return state;
   }
 
+  function initializeCommittedSessions() {
+    if (!observationServingActive) return;
+    for (const snapshot of observationStore.entries()) {
+      sessionDomainServing.commit(snapshot.qualifiedId, snapshot);
+      sessionHistory.ensureObserved(snapshot.qualifiedId, snapshot.revision);
+      sessionHistory.refresh(snapshot.qualifiedId, 2, false);
+    }
+    agentQueryProjection.refresh();
+  }
+
   const observationCoordinator = createSessionObservationCoordinator({
     registry,
     store: observationStore,
@@ -478,6 +473,8 @@ export function createObservationRuntime(options = {}) {
     onHistoryContribution: publishHistoryContribution,
     onHistoryRequestContribution: publishHistoryRequestContribution,
     restoreState: checkpointPublicState,
+    checkpointRestoreReady: () => repositoryStartup.checkpointRestoreReady(),
+    onRestoreComplete: initializeCommittedSessions,
     async deriveSession(candidate) {
       const provider = registry.providers?.find((entry) => entry.id === candidate.providerId);
       if (!provider) throw new TypeError("Unknown observed provider");
@@ -580,6 +577,13 @@ export function createObservationRuntime(options = {}) {
     registry, sessionDomains, observationStore, coordinator: observationCoordinator,
     scheduleObservation, isServingActive: () => observationServingActive,
   });
+  const repositoryStartup = createObservationStartupRepository({
+    repositoryInventory,
+    repositorySnapshotRecorder,
+    isActive: () => observationServingActive,
+    catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [],
+    onRecorded: (sessionId) => sessionDomainServing.commit(sessionId),
+  });
 
   function cacheUnavailableSessionResponses() {
     const catalog = observationCoordinator.catalog()?.snapshot?.value?.sessions || [];
@@ -642,17 +646,9 @@ export function createObservationRuntime(options = {}) {
       }
       scheduleObservedHomeRefresh();
     });
+    repositoryStartup.start();
     observationStartPromise = (async () => {
-      await repositoryInventory.ready;
-      await repositoryInventory.reconcile([]);
-      repositoryInventory.startPluginObservation?.();
-      await repositorySnapshotRecorder?.load();
       await observationCoordinator.start();
-      for (const snapshot of observationStore.entries()) {
-        sessionDomainServing.commit(snapshot.qualifiedId, snapshot);
-        sessionHistory.ensureObserved(snapshot.qualifiedId, snapshot.revision);
-        sessionHistory.refresh(snapshot.qualifiedId, 2, true, true);
-      }
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
       void refreshObservedResources();
@@ -666,6 +662,7 @@ export function createObservationRuntime(options = {}) {
     try { await observationStartPromise; }
     catch (error) {
       observationServingActive = false;
+      repositoryStartup.stop();
       await repositoryInventory.stopPluginObservation?.();
       agentsObservation.stop();
       await providerStatus.stop();
@@ -679,6 +676,7 @@ export function createObservationRuntime(options = {}) {
 
   async function stopObservation() {
     observationServingActive = false;
+    repositoryStartup.stop();
     await repositoryInventory.stopPluginObservation?.();
     agentsObservation.stop();
     await providerStatus.stop();
@@ -779,8 +777,7 @@ export function createObservationRuntime(options = {}) {
     prepareRepositoryPluginAction: (repositoryId, provider, action) => repositoryInventory.preparePluginAction(repositoryId, provider, action),
     // Only while actually observing: record the live check, then recommit its domains.
     onRepositoryCheck(sessionId, live) {
-      if (!observationServingActive || !repositorySnapshotRecorder) return;
-      void repositorySnapshotRecorder.record(sessionId, live).then((changed) => changed && sessionDomainServing.commit(sessionId)).catch(() => {});
+      repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
     subscribeRevisionEvents,

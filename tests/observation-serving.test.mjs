@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { createMonitorRuntime, createMonitorServer } from "../monitor/server.mjs";
+import { createObservationStartupRepository } from "../monitor/observation-startup-repository.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { SessionHistoryStore } from "../monitor/session-history-store.mjs";
 
@@ -12,6 +13,131 @@ async function listen(server) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   return `http://127.0.0.1:${server.address().port}`;
 }
+
+async function waitFor(predicate, message) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 2));
+  }
+  assert.fail(message);
+}
+
+function delayedRepositoryInventory(ready) {
+  return {
+    ready,
+    async reconcile() {},
+    startPluginObservation() {},
+    async stopPluginObservation() {},
+    async associateSession() { return null; },
+    async resolveRepository() { return null; },
+    subscribe() { return () => {}; },
+    readRepositories() { return null; },
+    readRevision() { return null; },
+    capture() { return null; },
+    refreshPluginSetup() { return null; },
+    readPluginSetup() { return null; },
+    preparePluginAction() { return null; },
+  };
+}
+
+test("repository sidecar loads serialize across stopped startup lifetimes", { timeout: 5_000 }, async () => {
+  let releaseFirst;
+  const firstLoad = new Promise((resolve) => { releaseFirst = resolve; });
+  let loads = 0;
+  const lifecycle = createObservationStartupRepository({
+    repositoryInventory: { ready: Promise.resolve(), async reconcile() {} },
+    repositorySnapshotRecorder: { async load() { loads += 1; return loads === 1 ? firstLoad : undefined; } },
+    isActive: () => true, catalog: () => [], onRecorded() {},
+  });
+  lifecycle.start();
+  await waitFor(() => loads === 1, "first sidecar load should start");
+  lifecycle.stop();
+  lifecycle.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loads, 1, "second startup waits for the prior sidecar load");
+  releaseFirst();
+  await waitFor(() => loads === 2, "second sidecar load should follow the first");
+  lifecycle.stop();
+});
+
+test("live observation startup does not wait for repository inventory or sidecars", { timeout: 5_000 }, async (context) => {
+  let releaseInventory;
+  const inventoryReady = new Promise((resolve) => { releaseInventory = resolve; });
+  let releaseSidecars;
+  const sidecarsReady = new Promise((resolve) => { releaseSidecars = resolve; });
+  let checkpointLoads = 0;
+  let observerStarts = 0;
+  let pluginStarts = 0;
+  const provider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities(), homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } } };
+  const registry = {
+    providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
+    async resolveCapabilities() { return provider.capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(publisher) {
+      observerStarts += 1;
+      publisher.publishCatalog("codex", [{ localId: evidence.localId, title: evidence.session.title, project: evidence.session.project,
+        updatedAt: evidence.session.updatedAt, isLive: true, needsInput: false, activityStatus: "working" }]);
+      publisher.publishSession("codex", evidence.localId, evidence);
+      return { async stop() {} };
+    },
+  };
+  const repositoryInventory = delayedRepositoryInventory(inventoryReady);
+  repositoryInventory.startPluginObservation = () => { pluginStarts += 1; };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry, repositoryInventory, monitorStore: false,
+    checkpointStore: {
+      loadRepositorySnapshots: () => sidecarsReady,
+      async writeRepositorySnapshot() {},
+      async load() { checkpointLoads += 1; return { records: [] }; },
+      async write() {},
+    },
+    historyStore: new SessionHistoryStore(),
+    observationCommitDelayMs: 0, scheduleObservation: (task) => setTimeout(task, 0),
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(async () => runtime.stopObservation());
+
+  await runtime.startObservation();
+  await waitFor(() => runtime.serveSession(`codex:${evidence.localId}`).status === "ready", "live evidence should commit before inventory readiness");
+  assert.equal(observerStarts, 1);
+  assert.equal(pluginStarts, 0);
+  assert.equal(checkpointLoads, 0, "live publication precedes sidecar-dependent checkpoint projection");
+
+  releaseInventory();
+  await waitFor(() => pluginStarts === 1, "plugin observation should begin after repository readiness");
+  assert.equal(checkpointLoads, 0);
+  releaseSidecars([]);
+  await waitFor(() => checkpointLoads === 1, "checkpoint projection begins after sidecars are ready");
+});
+
+test("stopping suppresses a delayed repository plugin startup", async () => {
+  let releaseInventory;
+  const inventoryReady = new Promise((resolve) => { releaseInventory = resolve; });
+  let pluginStarts = 0;
+  const provider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities(), homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } } };
+  const repositoryInventory = delayedRepositoryInventory(inventoryReady);
+  repositoryInventory.startPluginObservation = () => { pluginStarts += 1; };
+  const runtime = createMonitorRuntime({
+    providerRegistry: {
+      providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
+      async resolveCapabilities() { return provider.capabilities; },
+      async readUsageLimits() { return createEmptyUsageLimits(); },
+      async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+      unavailableMessage: () => "Unavailable",
+      async startObservers() { return { async stop() {} }; },
+    },
+    repositoryInventory, checkpointStore: false,
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+
+  await runtime.startObservation();
+  await runtime.stopObservation();
+  releaseInventory();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pluginStarts, 0);
+});
 
 test("concurrent state GETs consume one committed response without provider transcript reads", async (context) => {
   let compatibilityReads = 0;

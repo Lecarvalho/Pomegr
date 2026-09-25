@@ -78,6 +78,16 @@ function reduceLifecycle(state, record, ownerStartedAt) {
  */
 export function createClaudeBackgroundLifecycleReader() {
   const sessions = new Map();
+  const listeners = new Set();
+  let notificationsEnabled = false;
+  let notificationGeneration = 0;
+
+  function notify(sessionId, generation) {
+    if (!notificationsEnabled || generation !== notificationGeneration) return;
+    for (const listener of listeners) {
+      try { listener([sessionId]); } catch { /* Catalog wakeups are advisory. */ }
+    }
+  }
 
   function ownerKey(entry) {
     return entry?.resourceOwner && Number.isFinite(entry.ownerStartedAt)
@@ -119,6 +129,8 @@ export function createClaudeBackgroundLifecycleReader() {
     if (item.pending) return item.pending;
     const current = item;
     current.sourceFile.file = file;
+    const before = current.known;
+    const observedGeneration = notificationGeneration;
     current.pending = Promise.resolve().then(async () => {
       try {
         const source = incrementalSourceDescriptor(file);
@@ -152,11 +164,43 @@ export function createClaudeBackgroundLifecycleReader() {
           }
           current.known = current.knownTasks.size > 0;
         }
-        return sessions.get(entry.sessionId) === current ? current.known : null;
+        const known = sessions.get(entry.sessionId) === current ? current.known : null;
+        if (known !== null && known !== before) notify(entry.sessionId, observedGeneration);
+        return known;
       } catch { return current.known; }
     }).finally(() => { current.pending = null; });
     return current.pending;
   }
 
-  return { observe, prune };
+  function peek(file, entry) {
+    const owner = ownerKey(entry);
+    const current = owner && entry?.sessionId ? sessions.get(entry.sessionId) : null;
+    if (!current || current.owner !== owner || current.sourceFile.file !== file) return null;
+    return current.known;
+  }
+
+  function sourceState(file, entry) {
+    const known = peek(file, entry);
+    return known === true ? "running" : known === false ? "idle" : "unknown";
+  }
+
+  return {
+    observe,
+    peek,
+    sourceState,
+    prune,
+    activate() {
+      notificationsEnabled = true;
+      notificationGeneration += 1;
+    },
+    stop() {
+      notificationsEnabled = false;
+      notificationGeneration += 1;
+    },
+    subscribe(listener) {
+      if (typeof listener !== "function") throw new TypeError("Claude background lifecycle listener must be a function");
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
 }

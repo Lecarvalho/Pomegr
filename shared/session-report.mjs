@@ -11,6 +11,7 @@ const FAILURE_CATEGORIES = new Set(["command_not_found", "invalid_path", "networ
 const UNAVAILABLE_MODELS = new Set(["unknown", "unspecified"]);
 const UNAVAILABLE_EFFORTS = new Set(["unknown", "unspecified"]);
 const RUNTIME_FIELD_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/+ -]*$/;
+const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 
 function safeString(value, max = 300) { return typeof value === "string" && value.trim() && value.length <= max ? value.trim() : null; }
 function runtimeField(value, max, unavailable) {
@@ -20,7 +21,7 @@ function runtimeField(value, max, unavailable) {
 function safeCount(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
 function safePercent(value) { return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100 ? value : null; }
 function utc(value) { if (typeof value !== "string") return null; const milliseconds = Date.parse(value); return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null; }
-function number(value) { return value === null || value === undefined ? "Unavailable" : new Intl.NumberFormat("en-US").format(value); }
+function number(value) { return value === null || value === undefined ? "Unavailable" : NUMBER_FORMAT.format(value); }
 function cell(value) { return String(value ?? "Unavailable").replace(/\r?\n/g, " ").replace(/\|/g, "\\|"); }
 function localEnum(value, allowed) { return typeof value === "string" && allowed.has(value) ? value : null; }
 function providerLabel(source) { return source === "Claude Code" || source === "Codex" ? source : "Unavailable"; }

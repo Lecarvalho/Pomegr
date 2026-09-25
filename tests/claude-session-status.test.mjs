@@ -1,3 +1,4 @@
+import { createClaudeCatalogTitleEnrichment } from "../monitor/providers/claude-catalog-title-enrichment.mjs";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile, appendFile, utimes } from "node:fs/promises";
 import os from "node:os";
@@ -52,10 +53,10 @@ function assertPrivate(value) {
   }
 }
 
-async function waitFor(predicate) {
-  const deadline = Date.now() + 3000;
+async function waitFor(predicate, message = "observer did not publish expected state", timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
   while (!predicate()) {
-    assert.ok(Date.now() < deadline, "observer did not publish expected state");
+    assert.ok(Date.now() < deadline, message);
     await new Promise((resolve) => setImmediate(resolve));
   }
 }
@@ -239,7 +240,7 @@ test("bounds native concurrency and allows new visible sessions into a full cach
   assert.equal(sessionActivityStatus(true, rows.get("local50")), "working");
 });
 
-async function providerFixture(t) {
+async function providerFixture(t, options = {}) {
   const f = await fixture(t);
   const project = path.join(f.claudeRoot, "projects", "fixture-project");
   const registryRoot = path.join(f.claudeRoot, "sessions");
@@ -259,11 +260,73 @@ async function providerFixture(t) {
   const provider = createClaudeProvider({
     homeDir: f.homeDir, env: {}, now: f.now,
     registryProcessIdentities: () => new Map([[123, "owner-start"]]),
-    fetch: async () => { calls += 1; return reply(native); },
+    fetch: async (...args) => {
+      calls += 1;
+      return options.fetch ? options.fetch(...args) : reply(native);
+    },
+    scanTitleState: options.scanTitleState,
     observerIntervalMs: 60_000, observerWatchSource: () => ({ close() {} }),
   });
   return { ...f, file, ownerFile, provider, calls: () => calls, status: (value) => { native = value; } };
 }
+
+test("transcript-backed catalog publishes before a stalled remote lifecycle read", { timeout: 5_000 }, async (t) => {
+  let release;
+  const remote = new Promise((resolve) => { release = resolve; });
+  t.after(() => release(reply("running")));
+  const f = await providerFixture(t, { fetch: async () => remote });
+  const catalog = await f.provider.listSessions();
+  assert.deepEqual(catalog.map(({ localId, isLive, activityStatus }) => ({ localId, isLive, activityStatus })), [{
+    localId: "local-session", isLive: true, activityStatus: "unknown",
+  }]);
+  await waitFor(() => f.calls() === 1);
+  const observer = f.provider.createObserver();
+  const controller = new AbortController();
+  t.after(() => { controller.abort(); observer.stop(); });
+  const candidates = [];
+  await observer.start({
+    publishCatalog() {},
+    publishSession(_id, evidence) { candidates.push(evidence); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => candidates.length > 0, "blocked remote lifecycle must not delay the first live candidate");
+  release(reply("running"));
+  await new Promise((resolve) => setImmediate(resolve));
+  const refined = await f.provider.listSessions();
+  assert.equal(refined[0].activityStatus, "working");
+});
+
+test("observer publishes a live catalog and candidate before blocked title enrichment", { timeout: 5_000 }, async (t) => {
+  let release;
+  let scans = 0;
+  const titleScan = new Promise((resolve) => { release = resolve; });
+  const f = await providerFixture(t, { scanTitleState: async () => {
+    scans += 1;
+    return titleScan;
+  } });
+  t.after(() => release({ customTitle: "Native status fixture", createdAt: new Date(START).toISOString() }));
+  const observer = f.provider.createObserver();
+  const controller = new AbortController();
+  t.after(() => { controller.abort(); observer.stop(); });
+  const catalogs = [];
+  const candidates = [];
+  await observer.start({
+    publishCatalog(entries) { catalogs.push(entries); },
+    publishSession(_id, evidence) { candidates.push(evidence); },
+    invalidateSession() {},
+  }, controller.signal);
+  await waitFor(() => catalogs.length > 0, "observer did not publish its fast catalog");
+  await waitFor(() => scans === 1, "observer did not start title enrichment");
+  await waitFor(() => candidates.length > 0, "observer did not publish the live candidate before title enrichment");
+  assert.equal(catalogs[0][0].title, "Native status fixture");
+  assert.equal(candidates[0].session.title, "Native status fixture", "first live candidate cannot wait for a complete title scan");
+  assert.equal(scans, 1, "one bounded enrichment scan is queued for the source snapshot");
+  release({ customTitle: "Enriched native title", createdAt: new Date(START).toISOString() });
+  await waitFor(() => catalogs.at(-1)[0]?.title === "Enriched native title"
+    && candidates.at(-1)?.session.title === "Enriched native title");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(scans, 1, "enrichment publication does not schedule a refresh loop");
+});
 
 test("registry-only presence does not await remote status and unsubscribe prevents a late catalog wake", async (t) => {
   const f = await fixture(t);
@@ -319,6 +382,12 @@ test("provider catalog and primary agent share native lifecycle; U2 and historic
   const f = await providerFixture(t);
   for (const [native, activity, agent] of [["running", "working", "active"], ["requires_action", "needs_input", "needs_input"], ["idle", "open", "idle"]]) {
     f.status(native); f.advance(10_000);
+    const beforeRefresh = f.calls();
+    await f.provider.listSessions();
+    await waitFor(() => f.calls() > beforeRefresh);
+    await new Promise((resolve) => setImmediate(resolve));
+    // The first local catalog is intentionally not held for Remote Control.
+    // A later cached catalog applies its normalized lifecycle without a U2 read.
     const catalog = await f.provider.listSessions();
     const acquired = f.calls();
     const evidence = await f.provider.readSession("local-session");
@@ -384,4 +453,82 @@ test("observer commits native transitions without transcript growth and retains 
     assert.match(evidence.observationSource.fingerprint, /^[a-f0-9]{64}$/);
   }
   controller.abort();
+});
+
+function titleStat(identity, size, mtimeMs) {
+  return { isFile: () => true, dev: 1, ino: identity, size, mtimeMs };
+}
+
+test("cold title metadata stays stable across appends while its complete scan is pending", async () => {
+  let source = titleStat(1, 10, 1);
+  let release;
+  const scan = new Promise((resolve) => { release = resolve; });
+  const reader = createClaudeCatalogTitleEnrichment({ statSafe: () => source, scanTitleState: () => scan });
+  reader.activate();
+  try {
+    reader.fast("synthetic.jsonl", source, [{ type: "custom-title", customTitle: "Live title" }]);
+    const metadata = reader.metadata("synthetic.jsonl", source);
+    source = titleStat(1, 11, 2);
+    assert.equal(reader.metadata("synthetic.jsonl", source), metadata);
+    assert.equal(reader.fast("synthetic.jsonl", source, []).title, "Live title");
+    assert.equal(reader.metadata("synthetic.jsonl", source), metadata);
+  } finally {
+    reader.stop();
+    release({ customTitle: "Live title" });
+  }
+});
+
+async function titleQueueTurn() {
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+}
+
+test("Claude title enrichment republishes a replacement even when its final title is unchanged", async () => {
+  let source = titleStat(1, 10, 1);
+  const results = [
+    { customTitle: "Retained title", createdAt: "2026-08-12T14:00:00.000Z" },
+    { customTitle: "Retained title", createdAt: "2026-08-12T14:00:00.000Z" },
+    { customTitle: "Changed title", createdAt: "2026-08-13T14:00:00.000Z" },
+  ];
+  const reader = createClaudeCatalogTitleEnrichment({
+    statSafe: () => source,
+    scanTitleState: async () => results.shift(),
+  });
+  const updates = [];
+  reader.subscribe((file) => updates.push(file));
+  reader.activate();
+  reader.fast("synthetic.jsonl", source, [{ type: "custom-title", customTitle: "Retained title", timestamp: "2026-08-12T14:00:00.000Z" }]);
+  await titleQueueTurn();
+  assert.deepEqual(updates, []);
+  const retainedMetadata = reader.metadata("synthetic.jsonl", source);
+  source = titleStat(1, 11, 2);
+  assert.equal(reader.metadata("synthetic.jsonl", source), retainedMetadata, "an append keeps the accepted title key before its new tail is read");
+
+  source = titleStat(2, 10, 2);
+  assert.equal(reader.fast("synthetic.jsonl", source, []).title, "Untitled session");
+  await titleQueueTurn();
+  assert.deepEqual(updates, ["synthetic.jsonl"], "the exact replacement must repair the provisional catalog row");
+  assert.equal(reader.metadata("synthetic.jsonl", source), "Retained title\0" + "2026-08-12T14:00:00.000Z");
+
+  source = titleStat(3, 10, 3);
+  reader.fast("synthetic.jsonl", source, [{ type: "custom-title", customTitle: "Changed title", timestamp: "2026-08-13T14:00:00.000Z" }]);
+  assert.equal(reader.metadata("synthetic.jsonl", source), "Changed title\0" + "2026-08-13T14:00:00.000Z");
+  await titleQueueTurn();
+});
+
+test("Claude title enrichment does not reuse a replaced source after an exact scan failure", async () => {
+  let source = titleStat(1, 10, 1);
+  const reader = createClaudeCatalogTitleEnrichment({
+    statSafe: () => source,
+    scanTitleState: async () => {
+      if (source.ino === 1) return { customTitle: "Old title", createdAt: "2026-08-12T14:00:00.000Z" };
+      throw new Error("synthetic scan failure");
+    },
+  });
+  assert.equal((await reader.exact("synthetic.jsonl", source, [])).title, "Old title");
+  source = titleStat(2, 10, 2);
+  const fallback = await reader.exact("synthetic.jsonl", source, [{
+    type: "custom-title", customTitle: "Replacement title", timestamp: "2026-08-13T14:00:00.000Z",
+  }]);
+  assert.deepEqual(fallback, { title: "Replacement title", createdAt: "2026-08-13T14:00:00.000Z" });
 });

@@ -631,6 +631,15 @@ raw provider errors, and tool results. Public provider health does not establish
 causation for a specific account, model, or session. Current account usage limits remain
 independent of agents and historical sessions.
 
+Unchanged immutable session snapshots reuse their bounded report rendering, agent
+rows, and latest-context maps across query-projection refreshes. A replacement
+snapshot or revision derives them again; cache ownership follows the retained
+snapshot, with no persisted report cache. Projection
+generation times, report filenames, and recent-failure windows still advance on each
+refresh. Serving continues to select a precomputed report and never renders or
+acquires provider data. This prevents unrelated startup restores from repeatedly
+rendering every historical report on the live publication path.
+
 Clients use these queries only when an observation can change the next decision. They do
 not poll or call every query at session start. The tool-specific triggers and caveats are
 documented in [MCP observation queries](MCP_QUERIES.md).
@@ -997,6 +1006,16 @@ with its current revision. That GET still reads only the committed response cach
 dropped event is harmless because focus refresh and serialized recovery polling remain.
 
 Claude observes both its project transcripts and its provider session registry.
+Its observer publishes bounded transcript-tail summaries before complete title
+scans and owner-scoped background-task reconciliation finish. Live detail hydration
+uses the same nonblocking title path. Existing complete metadata remains usable
+during append reconciliation; a cold title may initially be unavailable and refine
+after enrichment. Title acquisition uses one serialized, bounded private queue,
+and only validated source generations may replace its cache. Changed metadata
+queues a scoped catalog/detail refresh. Stopping the observer suppresses late
+title publications. Native registry working/input states keep precedence while
+background lifecycle evidence is unknown. Direct complete-history reads retain
+their exact metadata path. None of this acquisition runs inside a browser GET.
 Registry creation, updates, and removal queue one coalesced catalog reconciliation
 instead of waiting for the ten-second safety poll. The bounded previously-live set
 is also hydrated against the new catalog, including a departed session older than the
@@ -1213,6 +1232,19 @@ React, persisted checkpoints, or browser API fields.
 
 ### Startup working set and lazy history
 
+- U1 observer attachment and the first local catalog run before repository inventory
+  readiness, reconciliation, or current plugin-setup observation. Those D-only
+  jobs continue in the background and a late completion cannot start plugin
+  observation after monitor shutdown. Repository sidecars load concurrently;
+  checkpoint projection waits for that private sidecar load, while live provider
+  discovery does not.
+- L2 checkpoint restoration runs independently and does not delay observer
+  attachment. Fresh
+  candidates seen while restoration is pending win over the matching saved
+  record, including if their first commit is still in flight or has already
+  been evicted. Other valid working-set records restore normally. This preserves
+  last-known-good checkpoint evidence without allowing a delayed L2 record to
+  replace newer U1/U2 evidence.
 - Catalog discovery remains lightweight and includes bounded historical rows so the
   sidebar can show and select them without parsing their session sources.
 - Startup source preparation, transcript hydration, normalization, and checkpoint restore
@@ -1597,7 +1629,7 @@ Throttling help explains the cooldown without suggesting sign-in as a way around
 
 The Claude adapter supplements local registry discovery with read-only native metadata for locally discovered, live `sdk-cli` sessions with validated PID/start ownership and an exact bridge association. U1 requests only the fixed Anthropic session metadata endpoint; U2 accepts only matching identity and explicit `running`, `requires_action`, or `idle` lifecycle. Registry/remote transport fields remain provider-private. Only U1 background catalog discovery and source acquisition perform network refreshes. The U2 evidence reducer applies the cached normalized snapshot without network access; S Serving and F Presentation never call the native API.
 
-The private reader retains at most 50 associations, coalesces concurrent requests, permits four network reads at a time, and bounds each read to six seconds and 256 KiB. Successful reads are cached for ten seconds; unsuccessful reads retry no sooner than sixty seconds. The normal ten-second observer reconciliation supplies refresh opportunities. Failures retain the last valid state and original transition-observation timestamp for the same owner, while ownership, bridge, or credential changes invalidate reuse. No status is invented before a valid observation.
+The private reader retains at most 50 associations, coalesces concurrent requests, permits four network reads at a time, and bounds each read to six seconds and 256 KiB. The first local catalog never awaits this optional read; a changed normalized result wakes a later scoped catalog refresh. Successful reads are cached for ten seconds; unsuccessful reads retry no sooner than sixty seconds. The normal ten-second observer reconciliation supplies refresh opportunities. Failures retain the last valid state and original transition-observation timestamp for the same owner, while ownership, bridge, or credential changes invalidate reuse. No status is invented before a valid observation.
 
 A normalized lifecycle change contributes to the adapter source fingerprint, so hydration updates even when transcript bytes do not change. The existing staged replacement and contract validation still govern C Commit: incomplete replacement input cannot erase a prior complete revision. Repeated identical status does not advance the lifecycle observation timestamp or force transcript reacquisition. D Derivation and revision-aware cache-only GETs remain unchanged. P Persistence may retain only existing normalized evidence and the opaque source fingerprint; the remote response, bridge ID, token/hash, and private association cache are never checkpointed. Historical session hydration never requests remote status for that session.
 
@@ -2117,9 +2149,11 @@ versioned, and validated as a whole record (any invalid field rejects the file, 
 partial read). It holds the recorded branch, `isMain`, at most 200 recorded uncommitted
 files with their status, branch comparison and its check time, at most 10 allowlisted pull
 requests with their check time, `commitsInSession`, and the check timestamp. The
-checkpoint payload schema is unchanged. The monitor's observation runtime loads every
-valid sidecar at startup into a bounded in-memory recorder. Each live Git check calls
-`onRepositoryCheck` once observation serving is active; the recorder writes a changed
+checkpoint payload schema is unchanged. The monitor starts the bounded sidecar load with
+startup and gates checkpoint projection on its completion; it does not hold live observer
+attachment. Each live Git check calls `onRepositoryCheck` once observation serving is
+active; until that load settles the check queues behind it, so a live write cannot replace
+an older sidecar baseline before it is restored. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
 or commit count was not observed carries the previous recorded value forward, and an
 invalid candidate never replaces the last complete valid snapshot. `prune()` removes a

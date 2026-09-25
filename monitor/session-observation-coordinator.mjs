@@ -138,6 +138,7 @@ export function createSessionObservationCoordinator(options = {}) {
   let generation = 0;
   let selectedPinnedId = null;
   let startupSelection = null;
+  let restoreFreshSessions = null;
   const timings = Object.freeze({
     catalogCommitWait: createDurationSeries(),
     catalogProjectionCommit: createDurationSeries(),
@@ -442,6 +443,9 @@ export function createSessionObservationCoordinator(options = {}) {
       if (stopped) return;
       qa.sessionCandidates += 1;
       const qualifiedId = qualifiedSessionId(providerId, localSessionId);
+      // Track even evicted/invalidated candidates until L2 settles. Overflow
+      // skips restoration rather than risking an older replacement.
+      if (restoreFreshSessions && restoreFreshSessions.size < 4096) restoreFreshSessions.add(qualifiedId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
       const scheduled = scheduledSessions.get(qualifiedId);
       // Coalesce at the first candidate's deadline. Restarting this timer for
@@ -495,15 +499,12 @@ export function createSessionObservationCoordinator(options = {}) {
     },
   });
 
-  async function start() {
-    if (startPromise) return startPromise;
-    abortController = new AbortController();
-    stopped = false;
-    generation += 1;
-    // Reapply wall-clock visibility before waiting for provider acquisition.
-    if (catalogsByProvider.size) scheduleCatalogCommit(0);
-    startPromise = (async () => {
+  async function restoreCheckpoints(workGeneration, freshSessions) {
+    try {
       if (checkpointStore) {
+        const ready = options.checkpointRestoreReady?.();
+        if (ready) await ready;
+        if (stopped || generation !== workGeneration) return;
         const loaded = await checkpointStore.load({
           includeRecord(record) {
             return isObservationWorkingSetEntry({
@@ -514,7 +515,11 @@ export function createSessionObservationCoordinator(options = {}) {
           },
           projectState: options.restoreState || (({ evidence }) => evidence),
         });
+        if (stopped || generation !== workGeneration) return;
         for (const record of loaded.records) {
+          const id = qualifiedSessionId(record.providerId, record.localSessionId);
+          if (freshSessions.size >= 4096 || freshSessions.has(id)
+            || store.getByQualifiedId(id) || pendingSessions.has(id)) continue;
           if (!registry.providers?.some((provider) => provider.id === record.providerId)) continue;
           const restored = store.restore(downgradeRestoredLifecycle(record));
           if (!restored.accepted) continue;
@@ -538,18 +543,43 @@ export function createSessionObservationCoordinator(options = {}) {
           scheduleSessionCommit(restored.snapshot.qualifiedId);
         }
       }
-      lifecycle = typeof registry.startObservers === "function"
-        ? await registry.startObservers(publisher, abortController.signal, { trace, traceScopeForSession })
+    } catch { /* Checkpoints are optional; live acquisition remains available. */ }
+    finally {
+      if (restoreFreshSessions === freshSessions) restoreFreshSessions = null;
+      if (!stopped && generation === workGeneration) {
+        try { options.onRestoreComplete?.(); } catch { /* A consumer cannot fail live startup. */ }
+      }
+    }
+  }
+
+  async function start() {
+    if (startPromise) return startPromise;
+    const controller = new AbortController();
+    abortController = controller;
+    stopped = false;
+    const workGeneration = ++generation;
+    // Reapply wall-clock visibility before waiting for provider acquisition.
+    if (catalogsByProvider.size) scheduleCatalogCommit(0);
+    restoreFreshSessions = new Set();
+    void restoreCheckpoints(workGeneration, restoreFreshSessions);
+    startPromise = (async () => {
+      const observerLifecycle = typeof registry.startObservers === "function"
+        ? await registry.startObservers(publisher, controller.signal, { trace, traceScopeForSession })
         : null;
+      if (stopped || generation !== workGeneration) {
+        await observerLifecycle?.stop?.();
+        return null;
+      }
+      lifecycle = observerLifecycle;
       if (startupSelection) {
         const selectedId = startupSelection;
         startupSelection = null;
-        hydrate(selectedId, { restored: restoredActivitySessions.has(selectedId) });
+        hydrate(selectedId, { selected: true, restored: restoredActivitySessions.has(selectedId) });
       }
       return lifecycle;
     })();
     try { return await startPromise; }
-    catch (error) { startPromise = null; throw error; }
+    catch (error) { if (generation === workGeneration) startPromise = null; throw error; }
   }
 
   function hydrate(requestedSessionId, { selected = false, restored = false } = {}) {
@@ -560,15 +590,15 @@ export function createSessionObservationCoordinator(options = {}) {
       if (selected) startupSelection = requestedSessionId;
       return false;
     }
-    if (restored && (restoredHydrations.has(requestedSessionId)
+    if ((restored || selected) && (restoredHydrations.has(requestedSessionId)
       || pendingSessions.get(requestedSessionId)?.freshObservation)) return true;
     qa.hydrationsQueued += 1;
-    if (!restored) void lifecycle.hydrate(requestedSessionId).catch(() => {});
+    if (!restored && !selected) void lifecycle.hydrate(requestedSessionId).catch(() => {});
     else {
       const observer = lifecycle;
       const workGeneration = generation;
-      const request = Promise.resolve().then(() => !stopped && generation === workGeneration
-        ? observer.hydrate(requestedSessionId) : false).catch(() => {}).finally(() => {
+      const request = (restored ? Promise.resolve().then(() => !stopped && generation === workGeneration
+        ? observer.hydrate(requestedSessionId) : false) : observer.hydrate(requestedSessionId)).catch(() => {}).finally(() => {
         if (restoredHydrations.get(requestedSessionId) === request) restoredHydrations.delete(requestedSessionId);
       });
       restoredHydrations.set(requestedSessionId, request);
@@ -644,6 +674,7 @@ export function createSessionObservationCoordinator(options = {}) {
     deferredProjectionRefreshes.clear();
     restoredHydrations.clear();
     startupSelection = null;
+    restoreFreshSessions = null;
     for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
       cancel(pendingCheckpoint.timer);
       const snapshot = store.getByQualifiedId(qualifiedId);

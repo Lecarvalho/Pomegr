@@ -326,8 +326,66 @@ function response(readiness, value, revision, generatedAt, reason = null) {
   return { schemaVersion: SCHEMA_VERSION, readiness, observedAt: generatedAt, generatedAt, revision, ...(reason ? { reason } : {}), ...value };
 }
 
+function renderedReport(entry, generatedAt, reportTemplates) {
+  let reportState;
+  try {
+    reportState = { ...entry.publicState, revision: entry.revision };
+  } catch {
+    return null;
+  }
+  let template = null;
+  if (reportTemplates && entry && typeof entry === "object") template = reportTemplates.get(entry) || null;
+  if (!template || template.revision !== entry.revision) {
+    try {
+      const generatedAtText = generatedAt.toISOString();
+      const content = buildSessionReport(reportState, generatedAt);
+      const generatedLine = `**Generated:** ${generatedAtText} · **Committed revision:**`;
+      const generatedLineStart = content.indexOf(generatedLine);
+      template = Object.freeze({
+        revision: entry.revision,
+        content: content.length <= MAX_REPORT_LENGTH
+          && generatedLineStart >= 0
+          && (generatedLineStart === 0 || content[generatedLineStart - 1] === "\n")
+          && content.indexOf(generatedLine, generatedLineStart + generatedLine.length) < 0
+          ? content : null,
+        generatedAtText,
+        generatedLineStart,
+      });
+    } catch {
+      template = Object.freeze({ revision: entry.revision, content: null });
+    }
+    if (reportTemplates && entry && typeof entry === "object") reportTemplates.set(entry, template);
+  }
+  if (!template.content) return null;
+  const originalLine = `**Generated:** ${template.generatedAtText} · **Committed revision:**`;
+  if (template.content.slice(template.generatedLineStart, template.generatedLineStart + originalLine.length) !== originalLine) return null;
+  const generatedLine = `**Generated:** ${generatedAt.toISOString()} · **Committed revision:**`;
+  const content = `${template.content.slice(0, template.generatedLineStart)}${generatedLine}${template.content.slice(template.generatedLineStart + originalLine.length)}`;
+  return Object.freeze({
+    format: "markdown",
+    filename: sessionReportFilename(reportState, generatedAt),
+    content,
+  });
+}
+
+function stableAgentDetails(entry, agentDetailTemplates) {
+  let template = null;
+  if (agentDetailTemplates && entry && typeof entry === "object") template = agentDetailTemplates.get(entry) || null;
+  if (!template || template.revision !== entry.revision) {
+    const agents = agentRows(entry);
+    const agentIds = new Set(agents.map((agent) => agent.id));
+    const contexts = new Map((entry.publicState?.agents || []).flatMap((agent) => {
+      const context = latestContext(entry, agent.id);
+      return context ? [[agent.id, context]] : [];
+    }));
+    template = Object.freeze({ revision: entry.revision, agents, agentIds, contexts });
+    if (agentDetailTemplates && entry && typeof entry === "object") agentDetailTemplates.set(entry, template);
+  }
+  return template;
+}
+
 /** Build all agent-query views from committed monitor projections only. */
-export function buildAgentQueryProjection({ catalog = [], entries = [], providerStatus, usageLimits, now = Date.now } = {}) {
+export function buildAgentQueryProjection({ catalog = [], entries = [], providerStatus, usageLimits, now = Date.now, reportTemplates = null, agentDetailTemplates = null } = {}) {
   const catalogValue = Array.isArray(catalog) ? { sessions: catalog, readiness: null } : (catalog || {});
   const catalogSessions = Array.isArray(catalogValue.sessions) ? catalogValue.sessions : [];
   const retainedEntries = Array.isArray(entries) ? entries : [];
@@ -342,32 +400,16 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
     : catalogReadinessValues.includes("loading") ? "loading" : catalogReadinessValues.length ? "unavailable" : (catalogSessions.length ? "ready" : "loading");
   const sessionDetails = new Map();
   for (const entry of retainedEntries) {
-    const agents = agentRows(entry);
-    const agentIds = new Set(agents.map((agent) => agent.id));
-    const contexts = new Map((entry.publicState?.agents || []).flatMap((agent) => {
-      const context = latestContext(entry, agent.id);
-      return context ? [[agent.id, context]] : [];
-    }));
+    const agentDetails = stableAgentDetails(entry, agentDetailTemplates);
     const failureProjection = recentFailures(entry, projectionTime);
-    let report = null;
-    try {
-      const reportState = { ...entry.publicState, revision: entry.revision };
-      const content = buildSessionReport(reportState, new Date(projectionTime));
-      if (content.length <= MAX_REPORT_LENGTH) {
-        report = Object.freeze({
-          format: "markdown",
-          filename: sessionReportFilename(reportState, new Date(projectionTime)),
-          content,
-        });
-      }
-    } catch { /* Invalid or incomplete committed state leaves the report unavailable. */ }
+    const report = renderedReport(entry, new Date(projectionTime), reportTemplates);
     sessionDetails.set(entry.qualifiedId, Object.freeze({
       agentReadiness: readiness(entry.readiness?.agentEvidence, "ready"),
       contextReadiness: readiness(entry.readiness?.contextEvidence, "ready"),
       activityReadiness: readiness(entry.readiness?.activityEvidence, "ready"),
-      agents,
-      agentIds,
-      contexts,
+      agents: agentDetails.agents,
+      agentIds: agentDetails.agentIds,
+      contexts: agentDetails.contexts,
       failures: failureProjection.items,
       failuresTruncated: failureProjection.truncated,
       report,
@@ -454,10 +496,15 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
 export function createAgentQueryProjectionCache({ sources = {}, now = Date.now } = {}) {
   let revision = 0;
   let serialized = new Map();
+  // SessionObservationStore publishes immutable copy-on-write snapshots. These
+  // WeakMaps reuse report and agent/context derivation only for that exact
+  // committed state and release evicted snapshots without another retention owner.
+  const reportTemplates = new WeakMap();
+  const agentDetailTemplates = new WeakMap();
   const materialize = () => Object.fromEntries(Object.entries(sources).map(([key, value]) => [key, typeof value === "function" ? value() : value]));
-  let projection = buildAgentQueryProjection({ ...materialize(), now });
+  let projection = buildAgentQueryProjection({ ...materialize(), now, reportTemplates, agentDetailTemplates });
   function refresh() {
-    projection = buildAgentQueryProjection({ ...materialize(), now });
+    projection = buildAgentQueryProjection({ ...materialize(), now, reportTemplates, agentDetailTemplates });
     revision += 1;
     serialized = new Map();
     return projection;
