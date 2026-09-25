@@ -104,6 +104,7 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     const domainPath = "/api/session-domain?sessionId=claude%3Afixture&domain=agents&revision=7";
     assert.equal((await fetch(`${gateway.origin}${domainPath}`)).status, 401);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`)).status, 401);
+    assert.equal((await fetch(`${gateway.origin}/api/repositories`)).status, 401);
     const redirect = await fetch(gateway.origin, { redirect: "manual" });
     assert.equal(redirect.status, 302);
     assert.equal(redirect.headers.get("location"), "/__pomegr/pair");
@@ -184,6 +185,12 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal(observed.at(-1).url, "/settings.rsc?_rsc=test");
     assert.equal(observed.at(-1).headers["x-vinext-mounted-slots"], "main");
     assert.equal((await fetch(`${gateway.origin}/api/transcript-path.rsc`, { headers: { Cookie: cookie } })).status, 404);
+
+    const repositories = await fetch(`${gateway.origin}/api/repositories?revision=3`, { headers: { Cookie: cookie } });
+    assert.equal(repositories.status, 200, "the repository list is a read-only LAN route");
+    assert.equal(observed.at(-1).url, "/api/repositories?revision=3");
+    assert.equal(observed.at(-1).headers["x-pomegr-desktop-authorization"], AUTHORIZATION);
+    assert.equal((await fetch(`${gateway.origin}/api/repositories`, { method: "POST", headers: { Cookie: cookie } })).status, 405);
 
     for (const route of ["/repositories/repo-0123456789abcdef01234567", "/repositories/repo-0123456789abcdef01234567.rsc?tab=inventory&provider=claude&revision=ctx-001"]) {
       assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);

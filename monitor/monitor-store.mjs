@@ -113,6 +113,11 @@ function createSchema(database) {
       PRIMARY KEY (peak_id, observed_at)
     ) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS resource_peak_samples_session_time ON resource_peak_samples (session_id, observed_at);
+    CREATE TABLE IF NOT EXISTS resource_curve_removals (
+      session_id TEXT PRIMARY KEY,
+      reason TEXT NOT NULL CHECK (reason IN ('age_retention', 'size_cleanup')),
+      removed_at INTEGER NOT NULL
+    ) WITHOUT ROWID;
   `);
 }
 

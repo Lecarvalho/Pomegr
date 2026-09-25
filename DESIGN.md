@@ -403,6 +403,101 @@ Legacy repository query links redirect to the Context inventory tab. Setup
 mutations require native confirmation, with browser clients receiving setup
 instructions.
 
+### File tree and file history panel
+
+FileTree (`app/components/repositories/FileTree.tsx`) is a shared, fetch-free
+presentation control behind the session Repository tab's Touched here / Uncommitted /
+Changed elsewhere tree and the repository Files tab. FileHistoryPanel
+(`FileHistoryPanel.tsx`) serves the repository Files tab; the session tab pairs the tree
+with SessionFilePanel instead. The session Repository tab's file toolbar ends with a neutral **Beta** `.commandChip`
+(right-aligned on desktop, left-aligned below the segments on phone, `title` **File coverage is
+still being expanded.**) while file coverage is still in progress. FileTree is a `panel` (1px border, 6px radius) in a column with overflow
+hidden: an 8px/14px header row shows the repository name as a muted 11px uppercase
+eyebrow, with a right eyebrow **Sessions** in repository scope. Rows are 13px with
+6px/14px padding and indent 14/30/46/62px per depth (folders first, then files,
+alphabetical); folder rows carry a 12px chevron (right collapsed, down expanded) and a
+mono folder name, file rows carry no chevron. Rows are keyboard-reachable buttons;
+Enter/Space selects. Folders default collapsed except ancestors of the current
+selection and top-level folders with 12 or fewer files total; `expandAll` (search
+active) opens every folder. The selected row alone takes the raised surface and ink
+text — nothing else marks selection. Session scope shows an editor-style working-tree
+status letter right-aligned at the end of the row (`.fileTreeStatusLetter`: 11px
+semibold mono, no chip frame, tone in text only, with the full word as its `title` and
+accessible name) — amber **M** (Modified), green **U** (Untracked) and **A** (Added),
+neutral **D**/**R** (Deleted/Renamed). When the working tree reports no status (committed
+or reverted), a touched row falls back to this session's recorded kind as a neutral
+muted letter — **C** (**Created in this session**) or **M** (**Edited in this session**),
+never amber because nothing is pending; deleted and moved kinds show no letter. A
+Git-observed row without a recorded kind uses its Git net change the same neutral way:
+**A** (**Added in a commit during this session**), **M** (**Modified in a commit during
+this session**), or **D** (**Deleted in a commit during this session**) —
+and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
+(full path, indent 14, their own status letter) that is hidden when empty. A touched row
+Git observed during the session window but no tool ever recorded — changed by a commit
+on the live branch, or turned uncommitted between the session's first and latest live
+Git checks — carries a quiet 14px git glyph after the file name:
+muted text color, never amber, shown on historical rows too, with `title` and an
+accessible name reading **Seen in Git during this session (committed) - not a recorded
+tool edit** or the uncommitted variant; selecting the row still opens file history as
+usual. Repository scope shows each file and folder's distinct-session count
+right-aligned in muted 11px mono from the monitor's rollup; files with no recorded
+session history show no count and render muted. A pinned footer rule reads **Status from the working tree · select a
+file for its history** in session scope, with a quiet **How to read this** popover
+appearing only when a Git-observed row is visible (*Rows with the Git glyph come from
+commits and working-tree changes during the session window. They may include other
+people's or tools' changes and have no agent or request.*), and
+**Folders roll up distinct sessions** in repository scope.
+
+FileHistoryPanel renders the selected file's committed session history on the repository
+Files tab, never fetching it itself. Its header holds a muted 11px mono breadcrumb (`<repository> / <dir>/`),
+then a row with a file glyph, the mono 14px bold file name, and — only when the file
+currently has a working-tree status — a working-tree chip spelling the status out
+(**Modified in working tree** amber, **Untracked in working tree** or **Added in
+working tree** green), plus a right-aligned header action **Copy path**
+(secondary action) that copies the repository-relative path and shows a brief
+**Copied** state. A third row reads **N recorded sessions · newest first** beside a
+`.commandSegmented` provider filter that appears only when more than one provider is
+present among the sessions. Each entry leads with the session title in regular-weight
+ink, linking to `/sessions/<id>?tab=repository&path=<path>`, so the bold file name stays
+the panel's heading. A single meta line below it holds a kind chip only for the rarer
+kinds (**Created** the context/lavender tone, **Deleted** amber, **Moved** neutral —
+edited is the common case and gets no chip), the provider chip, one muted text run
+joining **N edits** (or **Edited** when an edit recorded no count) and the agent names
+(or **N agents** when names are not individually known) with ` · `, and a green
+**live** chip for a live session; there are no per-agent role dots; a moved entry
+additionally shows a muted mono **as `<old path>`** line. A footer states the honest
+Write/Edit coverage caveat with a **How to read this** dotted info popover holding the
+longer Git-move and retention explanation. The panel shares one frame across its
+states: no file selected, a loading skeleton, **File history is rebuilding.**, **File
+history is unavailable.**, **No recorded sessions changed this file.**, and — whenever
+evidence includes changes with no session attribution — a muted **N changes without
+session attribution (moves seen in Git)** line.
+
+SessionFilePanel (`app/components/dashboard/SessionFilePanel.tsx`) is the session
+Repository tab's right panel. It shows only what this session did to the selected file,
+built from the repository domain the tab already holds, so selecting a file never waits
+on a fetch; the file's history across sessions stays on the repository page. It shares
+FileHistoryPanel's frame and header (breadcrumb, file name, working-tree or **at last
+live check** chip), with the header action **All history on repository page** (quiet
+action, trailing chevron) linking to `/repositories/<id>?tab=files&path=<path>`. One entry
+follows: **Recorded in this session** with the kind chip (**Edited**, **Created**,
+**Deleted**, or **Moved**, always shown here), a muted
+**N changes** run, and the latest change time; or, for a file only Git saw, **Seen in Git
+· no recorded agent edit** with **Added in a commit on the session branch**, **Modified in
+a commit on the session branch**, **Deleted in a commit on the session branch**,
+**Committed on the session branch** (change not recorded), or **Became uncommitted during
+the session**, then a muted caption **Could be the agent through a command Pomegr can't
+read, a build or generated file, or someone else.** It never names who changed the file.
+Otherwise it reads **No
+recorded change in this session.**, shows the loading skeleton while recorded changes
+load, or **Recorded changes are unavailable.**
+
+`/design-system` renders both components with static data: a session-scope tree with a
+Changed elsewhere group, a selected row, and a Git-observed row, a repository-scope
+tree with counts and a muted no-history file, a file history panel sample for the
+repository side plus the empty/loading state, and session file panel samples for a
+recorded and a Git-observed file.
+
 Only monitor-qualified possible full-refill transitions receive amber dotted lines
 with the shared stack-refill icon and the label Possible full refill. Ordinary
 cache growth and initial cache creation remain in the cache-write bars and details;

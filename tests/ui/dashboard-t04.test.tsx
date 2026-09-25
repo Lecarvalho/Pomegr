@@ -111,7 +111,7 @@ describe("T04 session workspace", () => {
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     const tabs = document.querySelector(".sessionDesktopTabs") as HTMLElement;
     expect(within(tabs).getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+/g, ""))).toEqual(["Overview", "Agents", "Activities", "Repository", "Signals", "Resources", "Details"]);
-    await userEvent.setup().click(within(tabs).getByRole("tab", { name: "Repository" }));
+    await userEvent.setup().click(within(tabs).getByRole("tab", { name: /^Repository/ }));
     expect(navigation.replace).toHaveBeenCalledWith(expect.stringMatching(/tab=repository.*agent=primary.*request=request-1.*path=app%2FDashboard.tsx/), { scroll: false });
   });
 
@@ -152,8 +152,8 @@ describe("T04 session workspace", () => {
   });
 
   it("fetches composed state only after a transitional tab mounts", async () => {
-    const { fetchMock } = mount({ tab: "repository" });
-    expect(await screen.findByText("feature/session-tabs")).toBeInTheDocument();
+    const { fetchMock } = mount({ tab: "details" });
+    expect(await screen.findByText("Session details")).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/state"))).toBe(true);
   });
 
@@ -299,8 +299,8 @@ describe("T04 session workspace", () => {
     const keepAlive = liveEvents.subscribeLiveEvents(() => {});
     FakeEventSource.instances[0]!.open();
     try {
-      const { fetchMock } = mount({ tab: "repository" });
-      await screen.findByText("feature/session-tabs");
+      const { fetchMock } = mount({ tab: "details" });
+      await screen.findByText("Session details");
       expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/state"))).toHaveLength(1);
     } finally {
       keepAlive();
@@ -322,7 +322,7 @@ describe("T04 session workspace", () => {
     // A recorded/historical session never schedules a live poll at all, so it cannot prove
     // Pause stops one. Use a live session on a transitional tab instead.
     const { fetchMock } = mount(
-      { tab: "repository" },
+      { tab: "details" },
       sessionSummaryFixture({ view: "live", lifecycle: { isLive: true, needsInput: false, activityStatus: "working", currentActivity: null, activityFallback: null } }),
       composedState({ view: "live" }),
       [catalog({ isLive: true, activityStatus: "working" })],

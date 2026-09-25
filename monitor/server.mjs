@@ -5,6 +5,7 @@ import { homeSessionSummary, median, unavailableHomeSessionSummary } from "./hom
 import { readGitStateAsync } from "./git-state.mjs";
 import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
+import { readCommitsInWindow } from "./repository-snapshot.mjs";
 import { publicResourceUsage, unavailableResourceUsage } from "./public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -110,6 +111,9 @@ export function createMonitorRuntime(options = {}) {
   let homeSnapshotRefreshScheduled = false;
   let homeHistoryRefreshInFlight = null;
   let homeHistoryRefreshScheduled = false;
+  // Set once the observation runtime exists (below); a live-check listener the
+  // repository-snapshot recorder installs to persist bounded historical evidence.
+  let onRepositoryCheck = null;
 
   async function refreshLiveEnrichment(entry, input) {
     let repository;
@@ -136,9 +140,26 @@ export function createMonitorRuntime(options = {}) {
       pullRequests = unavailablePullRequests();
     }
     const refreshedAt = now();
+    // The recorded branch (from provider evidence, when known) gates the count so a
+    // branch switch between checks never mixes commits from two different branches.
+    const branchKnown = typeof input.recordedGitBranch === "string" && input.recordedGitBranch.length > 0;
+    let commitsInSession = entry.commitsInSession ?? null;
+    let committedPaths = null;
+    let committedChanges = null;
+    if (repository.available && entry.repositoryRoot && (!branchKnown || repository.branch === input.recordedGitBranch)) {
+      const windowRead = await readCommitsInWindow(entry.repositoryRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
+      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; }
+    }
+    // Omitted (not just null) when never measured, so an unavailable-repository
+    // refresh keeps producing the exact same sanitized placeholder shape as before.
+    if (commitsInSession !== null) repository = { ...repository, commitsInSession };
     if (entry.generation === input.generation) {
       entry.value = { repository, pullRequests };
+      entry.commitsInSession = commitsInSession;
       entry.refreshedAt = refreshedAt;
+      onRepositoryCheck?.(entry.sessionId, {
+        repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt: new Date(refreshedAt).toISOString(),
+      });
     }
   }
 
@@ -148,6 +169,7 @@ export function createMonitorRuntime(options = {}) {
     let entry = enrichmentCache.get(sessionId);
     if (!entry) {
       entry = {
+        sessionId,
         fingerprint,
         generation: 1,
         cwd: evidence.session.cwd,
@@ -155,6 +177,7 @@ export function createMonitorRuntime(options = {}) {
         refreshedAt: null,
         refreshing: false,
         repositoryRoot: null,
+        commitsInSession: null,
         value: {
           repository: { ...unavailableGitState(), historical: false },
           pullRequests: unavailablePullRequests(),
@@ -169,6 +192,7 @@ export function createMonitorRuntime(options = {}) {
       entry.refreshedAt = null;
       entry.refreshing = false;
       entry.repositoryRoot = null;
+      entry.commitsInSession = null;
       entry.value = {
         repository: { ...unavailableGitState(), historical: false },
         pullRequests: unavailablePullRequests(),
@@ -182,6 +206,8 @@ export function createMonitorRuntime(options = {}) {
         generation: entry.generation,
         cwd: entry.cwd,
         sessionCreations: entry.sessionCreations,
+        startedAt: evidence.session.startedAt,
+        recordedGitBranch: evidence.session.recordedGitBranch,
       };
       enqueue = () => {
         try {
@@ -643,6 +669,7 @@ export function createMonitorRuntime(options = {}) {
       homeSnapshotCached = null;
     },
   });
+  onRepositoryCheck = observation.onRepositoryCheck;
 
   return Object.freeze({
     providerFolders: () => providerFolders,
@@ -665,6 +692,7 @@ export function createMonitorRuntime(options = {}) {
     serveProviderStatus: observation.serveProviderStatus,
     serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
+    serveRepositoryFiles: observation.serveRepositoryFiles,
     readRepositoryInventory: observation.readRepositoryInventory,
     captureRepositoryInventory: observation.captureRepositoryInventory,
     refreshRepositoryPluginSetup: observation.refreshRepositoryPluginSetup,

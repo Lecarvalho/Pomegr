@@ -48,6 +48,8 @@ function detailedState(sessionId: string, options: {
   files?: Array<{ status: string; path: string }>;
   usageAvailable?: boolean;
   codex?: boolean;
+  // Per-session marker shown in the details summary.
+  pluginVersion?: string;
 } = {}): MonitorState {
   const historical = options.historical ?? false;
   const state = baseState(sessionId);
@@ -65,6 +67,7 @@ function detailedState(sessionId: string, options: {
     },
     session: state.session ? {
       ...state.session,
+      pomegrPlugin: options.pluginVersion ? { status: "active", version: options.pluginVersion, policyStatus: "valid", policyVersion: 1, observedAt: "2026-08-11T12:00:00.000Z" } : null,
       repository: {
         ...state.session.repository,
         available: true,
@@ -77,10 +80,10 @@ function detailedState(sessionId: string, options: {
   };
 }
 
-function tabElement(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
+function tabElement(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "details" }) {
   return <LiveClockProvider running={false}><LegacySessionTab historical={false} paused={false} showEstimatedCost {...props} /></LiveClockProvider>;
 }
-function renderTab(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "repository" | "resources" | "details" }) {
+function renderTab(props: Partial<Parameters<typeof LegacySessionTab>[0]> & { sessionId: string; tab: "details" }) {
   return render(tabElement(props));
 }
 
@@ -99,14 +102,14 @@ afterEach(() => {
 describe("LegacySessionTab polling lifecycle", () => {
   it("fetches without a revision on first mount and renders the panel once data arrives", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(detailedState("claude:s1")));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
-    await screen.findByText("Repository");
+    renderTab({ tab: "details", sessionId: "claude:s1" });
+    await screen.findByText("Session details");
     expect(String(fetchMock.mock.calls[0][0])).toBe("/api/state?sessionId=claude%3As1");
   });
 
   it("treats an initial 204 with no retained body as unavailable rather than a silent placeholder", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await waitFor(() => expect(screen.getByText("This session panel is temporarily unavailable.")).toBeInTheDocument());
   });
 
@@ -119,14 +122,14 @@ describe("LegacySessionTab polling lifecycle", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(json(loadingPlaceholder))
       .mockResolvedValueOnce(json(detailedState("claude:s1")));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Loading repository…")).toBeInTheDocument();
+    expect(screen.getByText("Loading details…")).toBeInTheDocument();
     expect(screen.queryByText("This session panel is temporarily unavailable.")).not.toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(1_000); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
   });
 
   it("rejects a loading placeholder whose catalogIdentity names a different session", async () => {
@@ -135,7 +138,7 @@ describe("LegacySessionTab polling lifecycle", () => {
       repository: "loading", resources: "loading", usageLimits: "loading",
     }) };
     vi.spyOn(globalThis, "fetch").mockResolvedValue(json(wrongSessionPlaceholder));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await waitFor(() => expect(screen.getByText("This session panel is temporarily unavailable.")).toBeInTheDocument());
   });
 
@@ -144,13 +147,13 @@ describe("LegacySessionTab polling lifecycle", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(json(detailedState("claude:s1")))
       .mockRejectedValueOnce(new Error("network"));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
-    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(30_000); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Update failed. Showing the last recorded panel state.")).toBeInTheDocument();
-    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
   });
 
   it("polls every second while retained readiness is loading, then settles to a thirty-second cadence once ready", async () => {
@@ -163,7 +166,7 @@ describe("LegacySessionTab polling lifecycle", () => {
       .mockResolvedValueOnce(json(loading))
       .mockResolvedValueOnce(json(ready))
       .mockResolvedValue(json(ready));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(1_000); await flush(); });
@@ -185,7 +188,7 @@ describe("LegacySessionTab polling lifecycle", () => {
       .mockResolvedValueOnce(json(ready))
       .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValue(json(ready));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(30_000); await flush(); });
@@ -203,7 +206,7 @@ describe("LegacySessionTab polling lifecycle", () => {
     const ready = detailedState("claude:s1");
     ready.readiness = readiness();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(ready));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     act(() => emit({ type: "connection", state: "reconnecting" }));
@@ -222,7 +225,7 @@ describe("LegacySessionTab polling lifecycle", () => {
       const loading = detailedState("claude:s1");
       loading.readiness = readiness({ repository: "loading" });
       const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(loading));
-      renderTab({ tab: "repository", sessionId: "claude:s1" });
+      renderTab({ tab: "details", sessionId: "claude:s1" });
       await act(async () => { await flush(); });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       act(() => emit({ type: "revision", domain: "repository", sessionId: "claude:s1", revision: 2, epoch: 0 }));
@@ -246,7 +249,7 @@ describe("LegacySessionTab polling lifecycle", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockReturnValueOnce(firstPromise)
       .mockResolvedValueOnce(json(detailedState("claude:s1")));
-    renderTab({ tab: "repository", sessionId: "claude:s1" });
+    renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     act(() => emit({ type: "revision", domain: "repository", sessionId: "claude:s1", revision: 2, epoch: 0 }));
@@ -257,21 +260,21 @@ describe("LegacySessionTab polling lifecycle", () => {
   });
 
   it("resets revision and retained state on a session change so the new request carries no revision and nothing stale is shown", async () => {
-    const stateA = detailedState("claude:s1", { branch: "feature/session-a" });
-    const stateB = detailedState("claude:s2", { branch: "feature/session-b" });
+    const stateA = detailedState("claude:s1", { pluginVersion: "1.0.0-session-a" });
+    const stateB = detailedState("claude:s2", { pluginVersion: "1.0.0-session-b" });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes("claude%3As1")) return json(stateA);
       if (url.includes("claude%3As2")) return json(stateB);
       return new Response(null, { status: 404 });
     });
-    const view = renderTab({ tab: "repository", sessionId: "claude:s1" });
-    await waitFor(() => expect(screen.getAllByText("feature/session-a").length).toBeGreaterThan(0));
-    view.rerender(tabElement({ tab: "repository", sessionId: "claude:s2" }));
+    const view = renderTab({ tab: "details", sessionId: "claude:s1" });
+    await waitFor(() => expect(screen.getAllByText("v1.0.0-session-a").length).toBeGreaterThan(0));
+    view.rerender(tabElement({ tab: "details", sessionId: "claude:s2" }));
     // Old session's evidence (both the collapsed chip and the always-rendered <details> body)
     // must not remain visible during the reset/reload.
-    expect(screen.queryByText("feature/session-a")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByText("feature/session-b").length).toBeGreaterThan(0));
+    expect(screen.queryByText("v1.0.0-session-a")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("v1.0.0-session-b").length).toBeGreaterThan(0));
     const secondSessionCall = fetchMock.mock.calls.find(([input]) => String(input).includes("claude%3As2"));
     expect(String(secondSessionCall?.[0])).not.toContain("revision=");
   });
@@ -281,17 +284,17 @@ describe("LegacySessionTab polling lifecycle", () => {
     const firstPromise = new Promise<Response>((resolve) => { resolveFirst = resolve; });
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockReturnValueOnce(firstPromise)
-      .mockResolvedValueOnce(json(detailedState("claude:s1", { branch: "feature/second-poll" })));
-    const view = renderTab({ tab: "repository", sessionId: "claude:s1" });
+      .mockResolvedValueOnce(json(detailedState("claude:s1", { pluginVersion: "1.0.0-second-poll" })));
+    const view = renderTab({ tab: "details", sessionId: "claude:s1" });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // Toggling `historical` re-runs the polling effect: its cleanup aborts the first, still-
     // in-flight controller and a fresh poll begins immediately for the same session.
-    view.rerender(tabElement({ tab: "repository", sessionId: "claude:s1", historical: true }));
-    await waitFor(() => expect(screen.getAllByText("feature/second-poll").length).toBeGreaterThan(0));
-    await act(async () => { resolveFirst(json(detailedState("claude:s1", { branch: "feature/first-poll-stale" }))); await flush(); });
-    expect(screen.queryByText("feature/first-poll-stale")).not.toBeInTheDocument();
-    expect(screen.getAllByText("feature/second-poll").length).toBeGreaterThan(0);
+    view.rerender(tabElement({ tab: "details", sessionId: "claude:s1", historical: true }));
+    await waitFor(() => expect(screen.getAllByText("v1.0.0-second-poll").length).toBeGreaterThan(0));
+    await act(async () => { resolveFirst(json(detailedState("claude:s1", { pluginVersion: "1.0.0-first-poll-stale" }))); await flush(); });
+    expect(screen.queryByText("v1.0.0-first-poll-stale")).not.toBeInTheDocument();
+    expect(screen.getAllByText("v1.0.0-second-poll").length).toBeGreaterThan(0);
   });
 });
 
@@ -305,15 +308,15 @@ describe("LegacySessionTab historical retry cadence", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(json(loadingPlaceholder))
       .mockResolvedValueOnce(json(detailedState("claude:s1")));
-    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    renderTab({ tab: "details", sessionId: "claude:s1", historical: true });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Loading repository…")).toBeInTheDocument();
+    expect(screen.getByText("Loading details…")).toBeInTheDocument();
     await act(async () => { vi.advanceTimersByTime(4_999); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(1); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
   });
 
   it("retries a failed historical poll five seconds later", async () => {
@@ -323,7 +326,7 @@ describe("LegacySessionTab historical retry cadence", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockRejectedValueOnce(new Error("network"))
       .mockResolvedValueOnce(json(ready));
-    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    renderTab({ tab: "details", sessionId: "claude:s1", historical: true });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText("This session panel is temporarily unavailable.")).toBeInTheDocument();
@@ -331,7 +334,7 @@ describe("LegacySessionTab historical retry cadence", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(1); await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("Repository")).toBeInTheDocument();
+    expect(screen.getByText("Session details")).toBeInTheDocument();
   });
 
   it("schedules no further timer once a historical poll fully resolves", async () => {
@@ -339,7 +342,7 @@ describe("LegacySessionTab historical retry cadence", () => {
     const ready = detailedState("claude:s1");
     ready.readiness = readiness();
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(ready));
-    renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
+    renderTab({ tab: "details", sessionId: "claude:s1", historical: true });
     await act(async () => { await flush(); });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await act(async () => { vi.advanceTimersByTime(60_000); await flush(); });
@@ -348,44 +351,6 @@ describe("LegacySessionTab historical retry cadence", () => {
 });
 
 describe("LegacySessionTab privacy and historical isolation (ported from deleted dashboard suites)", () => {
-  it("summarizes repository evidence without paths or hashes, and reveals full evidence once expanded", async () => {
-    const data = detailedState("claude:s1", {
-      branch: "feature/a-very-long-branch-name-that-must-truncate-without-losing-its-title",
-      files: [
-        { status: "M", path: "app/Dashboard.tsx" },
-        { status: "A", path: "tests/ui/dashboard-components.test.tsx" },
-      ],
-    });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
-    const { container } = renderTab({ tab: "repository", sessionId: "claude:s1" });
-    const details = await waitFor(() => {
-      const element = container.querySelector("details.sessionRepository");
-      expect(element).toBeInTheDocument();
-      return element!;
-    });
-    const summary = details.querySelector("summary")!;
-    const compact = summary.querySelector(".sessionEvidenceSummary");
-    expect(details).not.toHaveAttribute("open");
-    expect(compact).toHaveTextContent(/feature\/a-very-long-branch-name-that-must-truncate-without-losing-its-title · 1 commits · 2 files changed · working tree/);
-    expect(compact).not.toHaveTextContent(/C:\\|app\/Dashboard|sha|hash/i);
-    await userEvent.click(screen.getByText("Repository"));
-    expect(details).toHaveAttribute("open");
-    expect(screen.getByRole("region", { name: "Git branch overview" })).toBeInTheDocument();
-  });
-
-  it("labels a historical repository summary as recorded state, using a distinct region label", async () => {
-    const data = detailedState("claude:s1", { historical: true, files: [] });
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(json(data));
-    const { container } = renderTab({ tab: "repository", sessionId: "claude:s1", historical: true });
-    const summary = await waitFor(() => {
-      const element = container.querySelector(".sessionRepository .sessionEvidenceSummary");
-      expect(element).toBeInTheDocument();
-      return element!;
-    });
-    expect(summary).toHaveTextContent("recorded state");
-    await userEvent.click(screen.getByText("Repository"));
-    expect(screen.getByRole("region", { name: "Recorded Git branch" })).toBeInTheDocument();
-  });
 
   it("hides Usage limits from a historical Session details tab even when the capability is enabled", async () => {
     const data = detailedState("claude:s1", { historical: true });

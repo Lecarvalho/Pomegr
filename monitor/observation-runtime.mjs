@@ -2,6 +2,7 @@ import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
 import { attachResourceHistory } from "./resource-history.mjs";
+import { createResourceDomainSource } from "./resource-domain.mjs";
 import { projectProviderSessionEvidence } from "./session-projection.mjs";
 import { parseProviderSessionEvidence } from "./providers/provider-contract.mjs";
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
@@ -14,11 +15,12 @@ import { createProviderStatusObservation } from "./provider-status-observation.m
 import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
-import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
+import { attachFileHistory } from "./file-history-domain.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
 import { createSessionDomainServing } from "./session-domain-serving.mjs";
+import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveCheckpointRepository, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) { return `${providerId}:${localSessionId}`; }
 
@@ -96,30 +98,39 @@ export function createObservationRuntime(options = {}) {
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
+  // Bounded historical snapshots persist as sidecars next to checkpoints; disabled together,
+  // and also when an injected checkpoint store (a minimal test double) predates the sidecar.
+  const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now }) : null;
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
+  // Registered after resource-history so its cycle contributor reads fresh writes; onChange
+  // commits directly (refreshProjection no-ops on byte-identical re-derivation).
+  const resourceDomainSource = createResourceDomainSource({
+    monitorStoreRuntime, demandedSessionIds: () => sessionDomains.sessionIds(), now, onChange: (sessionId) => sessionDomainServing.commit(sessionId),
+  });
   const checkpointStoreForCoordinator = wrapCheckpointStoreForStore(checkpointStore, (snapshot) => monitorStoreRuntime.afterCheckpointWrite(snapshot));
   const repositoryInventory = options.repositoryInventory || createRepositoryInventoryRuntime({
-    registry,
-    now,
-    persistence: options.checkpointStore !== false,
+    registry, now, persistence: options.checkpointStore !== false,
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
-  registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now });
+  // Registers the file-change index contributor plus this committed cache; forward-references sessionDomains/observationCoordinator below, same pattern as resourceDomainSource above.
+  const fileHistorySource = attachFileHistory(monitorStoreRuntime, {
+    resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now, demandedSessionIds: () => sessionDomains.sessionIds(),
+    catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [], onSessionChange: (sessionId) => sessionDomainServing.commit(sessionId),
+  });
   const historyStore = options.historyStore || new SessionHistoryStore({
     directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),
-    maxSessions: options.historyMaxSessions,
-    maxResident: options.historyMaxResident ?? 0,
+    maxSessions: options.historyMaxSessions, maxResident: options.historyMaxResident ?? 0,
   });
   let sessionDomainServing; // assigned once observationCoordinator exists below; the store only calls it later
   const sessionDomains = options.sessionDomainStore || createSessionDomainStore({
-    now,
-    maxSessions: options.sessionDomainMaxSessions,
-    idleMs: options.sessionDomainIdleMs,
+    now, maxSessions: options.sessionDomainMaxSessions, idleMs: options.sessionDomainIdleMs,
     isProtected: (sessionId) => sessionDomainServing.protectedSessionIds().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
+    retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
+    gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(repositorySnapshotRecorder?.recorded(sessionId) || null), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const historyContributionRetries = new Map();
   const repositoryAssociations = new Map();
@@ -249,25 +260,21 @@ export function createObservationRuntime(options = {}) {
   function checkpointPublicState({ providerId, localSessionId, evidence }) {
     const provider = registry.providers?.find((candidate) => candidate.id === providerId) || registry.defaultProvider;
     const historical = Boolean(evidence.historical);
+    const sessionId = qualifiedSessionId(providerId, localSessionId);
     try {
+      const { repository, pullRequests } = resolveCheckpointRepository({
+        historical, evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
+        recordedGitState, unavailableGitState, unavailablePullRequests,
+      });
       return {
         ...projectProviderSessionEvidence({
-          evidence,
-          sessionId: qualifiedSessionId(providerId, localSessionId),
-          source: provider.source,
-          capabilities: provider.capabilities,
+          evidence, sessionId, source: provider.source, capabilities: provider.capabilities,
           repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
-          repository: historical ? recordedGitState(evidence.session.recordedGitBranch) : { ...unavailableGitState(), historical: false },
-          pullRequests: unavailablePullRequests(),
+          repository, pullRequests,
           usageLimits: createEmptyUsageLimits(),
           resources: historical ? null : unavailableResourceUsage(),
         }),
-        readiness: createSessionReadiness("loading", {
-          core: "ready",
-          agentEvidence: "ready",
-          contextEvidence: "ready",
-          activityEvidence: "ready",
-        }),
+        readiness: createSessionReadiness("loading", { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" }),
       };
     } catch {
       return {
@@ -413,17 +420,11 @@ export function createObservationRuntime(options = {}) {
     let pullRequests;
     let enqueueLiveEnrichment = null;
     if (historical) {
-      repository = recordedGitState(evidence.session.recordedGitBranch);
-      try {
-        pullRequests = await pullRequestReader([], {
-          cwd: evidence.session.cwd,
-          branch: repository.branch,
-          historical: true,
-          sessionCreations: evidence.pullRequestCreations,
-        });
-      } catch {
-        pullRequests = unavailablePullRequests();
-      }
+      // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
+      ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
+        evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
+        recordedGitState, pullRequestReader, unavailablePullRequests,
+      }));
     } else {
       const live = liveEnrichment(sessionId, evidence);
       ({ repository, pullRequests } = live.value);
@@ -645,6 +646,7 @@ export function createObservationRuntime(options = {}) {
       await repositoryInventory.ready;
       await repositoryInventory.reconcile([]);
       repositoryInventory.startPluginObservation?.();
+      await repositorySnapshotRecorder?.load();
       await observationCoordinator.start();
       for (const snapshot of observationStore.entries()) {
         sessionDomainServing.commit(snapshot.qualifiedId, snapshot);
@@ -769,11 +771,17 @@ export function createObservationRuntime(options = {}) {
     serveStorage: (revision) => monitorStoreRuntime.serveStorage(revision),
     monitorStore: monitorStoreRuntime,
     serveRepositories: (revision) => repositoryInventory.readRepositories(revision),
+    serveRepositoryFiles: (query) => ((query?.fileId || query?.path) ? fileHistorySource.fileHistory(query.repositoryId, query.fileId ? { fileId: query.fileId } : { path: query.path }) : fileHistorySource.repositoryFiles(query?.repositoryId)),
     readRepositoryInventory: (repositoryId, provider, revisionId) => repositoryInventory.readRevision(repositoryId, provider, revisionId),
     captureRepositoryInventory: (repositoryId, provider) => repositoryInventory.capture(repositoryId, provider),
     refreshRepositoryPluginSetup: (repositoryId, provider) => repositoryInventory.refreshPluginSetup(repositoryId, provider),
     readRepositoryPluginSetup: (repositoryId, provider) => repositoryInventory.readPluginSetup(repositoryId, provider),
     prepareRepositoryPluginAction: (repositoryId, provider, action) => repositoryInventory.preparePluginAction(repositoryId, provider, action),
+    // Only while actually observing: record the live check, then recommit its domains.
+    onRepositoryCheck(sessionId, live) {
+      if (!observationServingActive || !repositorySnapshotRecorder) return;
+      void repositorySnapshotRecorder.record(sessionId, live).then((changed) => changed && sessionDomainServing.commit(sessionId)).catch(() => {});
+    },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({

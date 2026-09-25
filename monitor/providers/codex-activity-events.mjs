@@ -419,9 +419,10 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     requestId: null,
     repetitionSignature: repetitionSignature(descriptor.tool, descriptor.repetitionInput),
     mutation: mutationEvidence(descriptor),
-    // Private working field: raw candidates awaiting the finalized status
-    // that decides fileChanges. Sealed away by sealCodexFileChanges before
-    // any call crosses this module's boundary.
+    // Private working field: raw candidates from a structured file-change item
+    // awaiting the finalized status that decides fileChanges. Sealed away by
+    // sealCodexFileChanges before any call crosses this module's boundary.
+    // Shell commands never contribute: their written files cannot be known reliably.
     fileChangeCandidates: descriptor.fileChangeCandidates || null,
   };
 }

@@ -1,4 +1,4 @@
-import type { Agent, CacheLifetime, ExecutionTask, SessionSummary } from "../shared/monitor-contract";
+import type { Agent, CacheLifetime, ExecutionTask, MonitorState, SessionSummary } from "../shared/monitor-contract";
 
 export function relativeTime(value: string | null, now = Date.now()) {
   if (!value) return "—";
@@ -142,6 +142,18 @@ export function gitPathParts(filePath: string) {
   return separator < 0
     ? { directory: "", filename: filePath }
     : { directory: filePath.slice(0, separator + 1), filename: filePath.slice(separator + 1) };
+}
+
+/** Overview's longer-form repository comparison sentence. Distinct from the compact top-bar
+ * comparison chip text in app/components/dashboard/RepositoryTab.tsx. */
+export function comparisonLabel(comparison: NonNullable<MonitorState["session"]>["repository"]["comparison"]) {
+  if (!comparison) return null;
+  if (comparison.integrated) return `Changes integrated into ${comparison.branch}`;
+  if (comparison.ahead === 0 && comparison.behind === 0) return `Up to date with ${comparison.branch}`;
+  const parts = [];
+  if (comparison.ahead) parts.push(`${comparison.ahead} ${comparison.ahead === 1 ? "commit" : "commits"} ahead`);
+  if (comparison.behind) parts.push(`${comparison.behind} ${comparison.behind === 1 ? "commit" : "commits"} behind`);
+  return `${parts.join(" · ")} ${comparison.kind === "base" ? "relative to" : "compared with"} ${comparison.branch}`;
 }
 
 export function resetCountdown(value: string | null, now = Date.now()) {

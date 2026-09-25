@@ -138,7 +138,6 @@ function createState(ownerKey = null) {
     status: "collecting",
     reason: null,
     current: null,
-    observedPeak: null,
     samples: [],
     previousProcesses: null,
     lastSampleAt: null,
@@ -151,7 +150,6 @@ function publicState(state) {
     status: state.status,
     reason: state.reason,
     current: state.current ? { ...state.current } : null,
-    observedPeak: state.observedPeak ? { ...state.observedPeak } : null,
     samples: state.samples.map((sample) => ({ ...sample })),
   };
 }
@@ -181,7 +179,6 @@ function unavailable(state, reason, timestamp, options) {
   state.previousProcesses = null;
   state.lastSampleAt = null;
   if (options.reset) {
-    state.observedPeak = null;
     state.samples = [];
   } else if (options.gap) {
     addSample(state, gapSample(timestamp), options.nowMs, options.windowMs, options.maximumSamples);
@@ -419,9 +416,6 @@ export function createResourceUsageSampler(options = {}) {
           : "ready";
         state.reason = null;
         state.current = current;
-        state.observedPeak = {
-          memoryBytes: Math.max(state.observedPeak?.memoryBytes || 0, memoryBytes),
-        };
         addSample(state, { timestamp, ...current }, safeNowMs, windowMs, maximumSamples);
         state.previousProcesses = processBaselines(tree);
         state.lastSampleAt = safeNowMs;

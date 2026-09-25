@@ -18,7 +18,7 @@ export function sessionSummaryFixture(overrides: Partial<SessionSummaryDomain> =
     lifecycle: { isLive: false, needsInput: false, activityStatus: "closed", currentActivity: null, activityFallback: null },
     rightNow: [{ id: "primary", label: "Primary agent", role: "orchestrator", customType: null, model: "claude-sonnet", status: "active", currentActivity: { label: "Implementing session tabs", observedAt: "2026-09-14T12:00:00.000Z" }, tokens: { total: 9_000 }, lastSeen: "2026-09-14T12:00:00.000Z", updatedAt: "2026-09-14T12:00:00.000Z" }],
     topSignals: [{ id: "signal-1", level: "warning", title: "Repeated reads", detail: "The same target was read repeatedly.", agentId: "primary" }],
-    repository: { readiness: "ready", available: true, branch: "feature/session-tabs", changedFiles: 4, pullRequestCount: 1, comparison: null },
+    repository: { readiness: "ready", available: true, branch: "feature/session-tabs", changedFiles: 4, touchedFiles: 6, pullRequestCount: 1, comparison: null },
     resourceAvailability: { readiness: "ready", hasData: true },
     requestSnapshots: { status: "ready", items: [{ id: "request-1", agentId: "primary", agentRole: "orchestrator", agentLabel: "Primary agent", observedAt: "2026-09-14T12:00:00.000Z", cacheLifetime: null, uncachedInputTokens: 10, cacheWriteTokens: 20, cacheReadTokens: 100, outputTokens: 5, totalTokens: 135, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null }] },
     planTasks: [{ id: "task-1", subject: "Build tabs", status: "completed", blocks: [], blockedBy: [] }],

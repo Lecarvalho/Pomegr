@@ -456,7 +456,6 @@ test("live analysis reads cached resource usage through a strict public allowlis
       readBytesPerSecond: 400,
       writeBytesPerSecond: 200,
     },
-    observedPeak: { memoryBytes: 4_096 },
     samples: [{
       timestamp: "2026-08-11T12:00:01.000Z",
       cpuCores: 1.25,
@@ -505,7 +504,6 @@ test("resource sampler failures cannot break catalog, analysis, scoring, or enri
     status: "unavailable",
     reason: "collection_failed",
     current: null,
-    observedPeak: null,
     samples: [],
   });
   assert.equal(scheduler.jobs.length, 1);

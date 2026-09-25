@@ -1,6 +1,8 @@
 import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
 import type { CacheLifetime, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
+import type { ResourceUsage } from "./resource-usage-contract";
+export type { ResourceUsage, ResourceUsageSample, ResourceUsageUnavailableReason } from "./resource-usage-contract";
 export type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type ReportedSignal = {
   label: string;
@@ -375,38 +377,6 @@ export type Workflow = {
   durationMs: number;
   agentIds: string[];
   phases: WorkflowPhase[];
-};
-
-export type ResourceUsageUnavailableReason =
-  | "unsupported_platform"
-  | "missing_owner"
-  | "shared_owner"
-  | "owner_not_found"
-  | "owner_identity_mismatch"
-  | "collection_failed";
-
-export type ResourceUsageSample = {
-  timestamp: string;
-  cpuCores: number | null;
-  cpuMachinePercent: number | null;
-  memoryBytes: number | null;
-  readBytesPerSecond: number | null;
-  writeBytesPerSecond: number | null;
-};
-
-/** Live process-tree telemetry. Process identity and sampling internals stay monitor-private. */
-export type ResourceUsage = {
-  status: "collecting" | "ready" | "unavailable";
-  reason: ResourceUsageUnavailableReason | null;
-  current: {
-    cpuCores: number | null;
-    cpuMachinePercent: number | null;
-    memoryBytes: number;
-    readBytesPerSecond: number | null;
-    writeBytesPerSecond: number | null;
-  } | null;
-  observedPeak: { memoryBytes: number } | null;
-  samples: ResourceUsageSample[];
 };
 
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string; agentId?: string | null };

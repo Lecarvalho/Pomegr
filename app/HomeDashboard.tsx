@@ -96,9 +96,9 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="A redesigned workspace for every session"
-          description="Sessions now open in a clearer tabbed workspace, with a compact overview and correlated Activities and Signals views across desktop and phone."
-          details="Open a session to scan current agents, recent requests, repository state, progress, and available cost estimates from Overview. Activities keeps the selected request aligned across agent lanes or the single chart, Largest requests, and the grouped feed; scope the view by agent or jump to the latest work. Signals brings efficiency, cache evidence, cache lifetime, and agent-reported updates together while keeping deterministic evidence separate from potentially stale reports."
+          title="See the files each session touched"
+          description="A session's Repository tab now shows its branch, pull request, and the files it changed with their history, and Resources keeps CPU, memory, and disk curves with their peaks."
+          details="Select a file under Touched here to see its recorded edits. Files changed outside agent tools are marked as seen in Git, not as agent edits. Repository pages add Files and Git tabs."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

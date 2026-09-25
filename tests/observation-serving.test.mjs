@@ -67,7 +67,6 @@ test("concurrent state GETs consume one committed response without provider tran
           status: "unavailable",
           reason: "missing_owner",
           current: null,
-          observedPeak: null,
           samples: [],
         };
       },
@@ -156,7 +155,6 @@ test("concurrent state GETs consume one committed response without provider tran
     status: "unavailable",
     reason: "missing_owner",
     current: null,
-    observedPeak: null,
     samples: [],
   });
   assert.doesNotMatch(bodies[0], /raw request path read|prompt|response|credential/i);

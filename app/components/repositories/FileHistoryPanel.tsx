@@ -1,0 +1,191 @@
+import Link from "next/link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { encodeSessionRoute } from "../../../shared/session-route.mjs";
+import type { FileChangeKind, FileHistoryProvider, FileHistoryResponse, FileHistorySession } from "../../../shared/repository-files-contract";
+import { gitPathParts } from "../../dashboard-utils";
+import { DottedInfoPopover } from "../DottedInfoPopover";
+import { ProviderBadge } from "../ProviderBadge";
+import { providerSourceLabel, sessionTimeLabel } from "./file-history-format";
+import { fileStatus } from "./file-tree-model";
+
+export type FileHistoryPanelProps = {
+  repositoryLabel: string; // breadcrumb root
+  /** Selected repository-relative path; null renders the "no file selected" state. */
+  path: string | null;
+  /** Git porcelain status of the path in the working tree, when currently modified. */
+  workingTreeStatus: string | null;
+  /** The status was recorded at the session's last live check (historical session), not read now. */
+  statusRecorded?: boolean;
+  /** null while loading the selected file's history. */
+  history: FileHistoryResponse | null;
+  className?: string;
+};
+
+export const KIND_LABELS: Record<FileChangeKind, { label: string; tone: "positive" | "info" | "warning" | null }> = {
+  edited: { label: "Edited", tone: "positive" },
+  created: { label: "Created", tone: "info" },
+  deleted: { label: "Deleted", tone: "warning" },
+  moved: { label: "Moved", tone: null },
+};
+
+function FileGlyphIcon() {
+  return <svg className="fileHistoryFileIcon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+    <path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3" />
+  </svg>;
+}
+
+export function FileHistoryLoadingRows() {
+  return <div className="fileHistorySkeleton" aria-busy="true">
+    <span className="visuallyHidden">Loading file history…</span>
+    {[0, 1, 2].map((row) => <div key={row} className="fileHistorySkeletonRow" aria-hidden="true">
+      <span className="uiSkeleton" style={{ width: 56 }} />
+      <span className="uiSkeleton" style={{ width: 180 }} />
+      <span className="uiSkeleton" style={{ width: 64 }} />
+    </div>)}
+  </div>;
+}
+
+function agentsSummary(session: FileHistorySession): string | null {
+  if (session.agents.length === 0) return null;
+  const knownCount = session.agents.filter((agent) => agent.label).length;
+  if (knownCount === session.agents.length) return session.agents.map((agent) => agent.label).join(" · ");
+  return `${session.agents.length} agent${session.agents.length === 1 ? "" : "s"}`;
+}
+
+function sessionHrefFor(sessionId: string, linkPath: string): string | null {
+  try {
+    return `/sessions/${encodeSessionRoute(sessionId)}?tab=repository&path=${encodeURIComponent(linkPath)}`;
+  } catch {
+    return null;
+  }
+}
+
+function FileHistoryEntry({ session, linkPath }: {
+  session: FileHistorySession;
+  linkPath: string;
+}) {
+  const kind = KIND_LABELS[session.kind];
+  const providerSource = providerSourceLabel(session.provider);
+  const agentsText = agentsSummary(session);
+  const editsText = session.editCount > 0
+    ? `${session.editCount} edit${session.editCount === 1 ? "" : "s"}`
+    : session.kind === "edited" ? kind.label : null;
+  const metaText = [editsText, agentsText].filter(Boolean).join(" · ");
+  const href = sessionHrefFor(session.sessionId, linkPath);
+  const title = session.title ?? "Untitled session";
+
+  return <article className="fileHistoryEntry">
+    <div className="fileHistoryEntryBody">
+      {href ? <Link className="fileHistoryEntryTitle" href={href}>{title}</Link> : <span className="fileHistoryEntryTitle">{title}</span>}
+      <div className="fileHistoryEntryMeta">
+        {/* Edited is the common case, so only the rarer kinds earn a chip; an edited row reads as plain text. */}
+        {session.kind !== "edited" && <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>}
+        {providerSource && <ProviderBadge source={providerSource} />}
+        {metaText && <span className="fileHistoryEntryMetaText">{metaText}</span>}
+        {session.live && <span className="commandChip positive">live</span>}
+      </div>
+      {session.pathAtTime && <p className="fileHistoryEntryOldPath">as {session.pathAtTime}</p>}
+    </div>
+    <time className="fileHistoryEntryTime" dateTime={session.newestAt}>{sessionTimeLabel(session.newestAt)}</time>
+  </article>;
+}
+
+/** Breadcrumb, file name, and working-tree chip shared by the repository Files tab's history
+ * panel and the session Repository tab's file panel; `action` fills the right of the title row. */
+export function FilePanelHeader({ repositoryLabel, path, workingTreeStatus, statusRecorded = false, action, children }: {
+  repositoryLabel: string;
+  path: string;
+  workingTreeStatus: string | null;
+  statusRecorded?: boolean;
+  action: ReactNode;
+  children?: ReactNode;
+}) {
+  const { directory, filename } = gitPathParts(path);
+  const statusChip = fileStatus(workingTreeStatus);
+  return <header className="fileHistoryHeader">
+    <div className="fileHistoryBreadcrumb">
+      <span>{repositoryLabel}</span>
+      {directory && <><span aria-hidden="true">/</span><span>{directory}</span></>}
+    </div>
+    <div className="fileHistoryTitleRow">
+      <div className="fileHistoryTitle">
+        <FileGlyphIcon />
+        <b className="fileHistoryFileName">{filename}</b>
+        {statusChip && <span className={`commandChip${statusChip.tone ? ` ${statusChip.tone}` : ""}`}>{statusChip.label} {statusRecorded ? "at last live check" : "in working tree"}</span>}
+      </div>
+      {action}
+    </div>
+    {children}
+  </header>;
+}
+
+export function FileHistoryPanel({ repositoryLabel, path, workingTreeStatus, statusRecorded = false, history, className = "" }: FileHistoryPanelProps) {
+  const [resetKey, setResetKey] = useState(path);
+  const [providerFilter, setProviderFilter] = useState<"all" | FileHistoryProvider>("all");
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<number | null>(null);
+
+  // Reset local UI state when the selected path changes, per React's "adjust state on prop
+  // change" pattern (no effect needed, so the reset lands before this render paints).
+  if (path !== resetKey) {
+    setResetKey(path);
+    setProviderFilter("all");
+    setCopied(false);
+  }
+
+  useEffect(() => () => {
+    if (copyTimeoutRef.current !== null) window.clearTimeout(copyTimeoutRef.current);
+  }, []);
+
+  if (path === null) {
+    return <section className={`panel fileHistoryPanel ${className}`.trim()} aria-label="File history">
+      <p className="fileHistoryEmptyState">Select a file to see its recorded sessions.</p>
+    </section>;
+  }
+
+  const ready = history !== null && history.readiness === "ready";
+  const readiness = history?.readiness ?? "loading";
+  const sessions = ready && history ? history.sessions : [];
+  const unattributedChanges = ready && history ? history.unattributedChanges : 0;
+  const linkPath = (history?.path ?? path);
+  const providers = [...new Set(sessions.map((session) => session.provider).filter((provider): provider is FileHistoryProvider => provider !== null))];
+  const filteredSessions = providerFilter === "all" ? sessions : sessions.filter((session) => session.provider === providerFilter);
+
+  const copyPath = () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    navigator.clipboard.writeText(path).then(() => {
+      setCopied(true);
+      if (copyTimeoutRef.current !== null) window.clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = window.setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+
+  return <section className={`panel fileHistoryPanel ${className}`.trim()} aria-label="File history">
+    <FilePanelHeader repositoryLabel={repositoryLabel} path={path} workingTreeStatus={workingTreeStatus} statusRecorded={statusRecorded}
+      action={<button type="button" className="commandSecondaryAction fileHistoryHeaderAction" onClick={copyPath}>{copied ? "Copied" : "Copy path"}</button>}>
+      {ready && <div className="fileHistoryMetaRow">
+        <span className="fileHistorySessionCount">{sessions.length} recorded session{sessions.length === 1 ? "" : "s"} · newest first</span>
+        {providers.length > 1 && <div className="commandSegmented" role="group" aria-label="Filter by provider">
+          <button type="button" aria-pressed={providerFilter === "all"} onClick={() => setProviderFilter("all")}>All providers</button>
+          {providers.map((provider) => <button key={provider} type="button" aria-pressed={providerFilter === provider} onClick={() => setProviderFilter(provider)}>{providerSourceLabel(provider)}</button>)}
+        </div>}
+      </div>}
+    </FilePanelHeader>
+    <div className="fileHistoryEntries">
+      {!ready
+        ? (readiness === "rebuilding"
+          ? <p className="fileHistoryEmptyState">File history is rebuilding.</p>
+          : readiness === "unavailable"
+            ? <p className="fileHistoryEmptyState">File history is unavailable.</p>
+            : <FileHistoryLoadingRows />)
+        : (filteredSessions.length === 0
+          ? <p className="fileHistoryEmptyState">No recorded sessions changed this file.</p>
+          : filteredSessions.map((session) => <FileHistoryEntry key={session.sessionId} session={session} linkPath={linkPath} />))}
+      {ready && unattributedChanges > 0 && <p className="fileHistoryUnattributed">{unattributedChanges} change{unattributedChanges === 1 ? "" : "s"} without session attribution (moves seen in Git)</p>}
+    </div>
+    <div className="fileHistoryFooter">
+      <span>File history covers recorded Write and Edit operations. Shell scripts and external edits may be missing.</span>
+      <DottedInfoPopover ariaLabel="More about file history coverage" content="Git-observed moves keep identity but add no session attribution; files outside retained checkpoints are absent.">How to read this</DottedInfoPopover>
+    </div>
+  </section>;
+}

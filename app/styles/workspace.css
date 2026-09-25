@@ -73,6 +73,19 @@
 .repositoryPaneHead + .repositoryReportingSection { margin-top: var(--divider-content-gap); }
 .repositoryReportingHelp:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .repositoryDetail .repositorySetupFootnote { margin: 18px 0 0; color: var(--command-faint); font-size: var(--text-xs); line-height: 1.5; }
+
+/* Repository page Git tab (G15-G18 in the repository-snapshot design contract). */
+.repositoryGitTabPanel { padding: var(--space-4); }
+.repositoryGitTabSource { margin: 0 0 var(--space-3); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
+.repositoryGitTabListHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--command-line); }
+.repositoryGitTabListHeader h2 { margin: 0; color: var(--command-ink); font: 600 var(--text-heading)/1.35 var(--font-ui); }
+.repositoryGitTabCount { color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryGitTabList { margin: 0; padding: 0; display: grid; list-style: none; }
+.repositoryGitTabCommit { min-height: 36px; display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: 8px 0; border-top: 1px solid var(--command-line); }
+.repositoryGitTabHash { color: var(--command-green); font-size: var(--text-xs); }
+.repositoryGitTabSubject { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-xs); }
+.repositoryGitTabTime { color: var(--command-muted); font-size: var(--text-caption); white-space: nowrap; }
+.repositoryGitTabEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
 @media (max-width: 760px) {
   .repositoryDetail .repositoryDetailHeader { flex-direction: column; align-items: stretch; gap: 16px; }
   .repositoryDetailHeader > .commandSecondaryAction { width: 100%; }

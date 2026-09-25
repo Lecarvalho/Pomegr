@@ -1,0 +1,66 @@
+/* Shared file tree and file history panel (FileTree.tsx, FileHistoryPanel.tsx). Tokens only; see DESIGN.md. */
+
+/* FileTree (F1-F7) */
+.fileTree { display: flex; flex-direction: column; overflow: hidden; }
+.fileTreeHeader { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) 14px; }
+.fileTreeEyebrow { font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--command-faint); }
+.fileTreeEyebrowRight { margin-left: auto; }
+.fileTreeBody { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.fileTreeRow { --tree-depth: 0; display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 6px 14px; padding-left: calc(14px + var(--tree-depth) * 16px); border: 0; background: transparent; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); text-align: left; cursor: pointer; }
+.fileTreeRow:hover { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.fileTreeRow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.fileTreeRow.isSelected { background: var(--command-panel-2); color: var(--command-ink); }
+.fileTreeChevron { width: 12px; height: 12px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.fileTreeFolderRow[aria-expanded="true"] .fileTreeChevron { transform: rotate(90deg); }
+.fileTreeFolderName, .fileTreeFileName { font-family: var(--font-data); font-size: var(--text-xs); color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileTreeFileRow.isMuted .fileTreeFileName { color: var(--command-muted); }
+.fileTreeFileRow.isSelected .fileTreeFileName { color: var(--command-ink); }
+.fileTreeCount { margin-left: auto; flex: 0 0 auto; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
+.fileTreeGroupHeading { padding: 10px 14px 4px; font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--command-faint); }
+.fileTreeEmpty { margin: 0; padding: var(--space-3) 14px; color: var(--command-muted); font-size: var(--text-xs); }
+/* Editor-style working-tree status letter (F3): right-aligned, no chip frame, tone in text only. */
+.fileTreeStatusLetter { margin-left: auto; flex: 0 0 auto; min-width: 12px; text-align: center; font: 600 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); cursor: default; }
+.fileTreeStatusLetter.warning { color: var(--command-amber); }
+.fileTreeStatusLetter.positive { color: var(--command-green); }
+.fileTreeGitObservedGlyph { display: inline-flex; flex: 0 0 auto; align-items: center; color: var(--command-muted); cursor: help; }
+.fileTreeFooter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) 14px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-caption); }
+.fileTreeFooterInfo { flex: 0 0 auto; color: var(--command-muted); }
+.fileTreeFooterInfo .dottedInfoPopoverLabel { text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+.fileTreeFooterInfo .dottedInfoPopoverTrigger:hover .dottedInfoPopoverLabel { text-decoration-color: currentColor; }
+
+/* FileHistoryPanel (F8-F15) */
+.fileHistoryPanel { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.fileHistoryEmptyState { margin: 0; padding: var(--space-4); color: var(--command-muted); font-size: var(--text-xs); }
+.fileHistoryHeader { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 10px; border-bottom: 1px solid var(--command-line); }
+.fileHistoryBreadcrumb { display: flex; align-items: center; gap: 6px; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
+.fileHistoryTitleRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.fileHistoryTitle { display: flex; flex: 1 1 auto; align-items: center; gap: var(--space-2); min-width: 0; }
+.fileHistoryTitle > .commandChip { flex: 0 0 auto; }
+.fileHistoryFileIcon { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; color: var(--command-muted); }
+.fileHistoryFileName { min-width: 0; font: 700 var(--text-base)/1.3 var(--font-data); color: var(--command-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileHistoryHeaderAction { flex: 0 0 auto; white-space: nowrap; }
+.fileHistoryMetaRow { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); font-size: var(--text-xs); color: var(--command-muted); }
+.fileHistorySessionCount { white-space: nowrap; }
+.fileHistoryEntries { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.fileHistoryEntry { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); padding: 10px 16px; border-top: 1px solid var(--command-line); }
+.fileHistoryEntries > .fileHistoryEntry:first-child { border-top: 0; }
+.fileHistoryEntryBody { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fileHistoryEntryMeta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; font-size: var(--text-xs); color: var(--command-muted); }
+.fileHistoryEntryMetaText { color: var(--command-muted); }
+.fileHistoryEntryTitle { font: 400 var(--text-sm)/1.4 var(--font-ui); color: var(--command-ink); }
+a.fileHistoryEntryTitle:hover { text-decoration: underline; }
+.fileHistoryEntryTitle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.fileHistoryEntryNote { margin: 0; font-size: var(--text-caption); color: var(--command-muted); }
+.fileHistoryEntryOldPath { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); }
+.fileHistoryEntryTime { align-self: flex-start; font: 400 var(--text-caption)/1.4 var(--font-data); color: var(--command-muted); white-space: nowrap; }
+.fileHistoryUnattributed { margin: 0; padding: var(--space-2) 16px; color: var(--command-muted); font-size: var(--text-xs); }
+.fileHistoryFooter { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 8px 16px 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-caption); }
+.fileHistorySkeleton { display: flex; flex-direction: column; gap: var(--space-3); padding: 14px 16px; }
+.fileHistorySkeletonRow { display: flex; align-items: center; gap: var(--space-3); }
+
+/* Touch targets: the shared 44px minimum (see the six button roles in shell.css) applied to
+   this file's own row buttons, which are not one of those roles. Tab-level phone stacking for
+   the session/repository Files layouts lives in repository-files.css. */
+@media (max-width: 760px), (pointer: coarse) {
+  .fileTreeRow { min-height: 44px; }
+}
