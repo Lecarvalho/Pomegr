@@ -1,0 +1,45 @@
+/* Session Repository tab body and repository Files tab layout (toolbars, tree/panel grid, phone stacking). Tokens only. */
+
+/* Session Repository tab body (F17/F18): search + Touched here / Uncommitted / Changed elsewhere,
+   then a 340px tree beside the shared history panel. */
+.repositoryTabFiles { display: grid; gap: var(--space-3); }
+.repositoryTabFilesToolbar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.repositoryTabFilesSearch { width: 320px; max-width: 100%; height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.repositoryTabFilesSearch::placeholder { color: var(--command-muted); }
+.repositoryTabFilesBeta { margin-left: auto; }
+.repositoryTabFilesBody { grid-template-columns: 340px minmax(0, 1fr); }
+.repositoryTabFilesSkeleton { height: 160px; display: flex; flex-direction: column; justify-content: center; gap: var(--space-2); padding: var(--space-4); }
+.repositoryTabFilesSkeletonLine { height: 12px; width: 70%; border-radius: var(--control-radius); background: var(--command-panel-2); }
+.repositoryTabFilesSkeletonLine:nth-child(2) { width: 50%; }
+.repositoryTabFilesSkeletonLine:nth-child(3) { width: 60%; }
+.repositoryTabFilesUnavailable { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
+
+/* Repository page Files tab (F19/F20): search + two compact toggles, then a 300px tree beside the
+   repository-side history panel. */
+.repositoryFilesTab { display: grid; gap: var(--space-3); }
+.repositoryFilesTabToolbar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.repositoryFilesTabSearch { width: 420px; max-width: 100%; height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.repositoryFilesTabSearch::placeholder { color: var(--command-muted); }
+.repositoryFilesTabToggles { display: flex; align-items: center; gap: var(--space-2); }
+.repositoryFilesTabCaption { margin-left: auto; color: var(--command-muted); font-size: var(--text-xs); }
+.repositoryFilesTabBody { grid-template-columns: 300px minmax(0, 1fr); }
+
+/* Both Files layouts render the tree and history as one panel split by a divider: the body owns
+   the panel chrome, and the nested tree/history panels drop theirs. */
+.repositoryTabFilesBody, .repositoryFilesTabBody { display: grid; gap: 0; align-items: stretch; overflow: hidden; }
+.repositoryTabFilesBody > .panel, .repositoryFilesTabBody > .panel { border: 0; border-radius: 0; background: transparent; }
+.repositoryTabFilesBody > .panel:first-child, .repositoryFilesTabBody > .panel:first-child { border-right: 1px solid var(--command-line); }
+
+/* Phone (F22): toolbars wrap, search and segment/toggles go full width, tree and panel stack in
+   one column with the tree first and a bounded scrollable height. */
+@media (max-width: 640px) {
+  .repositoryTabFilesToolbar, .repositoryFilesTabToolbar { flex-direction: column; align-items: stretch; }
+  .repositoryTabFilesSearch, .repositoryFilesTabSearch { width: 100%; height: 44px; }
+  .repositoryTabFilesBeta { margin-left: 0; align-self: flex-start; }
+  .repositoryFilesTabToggles { flex-wrap: wrap; }
+  .repositoryFilesTabToggles .commandSecondaryAction { flex: 1 1 0; }
+  .repositoryFilesTabCaption { margin-left: 0; }
+  .repositoryTabFilesBody, .repositoryFilesTabBody { grid-template-columns: 1fr; }
+  .repositoryTabFilesBody > .panel:first-child, .repositoryFilesTabBody > .panel:first-child { border-right: 0; border-bottom: 1px solid var(--command-line); }
+  .repositoryTabFilesTree, .repositoryFilesTabTree { max-height: 50vh; overflow: auto; }
+}

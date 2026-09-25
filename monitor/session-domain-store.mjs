@@ -190,6 +190,9 @@ export function createSessionDomainStore(options = {}) {
         catalogEntry,
         forbiddenRoots: options.forbiddenRoots || [],
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
+        retainedResources: options.retainedResourcesForSession?.(sessionId) ?? null,
+        fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
+        gitObserved: options.gitObservedForSession?.(sessionId) ?? null,
       }), "evidence");
     },
     commitUnavailable(sessionId, catalogEntry, source, capabilities) {
@@ -203,6 +206,10 @@ export function createSessionDomainStore(options = {}) {
       const at = now();
       evictIdle(at);
       recordDemand(sessionId, at);
+      // Lets a source (the resource-domain and file-history-domain SQLite caches) queue its
+      // own asynchronous hydration for a session this store now tracks; never a synchronous
+      // read here.
+      options.onDemand?.(sessionId);
       const record = records.get(key(sessionId, domain));
       if (!record) return Object.freeze({ status: "empty", revision: 0, snapshot: null });
       if (domain === "agent") {

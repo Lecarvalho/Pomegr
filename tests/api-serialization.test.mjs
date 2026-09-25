@@ -56,6 +56,11 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.equal(Object.hasOwn(session, "progress"), true);
     assert.equal(Object.hasOwn(session, "contextHistory"), false);
     assert.equal(Object.hasOwn(session, "resources"), false);
+    assert.equal(Object.hasOwn(session, "cacheTiming"), true);
+    if (session.cacheTiming !== null) {
+      assert.deepEqual(Object.keys(session.cacheTiming), ["lastCacheTouchAt", "cacheLifetime"]);
+      assert.equal(["5m", "1h", "mixed", "30m+", null].includes(session.cacheTiming.cacheLifetime), true);
+    }
   }
   const claudeState = JSON.parse(serialized[1]);
   const codexState = JSON.parse(serialized[2]);
@@ -256,7 +261,6 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
         readBytesPerSecond: 400,
         writeBytesPerSecond: 200,
       },
-      observedPeak: { memoryBytes: 4_096 },
       samples: [{
         timestamp: "2026-08-10T13:00:18.000Z",
         cpuCores: 1.25,

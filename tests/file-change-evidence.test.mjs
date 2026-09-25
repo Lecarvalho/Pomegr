@@ -6,7 +6,6 @@ import test from "node:test";
 import { boundedFileChanges, buildActivityFeed } from "../monitor/activity-events.mjs";
 import {
   claudeFileChangeCandidates,
-  claudeMoveCommandCandidate,
   claudeToolOutcomes,
   firstSuccessfulClaudeToolOutcome,
 } from "../monitor/providers/claude-tool-detail.mjs";
@@ -80,24 +79,10 @@ test("boundedFileChanges rebases absolute targets, drops forbidden shapes, and b
 });
 
 // ---------------------------------------------------------------------------
-// Claude: move-command parsing, candidate mapping, and success-outcome gating.
+// Claude: candidate mapping and success-outcome gating.
 // ---------------------------------------------------------------------------
 
-test("claudeMoveCommandCandidate accepts only an unambiguous whole mv/git mv command", () => {
-  assert.deepEqual(claudeMoveCommandCandidate("mv src/old.ts src/new.ts"), { from: "src/old.ts", to: "src/new.ts" });
-  assert.deepEqual(claudeMoveCommandCandidate("git mv src/old.ts src/new.ts"), { from: "src/old.ts", to: "src/new.ts" });
-  assert.deepEqual(claudeMoveCommandCandidate('mv "src/old.ts" "src/new.ts"'), { from: "src/old.ts", to: "src/new.ts" });
-  assert.equal(claudeMoveCommandCandidate("mv -f src/old.ts src/new.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts src/c.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts && rm -rf /"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/a.ts src/b.ts | cat"), null);
-  assert.equal(claudeMoveCommandCandidate("mv $HOME/a.ts src/b.ts"), null);
-  assert.equal(claudeMoveCommandCandidate("mv src/*.ts src/dest/"), null);
-  assert.equal(claudeMoveCommandCandidate("cp src/a.ts src/b.ts"), null);
-  assert.equal(claudeMoveCommandCandidate(""), null);
-});
-
-test("claudeFileChangeCandidates maps Write/Edit/Bash to the right candidate kind", () => {
+test("claudeFileChangeCandidates maps Write/Edit to the right candidate kind and never reads shell commands", () => {
   assert.deepEqual(claudeFileChangeCandidates("Write", { file_path: "src/a.ts" }, { type: "create" }), [
     { target: "src/a.ts", kind: "created" },
   ]);
@@ -112,10 +97,8 @@ test("claudeFileChangeCandidates maps Write/Edit/Bash to the right candidate kin
       { target: "src/a.ts", kind: "edited" },
     ]);
   }
-  assert.deepEqual(claudeFileChangeCandidates("Bash", { command: "mv src/a.ts src/b.ts" }, {}), [
-    { target: "src/b.ts", kind: "moved", previousTarget: "src/a.ts" },
-  ]);
-  assert.deepEqual(claudeFileChangeCandidates("Bash", { command: "mv -f src/a.ts src/b.ts" }, {}), []);
+  assert.deepEqual(claudeFileChangeCandidates("Bash", { command: "mv src/a.ts src/b.ts" }, {}), []);
+  assert.deepEqual(claudeFileChangeCandidates("PowerShell", { command: "Remove-Item src/a.ts" }, {}), []);
   assert.deepEqual(claudeFileChangeCandidates("Read", { file_path: "src/a.ts" }, {}), []);
 });
 
@@ -138,8 +121,13 @@ test("claudeToolOutcomes only reports the first non-error result at or after a c
   assert.equal(firstSuccessfulClaudeToolOutcome(outcomes, "ok", "2026-09-22T10:05:00.000Z"), null);
 });
 
-function claudeAssistantToolUse(id, name, input, timestamp) {
-  return { type: "assistant", timestamp, message: { model: "claude-test", content: [{ type: "tool_use", id, name, input }] } };
+function claudeAssistantToolUse(id, name, input, timestamp, cwd) {
+  return { type: "assistant", timestamp, ...(cwd === undefined ? {} : { cwd }), message: { model: "claude-test", content: [{ type: "tool_use", id, name, input }] } };
+}
+
+/** Real Claude records carry the process cwd; give it to every record that has none. */
+function withRecordCwd(records, cwd) {
+  return records.map((record) => (Object.hasOwn(record, "cwd") ? record : { ...record, cwd }));
 }
 
 function claudeUserToolResult(id, { isError = false, toolUseResult = null, timestamp }) {
@@ -151,7 +139,7 @@ function claudeUserToolResult(id, { isError = false, toolUseResult = null, times
   };
 }
 
-test("Claude adapter end-to-end: recognized file changes on success, none on failure or ambiguity or escape", async (t) => {
+test("Claude adapter end-to-end: structured file changes on success, none on failure, escape, or any shell command", async (t) => {
   const root = await realTempDir(t, "pomegr-claude-file-change-");
   const projectsRoot = path.join(root, "projects");
   const cwd = await realTempDir(t, "pomegr-claude-file-change-cwd-");
@@ -174,9 +162,13 @@ test("Claude adapter end-to-end: recognized file changes on success, none on fai
     claudeUserToolResult("bash-ambiguous", { toolUseResult: {}, timestamp: "2026-09-22T10:00:06.500Z" }),
     claudeAssistantToolUse("write-outside", "Write", { file_path: path.join(os.tmpdir(), "outside-evil.ts"), content: "z" }, "2026-09-22T10:00:07.000Z"),
     claudeUserToolResult("write-outside", { toolUseResult: { type: "create" }, timestamp: "2026-09-22T10:00:07.500Z" }),
+    claudeAssistantToolUse("ps-remove", "PowerShell", { command: "Remove-Item -Path src/old.ts", description: "Delete" }, "2026-09-22T10:00:08.000Z"),
+    claudeUserToolResult("ps-remove", { toolUseResult: {}, timestamp: "2026-09-22T10:00:08.500Z" }),
+    claudeAssistantToolUse("write-other-cwd", "Write", { file_path: path.join(cwd, "src", "abs.ts"), content: "w" }, "2026-09-22T10:00:10.000Z", path.join(cwd, "sub")),
+    claudeUserToolResult("write-other-cwd", { toolUseResult: { type: "create" }, timestamp: "2026-09-22T10:00:10.500Z" }),
   ];
   await mkdir(path.dirname(mainFile), { recursive: true });
-  await writeFile(mainFile, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  await writeFile(mainFile, `${withRecordCwd(records, cwd).map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
 
   const provider = createClaudeProvider({
     homeDir: root,
@@ -193,10 +185,13 @@ test("Claude adapter end-to-end: recognized file changes on success, none on fai
   assert.deepEqual(byId.get("write-created").fileChanges, [{ path: "src/created.ts", kind: "created", previousPath: null }]);
   assert.deepEqual(byId.get("write-edited").fileChanges, [{ path: "src/edited.ts", kind: "edited", previousPath: null }]);
   assert.deepEqual(byId.get("edit-1").fileChanges, [{ path: "src/component.ts", kind: "edited", previousPath: null }]);
-  assert.deepEqual(byId.get("bash-mv").fileChanges, [{ path: "src/new-name.ts", kind: "moved", previousPath: "src/old-name.ts" }]);
-  assert.equal(byId.get("bash-mv-failed").fileChanges, null, "a failed call records no file change");
-  assert.equal(byId.get("bash-ambiguous").fileChanges, null, "an ambiguous mv command records no file change");
+  assert.equal(byId.get("bash-mv").fileChanges, null, "a successful shell command records no file change");
+  assert.equal(byId.get("bash-mv-failed").fileChanges, null);
+  assert.equal(byId.get("bash-ambiguous").fileChanges, null);
+  assert.equal(byId.get("ps-remove").fileChanges, null, "a successful PowerShell command records no file change");
   assert.equal(byId.get("write-outside").fileChanges, null, "a target outside cwd is dropped");
+  assert.deepEqual(byId.get("write-other-cwd").fileChanges, [{ path: "src/abs.ts", kind: "created", previousPath: null }],
+    "structured writes with absolute targets resolve regardless of the record's cwd");
   assertNoPrivateFixtureSentinels(evidence, "Claude file-change evidence");
 });
 
@@ -268,6 +263,30 @@ test("Codex apply_patch headers become created/edited/moved/deleted only for a c
   ], { actor: ACTOR, sourceKey: "apply-patch-no-cwd" });
   assert.equal(noCwd[0].status, "completed");
   assert.equal(noCwd[0].fileChanges, null, "without a cwd, evidence degrades to null instead of throwing");
+});
+
+test("Codex shell/exec command items never record file changes", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-shell-file-change-");
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "function_call", name: "shell_command", call_id: "shell-mv",
+      arguments: JSON.stringify({ command: "mv src/old.ts src/new.ts", description: "Rename" }),
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: {
+      type: "function_call_output", call_id: "shell-mv", output: "PRIVATE_OUTPUT_MUST_NOT_LEAK", exit_code: 0,
+    } },
+    { timestamp: "2026-09-22T11:00:02.000Z", type: "event_msg", payload: {
+      type: "exec_command_begin", call_id: "exec-touch", command: ["touch", "a.txt"], cwd,
+    } },
+    { timestamp: "2026-09-22T11:00:03.000Z", type: "event_msg", payload: { type: "exec_command_end", call_id: "exec-touch", exit_code: 0 } },
+  ], { actor: ACTOR, sourceKey: "shell-never", cwd });
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.equal(call.status, "completed");
+    assert.equal(call.fileChanges, null);
+    for (const field of ["fileChangeCandidates", "exitCode", "shellCwd"]) assert.equal(Object.hasOwn(call, field), false);
+  }
+  assertNoPrivateFixtureSentinels(calls, "Codex shell commands");
 });
 
 test("Codex canonical fileChange items map add/update/delete kinds and ignore unrecognized ones", async (t) => {

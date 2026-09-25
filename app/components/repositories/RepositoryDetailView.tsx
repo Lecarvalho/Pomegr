@@ -7,21 +7,24 @@ import type { ProviderId, RepositoryProviderInventory } from "../../../shared/mo
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
 import { ProviderBadge } from "../ProviderBadge";
-import { CommandBreadcrumbSeparator, CommandComingSoon, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
-import { repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
+import { CommandBreadcrumbSeparator, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
+import { repositoryFilePath, repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
 import { PluginSetupRow } from "./PluginSetupRow";
+import { RepositoryFilesTab } from "./RepositoryFilesTab";
+import { RepositoryGitTab } from "./RepositoryGitTab";
 import { RepositoryReportingRow } from "./RepositoryReportingRow";
 import { RepositoryInventoryTab } from "./RepositoryInventoryTab";
 import { RepositoryOverviewTab } from "./RepositoryOverviewTab";
 
 const subscribeDesktopBridge = () => () => {};
 
-export function RepositoryDetailView({ repositoryId, initialTab = "overview", initialProvider, initialRevisionId }: {
+export function RepositoryDetailView({ repositoryId, initialTab = "overview", initialProvider, initialRevisionId, initialPath }: {
   repositoryId: string;
   initialTab?: RepositoryTab;
   initialProvider?: ProviderId;
   initialRevisionId?: string;
+  initialPath?: string;
 }) {
   const { snapshot, loading, connected, refresh } = useRepositoryInventory();
   const [confirming, setConfirming] = useState<ProviderId | null>(null);
@@ -57,6 +60,13 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     provider: searchParams.get("provider") ?? initialProvider,
     revision: searchParams.has("tab") ? searchParams.get("revision") ?? undefined : initialRevisionId,
   });
+  const filesPath = repositoryFilePath(searchParams.has("tab") ? searchParams.get("path") ?? undefined : initialPath) ?? null;
+  const selectFilesPath = (path: string | null) => {
+    const query = new URLSearchParams(searchParams.toString());
+    query.set("tab", "files");
+    if (path) query.set("path", path); else query.delete("path");
+    router.replace(`/repositories/${repositoryId}?${query}`, { scroll: false });
+  };
   const selectRevision = (provider: ProviderId, revisionId: string) => {
     const query = new URLSearchParams(searchParams.toString());
     query.set("tab", "inventory");
@@ -141,11 +151,11 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
     <div className="commandSettingsLayout repositoryDetailLayout">
       <div className="commandSettingsNav" role="tablist" aria-label="Repository sections">
         {repositoryTabs.map(([id, label], index) => <button key={id} ref={(node) => { tabsRef.current[index] = node; }} type="button" role="tab" id={`repository-tab-${id}`} aria-controls={`repository-panel-${id}`} aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} className={`commandQuietAction${tab === id ? " active" : ""}`} onClick={() => switchTab(id)} onKeyDown={(event) => handleTabKey(event, index)}>
-          <span>{label}</span>{id === "git" && <> <span className="repositoryDetailSoon">Soon</span></>}
+          <span>{label}</span>
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
-        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "plugin" ? <>
+        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "files" ? <RepositoryFilesTab repositoryId={repositoryId} repositoryLabel={repository.displayName} path={filesPath} onSelectPath={selectFilesPath} /> : tab === "plugin" ? <>
           <div className="repositoryPaneHead"><div><h2>Plugin</h2><p>Install and manage the Pomegr plugin for each provider. Installation and updates run natively on this machine after a confirmation.</p></div></div>
           {repository.providers.map((provider) => {
             const key = `${repositoryId}:${provider.provider}`;
@@ -158,7 +168,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </> : tab === "inventory" ? <RepositoryInventoryTab repository={repository} initialProvider={inventorySelection.initialProvider} initialRevisionId={inventorySelection.initialRevisionId} desktop={desktopCapture} confirming={confirming} captureKey={captureKey} feedback={feedback} onProvider={(provider) => switchTab("inventory", provider)} onRevision={selectRevision} onConfirm={setConfirming} onCancel={cancelCapture} onCapture={(provider) => void capture(provider)} /> : tab === "reporting" ? <>
           <header className="repositoryPaneHead"><div><h2>Repository reporting</h2><p>One policy, shared by Claude Code and Codex, that chooses what agents report about this repository.</p></div></header>
           <RepositoryReportingRow reporting={repository.reporting} />
-        </> : <CommandComingSoon title="Detailed repository evidence is coming soon" detail="Branch, working-tree, commit, and pull-request aggregation will be added when the monitor can provide a bounded repository summary. Current rows reflect session associations only." icon="git" />}
+        </> : <RepositoryGitTab repositoryId={repositoryId} />}
       </div>
     </div>
   </section>;

@@ -34,6 +34,17 @@ describe("SessionTabs", () => {
     expect(within(desktop).getByRole("tab", { name: "Resources" })).toBeInTheDocument();
   });
 
+  it("counts the files the session affected on the Repository tab, not uncommitted files", () => {
+    const base = sessionSummaryFixture().repository;
+    const { unmount } = mount("overview", { repository: { ...base, changedFiles: 0, touchedFiles: 6 } });
+    let desktop = document.querySelector(".sessionDesktopTabs") as HTMLElement;
+    expect(within(desktop).getByRole("tab", { name: "Repository6" })).toBeInTheDocument();
+    unmount();
+    mount("overview", { repository: { ...base, changedFiles: 4, touchedFiles: null } });
+    desktop = document.querySelector(".sessionDesktopTabs") as HTMLElement;
+    expect(within(desktop).getByRole("tab", { name: "Repository" })).toBeInTheDocument();
+  });
+
   it("falls back to Overview when the active tab (e.g. ?tab=resources) is hidden", () => {
     const { onSelect } = mount("resources", { resourceAvailability: { readiness: "unavailable", hasData: null } });
     expect(onSelect).toHaveBeenCalledWith("overview");

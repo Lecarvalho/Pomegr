@@ -1,6 +1,8 @@
 import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
 import type { CacheLifetime, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
+import type { ResourceUsage } from "./resource-usage-contract";
+export type { ResourceUsage, ResourceUsageSample, ResourceUsageUnavailableReason } from "./resource-usage-contract";
 export type { CacheLifetime, RequestSnapshot, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type ReportedSignal = {
   label: string;
@@ -377,38 +379,6 @@ export type Workflow = {
   phases: WorkflowPhase[];
 };
 
-export type ResourceUsageUnavailableReason =
-  | "unsupported_platform"
-  | "missing_owner"
-  | "shared_owner"
-  | "owner_not_found"
-  | "owner_identity_mismatch"
-  | "collection_failed";
-
-export type ResourceUsageSample = {
-  timestamp: string;
-  cpuCores: number | null;
-  cpuMachinePercent: number | null;
-  memoryBytes: number | null;
-  readBytesPerSecond: number | null;
-  writeBytesPerSecond: number | null;
-};
-
-/** Live process-tree telemetry. Process identity and sampling internals stay monitor-private. */
-export type ResourceUsage = {
-  status: "collecting" | "ready" | "unavailable";
-  reason: ResourceUsageUnavailableReason | null;
-  current: {
-    cpuCores: number | null;
-    cpuMachinePercent: number | null;
-    memoryBytes: number;
-    readBytesPerSecond: number | null;
-    writeBytesPerSecond: number | null;
-  } | null;
-  observedPeak: { memoryBytes: number } | null;
-  samples: ResourceUsageSample[];
-};
-
 export type Insight = { id: string; level: "info" | "warning"; title: string; detail: string; agentId?: string | null };
 export type LoopPattern = { id: string; agent: string; agentId?: string | null; tool: string; detail: string; calls: number; repeats: number };
 export type ToolPattern = { id: string; agent: string; tool: string; detail: string; calls: number };
@@ -427,6 +397,16 @@ export type SessionActivityFallback = {
   actor: "primary" | "subagent" | "multiple" | "unknown";
 };
 /** Bounded session-directory row derived from committed normalized evidence. */
+/**
+ * Primary agent's newest retained request with cache activity, live or
+ * recorded. The browser derives the nearing/elapsed indication; null when
+ * unavailable. See docs/CACHE_TIMING.md.
+ */
+export type SessionCacheTiming = {
+  lastCacheTouchAt: string;
+  cacheLifetime: CacheLifetime | null;
+};
+
 export type SessionSummary = {
   id: string;
   provider: ProviderId;
@@ -447,6 +427,8 @@ export type SessionSummary = {
   currentActivity: SessionCurrentActivity | null;
   /** Separate from provider-authored activity; optional for older monitor responses. */
   activityFallback?: SessionActivityFallback | null;
+  /** Optional for older monitor responses. */
+  cacheTiming?: SessionCacheTiming | null;
   repositoryId?: string | null;
   contextInventoryRef?: ContextInventoryReference | null;
 };

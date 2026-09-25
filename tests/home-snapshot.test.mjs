@@ -370,6 +370,7 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
     progress: null,
     currentActivity: null,
     activityFallback: null,
+    cacheTiming: null,
   }]);
 
   const progress = { phase: "verifying", percent: 70, remainingMinutesMin: 2, remainingMinutesMax: 5, confidence: "high", reportedAt: "2026-08-23T12:00:00.000Z" };
@@ -388,7 +389,7 @@ test("session feed returns presentation-ready bounded catalog rows and refreshes
   assert.equal(Object.hasOwn(changed.sessions[0], "contextHistory"), false);
   assert.equal(Object.hasOwn(changed.sessions[0], "resources"), false);
   assert.deepEqual(Object.keys(changed.sessions[0]).sort(), [
-    "activeAgentCount", "activityFallback", "activityStatus", "agentCount", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
+    "activeAgentCount", "activityFallback", "activityStatus", "agentCount", "cacheTiming", "currentActivity", "id", "isLive", "latestContextTotal", "needsInput", "progress", "project", "provider", "source", "summaryReadiness", "title", "updatedAt",
   ]);
   assert.doesNotMatch(JSON.stringify(changed), /PRIVATE_FEED_(?:ACTIVITY|CONTEXT|PROGRESS|RESOURCE)|contextHistory|resources/i);
 });
@@ -438,7 +439,6 @@ test("session feed and home snapshot coalesce a cold live summary without sharin
           status: "ready",
           reason: null,
           current: { cpuCores: 1, cpuMachinePercent: 2, memoryBytes: 3, readBytesPerSecond: 4, writeBytesPerSecond: 5 },
-          observedPeak: { memoryBytes: 8 },
           samples: [],
         };
       },

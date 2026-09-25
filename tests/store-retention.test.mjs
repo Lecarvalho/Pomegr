@@ -66,6 +66,11 @@ function createFakeStore({ bytesPerRow = 100, baseBytes = 0 } = {}) {
       cpu_cores REAL, cpu_machine_percent REAL, memory_bytes REAL, read_bps REAL, write_bps REAL,
       PRIMARY KEY (peak_id, observed_at)
     ) WITHOUT ROWID;
+    CREATE TABLE resource_curve_removals (
+      session_id TEXT PRIMARY KEY,
+      reason TEXT NOT NULL CHECK (reason IN ('age_retention', 'size_cleanup')),
+      removed_at INTEGER NOT NULL
+    ) WITHOUT ROWID;
   `);
   const rowCount = () => {
     const minutes = database.prepare("SELECT COUNT(*) AS n FROM resource_minutes").get().n;
@@ -116,6 +121,11 @@ function distinctSessionIds(store, table) {
   return store.database.prepare(`SELECT DISTINCT session_id AS sessionId FROM ${table} ORDER BY sessionId`).all().map((row) => row.sessionId);
 }
 
+function curveRemovals(store) {
+  return store.database.prepare("SELECT session_id AS sessionId, reason, removed_at AS removedAt FROM resource_curve_removals ORDER BY session_id")
+    .all().map((row) => ({ ...row }));
+}
+
 test("resolveRetentionSettings: environment parsing, keep-all, junk fallback, and desktop precedence", () => {
   assert.deepEqual(resolveRetentionSettings({ environment: {} }), {
     retentionDays: DEFAULT_RETENTION_DAYS, thresholdMb: DEFAULT_THRESHOLD_MB, thresholdBytes: DEFAULT_THRESHOLD_MB * 1024 * 1024,
@@ -158,6 +168,9 @@ test("runRetention: age deletion removes only sessions whose latest evidence pre
   assert.equal(result.removedMinuteSessions, 1);
   assert.equal(result.removedSampleSessions, 1);
   assert.equal(result.cleanupStatus, "normal");
+  // Only the session whose resource_minutes were actually deleted by age gets an
+  // age_retention record; the peak-samples-only session never had a minute curve to lose.
+  assert.deepEqual(curveRemovals(store), [{ sessionId: "stale", reason: "age_retention", removedAt: now }]);
 });
 
 test("runRetention: retentionDays null (keep all) never deletes by age", () => {
@@ -174,11 +187,17 @@ test("runRetention: size cleanup removes resource_minutes across full sessions b
   insertPeak(store, { id: 1, sessionId: "s0", observedAt: 0 });
   insertSample(store, "s0", 1, 0);
   const settings = { retentionDays: null, thresholdMb: 500, thresholdBytes: 150 };
-  const result = runRetention(store, settings, { now: Date.now() });
+  const now = Date.now();
+  const result = runRetention(store, settings, { now });
   assert.equal(result.removedMinuteSessions, 12);
   assert.equal(result.removedSampleSessions, 0);
   assert.deepEqual(distinctSessionIds(store, "resource_minutes"), []);
   assert.deepEqual(distinctSessionIds(store, "resource_peak_samples"), ["s0"]);
+  // Every session whose minutes were removed by the size cleanup is recorded as
+  // size_cleanup, never with age wording.
+  const removals = curveRemovals(store);
+  assert.equal(removals.length, 12);
+  assert.ok(removals.every((removal) => removal.reason === "size_cleanup" && removal.removedAt === now));
 });
 
 test("runRetention: size cleanup falls through to resource_peak_samples once no resource_minutes rows remain", () => {
@@ -195,6 +214,23 @@ test("runRetention: size cleanup falls through to resource_peak_samples once no 
   assert.equal(result.removedSampleSessions, 3);
   assert.equal(result.databaseBytes, 0);
   assert.equal(result.cleanupStatus, "normal");
+});
+
+test("runRetention: a later cleanup replaces a curve-removal record when it deletes newly recorded minutes", () => {
+  const store = createFakeStore({ bytesPerRow: 100 });
+  const settings = { retentionDays: 90, thresholdMb: 500, thresholdBytes: 500 * 1024 * 1024 };
+  const now = 1_000 * MS_PER_DAY;
+  insertMinute(store, "stale", now - 400 * MS_PER_DAY);
+  runRetention(store, settings, { now });
+  assert.deepEqual(curveRemovals(store), [{ sessionId: "stale", reason: "age_retention", removedAt: now }]);
+
+  // The session gets fresh minutes again, then a size cleanup removes them at a later time.
+  insertMinute(store, "stale", now);
+  const laterSettings = { retentionDays: null, thresholdMb: 500, thresholdBytes: 50 };
+  const later = now + MS_PER_DAY;
+  runRetention(store, laterSettings, { now: later });
+  assert.deepEqual(distinctSessionIds(store, "resource_minutes"), []);
+  assert.deepEqual(curveRemovals(store), [{ sessionId: "stale", reason: "size_cleanup", removedAt: later }]);
 });
 
 test("runRetention: cleanup_pending when the per-cycle session cap stops the cleanup short", () => {

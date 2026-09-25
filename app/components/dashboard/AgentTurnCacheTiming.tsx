@@ -38,6 +38,17 @@ function newestSnapshot(items: RequestSnapshot[]) {
   return newest;
 }
 
+/** Live nearing/elapsed evaluation shared by agent rows and the sessions page. */
+export function deriveCacheLifetimeTiming(lastCacheTouchAt: string, cacheLifetime: CacheLifetime | null | undefined, now: number): { state: CacheTimingState; remainingMs: number | null } {
+  const lifetimeMs = CACHE_LIFETIME_MS[cacheLifetime || "mixed"];
+  const nearWindowMs = CACHE_NEAR_WINDOW_MS[cacheLifetime || "mixed"];
+  const touchedAt = Date.parse(lastCacheTouchAt);
+  if (!lifetimeMs || !nearWindowMs || !Number.isFinite(touchedAt)) return { state: "unavailable", remainingMs: null };
+  const remainingMs = touchedAt + lifetimeMs - now;
+  const state = remainingMs <= 0 ? "elapsed" : remainingMs <= nearWindowMs ? "near" : "neutral";
+  return { state, remainingMs };
+}
+
 export function deriveAgentTurnCacheEvidence(requestSnapshots: RequestSnapshotFeed, agentId: string, now: number, historical: boolean, status: Agent["status"]): AgentTurnCacheEvidence {
   if (requestSnapshots.status !== "ready") return { lastRequest: null, lastCacheTouch: null, state: "unavailable" };
   const agentRequests = requestSnapshots.items.filter((item) => item.agentId === agentId);
@@ -47,12 +58,7 @@ export function deriveAgentTurnCacheEvidence(requestSnapshots: RequestSnapshotFe
     return { lastRequest, lastCacheTouch, state: lastCacheTouch ? "neutral" : "unavailable" };
   }
 
-  const lifetimeMs = CACHE_LIFETIME_MS[lastCacheTouch.cacheLifetime || "mixed"];
-  const nearWindowMs = CACHE_NEAR_WINDOW_MS[lastCacheTouch.cacheLifetime || "mixed"];
-  const touchedAt = Date.parse(lastCacheTouch.observedAt);
-  if (!lifetimeMs || !nearWindowMs || !Number.isFinite(touchedAt)) return { lastRequest, lastCacheTouch, state: "unavailable" };
-  const remainingMs = touchedAt + lifetimeMs - now;
-  const state = remainingMs <= 0 ? "elapsed" : remainingMs <= nearWindowMs ? "near" : "neutral";
+  const { state } = deriveCacheLifetimeTiming(lastCacheTouch.observedAt, lastCacheTouch.cacheLifetime, now);
   return { lastRequest, lastCacheTouch, state };
 }
 
@@ -60,7 +66,7 @@ function relativeTimestamp(value: string | null, now: number) {
   return value ? coarseRelativeTime(value, now) : "unavailable";
 }
 
-function lifetimeLabel(value: CacheLifetime | null | undefined) {
+export function cacheTimingLifetimeLabel(value: CacheLifetime | null | undefined) {
   if (value === "mixed") return "Mixed";
   return value || "Unavailable";
 }
@@ -97,7 +103,7 @@ export function AgentTurnCacheTiming({ agentId, className = "", historical, requ
   const content = <span className="cacheTimingPopoverContent">
     <span className="cacheTimingRow"><span>Last request</span><time dateTime={lastRequestAt || undefined}>{triggerTime}</time></span>
     <span className="cacheTimingRow"><span>Last cache touch</span><time dateTime={lastCacheTouchAt || undefined}>{relativeTimestamp(lastCacheTouchAt, now)}</time></span>
-    <span className="cacheTimingRow"><span>Observed lifetime</span><strong>{lifetimeLabel(evidence.lastCacheTouch?.cacheLifetime)}</strong></span>
+    <span className="cacheTimingRow"><span>Observed lifetime</span><strong>{cacheTimingLifetimeLabel(evidence.lastCacheTouch?.cacheLifetime)}</strong></span>
     <strong className={`cacheTimingState ${evidence.state}`}>{stateLabel}</strong>
   </span>;
 

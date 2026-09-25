@@ -289,6 +289,29 @@ export function createResourceHistoryQueries(store) {
       return rows.map(camelizeMinuteRow);
     },
 
+    /**
+     * Newest-first bounded read of a session's minute curve, reversed back to ascending
+     * order, plus whether older minutes exist beyond `limit`. Used by the resources domain
+     * source so it never has to load an unbounded curve (up to the full retention window)
+     * into memory on every store cycle.
+     */
+    sessionResourceCurvesRecent(sessionId, { limit } = {}) {
+      const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 1440;
+      const rows = store.database.prepare(
+        "SELECT * FROM resource_minutes WHERE session_id = ? ORDER BY minute_start DESC LIMIT ?",
+      ).all(sessionId, boundedLimit + 1);
+      const truncated = rows.length > boundedLimit;
+      return { rows: rows.slice(0, boundedLimit).reverse().map(camelizeMinuteRow), truncated };
+    },
+
+    /** Bounded removal record for a session's minute curve; null when none was recorded. */
+    sessionCurveRemoval(sessionId) {
+      const row = store.database.prepare(
+        "SELECT reason, removed_at AS removedAtMs FROM resource_curve_removals WHERE session_id = ?",
+      ).get(sessionId);
+      return row ? { reason: row.reason, removedAtMs: row.removedAtMs } : null;
+    },
+
     sessionResourcePeaks(sessionId) {
       const rows = store.database.prepare(
         "SELECT id, field, observed_at AS observedAtMs, value, matched_task_ids AS matchedTaskIds, matched_request_number AS matchedRequestNumber "
