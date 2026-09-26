@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,10 @@ const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url))
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
 const hooksSourceFile = path.join(repositoryRoot, "plugin-src", "claude-hooks.json");
 const hooksOutputFile = path.join(pluginRoot, "hooks", "hooks.json");
+const readmeSourceFile = path.join(repositoryRoot, "plugin-src", "claude-readme.md");
+const readmeOutputFile = path.join(pluginRoot, "README.md");
+const iconSourceFile = path.join(repositoryRoot, "public", "pomegr-logo.png");
+const iconOutputFile = path.join(pluginRoot, "assets", "icon.png");
 const bundles = [
   {
     entryPoint: path.join(repositoryRoot, "plugin-src", "claude-query-session.mjs"),
@@ -53,7 +57,10 @@ export async function buildClaudePluginMcp() {
   }
   await mkdir(path.dirname(hooksOutputFile), { recursive: true });
   await writeFile(hooksOutputFile, await readFile(hooksSourceFile, "utf8"), "utf8");
-  return [...skillFiles, ...bundles.map((bundle) => bundle.outputFile), hooksOutputFile];
+  await writeFile(readmeOutputFile, await readFile(readmeSourceFile, "utf8"), "utf8");
+  await mkdir(path.dirname(iconOutputFile), { recursive: true });
+  await copyFile(iconSourceFile, iconOutputFile);
+  return [...skillFiles, ...bundles.map((bundle) => bundle.outputFile), hooksOutputFile, readmeOutputFile, iconOutputFile];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

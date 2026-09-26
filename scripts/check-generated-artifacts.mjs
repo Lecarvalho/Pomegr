@@ -46,11 +46,33 @@ for (const provider of ["claude", "codex"]) {
   }
 }
 
+async function compareBinaryFile(relativePath, expected) {
+  const absolutePath = path.join(repositoryRoot, relativePath);
+  let actual;
+  try {
+    actual = await readFile(absolutePath);
+  } catch {
+    return `${relativePath} is missing`;
+  }
+  return actual.equals(expected) ? null : `${relativePath} is out of sync with its source`;
+}
+
 for (const [outputFile, sourceFile] of [
   ["plugins/claude-code/hooks/hooks.json", "plugin-src/claude-hooks.json"],
+  ["plugins/claude-code/README.md", "plugin-src/claude-readme.md"],
   ["plugins/pomegr/hooks/hooks.json", "plugin-src/codex-hooks.json"],
+  ["plugins/pomegr/README.md", "plugin-src/codex-readme.md"],
 ]) {
   const error = await compareFile(outputFile, await readFile(path.join(repositoryRoot, sourceFile), "utf8"));
+  if (error) errors.push(error);
+}
+
+const iconSource = await readFile(path.join(repositoryRoot, "public", "pomegr-logo.png"));
+for (const outputFile of [
+  "plugins/claude-code/assets/icon.png",
+  "plugins/pomegr/assets/icon.png",
+]) {
+  const error = await compareBinaryFile(outputFile, iconSource);
   if (error) errors.push(error);
 }
 
@@ -81,5 +103,5 @@ if (errors.length) {
   for (const error of errors) console.error(`- ${error}`);
   process.exitCode = 1;
 } else {
-  console.log(`Generated artifact checks passed (${bundleDefinitions.length} bundles and rendered skills).`);
+  console.log(`Generated artifact checks passed (${bundleDefinitions.length} bundles, rendered skills, package READMEs, and icons).`);
 }

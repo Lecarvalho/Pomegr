@@ -573,7 +573,16 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
 
   assert.equal(marketplace.plugins[0].source, "./plugins/claude-code");
   assert.equal(manifest.name, "pomegr");
+  assert.equal(manifest.displayName, "Pomegr");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(manifest.icon, "./assets/icon.png");
+  assert.deepEqual(
+    await readFile(path.join(pluginRoot, "assets", "icon.png")),
+    await readFile(path.join(repositoryRoot, "public", "pomegr-logo.png")),
+  );
+  const readme = await readFile(path.join(pluginRoot, "README.md"), "utf8");
+  assert.equal(readme, await readFile(path.join(repositoryRoot, "plugin-src", "claude-readme.md"), "utf8"));
+  assert.ok(readme.trim().split(/\s+/).length >= 40);
   assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
   assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
   assert.equal(hooks.hooks.PostToolUse[0].matcher, "");

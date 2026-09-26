@@ -80,6 +80,17 @@ test("Pomegr repository exposes a standard provider-neutral Codex marketplace pl
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.equal(manifest.skills, "./skills/");
   assert.equal(manifest.mcpServers, "./.mcp.json");
+  assert.ok(manifest.interface.shortDescription.length <= 30);
+  assert.equal(manifest.interface.brandColor, "#A63C32");
+  assert.equal(manifest.interface.composerIcon, "./assets/icon.png");
+  assert.equal(manifest.interface.logo, "./assets/icon.png");
+  assert.deepEqual(
+    await readFile(path.join(pluginRoot, "assets", "icon.png")),
+    await readFile(path.join(repositoryRoot, "public", "pomegr-logo.png")),
+  );
+  const readme = await readFile(path.join(pluginRoot, "README.md"), "utf8");
+  assert.equal(readme, await readFile(path.join(repositoryRoot, "plugin-src", "codex-readme.md"), "utf8"));
+  assert.ok(readme.trim().split(/\s+/).length >= 40);
   assert.equal(mcp.mcpServers.pomegr.command, "node");
   assert.equal(mcp.mcpServers.pomegr.args[0], "./mcp/server.bundle.mjs");
   assert.equal(mcp.mcpServers.pomegr.cwd, ".");

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +19,10 @@ const obsoleteLifecycleBundleFiles = [
 ];
 const hooksSourceFile = path.join(repositoryRoot, "plugin-src", "codex-hooks.json");
 const hooksOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "hooks", "hooks.json");
+const readmeSourceFile = path.join(repositoryRoot, "plugin-src", "codex-readme.md");
+const readmeOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "README.md");
+const iconSourceFile = path.join(repositoryRoot, "public", "pomegr-logo.png");
+const iconOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "assets", "icon.png");
 
 async function buildBundle(entryPoint, outfile) {
   await mkdir(path.dirname(outfile), { recursive: true });
@@ -55,7 +59,10 @@ export async function buildCodexPluginMcp() {
   ]);
   await mkdir(path.dirname(hooksOutputFile), { recursive: true });
   await writeFile(hooksOutputFile, await readFile(hooksSourceFile, "utf8"), "utf8");
-  return [...skillFiles, outputFile, reminderOutputFile, usageGuardOutputFile, hooksOutputFile];
+  await writeFile(readmeOutputFile, await readFile(readmeSourceFile, "utf8"), "utf8");
+  await mkdir(path.dirname(iconOutputFile), { recursive: true });
+  await copyFile(iconSourceFile, iconOutputFile);
+  return [...skillFiles, outputFile, reminderOutputFile, usageGuardOutputFile, hooksOutputFile, readmeOutputFile, iconOutputFile];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

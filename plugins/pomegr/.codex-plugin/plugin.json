@@ -14,12 +14,15 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Pomegr",
-    "shortDescription": "Repository policies and bounded signals for Pomegr",
+    "shortDescription": "Local coding-agent signals",
     "longDescription": "Adds repository policy workflows, lifecycle loading, delegation guidance, and provider-neutral reporting tools that Pomegr reads from Codex transcripts. The plugin does not send transcript contents or credentials.",
     "developerName": "Leandro Carvalho",
     "category": "Productivity",
     "capabilities": ["Signal reporting", "Repository policy", "Diagnostics"],
     "websiteURL": "https://github.com/Lecarvalho/pomegr",
+    "brandColor": "#A63C32",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
     "defaultPrompt": [
       "Initialize this repository's Pomegr reporting policy.",
       "Diagnose this repository's Pomegr reporting setup.",

@@ -16,6 +16,14 @@ Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters con
 
 Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local, read-only capability and return only bounded normalized evidence. The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
+## Public directories
+
+The repository marketplaces below are the supported installation source today. Their packages also carry public-listing metadata, a package README, and the Pomegr painted mark used by the app bar and favicon. The generated icon at `assets/icon.png` must remain byte-for-byte identical to `public/pomegr-logo.png`.
+
+Claude directory submission uses the package under `plugins/claude-code/`. The public directory form requires the `icon` entry in `.claude-plugin/plugin.json`. Keep the portal-required field covered by `claude plugin validate --strict` even when the published manifest field table lags the directory form.
+
+OpenAI publishes approved plugins once to the universal directory shared by ChatGPT and Codex. Pomegr cannot use the normal public submission path unchanged because its MCP server intentionally runs locally over stdio and reads only the local Pomegr observer. OpenAI's standard public path requires a stable public HTTPS MCP endpoint, or explicit local-MCP support from OpenAI. A skills-only submission would omit Pomegr's reporting and observation tools and is therefore not an equivalent package.
+
 ## Install
 
 ### From Pomegr desktop
@@ -280,6 +288,8 @@ Validate and exercise Claude Code locally:
 claude plugin validate .
 claude --plugin-dir .\plugins\claude-code
 ```
+
+Public-directory packages additionally require both generated READMEs and icon assets. `npm run check:generated` verifies them against their canonical sources in `plugin-src/` and `public/pomegr-logo.png`.
 
 ### Plugin upgrade
 
