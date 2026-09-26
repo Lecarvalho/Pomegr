@@ -421,7 +421,7 @@ export function delegationPlan(policy, agentType) {
   const labels = sections.flatMap((section) => section.rows.map((row) => row.label));
   const lines = [
     DELEGATION_MARKER,
-    "This repository's Pomegr policy configures the rows below for your agent type. Report them through the Pomegr MCP tools, typically the `mcp__plugin_pomegr_pomegr__*` namespace.",
+    "This repository's Pomegr policy configures the rows below for your agent type. Report them through the exact Pomegr report or clear tools available in the resolved MCP namespace.",
     "A signal is current project-specific state, not a heartbeat or a Pomegr judgment. Replace one when a new configured state applies, clear agent state when none applies, and treat execution-task outcomes as durable.",
     "Never put prompts, responses, secrets, commands, stdout, stderr, tool results, or credential values in a signal.",
     "If no row below applies when you finish, report nothing.",

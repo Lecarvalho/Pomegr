@@ -7,12 +7,14 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" hook --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "hook", "--cwd", "${CLAUDE_PROJECT_DIR}"],
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider claude",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"],
             "timeout": 5,
             "additionalContextLimit": 1600
           }
@@ -25,7 +27,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider claude",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"],
             "timeout": 5,
             "additionalContextLimit": 1600
           }
@@ -38,7 +41,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" delegate --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate", "--cwd", "${CLAUDE_PROJECT_DIR}"],
             "timeout": 5
           }
         ]
@@ -48,7 +52,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/rename-session.bundle.mjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/rename-session.bundle.mjs"],
             "timeout": 5
           }
         ]
@@ -58,7 +63,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/query-session.bundle.mjs\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/query-session.bundle.mjs"],
             "timeout": 5
           }
         ]
@@ -70,13 +76,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs\" --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs", "--cwd", "${CLAUDE_PROJECT_DIR}"],
             "timeout": 5,
             "additionalContextLimit": 800
           },
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider claude",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"],
             "timeout": 5,
             "additionalContextLimit": 1600
           }
@@ -89,7 +97,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs\" --provider claude",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"],
             "timeout": 5,
             "additionalContextLimit": 1600
           }
@@ -101,7 +110,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs\" subagent-stop --cwd \"${CLAUDE_PROJECT_DIR}\"",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"],
             "timeout": 5
           }
         ]

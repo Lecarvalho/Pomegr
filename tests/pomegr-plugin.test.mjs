@@ -589,23 +589,27 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"), hookSource);
   assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
-  assert.match(hooks.hooks.PreToolUse[0].hooks[0].command, /policy\.mjs" delegate/);
-  assert.match(hooks.hooks.PreToolUse[1].hooks[0].command, /rename-session\.bundle\.mjs/);
+  assert.equal(hooks.hooks.PreToolUse[0].hooks[0].command, "node");
+  assert.deepEqual(hooks.hooks.PreToolUse[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate", "--cwd", "${CLAUDE_PROJECT_DIR}"]);
+  assert.match(hooks.hooks.PreToolUse[1].hooks[0].args[0], /rename-session\.bundle\.mjs/);
   const queryHook = hooks.hooks.PreToolUse[2];
-  assert.match(queryHook.hooks[0].command, /query-session\.bundle\.mjs/);
+  assert.match(queryHook.hooks[0].args[0], /query-session\.bundle\.mjs/);
   const queryMatcher = new RegExp(queryHook.matcher);
   assert.ok(queryMatcher.test("mcp__plugin_pomegr_pomegr__get_session_report"));
   assert.ok(queryMatcher.test("mcp__pomegr__get_agent_context"));
   assert.equal(queryMatcher.test("mcp__pomegr__get_session_report_lookalike"), false);
-  assert.match(hooks.hooks.SubagentStop[0].hooks[0].command, /policy\.mjs" subagent-stop/);
+  assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"]);
   for (const event of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
-    assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PLUGIN_ROOT\}/);
-    if (["SessionStart", "PreToolUse", "SubagentStop"].includes(event)) assert.match(hooks.hooks[event][0].hooks[0].command, /\$\{CLAUDE_PROJECT_DIR\}/);
+    const hook = hooks.hooks[event][0].hooks[0];
+    assert.equal(hook.command, "node");
+    assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);
+    if (["SessionStart", "PreToolUse", "SubagentStop"].includes(event)) assert.ok(hook.args.includes("${CLAUDE_PROJECT_DIR}"));
   }
-  assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
+  assert.match(hooks.hooks.PostToolUse[0].hooks[0].args[0], /progress-reminder\.bundle\.mjs/);
   for (const [event, index = 0] of [["SessionStart", 1], ["UserPromptSubmit"], ["PostToolUse", 1], ["PostToolBatch"]]) {
     const guard = hooks.hooks[event][0].hooks[index];
-    assert.match(guard.command, /usage-guard\.bundle\.mjs" --provider claude/);
+    assert.equal(guard.command, "node");
+    assert.deepEqual(guard.args, ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"]);
     assert.equal(guard.timeout, 5);
     assert.equal(guard.additionalContextLimit, 1600);
   }
@@ -624,9 +628,10 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
 
   const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
   assert.match(init, /Delegated agents/);
-  assert.match(init, /mcp__plugin_pomegr_pomegr__\*/);
+  assert.match(init, /only the exact reporting tools required/);
+  assert.match(init, /Never grant the full Pomegr namespace or a wildcard/);
   assert.match(init, /\.claude\/agents\/\*\.md/);
-  assert.match(init, /the user confirms them at the preview step/);
+  assert.match(init, /The user confirms every exact tool at the preview step/);
   assert.match(init, /thin wrapper around a canonical body/);
 });
 
