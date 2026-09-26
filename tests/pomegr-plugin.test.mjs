@@ -416,7 +416,7 @@ test("reports delegation drift in both directions and stays quiet for uninvolved
   });
 });
 
-test("PreToolUse delegation hook injects the declared rows into a subagent prompt exactly once", async () => {
+test("SubagentStart delegation hook supplies declared rows without rewriting tool input", async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     await mkdir(path.join(repository, ".git"), { recursive: true });
@@ -424,54 +424,38 @@ test("PreToolUse delegation hook injects the declared rows into a subagent promp
     await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]));
 
     const spawnPayload = (overrides = {}) => ({
-      hook_event_name: "PreToolUse",
+      hook_event_name: "SubagentStart",
       cwd: repository,
-      tool_name: "Task",
-      tool_input: { description: "Verify the release", prompt: "Run the release checks.", subagent_type: "release-verifier" },
+      agent_id: "a1b2c3",
+      agent_type: "release-verifier",
       ...overrides,
     });
 
-    const injected = runPolicyEventHook("delegate", repository, spawnPayload());
+    const injected = runPolicyEventHook("subagent-start", repository, spawnPayload());
     assert.equal(injected.status, 0);
     const output = JSON.parse(injected.stdout);
-    assert.equal(output.hookSpecificOutput.hookEventName, "PreToolUse");
+    assert.equal(output.hookSpecificOutput.hookEventName, "SubagentStart");
     assert.equal(output.hookSpecificOutput.permissionDecision, undefined);
-    const updatedPrompt = output.hookSpecificOutput.updatedInput.prompt;
-    assert.equal(output.hookSpecificOutput.updatedInput.subagent_type, "release-verifier");
-    assert.equal(output.hookSpecificOutput.updatedInput.description, "Verify the release");
-    assert.match(updatedPrompt, /^Run the release checks\./);
-    assert.ok(updatedPrompt.includes(DELEGATION_MARKER));
-    assert.match(updatedPrompt, /### Task signals/);
-    assert.match(updatedPrompt, /\| Checks passed \| positive \|/);
-    assert.doesNotMatch(updatedPrompt, /### Session signals/);
-    assert.doesNotMatch(updatedPrompt, /Ready for review/);
-
-    const reinjected = runPolicyEventHook("delegate", repository, spawnPayload({
-      tool_input: { prompt: updatedPrompt, subagent_type: "release-verifier" },
-    }));
-    assert.equal(reinjected.stdout, "");
-
-    const parentPasted = runPolicyEventHook("delegate", repository, spawnPayload({
-      tool_input: { prompt: "Follow the Pomegr policy row Checks passed for this run.", subagent_type: "release-verifier" },
-    }));
-    assert.equal(parentPasted.stdout, "");
-
-    const agentToolName = runPolicyEventHook("delegate", repository, spawnPayload({ tool_name: "Agent" }));
-    assert.ok(JSON.parse(agentToolName.stdout).hookSpecificOutput.updatedInput.prompt.includes(DELEGATION_MARKER));
+    assert.equal(output.hookSpecificOutput.updatedInput, undefined);
+    const context = output.hookSpecificOutput.additionalContext;
+    assert.ok(context.includes(DELEGATION_MARKER));
+    assert.match(context, /### Task signals/);
+    assert.match(context, /\| Checks passed \| positive \|/);
+    assert.doesNotMatch(context, /### Session signals/);
+    assert.doesNotMatch(context, /Ready for review/);
 
     for (const skipped of [
-      spawnPayload({ tool_input: { prompt: "Anything.", subagent_type: "fork" } }),
-      spawnPayload({ tool_input: { prompt: "Anything.", subagent_type: "general-purpose" } }),
-      spawnPayload({ tool_input: { prompt: "Anything." } }),
-      spawnPayload({ tool_input: { subagent_type: "release-verifier" } }),
-      spawnPayload({ tool_name: "TaskStop" }),
+      spawnPayload({ agent_type: "fork" }),
+      spawnPayload({ agent_type: "general-purpose" }),
+      spawnPayload({ agent_type: undefined }),
+      spawnPayload({ hook_event_name: "PreToolUse" }),
     ]) {
-      const result = runPolicyEventHook("delegate", repository, skipped);
+      const result = runPolicyEventHook("subagent-start", repository, skipped);
       assert.equal(result.status, 0);
       assert.equal(result.stdout, "");
     }
 
-    const malformed = spawnSync(process.execPath, [policyScript, "delegate", "--cwd", repository], {
+    const malformed = spawnSync(process.execPath, [policyScript, "subagent-start", "--cwd", repository], {
       cwd: repositoryRoot,
       encoding: "utf8",
       input: "not json",
@@ -487,19 +471,18 @@ test("delegation hook stays silent for an undeclared policy, a missing policy, a
     await mkdir(path.join(repository, ".git"), { recursive: true });
     const template = await readFile(policyTemplatePath, "utf8");
     const payload = {
-      hook_event_name: "PreToolUse",
+      hook_event_name: "SubagentStart",
       cwd: repository,
-      tool_name: "Task",
-      tool_input: { prompt: "Do the work.", subagent_type: "release-verifier" },
+      agent_type: "release-verifier",
     };
 
-    assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
+    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
 
     await writePolicy(repository, template);
-    assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
+    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
 
     await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 7", "Policy version: 9"));
-    assert.equal(runPolicyEventHook("delegate", repository, payload).stdout, "");
+    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
   });
 });
 
@@ -585,22 +568,22 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(readme, await readFile(path.join(repositoryRoot, "plugin-src", "claude-readme.md"), "utf8"));
   assert.ok(readme.trim().split(/\s+/).length >= 40);
   assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
-  assert.equal(hooks.hooks.PreToolUse[0].matcher, "Task|Agent");
+  assert.equal(hooks.hooks.SubagentStart[0].matcher, "");
   assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
   assert.equal(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"), hookSource);
-  assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
+  assert.equal(hooks.hooks.PreToolUse[0].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
-  assert.equal(hooks.hooks.PreToolUse[0].hooks[0].command, "node");
-  assert.deepEqual(hooks.hooks.PreToolUse[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate"]);
-  assert.match(hooks.hooks.PreToolUse[1].hooks[0].args[0], /rename-session\.bundle\.mjs/);
-  const queryHook = hooks.hooks.PreToolUse[2];
+  assert.equal(hooks.hooks.SubagentStart[0].hooks[0].command, "node");
+  assert.deepEqual(hooks.hooks.SubagentStart[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-start"]);
+  assert.match(hooks.hooks.PreToolUse[0].hooks[0].args[0], /rename-session\.bundle\.mjs/);
+  const queryHook = hooks.hooks.PreToolUse[1];
   assert.match(queryHook.hooks[0].args[0], /query-session\.bundle\.mjs/);
   const queryMatcher = new RegExp(queryHook.matcher);
   assert.ok(queryMatcher.test("mcp__plugin_pomegr_pomegr__get_session_report"));
   assert.ok(queryMatcher.test("mcp__pomegr__get_agent_context"));
   assert.equal(queryMatcher.test("mcp__pomegr__get_session_report_lookalike"), false);
   assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop"]);
-  for (const event of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
+  for (const event of ["SessionStart", "UserPromptSubmit", "SubagentStart", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
     const hook = hooks.hooks[event][0].hooks[0];
     assert.equal(hook.command, "node");
     assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);

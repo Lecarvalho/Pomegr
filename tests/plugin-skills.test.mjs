@@ -46,7 +46,7 @@ test("provider overlays keep runtime-specific instructions while sharing one pol
   assert.match(codexDoctor, /no Pomegr handoff directory or ignore rule is required/);
   assert.doesNotMatch(codexInit, /rename_session/);
   assert.match(claudeInit, /\/pomegr:init/);
-  assert.match(claudeDoctor, /PreToolUse/);
+  assert.match(claudeDoctor, /SubagentStart/);
   assert.match(claudeInit, /usage-guard\.json/);
   assert.match(claudeInit, /repository's existing handoff workflow/);
   assert.match(claudeDoctor, /PostToolBatch/);

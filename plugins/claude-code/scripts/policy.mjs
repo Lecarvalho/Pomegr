@@ -13,7 +13,6 @@ export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
 export const DELEGATION_MARKER = "[Pomegr delegated reporting policy]";
-export const DELEGATION_TOOL_NAMES = new Set(["Task", "Agent"]);
 export const PLUGIN_METADATA_MARKER = "[Pomegr plugin metadata]";
 
 const PLUGIN_MANIFEST_URL = new URL("../.claude-plugin/plugin.json", import.meta.url);
@@ -433,12 +432,6 @@ export function delegationPlan(policy, agentType) {
   return { agentType: type, sections, labels, block: lines.join("\n") };
 }
 
-export function promptCarriesPolicy(prompt, plan) {
-  if (typeof prompt !== "string" || !plan) return false;
-  if (prompt.includes(DELEGATION_MARKER)) return true;
-  return /pomegr/i.test(prompt) && plan.labels.every((label) => prompt.includes(label));
-}
-
 function transcriptRecordReports(line) {
   if (!line || !/pomegr/i.test(line)) return false;
   let record;
@@ -502,18 +495,14 @@ function payloadDirectory(payload, fallback) {
   return typeof payload?.cwd === "string" && payload.cwd ? payload.cwd : fallback;
 }
 
-function delegateOutput(payload, fallbackDirectory) {
-  if (!DELEGATION_TOOL_NAMES.has(payload?.tool_name)) return "";
-  const input = payload.tool_input;
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  if (typeof input.prompt !== "string" || !input.prompt.trim()) return "";
-
-  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), input.subagent_type);
-  if (!plan || promptCarriesPolicy(input.prompt, plan)) return "";
+function subagentStartOutput(payload, fallbackDirectory) {
+  if (!payload || payload.hook_event_name !== "SubagentStart") return "";
+  const plan = delegationPlan(readPolicy(payloadDirectory(payload, fallbackDirectory)), payload.agent_type);
+  if (!plan) return "";
   return JSON.stringify({
     hookSpecificOutput: {
-      hookEventName: "PreToolUse",
-      updatedInput: { ...input, prompt: `${input.prompt}\n\n${plan.block}\n` },
+      hookEventName: "SubagentStart",
+      additionalContext: plan.block,
     },
   });
 }
@@ -544,13 +533,13 @@ export function runPolicyCli(args = process.argv.slice(2)) {
   const command = args[0] || "validate";
   const cwd = argumentValue(args, "--cwd", process.cwd());
 
-  if (command === "hook" || command === "delegate" || command === "subagent-stop") {
+  if (command === "hook" || command === "subagent-start" || command === "subagent-stop") {
     const payload = readHookPayload();
     const directory = payloadDirectory(payload, cwd);
     const output = command === "hook"
       ? hookOutput(readPolicy(directory))
-      : command === "delegate"
-        ? delegateOutput(payload, directory)
+      : command === "subagent-start"
+        ? subagentStartOutput(payload, directory)
         : subagentStopOutput(payload, directory);
     if (output) process.stdout.write(`${output}\n`);
     return 0;
@@ -569,7 +558,7 @@ export function runPolicyCli(args = process.argv.slice(2)) {
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return policy.status === "valid" ? 0 : policy.status === "missing" ? 2 : 1;
   }
-  process.stderr.write("Usage: policy.mjs <validate|hook|delegate|subagent-stop> [--cwd <directory>]\n");
+  process.stderr.write("Usage: policy.mjs <validate|hook|subagent-start|subagent-stop> [--cwd <directory>]\n");
   return 64;
 }
 

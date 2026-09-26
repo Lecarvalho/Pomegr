@@ -21,7 +21,7 @@ Resolve this plugin's `scripts/policy.mjs` relative to this file and run `node <
 
 For a valid policy, check for `[Pomegr reporting policy loaded]`. If absent, explain that the session may predate initialization or `SessionStart` did not run; direct the user to `/hooks`, `/reload-plugins`, and a new or resumed session.
 
-Report delegation coverage. No rows means the main session owns reporting. Each declared type receives matching rows under `[Pomegr delegated reporting policy]` through `PreToolUse`.
+Report delegation coverage. No rows means the main session owns reporting. Each declared type receives matching rows under `[Pomegr delegated reporting policy]` through `SubagentStart`.
 
 ## Optional usage guard
 
@@ -33,7 +33,7 @@ Check the resolved Pomegr namespace for `rename_session`, `report_session_signal
 
 ## Package structure
 
-Verify `.mcp.json`, `hooks/hooks.json`, `scripts/policy.mjs`, the bundled progress reminder hook, and `scripts/usage-guard.bundle.mjs`. Confirm the hooks manifest registers `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolBatch`, and `SubagentStop`. This proves package structure, not runtime registration.
+Verify `.mcp.json`, `hooks/hooks.json`, `scripts/policy.mjs`, the bundled progress reminder hook, and `scripts/usage-guard.bundle.mjs`. Confirm the hooks manifest registers `SessionStart`, `UserPromptSubmit`, `SubagentStart`, `PreToolUse`, `PostToolUse`, `PostToolBatch`, and `SubagentStop`. This proves package structure, not runtime registration.
 
 ## Role mappings
 

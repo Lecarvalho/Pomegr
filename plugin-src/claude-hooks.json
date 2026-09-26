@@ -1,5 +1,5 @@
 {
-  "description": "Load a repository's bounded Pomegr reporting policy, inject the applicable rows into declared subagent prompts, report a delegated agent that finished without reporting, and optionally check cached account-usage guardrails.",
+  "description": "Load a repository's bounded Pomegr reporting policy, supply applicable rows to declared subagents, report a delegated agent that finished without reporting, and optionally check cached account-usage guardrails.",
   "hooks": {
     "SessionStart": [
       {
@@ -35,18 +35,20 @@
         ]
       }
     ],
-    "PreToolUse": [
+    "SubagentStart": [
       {
-        "matcher": "Task|Agent",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-start"],
             "timeout": 5
           }
         ]
-      },
+      }
+    ],
+    "PreToolUse": [
       {
         "matcher": "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session",
         "hooks": [
