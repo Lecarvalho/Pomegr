@@ -39,17 +39,18 @@ async function writePolicy(repository, text) {
 }
 
 function runPolicyHook(cwd) {
-  return spawnSync(process.execPath, [policyScript, "hook", "--cwd", cwd], {
+  return spawnSync(process.execPath, [policyScript, "hook"], {
     cwd: repositoryRoot,
     encoding: "utf8",
+    input: JSON.stringify({ cwd }),
   });
 }
 
 function runPolicyEventHook(command, cwd, payload) {
-  return spawnSync(process.execPath, [policyScript, command, "--cwd", cwd], {
+  return spawnSync(process.execPath, [policyScript, command], {
     cwd: repositoryRoot,
     encoding: "utf8",
-    input: JSON.stringify(payload),
+    input: JSON.stringify({ ...payload, cwd: payload.cwd || cwd }),
   });
 }
 
@@ -590,7 +591,7 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.equal(hooks.hooks.PreToolUse[1].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
   assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
   assert.equal(hooks.hooks.PreToolUse[0].hooks[0].command, "node");
-  assert.deepEqual(hooks.hooks.PreToolUse[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate", "--cwd", "${CLAUDE_PROJECT_DIR}"]);
+  assert.deepEqual(hooks.hooks.PreToolUse[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate"]);
   assert.match(hooks.hooks.PreToolUse[1].hooks[0].args[0], /rename-session\.bundle\.mjs/);
   const queryHook = hooks.hooks.PreToolUse[2];
   assert.match(queryHook.hooks[0].args[0], /query-session\.bundle\.mjs/);
@@ -598,12 +599,20 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   assert.ok(queryMatcher.test("mcp__plugin_pomegr_pomegr__get_session_report"));
   assert.ok(queryMatcher.test("mcp__pomegr__get_agent_context"));
   assert.equal(queryMatcher.test("mcp__pomegr__get_session_report_lookalike"), false);
-  assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"]);
+  assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop"]);
   for (const event of ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
     const hook = hooks.hooks[event][0].hooks[0];
     assert.equal(hook.command, "node");
     assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);
-    if (["SessionStart", "PreToolUse", "SubagentStop"].includes(event)) assert.ok(hook.args.includes("${CLAUDE_PROJECT_DIR}"));
+    assert.equal(JSON.stringify(hook).includes("CLAUDE_PROJECT_DIR"), false);
+  }
+  const commandHooks = Object.values(hooks.hooks)
+    .flatMap((matchers) => matchers)
+    .flatMap((matcher) => matcher.hooks);
+  for (const hook of commandHooks) {
+    assert.equal(hook.command, "node");
+    assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);
+    assert.equal(hook.args.slice(1).some((argument) => /[\\/]|\$\{|\$\(|`|[*?{}]/.test(argument)), false);
   }
   assert.match(hooks.hooks.PostToolUse[0].hooks[0].args[0], /progress-reminder\.bundle\.mjs/);
   for (const [event, index = 0] of [["SessionStart", 1], ["UserPromptSubmit"], ["PostToolUse", 1], ["PostToolBatch"]]) {
@@ -615,6 +624,9 @@ test("plugin manifests register every policy hook and the bundled MCP server", a
   }
   assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
   assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
+  assert.equal(mcp.mcpServers.pomegr.cwd, undefined);
+  assert.equal(JSON.stringify(mcp).includes("CLAUDE_PROJECT_DIR"), false);
+  assert.doesNotMatch(JSON.stringify({ hooks, mcp }), /\$\{(?!CLAUDE_PLUGIN_ROOT\})/);
   assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/server", "zod"]);
   assert.equal(packageManifest.dependencies["@anthropic-ai/claude-agent-sdk"], "0.3.241");
 

@@ -544,19 +544,19 @@ export function runPolicyCli(args = process.argv.slice(2)) {
   const command = args[0] || "validate";
   const cwd = argumentValue(args, "--cwd", process.cwd());
 
-  if (command === "delegate" || command === "subagent-stop") {
+  if (command === "hook" || command === "delegate" || command === "subagent-stop") {
     const payload = readHookPayload();
-    const output = command === "delegate" ? delegateOutput(payload, cwd) : subagentStopOutput(payload, cwd);
+    const directory = payloadDirectory(payload, cwd);
+    const output = command === "hook"
+      ? hookOutput(readPolicy(directory))
+      : command === "delegate"
+        ? delegateOutput(payload, directory)
+        : subagentStopOutput(payload, directory);
     if (output) process.stdout.write(`${output}\n`);
     return 0;
   }
 
   const policy = readPolicy(cwd);
-  if (command === "hook") {
-    const output = hookOutput(policy);
-    if (output) process.stdout.write(`${output}\n`);
-    return 0;
-  }
   if (command === "validate") {
     const result = {
       status: policy.status,

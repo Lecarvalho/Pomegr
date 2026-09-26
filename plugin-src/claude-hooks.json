@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "hook", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "hook"],
             "timeout": 5
           },
           {
@@ -42,7 +42,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "delegate"],
             "timeout": 5
           }
         ]
@@ -77,7 +77,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/progress-reminder.bundle.mjs"],
             "timeout": 5,
             "additionalContextLimit": 800
           },
@@ -111,7 +111,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop", "--cwd", "${CLAUDE_PROJECT_DIR}"],
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop"],
             "timeout": 5
           }
         ]

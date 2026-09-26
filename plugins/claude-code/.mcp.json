@@ -2,8 +2,7 @@
   "mcpServers": {
     "pomegr": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.bundle.mjs"],
-      "cwd": "${CLAUDE_PROJECT_DIR}"
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/server.bundle.mjs"]
     }
   }
 }
