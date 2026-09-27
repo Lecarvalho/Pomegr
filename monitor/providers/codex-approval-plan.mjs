@@ -3,7 +3,7 @@ import { normalizeSessionTask } from "../session-tasks.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 
 const MAX_PLAN_TASKS = 40;
-const MAX_EXEC_PLAN_SOURCE_LENGTH = 64 * 1024;
+const MAX_EXEC_SOURCE_LENGTH = 64 * 1024;
 const MAX_LITERAL_DEPTH = 8;
 const MAX_LITERAL_ITEMS = 256;
 const APPROVAL_MODES = Object.freeze({
@@ -189,51 +189,65 @@ function skipTemplateLiteral(source, start) {
   return source.length;
 }
 
-function nestedExecPlanPayloads(value) {
-  if (typeof value !== "string" || !value || value.length > MAX_EXEC_PLAN_SOURCE_LENGTH) return [];
-  const payloads = [];
+export function codexExecLiteralToolInputs(value, toolName) {
+  if (typeof value !== "string" || !value || value.length > MAX_EXEC_SOURCE_LENGTH) return [];
+  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(toolName || "")) return [];
+  const inputs = [];
   let index = 0;
+  let previousToken = "";
   while (index < value.length) {
     index = skipTrivia(value, index);
     const quoted = parseQuotedString(value, index);
     if (quoted) {
       index = quoted.index;
+      previousToken = "literal";
       continue;
     }
+    if (value[index] === "\"" || value[index] === "'") break;
     if (value[index] === "`") {
       index = skipTemplateLiteral(value, index);
+      previousToken = "literal";
       continue;
     }
     const tools = parseIdentifier(value, index);
-    if (tools?.value !== "tools") {
+    if (tools?.value !== "tools" || previousToken === ".") {
+      previousToken = tools ? "identifier" : value[index];
       index = tools?.index ?? index + 1;
       continue;
     }
     let cursor = skipTrivia(value, tools.index);
     if (value[cursor] !== ".") {
+      previousToken = "identifier";
       index = tools.index;
       continue;
     }
     const method = parseIdentifier(value, skipTrivia(value, cursor + 1));
-    if (method?.value !== "update_plan") {
+    if (method?.value !== toolName) {
+      previousToken = method ? "identifier" : ".";
       index = method?.index ?? cursor + 1;
       continue;
     }
     cursor = skipTrivia(value, method.index);
     if (value[cursor] !== "(") {
+      previousToken = "identifier";
       index = method.index;
       continue;
     }
     const literal = parseRestrictedLiteral(value, cursor + 1, { items: 0 });
     if (!literal || value[skipTrivia(value, literal.index)] !== ")") {
+      previousToken = "(";
       index = cursor + 1;
       continue;
     }
-    const payload = plainObject(literal.value);
-    if (payload) payloads.push(payload);
+    inputs.push(literal.value);
+    previousToken = "literal";
     index = literal.index;
   }
-  return payloads;
+  return inputs;
+}
+
+function nestedExecPlanPayloads(value) {
+  return codexExecLiteralToolInputs(value, "update_plan").filter(plainObject);
 }
 
 function approvalPolicyId(value) {

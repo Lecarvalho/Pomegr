@@ -41,13 +41,17 @@ export function mergeCodexMetadata(items) {
     }
     const preferred = timestampValue(item.updatedAt) > timestampValue(previous.updatedAt) ? item : previous;
     const alternate = preferred === item ? previous : item;
+    const cwd = preferred.cwd || alternate.cwd;
+    const branchSource = preferred.cwd === cwd ? preferred : alternate.cwd === cwd ? alternate : null;
     byId.set(item.localId, {
       ...preferred,
       title: preferred.title !== "Untitled session" ? preferred.title : alternate.title,
-      cwd: preferred.cwd || alternate.cwd,
+      cwd,
       project: preferred.cwd ? preferred.project : alternate.project,
       createdAt: [preferred.createdAt, alternate.createdAt].filter(Boolean).sort()[0] || null,
-      recordedGitBranch: preferred.recordedGitBranch || alternate.recordedGitBranch,
+      // A recorded branch is meaningful only alongside the same observation's
+      // cwd. Do not graft a stale branch from another checkout onto newer cwd.
+      recordedGitBranch: branchSource?.recordedGitBranch || "",
       sessionId: preferred.sessionId || alternate.sessionId,
       parentThreadId: preferred.parentThreadId || alternate.parentThreadId,
       forkedFromId: preferred.forkedFromId || alternate.forkedFromId,

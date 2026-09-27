@@ -151,6 +151,7 @@ export function readSessionRegistry(root, options = {}) {
       if (!current || entry.updatedAt >= current.updatedAt) registry.set(entry.sessionId, entry);
     } catch {
       // A partially-written or removed provider registry entry is ignored independently.
+      options.onIncomplete?.();
     }
   }
 

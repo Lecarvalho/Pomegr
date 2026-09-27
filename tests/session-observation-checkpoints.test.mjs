@@ -111,6 +111,15 @@ async function temporaryCheckpointDirectory(t) {
   return directory;
 }
 
+async function settleCheckpointMaintenance(store) {
+  for (let attempt = 0; attempt < 256; attempt += 1) {
+    const result = await store.maintenanceStep({ budget: 64 });
+    assert.ok(result.processed <= 64);
+    if (!result.scanning && !result.pending) return result;
+  }
+  throw new Error("checkpoint maintenance did not settle");
+}
+
 function snapshot(providerId, localSessionId, revision = 1) {
   return {
     providerId,
@@ -228,7 +237,7 @@ test("ignores corrupted, unknown-version, and validation-rejected checkpoints wi
   assert.equal(loaded.ignored, 3);
 });
 
-test("replaces a session atomically and prunes old bounded checkpoint entries", async (t) => {
+test("replaces a session atomically and maintenance later prunes old bounded checkpoint entries", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1, maxBytes: 10_000 });
   await checkpoints.write(snapshot("provider-a", "replace", 1));
@@ -238,6 +247,10 @@ test("replaces a session atomically and prunes old bounded checkpoint entries", 
   assert.equal(replacement.records[0].revision, 2);
 
   await checkpoints.write(snapshot("provider-a", "newer", 1));
+  const newerFile = path.join(directory, checkpointFilename("provider-a", "newer"));
+  const newerAt = new Date(Date.now() + 1_000);
+  await utimes(newerFile, newerAt, newerAt);
+  await settleCheckpointMaintenance(checkpoints);
   const pruned = await checkpoints.load();
   assert.equal(pruned.records.length, 1);
   assert.equal(pruned.records[0].localSessionId, "newer");
@@ -328,7 +341,7 @@ test("checkpoint schema stays version 1 and unchanged by the repository-snapshot
   assert.equal(payload.version, 1);
 });
 
-test("prune keeps a sidecar recorded before its session's first checkpoint, and drops a day-old orphan", async (t) => {
+test("maintenance keeps a sidecar recorded before its session's first checkpoint, and drops a day-old orphan", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 10, maxBytes: 100_000 });
   await checkpoints.writeRepositorySnapshot("provider-a", "early", repositorySnapshot());
@@ -338,6 +351,7 @@ test("prune keeps a sidecar recorded before its session's first checkpoint, and 
   await utimes(stale, dayAgo, dayAgo);
 
   await checkpoints.write(snapshot("provider-a", "other", 1));
+  await settleCheckpointMaintenance(checkpoints);
   const afterPrune = await readdir(directory);
   assert.ok(afterPrune.includes(repositorySnapshotFilename("provider-a", "early")), "a fresh sidecar without a checkpoint yet is kept");
   assert.equal(afterPrune.includes(repositorySnapshotFilename("provider-a", "stale")), false, "a day-old orphan is removed");
@@ -347,7 +361,7 @@ test("prune keeps a sidecar recorded before its session's first checkpoint, and 
   assert.deepEqual(records.map((record) => record.localSessionId), ["early"]);
 });
 
-test("prune removes a repository-snapshot sidecar once its checkpoint is evicted, and keeps a surviving pair", async (t) => {
+test("maintenance removes a repository-snapshot sidecar once its checkpoint is evicted, and keeps a surviving pair", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1, maxBytes: 10_000 });
   await checkpoints.write(snapshot("provider-a", "evicted", 1));
@@ -359,6 +373,7 @@ test("prune removes a repository-snapshot sidecar once its checkpoint is evicted
   // through the same prune pass, its now-orphaned repository-snapshot sidecar.
   await checkpoints.write(snapshot("provider-a", "current", 1));
   await checkpoints.writeRepositorySnapshot("provider-a", "current", repositorySnapshot({ branch: "feat/current" }));
+  await settleCheckpointMaintenance(checkpoints);
   const afterEviction = await readdir(directory);
   assert.equal(afterEviction.includes(evictedSidecar), false, "the orphaned sidecar is pruned with its checkpoint");
   const currentSidecar = repositorySnapshotFilename("provider-a", "current");
@@ -366,4 +381,115 @@ test("prune removes a repository-snapshot sidecar once its checkpoint is evicted
 
   const records = await checkpoints.loadRepositorySnapshots();
   assert.deepEqual(records.map((record) => record.localSessionId), ["current"]);
+});
+
+test("checkpoint writes do no cleanup scan and maintenance clears thousands of old owned temps in bounded batches", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, tempGraceMs: 0 });
+  const hash = "a".repeat(64);
+  const old = new Date(Date.now() - 60_000);
+  await Promise.all(Array.from({ length: 4_055 }, async (_, index) => {
+    const filename = `.checkpoint-${hash}.json.${String(index).padStart(8, "0")}-0000-4000-8000-000000000000.tmp`;
+    const target = path.join(directory, filename);
+    await writeFile(target, "interrupted", "utf8");
+    await utimes(target, old, old);
+  }));
+  await checkpoints.write(snapshot("provider-a", "good-after-temps", 1));
+  assert.equal(checkpoints.stats().maintenanceEntries, 0, "write is independent from directory maintenance");
+  const first = await checkpoints.maintenanceStep({ budget: 17 });
+  assert.equal(first.processed, 17);
+  assert.equal(first.deleted, 0);
+  await settleCheckpointMaintenance(checkpoints);
+  const restored = await checkpoints.load();
+  assert.equal(restored.records.length, 1);
+  assert.equal((await readdir(directory)).filter((name) => name.endsWith(".tmp")).length, 0);
+});
+
+test("maintenance never unlinks a checkpoint rewritten after its eviction was planned", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1 });
+  await checkpoints.write(snapshot("provider-a", "old", 1));
+  await checkpoints.write(snapshot("provider-a", "new", 1));
+  await checkpoints.maintenanceStep({ budget: 16 }); // scan and plan, no delete until a later step
+  await checkpoints.write(snapshot("provider-a", "old", 2));
+  const oldFile = path.join(directory, checkpointFilename("provider-a", "old"));
+  const future = new Date(Date.now() + 2_000);
+  await utimes(oldFile, future, future);
+  await checkpoints.maintenanceStep({ budget: 1 });
+  assert.ok((await readdir(directory)).includes(checkpointFilename("provider-a", "old")));
+});
+
+test("a skipped checkpoint eviction preserves its recorded repository sidecar", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1 });
+  await checkpoints.write(snapshot("provider-a", "old", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "old", repositorySnapshot());
+  const oldPath = path.join(directory, checkpointFilename("provider-a", "old"));
+  const oldDate = new Date(Date.now() - 60_000);
+  await utimes(oldPath, oldDate, oldDate);
+  await checkpoints.write(snapshot("provider-a", "new", 1));
+  await checkpoints.maintenanceStep({ budget: 16 });
+  await checkpoints.write(snapshot("provider-a", "old", 2));
+  await checkpoints.maintenanceStep({ budget: 1 });
+  await checkpoints.maintenanceStep({ budget: 1 });
+  assert.equal(JSON.parse(await readFile(oldPath, "utf8")).revision, 2);
+  assert.ok((await readdir(directory)).includes(repositorySnapshotFilename("provider-a", "old")));
+});
+
+test("failed atomic replacement retains prior revision and cleans only its partial temp", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  await checkpoints.write(snapshot("provider-a", "failure", 1));
+  const fsPromises = (await import("node:fs/promises")).default;
+  const { syncBuiltinESMExports } = await import("node:module");
+  const original = fsPromises.rename;
+  const target = path.join(directory, checkpointFilename("provider-a", "failure"));
+  fsPromises.rename = async (from, to) => {
+    if (to === target) throw new Error("synthetic rename interruption");
+    return original(from, to);
+  };
+  syncBuiltinESMExports();
+  try { await assert.rejects(checkpoints.write(snapshot("provider-a", "failure", 2)), /synthetic/); }
+  finally { fsPromises.rename = original; syncBuiltinESMExports(); }
+  assert.equal(JSON.parse(await readFile(target, "utf8")).revision, 1);
+  assert.equal((await readdir(directory)).filter((name) => name.endsWith(".tmp")).length, 0);
+});
+
+test("publication prepared during an eviction stat keeps its newly committed revision", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1 });
+  await checkpoints.write(snapshot("provider-a", "old", 1));
+  const target = path.join(directory, checkpointFilename("provider-a", "old"));
+  const older = new Date(Date.now() - 60_000);
+  await utimes(target, older, older);
+  await checkpoints.write(snapshot("provider-a", "new", 1));
+  await checkpoints.maintenanceStep({ budget: 16 });
+  const fsPromises = (await import("node:fs/promises")).default;
+  const { syncBuiltinESMExports } = await import("node:module");
+  const originalStat = fsPromises.stat; const originalWrite = fsPromises.writeFile;
+  let writing; let overlap = false; let markPrepared;
+  const prepared = new Promise((resolve) => { markPrepared = resolve; });
+  fsPromises.writeFile = async (...args) => {
+    const result = await originalWrite(...args);
+    if (overlap) markPrepared();
+    return result;
+  };
+  fsPromises.stat = async (location, ...args) => {
+    const result = await originalStat(location, ...args);
+    if (location === target && !overlap) {
+      overlap = true;
+      writing = checkpoints.write(snapshot("provider-a", "old", 2));
+      // Wait for temporary data, not rename: publication waits for eviction.
+      await prepared;
+    }
+    return result;
+  };
+  syncBuiltinESMExports();
+  try {
+    await checkpoints.maintenanceStep({ budget: 1 }); await writing;
+    assert.equal(overlap, true);
+    assert.equal(JSON.parse(await readFile(target, "utf8")).revision, 2);
+  } finally {
+    fsPromises.stat = originalStat; fsPromises.writeFile = originalWrite; syncBuiltinESMExports();
+  }
 });

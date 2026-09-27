@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { appendFile, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,12 +15,112 @@ import {
 } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createProviderRegistry } from "../monitor/providers/registry.mjs";
+import { incrementalSourceDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
+import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "../monitor/providers/codex-recorded-lifecycle.mjs";
+import { buildCodexAgentTree } from "../monitor/providers/codex-agent-metadata.mjs";
 
 const START = Date.parse("2026-08-11T12:00:00.000Z");
 const LEGACY_INFERENCE = Object.freeze({
   owningRuntime: "unsupported",
   writerPresence: "unsupported",
   structuredRollout: "unsupported",
+});
+
+function boundary(offset, type = "task_complete", turnId = "backlogged-turn") {
+  return { timestamp: new Date(START + offset).toISOString(), type: "event_msg", payload: { type, turn_id: turnId } };
+}
+
+async function retainedFixture(context, { waiting = false, owner = false, maximumTailBytes = 4096 } = {}) {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-terminal-backlog-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "rollout.jsonl");
+  const records = [boundary(0, "task_started")];
+  if (waiting) records.push({ timestamp: new Date(START + 1000).toISOString(), type: "response_item",
+    payload: { type: "function_call", name: "request_user_input", call_id: "pending", turn_id: "backlogged-turn" } });
+  await writeFile(file, records.map(JSON.stringify).join("\n") + "\n");
+  const coordinator = createCodexLivenessCoordinator({ now: () => START + 10_000, cacheMs: 0, maximumTailBytes,
+    currentWriterOwner: () => owner ? { pid: 4242, processStartIdentity: "134000000000000000" } : null });
+  const observation = { file, generation: incrementalSourceDescriptor(file),
+    state: records.reduce(reduceCodexRecordedLifecycle, initialCodexRecordedLifecycle()), complete: true };
+  coordinator.observeLifecycleSources([observation]);
+  const threads = [thread("backlogged-root", { rolloutFile: file })];
+  const observe = () => coordinator.observe(threads);
+  assert.equal(observe().sessions.get("backlogged-root").activityStatus, waiting ? "needs_input" : "working");
+  return { file, coordinator, observation, observe };
+}
+
+for (const waiting of [false, true]) {
+  for (const owner of [false, true]) {
+    test(`terminal append clears retained ${waiting ? "input" : "active"} state with owner=${owner} before full acquisition`, async (context) => {
+      const { file, coordinator, observation, observe } = await retainedFixture(context, { waiting, owner });
+      const end = boundary(2000);
+      await appendFile(file, JSON.stringify(end) + "\n");
+      // The full observer is still pending with its old normalized state.
+      coordinator.observeLifecycleSources([{ ...observation, generation: incrementalSourceDescriptor(file), complete: false, pending: true }]);
+      const result = observe();
+      assert.equal(result.threads[0].liveStatus, "idle");
+      assert.equal(result.threads[0].liveness.observedAt, end.timestamp);
+      const session = result.sessions.get("backlogged-root");
+      assert.equal(session.activityStatus, owner ? "open" : "idle");
+      assert.equal(session.isLive, owner);
+      assert.equal(session.needsInput, false);
+      const agents = buildCodexAgentTree({ rootThreadId: "backlogged-root", threads: result.threads, historical: false });
+      assert.equal(agents.find((agent) => agent.id === "primary").status, "idle");
+      assert.equal(coordinator.stats().rolloutFiles, 1);
+      assert.equal(observe().threads[0].liveStatus, "idle");
+      assert.equal(coordinator.stats().rolloutFiles, 0, "unchanged tails are cached");
+      await appendFile(file, '{"unfinished":');
+      assert.equal(observe().threads[0].liveStatus, "idle", "accepted terminal survives a later partial append");
+      assert.equal(observe().threads[0].liveness.observedAt, end.timestamp);
+      await appendFile(file, '"complete"}\n');
+      coordinator.observeLifecycleSources([{ ...observation, generation: incrementalSourceDescriptor(file),
+        state: reduceCodexRecordedLifecycle(observation.state, end), complete: true }]);
+      assert.equal(observe().threads[0].liveStatus, "idle", "full observer reconciles the accepted terminal");
+      await appendFile(file, '{"next":');
+      assert.equal(observe().threads[0].liveStatus, "idle", "reconciled terminal survives another partial append");
+    });
+  }
+}
+
+for (const invalid of ["partial", "malformed", "gap", "older", "equal", "wrong-turn", "future", "new-turn", "invalid-timestamp"]) {
+  test(`retained lifecycle rejects terminal candidate (${invalid}) during acquisition lag`, async (context) => {
+    const { file, observe } = await retainedFixture(context, { waiting: true, maximumTailBytes: invalid === "gap" ? 256 : 4096 });
+    const end = boundary(invalid === "older" ? 500 : invalid === "equal" ? 1000 : invalid === "future" ? 20_000 : 2000,
+      "task_complete", invalid === "wrong-turn" ? "unrelated-turn" : "backlogged-turn");
+    if (invalid === "invalid-timestamp") end.timestamp = "invalid";
+    const encoded = JSON.stringify(end);
+    const prefix = invalid === "malformed" ? '{"broken":}\n' : invalid === "gap" ? JSON.stringify({ padding: "x".repeat(4096) }) + "\n" : "";
+    const suffix = invalid === "partial" ? "" : "\n";
+    await appendFile(file, prefix + encoded + suffix
+      + (invalid === "new-turn" ? JSON.stringify(boundary(3000, "task_started", "next-turn")) + "\n" : ""));
+    const retained = observe();
+    assert.equal(retained.sessions.get("backlogged-root").activityStatus, "needs_input");
+    assert.equal(retained.threads[0].liveness.observedAt, new Date(START + 1000).toISOString());
+    if (invalid === "partial") {
+      await appendFile(file, "\n");
+      assert.equal(observe().sessions.get("backlogged-root").activityStatus, "idle");
+    }
+  });
+}
+
+test("a terminal read that changes generation retains lifecycle until a stable retry", async (context) => {
+  const { file, observe } = await retainedFixture(context);
+  await appendFile(file, JSON.stringify(boundary(2000)) + "\n");
+  const size = fs.statSync(file).size;
+  const readSync = fs.readSync;
+  let changed = false;
+  const mock = context.mock.method(fs, "readSync", (...args) => {
+    const result = readSync(...args);
+    if (!changed && args[3] === size) {
+      changed = true;
+      fs.appendFileSync(file, "\n");
+    }
+    return result;
+  });
+  assert.equal(observe().sessions.get("backlogged-root").activityStatus, "working");
+  assert.equal(changed, true);
+  mock.mock.restore();
+  assert.equal(observe().sessions.get("backlogged-root").activityStatus, "idle");
 });
 
 function thread(localId = "live-root", options = {}) {

@@ -253,8 +253,13 @@ export function projectProviderSessionEvidence({
     session: {
       id: sessionId,
       title: evidence.session.title,
-      project: evidence.session.project,
-      cwd: evidence.session.cwd,
+      project: sessionId.startsWith("codex:") && !(evidence.session.repositoryAttribution === "single" && /^repo-[a-f0-9]{24}$/u.test(evidence.session.repositoryId || ""))
+        ? evidence.session.repositoryAttribution === "multiple" ? "Multiple repositories" : "Unknown project"
+        : evidence.session.project,
+      // Compatibility field only; recognized roots and provider cwd are private.
+      cwd: "",
+      ...(evidence.session.repositoryAttribution === "single" && /^repo-[a-f0-9]{24}$/u.test(evidence.session.repositoryId || "")
+        ? { repositoryId: evidence.session.repositoryId } : {}),
       repository,
       pullRequests,
       startedAt: evidence.session.startedAt,

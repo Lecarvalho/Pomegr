@@ -12,6 +12,21 @@ function inventory(observedAt, machineryTokens = 1200) {
     groups: [{ id: "tools", label: "Tools", items: [{ name: "Read", detail: "provider tool", tokens: "200" }] }] };
 }
 
+test("strict mutation resolution rejects non-Git fallback and persists repository identities before association", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-binding-"));
+  const storeFile = path.join(directory, "inventory.json");
+  const root = path.join(directory, "repo");
+  const options = { registry: { providers: [] }, storeFile, gitRoot: async (cwd) => cwd === root ? root : null };
+  const runtime = createRepositoryInventoryRuntime(options);
+  const ordinary = await runtime.resolveRepository(directory);
+  assert.ok(ordinary.repositoryId, "legacy inventory may identify a folder");
+  assert.equal(await runtime.resolveRepository(directory, { requireGit: true }), null);
+  const bound = await runtime.resolveRepository(root, { requireGit: true });
+  assert.equal(bound.recognized, true);
+  const restored = createRepositoryInventoryRuntime(options);
+  assert.equal((await restored.resolveRepository(root, { requireGit: true })).repositoryId, bound.repositoryId);
+});
+
 test("repository inventories use opaque identities, immutable revisions, and future-only bindings", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-inventory-"));
   const storeFile = path.join(directory, "inventory.json");

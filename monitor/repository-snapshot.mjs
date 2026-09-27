@@ -7,7 +7,7 @@ const COMMIT_HASH_LINE = /^[0-9a-f]{40}$/iu;
 const MAX_FILES = 200;
 const MAX_PULL_REQUESTS = 10;
 const MAX_COUNT = 100_000;
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
 const WINDOW_TIMEOUT_MS = 3_000;
 const WINDOW_MAX_BUFFER = 256 * 1024;
 // Combined character budget for one git-observed path list (dirtyAtFirstCheck,
@@ -25,7 +25,9 @@ const SNAPSHOT_KEYS_V1 = new Set([
 const SNAPSHOT_KEYS_V2 = new Set([
   ...SNAPSHOT_KEYS_V1, "dirtyAtFirstCheck", "becameDirty", "committedInWindow", "gitObservedTruncated",
 ]);
-const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
+const SNAPSHOT_KEYS_V3 = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
+const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 // Net Git change per window-committed path, aligned index-for-index with committedInWindow.
 const COMMITTED_CHANGES = new Set(["added", "modified", "deleted"]);
 const NAME_STATUS_LINE = /^([AMDT])\t(.+)$/u;
@@ -219,10 +221,14 @@ export function normalizeRepositorySnapshot(value) {
       committedInWindow: null,
       committedChanges: null,
       gitObservedTruncated: false,
+      repositoryId: null,
     });
   }
   const upgradingV2 = value.version === 2;
-  if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2) : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
+  const upgradingV3 = value.version === 3;
+  if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2)
+    : upgradingV3 ? !hasExactKeys(value, SNAPSHOT_KEYS_V3)
+      : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
   const core = normalizeSnapshotCore(value);
   if (!core) return null;
   const dirtyAtFirstCheck = normalizeGitObservedPathList(value.dirtyAtFirstCheck, { nullable: true });
@@ -234,6 +240,8 @@ export function normalizeRepositorySnapshot(value) {
   const committedChanges = upgradingV2 ? null : normalizeCommittedChanges(value.committedChanges, committedInWindow);
   if (committedChanges === undefined) return null;
   if (typeof value.gitObservedTruncated !== "boolean") return null;
+  const repositoryId = upgradingV2 || upgradingV3 ? null : value.repositoryId;
+  if (repositoryId !== null && (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId))) return null;
   return Object.freeze({
     version: SNAPSHOT_VERSION,
     ...core,
@@ -242,6 +250,7 @@ export function normalizeRepositorySnapshot(value) {
     committedInWindow: committedInWindow === null ? null : Object.freeze(committedInWindow),
     committedChanges: committedChanges === null ? null : Object.freeze(committedChanges),
     gitObservedTruncated: value.gitObservedTruncated,
+    repositoryId,
   });
 }
 
@@ -341,8 +350,12 @@ export function gitObservedFilesFromSnapshot(snapshot) {
  * (never a partial record) when the candidate fails final normalization; the
  * caller must keep whatever snapshot it already had.
  */
-export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt, previous = null } = {}) {
+export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt, repositoryId = null, previous = null } = {}) {
   if (!repository || repository.available !== true || repository.historical !== false) return null;
+  // A new bound identity begins a new repository timeline. In particular, an
+  // old v3 (unbound) sidecar must not donate its carry-forward fields when a
+  // session is later proven to belong to a repository.
+  const prior = previous?.repositoryId === repositoryId ? previous : null;
   const files = (Array.isArray(repository.files) ? repository.files : [])
     .slice(0, MAX_FILES)
     .map((file) => (typeof file?.status === "string" && FILE_STATUS.test(file.status) && isSafeRecordedRepositoryPath(file?.path)
@@ -350,13 +363,13 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
       : null))
     .filter(Boolean);
   const takeComparison = repository.remote?.status === "ready";
-  const comparison = takeComparison ? (repository.comparison ?? null) : (previous?.comparison ?? null);
-  const comparisonCheckedAt = takeComparison ? (repository.remote?.checkedAt ?? null) : (previous?.comparisonCheckedAt ?? null);
+  const comparison = takeComparison ? (repository.comparison ?? null) : (prior?.comparison ?? null);
+  const comparisonCheckedAt = takeComparison ? (repository.remote?.checkedAt ?? null) : (prior?.comparisonCheckedAt ?? null);
   const takePullRequests = pullRequests?.status === "ready";
   const nextPullRequests = takePullRequests
     ? { checkedAt: pullRequests.checkedAt || checkedAt, items: Array.isArray(pullRequests.items) ? pullRequests.items : [] }
-    : (previous?.pullRequests ?? null);
-  const nextCommitsInSession = Number.isSafeInteger(commitsInSession) ? commitsInSession : (previous?.commitsInSession ?? null);
+    : (prior?.pullRequests ?? null);
+  const nextCommitsInSession = Number.isSafeInteger(commitsInSession) ? commitsInSession : (prior?.commitsInSession ?? null);
   return normalizeRepositorySnapshot({
     version: SNAPSHOT_VERSION,
     branch: repository.branch,
@@ -367,8 +380,20 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
     pullRequests: nextPullRequests,
     commitsInSession: nextCommitsInSession,
     checkedAt,
-    ...nextGitObserved(previous, { files, committedPaths, committedChanges }),
+    repositoryId,
+    ...nextGitObserved(prior, { files, committedPaths, committedChanges }),
   });
+}
+
+/** Return only a sidecar whose repository identity matches its session. */
+export function sessionRepositorySnapshot(evidence, snapshot, providerId) {
+  if (!snapshot) return null;
+  // Claude has no structured mutation-root binding, so legacy sidecars retain
+  // their established branch-qualified behavior.
+  if (providerId !== "codex") return snapshot;
+  const repositoryId = evidence?.session?.repositoryId;
+  if (evidence?.session?.repositoryAttribution !== "single" || !REPOSITORY_ID.test(repositoryId || "")) return null;
+  return snapshot.repositoryId === repositoryId ? snapshot : null;
 }
 
 const UNAVAILABLE_PULL_REQUESTS = Object.freeze({ status: "unavailable", checkedAt: null, items: Object.freeze([]) });
@@ -398,30 +423,28 @@ export function historicalRepositoryFromSnapshot(snapshot) {
 }
 
 /** checkpointPublicState's historical repository resolution: recorded snapshot, else recordedGitState fallback. */
-export function resolveCheckpointRepository({ historical, evidence, snapshot, recordedGitState, unavailableGitState, unavailablePullRequests }) {
+function sessionRecordedBranch(evidence, providerId) {
+  return providerId === "codex" && !(evidence.session.repositoryAttribution === "single" && REPOSITORY_ID.test(evidence.session.repositoryId || ""))
+    ? "" : evidence.session.recordedGitBranch;
+}
+
+export function resolveCheckpointRepository({ historical, evidence, snapshot, providerId, recordedGitState, unavailableGitState, unavailablePullRequests }) {
   if (!historical) return { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() };
-  return historicalRepositoryFromSnapshot(snapshot)
-    || { repository: recordedGitState(evidence.session.recordedGitBranch), pullRequests: unavailablePullRequests() };
+  return historicalRepositoryFromSnapshot(sessionRepositorySnapshot(evidence, snapshot, providerId))
+    || { repository: recordedGitState(sessionRecordedBranch(evidence, providerId)), pullRequests: unavailablePullRequests() };
 }
 
 /**
  * projectSelection's historical repository resolution: a recorded snapshot never
- * calls Git or GitHub; only the no-snapshot fallback reads recorded state and
- * (as today) asks the pull-request reader for historical association evidence.
+ * calls Git or GitHub.  With no snapshot, the recorded branch is display-only:
+ * the live working tree may now be another session's checkout, so no current
+ * GitHub association query is safe either.
  */
-export async function resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot, recordedGitState, pullRequestReader, unavailablePullRequests }) {
-  if (snapshot) return historicalRepositoryFromSnapshot(snapshot);
-  const repository = recordedGitState(evidence.session.recordedGitBranch);
-  let pullRequests;
-  try {
-    pullRequests = await pullRequestReader([], {
-      cwd: evidence.session.cwd, branch: repository.branch, historical: true,
-      sessionCreations: evidence.pullRequestCreations,
-    });
-  } catch {
-    pullRequests = unavailablePullRequests();
-  }
-  return { repository, pullRequests };
+export async function resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot, providerId, recordedGitState, pullRequestReader, unavailablePullRequests }) {
+  const matchedSnapshot = sessionRepositorySnapshot(evidence, snapshot, providerId);
+  if (matchedSnapshot) return historicalRepositoryFromSnapshot(matchedSnapshot);
+  const repository = recordedGitState(sessionRecordedBranch(evidence, providerId));
+  return { repository, pullRequests: unavailablePullRequests() };
 }
 
 /**
@@ -561,6 +584,7 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
             committedPaths: live?.committedPaths,
             committedChanges: live?.committedChanges,
             checkedAt: live?.checkedAt,
+            repositoryId: live?.repositoryId,
             previous,
           });
         } catch {

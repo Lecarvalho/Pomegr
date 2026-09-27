@@ -77,7 +77,11 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
 export function mergeCodexObservationEvidence(previous, current) {
   if (!previous) return current;
   const usageSnapshots = mergeByKey(previous.usageSnapshots, current.usageSnapshots, (item) => item?.dedupeId, MAX_USAGE_SNAPSHOTS, mergeCodexContextSnapshot);
-  const toolCalls = mergeByKey(previous.toolCalls, current.toolCalls, (item) => item?.id, MAX_TOOL_CALLS);
+  const toolCalls = mergeByKey(previous.toolCalls, current.toolCalls, (item) => item?.id, MAX_TOOL_CALLS, (older, newer) => (
+    newer?.status !== "failed" && newer?.fileChanges === null && Array.isArray(older?.fileChanges) && older.fileChanges.length
+      ? { ...newer, fileChanges: older.fileChanges }
+      : newer
+  ));
   const activity = mergeByKey(previous.activity, current.activity, (item) => item?.id, MAX_ACTIVITY);
   const compactions = mergeByKey(
     previous.compactions,
@@ -109,6 +113,19 @@ export function mergeCodexObservationEvidence(previous, current) {
       key,
       Boolean(previous.efficiencyRuleEvidence?.[key] || current.efficiencyRuleEvidence?.[key]),
     ])),
+  };
+}
+
+/** A complete reread may temporarily lose repository resolution while retaining the same call. */
+function retainResolvedFileChanges(previous, current) {
+  const prior = new Map((previous?.toolCalls || []).map((call) => [call?.id, call?.fileChanges]));
+  return {
+    ...current,
+    toolCalls: (current?.toolCalls || []).map((call) => (
+      call?.status !== "failed" && call?.fileChanges === null && Array.isArray(prior.get(call?.id)) && prior.get(call.id).length
+        ? { ...call, fileChanges: prior.get(call.id) }
+        : call
+    )),
   };
 }
 
@@ -200,6 +217,8 @@ export function createCodexIncrementalObserver(options = {}) {
     list,
     readEvidence,
     discoveredMetadata,
+    peekMetadata,
+    resolveExactMetadata,
     transcriptPathsBySessionId,
     intervalMs,
     concurrency,
@@ -266,7 +285,14 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   async function prepareSources(entries = []) {
-    const metadata = await discoveredMetadata();
+    const exact = await Promise.all(entries.map(async (entry) => {
+      const localId = entry?.localId;
+      return typeof localId === "string" && typeof resolveExactMetadata === "function"
+        ? resolveExactMetadata(localId) : null;
+    }));
+    const metadata = exact.every((item) => item)
+      ? [...(typeof peekMetadata === "function" ? peekMetadata() : []), ...exact]
+      : await discoveredMetadata();
     const metadataById = new Map(metadata.map((item) => [item.localId, item]));
     const sources = new Map();
     for (const entry of entries) {
@@ -491,7 +517,7 @@ export function createCodexIncrementalObserver(options = {}) {
       },
     });
     if (!next) return null;
-    const evidence = completeStory ? next : mergeCodexObservationEvidence(session.evidence, next);
+    const evidence = completeStory ? retainResolvedFileChanges(session.evidence, next) : mergeCodexObservationEvidence(session.evidence, next);
     const candidate = {
       ...evidence,
       observationSource: {

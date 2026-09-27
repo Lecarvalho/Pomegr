@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
 import { codexTimestamp } from "./codex-session-metadata.mjs";
 import { toolWorkKind } from "../work-kind.mjs";
 import { boundedActivityDuration, boundedFileChanges } from "../activity-events.mjs";
+import { repositoryRelativePath } from "../repository-path.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -252,7 +254,10 @@ function functionDescriptor(name, input, namespace = "") {
     return { tool: "Tool search", detail: "Discover tools", repetitionInput: input, mutationInput: null };
   }
   const detail = mcpDetail(namespace, name) || "Tool call";
-  return { tool: "Dynamic tool", detail, repetitionInput: input, mutationInput: null };
+  // An exec wrapper's completion cannot prove that a nested literal patch call
+  // ran (or succeeded). Only provider-native apply_patch/fileChange records
+  // supply structured mutation evidence.
+  return { tool: "Dynamic tool", detail, repetitionInput: input, mutationInput: null, fileChangeCandidates: [] };
 }
 
 function canonicalDescriptor(item) {
@@ -405,7 +410,7 @@ function mutationEvidence(descriptor) {
   return { display, scopes };
 }
 
-function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descriptor, status }) {
+function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descriptor, status, fileChangeCwd }) {
   if (!descriptor || !timestamp) return null;
   return {
     id: stableCodexCallId(actor.id, providerCallId, fallbackIdentity),
@@ -424,6 +429,7 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     // sealCodexFileChanges before any call crosses this module's boundary.
     // Shell commands never contribute: their written files cannot be known reliably.
     fileChangeCandidates: descriptor.fileChangeCandidates || null,
+    fileChangeCwd: descriptor.fileChangeCandidates?.length ? fileChangeCwd : undefined,
   };
 }
 
@@ -458,6 +464,9 @@ export function mergeCodexToolCalls(callGroups) {
       ...(Object.hasOwn(call, "fileChanges") || Object.hasOwn(previous, "fileChanges")
         ? { fileChanges: call.fileChanges || previous.fileChanges || null }
         : {}),
+      ...(call.fileChangeCandidates || previous.fileChangeCandidates
+        ? { fileChangeCandidates: call.fileChangeCandidates || previous.fileChangeCandidates, fileChangeCwd: call.fileChangeCwd || previous.fileChangeCwd }
+        : {}),
     });
   }
   return [...calls.values()].sort((left, right) => (
@@ -470,22 +479,118 @@ export function mergeCodexToolCalls(callGroups) {
  * once its status is truly final, and strip the private working field so it
  * never reaches evidence.toolCalls (the schema is strict).
  */
-/** @param {{ cwd?: string, forbiddenRoots?: string[] }} [options] */
+/** @param {{ cwd?: string, forbiddenRoots?: string[], deferFileChanges?: boolean }} [options] */
 function sealCodexFileChanges(call, status, options = {}) {
-  const { cwd, forbiddenRoots = [] } = options;
-  const { fileChangeCandidates, ...sealed } = call;
+  const { cwd, forbiddenRoots = [], deferFileChanges = false } = options;
+  const { fileChangeCandidates, fileChangeCwd, ...sealed } = call;
+  if (deferFileChanges && status === "completed" && fileChangeCandidates?.length) {
+    return { ...sealed, status, fileChanges: null, fileChangeCandidates, fileChangeCwd: fileChangeCwd || cwd };
+  }
   return {
     ...sealed,
     status,
     fileChanges: status === "completed" && fileChangeCandidates?.length
-      ? boundedFileChanges(fileChangeCandidates, cwd, { forbiddenRoots })
+      ? boundedFileChanges(fileChangeCandidates, fileChangeCwd || cwd, { forbiddenRoots })
       : null,
   };
 }
 
+function absoluteMutationTarget(target, cwd) {
+  if (typeof target !== "string" || !target || /[\u0000-\u001f\u007f]/u.test(target)
+    || typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
+  // `path.resolve` deliberately permits a tool cwd to point into a sibling
+  // checkout. The binding below proves the resulting target has its own Git root.
+  if (/^[A-Za-z]:(?![\\/])/u.test(target) || /^[\\/]{2}/u.test(target)) return null;
+  if (target.replace(/\\/gu, "/").split("/").includes("..")) return null;
+  return path.resolve(path.isAbsolute(target) ? target : path.resolve(cwd, target));
+}
+
+function nearestExistingDirectory(target) {
+  let candidate = target;
+  try { if (!fs.statSync(candidate).isDirectory()) candidate = path.dirname(candidate); } catch { candidate = path.dirname(candidate); }
+  while (path.dirname(candidate) !== candidate) {
+    try { if (fs.statSync(candidate).isDirectory()) return candidate; } catch { /* climb */ }
+    candidate = path.dirname(candidate);
+  }
+  return null;
+}
+
+async function bindMutationTarget(target, cwd, resolver, forbiddenRoots) {
+  const absolute = absoluteMutationTarget(target, cwd);
+  const directory = absolute && nearestExistingDirectory(absolute);
+  if (!absolute || !directory) return null;
+  let resolved;
+  try { resolved = await resolver(directory, { requireGit: true }); } catch { return null; }
+  if (!resolved || typeof resolved.repositoryId !== "string" || !/^repo-[a-f0-9]{24}$/u.test(resolved.repositoryId)
+    || typeof resolved.root !== "string" || !path.isAbsolute(resolved.root)
+    || (resolved.recognized !== true && resolved.isGit !== true)) return null;
+  const relative = path.relative(resolved.root, absolute);
+  const safePath = repositoryRelativePath(relative, resolved.root, { forbiddenRoots });
+  return safePath ? { repositoryId: resolved.repositoryId, path: safePath, root: resolved.root } : null;
+}
+
+async function mapBounded(items, maximum, mapper) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index], index);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(Math.max(1, maximum), items.length) }, worker));
+  return results;
+}
+
+/**
+ * Resolve successful structured mutation candidates before provider evidence is
+ * committed. The resolver is monitor-private and returns the inventory's HMAC
+ * repository ID plus its real root; roots and source targets are discarded here.
+ */
+/** @param {{ resolveRepository?: (directory: string, options?: { requireGit?: boolean }) => Promise<any> | any, forbiddenRoots?: string[], onRepositoryBinding?: (binding: any) => void }} [options] */
+export async function bindCodexFileChanges(calls, options = {}) {
+  const { resolveRepository, forbiddenRoots = [], onRepositoryBinding } = options;
+  const input = Array.isArray(calls) ? calls : [];
+  const directoryResolutions = new Map();
+  const resolveDirectory = (directory, resolverOptions) => {
+    if (!directoryResolutions.has(directory)) {
+      directoryResolutions.set(directory, Promise.resolve().then(() => resolveRepository(directory, resolverOptions)));
+    }
+    return directoryResolutions.get(directory);
+  };
+  return mapBounded(input, 4, async (call) => {
+    const { fileChangeCandidates, fileChangeCwd, ...sealed } = call || {};
+    if (!fileChangeCandidates?.length || typeof resolveRepository !== "function" || call?.status !== "completed") {
+      return { ...sealed, fileChanges: call?.fileChanges || null };
+    }
+    const changes = [];
+    const seen = new Set();
+    for (const candidate of fileChangeCandidates.slice(0, 64)) {
+      if (!candidate || !["created", "edited", "deleted", "moved"].includes(candidate.kind)) continue;
+      const target = await bindMutationTarget(candidate.target, fileChangeCwd, resolveDirectory, forbiddenRoots);
+      if (!target) continue;
+      let previousPath = null;
+      if (candidate.kind === "moved") {
+        const previous = await bindMutationTarget(candidate.previousTarget, fileChangeCwd, resolveDirectory, forbiddenRoots);
+        if (!previous || previous.repositoryId !== target.repositoryId) continue;
+        previousPath = previous.path;
+      }
+      const key = `${target.repositoryId}\u0000${target.path}\u0000${candidate.kind}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (typeof onRepositoryBinding === "function") {
+        try { onRepositoryBinding({ repositoryId: target.repositoryId, root: target.root, recognized: true }); } catch { /* isolated private consumer */ }
+      }
+      changes.push({ repositoryId: target.repositoryId, path: target.path, kind: candidate.kind, previousPath });
+    }
+    return { ...sealed, fileChanges: changes.length ? changes : null };
+  });
+}
+
 export function parseCodexCanonicalTurns(turns, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
-  const { cwd, forbiddenRoots = [] } = options;
+  const { cwd, forbiddenRoots = [], deferFileChanges = false } = options;
   const calls = [];
   for (const [turnIndex, turn] of (Array.isArray(turns) ? turns : []).entries()) {
     const turnStartedAt = codexTimestamp(turn?.startedAt) || options.fallbackTimestamp;
@@ -502,10 +607,11 @@ export function parseCodexCanonicalTurns(turns, options = {}) {
         timestamp,
         descriptor,
         status,
+        fileChangeCwd: item?.cwd || cwd,
       }));
     }
   }
-  return mergeCodexToolCalls([calls]).map((call) => sealCodexFileChanges(call, call.status, { cwd, forbiddenRoots }));
+  return mergeCodexToolCalls([calls]).map((call) => sealCodexFileChanges(call, call.status, { cwd, forbiddenRoots, deferFileChanges }));
 }
 
 /** Normalize delivered assistant text from legacy and streamed rollout records. */
@@ -573,14 +679,18 @@ function outputStatus(payload) {
 export function parseCodexActivityRecords(records, options = {}) {
   const actor = options.actor || { id: "primary", label: "Primary agent" };
   const sourceKey = boundedText(options.sourceKey, 160) || actor.id;
-  const { cwd, forbiddenRoots = [] } = options;
+  const { cwd, forbiddenRoots = [], deferFileChanges = false } = options;
   const calls = [];
   const updates = new Map();
+  let recordedCwd = cwd;
   for (const [order, record] of (Array.isArray(records) ? records : []).entries()) {
     const observedTimestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp);
     const timestamp = observedTimestamp || options.fallbackTimestamp;
     const payload = record?.payload;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+    const sourceCwd = typeof payload.cwd === "string" ? payload.cwd : typeof record?.cwd === "string" ? record.cwd : null;
+    const sourceType = String(record?.type || payload?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (["turncontext", "sessionmeta"].includes(sourceType) && sourceCwd && path.isAbsolute(sourceCwd)) recordedCwd = sourceCwd;
     if (record.type === "response_item") {
       if (["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload.type)) {
         const id = responseCallId(payload);
@@ -597,6 +707,7 @@ export function parseCodexActivityRecords(records, options = {}) {
         timestamp,
         descriptor,
         status: normalizedStatus(payload.status, ["local_shell_call", "web_search_call", "image_generation_call"].includes(payload.type) ? "completed" : "running"),
+        fileChangeCwd: sourceCwd || recordedCwd,
       }));
       if (providerCallId && observedTimestamp) options.onCall?.(order, calls.at(-1));
       continue;
@@ -617,12 +728,13 @@ export function parseCodexActivityRecords(records, options = {}) {
       timestamp,
       descriptor,
       status: normalizedStatus(payload.status, eventType.endsWith("begin") ? "running" : "completed"),
+      fileChangeCwd: sourceCwd || recordedCwd,
     }));
     if (eventCallId(payload) && observedTimestamp) options.onCall?.(order, calls.at(-1));
   }
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
-    const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots });
+    const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots, deferFileChanges });
     return update ? { ...sealed, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : sealed;
   });
 }

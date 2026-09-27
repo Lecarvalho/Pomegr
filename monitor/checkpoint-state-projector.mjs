@@ -13,13 +13,13 @@ export function createCheckpointStateProjector({
     const sessionId = `${providerId}:${localSessionId}`;
     try {
       const { repository, pullRequests } = resolveCheckpointRepository({
-        historical, evidence, snapshot: recordedSnapshot(sessionId),
+        historical, evidence, snapshot: recordedSnapshot(sessionId), providerId,
         recordedGitState, unavailableGitState, unavailablePullRequests,
       });
       return {
         ...projectProviderSessionEvidence({
           evidence, sessionId, source: provider.source, capabilities: provider.capabilities,
-          repositoryRoles: repositoryRoleMappings(evidence.session.cwd), repository, pullRequests,
+          repositoryRoles: repositoryRoleMappings(providerId === "codex" ? "" : evidence.session.cwd), repository, pullRequests,
           usageLimits: createEmptyUsageLimits(), resources: historical ? null : unavailableResourceUsage(),
         }),
         readiness: createSessionReadiness("loading", { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" }),

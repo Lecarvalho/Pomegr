@@ -38,5 +38,9 @@ export function createCodexCatalogCache({ load, cacheMs, now }) {
     }
   }
 
-  return Object.freeze({ read, pending: () => Boolean(pending) });
+  // A selected-session read may use the last bounded snapshot as an exact
+  // locator. It must not await an unrelated refresh just to find a known row.
+  function peek() { return cache?.value || []; }
+
+  return Object.freeze({ read, peek, pending: () => Boolean(pending) });
 }

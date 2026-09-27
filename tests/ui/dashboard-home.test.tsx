@@ -7,6 +7,7 @@ import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import SessionsPage from "../../app/sessions/page";
 import type { SessionSummary } from "../../shared/monitor-contract";
+import { installDirectoryFixture } from "./session-directory-test-fixture";
 
 const sessions: SessionSummary[] = [
   { id: "codex:build-home", provider: "codex", source: "Codex", title: "Build Home", project: "Pomegr", updatedAt: "2026-08-30T12:00:00Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 2, activeAgentCount: 1, latestContextTotal: 12345, progress: null, currentActivity: null },
@@ -147,16 +148,20 @@ describe("personal Home", () => {
 
   it("opens project pins with an exact, removable filter", async () => {
     const page = await SessionsPage({ searchParams: Promise.resolve({ project: "Pomegr" }) });
-    render(<SessionCatalogProvider sessions={sessions}>{page}</SessionCatalogProvider>);
+    installDirectoryFixture(sessions);
+    render(<SessionCatalogProvider sessions={[]}>{page}</SessionCatalogProvider>);
+    await screen.findByText("Build Home");
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Build Home")).toBeInTheDocument();
     expect(screen.queryByText("Review report")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
-    expect(screen.getByText("Review report")).toBeInTheDocument();
+    expect(await screen.findByText("Review report")).toBeInTheDocument();
   });
 
-  it("does not use session-title matches when filtering a pinned project", () => {
-    render(<SessionCatalogProvider sessions={[...sessions, { ...sessions[1], id: "claude:other", title: "Pomegr work" }]}><SessionsView initialProject="Pomegr" /></SessionCatalogProvider>);
+  it("does not use session-title matches when filtering a pinned project", async () => {
+    installDirectoryFixture([...sessions, { ...sessions[1], id: "claude:other", title: "Pomegr work" }]);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView initialProject="Pomegr" /></SessionCatalogProvider>);
+    await screen.findByText("Build Home");
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Build Home")).toBeInTheDocument();
     expect(screen.queryByText("Pomegr work")).not.toBeInTheDocument();

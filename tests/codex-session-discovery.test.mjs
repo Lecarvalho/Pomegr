@@ -193,8 +193,9 @@ test("prefers safe app-server thread metadata and never exposes preview, turns, 
   const evidence = await provider.readSession("app-thread", { historical: true });
   assert.equal(evidence.historical, true);
   assert.equal(evidence.session.title, "Explicit app-server title");
-  assert.equal(evidence.session.project, "app-project");
-  assert.equal(evidence.session.recordedGitBranch, "codex/app-server");
+  assert.equal(evidence.session.project, "Unknown project");
+  assert.equal(evidence.session.repositoryAttribution, "unknown");
+  assert.equal(evidence.session.recordedGitBranch, "");
   assert.deepEqual(evidence.agents.map(({ id, parentId, assignment, label, kind, status }) => ({ id, parentId, assignment, label, kind, status })), [
     { id: "primary", parentId: null, assignment: null, label: "Primary agent", kind: "orchestrator", status: "idle" },
     { id: "agent-child-thread", parentId: "primary", assignment: "Trace CLI title", label: "Erdos", kind: "reviewer", status: "idle" },
@@ -206,6 +207,79 @@ test("prefers safe app-server thread metadata and never exposes preview, turns, 
     method: "thread/read",
     params: { threadId: "app-thread", includeTurns: false },
   })), true);
+});
+
+test("a known Codex app-server session bypasses a blocked global catalog sweep", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-selected-direct-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  let releaseCatalog;
+  const catalogBlocked = new Promise((resolve) => { releaseCatalog = resolve; });
+  const thread = appThread("direct-selected", { turns: [] });
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    appServer: {
+      async listThreads(params) { return params.ancestorThreadId ? { data: [] } : catalogBlocked; },
+      async readThread({ threadId }) { return { thread: { ...thread, id: threadId } }; },
+    },
+  });
+  const globalRead = provider.listSessions();
+  const selected = await Promise.race([
+    provider.readSession("direct-selected", { historical: false }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("selected read waited for global catalog")), 250)),
+  ]);
+  assert.equal(selected?.localId, "direct-selected");
+  releaseCatalog({ data: [] });
+  await globalRead;
+});
+
+test("a direct Codex app-server selection does not start a global descendant sweep", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-selected-no-sweep-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  let listCalls = 0;
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    appServer: {
+      async listThreads(params) { listCalls += 1; assert.equal(params.ancestorThreadId, "direct-no-sweep"); return { data: [] }; },
+      async readThread({ threadId }) { return { thread: appThread(threadId, { turns: [] }) }; },
+    },
+  });
+  const selected = await provider.readSession("direct-no-sweep", { historical: false });
+  assert.equal(selected?.localId, "direct-no-sweep");
+  assert.equal(listCalls, 1, "only the selected ancestor scope is read");
+});
+
+test("a retained rollout selection bypasses a blocked global Codex catalog sweep", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-selected-rollout-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rollout = path.join(root, "sessions", "2026", "09", "27", "rollout-known-rollout.jsonl");
+  await mkdir(path.dirname(rollout), { recursive: true });
+  await writeFile(rollout, `${JSON.stringify({
+    type: "session_meta", timestamp: "2026-09-27T12:00:00.000Z",
+    payload: { id: "known-rollout", source: "cli", cwd: "C:\\synthetic\\repo" },
+  })}\n`, "utf8");
+  let blocked = false;
+  let release;
+  const wait = new Promise((resolve) => { release = resolve; });
+  const provider = createCodexProvider({
+    codexHome: root,
+    includeArchived: false,
+    appServer: {
+      async listThreads() { return blocked ? wait : { data: [] }; },
+      async readThread() { return null; },
+    },
+  });
+  await provider.listSessions();
+  blocked = true;
+  const globalRead = provider.listSessions({ fresh: true });
+  const selected = await Promise.race([
+    provider.readSession("known-rollout", { historical: true }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("retained rollout waited for global catalog")), 250)),
+  ]);
+  assert.equal(selected?.localId, "known-rollout");
+  release({ data: [] });
+  await globalRead;
 });
 
 test("uses bounded session-index and rollout-header fallbacks for active and archived history", async (context) => {
@@ -241,8 +315,8 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, scanLimit: 20 });
   const catalog = await provider.listSessions();
   assert.deepEqual(catalog.map(({ localId, title, project }) => ({ localId, title, project })), [
-    { localId: "codex-fixture-parent", title: "Synthetic Codex fixture", project: "repo" },
-    { localId: "codex-archived", title: "Archived fixture", project: "archived-project" },
+    { localId: "codex-fixture-parent", title: "Synthetic Codex fixture", project: "Unknown project" },
+    { localId: "codex-archived", title: "Archived fixture", project: "Unknown project" },
   ]);
   assert.equal(catalog.every((session) => !session.isLive && !session.needsInput), true);
   assert.equal(catalog.some((session) => session.localId === "missing-rollout"), false);
@@ -252,11 +326,13 @@ test("uses bounded session-index and rollout-header fallbacks for active and arc
   assert.equal(evidence.historical, true);
   assert.deepEqual(evidence.session, {
     title: "Synthetic Codex fixture",
-    project: "repo",
+    project: "Unknown project",
     cwd: "C:\\synthetic\\repo",
+    repositoryId: null,
+    repositoryAttribution: "unknown",
     startedAt: "2026-08-10T13:00:00.000Z",
     updatedAt: "2026-08-10T13:00:16.000Z",
-    recordedGitBranch: "codex/synthetic-fixture",
+    recordedGitBranch: "",
     cost: null,
     approvalMode: { id: "on_request", label: "On request", observedAt: "2026-08-10T13:00:01.000Z", source: "provider" },
     contextMachinery: null,

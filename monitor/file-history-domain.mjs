@@ -87,14 +87,24 @@ function storageReadinessKind(monitorStoreRuntime) {
 }
 
 /** `null` when a committed block should be served as-is; otherwise the live override kind. */
-function readinessOverride(monitorStoreRuntime) {
+function readinessOverride(monitorStoreRuntime, indexReady) {
   if (!monitorStoreRuntime.store()) return "unavailable";
+  if (indexReady && !indexReady()) return "rebuilding";
   if (storageReadinessKind(monitorStoreRuntime) === "rebuilding") return "rebuilding";
   return null;
 }
 
 /** Session files: file_changes for the session grouped by file; newest kind, count, newest time. */
 function buildSessionFiles(store, sessionId) {
+  // The session surface has one repository context. Keep independently indexed
+  // evidence available in repository listings, but never merge ambiguous paths
+  // from multiple roots into that single-context list.
+  const repositories = store.database.prepare(`
+    SELECT DISTINCT f.repository_id AS repositoryId
+    FROM file_changes fc JOIN files f ON f.id = fc.file_id
+    WHERE fc.session_id = ? LIMIT 2
+  `).all(sessionId);
+  if (repositories.length > 1) return UNAVAILABLE_SESSION_FILES;
   const rows = store.database.prepare(`
     SELECT f.id AS fileId, f.current_path AS path, COUNT(*) AS changeCount, MAX(fc.observed_at) AS newestAt
     FROM file_changes fc
@@ -289,7 +299,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
  * missing key, and `requestSessionFiles` lets the session-domain store's `onDemand` nudge a
  * newly demanded session's first build.
  */
-export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLabel, demandedSessionIds, onSessionChange, now = Date.now } = {}) {
+export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLabel, demandedSessionIds, onSessionChange, indexReady = () => true, now = Date.now } = {}) {
   if (!monitorStoreRuntime || typeof monitorStoreRuntime.registerContributor !== "function" || typeof monitorStoreRuntime.store !== "function") {
     throw new TypeError("File history source requires a monitor store runtime");
   }
@@ -344,6 +354,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
   }
 
   async function onCheckpoint(store, { now: cycleNow } = {}) {
+    if (!indexReady()) return;
     const nowMs = Number.isFinite(cycleNow) ? cycleNow : now();
 
     let demandedIds;
@@ -424,7 +435,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
     /** Pure map lookup; never touches SQLite. Safe to call from a serving-side GET. */
     sessionFiles(sessionId) {
       if (typeof sessionId !== "string" || sessionId.length === 0) return LOADING_SESSION_FILES;
-      const override = readinessOverride(monitorStoreRuntime);
+      const override = readinessOverride(monitorStoreRuntime, indexReady);
       if (override === "unavailable") return UNAVAILABLE_SESSION_FILES;
       if (override === "rebuilding") return REBUILDING_SESSION_FILES;
       return sessionBlocks.get(sessionId) || LOADING_SESSION_FILES;
@@ -440,7 +451,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
     repositoryFiles(repositoryId) {
       if (typeof repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(repositoryId)) return loadingRepositoryFiles(String(repositoryId || ""));
       touchBounded(listingRequestedAt, listingBlocks, listingSerialized, repositoryId, now(), MAX_LISTINGS, [listingRevisions]);
-      const override = readinessOverride(monitorStoreRuntime);
+      const override = readinessOverride(monitorStoreRuntime, indexReady);
       if (override) return loadingRepositoryFiles(repositoryId, override);
       const block = listingBlocks.get(repositoryId);
       if (!block) { nudge(); return loadingRepositoryFiles(repositoryId, "loading"); }
@@ -458,7 +469,7 @@ export function createFileHistorySource({ monitorStoreRuntime, catalog, agentLab
       const key = historyKey(repositoryId, target);
       historyTargets.set(key, { repositoryId, target });
       touchBounded(historyRequestedAt, historyBlocks, historySerialized, key, now(), MAX_HISTORIES, [historyRevisions, historyTargets]);
-      const override = readinessOverride(monitorStoreRuntime);
+      const override = readinessOverride(monitorStoreRuntime, indexReady);
       if (override) return loadingFileHistory(repositoryId, requestedPath, override);
       const block = historyBlocks.get(key);
       if (!block) { nudge(); return loadingFileHistory(repositoryId, requestedPath, "loading"); }
@@ -477,6 +488,8 @@ export function attachFileHistory(monitorStoreRuntime, {
   resolveRepository, checkpointStore, readRenames, now,
   catalog, agentLabel, demandedSessionIds, onSessionChange,
 } = {}) {
-  registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository, checkpointStore, readRenames, now });
-  return createFileHistorySource({ monitorStoreRuntime, catalog, agentLabel, demandedSessionIds, onSessionChange, now });
+  const index = registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository, checkpointStore, readRenames, now });
+  return createFileHistorySource({ monitorStoreRuntime, catalog, agentLabel, demandedSessionIds, onSessionChange, now,
+    indexReady: () => index?.rebuildComplete() ?? true,
+  });
 }

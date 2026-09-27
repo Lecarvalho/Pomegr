@@ -62,6 +62,43 @@ export function createCodexAppServerSessionReader({
     }
   }
 
+  /** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+  async function enumerateSessionHeaders(options = {}) {
+    const { onBatch, signal } = options;
+    if (!appServer || typeof onBatch !== "function") return { complete: true };
+    const filters = includeArchived ? [false, true] : [false];
+    for (const archived of filters) {
+      let cursor = null;
+      let previousCursor = Symbol("initial");
+      while (!signal?.aborted) {
+        let response;
+        try {
+          response = await request("thread/list", {
+            limit: 100, sortKey: "updated_at", sortDirection: "desc", sourceKinds: ALL_SOURCE_KINDS, archived,
+            ...(cursor ? { cursor } : {}),
+          });
+        } catch { return { complete: false }; }
+        const data = appServerResponseData(response);
+        if (data === null) return { complete: false };
+        const headers = data.flatMap((thread) => {
+          const metadata = normalizeAppServerMetadata(thread, { archived });
+          return metadata && isTopLevelCodexSession(metadata) ? [metadata] : [];
+        });
+        for (let offset = 0; offset < headers.length; offset += 100) {
+          if (await onBatch(headers.slice(offset, offset + 100)) === false) return { complete: false };
+        }
+        const value = response?.result ?? response;
+        const nextCursor = typeof value?.nextCursor === "string" && value.nextCursor ? value.nextCursor : null;
+        if (!nextCursor) break;
+        if (nextCursor === previousCursor) return { complete: false };
+        previousCursor = nextCursor;
+        cursor = nextCursor;
+      }
+      if (signal?.aborted) return { complete: false };
+    }
+    return { complete: true };
+  }
+
   async function readSessionMetadata(localSessionId) {
     if (!appServer) return null;
     try {
@@ -123,6 +160,7 @@ export function createCodexAppServerSessionReader({
     return { metadata: mergeCodexMetadata(discovered), descendantIds, freshIds };
   }
 
+  /** @param {{ cwd?: string, forbiddenRoots?: string[], deferFileChanges?: boolean }} [fileChangeOptions] */
   async function readThreadEvidence(threadId, actor, fallbackTimestamp, fileChangeOptions = {}) {
     const unavailable = { available: false, toolCalls: [], activity: [], executionTasks: [], skills: [], pullRequestCreations: [] };
     if (!appServer) return unavailable;
@@ -134,6 +172,7 @@ export function createCodexAppServerSessionReader({
         available: true,
         toolCalls: parseCodexCanonicalTurns(thread.turns, {
           actor, fallbackTimestamp, cwd: fileChangeOptions.cwd, forbiddenRoots: fileChangeOptions.forbiddenRoots,
+          deferFileChanges: fileChangeOptions.deferFileChanges === true,
         }),
         activity: parseCodexCanonicalActivityEvents(thread.turns, { actor }),
         executionTasks: parseCodexCanonicalExecutionTasks(thread.turns, { fallbackTimestamp }),
@@ -149,5 +188,5 @@ export function createCodexAppServerSessionReader({
     }
   }
 
-  return { normalizeAppServerMetadata, readCatalog, readSessionMetadata, readSessionTree, readThreadEvidence };
+  return { normalizeAppServerMetadata, readCatalog, enumerateSessionHeaders, readSessionMetadata, readSessionTree, readThreadEvidence };
 }

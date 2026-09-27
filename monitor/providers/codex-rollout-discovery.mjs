@@ -297,6 +297,13 @@ export function createCodexRolloutDiscovery(options = {}) {
       const rows = await activeRead;
       return [...rows];
     },
+    peek(sessionId) {
+      if (typeof sessionId !== "string" || !sessionId) return null;
+      for (const entry of entries.values()) {
+        if (entry.metadata?.localId === sessionId) return entry.metadata;
+      }
+      return null;
+    },
     notice(file) {
       if (closed || typeof file !== "string" || !file.trim()) return;
       const candidate = path.resolve(file);

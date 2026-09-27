@@ -8,7 +8,7 @@ import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
-import { mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
+import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
 import { mergeCodexExecutionTasks, parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "./codex-activity-correlation.mjs";
@@ -36,12 +36,14 @@ import { createHistoryOwnershipProjection, publishNormalizedHistoryActivity, pub
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
+  findCodexRolloutFamily,
+  findCodexRolloutMetadata,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
+  enumerateCodexRolloutHeaders,
   readCodexSessionIndex,
 } from "./codex-session-metadata.mjs";
-export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
-export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
+export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024, CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 export function resolveCodexHome(options = {}) {
   const environment = options.env ?? process.env;
@@ -76,6 +78,28 @@ export function createCodexProvider(options = {}) {
   // never supply session, catalog, liveness, or canonical-turn evidence.
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
+  let repositoryResolver = null;
+  const repositoryAttributions = new Map();
+  const repositoryBindingRoots = new Map();
+  function rememberRepositoryAttribution(localSessionId, bindings) {
+    if (!bindings.size) return repositoryAttributions.get(localSessionId) || { state: "unknown" };
+    const roots = repositoryBindingRoots.get(localSessionId) || new Map();
+    for (const [repositoryId, binding] of bindings) {
+      if (roots.size >= 2) break; // Two proven roots permanently establish ambiguity.
+      roots.set(repositoryId, binding);
+    }
+    repositoryBindingRoots.delete(localSessionId);
+    repositoryBindingRoots.set(localSessionId, roots);
+    while (repositoryBindingRoots.size > 128) repositoryBindingRoots.delete(repositoryBindingRoots.keys().next().value);
+    const values = [...roots.values()];
+    const attribution = values.length === 1
+      ? { state: "single", repositoryId: values[0].repositoryId, root: values[0].root, fingerprint: createHash("sha256").update(values[0].root).digest("hex").slice(0, 32) }
+      : { state: "multiple" };
+    repositoryAttributions.delete(localSessionId);
+    repositoryAttributions.set(localSessionId, attribution);
+    while (repositoryAttributions.size > 128) repositoryAttributions.delete(repositoryAttributions.keys().next().value);
+    return attribution;
+  }
   const makeWriterPresence = () => options.writerPresence || createCodexWriterPresence({
     writerLocksRoot, now, platform: options.platform, env: options.env,
   });
@@ -159,6 +183,12 @@ export function createCodexProvider(options = {}) {
     maximumFiles: scanLimit, now,
   });
   let rolloutDiscovery = makeRolloutDiscovery();
+  const rolloutRoots = [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])];
+  async function resolveExactRolloutMetadata(localSessionId) {
+    return await appServerSessions.readSessionMetadata(localSessionId)
+      || rolloutDiscovery.peek(localSessionId)
+      || findCodexRolloutMetadata(rolloutRoots, localSessionId);
+  }
   async function readFallbackMetadata(readOptions, indexNames = readCodexSessionIndex(indexFile)) {
     return (await rolloutDiscovery.read(readOptions)).map((item) => {
       const indexed = indexNames.get(item.localId);
@@ -185,9 +215,37 @@ export function createCodexProvider(options = {}) {
     const { threads, sessions } = liveness.observe(metadata);
     rolloutDiscovery.retain(threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId));
     return threads.filter(isTopLevelCodexSession)
-      .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
+      .map((thread) => {
+        const attribution = repositoryAttributions.get(thread.localId);
+        const project = attribution?.state === "single" ? path.basename(attribution.root) || "Repository"
+          : attribution?.state === "multiple" ? "Multiple repositories" : "Unknown project";
+        return { ...codexSessionReference(thread, sessions.get(thread.localId)), project };
+      })
       .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
       .slice(0, catalogLimit).sort(compareCodexMetadata);
+  }
+  /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+  async function enumerateSessionHeaders(options = {}) {
+    const { onBatch, signal } = options;
+    const normalizeHeader = (header) => {
+        const attribution = repositoryAttributions.get(header.localId);
+        return {
+          localId: header.localId,
+          title: header.title,
+          project: attribution?.state === "single" ? path.basename(attribution.root) || "Repository"
+            : attribution?.state === "multiple" ? "Multiple repositories" : "Unknown project",
+          repositoryId: attribution?.state === "single" ? attribution.repositoryId : null,
+          createdAt: header.createdAt || header.updatedAt,
+          updatedAt: header.updatedAt,
+          isLive: false,
+          needsInput: false,
+          activityStatus: "unknown",
+        };
+      };
+    const emit = (headers) => onBatch(headers.map(normalizeHeader));
+    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit });
+    const appServerHeaders = await appServerSessions.enumerateSessionHeaders({ signal, onBatch: emit });
+    return { complete: Boolean(files.complete) && Boolean(appServerHeaders.complete) };
   }
   async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
@@ -199,10 +257,20 @@ export function createCodexProvider(options = {}) {
     const incrementalGenerationsByFile = readOptions.incrementalGenerationsByFile instanceof Map
       ? readOptions.incrementalGenerationsByFile
       : null;
-    const discovered = await discoveredMetadata();
-    const appServerTree = await appServerSessions.readSessionTree(localSessionId);
+    // Resolve known selected metadata before the global catalog.
+    const directRoot = await appServerSessions.readSessionMetadata(localSessionId);
+    const retainedFamily = directRoot?.rolloutFile ? [] : await findCodexRolloutFamily(rolloutRoots, localSessionId) || [];
+    const retainedRoot = directRoot ? null : retainedFamily.find((item) => item.localId === localSessionId) || null;
+    const rootLocator = directRoot || retainedRoot;
+    const appServerTree = directRoot
+      ? await appServerSessions.readSessionTree(localSessionId)
+      : rootLocator
+      ? { metadata: [], descendantIds: new Set(), freshIds: new Set() }
+      : await appServerSessions.readSessionTree(localSessionId);
+    const exactIndexNames = rootLocator ? readCodexSessionIndex(indexFile) : null, discovered = rootLocator ? mergeCodexMetadata(retainedFamily).map((item) => ({ ...item, title: exactIndexNames.get(item.localId)?.title || item.title })) : await discoveredMetadata();
     const mergedMetadata = mergeFreshCodexSessionTreeMetadata(discovered, appServerTree);
     const metadataById = new Map(mergedMetadata.map((item) => [item.localId, item]));
+    if (metadataById.size > scanLimit) throw new Error("selected_family_limit");
     const rootMetadata = metadataById.get(localSessionId) || null;
     if (appServer && !appServerTree.metadata.length && !rootMetadata?.rolloutFile) return null;
     if (!rootMetadata || !isTopLevelCodexSession(rootMetadata)) return null;
@@ -252,6 +320,15 @@ export function createCodexProvider(options = {}) {
         }
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
+          if (!metadataById.has(collaboration.childThreadId)) {
+            const childFamily = await findCodexRolloutFamily(rolloutRoots, collaboration.childThreadId) || [];
+            for (const child of childFamily) {
+              if (metadataById.has(child.localId)) continue;
+              if (metadataById.size >= scanLimit) throw new Error("selected_family_limit");
+              metadataById.set(child.localId, child);
+              mergedMetadata.push(child);
+            }
+          }
           if (metadataById.has(collaboration.childThreadId)) selectedIds.add(collaboration.childThreadId);
         }
       }
@@ -380,7 +457,7 @@ export function createCodexProvider(options = {}) {
           ? previousContext?.snapshots : [],
         // File-change evidence rebases onto this thread's own recorded cwd and
         // never resolves into the adapter's own Codex home.
-        cwd: thread.cwd, forbiddenRoots: [codexHome],
+        cwd: thread.cwd, forbiddenRoots: [codexHome], deferFileChanges: true,
       });
       let existingState = historical
         ? null
@@ -469,13 +546,35 @@ export function createCodexProvider(options = {}) {
       compactions.push(...normalizedContext.compactions);
       return context.toolCalls;
     });
-    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
       appServerSessions.readThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt, {
-        cwd: allMetadata.find((thread) => thread.localId === threadId)?.cwd, forbiddenRoots: [codexHome],
+        cwd: allMetadata.find((thread) => thread.localId === threadId)?.cwd, forbiddenRoots: [codexHome], deferFileChanges: true,
       })
     )));
-    const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const pendingToolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const provenRepositories = new Map();
+    const toolCalls = await bindCodexFileChanges(pendingToolCalls, {
+      resolveRepository: repositoryResolver,
+      forbiddenRoots: [codexHome],
+      onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
+    });
+    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
+    const repositoryAttribution = rememberRepositoryAttribution(metadata.localId, provenRepositories);
+    let recordedGitBranch = "";
+    if (repositoryAttribution.state === "single" && metadata.recordedGitBranch && typeof repositoryResolver === "function") {
+      try {
+        const launchRepository = await repositoryResolver(metadata.cwd);
+        if (launchRepository?.repositoryId === repositoryAttribution.repositoryId) {
+          recordedGitBranch = metadata.recordedGitBranch;
+        }
+      } catch { /* branch evidence stays unavailable when its recorded cwd cannot be proven */ }
+    }
+    if (repositoryAttribution.state === "single") {
+      repositoryAttributions.set(metadata.localId, { ...repositoryAttribution, recordedBranch: recordedGitBranch || null });
+    }
+    const attributedProject = repositoryAttribution.state === "single"
+      ? path.basename(repositoryAttribution.root) || "Repository"
+      : repositoryAttribution.state === "multiple" ? "Multiple repositories" : "Unknown project";
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
     stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
     const callsByActor = new Map();
@@ -527,11 +626,13 @@ export function createCodexProvider(options = {}) {
       historical,
       session: {
         title: metadata.title,
-        project: metadata.project,
+        project: attributedProject,
         cwd: metadata.cwd,
+        repositoryId: repositoryAttribution.state === "single" ? repositoryAttribution.repositoryId : null,
+        repositoryAttribution: repositoryAttribution.state,
         startedAt,
         updatedAt,
-        recordedGitBranch: metadata.recordedGitBranch,
+        recordedGitBranch,
         cost: null,
         approvalMode: approvalPlan.approvalMode,
         contextMachinery: null,
@@ -576,7 +677,6 @@ export function createCodexProvider(options = {}) {
     usageLimits: { status: "supported" },
     workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
-
   // One copy action needs one file location, so resolve it from the cached thread-metadata
   // tree instead of reading every rollout. Only a child that tree cannot place, such as one
   // linked solely by a parent rollout record, still needs the full session read.
@@ -596,11 +696,11 @@ export function createCodexProvider(options = {}) {
     return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
   }
   async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }
-
   const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];
   return defineProvider({
     id: "codex",
     source: "Codex",
+    catalogSourceScope: createHash("sha256").update(JSON.stringify({ sessionsRoot, archivedRoot, includeArchived, appServer: Boolean(appServer) })).digest("hex"),
     capabilityManifest,
     homePolicy: {
       requestModelObservations: true,
@@ -638,13 +738,22 @@ export function createCodexProvider(options = {}) {
       };
     },
     listSessions,
+    enumerateSessionHeaders,
     readSession,
     readSessionHistory,
     readRepositoryPluginSetup: createCodexPluginSetupReader({ env: options.env ?? process.env, codexHome }),
+    setRepositoryResolver(resolver) {
+      repositoryResolver = typeof resolver === "function" ? resolver : null;
+    },
+    repositoryAttributionForSession(localSessionId) {
+      return repositoryAttributions.get(localSessionId) || { state: "unknown" };
+    },
     createObserver: () => createCodexIncrementalObserver({
       list: listSessions, now,
       readEvidence: readSession,
       discoveredMetadata,
+      peekMetadata: () => metadataCatalog.peek(),
+      resolveExactMetadata: resolveExactRolloutMetadata,
       noticeRollout: (file) => rolloutDiscovery.notice(file),
       transcriptPathsBySessionId,
       intervalMs: options.observerIntervalMs ?? 10_000,
@@ -667,7 +776,7 @@ export function createCodexProvider(options = {}) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
           thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
-        return createHash("sha256").update(JSON.stringify(["codex-activity-v2", catalogEntry?.isLive, states])).digest("hex");
+        return createHash("sha256").update(JSON.stringify(["codex-activity-v3", catalogEntry?.isLive, states])).digest("hex");
       },
     }),
     readTranscriptPath,

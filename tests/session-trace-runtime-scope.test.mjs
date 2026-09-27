@@ -64,6 +64,13 @@ test("runtime scopes owned session spans while shared catalog work stays unscope
       && runtime.serveSession(`codex:${otherLocalId}`).status === "ready") break;
     await pause(2);
   }
+  assert.equal(trace.snapshot({ scope: ownedScope }).traceEvents.some((event) => event.name === "history_read"), false,
+    "session observation does not replay complete history without an Activity or Requests demand");
+  await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "activity" });
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (trace.snapshot({ scope: ownedScope }).traceEvents.some((event) => event.name === "history_publish")) break;
+    await pause(2);
+  }
 
   trace.deactivate();
   const selected = trace.snapshot({ scope: ownedScope });
@@ -78,8 +85,9 @@ test("runtime scopes owned session spans while shared catalog work stays unscope
   assert.ok(otherNames.includes("session_derivation"));
   assert.equal(selectedNames.filter((name) => name === "history_contribution").length, 1);
   assert.equal(otherNames.filter((name) => name === "history_contribution").length, 1);
-  assert.equal(selectedNames.filter((name) => name === "session_derivation").length, 1);
-  assert.equal(otherNames.filter((name) => name === "session_derivation").length, 1);
+  assert.ok(selectedNames.filter((name) => name === "session_derivation").length >= 1,
+    "the explicit history demand may reproject its selected session");
+  assert.ok(otherNames.filter((name) => name === "session_derivation").length >= 1);
   assert.equal(selectedNames.includes("catalog_projection"), true, "shared catalog work remains visible in a scoped export");
   assert.equal(otherNames.includes("catalog_projection"), true, "shared catalog work remains unscoped");
   assert.ok(all.traceEvents.some((event) => event.name === "catalog_projection"));

@@ -97,7 +97,7 @@ test("home snapshot includes independent Claude and Codex usage limits without l
 
 test("home snapshot selects the Codex activity window from bounded dominant-model evidence", async () => {
   const codexProvider = providerFixture("codex", "Codex");
-  const entry = { id: "codex:recent", provider: "codex", source: "Codex", title: "Recent Codex", project: "repo", updatedAt: "2026-08-23T16:30:00.000Z", isLive: false, needsInput: false };
+  const entry = { id: "codex:recent", provider: "codex", source: "Codex", title: "Recent Codex", project: "repo", updatedAt: "2026-08-23T16:30:00.000Z", isLive: true, needsInput: false };
   const limits = [
     { id: "gpt-5.3-codex-spark-primary", label: "GPT-5.3-Codex-Spark", window: "5 hours", percent: 20, resetsAt: "2026-08-23T17:00:00.000Z", severity: "normal", active: false },
     { id: "codex-secondary", label: "Codex", window: "7 days", percent: 60, resetsAt: "2026-08-29T17:00:00.000Z", severity: "normal", active: false },
@@ -143,8 +143,8 @@ test("home snapshot correlates Claude limit movement across live-only projects",
   const claudeProvider = providerFixture("claude", "Claude Code");
   const entries = [
     { id: "claude:live", provider: "claude", source: "Claude Code", title: "Live session", project: "repo-live", updatedAt: "2026-08-23T12:10:00.000Z", isLive: true, needsInput: false },
-    { id: "claude:closed", provider: "claude", source: "Claude Code", title: "Closed session", project: "repo-closed", updatedAt: "2026-08-23T12:05:00.000Z", isLive: false, needsInput: false },
-    { id: "claude:weekly", provider: "claude", source: "Claude Code", title: "Weekly session", project: "repo-weekly", updatedAt: "2026-08-20T13:00:00.000Z", isLive: false, needsInput: false },
+    { id: "claude:closed", provider: "claude", source: "Claude Code", title: "Closed session", project: "repo-closed", updatedAt: "2026-08-23T12:05:00.000Z", isLive: true, needsInput: false },
+    { id: "claude:weekly", provider: "claude", source: "Claude Code", title: "Weekly session", project: "repo-weekly", updatedAt: "2026-08-20T13:00:00.000Z", isLive: true, needsInput: false },
   ];
   const request = (dedupeId, timestamp, model = "claude-sonnet-4") => ({
     dedupeId,
@@ -193,9 +193,9 @@ test("home snapshot correlates Claude limit movement across live-only projects",
   limit = { fetchedAt: "2026-08-23T12:15:00.000Z", percent: 35, weeklyPercent: 46, fablePercent: 19 };
   const second = await runtime.homeSnapshot();
 
-  assert.deepEqual(first.projects.map(({ project }) => project), ["repo-live"]);
-  assert.deepEqual(second.projects.map(({ project }) => project), ["repo-live"]);
-  assert.equal(second.projects[0].sessions.length, 1);
+  assert.deepEqual(first.projects.map(({ project }) => project), ["repo-closed", "repo-live", "repo-weekly"]);
+  assert.deepEqual(second.projects.map(({ project }) => project), ["repo-closed", "repo-live", "repo-weekly"]);
+  assert.equal(second.projects[1].sessions.length, 1);
   assert.equal(second.limitActivities.length, 3);
   const activity = second.limitActivities.find(({ limitId }) => limitId === "current-session");
   const weeklyActivity = second.limitActivities.find(({ limitId }) => limitId === "all-models");
@@ -206,7 +206,7 @@ test("home snapshot correlates Claude limit movement across live-only projects",
   assert.equal(activity.provider, "claude");
   assert.equal(activity.source, "Claude Code");
   assert.deepEqual(activity.sessions.map(({ project, isLive }) => ({ project, isLive })), [
-    { project: "repo-closed", isLive: false },
+    { project: "repo-closed", isLive: true },
     { project: "repo-live", isLive: true },
   ]);
   assert.equal(activity.movements.length, 1);
@@ -229,9 +229,9 @@ test("home snapshot correlates Claude limit movement across live-only projects",
   assert.doesNotMatch(JSON.stringify(second), /PRIVATE|token|prompt|command|credential/i);
 });
 
-test("home snapshot loads seven-day Claude history for a Fable-only activity limit", async () => {
+test("home snapshot includes a live Claude Fable activity limit", async () => {
   const claudeProvider = providerFixture("claude", "Claude Code");
-  const entry = { id: "claude:fable-history", provider: "claude", source: "Claude Code", title: "Fable history", project: "repo-fable", updatedAt: "2026-08-20T13:00:00.000Z", isLive: false, needsInput: false };
+  const entry = { id: "claude:fable-history", provider: "claude", source: "Claude Code", title: "Fable history", project: "repo-fable", updatedAt: "2026-08-20T13:00:00.000Z", isLive: true, needsInput: false };
   const usageSnapshots = [{
     dedupeId: "fable-request",
     actorId: "primary",
@@ -290,7 +290,7 @@ test("home limit activity marks failed live request evidence as truncated", asyn
   assert.doesNotMatch(JSON.stringify(state), /PRIVATE_FAILURE/);
 });
 
-test("home snapshot keeps only live projects and bounds seven-day history", async () => {
+test("home snapshot reports retained-only seven-day history without opening old headers", async () => {
   const entries = [
     { id: "codex:live", provider: "codex", source: "Codex", title: "Live", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false },
     { id: "codex:old", provider: "codex", source: "Codex", title: "Old", project: "pomegr", updatedAt: "2026-08-10T11:59:00.000Z", isLive: false, needsInput: false },
@@ -304,8 +304,10 @@ test("home snapshot keeps only live projects and bounds seven-day history", asyn
   ])).homeSnapshot();
   assert.deepEqual(state.projects.map((project) => project.project), ["pomegr"]);
   assert.equal(state.projects[0].history.windowDays, 7);
-  assert.equal(state.projects[0].history.completed, 1);
-  assert.deepEqual(state.projects[0].history.finalContexts, [{ endedAt: "2026-08-22T11:59:00.000Z", total: 70 }]);
+  assert.equal(state.projects[0].history.coverage, "retained");
+  assert.equal(state.projects[0].history.completed, 0);
+  assert.equal(state.projects[0].history.observedSessionCount, 0);
+  assert.deepEqual(state.projects[0].history.finalContexts, []);
   assert.equal(state.projects[0].sessions[0].latestContextTotal, 120);
 });
 
@@ -545,7 +547,7 @@ test("home snapshot coalesces concurrent builds and reuses the completed snapsho
   assert.strictEqual(cachedSnapshot, firstSnapshot);
 });
 
-test("home snapshot keeps recorded history summaries across live refreshes", async () => {
+test("home snapshot never hydrates recorded history during live refreshes", async () => {
   const entries = [
     { id: "codex:live", provider: "codex", source: "Codex", title: "Live", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false },
     { id: "codex:history", provider: "codex", source: "Codex", title: "History", project: "pomegr", updatedAt: "2026-08-22T11:59:00.000Z", isLive: false, needsInput: false },
@@ -573,10 +575,10 @@ test("home snapshot keeps recorded history summaries across live refreshes", asy
   await runtime.homeSnapshot();
 
   assert.equal(reads.get("codex:live"), 2);
-  assert.equal(reads.get("codex:history"), 1);
+  assert.equal(reads.get("codex:history"), undefined);
 });
 
-test("cold home snapshot defers history reads and publishes them after background warmup", async () => {
+test("cold home snapshot serves retained coverage without historical warmup", async () => {
   const entries = [
     { id: "codex:live", provider: "codex", source: "Codex", title: "Live", project: "pomegr", updatedAt: "2026-08-23T11:59:00.000Z", isLive: true, needsInput: false },
     { id: "codex:history", provider: "codex", source: "Codex", title: "History", project: "pomegr", updatedAt: "2026-08-22T11:59:00.000Z", isLive: false, needsInput: false },
@@ -603,15 +605,11 @@ test("cold home snapshot defers history reads and publishes them after backgroun
 
   const cold = await runtime.homeSnapshot();
   assert.deepEqual(reads, ["codex:live"]);
-  assert.equal(cold.projects[0].history.status, "loading");
-  assert.equal(typeof scheduledRefresh, "function");
-
-  await scheduledRefresh();
-  const warmed = await runtime.homeSnapshot();
-  assert.deepEqual(reads, ["codex:live", "codex:history", "codex:live"]);
-  assert.equal(yields, 1);
-  assert.equal(warmed.projects[0].history.status, "ready");
-  assert.equal(warmed.projects[0].history.completed, 1);
+  assert.equal(cold.projects[0].history.status, "ready");
+  assert.equal(cold.projects[0].history.coverage, "retained");
+  assert.equal(cold.projects[0].history.completed, 0);
+  assert.equal(scheduledRefresh, null);
+  assert.equal(yields, 0);
 });
 
 test("expired home snapshots return before deferred refresh work starts", async () => {

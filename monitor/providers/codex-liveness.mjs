@@ -8,7 +8,7 @@ import { readCodexLivenessTail, observedCodexRolloutLifecycle } from "./codex-ro
 import { isActiveCodexWriterLock } from "./codex-cli-observation.mjs";
 import { createCodexSourceRouter, codexInferenceEligible } from "./codex-source-routing.mjs";
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
-import { codexRecordedLiveness } from "./codex-recorded-lifecycle.mjs";
+import { codexRecordedLiveness, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
 import { aggregateCodexSessionLifecycle } from "./codex-session-lifecycle.mjs";
 import { CODEX_ROLLOUT_LIVE_WINDOW_MS, CODEX_LIVENESS_CACHE_MS, CODEX_LIVENESS_MAX_TAIL_BYTES, CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS, CODEX_LIVENESS_MAX_COLD_ROLLOUTS } from "./codex-lifecycle-constants.mjs";
 export * from "./codex-lifecycle-constants.mjs";
@@ -55,6 +55,7 @@ export function createCodexLivenessCoordinator(options = {}) {
     : CODEX_LIVENESS_MAX_TAIL_BYTES;
   const tailCache = new Map();
   const recordedSources = new Map();
+  const recordedTails = new WeakMap();
   const rolloutObservations = new Map();
   let cache = null;
   let stats = { rolloutFiles: 0, rolloutBytes: 0 };
@@ -83,11 +84,34 @@ export function createCodexLivenessCoordinator(options = {}) {
     if (!current) return null;
     const recorded = recordedSources.get(file);
     if (recorded) {
-      // Acquisition lag is not a lifecycle change. Once the full observer owns
-      // this source, let it validate appended records before replacing its state.
+      // Retain full-observer evidence through acquisition lag. A complete,
+      // continuous terminal append can close it without waiting for hydration.
       if (sameGeneration(current, recorded.generation)
         || compatibleAppend(file, recorded.generation, current)) {
-        const retained = codexRecordedLiveness(recorded.state, { now: nowMs, complete: recorded.complete });
+        const previous = recordedTails.get(recorded);
+        const accepted = previous?.accepted && (sameGeneration(current, previous.accepted.generation)
+          || compatibleAppend(file, previous.accepted.generation, current)) ? previous.accepted : recorded;
+        let successor = accepted;
+        if (recorded.complete && !sameGeneration(current, accepted.generation)
+          && !sameGeneration(current, previous?.checkedGeneration)
+          && compatibleAppend(file, accepted.generation, current)) {
+          const read = readCodexLivenessTail(file, maximumTailBytes);
+          const confirmed = incrementalSourceDescriptor(file);
+          if (read.complete && read.malformedRecords === 0
+            && read.startOffset <= accepted.generation.size && sameGeneration(current, confirmed)) {
+            const state = read.records.reduce(reduceCodexRecordedLifecycle, accepted.state);
+            const terminal = codexRecordedLiveness(state, { now: nowMs });
+            if (state.turn?.kind === "end" && terminal?.evidence === "observed"
+              && timestampValue(terminal.observedAt) > Math.max(timestampValue(accepted.state.latestActivityAt),
+                timestampValue(accepted.state.turn?.observedAt))) {
+              successor = { generation: current, state, complete: true };
+            }
+          }
+          recordedTails.set(recorded, { checkedGeneration: current, accepted: successor });
+          stats.rolloutFiles += 1;
+          stats.rolloutBytes += Math.min(current.size, maximumTailBytes);
+        }
+        const retained = codexRecordedLiveness(successor.state, { now: nowMs, complete: successor.complete });
         if (retained) return retained;
       }
     }

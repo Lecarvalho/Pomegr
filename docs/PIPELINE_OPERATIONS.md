@@ -35,6 +35,15 @@ Checkpoint diagnostics classify a failed write only as validation, privacy, coll
 candidate, size, or storage; they never record an exception message, checkpoint path, or
 session identity.
 
+The bounded checkpoint owner's queue uses the existing `source_queue` stage with
+the `persistence` domain. `accepted` records the first-dirty-to-write wall delay;
+zero-duration `superseded`, `rejected`, `incomplete`, and `failed` records describe
+coalescing, admission overflow, a retry, and retry exhaustion respectively. Actual
+storage work remains a `checkpoint` span, with the existing fixed failure categories.
+Distinguish the domain when comparing source-observation waits with persistence waits.
+Queue records contain no session keys, filenames, payloads, or errors. Missing records
+and retention gaps still prevent complete-history or latency claims.
+
 Logs must never contain session IDs or selectors, source paths or fingerprints, prompts,
 responses, reasoning, transcript or tool content, commands, output, credentials,
 provider-native payloads, or raw errors. They never enter checkpoints, browser state, reports,

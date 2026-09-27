@@ -112,6 +112,56 @@ test("live observation startup does not wait for repository inventory or sidecar
   await waitFor(() => checkpointLoads === 1, "checkpoint projection begins after sidecars are ready");
 });
 
+test("repository association follows proven roots and discards a late obsolete association", async (context) => {
+  const sessionId = `codex:${evidence.localId}`;
+  let publisher;
+  let binding = { state: "single", root: "C:\\private\\Pomegr" };
+  let releaseFirst;
+  const first = new Promise((resolve) => { releaseFirst = resolve; });
+  const roots = [];
+  const provider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities() };
+  const registry = {
+    providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
+    repositoryAttributionForSession: () => binding,
+    async resolveCapabilities() { return provider.capabilities; },
+    async readUsageLimits() { return createEmptyUsageLimits(); },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers(value) { publisher = value; return { async stop() {} }; },
+  };
+  const inventory = delayedRepositoryInventory(Promise.resolve());
+  inventory.associateSession = async ({ cwd }) => {
+    roots.push(cwd);
+    return first;
+  };
+  const runtime = createMonitorRuntime({
+    providerRegistry: registry, repositoryInventory: inventory, checkpointStore: false, monitorStore: false,
+    historyStore: new SessionHistoryStore(), observationCommitDelayMs: 0,
+    scheduleObservation: (task) => setTimeout(task, 0), scheduleEnrichment: () => {},
+    resourceUsageSampler: { async sample() {}, get() { return null; } },
+  });
+  context.after(() => runtime.stopObservation());
+  await runtime.startObservation();
+  publisher.publishCatalog("codex", [{ localId: evidence.localId, title: "Fixture", project: "Clapline", isLive: true }]);
+  const publish = (project) => publisher.publishSession("codex", evidence.localId, {
+    ...evidence, historical: false, session: { ...evidence.session, project, cwd: "C:\\private\\Clapline",
+      repositoryAttribution: binding.state, repositoryId: binding.state === "single" ? "repo-proven" : null },
+  });
+  publish("Pomegr");
+  await waitFor(() => roots.length === 1, "single mutation root should be associated");
+  assert.deepEqual(roots, ["C:\\private\\Pomegr"]);
+  binding = { state: "multiple" };
+  publish("Multiple repositories");
+  await waitFor(() => runtime.serveSession(sessionId).snapshot?.publicState?.session?.project === "Multiple repositories", "multiple repository evidence should commit");
+  releaseFirst({ repositoryId: "repo-obsolete", contextInventoryRef: null });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const state = runtime.serveSession(sessionId).snapshot.publicState;
+  assert.equal(state.session.repositoryId ?? null, null);
+  assert.equal(state.session.cwd, "");
+  assert.equal(JSON.stringify(state).includes("C:\\\\private"), false);
+  assert.equal(roots.length, 1, "ambiguous attribution must not acquire another cwd association");
+});
+
 test("stopping suppresses a delayed repository plugin startup", async () => {
   let releaseInventory;
   const inventoryReady = new Promise((resolve) => { releaseInventory = resolve; });
@@ -142,6 +192,13 @@ test("stopping suppresses a delayed repository plugin startup", async () => {
 test("concurrent state GETs consume one committed response without provider transcript reads", async (context) => {
   let compatibilityReads = 0;
   let historyReads = 0;
+  const persistenceCalls = { checkpoint: 0, maintenance: 0, publication: 0, compaction: 0 };
+  const observedHistoryStore = new SessionHistoryStore();
+  for (const method of ["publish", "publishOutcome", "publishActivityContribution", "publishRequestContribution"]) {
+    const original = observedHistoryStore[method].bind(observedHistoryStore);
+    observedHistoryStore[method] = (...args) => { persistenceCalls.publication += 1; return original(...args); };
+  }
+  observedHistoryStore.maintenanceStep = async () => { persistenceCalls.compaction += 1; };
   let stopped = false;
   let resourceState = null;
   const resourceSamples = [];
@@ -182,8 +239,21 @@ test("concurrent state GETs consume one committed response without provider tran
   };
   const runtime = createMonitorRuntime({
     providerRegistry: registry,
-    checkpointStore: false,
-    historyStore: new SessionHistoryStore(),
+    // This case measures cache-only GETs after a fixed commit. Real inventory
+    // discovery can legitimately commit a new revision between those requests.
+    repositoryInventory: {
+      ...delayedRepositoryInventory(Promise.resolve()),
+      readRepositories: () => ({ status: "ready", snapshot: { revision: 1, value: { repositories: [] } } }),
+    },
+    checkpointStore: {
+      async load() { return { records: [] }; },
+      async write() { persistenceCalls.checkpoint += 1; },
+      async maintenanceStep() { persistenceCalls.maintenance += 1; },
+    },
+    historyStore: observedHistoryStore,
+    checkpointDelayMs: 0,
+    // The maintenance owner is controlled independently of every GET below.
+    persistenceMaintenanceOptions: { schedule: () => ({}), cancel() {} },
     observationCommitDelayMs: 0,
     scheduleObservation: (task) => setTimeout(task, 0),
     resourceUsageSampler: {
@@ -215,8 +285,7 @@ test("concurrent state GETs consume one committed response without provider tran
   const server = createMonitorServer({ runtime });
   const origin = await listen(server);
   context.after(() => new Promise((resolve) => server.close(resolve)));
-  for (let attempt = 0; attempt < 50 && !historyReads; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-  assert.ok(historyReads > 0, "history acquisition belongs to background observation");
+  assert.equal(historyReads, 0, "ordinary state serving never starts complete history replay");
   let committedHistory;
   for (let attempt = 0; attempt < 50; attempt += 1) {
     committedHistory = await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "activity", limit: "8" });
@@ -224,6 +293,9 @@ test("concurrent state GETs consume one committed response without provider tran
     await new Promise((resolve) => setTimeout(resolve, 5));
   }
   assert.equal(committedHistory.status, "ready", "the background replay commits before GET isolation is measured");
+  await waitFor(() => persistenceCalls.checkpoint > 0, "the initial checkpoint should drain before polling");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const beforePersistenceGets = { ...persistenceCalls };
   const beforeHistoryGets = historyReads;
   const historyPages = await Promise.all(Array.from({ length: 4 }, () => fetch(`${origin}/api/session-history?sessionId=codex%3A${evidence.localId}&kind=activity&limit=8`)));
   assert.ok(historyPages.every((response) => response.status === 200));
@@ -287,6 +359,11 @@ test("concurrent state GETs consume one committed response without provider tran
 
   const unchanged = await fetch(`${origin}/api/state?sessionId=codex%3Acodex-fixture-parent&revision=${revision}`);
   assert.equal(unchanged.status, 204);
+  const catalogs = await Promise.all(Array.from({ length: 8 }, () => fetch(`${origin}/api/sessions`)));
+  assert.ok(catalogs.every((response) => response.status === 200));
+  for (const response of catalogs) await response.arrayBuffer();
+  assert.deepEqual(persistenceCalls, beforePersistenceGets, "state/catalog/history polls add no writes, publication, maintenance, or compaction");
+  assert.equal(historyReads, beforeHistoryGets, "state/catalog polls add no provider replay");
   await runtime.stopObservation();
   assert.equal(stopped, true);
 });

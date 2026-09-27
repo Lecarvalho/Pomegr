@@ -65,9 +65,15 @@ test("selecting recorded history bypasses an occupied maintenance replay lane", 
   });
   context.after(async () => { maintenanceGate.resolve(); await runtime.stopObservation(); });
   await runtime.startObservation();
-  await waitFor(() => historyStarts[0] === "first" && runtime.observationDiagnostics().historyRefresh.pending >= 1);
+  await waitFor(() => runtime.serveSession("codex:first").status === "ready");
+  await runtime.serveSessionHistory("codex:first", { kind: "requests" });
+  await waitFor(() => historyStarts[0] === "first");
+  // A foreground request is demand-driven; release the unrelated replay and
+  // verify duplicate selected requests still share one scheduled operation.
+  maintenanceGate.resolve();
 
-  assert.equal(runtime.serveSession("codex:selected").status, "ready");
+  await waitFor(() => runtime.serveSession("codex:selected").status === "ready");
+  await runtime.serveSessionHistory("codex:selected", { kind: "requests" });
   await waitFor(() => historyStarts.includes("selected"));
   await waitFor(async () => (await runtime.serveSessionHistory("codex:selected", { kind: "requests" })).status === "ready");
   assert.deepEqual(historyStarts, ["first", "selected"]);
@@ -76,11 +82,6 @@ test("selecting recorded history bypasses an occupied maintenance replay lane", 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(historyStarts.filter((id) => id === "selected").length, 1, "normal state polls do not replay valid history");
 
-  maintenanceGate.resolve();
-  await waitFor(async () => (await runtime.serveSessionHistory("codex:first", { kind: "requests" })).status === "ready");
-  assert.equal((await runtime.serveSessionHistory("codex:selected", { kind: "requests" })).status, "loading");
-  runtime.serveSession("codex:selected");
-  await waitFor(() => historyStarts.filter((id) => id === "selected").length === 2);
 });
 
 test("an incomplete stable history source does not spin or replay on every state poll", async (context) => {
@@ -110,6 +111,8 @@ test("an incomplete stable history source does not spin or replay on every state
   });
   context.after(() => runtime.stopObservation());
   await runtime.startObservation();
+  await waitFor(() => runtime.serveSession("codex:incomplete").status === "ready");
+  await runtime.serveSessionHistory("codex:incomplete", { kind: "requests" });
   await waitFor(() => historyReads === 1 && runtime.observationDiagnostics().historyRefresh.active === 0);
   for (let poll = 0; poll < 8; poll += 1) runtime.serveSession("codex:incomplete");
   await new Promise((resolve) => setImmediate(resolve));

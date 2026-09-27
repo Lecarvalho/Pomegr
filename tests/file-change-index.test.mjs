@@ -409,3 +409,45 @@ test("rebuild from retained checkpoints indexes them and flips storage readiness
   assert.equal(rows.length, 1, "the retained checkpoint's file change was indexed by the rebuild pass");
   assert.equal(rows[0].path, "a.txt");
 });
+
+test("Codex indexes each bound mutation under its own repository rather than session cwd", async (t) => {
+  const store = await openTestStore(t);
+  const launchRoot = await temporaryPlainDirectory(t, "pomegr-file-index-launch-");
+  const contributor = createFileChangeIndexContributor({
+    resolveRepository: stubResolver("repo-cccccccccccccccccccccccc", launchRoot), checkpointStore: null,
+  });
+  await contributor.onCheckpoint(store, { now: 1, snapshots: [snapshot({
+    providerId: "codex", localSessionId: "cross-repo", cwd: launchRoot,
+    toolCalls: [toolCall({ timestamp: "2026-09-22T10:00:00.000Z", fileChanges: [
+      { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", path: "a/inside-a.ts", kind: "created", previousPath: null },
+      { repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", path: "b/inside-b.ts", kind: "edited", previousPath: null },
+    ] })],
+  })] });
+  assert.deepEqual(listRepositoryFiles(store, "repo-aaaaaaaaaaaaaaaaaaaaaaaa").map((row) => row.path), ["a/inside-a.ts"]);
+  assert.deepEqual(listRepositoryFiles(store, "repo-bbbbbbbbbbbbbbbbbbbbbbbb").map((row) => row.path), ["b/inside-b.ts"]);
+  assert.equal(listRepositoryFiles(store, "repo-cccccccccccccccccccccccc").length, 0);
+});
+
+test("v1 migration discards a mixed identity corrupted by an old Codex move instead of serving its false path to Claude", async (t) => {
+  const store = await openTestStore(t);
+  const root = await temporaryPlainDirectory(t, "pomegr-file-index-v1-mixed-");
+  const baseline = createFileChangeIndexContributor({ resolveRepository: stubResolver("repo-mixed", root), checkpointStore: null });
+  await baseline.onCheckpoint(store, { now: 1, snapshots: [snapshot({
+    cwd: root,
+    toolCalls: [toolCall({ timestamp: "2026-09-22T10:00:00.000Z", fileChanges: [{ path: "a.txt", kind: "created" }] })],
+  })] });
+  const file = listRepositoryFiles(store, "repo-mixed")[0];
+  // Model the v1 failure: a Codex path was rebased through the session cwd,
+  // then rewrote the file identity originally created by Claude.
+  store.database.prepare("UPDATE files SET current_path = ?, deleted_at = ? WHERE id = ?").run("b.txt", 2, file.id);
+  store.database.prepare("INSERT INTO file_changes (file_id, session_id, agent_id, kind, observed_at, request_number) VALUES (?, ?, ?, ?, ?, NULL)")
+    .run(file.id, "codex:legacy", "agent-1", "moved", 2);
+  store.database.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('file_index_version', '1')").run();
+
+  const migration = createFileChangeIndexContributor({
+    resolveRepository: stubResolver("repo-mixed", root),
+    checkpointStore: { async load() { return { records: [] }; } },
+  });
+  await migration.onCheckpoint(store, { now: 2, snapshots: [] });
+  assert.deepEqual(listRepositoryFiles(store, "repo-mixed"), [], "the mixed identity is removed rather than exposing legacy Codex's false b.txt/deleted state");
+});

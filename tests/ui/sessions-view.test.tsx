@@ -1,10 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import type { SessionSummary } from "../../shared/monitor-contract";
+
+afterEach(() => vi.unstubAllGlobals());
 
 function session(index: number): SessionSummary {
   const createdAt = new Date(Date.UTC(2026, 7, 1, 12, index)).toISOString();
@@ -29,293 +31,142 @@ function session(index: number): SessionSummary {
   };
 }
 
-function visibleSessionTitles() {
-  const table = screen.getByRole("table", { name: "Observed Pomegr sessions" });
-  return Array.from(table.querySelectorAll("tbody .commandTablePrimary strong"), (node) => node.textContent);
+function directorySnapshot(rows: SessionSummary[], overrides: Record<string, unknown> = {}) {
+  return {
+    sessions: rows,
+    revision: "catalog-1",
+    readiness: { catalog: "ready" as const },
+    coverage: { status: "complete" as const, knownCount: 52, exactTotal: 52, observedAt: "2026-09-27T12:00:00.000Z", lastCompletedTotal: 52, lastCompletedAt: "2026-09-27T12:00:00.000Z" },
+    matchedCount: 52,
+    counts: { all: 52, live: 4, needs: 1 },
+    pageSize: 25,
+    nextCursor: null,
+    ...overrides,
+  };
 }
 
 describe("Sessions view", () => {
-  it.each([
-    { label: "client request", loading: true, readiness: "ready" as const },
-    { label: "monitor catalog after response", loading: false, readiness: "loading" as const },
-  ])("shows an honest skeleton during $label", ({ loading, readiness }) => {
-    const view = render(<SessionCatalogProvider sessions={[]} loading={loading} readiness={{ catalog: readiness }}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("region", { name: "Sessions" })).toHaveAttribute("aria-busy", "true");
-    expect(screen.getByRole("status", { name: "Loading sessions" })).toHaveTextContent("Loading sessions");
-    expect(view.container.querySelectorAll(".commandSessionsSkeletonRow")).toHaveLength(3);
-    expect(view.container.querySelector(".commandSessionsSkeletonRow")?.parentElement).toHaveAttribute("aria-hidden", "true");
-    expect(screen.queryByText(/\b0 matches\b/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/No sessions observed|Session catalog unavailable|Configure session sources/)).not.toBeInTheDocument();
-    for (const label of ["All", "Live", "Needs input"]) expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+  it("shows a live summary spinner until committed metrics are available", async () => {
+    const loading = {
+      ...session(1),
+      isLive: true,
+      activityStatus: "open" as const,
+      summaryReadiness: "loading" as const,
+      agentCount: null,
+      activeAgentCount: null,
+      latestContextTotal: null,
+      progress: null,
+    };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(directorySnapshot([loading], { matchedCount: 1 })), { status: 200 }))));
+    const view = render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+    expect(await screen.findByRole("status", { name: "Loading metrics for Session 1" })).toBeInTheDocument();
+    const row = screen.getByText("Session 1").closest("tr");
+    expect(row).not.toBeNull();
+    expect(row).toHaveTextContent("—");
+
+    const ready = {
+      ...loading,
+      activityStatus: "working" as const,
+      summaryReadiness: "ready" as const,
+      agentCount: 3,
+      activeAgentCount: 1,
+      latestContextTotal: 123_000,
+      progress: { phase: "implementing", percent: 42, confidence: "high" as const, reportedAt: loading.updatedAt },
+    };
+    view.rerender(<SessionCatalogProvider sessions={[ready]}><SessionsView /></SessionCatalogProvider>);
+
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Loading metrics for Session 1" })).not.toBeInTheDocument());
+    expect(row).toHaveTextContent("1/3");
+    expect(row).toHaveTextContent("123k");
+    expect(row).toHaveTextContent("42%");
   });
 
-  it("replaces initial loading with rows, then a factual ready empty state", () => {
-    const view = render(<SessionCatalogProvider sessions={[]} loading><SessionsView /></SessionCatalogProvider>);
-    view.rerender(<SessionCatalogProvider sessions={[session(1)]}><SessionsView /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
-    view.rerender(<SessionCatalogProvider sessions={[]} readiness={{ catalog: "ready" }}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("heading", { name: "No sessions observed" })).toBeInTheDocument();
-    expect(screen.getByText("0 matches")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Sessions" })).not.toHaveAttribute("aria-busy");
-  });
-
-  it.each([
-    { label: "unavailable catalog", connected: true, readiness: "unavailable" as const },
-    { label: "disconnected monitor", connected: false, readiness: "loading" as const },
-  ])("shows the unavailable state during $label without an indefinite skeleton", ({ connected, readiness }) => {
-    render(<SessionCatalogProvider sessions={[]} loading connected={connected} readiness={{ catalog: readiness }}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("heading", { name: "Session catalog unavailable" })).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Sessions" })).not.toHaveAttribute("aria-busy");
-  });
-
-  it("keeps retained rows, filters, and sorting during refresh and reconnect", async () => {
+  it("uses committed directory pages for search, server sort, and cursor navigation", async () => {
+    const first = directorySnapshot([session(25)], { nextCursor: "cursor-2" });
+    const second = directorySnapshot([session(24)], { nextCursor: null });
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/api/sessions?mode=directory") ? (String(url).includes("cursor=cursor-2") ? second : first) : {}), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    const rows = [session(1), session(2)];
-    const view = render(<SessionCatalogProvider sessions={rows}><SessionsView /></SessionCatalogProvider>);
-    await user.click(screen.getByRole("button", { name: "Agents" }));
-    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 1");
-    view.rerender(<SessionCatalogProvider sessions={rows} loading readiness={{ catalog: "loading" }}><SessionsView /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.getByRole("columnheader", { name: "Agents" })).toHaveAttribute("aria-sort", "descending");
-    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
-    view.rerender(<SessionCatalogProvider sessions={rows} loading connected={false} readiness={{ catalog: "unavailable" }}><SessionsView /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.getByText(/Showing the last known session catalog/)).toBeInTheDocument();
+    render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView /></SessionCatalogProvider>);
+
+    await waitFor(() => expect(screen.getByText("Session 25")).toBeInTheDocument());
+    expect(screen.getByText(/^52 sessions in the complete catalog\./)).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Sort sessions" }), "title");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Next" }));
+
+    await waitFor(() => expect(screen.getByText("Session 24")).toBeInTheDocument());
+    const requested = fetchMock.mock.calls.map(([url]) => String(url));
+    const directoryRequests = requested.filter((url) => url.includes("/api/sessions?mode=directory"));
+    expect(directoryRequests[0]).toContain("filter=all");
+    expect(directoryRequests.some((url) => url.includes("sort=title"))).toBe(true);
+    expect(directoryRequests.at(-1)).toContain("cursor=cursor-2");
   });
 
-  it("keeps search, scope presets, and the result count in one filter toolbar", () => {
-    render(<SessionCatalogProvider sessions={[session(1), session(2)]}><SessionsView /></SessionCatalogProvider>);
-    const toolbar = screen.getByRole("toolbar", { name: "Filter sessions" });
-    const scope = within(toolbar).getByRole("group", { name: "Session scope" });
-    expect(within(toolbar).getByRole("searchbox", { name: "Filter sessions" })).toBeInTheDocument();
-    expect(within(scope).getAllByRole("button")).toHaveLength(3);
-    expect(within(scope).getByRole("button", { name: /^All/ })).toBeInTheDocument();
-    expect(within(scope).queryByRole("button", { name: /^History/ })).not.toBeInTheDocument();
-    expect(within(toolbar).getByText("2 matches")).toBeInTheDocument();
-    expect(screen.getAllByRole("toolbar")).toHaveLength(1);
+  it("keeps known count honest while discovery is incomplete and preserves its completed fact", async () => {
+    const partial = directorySnapshot([], {
+      coverage: { status: "partial", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: 49, lastCompletedAt: "2026-09-26T12:00:00.000Z" },
+      matchedCount: 0,
+      counts: { all: 0, live: 0, needs: 0 },
+    });
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/api/sessions?mode=directory") ? partial : {}), { status: 200 }))));
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+    await waitFor(() => expect(screen.getByText(/0 known sessions while discovery is partial/)).toBeInTheDocument());
+    expect(screen.getByText(/Last complete catalog: 49 completed/)).toBeInTheDocument();
+    expect(screen.queryByText(/0 sessions in the complete catalog/)).not.toBeInTheDocument();
   });
 
-  it("composes repository and project filters without matching older unassociated rows", async () => {
-    const repositoryId = "repo-0123456789abcdef01234567";
-    const sessions = [
-      { ...session(1), repositoryId },
-      { ...session(2), repositoryId, project: "Other project" },
-      { ...session(3), repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa" },
-      session(4),
-    ];
-    render(<SessionCatalogProvider sessions={sessions}><SessionsView initialRepositoryId={repositoryId} initialProject="Pomegr" /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    await userEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
-    expect(visibleSessionTitles()).toEqual(["Session 2", "Session 1"]);
-    await userEvent.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 2");
-    expect(visibleSessionTitles()).toEqual(["Session 2"]);
-  });
-
-  it("shows the normal no-match state when catalog rows have no repository association", () => {
-    render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView initialRepositoryId="repo-0123456789abcdef01234567" /></SessionCatalogProvider>);
-    expect(screen.getByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
-  });
-  it("moves a confirmed closed Claude session from Live into All without claiming completion", async () => {
+  it("discards a late page for an old search and accepts only the current committed query", async () => {
+    let resolveFirst: (response: Response) => void = () => { throw new Error("Initial directory request did not start"); };
+    const current = directorySnapshot([{ ...session(2), title: "Current match" }], { matchedCount: 1 });
+    const fetchMock = vi.fn((url: string) => {
+      if (!String(url).includes("/api/sessions?mode=directory")) return Promise.resolve(new Response("{}", { status: 200 }));
+      if (String(url).includes("query=current")) return Promise.resolve(new Response(JSON.stringify(current), { status: 200 }));
+      return new Promise<Response>((resolve) => { resolveFirst = resolve; });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const user = userEvent.setup();
-    const open: SessionSummary = { ...session(1), id: "claude:session-1", provider: "claude", source: "Claude Code", isLive: true, activityStatus: "open", progress: null };
-    const view = render(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
-    await user.click(screen.getByRole("button", { name: /^Live/ }));
-    expect(screen.getByText("Open")).toBeInTheDocument();
-    view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "closed" }]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^All/ }));
-    expect(screen.getByText("Closed")).toBeInTheDocument();
-    expect(screen.queryByText(/Unknown|Complete|Stopped/)).not.toBeInTheDocument();
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "current");
+    await waitFor(() => expect(screen.getByText("Current match")).toBeInTheDocument());
+    resolveFirst(new Response(JSON.stringify(directorySnapshot([{ ...session(1), title: "Stale match" }])), { status: 200 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Stale match")).not.toBeInTheDocument();
   });
 
-  it.each(["claude", "codex"] as const)("keeps a confirmed open %s session in Live between turns", async (provider) => {
-    const user = userEvent.setup();
-    const running: SessionSummary = { ...session(1), id: provider + ":session-1", provider, isLive: true, activityStatus: "working" };
-    const view = render(<SessionCatalogProvider sessions={[running]}><SessionsView /></SessionCatalogProvider>);
-    await user.click(screen.getByRole("button", { name: /^Live/ }));
-    expect(screen.getByText("In progress")).toBeInTheDocument();
-
-    const open: SessionSummary = { ...running, activityStatus: "open", activeAgentCount: 0 };
-    view.rerender(<SessionCatalogProvider sessions={[open]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("button", { name: /^Live/ })).toHaveAttribute("aria-pressed", "true");
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.getByText("Open")).toBeInTheDocument();
-    expect(screen.queryByText("Idle")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /^All/ }));
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    await user.click(screen.getByRole("button", { name: /^Live/ }));
-    view.rerender(<SessionCatalogProvider sessions={[running]}><SessionsView /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.getByText("In progress")).toBeInTheDocument();
-
-    view.rerender(<SessionCatalogProvider sessions={[{ ...open, isLive: false, activityStatus: "idle" }]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /^All/ }));
-    expect(visibleSessionTitles()).toEqual(["Session 1"]);
-    expect(screen.getByText("Idle")).toBeInTheDocument();
-  });
-
-  it.each(["Agents", "Context", "Progress", "Updated"])("toggles %s numerically and keeps unavailable values last", async (column) => {
-    const user = userEvent.setup();
-    const values = column === "Updated" ? [10, 2, 0] : [10, 2, 0, null];
-    const missing = column === "Updated" ? [] : ["Session 4"];
-    const sessions = values.map((value, index): SessionSummary => ({
-      ...session(index + 1),
-      agentCount: value,
-      activeAgentCount: value === null ? null : 0,
-      latestContextTotal: value === null ? null : 100_000 + value,
-      progress: value === null ? null : { phase: "implementing", percent: value, confidence: "high", reportedAt: session(index + 1).updatedAt },
-      updatedAt: value === null ? session(index + 1).updatedAt : new Date(Date.UTC(2026, 7, 1, 12, value)).toISOString(),
+  it("resets a stale cursor to the returned first page", async () => {
+    const first = directorySnapshot([{ ...session(2), title: "First page" }], { nextCursor: "old-cursor" });
+    const reset = directorySnapshot([{ ...session(1), title: "Reset page" }], { cursorReset: true, nextCursor: null, revision: "catalog-2" });
+    let resetSeen = false;
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (String(url).includes("cursor=old-cursor")) resetSeen = true;
+      return Promise.resolve(new Response(JSON.stringify(resetSeen ? reset : first), { status: 200 }));
     }));
-    const before = structuredClone(sessions);
-    render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
-    const button = screen.getByRole("button", { name: column });
-    const header = screen.getByRole("columnheader", { name: column });
-    await user.click(button);
-    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 2", "Session 3", ...missing]);
-    expect(header).toHaveAttribute("aria-sort", "descending");
-    expect(button).toHaveFocus();
-    await user.keyboard("{Enter}");
-    expect(visibleSessionTitles()).toEqual(["Session 3", "Session 2", "Session 1", ...missing]);
-    expect(header).toHaveAttribute("aria-sort", "ascending");
-    await user.keyboard(" ");
-    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 2", "Session 3", ...missing]);
-    expect(header).toHaveAttribute("aria-sort", "descending");
-    expect(sessions).toEqual(before);
-  });
-
-  it("sorts all matches before paging, resets the page, and keeps the sort on catalog updates", async () => {
     const user = userEvent.setup();
-    const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
-    const view = render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await waitFor(() => expect(screen.getByText("First page")).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Next" }));
-    await user.click(screen.getByRole("button", { name: "Agents" }));
-    await user.click(screen.getByRole("button", { name: "Agents" }));
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
-    expect(visibleSessionTitles()).toEqual(Array.from({ length: 10 }, (_, index) => "Session " + (index + 1)));
-    await user.click(screen.getByRole("button", { name: "Next" }));
-    expect(visibleSessionTitles()).toEqual(["Session 11", "Session 12"]);
-    await user.click(screen.getByRole("button", { name: "Updated" }));
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
-    expect(visibleSessionTitles()[0]).toBe("Session 1");
-    expect(screen.getByRole("columnheader", { name: "Agents" })).not.toHaveAttribute("aria-sort");
-    expect(screen.getByRole("columnheader", { name: "Updated" })).toHaveAttribute("aria-sort", "descending");
-    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 1");
-    expect(visibleSessionTitles()).toEqual(["Session 1", "Session 12", "Session 11", "Session 10"]);
-    view.rerender(<SessionCatalogProvider sessions={sessions.map((item) => item.id === "codex:session-10" ? { ...item, updatedAt: "2026-09-01T12:00:00.000Z" } : item)}><SessionsView /></SessionCatalogProvider>);
-    expect(visibleSessionTitles()).toEqual(["Session 10", "Session 1", "Session 12", "Session 11"]);
+    await waitFor(() => expect(screen.getByText("Reset page")).toBeInTheDocument());
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
   });
 
-  it("defaults to Live as the catalog loads and preserves a manually selected filter", async () => {
-    const user = userEvent.setup();
-    const liveUnknown = { ...session(1), title: "Live unknown", isLive: true, activityStatus: "unknown" as const };
-    const quietOpen = { ...session(2), title: "Quiet open", isLive: false, activityStatus: "open" as const };
-    const view = render(<SessionCatalogProvider sessions={[]} loading><SessionsView /></SessionCatalogProvider>);
-    view.rerender(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
-
-    expect(screen.getByRole("button", { name: /^Live/ })).toHaveAttribute("aria-pressed", "true");
-
-    expect(visibleSessionTitles()).toEqual(["Live unknown"]);
-    const liveRow = screen.getByText("Live unknown").closest("tr");
-    expect(liveRow).not.toBeNull();
-    expect(within(liveRow!).getByText("Unknown")).toBeInTheDocument();
-    expect(screen.queryByText("Quiet open")).not.toBeInTheDocument();
-
-    view.rerender(<SessionCatalogProvider sessions={[quietOpen]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
-    expect(visibleSessionTitles()).toEqual(["Quiet open"]);
-    expect(within(screen.getByText("Quiet open").closest("tr")!).getByText("Open")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: /^All/ }));
-    view.rerender(<SessionCatalogProvider sessions={[liveUnknown, quietOpen]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
-    expect(visibleSessionTitles()).toEqual(["Quiet open", "Live unknown"]);
-  });
-
-  it("orders by creation time descending and paginates ten rows at a time", async () => {
-    const user = userEvent.setup();
-    const sessions = Array.from({ length: 12 }, (_, index) => session(index + 1));
-    render(<SessionCatalogProvider sessions={sessions}><SessionsView /></SessionCatalogProvider>);
-
-    expect(screen.getByRole("button", { name: /^All/ })).toHaveAttribute("aria-pressed", "true");
-    expect(visibleSessionTitles()).toEqual(Array.from({ length: 10 }, (_, index) => `Session ${12 - index}`));
-    expect(screen.getByText("Showing 1–10 of 12")).toBeInTheDocument();
-    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Last activity" })).toBeInTheDocument();
-    expect(screen.getAllByRole("columnheader")).toHaveLength(8);
-    expect(screen.getByRole("button", { name: "Go to page 1" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
-
-    await user.click(screen.getByRole("button", { name: "Next" }));
-    expect(visibleSessionTitles()).toEqual(["Session 2", "Session 1"]);
-    expect(screen.getByText("Showing 11–12 of 12")).toBeInTheDocument();
-    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
-    expect(screen.getAllByRole("columnheader")).toHaveLength(8);
-    const completedRow = screen.getByText("Session 1").closest("tr");
-    expect(completedRow).not.toBeNull();
-    expect(within(completedRow!).getByText("0/1").closest("td")).toHaveAttribute("data-label", "Agents");
-    expect(within(completedRow!).getByText("1k").closest("td")).toHaveAttribute("data-label", "Context");
-    expect(within(completedRow!).getByTitle("Agent-reported session progress")).toHaveTextContent("100%");
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
-
-    await user.type(screen.getByRole("searchbox", { name: "Filter sessions" }), "Session 12");
-    expect(visibleSessionTitles()).toEqual(["Session 12"]);
-    expect(screen.queryByRole("navigation", { name: "Session pages" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("toolbar", { name: "Filter sessions" })).getByText("1 matches")).toBeInTheDocument();
-  });
-
-  it("shows normalized fallback activity with visible provenance while retaining the current mark", async () => {
-    const observedAt = "2026-08-01T12:00:00.000Z";
-    const current = {
-      ...session(1), isLive: true, activityStatus: "working" as const,
-      activityFallback: { label: "Running tests", observedAt, state: "current" as const, source: "execution_task" as const, actor: "subagent" as const },
-    };
-    const view = render(<SessionCatalogProvider sessions={[current]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getAllByText("Running tests")).toHaveLength(2);
-    expect(screen.getAllByText(/Subagent/)).toHaveLength(2);
-    expect(view.container.querySelectorAll(".commandTableActivityMark")).toHaveLength(2);
-    expect(view.container.querySelectorAll(".commandTableActivityLast")).toHaveLength(0);
-
-    const last = { ...current, isLive: false, activityStatus: "idle" as const, activityFallback: { ...current.activityFallback, label: "test run", state: "last_observed" as const, actor: "primary" as const } };
-    view.rerender(<SessionCatalogProvider sessions={[last]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getAllByText("test run")).toHaveLength(2);
-    expect(screen.queryByText(/Primary agent/)).not.toBeInTheDocument();
-    expect(view.container.querySelectorAll(".commandTableActivityMark")).toHaveLength(2);
-    expect(view.container.querySelectorAll(".commandTableActivityLast")).toHaveLength(2);
-    expect(view.container.querySelectorAll(".commandTableActivityLabelChanged")).toHaveLength(2);
-    const activity = screen.getAllByLabelText(/^Previous activity:/)[0];
-    activity.focus();
-    await waitFor(() => expect(screen.getByRole("tooltip")).toHaveTextContent("Execution task"));
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Primary agent");
-    const label = view.container.querySelector(".commandTableActivityLabel");
-
-    view.rerender(<SessionCatalogProvider sessions={[{ ...last, activityFallback: { ...last.activityFallback, observedAt: "2026-08-01T12:01:00.000Z" } }]}><SessionsView /></SessionCatalogProvider>);
-    expect(view.container.querySelector(".commandTableActivityLabel")).toBe(label);
-  });
-
-  it("suppresses stale fallback current work and keeps an unavailable em dash", () => {
-    const stale = {
-      ...session(1), isLive: false, activityStatus: "idle" as const,
-      activityFallback: { label: "Running tests", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const, source: "tool" as const, actor: "primary" as const },
-    };
-    const view = render(<SessionCatalogProvider sessions={[stale]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.queryByText("Running tests")).not.toBeInTheDocument();
-    expect(screen.getAllByText("—")).toHaveLength(2);
-    expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
-  });
-
-  it("keeps provider-reported current activity ahead of a fallback", () => {
-    const current = {
-      ...session(1), isLive: true, activityStatus: "working" as const,
-      currentActivity: { label: "Provider heading", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const },
-      activityFallback: { label: "Running tests", observedAt: "2026-08-01T12:00:00.000Z", state: "current" as const, source: "execution_task" as const, actor: "multiple" as const },
-    };
-    render(<SessionCatalogProvider sessions={[current]}><SessionsView /></SessionCatalogProvider>);
-    expect(screen.getAllByText("Provider heading")).toHaveLength(2);
-    expect(screen.queryByText("Running tests")).not.toBeInTheDocument();
+  it("refreshes a discovering directory page on the fallback cadence", async () => {
+    vi.useFakeTimers();
+    const discovering = directorySnapshot([], {
+      coverage: { status: "discovering", knownCount: 3, exactTotal: null, observedAt: null, lastCompletedTotal: null, lastCompletedAt: null },
+      matchedCount: 3,
+    });
+    const complete = directorySnapshot([{ ...session(3), title: "Discovered session" }]);
+    let completeNow = false;
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(completeNow ? complete : discovering), { status: 200 }))));
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText(/3 known sessions while discovery is discovering/)).toBeInTheDocument();
+    completeNow = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(screen.getByText("Discovered session")).toBeInTheDocument();
+    vi.useRealTimers();
   });
 });

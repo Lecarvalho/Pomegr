@@ -15,6 +15,7 @@ import {
   resolveCheckpointRepository,
   resolveHistoricalRepositoryAndPullRequests,
   snapshotFromLiveCheck,
+  sessionRepositorySnapshot,
 } from "../monitor/repository-snapshot.mjs";
 import { SessionObservationCheckpointStore } from "../monitor/session-observation-checkpoints.mjs";
 import { projectSessionDomains } from "../monitor/session-domain-projection.mjs";
@@ -22,7 +23,7 @@ import { createEmptyMonitorState } from "../shared/monitor-state.mjs";
 
 function validSnapshot(overrides = {}) {
   return {
-    version: 3,
+    version: 4,
     branch: "feat/example",
     isMain: false,
     files: [{ status: " M", path: "app/file.ts" }],
@@ -36,6 +37,7 @@ function validSnapshot(overrides = {}) {
     committedInWindow: null,
     committedChanges: null,
     gitObservedTruncated: false,
+    repositoryId: null,
     ...overrides,
   };
 }
@@ -126,10 +128,10 @@ test("normalizeRepositorySnapshot rejects unsafe file paths, over-bound lists, f
   assert.equal(normalizeRepositorySnapshot("not-an-object"), null);
 });
 
-test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 3 with a never-measured Git-observed baseline", () => {
+test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 4 with a never-measured Git-observed baseline", () => {
   const upgraded = normalizeRepositorySnapshot(validSnapshotV1());
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 3);
+  assert.equal(upgraded.version, 4);
   assert.equal(upgraded.branch, "feat/example");
   assert.equal(upgraded.dirtyAtFirstCheck, null, "never measured");
   assert.deepEqual(upgraded.becameDirty, []);
@@ -144,17 +146,19 @@ test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to 
   assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), extraField: 1 }), null);
 });
 
-test("normalizeRepositorySnapshot upgrades a version-2 record with committedChanges null, and validates version-3 committedChanges against committedInWindow", () => {
-  const { committedChanges: _omitted, ...v2Shape } = validSnapshot({ committedInWindow: ["app/a.ts"] });
+test("normalizeRepositorySnapshot upgrades version-2/3 records and validates version-4 repository identity", () => {
+  const { committedChanges: _omitted, repositoryId: _repositoryId, ...v2Shape } = validSnapshot({ committedInWindow: ["app/a.ts"] });
   const upgraded = normalizeRepositorySnapshot({ ...v2Shape, version: 2 });
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 3);
+  assert.equal(upgraded.version, 4);
   assert.deepEqual(upgraded.committedInWindow, ["app/a.ts"]);
   assert.equal(upgraded.committedChanges, null, "a v2 record never recorded change kinds");
   assert.equal(normalizeRepositorySnapshot({ ...v2Shape, version: 2, committedChanges: ["added"] }), null, "a v3-only key under version 2 is rejected");
 
-  const aligned = normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts", "app/b.ts"], committedChanges: ["added", "deleted"] }));
+  const aligned = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567", committedInWindow: ["app/a.ts", "app/b.ts"], committedChanges: ["added", "deleted"] }));
   assert.deepEqual(aligned.committedChanges, ["added", "deleted"]);
+  assert.equal(aligned.repositoryId, "repo-0123456789abcdef01234567");
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-not-an-id" })), null);
   assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["added", "modified"] })), null, "length mismatch");
   assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["renamed"] })), null, "unknown change");
   assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: null, committedChanges: [] })), null, "changes without measured paths");
@@ -371,6 +375,55 @@ test("historicalRepositoryFromSnapshot projects the recorded snapshot into the p
   assert.equal(noComparison.repository.commitsInSession, null);
 });
 
+test("snapshotFromLiveCheck starts a fresh baseline when a newly bound repository replaces an old sidecar", () => {
+  const { repositoryId: _repositoryId, ...oldShape } = validSnapshot({
+    version: 3,
+    dirtyAtFirstCheck: ["old/dirty.ts"],
+    becameDirty: ["old/later.ts"],
+    committedInWindow: ["old/commit.ts"],
+    committedChanges: ["added"],
+    commitsInSession: 9,
+  });
+  const old = normalizeRepositorySnapshot(oldShape);
+  const next = snapshotFromLiveCheck({
+    repositoryId: "repo-0123456789abcdef01234567",
+    previous: old,
+    repository: { available: true, historical: false, branch: "feat/pomegr", isMain: false, files: [], comparison: null, remote: { status: "unavailable", checkedAt: null } },
+    pullRequests: { status: "unavailable", checkedAt: null, items: [] },
+    commitsInSession: null,
+    committedPaths: null,
+    committedChanges: null,
+    checkedAt: "2026-09-21T00:00:00.000Z",
+  });
+  assert.equal(next.repositoryId, "repo-0123456789abcdef01234567");
+  assert.equal(next.comparison, null);
+  assert.equal(next.pullRequests, null);
+  assert.equal(next.commitsInSession, null);
+  assert.deepEqual(next.dirtyAtFirstCheck, []);
+  assert.deepEqual(next.becameDirty, []);
+  assert.equal(next.committedInWindow, null);
+});
+
+test("sessionRepositorySnapshot rejects unbound, ambiguous, and mismatched Codex sidecars while retaining legacy Claude", () => {
+  const snapshot = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567" }));
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot, "codex"), snapshot);
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-fedcba9876543210fedcba98" } }, snapshot, "codex"), null);
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "multiple", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot, "codex"), null);
+  assert.equal(sessionRepositorySnapshot({ session: {} }, snapshot, "codex"), null);
+  assert.equal(sessionRepositorySnapshot({ session: {} }, normalizeRepositorySnapshot(validSnapshot()), "codex"), null);
+  assert.equal(sessionRepositorySnapshot({ session: {} }, normalizeRepositorySnapshot(validSnapshot()), "claude")?.branch, "feat/example");
+});
+
+test("legacy Codex checkpoint branch fallback requires a proven repository identity", () => {
+  const evidence = { session: { project: "Clapline", recordedGitBranch: "feat/clapline" } };
+  const options = { historical: true, providerId: "codex", evidence, snapshot: null,
+    recordedGitState: (branch) => ({ available: Boolean(branch), branch }), unavailablePullRequests: () => ({ items: [] }) };
+  assert.equal(resolveCheckpointRepository(options).repository.available, false);
+  evidence.session.repositoryAttribution = "single";
+  evidence.session.repositoryId = "repo-0123456789abcdef01234567";
+  assert.equal(resolveCheckpointRepository(options).repository.branch, "feat/clapline");
+});
+
 test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests never call Git or GitHub when a snapshot exists", async () => {
   const snapshot = normalizeRepositorySnapshot(validSnapshot());
   const deps = {
@@ -393,7 +446,7 @@ test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests
   assert.equal(live.repository.available, false);
 });
 
-test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests fall back to recordedGitState without a snapshot", async () => {
+test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests fall back to recorded Git only without a snapshot", async () => {
   let recordedGitStateCalls = 0;
   let pullRequestReaderCalls = 0;
   const deps = {
@@ -412,8 +465,8 @@ test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests
   const fromSelection = await resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot: null, ...deps });
   assert.equal(fromSelection.repository.branch, "recorded-branch");
   assert.equal(recordedGitStateCalls, 2);
-  assert.equal(pullRequestReaderCalls, 1, "only projectSelection's fallback asks the pull-request reader");
-  assert.equal(fromSelection.pullRequests.status, "ready");
+  assert.equal(pullRequestReaderCalls, 0, "a historical no-snapshot selection never queries the current checkout");
+  assert.equal(fromSelection.pullRequests.status, "unavailable");
 });
 
 async function commitFixture(context) {

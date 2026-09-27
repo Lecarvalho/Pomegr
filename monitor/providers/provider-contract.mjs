@@ -14,7 +14,6 @@ import { z } from "zod";
 /** @typedef {{publishCatalog: (entries: unknown[]) => void, publishSession: (localSessionId: string, evidence: unknown) => void, publishHistoryContribution: (localSessionId: string, contribution: HistoryActivityContribution) => boolean, publishHistoryRequestContribution: (localSessionId: string, contribution: HistoryRequestContribution) => boolean, invalidateSession: (localSessionId: string, reason: string) => void, checkpointFor?: (localSessionId: string) => {fingerprint: string, completeOffset: number} | null}} ScopedNormalizedObservationPublisher */
 /** @typedef {{trace?: unknown, traceScopeForLocalId?: (localSessionId: string) => object | null}} ProviderObserverOptions */
 /** @typedef {{start: (publisher: ScopedNormalizedObservationPublisher, signal: AbortSignal, options?: ProviderObserverOptions) => Promise<void> | void, hydrate: (localSessionId: string) => Promise<boolean> | boolean, listSessions: () => Promise<unknown[]> | unknown[], stop?: () => Promise<void> | void}} ProviderObserver */
-
 export const PROVIDER_IDS = Object.freeze(["claude", "codex"]);
 
 export const PROVIDER_SOURCES = Object.freeze({
@@ -22,11 +21,7 @@ export const PROVIDER_SOURCES = Object.freeze({
   codex: "Codex",
 });
 
-/**
- * Single catalog for every harness. The catalog is monitor-private metadata
- * that drives conformance and generated documentation; browser clients receive
- * only the derived boolean capabilities.
- */
+/** Monitor-private provider capability catalog. */
 export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
   { key: "approvalMode", label: "Approval mode", evidencePath: "session.approvalMode", requiredOperation: "readSession" },
   { key: "automaticCompactions", label: "Automatic compactions", evidencePath: "compactions", requiredOperation: "readSession" },
@@ -59,12 +54,14 @@ export const PROVIDER_LIMITATION_CODES = Object.freeze([
 export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "id",
   "source",
+  "catalogSourceScope",
   "capabilityManifest",
   "readinessCapabilities",
   "homePolicy",
   "capabilities",
   "resolveReadiness",
   "listSessions",
+  "enumerateSessionHeaders",
   "readSession",
   "readSessionHistory",
   "readTranscriptPath",
@@ -76,6 +73,8 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "watchTargets",
   "providerFolders",
   "createObserver",
+  "setRepositoryResolver",
+  "repositoryAttributionForSession",
 ]);
 
 /**
@@ -363,6 +362,7 @@ const evidenceSignal = z.object({
 }).strict();
 const evidenceWorkKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
 const evidenceFileChange = z.object({
+  repositoryId: z.string().regex(/^repo-[a-f0-9]{24}$/).optional(),
   path: evidenceOneLine(512),
   kind: z.enum(["created", "edited", "deleted", "moved"]),
   previousPath: evidenceOneLine(512).nullable(),
@@ -447,7 +447,7 @@ export const providerSessionEvidenceSchema = z.object({
     completeOffset: evidenceCount,
   }).strict().optional(),
   session: z.object({
-    title: evidenceText(512), project: evidenceText(512), cwd: evidenceText(2_048), startedAt: evidenceNullableTimestamp, updatedAt: evidenceNullableTimestamp,
+    title: evidenceText(512), project: evidenceText(512), cwd: evidenceText(2_048), repositoryId: z.string().regex(/^repo-[a-f0-9]{24}$/).nullable().optional(), repositoryAttribution: z.enum(["single", "multiple", "unknown"]).optional(), startedAt: evidenceNullableTimestamp, updatedAt: evidenceNullableTimestamp,
     recordedGitBranch: evidenceText(512),
     cost: z.object({ amount: z.number().finite().min(0), currency: z.literal("USD"), type: z.literal("estimated"), observedAt: evidenceTimestamp }).strict().nullable(),
     approvalMode: z.object({ id: evidenceText(64), label: evidenceText(128), observedAt: evidenceNullableTimestamp, source: z.literal("provider") }).strict().nullable(),
@@ -699,6 +699,12 @@ export function assertProviderConformance(adapter, fixtures = []) {
   if (adapter.createObserver !== undefined && typeof adapter.createObserver !== "function") {
     throw new TypeError("Provider createObserver must be a function");
   }
+  if (adapter.setRepositoryResolver !== undefined && typeof adapter.setRepositoryResolver !== "function") {
+    throw new TypeError("Provider setRepositoryResolver must be a function");
+  }
+  if (adapter.repositoryAttributionForSession !== undefined && typeof adapter.repositoryAttributionForSession !== "function") {
+    throw new TypeError("Provider repositoryAttributionForSession must be a function");
+  }
   for (const capability of PROVIDER_CAPABILITY_CATALOG) {
     if (manifest[capability.key].status === "supported" && typeof adapter[capability.requiredOperation] !== "function") {
       throw new TypeError(`Provider with ${capability.key} capability must implement ${capability.requiredOperation}`);
@@ -724,6 +730,12 @@ export function defineProvider(adapter) {
   const expectedSource = providerSource(adapter.id);
   if (adapter.source !== expectedSource) throw new TypeError(`Provider ${adapter.id} source must be ${expectedSource}`);
   if (typeof adapter.listSessions !== "function") throw new TypeError("Provider adapter must implement listSessions");
+  if (adapter.enumerateSessionHeaders !== undefined && typeof adapter.enumerateSessionHeaders !== "function") {
+    throw new TypeError("Provider enumerateSessionHeaders must be a function");
+  }
+  if (adapter.catalogSourceScope !== undefined && (typeof adapter.catalogSourceScope !== "string" || !/^[a-f0-9]{64}$/.test(adapter.catalogSourceScope))) {
+    throw new TypeError("Provider catalogSourceScope must be an opaque SHA-256 hash");
+  }
   if (typeof adapter.readSession !== "function") throw new TypeError("Provider adapter must implement readSession");
   if (adapter.readSessionHistory !== undefined && typeof adapter.readSessionHistory !== "function") throw new TypeError("Provider readSessionHistory must be a function");
   if (adapter.readTranscriptPath !== undefined && typeof adapter.readTranscriptPath !== "function") {
@@ -731,6 +743,12 @@ export function defineProvider(adapter) {
   }
   if (adapter.createObserver !== undefined && typeof adapter.createObserver !== "function") {
     throw new TypeError("Provider createObserver must be a function");
+  }
+  if (adapter.setRepositoryResolver !== undefined && typeof adapter.setRepositoryResolver !== "function") {
+    throw new TypeError("Provider setRepositoryResolver must be a function");
+  }
+  if (adapter.repositoryAttributionForSession !== undefined && typeof adapter.repositoryAttributionForSession !== "function") {
+    throw new TypeError("Provider repositoryAttributionForSession must be a function");
   }
   if (adapter.resolveReadiness !== undefined && typeof adapter.resolveReadiness !== "function") {
     throw new TypeError("Provider resolveReadiness must be a function");

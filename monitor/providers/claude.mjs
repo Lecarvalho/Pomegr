@@ -16,7 +16,7 @@ import { boundedActivityDuration, boundedFileChanges, recentActivityEvents } fro
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
-import { listSessionFiles, liveSessionFiles, statSafe, walkJsonl } from "../session-discovery.mjs";
+import { listSessionFiles, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
@@ -530,6 +530,129 @@ export function createClaudeProvider(options = {}) {
   }
   async function readSessionHistory(localSessionId = "") { const key = historyKey(localSessionId); const cached = key && historyCache.get(localSessionId); if (cached?.key === key) return cached.value; const value = normalizedSessionHistory("claude", localSessionId, await readSession(localSessionId, { completeHistory: true })); if (!key || historyKey(localSessionId) !== key) return { requests: [], activity: [], complete: false }; if (value.complete) historyCache.set(localSessionId, { key, value }); while (historyCache.size > 64) historyCache.delete(historyCache.keys().next().value); return value; }
 
+  /**
+   * Enumerate transcript identities only.  The inventory does not need titles
+   * inferred from a JSONL tail, and this must never contend with selected
+   * session hydration or retain an unbounded catalog in the provider.
+   */
+  /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+  async function enumerateSessionHeaders(options = {}) {
+    const { onBatch, signal } = options;
+    if (typeof onBatch !== "function") return { complete: false };
+    let batch = [];
+    const emit = async () => {
+      if (!batch.length) return true;
+      const next = batch;
+      batch = [];
+      try { return (await onBatch(next)) !== false; } catch { return false; }
+    };
+    async function walk(directory, nestedSubagent, depth) {
+      if (depth > 16 || signal?.aborted) return false;
+      let handle;
+      try { handle = await fs.promises.opendir(directory, { bufferSize: 32 }); } catch { return false; }
+      try {
+        for await (const entry of handle) {
+          if (signal?.aborted) return false;
+          const file = path.join(directory, entry.name);
+          if (entry.isDirectory()) {
+            // Subagent trees are never top-level session candidates and need
+            // not consume traversal work or memory.
+            if (entry.name !== "subagents" && !nestedSubagent && !await walk(file, false, depth + 1)) return false;
+            continue;
+          }
+          if (nestedSubagent || !entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+          const localId = path.basename(entry.name, ".jsonl");
+          if (!/^[a-zA-Z0-9_-]+$/.test(localId)) continue;
+          let stat, descriptor, header;
+          try {
+            stat = fs.statSync(file);
+            if (!stat.isFile() || stat.size <= 0) return false;
+            descriptor = fs.openSync(file, "r");
+            const bytes = Math.min(stat.size, 64 * 1024);
+            const buffer = Buffer.alloc(bytes);
+            if (fs.readSync(descriptor, buffer, 0, bytes, 0) !== bytes) return false;
+            header = buffer.toString("utf8");
+          } catch { return false; }
+          finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
+          let recognized = false;
+          for (const line of header.split(/\r?\n/)) {
+            if (!line.trim()) continue;
+            try {
+              const record = JSON.parse(line);
+              const sessionId = record?.sessionId ?? record?.session_id;
+              if (sessionId === localId) { recognized = true; break; }
+            } catch { /* A complete malformed candidate is explicitly invalid below. */ }
+          }
+          // A complete, readable non-session JSONL is an explicit non-candidate.
+          // A larger source whose first bounded window cannot validate identity
+          // may be incomplete, so exact inventory coverage must degrade.
+          if (!recognized) {
+            if (stat.size <= 64 * 1024) continue;
+            return false;
+          }
+          batch.push({
+            localId, title: "Untitled session", project: "Unknown project",
+            createdAt: new Date(Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs).toISOString(),
+            updatedAt: stat.mtime.toISOString(), isLive: false, needsInput: false,
+            activityStatus: "unknown",
+          });
+          if (batch.length === 100 && !await emit()) return false;
+        }
+        return true;
+      } catch { return false; }
+      finally { try { await handle?.close(); } catch { /* iteration may already close it */ } }
+    }
+    const projectsComplete = await walk(projectsRoot, false, 0);
+    if (!projectsComplete && !signal?.aborted) await emit();
+    // A configured one-off transcript can sit outside the projects root.
+    // Validate its bounded leading records under the same identity rule.
+    const explicitRelative = explicitSession ? path.relative(projectsRoot, explicitSession) : "";
+    const explicitOutsideProjects = explicitSession && fs.existsSync(explicitSession)
+      && explicitRelative && !explicitRelative.startsWith("..") && !path.isAbsolute(explicitRelative) ? null : explicitSession;
+    if (explicitOutsideProjects) {
+      const localId = path.basename(explicitOutsideProjects, ".jsonl");
+      let stat, descriptor, header;
+      try {
+        if (!/^[a-zA-Z0-9_-]+$/.test(localId)) return { complete: false };
+        stat = fs.statSync(explicitOutsideProjects);
+        if (!stat.isFile() || stat.size <= 0) return { complete: false };
+        descriptor = fs.openSync(explicitOutsideProjects, "r");
+        const bytes = Math.min(stat.size, 64 * 1024), buffer = Buffer.alloc(bytes);
+        if (fs.readSync(descriptor, buffer, 0, bytes, 0) !== bytes) return { complete: false };
+        header = buffer.toString("utf8");
+      } catch { return { complete: false }; }
+      finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
+      const recognized = header.split(/\r?\n/).some((line) => {
+        try { const record = JSON.parse(line); return (record?.sessionId ?? record?.session_id) === localId; } catch { return false; }
+      });
+      if (!recognized && stat.size > 64 * 1024) return { complete: false };
+      if (recognized) batch.push({
+        localId, title: "Untitled session", project: "Unknown project",
+        createdAt: new Date(stat.birthtimeMs || stat.mtimeMs).toISOString(), updatedAt: stat.mtime.toISOString(),
+        isLive: false, needsInput: false, activityStatus: "unknown",
+      });
+    }
+    // Native registrations may legitimately precede transcript creation. They
+    // are complete provider identities with unavailable detail, so preserve
+    // their existing catalog semantics in the inventory stream as well.
+    let registry, registryComplete = true;
+    try { ({ registry, complete: registryComplete } = registryObservation.read()); }
+    catch { registry = new Map(); registryComplete = false; }
+    for (const entry of registry.values()) {
+      if (signal?.aborted) return { complete: false };
+      if (!entry?.resourceOwner || !/^[a-zA-Z0-9_-]+$/.test(entry.sessionId || "") || !Number.isFinite(entry.ownerStartedAt)) continue;
+      const timestamp = new Date(entry.ownerStartedAt).toISOString();
+      batch.push({
+        localId: entry.sessionId, title: "Untitled session", project: "Unknown project",
+        createdAt: timestamp, updatedAt: timestamp, isLive: true,
+        needsInput: Boolean(entry.needsInput), activityStatus: sessionActivityStatus(true, entry),
+      });
+      if (batch.length === 100 && !await emit()) return { complete: false };
+    }
+    const emitted = await emit();
+    return { complete: Boolean(projectsComplete) && Boolean(registryComplete) && emitted };
+  }
+
   async function observerSource(localSessionId) {
     const discovered = discoveredSessions();
     const file = discovered.files.find(({ file: candidate }) => path.basename(candidate, ".jsonl") === localSessionId)?.file || null;
@@ -565,6 +688,7 @@ export function createClaudeProvider(options = {}) {
   return defineProvider({
     id: "claude",
     source: "Claude Code",
+    catalogSourceScope: crypto.createHash("sha256").update(JSON.stringify({ projectsRoot, registryRoot, explicitSession: explicitSession || null })).digest("hex"),
     capabilityManifest: {
       approvalMode: { status: "supported" },
       automaticCompactions: { status: "supported" },
@@ -595,6 +719,7 @@ export function createClaudeProvider(options = {}) {
     },
     providerFolders: { claudeConfigDir: configRoot, claudeProjectsDir: projectsRoot },
     listSessions,
+    enumerateSessionHeaders,
     readSession,
     readSessionHistory,
     captureRepositoryContextInventory,

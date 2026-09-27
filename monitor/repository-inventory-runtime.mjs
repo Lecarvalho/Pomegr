@@ -156,9 +156,9 @@ export function createRepositoryInventoryRuntime(options = {}) {
       const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
         windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024,
       });
-      const root = path.resolve(String(stdout || "").trim());
-      return path.isAbsolute(root) ? root : path.resolve(cwd);
-    } catch { return path.resolve(cwd); }
+      const root = String(stdout || "").trim();
+      return path.isAbsolute(root) && !/[\u0000-\u001f\u007f]/u.test(root) ? path.resolve(root) : null;
+    } catch { return null; }
   });
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const targets = new Map();
@@ -192,6 +192,9 @@ export function createRepositoryInventoryRuntime(options = {}) {
       try { loaded = safePersistedState(JSON.parse(await readFile(`${storeFile}.bak`, "utf8")), now); } catch { /* no valid backup */ }
     }
     state = loaded || freshState(now);
+    // File evidence can use opaque IDs before any single-session association
+    // exists (for example a multi-repository session). Save their salt first.
+    if (persistence && !loaded) await persist(state);
   })();
 
   async function commitState(transform) {
@@ -244,12 +247,12 @@ export function createRepositoryInventoryRuntime(options = {}) {
     };
   }
 
-  async function identify(cwd) {
+  async function identify(cwd, recognizedRoot = null) {
     await ready;
     const normalizedCwd = path.resolve(cwd);
-    let root = roots.get(normalizedCwd);
+    let root = recognizedRoot || roots.get(normalizedCwd);
     if (!root) {
-      root = await gitRoot(normalizedCwd);
+      root = await gitRoot(normalizedCwd) || normalizedCwd;
       roots.set(normalizedCwd, root);
     }
     const identityRoot = process.platform === "win32" ? root.toLowerCase() : root;
@@ -264,12 +267,15 @@ export function createRepositoryInventoryRuntime(options = {}) {
    * repository ID plus the real Git (or fallback) root, reusing the same identity
    * `identify` computes. The root never leaves this function's callers.
    */
-  async function resolveRepository(cwd) {
-    if (typeof cwd !== "string" || cwd.length === 0) return null;
+  async function resolveRepository(cwd, { requireGit = false } = {}) {
+    if (typeof cwd !== "string" || cwd.length === 0 || !path.isAbsolute(cwd)
+      || /[\u0000-\u001f\u007f]/u.test(cwd)) return null;
     try {
-      const { repositoryId } = await identify(cwd);
+      const recognizedRoot = requireGit ? await gitRoot(cwd) : null;
+      if (requireGit && (!recognizedRoot || !path.isAbsolute(recognizedRoot))) return null;
+      const { repositoryId } = await identify(cwd, recognizedRoot);
       const target = targets.get(repositoryId);
-      return target ? { repositoryId, root: target.root } : null;
+      return target ? { repositoryId, root: target.root, ...(requireGit ? { recognized: true } : {}) } : null;
     } catch {
       return null;
     }

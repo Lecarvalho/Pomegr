@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { SessionHistoryBlockStore, SessionHistoryMaintenance, readCommittedHistoryIndex } from "./session-history-block-store.mjs";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizedRequestModel } from "./request-snapshots.mjs";
 import { normalizedRequestWork } from "./request-work.mjs";
@@ -94,7 +95,10 @@ function mergePendingContribution(current, next) {
   const activity = new Map();
   for (const item of current.activity) if (item && typeof item.id === "string") activity.set(item.id, item);
   for (const item of next.activity) if (item && typeof item.id === "string") activity.set(item.id, item);
-  return { ...next, activity: [...activity.values()] };
+  const requests = new Map();
+  for (const item of current.requests || []) if (item?.id) requests.set(item.id, item);
+  for (const item of next.requests || []) if (item?.id) requests.set(item.id, item);
+  return { ...next, activity: [...activity.values()], ...(next.requests ? { requests: [...requests.values()] } : {}) };
 }
 function sameServedHistory(left, right) {
   return JSON.stringify({ complete: left?.complete === true, activityReady: left?.activityReady !== false,
@@ -109,13 +113,41 @@ export class SessionHistoryStore {
   #historyRevision = 0; #revisionSubscribers = new Set(); #historyEvents = new Map(); #activityAdmissions = new Map(); #requestAdmissions = new Map(); #generationLeases = new Map();
   #pendingContributions = new Map(); #pendingRequests = new Map(); #admissionTouch = new Map(); #admissionClock = 0;
   #committedHistory = new Map();
+  #blocks = null;
+  #contributionBytes(value) {
+    if (value.activity.length + (value.requests?.length || 0) > 16_384) throw new Error("History contribution capacity exceeded");
+    const bytes = Buffer.byteLength(JSON.stringify(value));
+    if (bytes > 8 * 1024 * 1024) throw new Error("History contribution capacity exceeded");
+    return bytes;
+  }
+  #admitPending(map, sessionId, contribution) {
+    const current = map.get(sessionId);
+    if (current && !newerContribution(contribution, current.contribution)) return current;
+    this.#contributionBytes(contribution);
+    const next = current ? mergePendingContribution(current.contribution, contribution) : contribution;
+    const bytes = this.#contributionBytes(next);
+    const entries = [...this.#pendingContributions.values(), ...this.#pendingRequests.values()];
+    if ((!current && entries.length >= 24) || entries.reduce((total, entry) => total + entry.bytes, 0) - (current?.bytes || 0) + bytes > 16 * 1024 * 1024)
+      throw new Error("History contribution capacity exceeded");
+    if (current) { current.contribution = next; current.bytes = bytes; return current; }
+    let resolve; let reject;
+    const pending = { contribution: next, bytes, active: false,
+      promise: new Promise((success, failure) => { resolve = success; reject = failure; }), resolve, reject };
+    map.set(sessionId, pending); return pending;
+  }
   #admissionRuntime = crypto.randomBytes(16).toString("hex");
+  #maintenance = null; #maintenanceStopped = false;
   constructor({ directory = null, maxSessions = MAX_SESSIONS, maxResident = MAX_RESIDENT,
-    maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES } = {}) {
+    maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES, beforeHistoryCommit = null } = {}) {
     this.directory = directory;
+    if (directory) this.#blocks = new SessionHistoryBlockStore(directory, { request: safeRequest, activity: safeActivity }, { beforeCommit: beforeHistoryCommit });
     // This bounds private source-admission bookkeeping only. Normalized history
     // remains available through its durable manifest and page generations.
     this.maxSessions = Number.isSafeInteger(maxSessions) ? Math.max(1, Math.min(MAX_SESSIONS, maxSessions)) : MAX_SESSIONS;
+    if (directory) this.#maintenance = new SessionHistoryMaintenance(directory, {
+      busy: () => this.persistenceBusy(), leased: (generation) => (this.#generationLeases.get(generation) || 0) > 0,
+      vacuum: (location, budget) => this.#blocks.maintenanceFile(location, budget),
+    });
     this.maxResident = maxResident;
     this.maxIndexResident = Number.isSafeInteger(maxIndexResident) ? Math.max(0, Math.min(MAX_INDEX_RESIDENT, maxIndexResident)) : MAX_INDEX_RESIDENT;
     this.maxIndexBytes = Number.isSafeInteger(maxIndexBytes) ? Math.max(0, Math.min(MAX_INDEX_BYTES, maxIndexBytes)) : MAX_INDEX_BYTES;
@@ -180,7 +212,7 @@ export class SessionHistoryStore {
   #notifyHistoryRevision(sessionId, record) {
     this.#historyRevision += 1;
     const event = Object.freeze({ domain: "history", sessionId, revision: record.revision,
-      total: record.requestsReady !== false ? record.requests.length : record.activity.length });
+      total: record.requestsReady !== false ? (record.requestTotal ?? record.requests.length) : (record.activityTotal ?? record.activity.length) });
     this.#historyEvents.delete(sessionId); this.#historyEvents.set(sessionId, event);
     while (this.#historyEvents.size > 128) this.#historyEvents.delete(this.#historyEvents.keys().next().value);
     for (const subscriber of this.#revisionSubscribers) {
@@ -194,10 +226,27 @@ export class SessionHistoryStore {
     for (const event of this.#historyEvents.values()) subscriber(event);
     return () => this.#revisionSubscribers.delete(subscriber);
   }
+  persistenceBusy() { return this.#writes.size > 0 || this.#pendingContributions.size > 0 || this.#pendingRequests.size > 0; }
+  persistenceStats() { return { active: this.#writes.size, pending: this.#pendingContributions.size + this.#pendingRequests.size, ...(this.#blocks?.io || {}) }; }
   async publish(sessionId, candidate, { activityFence = null } = {}) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     return this.#serialized(sessionId, () => this.#publish(sessionId, candidate, activityFence));
   }
+  async maintenanceStep(options = {}) { return this.#maintenance ? this.#maintenance.step(options) : { scanned: 0, removed: 0, complete: true }; }
+  async drain({ budget = 128, shouldYield = () => false } = {}) {
+    await Promise.allSettled([...this.#pendingContributions.values(), ...this.#pendingRequests.values()].map((entry) => entry.promise));
+    await Promise.allSettled([...this.#writes.values()]);
+    let total = 0; let removed = 0; let step;
+    do { step = await this.maintenanceStep({ budget, shouldYield }); total += step.scanned; removed += step.removed; } while (!step.complete && !step.yielded && !this.#maintenanceStopped);
+    return Object.freeze({ scanned: total, removed, complete: step?.complete !== false });
+  }
+  async stop() {
+    await Promise.allSettled([...this.#pendingContributions.values(), ...this.#pendingRequests.values()].map((entry) => entry.promise));
+    await Promise.allSettled([...this.#writes.values()]);
+    this.#maintenanceStopped = true;
+    await this.#maintenance?.stop();
+  }
+  start() { this.#maintenanceStopped = false; this.#maintenance?.start(); }
   #markCommitted(sessionId) {
     this.#committedHistory.delete(sessionId);
     this.#committedHistory.set(sessionId, true);
@@ -209,6 +258,7 @@ export class SessionHistoryStore {
     return this.#serialized(sessionId, () => this.#publish(sessionId, candidate, activityFence, true));
   }
   async #publish(sessionId, candidate, activityFence, includeOutcome = false) {
+    this.#blocks?.recover(sessionId);
     const outcome = (record, accepted, reason) => includeOutcome ? Object.freeze({ record, accepted, reason }) : record;
     // Never replace a usable committed revision with incomplete acquisition.
     if (!candidate || candidate.complete !== true) return outcome(await this.#load(sessionId), false, "incomplete");
@@ -263,7 +313,9 @@ export class SessionHistoryStore {
       this.#remember(sessionId, record);
       return outcome(record, true, "accepted");
     }
-    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record); this.#notifyHistoryRevision(sessionId, record); return outcome(record, true, "accepted");
+    await this.#write(record); this.#forgetIndex(sessionId); this.#remember(sessionId, record);
+    if (this.directory) this.#markCommitted(sessionId);
+    this.#notifyHistoryRevision(sessionId, record); return outcome(record, true, "accepted");
   }
   hasCommitted(sessionId) { return this.directory ? this.#committedHistory.has(sessionId) : this.#records.has(sessionId); }
   /**
@@ -274,14 +326,7 @@ export class SessionHistoryStore {
   async publishActivityContribution(sessionId, contribution) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     if (!validActivityContribution(contribution)) return this.#serialized(sessionId, () => this.#load(sessionId));
-    let pending = this.#pendingContributions.get(sessionId);
-    if (!pending) {
-      let resolve; let reject;
-      pending = { contribution, active: false, promise: new Promise((nextResolve, nextReject) => { resolve = nextResolve; reject = nextReject; }), resolve, reject };
-      this.#pendingContributions.set(sessionId, pending);
-    } else if (newerContribution(contribution, pending.contribution)) {
-        pending.contribution = mergePendingContribution(pending.contribution, contribution);
-    }
+    const pending = this.#admitPending(this.#pendingContributions, sessionId, contribution);
     if (!pending.active) { pending.active = true; queueMicrotask(() => { void this.#flushActivityContributions(sessionId, pending); }); }
     return pending.promise;
   }
@@ -303,15 +348,7 @@ export class SessionHistoryStore {
   async publishRequestContribution(sessionId, contribution) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     if (!validRequestContribution(contribution)) return this.#serialized(sessionId, () => this.#load(sessionId));
-    let pending = this.#pendingRequests.get(sessionId);
-    if (!pending) {
-      let resolve; let reject;
-      pending = { contribution, active: false, promise: new Promise((nextResolve, nextReject) => { resolve = nextResolve; reject = nextReject; }), resolve, reject };
-      this.#pendingRequests.set(sessionId, pending);
-    } else if (newerContribution(contribution, pending.contribution)) {
-        pending.contribution = mergePendingContribution(pending.contribution, contribution);
-        pending.contribution.requests = contribution.requests;
-    }
+    const pending = this.#admitPending(this.#pendingRequests, sessionId, contribution);
     if (!pending.active) { pending.active = true; queueMicrotask(() => { void this.#flushRequestContributions(sessionId, pending); }); }
     return pending.promise;
   }
@@ -334,12 +371,27 @@ export class SessionHistoryStore {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return 0;
     // An observer can publish Activity without awaiting the durable commit. A
     // subsequent replay waits for that queued write before capturing its fence.
+    await Promise.allSettled([this.#pendingContributions.get(sessionId)?.promise, this.#pendingRequests.get(sessionId)?.promise].filter(Boolean));
     await (this.#writes.get(sessionId) || Promise.resolve()).catch(() => {});
-    const record = await this.#load(sessionId);
+    const record = this.#blocks?.meta(sessionId) || await this.#load(sessionId);
     return Object.freeze({ epoch: record?.activityEpoch || 0, sequence: record?.activitySequence || 0,
       requestEpoch: record?.requestEpoch || 0, requestSequence: record?.requestSequence || 0, revision: record?.revision || 0 });
   }
+  async #publishDiskContribution(sessionId, contribution, domain) {
+    await mkdir(this.directory, { recursive: true });
+    this.#blocks.recover(sessionId);
+    if (!this.#blocks.meta(sessionId)) {
+      const legacy = await this.#load(sessionId);
+      if (legacy) this.#blocks.replace(sessionId, legacy);
+    }
+    const { record, changed } = this.#blocks.contribute(sessionId, contribution, domain);
+    this.#records.delete(sessionId); this.#touch.delete(sessionId); this.#forgetIndex(sessionId);
+    this.#markCommitted(sessionId);
+    if (changed) this.#notifyHistoryRevision(sessionId, record);
+    return record;
+  }
   async #publishActivityContribution(sessionId, contribution) {
+    if (this.#blocks) return this.#publishDiskContribution(sessionId, contribution, "activity");
     if (!validActivityContribution(contribution)) return this.#load(sessionId);
     const current = await this.#load(sessionId);
     const priorAdmission = this.#admission("activity", sessionId);
@@ -389,6 +441,7 @@ export class SessionHistoryStore {
     this.#notifyHistoryRevision(sessionId, record); return record;
   }
   async #publishRequestContribution(sessionId, contribution) {
+    if (this.#blocks) return this.#publishDiskContribution(sessionId, contribution, "requests");
     if (!validRequestContribution(contribution)) return this.#load(sessionId);
     const current = await this.#load(sessionId);
     const priorAdmission = this.#admission("requests", sessionId);
@@ -482,6 +535,7 @@ export class SessionHistoryStore {
       ...(kind === "requests" && query.overview !== "0" ? { overview } : {}), ...(groups || {}) };
   }
   async #load(sessionId) {
+    if (this.#blocks?.meta(sessionId)) return this.#normalizeRecord(this.#blocks.load(sessionId), sessionId);
     if (this.#records.has(sessionId)) {
       this.#touch.set(sessionId, Date.now());
       await this.#restoreAdmissions(sessionId);
@@ -543,6 +597,7 @@ export class SessionHistoryStore {
   }
   async #write(record) {
     if (!this.directory) return;
+    if (this.#blocks?.meta(record.sessionId)) { this.#blocks.replace(record.sessionId, record); this.#markCommitted(record.sessionId); return; }
     await mkdir(this.directory, { recursive: true });
     const key = crypto.createHash("sha256").update(record.sessionId).digest("hex");
     const destination = path.join(this.directory, `${key}.index.json`);
@@ -577,24 +632,8 @@ export class SessionHistoryStore {
     await writeFile(temp, JSON.stringify(index), "utf8"); await rename(temp, destination); this.#markCommitted(record.sessionId);
     const legacy = path.join(this.directory, fileName(record.sessionId)); const legacyTemp = `${legacy}.${process.pid}.${Date.now()}.tmp`;
     try { await writeFile(legacyTemp, JSON.stringify(record), "utf8"); await rename(legacyTemp, legacy); } catch { try { await rm(legacyTemp, { force: true }); } catch {} }
-    // Publication is complete before pruning. Retain the immediately previous
-    // generation for readers that obtained its manifest just before the swap.
-    void this.#pruneGenerations(key, record.revision);
-  }
-  async #pruneGenerations(key, cutoffRevision) {
-    let names; try { names = await readdir(this.directory, { withFileTypes: true }); } catch { return; }
-    const root = path.resolve(this.directory); const prefix = `${key}-`;
-    await Promise.allSettled(names.filter((entry) => entry.isDirectory() && entry.name.startsWith(prefix)).map(async (entry) => {
-      const revision = Number(entry.name.slice(prefix.length));
-      // An older asynchronous prune cannot remove a newer publication. Keep
-      // the current and immediately preceding generation without requiring a
-      // reader to win a lease race between manifest and page-block reads.
-      if (!Number.isSafeInteger(revision) || revision >= cutoffRevision - 1 || (this.#generationLeases.get(entry.name) || 0) > 0) return;
-      const target = path.resolve(root, entry.name);
-      // Never recursively remove an unresolved or escaping path on Windows.
-      if (!target.startsWith(`${root}${path.sep}`)) return;
-      await rm(target, { recursive: true, force: true });
-    }));
+    // Cleanup is deliberately owned by maintenanceStep().  A write must not
+    // scan a retained-history directory, even after a rapid suffix update.
   }
   #forgetIndex(sessionId) {
     const cached = this.#indexCache.get(sessionId);
@@ -638,6 +677,7 @@ export class SessionHistoryStore {
     } catch { this.#forgetIndex(sessionId); this.#forgetCommitted(sessionId); return null; }
   }
   async #hasOverviewIndex(sessionId, record) {
+    if (this.#blocks?.meta(sessionId)) return true;
     const key = crypto.createHash("sha256").update(sessionId).digest("hex");
     try {
       const index = JSON.parse(await readFile(path.join(this.directory, `${key}.index.json`), "utf8"));
@@ -657,6 +697,14 @@ export class SessionHistoryStore {
     } catch { return false; }
   }
   async #readIndexed(sessionId, query) {
+    try {
+      if (this.#blocks?.meta(sessionId)) {
+        const result = this.#blocks.read(sessionId, (index, load) => readCommittedHistoryIndex(query, index, load,
+          { safeRequest, safeActivity, overviewTuple, safeAgent, safeInteger }));
+        if (result) this.#markCommitted(sessionId); else this.#forgetCommitted(sessionId);
+        return result;
+      }
+    } catch { this.#forgetCommitted(sessionId); return null; }
     const key = crypto.createHash("sha256").update(sessionId).digest("hex");
     const index = await this.#readIndex(sessionId);
     if (!index) return null;

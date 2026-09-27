@@ -59,6 +59,7 @@ test("one background deadline expires Open across providers without changing evi
   await value.advance(0);
   const revision = coordinator.catalog().revision;
   assert.equal(value.jobs.size, 1, "one deadline for the entire bounded catalog");
+  assert.equal(coordinator.directory({ filter: "live" }).matchedCount, 2);
   await value.advance(WINDOW - 60_000 - 1);
   assert.equal(value.rows().every((row) => row.isLive), true);
   assert.equal(coordinator.catalog().revision, revision);
@@ -70,9 +71,12 @@ test("one background deadline expires Open across providers without changing evi
   assert.deepEqual(value.counts(), beforeReads);
   await value.advance(1);
   assert.deepEqual(value.rows().map(({ id, isLive }) => [id, isLive]), [["codex:a", true], ["claude:b", false]]);
+  assert.deepEqual(coordinator.directory({ filter: "live" }).sessions.map((row) => row.id), ["codex:a"]);
+  assert.equal(coordinator.directory().counts.live, 1, "directory count shares the shell's Open expiry projection");
   assert.ok(coordinator.catalog().revision > revision);
   await value.advance(60_000);
   assert.equal(value.rows().every((row) => !row.isLive && row.activityStatus === "open"), true);
+  assert.equal(coordinator.directory().counts.live, 0);
   assert.equal(value.rows().find((row) => row.id === "codex:a").latestContextTotal, 42);
   assert.equal(snapshots.get("codex:a"), snapshot, "visibility never replaces or checkpoints provider evidence");
   assert.equal(snapshot.evidence.historical, false);

@@ -362,8 +362,34 @@ export function createProviderRegistry(adapters, options = {}) {
       return parsed ? providersById.get(parsed.providerId)?.provider || null : null;
     },
 
+    /** Monitor-private repository root selection. Never returns through browser state. */
+    repositoryAttributionForSession(sessionId) {
+      const parsed = parseProviderSessionId(sessionId);
+      const provider = parsed ? providersById.get(parsed.providerId)?.provider : null;
+      if (!provider || typeof provider.repositoryAttributionForSession !== "function") return null;
+      const value = provider?.repositoryAttributionForSession?.(parsed.localSessionId);
+      if (value?.state === "single" && typeof value.root === "string" && typeof value.fingerprint === "string") return value;
+      return value?.state === "multiple" ? { state: "multiple" } : { state: "unknown" };
+    },
+
     async listSessions() {
       return (await inspectSessions()).sessions;
+    },
+
+    /** Complete provider-owned header discovery for the monitor inventory. */
+    /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+    async enumerateSessionHeaders(providerId, options = {}) {
+      const { onBatch, signal } = options;
+      const provider = providersById.get(providerId)?.provider;
+      if (!provider || typeof provider.enumerateSessionHeaders !== "function" || typeof onBatch !== "function") {
+        return { complete: false };
+      }
+      try {
+        return await provider.enumerateSessionHeaders({ onBatch, signal });
+      } catch (error) {
+        recordDiagnostic(providerId, "catalogReadFailures", error, "header_enumeration");
+        return { complete: false };
+      }
     },
 
     inspectSessions,

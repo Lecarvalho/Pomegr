@@ -7,20 +7,22 @@ type SessionCatalogContextValue = {
   sessions: SessionSummary[];
   loading: boolean;
   connected: boolean;
+  paused: boolean;
   readiness: Pick<HomeReadiness, "catalog">;
 };
 
-const emptySessionCatalog: SessionCatalogContextValue = { sessions: [], loading: true, connected: true, readiness: { catalog: "loading" } };
+const emptySessionCatalog: SessionCatalogContextValue = { sessions: [], loading: true, connected: true, paused: false, readiness: { catalog: "loading" } };
 const SessionCatalogContext = createContext<SessionCatalogContextValue>(emptySessionCatalog);
 
-export function SessionCatalogProvider({ sessions, loading = false, connected = true, readiness, children }: {
+export function SessionCatalogProvider({ sessions, loading = false, connected = true, paused = false, readiness, children }: {
   sessions: SessionSummary[];
   loading?: boolean;
   connected?: boolean;
+  paused?: boolean;
   readiness?: Pick<HomeReadiness, "catalog">;
   children: ReactNode;
 }) {
-  return <SessionCatalogContext.Provider value={{ sessions, loading, connected, readiness: readiness || { catalog: loading ? "loading" : "ready" } }}>{children}</SessionCatalogContext.Provider>;
+  return <SessionCatalogContext.Provider value={{ sessions, loading, connected, paused, readiness: readiness || { catalog: loading ? "loading" : "ready" } }}>{children}</SessionCatalogContext.Provider>;
 }
 
 export function useSessionCatalog() {

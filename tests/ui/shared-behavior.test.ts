@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { formatAgentRowWallTime, formatAgentWallTime, formatExecutionTaskWallTime, formatWallTime, isAgentWallTimeAdvancing, liveWallTimeMs } from "../../app/formatting.mjs";
 import { proxyMonitorEventStream, proxyMonitorJson } from "../../app/api/monitor-proxy";
+import { GET as sessionsGet } from "../../app/api/sessions/route";
 import { agentsWithFinishedVisibility, agentTreeRows, coarseRelativeTime, minuteRelativeTime, newestSessionsFirst, relativeTime, resetCountdown, retryCountdown, sessionRelativeTime } from "../../app/dashboard-utils";
 import type { Agent, SessionSummary } from "../../shared/monitor-contract";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
@@ -196,6 +197,18 @@ describe("monitor proxy", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4317/api/sessions");
+  });
+
+  it("forwards only the bounded directory query vocabulary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{"sessions":[]}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await sessionsGet(new Request("http://localhost/api/sessions?mode=directory&query=work&filter=live&project=Pomegr&repositoryId=repo-1&sort=title&pageSize=25&cursor=opaque&revision=7&selected=codex%3Aone&pinned=codex%3Atwo&private=drop"));
+
+    const upstream = String(fetchMock.mock.calls[0][0]);
+    expect(upstream).toContain("/api/sessions?");
+    for (const value of ["mode=directory", "query=work", "filter=live", "project=Pomegr", "repositoryId=repo-1", "sort=title", "pageSize=25", "cursor=opaque", "revision=7", "selected=codex%3Aone", "pinned=codex%3Atwo"]) expect(upstream).toContain(value);
+    expect(upstream).not.toContain("private=drop");
   });
 
   it("streams only the monitor event body through the loopback proxy", async () => {

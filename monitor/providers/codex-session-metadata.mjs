@@ -11,6 +11,9 @@ const MAX_PATH_LENGTH = 4096;
 const MAX_BRANCH_LENGTH = 256;
 const SAFE_SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const TOP_LEVEL_SOURCE_KINDS = new Set(["cli", "vscode", "exec", "appServer", "unknown"]);
+const HEADER_BATCH_SIZE = 100;
+const HEADER_READ_BYTES = 64 * 1024;
+const MAX_SELECTED_FAMILY = DEFAULT_CODEX_SCAN_LIMIT;
 
 function boundedText(value, maximum) {
   if (typeof value !== "string") return "";
@@ -245,4 +248,132 @@ export function normalizeCodexThreadMetadata(thread, options = {}) {
 
 export function isTopLevelCodexSession(metadata) {
   return Boolean(metadata && !metadata.parentThreadId && TOP_LEVEL_SOURCE_KINDS.has(metadata.sourceKind));
+}
+
+/** Resolve one selected ID without retaining or materializing a catalog. */
+/** @param {{ signal?: AbortSignal }} [options] */
+export async function findCodexRolloutMetadata(roots, localSessionId, options = {}) {
+  const family = await findCodexRolloutFamily(roots, localSessionId, options);
+  return family?.find((item) => item.localId === localSessionId) || null;
+}
+
+/** Resolve only one selected rollout subtree with repeated bounded header passes. */
+export async function findCodexRolloutFamily(roots, localSessionId, options = {}) {
+  const { signal } = options;
+  if (!isSafeCodexSessionId(localSessionId) || !Array.isArray(roots)) return null;
+  const selectedIds = new Set([localSessionId]);
+  const selected = new Map();
+  async function walk(directory, archived, depth) {
+    if (depth > 16 || signal?.aborted) return null;
+    let handle;
+    try { handle = await fs.promises.opendir(directory, { bufferSize: 32 }); } catch { return null; }
+    try {
+      for await (const entry of handle) {
+        if (signal?.aborted) return null;
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          await walk(file, archived, depth + 1);
+          continue;
+        }
+        if (!entry.isFile() || !/^rollout-.*\.jsonl$/i.test(entry.name)) continue;
+        const header = readCodexRolloutHeader(file, { archived });
+        if (!header) continue;
+        const relatedSessionIds = new Set(selectedIds);
+        for (const selectedHeader of selected.values()) if (selectedHeader.sessionId) relatedSessionIds.add(selectedHeader.sessionId);
+        const related = header.localId === localSessionId
+          || selectedIds.has(header.parentThreadId)
+          || selectedIds.has(header.forkedFromId)
+          || (header.sessionId && header.sessionId !== header.localId && relatedSessionIds.has(header.sessionId));
+        if (!related) continue;
+        if (!selected.has(header.localId) && selected.size >= MAX_SELECTED_FAMILY) throw new Error("selected_family_limit");
+        const prior = selected.get(header.localId);
+        if (!prior || Date.parse(header.updatedAt || "") > Date.parse(prior.updatedAt || "")) selected.set(header.localId, header);
+        selectedIds.add(header.localId);
+      }
+    } catch (error) {
+      if (error?.message === "selected_family_limit") throw error;
+      return null;
+    }
+    finally { try { await handle?.close(); } catch { /* iteration may already close it */ } }
+    return null;
+  }
+  for (let pass = 0; pass < 16; pass += 1) {
+    const before = selected.size;
+    for (const source of roots) {
+      if (signal?.aborted || !source || typeof source.root !== "string" || !source.root) return null;
+      await walk(source.root, Boolean(source.archived), 0);
+    }
+    if (selected.size === before) break;
+    if (pass === 15) throw new Error("selected_family_limit");
+  }
+  return selected.has(localSessionId) ? [...selected.values()] : null;
+}
+
+/**
+ * Walk every configured rollout root without retaining a catalog in memory.
+ * This is deliberately separate from the bounded, recency-oriented discovery
+ * cache used by the live shell.  It reads only the fixed rollout header window.
+ */
+/** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+export async function enumerateCodexRolloutHeaders(roots, options = {}) {
+  const { onBatch, signal } = options;
+  if (typeof onBatch !== "function" || !Array.isArray(roots) || roots.length === 0) return { complete: false };
+  let batch = [];
+  const emit = async () => {
+    if (!batch.length) return true;
+    const next = batch;
+    batch = [];
+    try { return (await onBatch(next)) !== false; } catch { return false; }
+  };
+  function readableOrInvalid(file) {
+    let descriptor;
+    try {
+      const stat = fs.statSync(file);
+      if (!stat.isFile()) return "inconclusive";
+      const bytes = Math.min(stat.size, HEADER_READ_BYTES);
+      const buffer = Buffer.alloc(bytes);
+      descriptor = fs.openSync(file, "r");
+      const read = fs.readSync(descriptor, buffer, 0, bytes, 0);
+      if (read !== bytes) return "inconclusive";
+      // A full bounded header with no valid session_meta is an explicit
+      // non-candidate. A larger file whose header cannot establish identity
+      // may be mid-write or truncated, so exactness must degrade.
+      return stat.size <= HEADER_READ_BYTES ? "invalid" : "inconclusive";
+    } catch { return "inconclusive"; }
+    finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
+  }
+  async function walk(directory, archived, depth) {
+    if (depth > 16 || signal?.aborted) return false;
+    let handle;
+    try { handle = await fs.promises.opendir(directory, { bufferSize: 32 }); } catch { return false; }
+    try {
+      for await (const entry of handle) {
+        if (signal?.aborted) return false;
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          if (!await walk(file, archived, depth + 1)) return false;
+          continue;
+        }
+        if (!entry.isFile() || !/^rollout-.*\.jsonl$/i.test(entry.name)) continue;
+        const header = readCodexRolloutHeader(file, { archived });
+        if (!header) {
+          if (readableOrInvalid(file) !== "invalid") return false;
+          continue;
+        }
+        if (!isTopLevelCodexSession(header)) continue;
+        batch.push(header);
+        if (batch.length === HEADER_BATCH_SIZE && !await emit()) return false;
+      }
+      return true;
+    } catch { return false; }
+    finally { try { await handle?.close(); } catch { /* iteration may already close it */ } }
+  }
+  for (const source of roots) {
+    if (signal?.aborted || !source || typeof source.root !== "string" || !source.root) return { complete: false };
+    if (!await walk(source.root, Boolean(source.archived), 0)) {
+      if (!signal?.aborted) await emit();
+      return { complete: false };
+    }
+  }
+  return { complete: await emit() };
 }
