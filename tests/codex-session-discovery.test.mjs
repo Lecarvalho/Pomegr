@@ -53,6 +53,20 @@ async function waitForDiscovery(predicate) {
   }
 }
 
+test("Codex reserves two source-update lanes without consuming the urgent lane", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-observer-capacity-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const writerPresence = { refresh: async () => {}, current: () => null, close() {} };
+  const provider = createCodexProvider({ codexHome: root, writerPresence });
+  const observer = provider.createObserver();
+  context.after(() => observer.stop());
+
+  const diagnostics = observer.diagnostics();
+  assert.equal(diagnostics.interactiveHydrationConcurrency, 3);
+  assert.equal(diagnostics.sourceUpdateConcurrency, 2);
+  assert.equal(diagnostics.backgroundHydrationConcurrency, 1);
+});
+
 test("a watcher admits and hydrates an older resumed session beyond 500 files", async (context) => {
   const fixture = await beyondDiscoveryWindow(context);
   const callbacks = new Map();

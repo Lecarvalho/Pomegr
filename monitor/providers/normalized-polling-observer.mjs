@@ -217,8 +217,8 @@ export function createNormalizedPollingObserver(options) {
       const allowInteractive = activeInteractive < interactiveConcurrency;
       const allowBackground = activeBackground < backgroundConcurrency;
       if (!allowInteractive && !allowBackground) break;
-      // Keep one of the default two interactive slots available for first live
-      // publication or selection, even during a continuous source-update burst.
+      // Keep one interactive slot available for first live publication or
+      // selection, even during a continuous source-update burst.
       const item = nextPendingHydration(allowInteractive,
         activeSourceUpdates < sourceUpdateConcurrency, allowBackground);
       if (!item) break;
@@ -541,6 +541,9 @@ export function createNormalizedPollingObserver(options) {
       pendingHydrations: pendingHydrations.size,
       oldestPendingMs: Math.max(0, ...[...pendingHydrations.values()].map((item) => monotonicNow() - item.queuedAt)),
       hydrationConcurrency: concurrency,
+      interactiveHydrationConcurrency: interactiveConcurrency,
+      sourceUpdateConcurrency,
+      backgroundHydrationConcurrency: backgroundConcurrency,
       failureDetails: failures.snapshot(),
       timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
     }),

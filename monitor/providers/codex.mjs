@@ -760,6 +760,12 @@ export function createCodexProvider(options = {}) {
       concurrency: options.observerConcurrency ?? 2,
       watchTargets,
       catalogWatchTargets: [indexFile, writerLocksRoot],
+      // Codex keeps two routine source-update lanes so one slow normalization
+      // cannot hide activity in every other live session. The normalized
+      // observer still reserves the third interactive lane for first-live
+      // publication and explicit selection.
+      interactiveConcurrency: options.observerInteractiveConcurrency ?? 3,
+      backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
       subscribeLifecycleChanges: (notify) => writerPresence.subscribe?.(notify),
       onCatalogSourceEvent({ target }) {
         if (path.resolve(target) === path.resolve(writerLocksRoot)) writerPresence.invalidate();

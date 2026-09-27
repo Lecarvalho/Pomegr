@@ -1019,11 +1019,13 @@ failed Claude adapter cannot occupy Codex workers, and vice versa. Within one ob
 duplicate events for a queued session coalesce. If a source changes while that session is
 already being acquired, one dirty-again pass is retained so the newest complete records
 are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently. Each provider defaults to two interactive hydration slots plus
-one background slot. First publication for a live or needs-input session and explicit
-selection use urgent priority; ordinary source updates can occupy only one of the two
-interactive slots. Urgent work may use both. With a custom single interactive slot,
-urgent work leads queued updates but cannot preempt an acquisition already running.
+workers concurrently. Claude defaults to two interactive hydration slots plus one
+background slot. Codex defaults to three interactive slots plus one background slot so
+two unrelated live source updates can normalize concurrently while one interactive slot
+remains reserved. First publication for a live or needs-input session and explicit
+selection use urgent priority; ordinary source updates can occupy every interactive slot
+except the reserved one. With a custom single interactive slot, urgent work leads queued
+updates but cannot preempt an acquisition already running.
 Promoting a queued session immediately rechecks capacity without concurrent acquisition
 of the same session.
 
@@ -1504,7 +1506,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Work | Owner / phase | Cache relationship | Cadence |
 | --- | --- | --- | --- |
 | Source-change routing | Backend adapter / U1 | Maps a provider-native notification privately to catalog-dirty and/or session-dirty work | Wake immediately on a provider event or filesystem notification; known sessions enter the worker queue in the same event-loop turn |
-| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in a reserved provider lane: two interactive slots for notification/selection work and one background slot for reconciliation, with same-session serialization and event coalescing |
+| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in bounded provider lanes: Claude has two interactive slots, Codex has three, and each keeps one interactive slot reserved from routine updates plus one background reconciliation slot; same-session serialization and event coalescing still apply |
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | Activity/Requests demand only, with one foreground and one background slot in its separate scheduler; matching source keys do not replay, and state polling never enqueues work |
