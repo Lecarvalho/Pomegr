@@ -22,6 +22,18 @@ document and `AGENTS.md` govern repository changes.
   known-good revision.
 - Raw provider records and provider-native schemas remain adapter-private. Shared monitor
   state, checkpoints, APIs, and React components remain provider-neutral.
+- Claude session work-start classification belongs to U2. Only its normalized nullable
+  `session.startedAt` crosses the evidence boundary; local command text and classification
+  evidence remain private. The [session duration rules](METRICS.md#session-duration)
+  exclude setup-only records. D derives wall time from committed timestamps, and F renders
+  a missing work start as **Not started**. An acquisition tail limit must not advance an
+  established start: the adapter reads complete records in yielding bounded chunks and
+  retains only the earliest eligible timestamp and bounded pending command linkage in
+  a bounded private per-file cache. Source-generation checks invalidate replaced files.
+  Refresh and checkpoint replacement retain the last known-good revision until a complete
+  validated candidate commits; GETs never reclassify raw records. A changed Claude source
+  normalization identity schedules existing checkpoints for re-observation without
+  changing their schema or exposing private command linkage.
 - Session projection may derive the bounded `Agent.customType` display label from
   already-committed type evidence when the resolved role is `unknown`, under the
   [agent role rules](METRICS.md#agent-roles). Individual agent-query and analytics

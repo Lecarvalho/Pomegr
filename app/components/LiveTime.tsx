@@ -50,6 +50,7 @@ export function SessionWallTimeText({ session, historical }: {
   historical: boolean;
 }) {
   const now = useLiveNow();
+  if (!session.startedAt) return <>Not started</>;
   const durationMs = liveWallTimeMs(session.durationMs, session.startedAt, !historical, now);
   if (!historical && durationMs < 60_000) return <>Less than 1m</>;
   return <>{formatDuration(durationMs)}</>;

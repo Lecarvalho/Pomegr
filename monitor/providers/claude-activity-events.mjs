@@ -45,6 +45,90 @@ export function userInputContentType(record, requestedInputIds = new Set()) {
   return labels.length ? labels.join(" + ") : null;
 }
 
+function recordTimestamp(record) {
+  const milliseconds = Date.parse(record?.timestamp || record?.message?.timestamp || "");
+  return Number.isFinite(milliseconds) ? new Date(milliseconds).toISOString() : null;
+}
+
+function commandName(record) {
+  const content = record?.message?.content;
+  if (typeof content !== "string") return null;
+  const match = /<command-name>\s*(\/[^\s<]+)\s*<\/command-name>/i.exec(content);
+  return match?.[1] || null;
+}
+
+function isModelInvokingCommand(command, companion) {
+  if (typeof command?.promptId !== "string" || !command.promptId
+    || command.promptId.length > 512 || typeof command?.uuid !== "string" || !command.uuid
+    || command.uuid.length > 512) return false;
+  return companion?.type === "user" && companion.isMeta === true && companion.turnCompanion === true
+    && companion.promptId === command.promptId && companion.parentUuid === command.uuid;
+}
+
+function isAssistantWorkEvidence(record) {
+  if (record?.type !== "assistant" || record.isMeta || record.isCompactSummary || record.isApiErrorMessage) return false;
+  const message = record.message;
+  if (!message || typeof message !== "object" || message.model === "<synthetic>" || message.usage?.synthetic === true) return false;
+  if (typeof message.model === "string" && message.model) return true;
+  return Array.isArray(message.content) && message.content.some((part) => part?.type === "tool_use");
+}
+
+function hasLocalCommandWrapper(content) {
+  const values = typeof content === "string" ? [content]
+    : Array.isArray(content) ? content.map((part) => part?.text).filter((part) => typeof part === "string") : [];
+  return values.some((value) => /<local-command-(?:stdout|stderr|caveat)>/i.test(value));
+}
+
+function isDirectWorkInput(record) {
+  const content = record?.message?.content;
+  return !commandName(record)
+    && !hasLocalCommandWrapper(content)
+    && Boolean(userInputContentType(record));
+}
+
+function earlierTimestamp(current, candidate) {
+  return !current || candidate < current ? candidate : current;
+}
+
+export function createClaudeSessionWorkStartState() {
+  return { startedAt: null, pendingCommand: null };
+}
+
+/** Adapter-private reducer; it retains only an initiating timestamp and opaque command linkage. */
+export function reduceClaudeSessionWorkStart(state, record) {
+  const timestamp = recordTimestamp(record);
+  let startedAt = state.startedAt;
+  let pendingCommand = state.pendingCommand;
+  if (state.pendingCommand) {
+    if (isModelInvokingCommand(state.pendingCommand, record)) {
+      startedAt = earlierTimestamp(startedAt, state.pendingCommand.timestamp);
+    }
+    pendingCommand = null;
+  }
+  if (!timestamp) return { startedAt, pendingCommand };
+  const name = commandName(record);
+  if (name && name !== "/clear" && record.type === "user" && !record.isMeta
+    && typeof record.promptId === "string" && record.promptId.length > 0 && record.promptId.length <= 512
+    && typeof record.uuid === "string" && record.uuid.length > 0 && record.uuid.length <= 512) {
+    pendingCommand = { promptId: record.promptId, uuid: record.uuid, timestamp };
+  }
+  if (isDirectWorkInput(record) || isAssistantWorkEvidence(record)) {
+    startedAt = earlierTimestamp(startedAt, timestamp);
+  }
+  return { startedAt, pendingCommand };
+}
+
+/**
+ * Finds the first recorded main-session action that initiated model work.
+ * Command text stays private: command records qualify only through Claude's
+ * prompt/turn-companion linkage, never by command-name heuristics.
+ */
+export function claudeSessionWorkStartedAt(records) {
+  let state = createClaudeSessionWorkStartState();
+  for (const record of records) state = reduceClaudeSessionWorkStart(state, record);
+  return state.startedAt;
+}
+
 function retain(map, key, value, maximum = MAX_ENTRIES) {
   map.set(key, value);
   if (maximum !== Infinity && map.size > maximum) map.delete(map.keys().next().value);

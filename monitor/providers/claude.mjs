@@ -11,7 +11,7 @@ import {
   pendingUserInputAt,
   resolveAgentMetadata,
 } from "../agent-metadata.mjs";
-import { claudeConversationActivity, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "./claude-activity-events.mjs";
+import { claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "./claude-activity-events.mjs";
 import { boundedActivityDuration, boundedFileChanges, recentActivityEvents } from "../activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
@@ -63,6 +63,7 @@ import { createClaudePluginSetupReader } from "./claude-plugin-setup.mjs";
 import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 import { readClaudeHistoryRecords } from "./claude-history-reader.mjs";
+import { createClaudeSessionWorkStartReader } from "./claude-session-work-start.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
@@ -99,6 +100,7 @@ export function createClaudeProvider(options = {}) {
   const workflowManifestCache = new Map();
   const historyCache = new Map();
   const transcriptPathsBySessionId = new Map();
+  const sessionWorkStartReader = createClaudeSessionWorkStartReader({ yieldControl: options.yieldControl });
   const catalogPresence = createClaudeCatalogPresence();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
     env: environment,
@@ -259,6 +261,9 @@ export function createClaudeProvider(options = {}) {
     const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || readJsonlTail(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
     const mainRecords = recordsByFile.get(mainFile) || [];
+    const primaryStartedAt = completeHistory
+      ? claudeSessionWorkStartedAt(mainRecords)
+      : await sessionWorkStartReader.read(mainFile);
     const cwd = projectCwd(mainRecords);
     const mainStat = statSafe(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
@@ -304,7 +309,7 @@ export function createClaudeProvider(options = {}) {
     const activityRequestLinks = { toolUseIdsByRequest: new Map(), replyIdsByRequest: new Map() };
     const compactions = [];
     const transcriptPaths = new Map();
-    let startedAt = null;
+    let startedAt = primaryStartedAt;
     let updatedAt = null;
 
     for (const file of files) {
@@ -341,7 +346,6 @@ export function createClaudeProvider(options = {}) {
       for (const record of records) {
         const timestamp = record.timestamp || record.message?.timestamp;
         if (timestamp) {
-          if (!startedAt || new Date(timestamp) < new Date(startedAt)) startedAt = timestamp;
           if (!updatedAt || new Date(timestamp) > new Date(updatedAt)) updatedAt = timestamp;
         }
         const userInputType = file === mainFile ? userInputContentType(record, requestedInputIds) : null;
@@ -387,7 +391,14 @@ export function createClaudeProvider(options = {}) {
         }
       }
       const runtime = runtimeMetadata(records);
-      const timing = agentTiming(records, stat.mtime.toISOString());
+      const recordedTiming = agentTiming(records, stat.mtime.toISOString());
+      const timing = actor.id === "primary" && primaryStartedAt
+        ? {
+          ...recordedTiming,
+          startedAt: primaryStartedAt,
+          durationMs: Math.max(0, Date.parse(recordedTiming.updatedAt) - Date.parse(primaryStartedAt)),
+        }
+        : recordedTiming;
       const finished = file !== mainFile && isAgentTranscriptFinished(records);
       const externalStopAgentId = workflowAgent
         ? workflowRawAgentIdCounts.get(workflowAgent.rawAgentId) === 1 ? workflowAgent.rawAgentId : null
@@ -535,7 +546,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : discovered.registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v6:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v7:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 

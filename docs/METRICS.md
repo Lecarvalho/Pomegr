@@ -447,7 +447,7 @@ The dashboard's running-agent count includes both `active` agents and parents ma
 
 Workflow workers are ordinary normalized agents for metrics. They contribute exactly once to agent counts, tool-call counts, and all-agent context. A workflow's displayed context is the sum of its linked agents' latest non-zero context snapshots; Pomegr never uses workflow-manifest token totals, tool totals, transcript throughput, or inferred spend. Workflow phase groupings are presentation metadata and do not add another metric contribution.
 
-Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Active agents, parents waiting on active descendants, and non-terminal agents with an exact still-running foreground execution task continue counting from their recorded start time. The pending-task rule prevents transcript silence during a long foreground command from freezing the live counter; detached background work does not keep the launching agent's counter advancing. Finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
+Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Once Claude Code's primary agent has a recorded work start, it uses the [session work-start rule](#session-duration) instead of earlier setup records. Active agents, parents waiting on active descendants, and non-terminal agents with an exact still-running foreground execution task continue counting from their recorded start time. The pending-task rule prevents transcript silence during a long foreground command from freezing the live counter; detached background work does not keep the launching agent's counter advancing. Finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
 
 ## Session state
 
@@ -536,7 +536,9 @@ The session hero shows the latest recognized approval mode recorded by the provi
 
 ## Session duration
 
-Elapsed wall time is the difference between the earliest and latest recorded timestamps. It includes idle gaps and overlapping work.
+Session duration is elapsed **wall time**, including idle gaps and overlapping work after the session starts. Live views advance to the current time; historical views end at the latest recorded timestamp. It is not active working time.
+
+For Claude Code, the start is the first recorded user input that initiates model work, including a model-invoking command and the wait for its response. Local-only commands such as `/clear`, initialization, command output, and bookkeeping do not establish the start. If initiating input is unavailable, recorded assistant work provides a fallback. A session containing only setup records has no work start and displays **Not started**. Later pauses and resumes do not reset an established start.
 
 ## Efficiency signals
 

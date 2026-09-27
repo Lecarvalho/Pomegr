@@ -11,7 +11,7 @@ import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental
 import { monitorStateFromProviderEvidence } from "./helpers/provider-fixtures.mjs";
 import { buildActivityFeed, recentActivityEvents, shellFailureActivityEvents } from "../monitor/activity-events.mjs";
 import { SessionObservationCheckpointStore } from "../monitor/session-observation-checkpoints.mjs";
-import { claudeConversationActivity, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "../monitor/providers/claude-activity-events.mjs";
+import { claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader, createClaudeSessionWorkStartState, reduceClaudeSessionWorkStart, userInputContentType } from "../monitor/providers/claude-activity-events.mjs";
 
 function assistantReply(id, timestamp = "2026-09-07T18:47:00.000Z") {
   return { type: "assistant", uuid: `PRIVATE_RECORD_${id}`, timestamp, message: {
@@ -81,6 +81,51 @@ test("classifies direct user input without exposing its content", () => {
   assert.equal(userInputContentType({ type: "user", message: { content: [{ type: "document", source: { media_type: "application/pdf", data: "PRIVATE DOCUMENT" } }] } }), "Document");
   assert.equal(userInputContentType({ type: "user", isMeta: true, message: { content: "INTERNAL META" } }), null);
   assert.equal(userInputContentType({ type: "assistant", message: { content: "NOT USER INPUT" } }), null);
+});
+
+test("finds Claude session work starts from direct input or linked model commands", () => {
+  const at = (seconds) => `2026-09-07T18:47:${String(seconds).padStart(2, "0")}.000Z`;
+  const command = {
+    type: "user", uuid: "command-private", promptId: "prompt-private", timestamp: at(10),
+    message: { content: "<command-name>/skill</command-name><command-message>PRIVATE</command-message>" },
+  };
+  const companion = {
+    type: "user", isMeta: true, turnCompanion: true, parentUuid: "command-private", promptId: "prompt-private", timestamp: at(11),
+    message: { content: [{ type: "text", text: "PRIVATE EXPANDED INSTRUCTIONS" }] },
+  };
+  assert.equal(claudeSessionWorkStartedAt([
+    { type: "user", timestamp: at(1), message: { content: "<command-name>/clear</command-name>" } },
+    { type: "system", subtype: "local_command", timestamp: at(2), content: "PRIVATE" },
+    command,
+    companion,
+    assistantReply("after-command", at(20)),
+  ]), at(10));
+  assert.equal(claudeSessionWorkStartedAt([
+    { type: "user", timestamp: at(3), message: { content: [{ type: "image", source: { media_type: "image/png", data: "PRIVATE" } }] } },
+    assistantReply("after-image", at(4)),
+  ]), at(3));
+  assert.equal(claudeSessionWorkStartedAt([
+    { type: "user", timestamp: at(5), message: { content: "<command-name>/model</command-name>" } },
+    { type: "system", subtype: "local_command", timestamp: at(6), content: "PRIVATE" },
+  ]), null);
+  assert.equal(claudeSessionWorkStartedAt([
+    { type: "user", uuid: "clear-private", promptId: "clear-prompt", timestamp: at(5), message: { content: "<command-name>/clear</command-name>" } },
+    { type: "user", isMeta: true, turnCompanion: true, parentUuid: "clear-private", promptId: "clear-prompt", timestamp: at(6), message: { content: [{ type: "text", text: "PRIVATE" }] } },
+  ]), null);
+  assert.equal(claudeSessionWorkStartedAt([
+    { type: "user", timestamp: at(6), message: { content: [{ type: "text", text: "<local-command-stdout>PRIVATE</local-command-stdout>" }] } },
+  ]), null);
+  assert.equal(claudeSessionWorkStartedAt([assistantReply("fallback", at(7))]), at(7));
+  assert.equal(claudeSessionWorkStartedAt([
+    assistantReply("missing-original-input", at(7)),
+    { type: "user", timestamp: at(9), message: { content: "Later input" } },
+  ]), at(7), "later input must not hide earlier assistant work");
+  const state = reduceClaudeSessionWorkStart(createClaudeSessionWorkStartState(), command);
+  assert.deepEqual(state.pendingCommand, { uuid: command.uuid, promptId: command.promptId, timestamp: at(10) });
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE|command-name|command-message/);
+  assert.equal(reduceClaudeSessionWorkStart(createClaudeSessionWorkStartState(), {
+    ...command, promptId: "x".repeat(513),
+  }).pendingCommand, null);
 });
 
 test("recognizes answers to input requests but excludes ordinary tool results", () => {
