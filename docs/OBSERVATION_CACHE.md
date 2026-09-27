@@ -1200,6 +1200,17 @@ gapped, unstable, older, or mismatched candidates retain the accepted lifecycle.
 This terminal-only path retains normalized evidence in bounded private memory; it
 does not acquire detail or history, change checkpoints, or run from a GET. Writer
 ownership can retain presence but cannot turn the terminal into working execution.
+Before a full live-body hydration finishes, ordinary Codex catalog candidates inspect
+at most a 128 KiB/256-record lifecycle tail. A session with a confirmed native writer
+owner may inspect at most a 4 MiB/2,048-record lifecycle tail so an explicit current-turn
+boundary can populate the header promptly after restart. This owner-scoped allowance
+does not treat ownership as execution, does not parse detail metrics, and does not widen
+history acquisition; absent explicit structured lifecycle evidence the row remains Open
+or Unknown until normal acquisition completes. When that complete stable tail contains
+fresh recognized provider activity but its turn boundary is still outside the bounded
+window, current owner confirmation may admit the existing short-window activity inference.
+The result remains labeled inferred; a structured terminal boundary still wins, and
+neither owner presence nor file recency alone can produce working state.
 The full observer otherwise owns the successor once it has acquired the source; a bounded tail cannot
 discard an accepted turn or unmatched input just because its source record is outside
 that tail. Before full observation, a complete tail may survive an unfinished append
