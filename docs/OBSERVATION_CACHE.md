@@ -977,6 +977,44 @@ the scheduler must not silently fall back to wall-clock time when the adapter su
 This clock wiring does not change cache-only GETs, committed evidence retention,
 revision or checkpoint semantics, or the browser privacy boundary.
 
+### Source ledger
+
+A provider-neutral source ledger (`monitor/providers/source-ledger.mjs`) indexes
+session-to-file topology (root, child, fork, shared group) and one filesystem generation
+per known file, so a selected session's family can be resolved without walking an entire
+transcript tree on every read. It parses no provider record itself: an adapter translates
+its own bounded header read into the ledger's neutral shape before ingesting it. The
+adapter feeds it from its periodic header enumeration (each pass starts 60 seconds after
+the previous one finishes), from discovery loads, and from the files it lists and parses
+while resolving a family. The index can lag the disk and is bounded (the oldest non-live
+entries are evicted first), so it is a header cache and a root locator, never proof that a
+family is complete.
+
+Family completeness comes from the disk. A family is closed over the headers of the files
+the adapter lists, breadth first, so the result does not depend on listing order, and is
+bounded to 500 identities; exceeding the bound rejects acquisition and the last committed
+evidence stays. A listed file's header is taken from the ledger only while the file keeps
+the filesystem identity it had when indexed and has only grown since; otherwise it is
+parsed again. When two files carry one identity, the adapter-defined preferred copy is
+used. Remembered cold misses expire after 60 seconds or when the identity is indexed. File
+paths and headers held by the ledger are monitor-private working state: they never enter
+evidence, checkpoints, diagnostics, logs, or browser responses, and the ledger's diagnostic
+surface reports bounded counts only.
+
+Codex resolves a selected session's rollout family with `resolveCodexRolloutFamily`
+(`monitor/providers/codex-session-metadata.mjs`). The ledger locates the root's file.
+Descendants are always created after their root, so the adapter lists the dated
+`YYYY/MM/DD` rollout directories from one day before the root file's own directory on,
+every undated directory, and the whole archive root; an archived or undated root, or one
+that joins another thread's shared group (and so can have older siblings), lists the whole
+active tree. It reads each listed file's header, yielding to the event loop between
+batches, closes the family over those headers, and re-reads each member's full header from
+its file. A root the ledger does not know, a failed or oversized listing, or a member whose
+file is gone or now carries another identity falls back to the bounded whole-tree walk,
+whose result is ingested. An empty walk result is remembered as a miss unless the root's
+indexed file still exists. File modification time is not used to detect
+change: Codex does not advance a rollout's modification time while appending to it.
+
 ### Event-driven acquisition pipeline
 
 Provider notifications are the primary acquisition trigger. The ten-second poll is a
@@ -1395,12 +1433,16 @@ history replay for that session while serving committed/loading history. `/api/s
 ordinary state polling never request complete replay. The dedicated history scheduler keeps
 that work separate from urgent live and selected detail hydration.
 
-When a selected Codex identity lacks a trusted retained source locator, its adapter walks
-bounded headers for that identity and its recorded child relationships independently of the
-global catalog. Selected-family metadata is capped at 500 identities and 16 relationship
-closure passes. Exceeding either bound rejects acquisition and retains the last committed
-evidence; it must never commit a silently truncated family. These detail-acquisition bounds
-do not limit top-level inventory enumeration or directory reachability.
+When a selected Codex identity lacks a trusted retained source locator, its adapter
+locates the identity's root through the shared source ledger and closes its rollout family
+over the rollout directories that can hold descendants (see "Source ledger" above),
+independently of the global catalog. Only an unknown root, a failed listing, or a missing
+or replaced member falls back to one bounded whole-tree header walk. Selected-family
+metadata is capped at 500 identities on either path, and the whole-tree walk also at 16
+relationship closure passes. Exceeding a bound rejects acquisition and retains the last
+committed evidence; it must never commit a silently truncated family. These
+detail-acquisition bounds do not limit top-level inventory enumeration or directory
+reachability.
 
 ### Complete-record ingestion
 

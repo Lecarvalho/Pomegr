@@ -23,6 +23,8 @@ import { createCodexWriterPresence } from "./codex-writer-presence.mjs";
 import { createCodexOwningRuntime } from "./codex-owning-runtime.mjs";
 import { createCodexLiveState } from "./codex-live-state.mjs";
 import { createCodexAppServerSessionReader } from "./codex-app-server-session.mjs";
+import { createSourceLedger } from "./source-ledger.mjs";
+import { createCodexRepositoryAttributionTracker } from "./codex-repository-attribution.mjs";
 import {
   boundedInteger,
   codexSessionReference,
@@ -36,12 +38,13 @@ import { createHistoryOwnershipProjection, publishNormalizedHistoryActivity, pub
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
-  findCodexRolloutFamily,
-  findCodexRolloutMetadata,
+  codexHeaderToLedgerHeader,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
   enumerateCodexRolloutHeaders,
+  readCodexLedgerHeader,
   readCodexSessionIndex,
+  resolveCodexRolloutFamily,
 } from "./codex-session-metadata.mjs";
 export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024, CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
@@ -79,27 +82,7 @@ export function createCodexProvider(options = {}) {
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
   let repositoryResolver = null;
-  const repositoryAttributions = new Map();
-  const repositoryBindingRoots = new Map();
-  function rememberRepositoryAttribution(localSessionId, bindings) {
-    if (!bindings.size) return repositoryAttributions.get(localSessionId) || { state: "unknown" };
-    const roots = repositoryBindingRoots.get(localSessionId) || new Map();
-    for (const [repositoryId, binding] of bindings) {
-      if (roots.size >= 2) break; // Two proven roots permanently establish ambiguity.
-      roots.set(repositoryId, binding);
-    }
-    repositoryBindingRoots.delete(localSessionId);
-    repositoryBindingRoots.set(localSessionId, roots);
-    while (repositoryBindingRoots.size > 128) repositoryBindingRoots.delete(repositoryBindingRoots.keys().next().value);
-    const values = [...roots.values()];
-    const attribution = values.length === 1
-      ? { state: "single", repositoryId: values[0].repositoryId, root: values[0].root, fingerprint: createHash("sha256").update(values[0].root).digest("hex").slice(0, 32) }
-      : { state: "multiple" };
-    repositoryAttributions.delete(localSessionId);
-    repositoryAttributions.set(localSessionId, attribution);
-    while (repositoryAttributions.size > 128) repositoryAttributions.delete(repositoryAttributions.keys().next().value);
-    return attribution;
-  }
+  const repositoryAttributionTracker = createCodexRepositoryAttributionTracker();
   const makeWriterPresence = () => options.writerPresence || createCodexWriterPresence({
     writerLocksRoot, now, platform: options.platform, env: options.env,
   });
@@ -184,10 +167,16 @@ export function createCodexProvider(options = {}) {
   });
   let rolloutDiscovery = makeRolloutDiscovery();
   const rolloutRoots = [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])];
+  const archivedPrefix = path.resolve(archivedRoot) + path.sep;
+  const sourceLedger = createSourceLedger({
+    parseHeader: (file) => readCodexLedgerHeader(file, { archived: path.resolve(file).startsWith(archivedPrefix) }),
+    now,
+  });
   async function resolveExactRolloutMetadata(localSessionId) {
     return await appServerSessions.readSessionMetadata(localSessionId)
       || rolloutDiscovery.peek(localSessionId)
-      || findCodexRolloutMetadata(rolloutRoots, localSessionId);
+      || (await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localSessionId))?.find((item) => item.localId === localSessionId)
+      || null;
   }
   async function readFallbackMetadata(readOptions, indexNames = readCodexSessionIndex(indexFile)) {
     return (await rolloutDiscovery.read(readOptions)).map((item) => {
@@ -203,6 +192,7 @@ export function createCodexProvider(options = {}) {
       const appServerMetadata = await appServerSessions.readCatalog();
       const fallbackMetadata = await readFallbackMetadata(readOptions);
       const combined = mergeCodexMetadata([...fallbackMetadata, ...(appServerMetadata || [])]);
+      sourceLedger.ingestHeaders(combined.filter((item) => item.rolloutFile).map((item) => ({ file: item.rolloutFile, header: codexHeaderToLedgerHeader(item) })));
       const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
       pruneKnownFiles(knownRolloutFiles);
       return combined;
@@ -213,10 +203,12 @@ export function createCodexProvider(options = {}) {
     // Ownership is a separate background lane; recorded work never waits for it.
     void writerPresence.refresh(metadata).catch(() => {});
     const { threads, sessions } = liveness.observe(metadata);
-    rolloutDiscovery.retain(threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId));
+    const liveIds = threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId);
+    rolloutDiscovery.retain(liveIds);
+    sourceLedger.markLive(liveIds);
     return threads.filter(isTopLevelCodexSession)
       .map((thread) => {
-        const attribution = repositoryAttributions.get(thread.localId);
+        const attribution = repositoryAttributionTracker.get(thread.localId);
         const project = attribution?.state === "single" ? path.basename(attribution.root) || "Repository"
           : attribution?.state === "multiple" ? "Multiple repositories" : "Unknown project";
         return { ...codexSessionReference(thread, sessions.get(thread.localId)), project };
@@ -228,7 +220,7 @@ export function createCodexProvider(options = {}) {
   async function enumerateSessionHeaders(options = {}) {
     const { onBatch, signal } = options;
     const normalizeHeader = (header) => {
-        const attribution = repositoryAttributions.get(header.localId);
+        const attribution = repositoryAttributionTracker.get(header.localId);
         return {
           localId: header.localId,
           title: header.title,
@@ -243,7 +235,8 @@ export function createCodexProvider(options = {}) {
         };
       };
     const emit = (headers) => onBatch(headers.map(normalizeHeader));
-    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit });
+    const onHeader = (header) => sourceLedger.ingestHeaders([{ file: header.rolloutFile, header: codexHeaderToLedgerHeader(header) }]);
+    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit, onHeader });
     const appServerHeaders = await appServerSessions.enumerateSessionHeaders({ signal, onBatch: emit });
     return { complete: Boolean(files.complete) && Boolean(appServerHeaders.complete) };
   }
@@ -259,7 +252,7 @@ export function createCodexProvider(options = {}) {
       : null;
     // Resolve known selected metadata before the global catalog.
     const directRoot = await appServerSessions.readSessionMetadata(localSessionId);
-    const retainedFamily = directRoot?.rolloutFile ? [] : await findCodexRolloutFamily(rolloutRoots, localSessionId) || [];
+    const retainedFamily = directRoot?.rolloutFile ? [] : await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localSessionId) || [];
     const retainedRoot = directRoot ? null : retainedFamily.find((item) => item.localId === localSessionId) || null;
     const rootLocator = directRoot || retainedRoot;
     const appServerTree = directRoot
@@ -321,7 +314,7 @@ export function createCodexProvider(options = {}) {
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
           if (!metadataById.has(collaboration.childThreadId)) {
-            const childFamily = await findCodexRolloutFamily(rolloutRoots, collaboration.childThreadId) || [];
+            const childFamily = await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, collaboration.childThreadId) || [];
             for (const child of childFamily) {
               if (metadataById.has(child.localId)) continue;
               if (metadataById.size >= scanLimit) throw new Error("selected_family_limit");
@@ -559,7 +552,7 @@ export function createCodexProvider(options = {}) {
       onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
     });
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
-    const repositoryAttribution = rememberRepositoryAttribution(metadata.localId, provenRepositories);
+    const repositoryAttribution = repositoryAttributionTracker.remember(metadata.localId, provenRepositories);
     let recordedGitBranch = "";
     if (repositoryAttribution.state === "single" && metadata.recordedGitBranch && typeof repositoryResolver === "function") {
       try {
@@ -570,7 +563,7 @@ export function createCodexProvider(options = {}) {
       } catch { /* branch evidence stays unavailable when its recorded cwd cannot be proven */ }
     }
     if (repositoryAttribution.state === "single") {
-      repositoryAttributions.set(metadata.localId, { ...repositoryAttribution, recordedBranch: recordedGitBranch || null });
+      repositoryAttributionTracker.set(metadata.localId, { ...repositoryAttribution, recordedBranch: recordedGitBranch || null });
     }
     const attributedProject = repositoryAttribution.state === "single"
       ? path.basename(repositoryAttribution.root) || "Repository"
@@ -746,7 +739,7 @@ export function createCodexProvider(options = {}) {
       repositoryResolver = typeof resolver === "function" ? resolver : null;
     },
     repositoryAttributionForSession(localSessionId) {
-      return repositoryAttributions.get(localSessionId) || { state: "unknown" };
+      return repositoryAttributionTracker.get(localSessionId);
     },
     createObserver: () => createCodexIncrementalObserver({
       list: listSessions, now,

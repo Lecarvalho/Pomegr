@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { closeSourceFamily } from "./source-ledger.mjs";
 
 export const DEFAULT_CODEX_CATALOG_LIMIT = 50;
 export const DEFAULT_CODEX_SCAN_LIMIT = 500;
@@ -250,11 +251,164 @@ export function isTopLevelCodexSession(metadata) {
   return Boolean(metadata && !metadata.parentThreadId && TOP_LEVEL_SOURCE_KINDS.has(metadata.sourceKind));
 }
 
-/** Resolve one selected ID without retaining or materializing a catalog. */
-/** @param {{ signal?: AbortSignal }} [options] */
-export async function findCodexRolloutMetadata(roots, localSessionId, options = {}) {
-  const family = await findCodexRolloutFamily(roots, localSessionId, options);
-  return family?.find((item) => item.localId === localSessionId) || null;
+/** Translate a full Codex rollout/thread header into the source ledger's bounded,
+ * provider-neutral shape. `groupId` carries Codex's shared `sessionId` only when it
+ * names a group distinct from the header's own identity (Codex defaults an absent
+ * `sessionId` to the header's own `localId`, which is not a group relation). */
+export function codexHeaderToLedgerHeader(header) {
+  if (!header || !isSafeCodexSessionId(header.localId)) return null;
+  return {
+    localId: header.localId,
+    parentId: isSafeCodexSessionId(header.parentThreadId) ? header.parentThreadId : null,
+    forkedFromId: isSafeCodexSessionId(header.forkedFromId) ? header.forkedFromId : null,
+    groupId: header.sessionId && header.sessionId !== header.localId && isSafeCodexSessionId(header.sessionId)
+      ? header.sessionId
+      : null,
+    archived: Boolean(header.archived),
+    createdAt: typeof header.createdAt === "string" ? header.createdAt : null,
+    lastRecordAt: null,
+    // Between two files carrying one identity, keep the copy the whole-tree walk chose.
+    preference: Date.parse(header.updatedAt || "") || null,
+  };
+}
+
+const FAMILY_LISTING_MAX_FILES = 20_000;
+const FAMILY_LISTING_MARGIN_MS = 24 * 60 * 60_000;
+
+function datePartsBefore(parts, since) {
+  for (let index = 0; index < parts.length; index += 1) {
+    if (parts[index] !== since[index]) return parts[index] < since[index];
+  }
+  return false;
+}
+
+/** The `YYYY/MM/DD` directory date of a rollout file under an active root, or null. */
+function rolloutDirectoryDate(roots, file) {
+  if (typeof file !== "string") return null;
+  for (const source of roots) {
+    if (!source || source.archived || typeof source.root !== "string") continue;
+    const relative = path.relative(source.root, file);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
+    const parts = relative.split(/[\\/]/).slice(0, 3).map(Number);
+    if (parts.length === 3 && parts.every(Number.isInteger)) return Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  }
+  return null;
+}
+
+/**
+ * List rollout files that can belong to a family whose root file is `rootFile`.
+ * Descendants are always created after their root, so dated `YYYY/MM/DD` directories
+ * before the root file's own directory (less a one-day margin) are skipped; archive roots,
+ * undated directories and an archived or undated root are listed in full. Returns null
+ * when a directory cannot be read or the listing exceeds its bound, so the caller falls
+ * back to the complete walk instead of trusting a partial listing.
+ */
+export async function listCodexRolloutFilesSince(roots, rootFile, options = {}) {
+  const { signal } = options;
+  if (!Array.isArray(roots)) return null;
+  const rootDate = options.listAll ? null : rolloutDirectoryDate(roots, rootFile);
+  const sinceDate = new Date((rootDate ?? 0) - FAMILY_LISTING_MARGIN_MS);
+  const since = rootDate === null ? [0, 0, 0]
+    : [sinceDate.getUTCFullYear(), sinceDate.getUTCMonth() + 1, sinceDate.getUTCDate()];
+  const files = [];
+  async function visit(directory, dateParts, depth) {
+    if (depth > 8 || signal?.aborted) return false;
+    let entries;
+    try { entries = await fs.promises.readdir(directory, { withFileTypes: true }); } catch { return false; }
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        const dated = dateParts && dateParts.length < 3 && /^\d{1,4}$/.test(entry.name);
+        const nextParts = dated ? [...dateParts, Number(entry.name)] : null;
+        if (nextParts && datePartsBefore(nextParts, since.slice(0, nextParts.length))) continue;
+        if (!await visit(full, nextParts, depth + 1)) return false;
+      } else if (entry.isFile() && /^rollout-.*\.jsonl$/i.test(entry.name)) {
+        files.push({ file: full, archived: false });
+        if (files.length > FAMILY_LISTING_MAX_FILES) return false;
+      }
+    }
+    return true;
+  }
+  for (const source of roots) {
+    if (!source || typeof source.root !== "string" || !source.root) return null;
+    const start = files.length;
+    if (!await visit(source.root, source.archived ? null : [], 0)) return null;
+    for (let index = start; index < files.length; index += 1) files[index].archived = Boolean(source.archived);
+  }
+  return files;
+}
+
+/** The source ledger's `parseHeader` hook: one bounded rollout header read,
+ * translated into the ledger's neutral shape. */
+export function readCodexLedgerHeader(file, options = {}) {
+  const archived = options.archived ?? /[\\/]archived_sessions[\\/]/i.test(file);
+  return codexHeaderToLedgerHeader(readCodexRolloutHeader(file, { ...options, archived }));
+}
+
+const LISTING_YIELD_EVERY = 32;
+const yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve));
+
+/** True unless the path is definitely gone; an unreadable file still exists. */
+function fileMayExist(file) {
+  try { fs.statSync(file); return true; } catch (error) { return !["ENOENT", "ENOTDIR"].includes(error?.code); }
+}
+
+/**
+ * Resolve one rollout family through the shared source ledger instead of a fresh
+ * whole-tree header walk. The ledger only locates the root and caches headers, so family
+ * completeness never depends on what the bounded, lagging index holds: every rollout file
+ * that can belong to the family (dated directories from the root file's own directory on,
+ * undated directories, and archive roots) is listed, each listed file's header comes from
+ * the ledger when its filesystem identity is unchanged and is parsed otherwise (yielding to
+ * the event loop between batches), and the family is closed over those listed headers
+ * alone. Each member's full header is then re-read from its file. An unknown root, a failed
+ * or oversized listing, or a member whose file is gone or now carries another identity
+ * falls back to the bounded cold walk, whose result is ingested. An empty cold result is
+ * remembered briefly, unless the root's file still exists but could not be read. Bound
+ * overflow still throws `selected_family_limit`.
+ */
+export async function resolveCodexRolloutFamily(ledger, roots, localSessionId, options = {}) {
+  if (!ledger) return findCodexRolloutFamily(roots, localSessionId, options);
+  if (!isSafeCodexSessionId(localSessionId)) return null;
+  const located = ledger.locate(localSessionId);
+  const rootFile = located?.file || null;
+  if (rootFile) {
+    // A root that joins another thread's group can have older siblings: list everything.
+    const candidates = await listCodexRolloutFilesSince(roots, rootFile, { ...options, listAll: Boolean(located.header.groupId) });
+    if (candidates) {
+      const listed = [];
+      for (let index = 0; index < candidates.length; index += 1) {
+        if (index % LISTING_YIELD_EVERY === LISTING_YIELD_EVERY - 1) await yieldToEventLoop();
+        const candidate = candidates[index];
+        let header = ledger.cachedHeader(candidate.file);
+        if (!header) {
+          header = readCodexLedgerHeader(candidate.file, { archived: candidate.archived });
+          if (header) ledger.ingestHeaders([{ file: candidate.file, header }]);
+        }
+        if (header) listed.push({ file: candidate.file, header });
+      }
+      const members = closeSourceFamily(localSessionId, listed);
+      if (members) {
+        const family = [];
+        for (const [index, member] of members.entries()) {
+          if (index % LISTING_YIELD_EVERY === LISTING_YIELD_EVERY - 1) await yieldToEventLoop();
+          const header = readCodexRolloutHeader(member.file, { archived: member.header.archived });
+          if (!header || header.localId !== member.localId) {
+            family.length = 0;
+            break;
+          }
+          family.push(header);
+        }
+        if (family.some((header) => header.localId === localSessionId)) return family;
+      }
+    }
+  }
+  const rootUnreadable = Boolean(rootFile) && fileMayExist(rootFile);
+  if (!rootUnreadable && ledger.recentMiss(localSessionId)) return null;
+  const cold = await findCodexRolloutFamily(roots, localSessionId, options);
+  if (cold) ledger.ingestHeaders(cold.map((header) => ({ file: header.rolloutFile, header: codexHeaderToLedgerHeader(header) })));
+  else if (!rootUnreadable) ledger.rememberMiss(localSessionId);
+  return cold;
 }
 
 /** Resolve only one selected rollout subtree with repeated bounded header passes. */
@@ -314,9 +468,9 @@ export async function findCodexRolloutFamily(roots, localSessionId, options = {}
  * This is deliberately separate from the bounded, recency-oriented discovery
  * cache used by the live shell.  It reads only the fixed rollout header window.
  */
-/** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+/** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, onHeader?: (header: any) => void, signal?: AbortSignal }} [options] */
 export async function enumerateCodexRolloutHeaders(roots, options = {}) {
-  const { onBatch, signal } = options;
+  const { onBatch, onHeader, signal } = options;
   if (typeof onBatch !== "function" || !Array.isArray(roots) || roots.length === 0) return { complete: false };
   let batch = [];
   const emit = async () => {
@@ -360,6 +514,7 @@ export async function enumerateCodexRolloutHeaders(roots, options = {}) {
           if (readableOrInvalid(file) !== "invalid") return false;
           continue;
         }
+        onHeader?.(header);
         if (!isTopLevelCodexSession(header)) continue;
         batch.push(header);
         if (batch.length === HEADER_BATCH_SIZE && !await emit()) return false;
