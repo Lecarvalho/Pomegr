@@ -32,10 +32,10 @@ providers:
       high: high
       max: max
     models:
-      claude-opus-5:
+      claude-opus-5-5:
         tier: strong
         context: 1000000
-        price: { input_per_mtok: 5.00, output_per_mtok: 25.00, currency: USD }
+        price: { input_per_mtok: 4.00, output_per_mtok: 20.00, currency: USD }
       claude-sonnet-5:
         tier: balanced
         context: 1000000
@@ -61,8 +61,8 @@ providers:
       gpt-6-astra:
         tier: strong
         # price omitted on purpose; fill in if you want it in estimates
-      gpt-5.6-terra:
+      gpt-6-sol:
         tier: balanced
         # price omitted on purpose; fill in if you want it in estimates
-      gpt-5.6-luna:
+      gpt-6-luna:
         tier: fast
