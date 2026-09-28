@@ -16,6 +16,10 @@ export { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs
 const URGENT = 0;
 const SOURCE_UPDATE = 1;
 const BACKGROUND = 2;
+// A session first published within this long of its own creation is treated
+// like a first live publication even if it has already finished, so a short
+// session is not queued behind the whole historical working set.
+const NEW_SESSION_PRIORITY_WINDOW_MS = 10 * 60_000;
 
 function watchFilename(value) {
   if (typeof value === "string") return value;
@@ -98,13 +102,29 @@ export function createNormalizedPollingObserver(options) {
   const latestEntries = new Map();
   const catalogHydrations = new Map();
   const hydratedSessions = new Set();
+  // The first catalog this observer ever reads (its "startup catalog"). Any
+  // session already present in it is excluded from the new-session priority
+  // rule below, so a restart with many recently created sessions cannot flood
+  // the interactive lanes; only a session that genuinely appears later is new.
+  let startupCatalogIds = null;
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
+    // The aggregate across every priority. Mixing urgent, source-update, and
+    // background waits here hid which lane was actually starved; the three
+    // per-priority series below answer that without removing this one.
     queueWait: createDurationSeries(),
+    queueWaitUrgent: createDurationSeries(),
+    queueWaitSourceUpdate: createDurationSeries(),
+    queueWaitBackground: createDurationSeries(),
     preparation: createDurationSeries(),
     acquisitionNormalization: createDurationSeries(),
   });
+  function queueWaitSeriesForPriority(priority) {
+    if (priority === URGENT) return timings.queueWaitUrgent;
+    if (priority === SOURCE_UPDATE) return timings.queueWaitSourceUpdate;
+    return timings.queueWaitBackground;
+  }
   const qa = {
     reconciliationRuns: 0,
     watcherWakeups: 0,
@@ -189,6 +209,14 @@ export function createNormalizedPollingObserver(options) {
     return Boolean(entry?.isLive || entry?.needsInput) && !hydratedSessions.has(localSessionId);
   }
 
+  /** A session that first appears (outside the startup catalog) soon after it was created is not left behind the historical background queue, even if it already finished. */
+  function isNewSessionPriorityEligible(entry) {
+    if (!entry?.localId || hydratedSessions.has(entry.localId)) return false;
+    if (!startupCatalogIds || startupCatalogIds.has(entry.localId)) return false;
+    const ageMs = now() - Date.parse(entry.createdAt || "");
+    return Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= NEW_SESSION_PRIORITY_WINDOW_MS;
+  }
+
   function nextPendingHydration(allowInteractive, allowSourceUpdate, allowBackground) {
     let selected = null;
     for (const item of pendingHydrations.values()) {
@@ -223,8 +251,17 @@ export function createNormalizedPollingObserver(options) {
         activeSourceUpdates < sourceUpdateConcurrency, allowBackground);
       if (!item) break;
       pendingHydrations.delete(item.localSessionId);
+      // Every dequeued item — urgent selection, an ordinary source update, or a
+      // background hydration with no source event at all — gets a per-priority
+      // sample from the time it entered its current lane (its enqueue, or its
+      // promotion to a higher priority). The aggregate queueWait series, the
+      // qa counters, and the source_queue trace stay source-event-only, exactly
+      // as before.
+      const dequeuedAt = monotonicNow();
+      queueWaitSeriesForPriority(item.priority)
+        .record(Math.max(0, dequeuedAt - item.laneSince));
       if (Number.isFinite(item.sourceEventAt)) {
-        const queueDelayMs = Math.max(0, monotonicNow() - item.sourceEventAt);
+        const queueDelayMs = Math.max(0, dequeuedAt - item.sourceEventAt);
         qa.sourceEventQueueSamples += 1;
         qa.sourceEventQueueDelayTotalMs += queueDelayMs;
         qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
@@ -263,6 +300,8 @@ export function createNormalizedPollingObserver(options) {
     const result = wait ? new Promise((resolve) => { resolveWaiter = resolve; }) : true;
     const pending = pendingHydrations.get(localSessionId);
     if (pending) {
+      // A promoted item's wait in its new lane starts at the promotion, not at its enqueue.
+      if (priority < pending.priority) pending.laneSince = monotonicNow();
       pending.priority = Math.min(pending.priority, priority);
       pending.requested ||= requested;
       if (priority < BACKGROUND || (pending.priority === BACKGROUND && prepared !== undefined)) pending.prepared = prepared;
@@ -287,6 +326,7 @@ export function createNormalizedPollingObserver(options) {
       priority,
       sequence: queueSequence += 1,
       queuedAt: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
+      laneSince: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
       waiters: resolveWaiter ? [resolveWaiter] : [],
       sourceEventAt: Number.isFinite(sourceEventAt) ? sourceEventAt : null,
       traceScope: scope,
@@ -344,7 +384,7 @@ export function createNormalizedPollingObserver(options) {
     const background = [];
     for (const entry of entries) {
       if (entry.detailReadiness === "unavailable" || !shouldEagerHydrate(entry)) continue;
-      if (needsInitialLiveHydration(entry.localId)) {
+      if (needsInitialLiveHydration(entry.localId) || isNewSessionPriorityEligible(entry)) {
         // Do not wait for preparation of unrelated history. Keep retrying this
         // lane across catalog refreshes until initial evidence is published.
         enqueueHydration(entry.localId, { priority: URGENT, rerunIfActive: true });
@@ -390,6 +430,7 @@ export function createNormalizedPollingObserver(options) {
       for (const entry of entries) {
         if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
       }
+      if (startupCatalogIds === null) startupCatalogIds = new Set(latestEntries.keys());
       publisher.publishCatalog(entries);
       for (const id of hydratedSessions) {
         if (!latestEntries.has(id)) hydratedSessions.delete(id);

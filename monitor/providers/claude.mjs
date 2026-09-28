@@ -17,7 +17,7 @@ import { latestContextMachinery, readLatestContextMachinery } from "../context-m
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
-import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId } from "../session-registry.mjs";
+import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
 import { latestSessionSummary } from "../session-summary.mjs";
@@ -64,6 +64,7 @@ import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 import { readClaudeHistoryRecords } from "./claude-history-reader.mjs";
 import { createClaudeSessionWorkStartReader } from "./claude-session-work-start.mjs";
+import { createClaudeSessionLocator, createClaudeSessionResolver } from "./claude-session-locator.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
@@ -99,6 +100,7 @@ export function createClaudeProvider(options = {}) {
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const historyCache = new Map();
+  const sessionLocator = createClaudeSessionLocator();
   const transcriptPathsBySessionId = new Map();
   const sessionWorkStartReader = createClaudeSessionWorkStartReader({ yieldControl: options.yieldControl });
   const catalogPresence = createClaudeCatalogPresence();
@@ -107,6 +109,7 @@ export function createClaudeProvider(options = {}) {
     now,
     platform: options.platform,
     processIdentities: options.registryProcessIdentities,
+    processExists: options.registryProcessExists ?? (options.registryProcessIdentities ? undefined : processAlive),
   });
   const usageLimits = createClaudeUsageLimitsReader({
     env: environment,
@@ -146,6 +149,7 @@ export function createClaudeProvider(options = {}) {
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
     }
+    sessionLocator.index(files);
     const filesBySessionId = new Map(files.map(({ file }) => [path.basename(file, ".jsonl"), file]));
     const preferredRegisteredId = preferredRegisteredSessionId(registry, [...filesBySessionId.keys()]);
     const liveFile = explicitFile || filesBySessionId.get(preferredRegisteredId) || files[0]?.file || null;
@@ -228,12 +232,17 @@ export function createClaudeProvider(options = {}) {
     return explicitMatch || selectedMatch;
   }
 
+  const resolveSession = createClaudeSessionResolver({
+    locator: sessionLocator, discover: discoveredSessions, readRegistry: () => registryObservation.read(),
+    explicitFile: () => (explicitSession && fs.existsSync(explicitSession) ? explicitSession : null),
+    registryAvailable: () => fs.existsSync(registryRoot), now, selectFile: selectedSessionFile,
+  });
+
   async function readSession(localSessionId = "", readOptions = {}) {
     liveUsageSnapshots.pruneMissingFiles();
-    const { files: sessionFiles, liveFile, liveFiles, registry } = discoveredSessions();
-    const mainFile = localSessionId ? selectedSessionFile(localSessionId, sessionFiles) : liveFile;
-    if (!mainFile) return null;
-    const historical = !liveFiles.has(mainFile);
+    const resolved = resolveSession(localSessionId);
+    if (!resolved) return null;
+    const { mainFile, historical, registry } = resolved;
     const sessionId = path.basename(mainFile, ".jsonl");
     if (!historical) nativeStatus.apply(registry, [sessionId]);
     const sessionRegistryEntry = registry.get(sessionId);
@@ -654,19 +663,18 @@ export function createClaudeProvider(options = {}) {
   }
 
   async function observerSource(localSessionId) {
-    const discovered = discoveredSessions();
-    const file = discovered.files.find(({ file: candidate }) => path.basename(candidate, ".jsonl") === localSessionId)?.file || null;
-    if (!file) return null;
+    const resolved = localSessionId ? resolveSession(localSessionId) : null;
+    if (!resolved) return null;
+    const { mainFile: file, historical, registry } = resolved;
     const agentDir = path.join(path.dirname(file), localSessionId, "subagents");
     const workflowFiles = discoverClaudeWorkflowAgents(agentDir).files.map((item) => item.file);
-    const historical = !discovered.liveFiles.has(file);
     if (!historical) {
-      nativeStatus.apply(discovered.registry, [localSessionId]);
-      void nativeStatus.refresh(discovered.registry, [localSessionId]).catch(() => {});
+      nativeStatus.apply(registry, [localSessionId]);
+      void nativeStatus.refresh(registry, [localSessionId]).catch(() => {});
     }
-    const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : discovered.registry.get(localSessionId));
+    const source = claudeLifecycleSource(incrementalSourceSetDescriptor([file, ...walkJsonl(agentDir, 1), ...workflowFiles], file, historical), historical ? null : registry.get(localSessionId));
     // Rebuild pre-fix checkpoints even when the native transcript is unchanged.
-    const entry = historical ? null : discovered.registry.get(localSessionId);
+    const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
       identity: `${source.identity}:conversation-activity-v7:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
@@ -733,7 +741,7 @@ export function createClaudeProvider(options = {}) {
         routeSourceEvent: routeClaudeSourceEvent,
         intervalMs: options.observerIntervalMs ?? 10_000,
         concurrency: options.observerConcurrency ?? 2,
-        interactiveConcurrency: options.observerInteractiveConcurrency ?? options.observerConcurrency ?? 2,
+        interactiveConcurrency: options.observerInteractiveConcurrency ?? options.observerConcurrency ?? 3,
         backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
         watchTargets: [projectsRoot, registryRoot],
         watchSource: options.observerWatchSource,

@@ -84,6 +84,9 @@ reason, or task completion. Registry removal alone and failed process inspection
 not establish Closed. A new validated registration replaces that closure observation.
 The bounded ownership and closure evidence remains monitor-private and memory-only;
 after monitor restart, sessions without fresh closure evidence use the normal fallback.
+An owner whose process has exited loses validation on the next read. A reused process ID
+keeps a cached validation for at most five seconds, while the start identity is being
+re-confirmed.
 
 Other non-live Claude catalog rows use **Idle** as a fallback meaning no live session
 is detected. With the registry available, this applies after the session has no

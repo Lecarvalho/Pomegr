@@ -1052,20 +1052,36 @@ discovering transcript changes.
                   10-second safety reconciliation -----^ (low priority)
 ```
 
-Each provider owns an independent observer and bounded worker concurrency, so a busy or
-failed Claude adapter cannot occupy Codex workers, and vice versa. Within one observer,
-duplicate events for a queued session coalesce. If a source changes while that session is
-already being acquired, one dirty-again pass is retained so the newest complete records
-are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently. Claude defaults to two interactive hydration slots plus one
-background slot. Codex defaults to three interactive slots plus one background slot so
-two unrelated live source updates can normalize concurrently while one interactive slot
-remains reserved. First publication for a live or needs-input session and explicit
-selection use urgent priority; ordinary source updates can occupy every interactive slot
-except the reserved one. With a custom single interactive slot, urgent work leads queued
-updates but cannot preempt an acquisition already running.
+Each provider owns an independent observer and its own bounded worker-concurrency
+bookkeeping, so a busy or failed Claude adapter's queued work does not consume Codex's own
+concurrency slots, and vice versa. All providers still share one Node.js event loop:
+synchronous work inside one adapter's acquisition path (a blocking filesystem call, a
+spawned process) delays every other provider's async work too, independent-slot bookkeeping
+notwithstanding, which is why acquisition code is expected to prefer cheap, non-blocking
+checks and to yield cooperatively (see the source-ledger note above and the Claude index
+and owner-validation note under "Complete-record ingestion").
+Within one observer, duplicate events for a queued session coalesce. If a source changes
+while that session is already being acquired, one dirty-again pass is retained so the
+newest complete records are not lost. Sessions may acquire in parallel, but one session is
+never acquired by two workers concurrently. Claude and Codex both default to three
+interactive hydration slots plus one background slot, so one slot never has to serve every
+live session's source updates by itself. Two unrelated live source updates can normalize
+concurrently while one interactive slot remains reserved. First publication for a live or
+needs-input session and explicit selection use urgent priority; ordinary source updates can
+occupy every interactive slot except the reserved one. With a custom single interactive
+slot, urgent work leads queued updates but cannot preempt an acquisition already running.
 Promoting a queued session immediately rechecks capacity without concurrent acquisition
-of the same session.
+of the same session. A session that was absent from the observer's first catalog and is
+still within ten minutes of its own recorded creation is also treated as
+first-publication/urgent priority on each catalog refresh until it is hydrated, even when it
+has already finished, so a short-lived session is never queued behind the whole historical
+background working set; a session already present in the very first catalog an observer
+reads at startup is exempt from this rule, so a restart with many recently created sessions
+already on disk cannot flood the interactive lanes. Per-provider diagnostics record queue
+wait as one aggregate series (source-driven hydrations only, unchanged) plus one series per
+priority tier (urgent, source-update, background); the per-priority series sample every
+dequeued item from its own enqueue time, including urgent selections and background
+hydrations that never carried a source event, so a starved lane is visible on its own.
 
 Initial live hydration enters the queue directly with session-local preparation, ahead
 of bulk working-set preparation. It retains urgent eligibility across catalog refreshes
@@ -1510,6 +1526,18 @@ reachability.
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
   transcript or the generic live tail for session-story normalization.
+- Claude resolves an already-known session's main file from a bounded, provider-private
+  index instead of walking its whole projects tree again; the index is fed by every
+  discovery pass the adapter already runs and is re-verified with one file stat before
+  being trusted, falling back to a full walk on a miss or a stale entry (the file is gone
+  or a different file now lives at that path). When one session ID exists in several
+  project folders, the index keeps the copy discovery would choose. Native and Remote
+  Control owner validation reuses a validated owner identity for 1.5 seconds. A
+  non-spawning liveness check retires a positive identity as soon as its process is gone.
+  After 1.5 seconds, on Windows, the last answer is served while one asynchronous process
+  enumeration re-confirms the start identity, so a read inside that five-second bound never
+  blocks the event loop on a process spawn. A first check, a changed start identity, and an
+  answer older than five seconds still use a synchronous probe.
 - Codex U2 seeds model and reasoning effort from the same agent's prior normalized
   evidence across continuous incremental updates, including empty lifecycle updates
   and live-to-history transitions. A missing field retains its recorded value; an

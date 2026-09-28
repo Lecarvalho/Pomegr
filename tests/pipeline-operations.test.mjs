@@ -76,6 +76,8 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
           timings: {
             catalogDiscovery: timing,
             queueWait: timing,
+            queueWaitUrgent: { ...timing, p95Ms: 3 },
+            queueWaitSourceUpdate: timing,
             preparation: timing,
             acquisitionNormalization: timing,
           },
@@ -94,6 +96,9 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
   assert.equal(snapshot.providers[0].id, "codex");
   assert.equal(snapshot.providers[0].workers.pending, 3);
   assert.equal(snapshot.providers[0].timings.queueWait.p95Ms, 7);
+  assert.equal(snapshot.providers[0].timings.queueWaitUrgent.p95Ms, 3);
+  assert.equal(snapshot.providers[0].timings.queueWaitSourceUpdate.p95Ms, 7);
+  assert.equal(snapshot.providers[0].timings.queueWaitBackground.sampleCount, 0);
   assert.deepEqual(snapshot.revisions, { catalog: 12, home: 4, usageLimits: 2 });
   assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE|PROMPT|RAW_ERROR|transcriptPath|rawError/i);
 
@@ -102,6 +107,7 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
     private: "PRIVATE_MUST_NOT_LEAK",
     providers: snapshot.providers.map((provider) => ({ ...provider, raw: "RAW_MUST_NOT_LEAK" })),
   });
+  assert.equal(revalidated.providers[0].timings.queueWaitUrgent.p95Ms, 3);
   assert.doesNotMatch(JSON.stringify(revalidated), /PRIVATE|RAW_MUST_NOT_LEAK/);
 });
 test("failure details retain only the latest bounded stage, reason and timestamp per category", () => {
