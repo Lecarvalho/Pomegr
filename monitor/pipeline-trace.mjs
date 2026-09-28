@@ -31,6 +31,12 @@ export const PIPELINE_TRACE_OUTCOMES = Object.freeze([
 export const PIPELINE_TRACE_COUNTERS = Object.freeze([
   "queue_depth", "oldest_pending_ms", "active", "capacity", "cpu", "memory", "event_loop_ms", "bytes", "records",
 ]);
+// The provider ids an observer instance is actually created with, and the fixed priority
+// lanes normalized-polling-observer.mjs already schedules against (its queueWaitUrgent /
+// queueWaitSourceUpdate / queueWaitBackground timings). Attached only to acquisition-side
+// stages that have a known provider/lane at their call site; never a session id or path.
+export const PIPELINE_TRACE_PROVIDERS = Object.freeze(["claude", "codex"]);
+export const PIPELINE_TRACE_PRIORITY_LANES = Object.freeze(["urgent", "source_update", "background"]);
 
 const STAGES = new Set(PIPELINE_TRACE_STAGES);
 const DOMAINS = new Set(PIPELINE_TRACE_DOMAINS);
@@ -38,6 +44,8 @@ const OUTCOMES = new Set(PIPELINE_TRACE_OUTCOMES);
 const COUNTERS = new Set(PIPELINE_TRACE_COUNTERS);
 const RENDERER_STAGES = new Set(["renderer_event", "renderer_fetch", "renderer_react_commit", "renderer_next_frame"]);
 const RENDERER_SURFACES = new Set(["catalog", "activity", "requests"]);
+const PROVIDERS = new Set(PIPELINE_TRACE_PROVIDERS);
+const PRIORITY_LANES = new Set(PIPELINE_TRACE_PRIORITY_LANES);
 
 function boundedInteger(value, maximum) {
   if (!Number.isFinite(value)) return 0;
@@ -229,7 +237,7 @@ export function createPipelineTraceRecorder({
     return true;
   }
 
-  function appendSlice({ stage, domain, startedAt: spanStartedAt, durationMs, lane, flow, revision, outcome, clock = null, clockErrorUs = null, surface = null, scope = null }) {
+  function appendSlice({ stage, domain, startedAt: spanStartedAt, durationMs, lane, flow, revision, outcome, clock = null, clockErrorUs = null, surface = null, scope = null, provider = null, priorityLane = null }) {
     if (!stageSet.has(stage) || !DOMAINS.has(domain)) return false;
     const current = safeNow();
     const safeDuration = Math.min(MAX_DURATION_MS, Math.max(0, Number.isFinite(durationMs) ? durationMs : 0));
@@ -243,6 +251,8 @@ export function createPipelineTraceRecorder({
       && Number.isSafeInteger(clockErrorUs) && clockErrorUs >= 1_000 && clockErrorUs <= 1_001_000;
     if (calibratedRenderer) { args.clock = clock; args.clockErrorUs = clockErrorUs; }
     if (RENDERER_SURFACES.has(surface) && (stage === "cache_serve" || RENDERER_STAGES.has(stage))) args.surface = surface;
+    if (PROVIDERS.has(provider)) args.provider = provider;
+    if (PRIORITY_LANES.has(priorityLane)) args.priorityLane = priorityLane;
     const inheritedScope = resolvedScope(scope, flowState, revisionState);
     if (!append({ name: stage, cat: domain, ph: "X", ts: timestamp(spanStartedAt), dur: Math.round(safeDuration * 1_000),
       pid: 1, tid: resolvedLane, args: Object.freeze(args) }, inheritedScope, flowState?.id)) return false;
@@ -358,7 +368,7 @@ export function createPipelineTraceRecorder({
       revisionCount += 1; revisionHandles.set(handle, state); liveHandleStates.add(state);
       return handle;
     },
-    begin({ stage, domain, flow = null, revision = null, scope = null } = {}) {
+    begin({ stage, domain, flow = null, revision = null, scope = null, provider = null, priorityLane = null } = {}) {
       if (!active || !stageSet.has(stage) || !DOMAINS.has(domain)) return null;
       const started = prepare();
       if (openSpans.size >= openSpanLimit) { droppedSpans += 1; return null; }
@@ -369,9 +379,14 @@ export function createPipelineTraceRecorder({
       if (flowState) { recordFlow(flowState, started, lane, "observed", flowState.started ? "t" : "s", inheritedScope); flowState.started = true; }
       const handle = Object.freeze({});
       laneEnds[lane] = started + MAX_DURATION_MS;
-      openSpans.set(handle, Object.freeze({ stage, domain, lane, flow, revision, scope: inheritedScope, startedAt: started }));
-      emit({ name: stage, cat: domain, ph: "B", ts: timestamp(started), tid: lane,
-        args: revisionState ? { revision: revisionState.id } : {} }, inheritedScope, flowState?.id);
+      const resolvedProvider = PROVIDERS.has(provider) ? provider : null;
+      const resolvedPriorityLane = PRIORITY_LANES.has(priorityLane) ? priorityLane : null;
+      openSpans.set(handle, Object.freeze({ stage, domain, lane, flow, revision, scope: inheritedScope, startedAt: started, provider: resolvedProvider, priorityLane: resolvedPriorityLane }));
+      const beginArgs = {};
+      if (revisionState) beginArgs.revision = revisionState.id;
+      if (resolvedProvider) beginArgs.provider = resolvedProvider;
+      if (resolvedPriorityLane) beginArgs.priorityLane = resolvedPriorityLane;
+      emit({ name: stage, cat: domain, ph: "B", ts: timestamp(started), tid: lane, args: beginArgs }, inheritedScope, flowState?.id);
       return handle;
     },
     end(handle, { outcome = "observed" } = {}) {
@@ -380,7 +395,7 @@ export function createPipelineTraceRecorder({
       laneEnds[span.lane] = span.startedAt;
       return appendSlice({ ...span, durationMs: Math.max(0, prepare() - span.startedAt), outcome });
     },
-    recordDuration({ stage, domain, durationMs, flow = null, revision = null, scope = null, outcome = "observed", startedAt: sourceStartedAt = null, clock = null, clockErrorUs = null, surface = null } = {}) {
+    recordDuration({ stage, domain, durationMs, flow = null, revision = null, scope = null, outcome = "observed", startedAt: sourceStartedAt = null, clock = null, clockErrorUs = null, surface = null, provider = null, priorityLane = null } = {}) {
       if (!active || !stageSet.has(stage) || !DOMAINS.has(domain)) return false;
       const observedAt = prepare();
       const safeDuration = Math.min(MAX_DURATION_MS, Math.max(0, Number.isFinite(durationMs) ? durationMs : 0));
@@ -391,7 +406,7 @@ export function createPipelineTraceRecorder({
       const retainedDuration = crossedCaptureStart ? Math.min(safeDuration, Math.max(0, sourceEnded - startedAt)) : safeDuration;
       if (crossedCaptureStart) incomplete = true;
       return appendSlice({ stage, domain, durationMs: retainedDuration, flow, revision, scope,
-        outcome: crossedCaptureStart ? "incomplete" : outcome, startedAt: crossedCaptureStart ? startedAt : sourceStarted, clock, clockErrorUs, surface });
+        outcome: crossedCaptureStart ? "incomplete" : outcome, startedAt: crossedCaptureStart ? startedAt : sourceStarted, clock, clockErrorUs, surface, provider, priorityLane });
     },
     recordCounter({ counter, value } = {}) {
       if (!active || !COUNTERS.has(counter)) return false;

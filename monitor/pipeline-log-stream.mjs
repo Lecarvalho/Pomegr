@@ -21,7 +21,9 @@ export function createPipelineLogStream({ writer, run = randomUUID(), now = () =
       if (!event || !Number.isFinite(event.ts)) return false;
       const scope = scopeId(context.scope);
       const ids = { ...(scope ? { scope } : {}), ...(context.flow ? { flow: context.flow } : {}),
-        ...(event.args?.revision ? { revision: event.args.revision } : {}) };
+        ...(event.args?.revision ? { revision: event.args.revision } : {}),
+        ...(event.args?.provider ? { provider: event.args.provider } : {}),
+        ...(event.args?.priorityLane ? { priorityLane: event.args.priorityLane } : {}) };
       const startMs = event.ts / 1_000;
       if (event.ph === "B" || event.ph === "X") return record({
         kind: event.ph === "B" ? "span_start" : "span", stage: event.name, domain: event.cat,

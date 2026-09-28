@@ -215,6 +215,7 @@ export function createIncrementalProviderObserver(options = {}) {
   }
 
   const observer = createNormalizedPollingObserver({
+    providerId,
     list,
     ingest: acquire,
     prepare: prepareSources,

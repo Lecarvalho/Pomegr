@@ -1111,6 +1111,15 @@ session sooner. The router emits only provider-local session IDs and a catalog-d
 to the shared scheduler. Native paths, filenames, headers, and schemas never enter the
 normalized candidate, checkpoint, diagnostics, or browser response.
 
+For Codex, a new rollout notification is filtered to a rollout-*.jsonl name with realpath
+containment in a configured root — the same check `notice`/`trustedRootFor` already apply —
+and, only then, noticed in the shared source ledger directly, so the owning session is
+located without a directory walk. Codex header recency comes from the newest complete
+record's own time, not the rollout file's modification time, which Codex does not advance
+reliably. The tail answer is cached by file size and mtime. A newest record larger than the
+64 KiB tail gets one 1 MiB read; only past that does recency fall back to the later of the
+creation time and the file mtime.
+
 Committed catalog revisions wake the browser through a same-origin server-sent event.
 The event contains only the fixed `sessions` domain and a non-negative revision; it is an
 invalidation hint, never a state payload. The browser responds by fetching `/api/sessions`
@@ -2367,6 +2376,14 @@ branch evidence or a root/branch mismatch preserves the last verified session sn
 leaves the existing unavailable state. It never commits the unrelated checkout state to a
 historical sidecar. Historical fallback without a sidecar does not query current GitHub
 state through the checkout. All resolution and Git work remains outside S Serving.
+A live session with no repository binding (a Codex session without one proven repository,
+or a Claude session without a recorded branch) has nothing to check: its repository
+readiness is `ready` with no repository, a factual empty result, so it cannot hold the
+session summary at `loading`. A bound session is `loading` until Git answers for its
+current binding, stays `loading` through a failed check, and becomes `unavailable` only
+when Git confirms the root or branch does not match. A changed binding, or an attribution
+that is briefly unknown after the session had a repository, returns to `loading` so clients
+keep the last committed value.
 
 Repository sidecar version 4 carries a nullable normalized repository ID. Codex sidecars
 are served only for the same single-repository identity in normalized session evidence;

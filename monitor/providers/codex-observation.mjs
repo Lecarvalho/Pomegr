@@ -538,6 +538,7 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   const observer = createNormalizedPollingObserver({
+    providerId: "codex",
     list,
     ingest: acquire,
     prepare: prepareSources,

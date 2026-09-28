@@ -339,9 +339,11 @@ test("selected session parsing ignores unrelated rollouts and follows collaborat
   const selectedContents = [];
 
   async function writeSyntheticRollout(id, metadata = {}, extraRecords = []) {
+    // Recency is record time, never mtime: a stale rollout needs stale records.
+    const at = metadata.at ?? AT;
     const contents = [
       JSON.stringify({
-        timestamp: new Date(AT).toISOString(),
+        timestamp: new Date(at).toISOString(),
         type: "session_meta",
         payload: {
           id,
@@ -350,17 +352,17 @@ test("selected session parsing ignores unrelated rollouts and follows collaborat
           ...(metadata.forkedFromId ? { forked_from_id: metadata.forkedFromId } : {}),
           source: metadata.source || "cli",
           cwd: "C:\\synthetic\\selected-tree",
-          timestamp: new Date(AT).toISOString(),
+          timestamp: new Date(at).toISOString(),
         },
       }),
       ...extraRecords.map((record, index) => JSON.stringify({
-        timestamp: new Date(AT + index + 1).toISOString(),
+        timestamp: new Date(at + index + 1).toISOString(),
         ...record,
       })),
     ].join("\n");
     const file = path.join(sessions, `rollout-${id}.jsonl`);
     await writeFile(file, contents, "utf8");
-    await utimes(file, new Date(AT), new Date(AT));
+    await utimes(file, new Date(at), new Date(at));
     return Buffer.byteLength(contents);
   }
 
@@ -391,11 +393,9 @@ test("selected session parsing ignores unrelated rollouts and follows collaborat
   }));
   for (let index = 0; index < 80; index += 1) {
     const id = `unrelated-${String(index).padStart(3, "0")}`;
-    await writeSyntheticRollout(id, {}, [
+    await writeSyntheticRollout(id, { at: AT - 10 * 60_000 }, [
       { type: "future_record", payload: { padding: "x".repeat(8_192) } },
     ]);
-    const stale = new Date(AT - 10 * 60_000);
-    await utimes(path.join(sessions, `rollout-${id}.jsonl`), stale, stale);
   }
 
   const provider = createCodexProvider({

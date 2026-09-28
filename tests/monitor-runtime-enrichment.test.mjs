@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMonitorRuntime } from "../monitor/server.mjs";
+import { createSessionRepositoryEnrichment, liveRepositoryReadiness } from "../monitor/session-repository-enrichment.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 
 const provider = Object.freeze({
@@ -655,4 +656,82 @@ test("historical analysis never reads or exposes cached live resources", async (
   const state = await runtime.analyze("codex:historical");
   assert.equal(state.metrics.resources, null);
   assert.equal(gets, 0);
+});
+
+test("live repository readiness separates no binding, a pending check, and a confirmed answer", () => {
+  assert.equal(liveRepositoryReadiness({ historical: true }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: true, check: "pending" }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "none" }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "pending" }), "loading");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "confirmed" }), "unavailable");
+  assert.equal(liveRepositoryReadiness(), "loading");
+});
+
+function enrichmentFixture(readGit) {
+  const jobs = [];
+  let clock = 0;
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => readGit(root),
+    pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    now: () => clock,
+    cacheMs: 2_500,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  const read = (sessionId, evidence, attribution) => {
+    const live = enrichment.liveEnrichment(sessionId, evidence, attribution, (task) => jobs.push(task));
+    live.enqueue?.();
+    return { ...live, readiness: liveRepositoryReadiness({ available: live.value.repository.available, check: live.check }) };
+  };
+  return { read, advance(ms) { clock += ms; }, async runAll() { while (jobs.length) await jobs.shift()(); } };
+}
+
+const boundTo = (cwd) => ({ state: "single", repositoryId: "repo-0123456789abcdef01234567", root: cwd, fingerprint: `bound:${cwd}`, recordedBranch: "codex/live" });
+
+test("a live session with no repository binding is a factual empty result and never reads Git", async () => {
+  let gitCalls = 0;
+  const fixture = enrichmentFixture(() => { gitCalls += 1; return repository("codex/live"); });
+  const codex = fixture.read("codex:no-edits", sessionEvidence(), { state: "unknown" });
+  assert.equal(codex.check, "none");
+  assert.equal(codex.readiness, "ready");
+  assert.equal(codex.value.repository.available, false);
+  const claude = fixture.read("claude:outside-git", sessionEvidence({ branch: "" }), null);
+  assert.equal(claude.readiness, "ready");
+  await fixture.runAll();
+  assert.equal(gitCalls, 0);
+});
+
+test("a bound live session stays loading through transient failures and rebinds, unavailable only on a confirmed answer", async () => {
+  let answer = () => repository("codex/other", "C:\synthetic\pomegr");
+  const fixture = enrichmentFixture((root) => answer(root));
+  const evidence = sessionEvidence();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "loading");
+  answer = () => { throw new Error("transient"); };
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "loading", "a failed check is not a confirmed answer");
+  answer = (root) => repository("codex/other", root);
+  fixture.advance(2_500);
+  fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "unavailable", "a branch mismatch is confirmed");
+  answer = (root) => repository("codex/live", root);
+  fixture.advance(2_500);
+  fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
+  const moved = fixture.read("codex:bound", evidence, boundTo("C:\\synthetic\\moved"));
+  assert.equal(moved.readiness, "loading", "a changed binding waits as loading so clients keep the committed value");
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo("C:\\synthetic\\moved")).readiness, "ready");
+});
+
+test("a session that had a repository stays loading while its attribution is briefly unknown", async () => {
+  const fixture = enrichmentFixture((root) => repository("codex/live", root));
+  const evidence = sessionEvidence();
+  fixture.read("codex:rebinding", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:rebinding", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
+  assert.equal(fixture.read("codex:rebinding", evidence, { state: "unknown" }).readiness, "loading");
+  assert.equal(fixture.read("codex:rebinding", evidence, { state: "multiple" }).readiness, "ready", "two proven repositories are a confirmed state");
 });

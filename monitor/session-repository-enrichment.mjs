@@ -29,6 +29,19 @@ function sameRoot(left, right) {
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+/**
+ * Live repository readiness from the enrichment check state:
+ * - `none`: no repository binding to check; a factual empty result (`ready`).
+ * - `confirmed`: Git answered for the current binding without a matching
+ *   repository (`unavailable`).
+ * - `pending`: the current binding has no answer yet, or its check failed
+ *   transiently (`loading`, so clients keep their last committed value).
+ */
+export function liveRepositoryReadiness({ historical = false, available = false, check = "pending" } = {}) {
+  if (historical || available || check === "none") return "ready";
+  return check === "confirmed" ? "unavailable" : "loading";
+}
+
 /** Owns only live, private Git enrichment keyed by normalized session ID. */
 export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader, now, cacheMs, providerFolders, unavailableGitState, unavailablePullRequests } = {}) {
   const entries = new Map();
@@ -41,7 +54,10 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       const acquired = await gitReader(input.root, { forbiddenRoots: Object.values(providerFolders?.folders || {}).filter(Boolean) });
       const { _repositoryRoot: root = null, ...publicRepository } = acquired;
       if ((!input.exactRoot && (!root || !path.isAbsolute(root))) || (input.exactRoot && !sameRoot(root, input.root))
-        || !publicRepository.available || publicRepository.branch !== input.branch) return false;
+        || !publicRepository.available || publicRepository.branch !== input.branch) {
+        if (entry.generation === input.generation) entry.checked = true;
+        return false;
+      }
       repository = { ...publicRepository, historical: false };
       resolvedRoot = root;
     } catch { return false; }
@@ -57,7 +73,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     if (commitsInSession !== null) repository = { ...repository, commitsInSession };
     if (entry.generation !== input.generation) return true;
     entry.value = { repository, pullRequests }; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
-    entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true;
+    entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true; entry.checked = true; entry.everAvailable = true;
     onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
     return true;
   }
@@ -67,14 +83,19 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     const fingerprint = JSON.stringify([binding?.fingerprint || null, binding?.branch || null, sessionCreations]);
     let entry = entries.get(sessionId);
     if (!entry) {
-      entry = { sessionId, fingerprint, generation: 1, sessionCreations, refreshedAt: null, retryAfter: null, refreshing: false, repositoryRoot: null, commitsInSession: null, hasValue: false,
+      entry = { sessionId, fingerprint, generation: 1, sessionCreations, refreshedAt: null, retryAfter: null, refreshing: false, repositoryRoot: null, commitsInSession: null, hasValue: false, checked: false, everAvailable: false,
         value: { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() } };
       entries.set(sessionId, entry);
     } else if (entry.fingerprint !== fingerprint) {
       entry.fingerprint = fingerprint; entry.generation += 1; entry.sessionCreations = sessionCreations; entry.refreshedAt = null; entry.retryAfter = null;
-      entry.refreshing = false; entry.repositoryRoot = null; entry.commitsInSession = null; entry.hasValue = false;
+      entry.refreshing = false; entry.repositoryRoot = null; entry.commitsInSession = null; entry.hasValue = false; entry.checked = false;
       entry.value = { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() };
     }
+    // Without a binding there is nothing to check, unless this session was
+    // already bound to a repository: an attribution that is briefly unknown
+    // stays pending instead of claiming the session has no repository.
+    const check = binding ? (entry.checked ? "confirmed" : "pending")
+      : entry.everAvailable && attribution?.state !== "multiple" ? "pending" : "none";
     const clock = entry.refreshedAt === null && entry.retryAfter === null ? null : now();
     const expired = (entry.refreshedAt === null || clock - entry.refreshedAt >= cacheMs) && (entry.retryAfter === null || clock >= entry.retryAfter);
     let enqueue = null;
@@ -91,7 +112,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
         }); } catch { if (entry.generation === input.generation) entry.refreshing = false; }
       };
     }
-    return { value: entry.value, enqueue };
+    return { value: entry.value, enqueue, check };
   }
 
   return Object.freeze({

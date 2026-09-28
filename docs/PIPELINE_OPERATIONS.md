@@ -44,6 +44,13 @@ Distinguish the domain when comparing source-observation waits with persistence 
 Queue records contain no session keys, filenames, payloads, or errors. Missing records
 and retention gaps still prevent complete-history or latency claims.
 
+`source_queue`, `acquisition_normalization`, `source_preparation`, and `catalog_discovery`
+records may additionally carry a bounded `provider` (`claude`/`codex`, the ids an observer
+is actually constructed with) and, except for `catalog_discovery`, a bounded `priorityLane`
+(`urgent`/`source_update`/`background`, the observer's existing queue-wait lanes). Both are
+optional and validated against a fixed allowlist; an unattributed or pre-attribution record
+still analyzes normally. Neither field is a session id, path, fingerprint, or free text.
+
 Logs must never contain session IDs or selectors, source paths or fingerprints, prompts,
 responses, reasoning, transcript or tool content, commands, output, credentials,
 provider-native payloads, or raw errors. They never enter checkpoints, browser state, reports,
@@ -65,6 +72,14 @@ rotation coverage. Partial lines retain independent bounded bytes across reads. 
 reports bounded malformed and oversized record counts and reduces coverage when either is
 nonzero; intentional timestamp or stage filtering is not a coverage loss. Coverage describes
 only that poll, never a complete session.
+
+`--json` output also groups span timings by `provider` and `priorityLane` under
+`stagesByAttribution`, alongside the existing unkeyed `stages` totals:
+`{ [stage]: { [provider|"unattributed"]: { [priorityLane|"unattributed"]: { count, failed,
+incomplete, minMs, maxMs, averageMs, p50Ms, p95Ms, quantiles } } } }`. A record written
+before attribution, a lane-less stage, or a stage that is not provider acquisition (such as
+the persistence-domain `source_queue`, which shares the stage name) groups under
+`"unattributed"` rather than being dropped.
 
 ## Auxiliary current snapshot
 

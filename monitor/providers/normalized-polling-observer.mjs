@@ -51,7 +51,12 @@ export function createNormalizedPollingObserver(options) {
     now = Date.now,
     monotonicNow = () => performance.now(),
     shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
+    // The fixed provider id this observer instance was constructed for (e.g. "claude" or
+    // "codex"). Attached only to trace records at acquisition call sites below; an
+    // unrecognized or missing value simply leaves those records unattributed.
+    providerId = null,
   } = options || {};
+  const observerProviderId = typeof providerId === "string" && providerId ? providerId : null;
   const acquire = ingest || read;
   if (typeof list !== "function" || typeof acquire !== "function") {
     throw new TypeError("Normalized polling observer requires list and ingest functions");
@@ -125,6 +130,12 @@ export function createNormalizedPollingObserver(options) {
     if (priority === SOURCE_UPDATE) return timings.queueWaitSourceUpdate;
     return timings.queueWaitBackground;
   }
+  // The bounded trace priority-lane name for the same priority values above.
+  function priorityLaneName(priority) {
+    if (priority === URGENT) return "urgent";
+    if (priority === SOURCE_UPDATE) return "source_update";
+    return "background";
+  }
   const qa = {
     reconciliationRuns: 0,
     watcherWakeups: 0,
@@ -150,10 +161,11 @@ export function createNormalizedPollingObserver(options) {
     } catch { return null; }
   }
 
-  async function runHydration(localSessionId, prepared, requested, flow = null, scope = null) {
+  async function runHydration(localSessionId, prepared, requested, flow = null, scope = null, priority = BACKGROUND) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     let failureStage = "worker_yield";
+    const laneName = priorityLaneName(priority);
     try {
       // Provider reducers still contain bounded synchronous work. Yield before
       // every acquisition unit so cache-only serving remains responsive.
@@ -162,7 +174,7 @@ export function createNormalizedPollingObserver(options) {
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
         const preparationStartedAt = monotonicNow();
-        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope });
+        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope, provider: observerProviderId, priorityLane: laneName });
         try {
           context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
           trace?.end(preparationSpan, { outcome: "completed" });
@@ -174,7 +186,7 @@ export function createNormalizedPollingObserver(options) {
         }
       }
       const acquisitionStartedAt = monotonicNow();
-      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition", flow, scope });
+      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition", flow, scope, provider: observerProviderId, priorityLane: laneName });
       failureStage = "acquire_normalize";
       let candidate;
       try {
@@ -268,9 +280,9 @@ export function createNormalizedPollingObserver(options) {
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
         trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs,
-          flow: item.traceFlow, scope: item.traceScope });
+          flow: item.traceFlow, scope: item.traceScope, provider: observerProviderId, priorityLane: priorityLaneName(item.priority) });
       }
-      const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope);
+      const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope, item.priority);
       runningHydrations.set(item.localSessionId, { promise: taskPromise, priority: item.priority });
       void taskPromise.then((result) => {
         for (const resolve of item.waiters) resolve(result);
@@ -349,7 +361,8 @@ export function createNormalizedPollingObserver(options) {
         try {
           if (prepare && batch.length) {
             const preparationStartedAt = monotonicNow();
-            const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition" });
+            // Every entry queued here is background priority; see scheduleEagerHydration.
+            const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", provider: observerProviderId, priorityLane: "background" });
             try {
               prepared = await prepare(batch.map(({ entry }) => entry));
               trace?.end(preparationSpan, { outcome: "completed" });
@@ -413,7 +426,8 @@ export function createNormalizedPollingObserver(options) {
     qa.reconciliationRuns += 1;
     try {
       const discoveryStartedAt = monotonicNow();
-      const discoverySpan = trace?.begin({ stage: "catalog_discovery", domain: "acquisition" });
+      // Catalog discovery has no priority lane; it carries only the provider id.
+      const discoverySpan = trace?.begin({ stage: "catalog_discovery", domain: "acquisition", provider: observerProviderId });
       let entries;
       try {
         entries = await list({ fresh });

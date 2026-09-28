@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
+import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
 
 function deferred() {
   let resolve;
@@ -296,4 +297,38 @@ test("a session published soon after its own creation gets first-publication pri
     "a genuinely new, recently created session is prepared alone through the first-publication (urgent) lane");
   assert.equal(bulkBatches.some((batch) => batch.includes("new-recent") && batch.length > 1), false,
     "a new session is never folded into the historical background batch");
+});
+
+test("a Codex urgent source_queue record carries provider \"codex\" and lane \"urgent\"", async (context) => {
+  const controller = new AbortController();
+  let clock = 0;
+  const entries = [{ localId: "live-one", isLive: true }];
+  const trace = createPipelineTraceRecorder({ enabled: true, now: () => clock });
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    shouldEagerHydrate: () => false,
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    providerId: "codex",
+    monotonicNow: () => clock,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace });
+  await waitFor(() => observer.diagnostics().reconciliationRuns === 1);
+
+  clock += 5;
+  await observer.refresh({ sessionIds: ["live-one"], sourceEventAt: 0 });
+  await waitFor(() => observer.diagnostics().timings.queueWaitUrgent.sampleCount === 1);
+
+  const { traceEvents } = trace.snapshot();
+  const sourceQueue = traceEvents.find((event) => event.name === "source_queue");
+  assert.ok(sourceQueue, "a source_queue span was recorded");
+  assert.equal(sourceQueue.args.provider, "codex");
+  assert.equal(sourceQueue.args.priorityLane, "urgent");
+
+  const acquisition = traceEvents.find((event) => event.name === "acquisition_normalization");
+  assert.ok(acquisition, "an acquisition_normalization span was recorded");
+  assert.equal(acquisition.args.provider, "codex");
+  assert.equal(acquisition.args.priorityLane, "urgent");
 });

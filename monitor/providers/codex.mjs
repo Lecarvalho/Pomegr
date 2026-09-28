@@ -7,7 +7,7 @@ import { defineProvider } from "./provider-contract.mjs";
 import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
-import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
+import { createCodexRolloutDiscovery, noticeCodexRolloutSource } from "./codex-rollout-discovery.mjs";
 import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
 import { mergeCodexExecutionTasks, parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
@@ -747,7 +747,7 @@ export function createCodexProvider(options = {}) {
       discoveredMetadata,
       peekMetadata: () => metadataCatalog.peek(),
       resolveExactMetadata: resolveExactRolloutMetadata,
-      noticeRollout: (file) => rolloutDiscovery.notice(file),
+      noticeRollout: (file) => { void noticeCodexRolloutSource(rolloutDiscovery, sourceLedger, file).catch(() => {}); },
       transcriptPathsBySessionId,
       intervalMs: options.observerIntervalMs ?? 10_000,
       concurrency: options.observerConcurrency ?? 2,

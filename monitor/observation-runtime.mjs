@@ -18,6 +18,7 @@ import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
 import { attachFileHistory } from "./file-history-domain.mjs";
 import { createSessionRepositoryAssociations } from "./session-repository-association.mjs";
+import { liveRepositoryReadiness } from "./session-repository-enrichment.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
@@ -299,6 +300,10 @@ export function createObservationRuntime(options = {}) {
     });
   }
 
+  // Private per-projection live repository check state (none, pending or
+  // confirmed), keyed by the projected state object; never serialized.
+  const liveRepositoryChecks = new WeakMap();
+
   async function projectSelection(selection, { useObservedUsage = false, trace = null, scope = null } = {}) {
     const { evidence, provider, sessionId } = selection;
     const historical = evidence.historical;
@@ -316,6 +321,7 @@ export function createObservationRuntime(options = {}) {
     let repository;
     let pullRequests;
     let enqueueLiveEnrichment = null;
+    let repositoryCheck = "pending";
     const repositoryAttribution = selection.repositoryAttribution
       || options.repositoryAttributionForSession?.(sessionId)
       || registry.repositoryAttributionForSession?.(sessionId)
@@ -337,6 +343,7 @@ export function createObservationRuntime(options = {}) {
       const live = liveEnrichment(sessionId, evidence, repositoryAttribution);
       ({ repository, pullRequests } = live.value);
       enqueueLiveEnrichment = live.enqueue;
+      repositoryCheck = live.check || "pending";
     }
     const currentUsageLimits = useObservedUsage
       ? observedUsageLimits(provider.id, historical)
@@ -370,6 +377,7 @@ export function createObservationRuntime(options = {}) {
       throw error;
     }
     enqueueLiveEnrichment?.();
+    if (!historical && state && typeof state === "object") liveRepositoryChecks.set(state, repositoryCheck);
     return state;
   }
 
@@ -429,7 +437,11 @@ export function createObservationRuntime(options = {}) {
       } : basePublicState;
       const usageReadiness = usageResponseCache.current()?.value?.readiness?.[candidate.providerId] || "loading";
       const readiness = createSessionReadiness("ready", {
-        repository: candidate.evidence.historical || publicState.session?.repository?.available ? "ready" : "loading",
+        repository: liveRepositoryReadiness({
+          historical: candidate.evidence.historical,
+          available: publicState.session?.repository?.available,
+          check: liveRepositoryChecks.get(basePublicState),
+        }),
         resources: candidate.evidence.historical
           ? "ready"
           : publicState.metrics?.resources?.status === "unavailable" ? "unavailable"

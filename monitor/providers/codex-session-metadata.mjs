@@ -6,6 +6,11 @@ export const DEFAULT_CODEX_CATALOG_LIMIT = 50;
 export const DEFAULT_CODEX_SCAN_LIMIT = 500;
 const DEFAULT_INDEX_BYTES = 1024 * 1024;
 const DEFAULT_HEADER_BYTES = 64 * 1024;
+const WIDE_RECENCY_BYTES = 1024 * 1024;
+const RECENCY_CACHE_LIMIT = 8_192;
+// file -> { size, mtimeMs, updatedAt }. Rollouts are append-only, so an unchanged size
+// and mtime mean unchanged records: the periodic header pass reuses the tail answer.
+const recencyCache = new Map();
 const MAX_TITLE_LENGTH = 160;
 const MAX_AGENT_PATH_LENGTH = 512;
 const MAX_PATH_LENGTH = 4096;
@@ -138,10 +143,51 @@ export function codexThreadRuntimeStatus(status) {
     : [] } : { type };
 }
 
+/** The timestamp of the newest record that parses as complete JSON, scanned from the end
+ * of `text`'s lines backward. Codex does not advance a rollout file's own modification
+ * time reliably, so header recency comes from record time, not file mtime. A
+ * truncated trailing line left by a write still in flight fails to parse and is skipped
+ * in favor of the newest line that parses in full. */
+function newestParsedRecordTimestamp(text) {
+  const lines = text.split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.trim()) continue;
+    try {
+      const record = JSON.parse(line);
+      const timestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp ?? record?.message?.timestamp);
+      if (timestamp) return timestamp;
+    } catch {
+      // A write still in flight can leave a truncated trailing line; keep scanning
+      // backward for the newest record that parses in full.
+    }
+  }
+  return null;
+}
+
+/** Header recency: the newest complete record's time. The header window already holds
+ * the whole file unless maximumBytes truncated it; only then is a bounded tail read
+ * needed, cached by size and mtime. A newest record larger than the 64 KiB tail gets one
+ * 1 MiB read; past that, recency is the later of creation time and file mtime. */
+function rolloutRecency(file, stat, headText, maximumBytes, createdAt) {
+  if (stat.size <= maximumBytes) return newestParsedRecordTimestamp(headText) || createdAt;
+  const cached = recencyCache.get(file);
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.updatedAt;
+  const mtime = stat.mtime.toISOString();
+  const updatedAt = newestParsedRecordTimestamp(readBoundedFile(file, DEFAULT_HEADER_BYTES, true))
+    || (stat.size > DEFAULT_HEADER_BYTES ? newestParsedRecordTimestamp(readBoundedFile(file, WIDE_RECENCY_BYTES, true)) : null)
+    || (createdAt && Date.parse(createdAt) >= Date.parse(mtime) ? createdAt : mtime);
+  recencyCache.delete(file);
+  recencyCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, updatedAt });
+  while (recencyCache.size > RECENCY_CACHE_LIMIT) recencyCache.delete(recencyCache.keys().next().value);
+  return updatedAt;
+}
+
 export function readCodexRolloutHeader(file, options = {}) {
   const maximumBytes = options.maximumBytes ?? DEFAULT_HEADER_BYTES;
+  const headText = readBoundedFile(file, maximumBytes);
   let sessionRecord = null;
-  for (const line of readBoundedFile(file, maximumBytes).split(/\r?\n/)) {
+  for (const line of headText.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const record = JSON.parse(line);
@@ -163,6 +209,8 @@ export function readCodexRolloutHeader(file, options = {}) {
   const sourceKind = codexSourceKind(payload.source);
   const parentThreadId = sessionParentId(payload);
   const spawned = sessionSpawnMetadata(payload);
+  const createdAt = codexTimestamp(payload.timestamp ?? sessionRecord.timestamp);
+  const updatedAt = rolloutRecency(file, stat, headText, maximumBytes, createdAt);
   return {
     localId,
     provider: "codex",
@@ -170,8 +218,8 @@ export function readCodexRolloutHeader(file, options = {}) {
     title: boundedText(payload.thread_name, MAX_TITLE_LENGTH) || "Untitled session",
     project: projectFromCwd(cwd),
     cwd,
-    createdAt: codexTimestamp(payload.timestamp ?? sessionRecord.timestamp),
-    updatedAt: stat.mtime.toISOString(),
+    createdAt,
+    updatedAt,
     sourceKind,
     approvalReviewer: isCodexApprovalReviewerSource(payload.source),
     sessionId: safeRelatedId(payload.sessionId ?? payload.session_id) || localId,
@@ -266,7 +314,8 @@ export function codexHeaderToLedgerHeader(header) {
       : null,
     archived: Boolean(header.archived),
     createdAt: typeof header.createdAt === "string" ? header.createdAt : null,
-    lastRecordAt: null,
+    // The header's own updatedAt is already record time, never file mtime.
+    lastRecordAt: typeof header.updatedAt === "string" ? header.updatedAt : null,
     // Between two files carrying one identity, keep the copy the whole-tree walk chose.
     preference: Date.parse(header.updatedAt || "") || null,
   };

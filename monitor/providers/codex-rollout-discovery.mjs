@@ -109,6 +109,22 @@ export function createCodexRolloutDiscovery(options = {}) {
     return null;
   }
 
+  /** Resolve a candidate rollout path through the same filter `notice` and `inspect`
+   * already apply: a rollout-*.jsonl name and realpath containment in a configured root.
+   * Returns the trusted, realpath-resolved file, or null when the name, every configured
+   * root, or an escaping realpath (a symlink or junction resolving outside the root)
+   * rejects it. Reads no header. */
+  async function trustedRolloutPath(file) {
+    if (closed || typeof file !== "string" || !file.trim()) return null;
+    const candidate = path.resolve(file);
+    if (!ROLLOUT_NAME.test(path.basename(candidate)) || !roots.some((root) => pathIsWithin(root.root, candidate))) {
+      return null;
+    }
+    const trusted = await trustedRootFor(candidate);
+    if (!trusted || trusted.error) return null;
+    return ROLLOUT_NAME.test(path.basename(trusted.file)) ? trusted.file : null;
+  }
+
   function canAvoidHeader(file, source, stat) {
     if (source === "hint" || entries.size < maximumFiles) return false;
     let oldest = Number.POSITIVE_INFINITY;
@@ -316,6 +332,7 @@ export function createCodexRolloutDiscovery(options = {}) {
       hints.set(candidate, true);
       stats.acceptedHints += 1;
     },
+    trustedRolloutPath,
     retain(sessionIds) {
       retainedIds.clear();
       for (const sessionId of Array.isArray(sessionIds) ? sessionIds : []) {
@@ -339,4 +356,22 @@ export function createCodexRolloutDiscovery(options = {}) {
       for (const root of roots) root.pending = [];
     },
   };
+}
+
+/**
+ * Filter a new rollout file notification through the discovery's own trusted-root check
+ * (a rollout-*.jsonl name and realpath containment in a configured root; see
+ * `trustedRolloutPath`) and, only when it passes, notice it in the shared source ledger so
+ * a later family resolution can locate the session without a directory walk. This adds no
+ * second filter: a rejected name, an escaping realpath, or a path outside every configured
+ * root is rejected exactly as `notice`/`trustedRolloutPath` already decide, and never
+ * reaches the ledger. The existing hint queue is untouched. Returns the trusted file, or
+ * null when rejected.
+ */
+export async function noticeCodexRolloutSource(discovery, ledger, file) {
+  discovery?.notice(file);
+  let trusted = null;
+  try { trusted = await discovery?.trustedRolloutPath?.(file); } catch { trusted = null; }
+  if (trusted && ledger) ledger.noticeSource(trusted);
+  return trusted || null;
 }
