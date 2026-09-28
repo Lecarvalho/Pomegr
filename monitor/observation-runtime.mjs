@@ -23,7 +23,7 @@ import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
 import { createSessionDomainServing } from "./session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot } from "./repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "./repository-snapshot.mjs";
 import { createObservationStartupRepository } from "./observation-startup-repository.mjs";
 import { createCheckpointStateProjector } from "./checkpoint-state-projector.mjs";
 import { createPersistenceMaintenance } from "./persistence-maintenance.mjs";
@@ -86,6 +86,8 @@ export function createObservationRuntime(options = {}) {
   let observationStartPromise = null;
   let unsubscribeObservation = null;
 
+  // A provider whose legacy evidence was launch-bound recorded launch-bound sidecars without a repository ID.
+  const adoptsUnboundSidecar = (providerId) => registry.legacyRepositoryAttribution?.(providerId) === "launch";
   const validateObservation = ({ localSessionId, evidence }) => {
     parseProviderSessionEvidence(evidence, localSessionId);
     return true;
@@ -101,12 +103,13 @@ export function createObservationRuntime(options = {}) {
     : options.checkpointStore || new SessionObservationCheckpointStore({
       directory: path.join(resolvePomegrDataRoot(pomegrPaths), "observation-cache-v1"),
       validateCandidate: validateObservation,
+      upgradeEvidence: (providerId, evidence) => withLegacyRepositoryAttribution(evidence, registry.legacyRepositoryAttribution?.(providerId)),
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
   // Bounded historical snapshots persist as sidecars next to checkpoints; disabled together,
   // and also when an injected checkpoint store (a minimal test double) predates the sidecar.
-  const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now }) : null;
+  const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now, adoptsUnboundSidecar }) : null;
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
   // Registered after resource-history so its cycle contributor reads fresh writes; onChange
@@ -140,7 +143,8 @@ export function createObservationRuntime(options = {}) {
     repositoryRootForSession: options.repositoryRootForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
     gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(sessionRepositorySnapshot(
-      observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null, sessionId.split(":")[0],
+      observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
+      { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
     )), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const repositoryAssociations = createSessionRepositoryAssociations({
@@ -333,7 +337,7 @@ export function createObservationRuntime(options = {}) {
       await repositoryStartup.checkpointRestoreReady();
       // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
       ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
-        providerId: provider.id,
+        adoptsUnboundSidecar: adoptsUnboundSidecar(provider.id),
         evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
         recordedGitState, pullRequestReader, unavailablePullRequests,
       }));

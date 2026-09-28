@@ -18,7 +18,7 @@ export function createSessionRepositoryAssociations({ registry, inventory, previ
       if (pending.get(id)?.key === key) return null;
       const operation = { key };
       pending.set(id, operation);
-      const unavailable = session.repositoryAttribution && !["single", "recorded"].includes(session.repositoryAttribution);
+      const unavailable = session.repositoryAttribution && !["single", "recorded", "launch"].includes(session.repositoryAttribution);
       if (!cwd || unavailable) {
         retain(id, key, null);
         pending.delete(id);

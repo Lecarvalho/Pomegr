@@ -13,13 +13,19 @@ export function createCheckpointStateProjector({
     const sessionId = `${providerId}:${localSessionId}`;
     try {
       const { repository, pullRequests } = resolveCheckpointRepository({
-        historical, evidence, snapshot: recordedSnapshot(sessionId), providerId,
+        historical, evidence, snapshot: recordedSnapshot(sessionId),
+        adoptsUnboundSidecar: registry.legacyRepositoryAttribution?.(providerId) === "launch",
         recordedGitState, unavailableGitState, unavailablePullRequests,
       });
       return {
         ...projectProviderSessionEvidence({
           evidence, sessionId, source: provider.source, capabilities: provider.capabilities,
-          repositoryRoles: repositoryRoleMappings(providerId === "codex" ? "" : evidence.session.cwd), repository, pullRequests,
+          // The session identity's resolved root never travels through evidence or
+          // checkpoints (see monitor/session-identity.mjs), so this restore path reads role
+          // configuration only from legacy "launch" evidence's launch cwd, as before the rule;
+          // live analysis re-projects roles from the identity's root.
+          repositoryRoles: repositoryRoleMappings(evidence.session.repositoryAttribution === "launch" ? evidence.session.cwd : ""),
+          repository, pullRequests,
           usageLimits: createEmptyUsageLimits(), resources: historical ? null : unavailableResourceUsage(),
         }),
         readiness: createSessionReadiness("loading", { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" }),

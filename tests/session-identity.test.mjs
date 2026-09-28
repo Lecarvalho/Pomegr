@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import fs from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 
 import { memoizeRepositoryResolver, resolveSessionIdentity } from "../monitor/session-identity.mjs";
 import { createCodexRepositoryAttributionTracker } from "../monitor/providers/codex-repository-attribution.mjs";
@@ -253,4 +255,24 @@ test("catalog-header identity never overwrites or demotes a full read's attribut
   const unseen = await tracker.headerIdentity("s2", { launchCwd: root, resolveRepository });
   assert.equal(unseen.project, "root");
   assert.equal(tracker.get("s2").state, "unknown", "a header lookup writes nothing");
+});
+
+test("Claude records single only for a proven launch repository and otherwise stays launch-bound with its filesystem project name", async () => {
+  const { projectName, readSessionIdentity } = await import("../monitor/providers/claude-session-identity.mjs");
+  const repo = await fs.mkdtemp(path.join(os.tmpdir(), "pomegr-claude-identity-"));
+  try {
+    await fs.mkdir(path.join(repo, ".git"));
+    await fs.mkdir(path.join(repo, "sub"));
+    const records = [{ cwd: path.join(repo, "sub") }];
+    const name = path.basename(repo);
+    assert.equal(projectName(path.join(repo, "s.jsonl"), records), name, "the header never waits on Git");
+    const proven = await readSessionIdentity("s.jsonl", records, { resolveRepository: async () => ({ repositoryId: "repo-0123456789abcdef01234567", root: repo, recognized: true }) });
+    assert.deepEqual(proven, { project: name, repositoryId: "repo-0123456789abcdef01234567", repositoryAttribution: "single" });
+    const launch = { project: name, repositoryId: null, repositoryAttribution: "launch" };
+    assert.deepEqual(await readSessionIdentity("s.jsonl", records, { resolveRepository: async () => null }), launch, "Git unavailable or refusing");
+    assert.deepEqual(await readSessionIdentity("s.jsonl", records, { resolveRepository: async () => { throw new Error("x"); } }), launch);
+    assert.deepEqual(await readSessionIdentity("s.jsonl", records, {}), launch, "no resolver yet");
+  } finally {
+    await fs.rm(repo, { recursive: true, force: true });
+  }
 });

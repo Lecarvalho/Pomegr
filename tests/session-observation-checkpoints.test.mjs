@@ -493,3 +493,72 @@ test("publication prepared during an eviction stat keeps its newly committed rev
     fsPromises.stat = originalStat; fsPromises.writeFile = originalWrite; syncBuiltinESMExports();
   }
 });
+
+test("restore upgrades only legacy evidence of a provider that declares launch-bound legacy attribution", async (t) => {
+  const { withLegacyRepositoryAttribution } = await import("../monitor/repository-snapshot.mjs");
+  const declared = new Map([["claude", "launch"]]);
+  const checkpoints = new SessionObservationCheckpointStore({
+    directory: await temporaryCheckpointDirectory(t),
+    upgradeEvidence: (providerId, evidence) => withLegacyRepositoryAttribution(evidence, declared.get(providerId) ?? null),
+  });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("./fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  delete evidence.session.repositoryAttribution;
+  await checkpoints.write({ ...snapshot("claude", "legacy-claude", 3), evidence: { ...evidence, localId: "legacy-claude" } });
+  await checkpoints.write({ ...snapshot("codex", "legacy-codex", 3), evidence: { ...evidence, localId: "legacy-codex" } });
+  const proven = { ...evidence, localId: "proven-claude", session: { ...evidence.session, repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } };
+  await checkpoints.write({ ...snapshot("claude", "proven-claude", 3), evidence: proven });
+
+  const loaded = await checkpoints.load({ projectState: ({ evidence: restored }) => restored.session.repositoryAttribution ?? null });
+  const byId = new Map(loaded.records.map((record) => [record.localSessionId, record]));
+  assert.equal(loaded.ignored, 0);
+  assert.equal(byId.get("legacy-claude").evidence.session.repositoryAttribution, "launch");
+  assert.equal(byId.get("legacy-claude").publicState, "launch", "projection sees the upgraded evidence");
+  assert.equal(Object.hasOwn(byId.get("legacy-codex").evidence.session, "repositoryAttribution"), false);
+  assert.equal(byId.get("proven-claude").evidence.session.repositoryAttribution, "single");
+  parseProviderSessionEvidence(byId.get("legacy-claude").evidence, "legacy-claude");
+  const onDisk = JSON.parse(await readFile(path.join(checkpoints.directory, checkpointFilename("claude", "legacy-claude")), "utf8"));
+  assert.equal(Object.hasOwn(onDisk.evidence.session, "repositoryAttribution"), false, "restore never rewrites the checkpoint file");
+});
+
+const LEGACY_SIDECAR = {
+  version: 4, branch: "feat/example", isMain: false, files: [], comparison: null, comparisonCheckedAt: null,
+  pullRequests: { checkedAt: "2026-09-20T12:00:00.000Z", items: [] }, commitsInSession: 1, checkedAt: "2026-09-20T12:00:05.000Z",
+  dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: null, committedChanges: null, gitObservedTruncated: false,
+  repositoryId: "repo-0123456789abcdef01234567",
+};
+
+test("legacy launch-bound evidence keeps its pre-rule sidecar trust and recorded branch; other legacy evidence stays unbound", async () => {
+  const { normalizeRepositorySnapshot, resolveCheckpointRepository, sessionRepositorySnapshot, withLegacyRepositoryAttribution } = await import("../monitor/repository-snapshot.mjs");
+  const legacy = { session: { project: "Clapline", recordedGitBranch: "feat/clapline" } };
+  assert.equal(withLegacyRepositoryAttribution(legacy, null), legacy, "an undeclared provider's legacy evidence is untouched");
+  const proven = { session: { ...legacy.session, repositoryAttribution: "unknown" } };
+  assert.equal(withLegacyRepositoryAttribution(proven, "launch"), proven, "a recorded attribution is never overridden");
+  const upgraded = withLegacyRepositoryAttribution(legacy, "launch");
+  assert.equal(upgraded.session.repositoryAttribution, "launch");
+  assert.equal(Object.hasOwn(legacy.session, "repositoryAttribution"), false, "the upgrade does not mutate its input");
+
+  const sidecar = normalizeRepositorySnapshot(LEGACY_SIDECAR);
+  assert.ok(sidecar, "fixture sidecar is valid");
+  assert.equal(sessionRepositorySnapshot(upgraded, sidecar), sidecar);
+  assert.equal(sessionRepositorySnapshot(legacy, sidecar), null);
+  const options = (evidence) => ({ historical: true, evidence, snapshot: null,
+    recordedGitState: (branch) => ({ available: Boolean(branch), branch }), unavailablePullRequests: () => ({ items: [] }) });
+  assert.equal(resolveCheckpointRepository(options(upgraded)).repository.branch, "feat/clapline");
+  assert.equal(resolveCheckpointRepository(options(legacy)).repository.available, false);
+});
+
+test("a launch-declaring provider's proven session adopts its unbound pre-rule sidecar; no other provider does", async () => {
+  const { normalizeRepositorySnapshot, resolveCheckpointRepository, sessionRepositorySnapshot, snapshotFromLiveCheck } = await import("../monitor/repository-snapshot.mjs");
+  const unbound = normalizeRepositorySnapshot({ ...LEGACY_SIDECAR, repositoryId: null, dirtyAtFirstCheck: ["kept.txt"] });
+  assert.ok(unbound, "fixture sidecar is valid");
+  const proven = { session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567", recordedGitBranch: "feat/example" } };
+  assert.equal(sessionRepositorySnapshot(proven, unbound, { adoptsUnboundSidecar: true }), unbound);
+  assert.equal(sessionRepositorySnapshot(proven, unbound), null);
+  const options = { historical: true, evidence: proven, snapshot: unbound, recordedGitState: (branch) => ({ available: Boolean(branch), branch, fallback: true }), unavailablePullRequests: () => ({ items: [] }) };
+  assert.equal(resolveCheckpointRepository({ ...options, adoptsUnboundSidecar: true }).repository.fallback, undefined, "the recorded sidecar wins over the branch fallback");
+  const live = { repository: { available: true, historical: false, branch: "feat/example", files: [], remote: { status: "unavailable" } }, checkedAt: "2026-09-28T12:00:00.000Z", repositoryId: proven.session.repositoryId };
+  assert.deepEqual(snapshotFromLiveCheck({ ...live, previous: unbound, adoptsUnboundSidecar: true }).dirtyAtFirstCheck, ["kept.txt"], "the live timeline continues");
+  assert.deepEqual(snapshotFromLiveCheck({ ...live, previous: unbound }).dirtyAtFirstCheck, [], "without adoption a new identity starts a new baseline");
+});

@@ -20,7 +20,11 @@ function bindingFor(sessionId, evidence, attribution) {
     || !path.isAbsolute(cwd) || /[\u0000-\u001f\u007f]/.test(cwd) || typeof recordedBranch !== "string"
     || recordedBranch.length === 0 || recordedBranch.length > 512 || /[\u0000-\u001f\u007f]/.test(recordedBranch)) return null;
   const normalizedRoot = path.normalize(cwd);
-  return { root: normalizedRoot, repositoryId: null, branch: recordedBranch, fingerprint: `claude:${normalizedRoot}:${recordedBranch}`, exactRoot: false };
+  // A launch directory the shared identity rule proved to be one repository records that
+  // repository's ID on the sidecar, so repository-snapshot.mjs serves it for the session.
+  const session = evidence.session;
+  const provenRepositoryId = session.repositoryAttribution === "single" && REPOSITORY_ID.test(session.repositoryId || "") ? session.repositoryId : null;
+  return { root: normalizedRoot, repositoryId: provenRepositoryId, branch: recordedBranch, fingerprint: `claude:${normalizedRoot}:${recordedBranch}`, exactRoot: false };
 }
 
 function sameRoot(left, right) {

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { repositoryProjectName } from "../session-discovery.mjs";
+import { resolveSessionIdentity } from "../session-identity.mjs";
 
 export const MAX_SESSION_TITLE_RECORD_BYTES = 16 * 1024;
 
@@ -34,10 +35,45 @@ export function statusFor(mtimeMs, now = Date.now()) {
 export function projectCwd(records) {
   return records.find((record) => typeof record.cwd === "string")?.cwd || "";
 }
+
+function fallbackProjectName(mainFile) {
+  return path.basename(path.dirname(mainFile)).replace(/^[A-Z]--/, "").replaceAll("-", " ");
+}
+
+/**
+ * Catalog-header project name. Claude's recorded cwd is its launch directory, and the
+ * nearest enclosing repository names it: the launch-directory half of the shared rule in
+ * monitor/session-identity.mjs, answered from the filesystem so a catalog row never waits
+ * on, or caches the timeout of, a Git subprocess.
+ * @param {string} mainFile
+ * @param {Array<{ cwd?: string }>} records
+ */
 export function projectName(mainFile, records) {
   const cwd = projectCwd(records);
-  if (cwd) return repositoryProjectName(cwd);
-  return path.basename(path.dirname(mainFile)).replace(/^[A-Z]--/, "").replaceAll("-", " ");
+  return cwd ? repositoryProjectName(cwd) : fallbackProjectName(mainFile);
+}
+
+/**
+ * Full-evidence session identity through the shared rule (monitor/session-identity.mjs).
+ * A launch directory proven to be one Git repository records `single` with its
+ * repositoryId and the rule's project. Otherwise (not Git, a removed worktree, Git
+ * unavailable, or a timeout) Claude's evidence stays bound to its launch directory as it
+ * always was: the generic `launch` attribution, and the header's project name. Claude
+ * never records `multiple`: it has no structured mutation-root evidence.
+ * `root` never leaves monitor/session-identity.mjs.
+ * @param {string} mainFile
+ * @param {Array<{ cwd?: string }>} records
+ * @param {{ resolveRepository?: ((cwd: string, options?: { requireGit?: boolean }) => Promise<{ repositoryId: string, root: string } | null> | { repositoryId: string, root: string } | null) | null }} [options]
+ * @returns {Promise<{ project: string, repositoryId: string|null, repositoryAttribution: "single"|"launch" }>}
+ */
+export async function readSessionIdentity(mainFile, records, { resolveRepository } = {}) {
+  const cwd = projectCwd(records);
+  const launch = { project: projectName(mainFile, records), repositoryId: null, repositoryAttribution: /** @type {const} */ ("launch") };
+  if (!cwd) return launch;
+  const identity = await resolveSessionIdentity({ launchCwd: cwd, resolveRepository, resolverTimeoutMs: 5_000 });
+  return identity.state === "single"
+    ? { project: identity.project, repositoryId: identity.repositoryId, repositoryAttribution: /** @type {const} */ ("single") }
+    : launch;
 }
 export function recordedGitBranch(records) {
   let branch = "";

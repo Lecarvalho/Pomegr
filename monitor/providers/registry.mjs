@@ -372,6 +372,11 @@ export function createProviderRegistry(adapters, options = {}) {
       return value?.state === "multiple" ? { state: "multiple" } : { state: "unknown" };
     },
 
+    /** "launch" when the provider declares that its pre-identity-rule evidence was bound to its launch cwd. */
+    legacyRepositoryAttribution(providerId) {
+      return providersById.get(providerId)?.provider?.legacyRepositoryAttribution === "launch" ? "launch" : null;
+    },
+
     async listSessions() {
       return (await inspectSessions()).sessions;
     },

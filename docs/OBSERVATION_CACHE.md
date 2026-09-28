@@ -2448,17 +2448,53 @@ when Git confirms the root or branch does not match. A changed binding, or an at
 that is briefly unknown after the session had a repository, returns to `loading` so clients
 keep the last committed value.
 
-Repository sidecar version 4 carries a nullable normalized repository ID. Codex sidecars
-are served only for the same single-repository identity in normalized session evidence;
-older unbound Codex sidecars remain unavailable. A new identity starts a new baseline and
-cannot inherit another repository's files, PRs, comparisons, or Git-observed lists.
+Repository sidecar version 4 carries a nullable normalized repository ID. A sidecar is
+served only for the same single-repository identity in normalized session evidence, for
+every provider (`session.repositoryAttribution`/`repositoryId`; see
+`monitor/session-identity.mjs`); an older sidecar recorded before that identity was
+proven, or with a mismatched identity, remains unavailable. A new identity starts a new
+baseline and cannot inherit another repository's files, PRs, comparisons, or Git-observed
+lists.
+
+Checkpoint evidence written before the session-identity rule has no
+`session.repositoryAttribution`. A provider whose evidence was then bound to its launch
+cwd declares `legacyRepositoryAttribution: "launch"` in its adapter (Claude does; Codex
+does not). At restore only, the checkpoint store gives that provider's legacy evidence the
+generic attribution `launch` (`withLegacyRepositoryAttribution` in
+`monitor/repository-snapshot.mjs`) without rewriting the checkpoint file. `launch` keeps
+the behavior that evidence had before the rule: its recorded sidecar and recorded branch
+are served, its unbound file changes resolve through its launch cwd, and restore reads role
+configuration from that cwd. Shared modules read only the attribution value, never the
+provider. Legacy evidence of a provider without the declaration stays unbound.
+
+A provider may also record `launch` in live evidence when its cwd is, by the provider's own
+transcript schema, the fixed launch directory rather than a navigated one. Claude does:
+`readSession` records `single` with the repository ID when the shared rule proves the
+launch directory is one Git repository, and `launch` otherwise (not Git, a removed
+worktree, Git unavailable, or the 5 s bound), so those sessions keep their pre-rule
+sidecar, branch, file history, and context-inventory association. Claude catalog rows name
+the project from the nearest enclosing `.git` of the launch directory without a Git
+subprocess, the same name the rule gives a proven repository. A Claude live repository
+check records the proven repository ID on its sidecar, so a `single` session's sidecar
+satisfies the identity gate. Sidecars that such a provider recorded before the rule carry no
+repository ID; they came from the launch directory, so a `single` session of a provider that
+declares `legacyRepositoryAttribution: "launch"` adopts its unbound sidecar, both for serving
+and as the carry-forward baseline of its next live check. Codex never adopts one.
 
 The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a derivative of
 committed file-change evidence plus Git state acquired asynchronously outside S Serving.
 It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
-written since the last cycle. Bound Codex paths use their own normalized repository ID;
-the index never reinterprets them through the session cwd. Legacy Claude paths are rebased
-from the recorded working directory onto the private Git root and revalidated. Writes are additive: a change
+written since the last cycle. Bound Codex paths use their own normalized per-call
+repository ID; the index never reinterprets them through the session cwd. Every other
+entry — including every Claude entry, since Claude has no per-call binding — is attributed
+only through the session's own recorded identity (`session.repositoryAttribution`/
+`repositoryId`, the same provider-neutral rule for every provider; see
+`monitor/session-identity.mjs`): when that identity is a proven single repository, the
+path is rebased from the recorded working directory onto the private Git root and
+revalidated, and a working directory that resolves to another repository supplies no
+root; `launch` evidence (above) resolves its repository from the launch cwd as
+before the rule; when the identity is multiple, unknown, or absent, the entry is skipped
+rather than reinterpreted through a navigated cwd. Writes are additive: a change
 already recorded for the same session, agent, kind, timestamp, and path is skipped, so
 replaying a checkpoint is idempotent, and a later snapshot whose bounded evidence tail no
 longer carries earlier tool calls never removes their committed rows. Git renames come from
@@ -2534,8 +2570,11 @@ invalid candidate never replaces the last complete valid snapshot. `prune()` rem
 sidecar with the checkpoint that prune evicted, an invalid sidecar, and an orphan sidecar
 with no checkpoint for more than 24 hours; a sidecar recorded before its session's first
 checkpoint write is kept. Historical serving prefers the recorded snapshot and otherwise
-keeps the branch-only recorded state. GETs never inspect Git or GitHub, and a recorded
-snapshot is never refreshed from them. The no-snapshot fallback leaves pull requests
+keeps the branch-only recorded state, itself shown only when the session's own recorded
+identity resolved a proven single repository (`session.repositoryAttribution`/
+`repositoryId`, the same rule for every provider; see `monitor/session-identity.mjs`), or
+when the evidence carries the `launch` attribution.
+GETs never inspect Git or GitHub, and a recorded snapshot is never refreshed from them. The no-snapshot fallback leaves pull requests
 unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
@@ -2560,8 +2599,10 @@ change deleted it, `added` when any commit in the window added it, otherwise `mo
 type change counts as modified). It travels with `committedInWindow`: carried forward when a
 read fails, replaced on a successful read, and null when a read returned paths without
 change kinds. A version 2 record loads as version 4 with `committedChanges` null.
-Earlier versions load with `repositoryId` null; they remain usable for legacy Claude
-snapshots, but cannot satisfy Codex's repository-identity gate.
+Earlier versions load with `repositoryId` null; for every provider, they can satisfy the
+repository-identity gate again only once the same session is re-observed and its evidence
+records a matching proven single-repository identity. `launch` evidence is served
+its recorded sidecar whatever the sidecar's repository ID, as before the rule.
 
 The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
 from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in

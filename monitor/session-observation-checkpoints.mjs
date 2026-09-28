@@ -175,6 +175,7 @@ export class SessionObservationCheckpointStore {
   constructor({
     directory,
     validateCandidate = () => true,
+    upgradeEvidence = null,
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxBytes = DEFAULT_MAX_BYTES,
     privacySentinels = DEFAULT_PRIVACY_SENTINELS,
@@ -188,6 +189,9 @@ export class SessionObservationCheckpointStore {
     }
     this.directory = directory;
     this.validateCandidate = validateCandidate;
+    // Restore-time normalization of evidence recorded before a later field existed
+    // (see withLegacyRepositoryAttribution); never applied to writes.
+    this.upgradeEvidence = typeof upgradeEvidence === "function" ? upgradeEvidence : null;
     this.maxEntries = maxEntries;
     this.maxBytes = maxBytes;
     this.privacySentinels = Object.freeze([...privacySentinels]);
@@ -316,15 +320,17 @@ export class SessionObservationCheckpointStore {
         continue;
       }
       try {
+        const evidence = this.upgradeEvidence ? this.upgradeEvidence(payload.providerId, payload.evidence) : payload.evidence;
+        const restored = evidence === payload.evidence ? payload : { ...payload, evidence };
         const candidate = {
-          providerId: payload.providerId,
-          localSessionId: payload.localSessionId,
-          source: payload.source,
-          evidence: payload.evidence,
-          readiness: payload.readiness,
-          revision: payload.revision,
-          observedAt: payload.observedAt,
-          publicState: projectState(payload),
+          providerId: restored.providerId,
+          localSessionId: restored.localSessionId,
+          source: restored.source,
+          evidence: restored.evidence,
+          readiness: restored.readiness,
+          revision: restored.revision,
+          observedAt: restored.observedAt,
+          publicState: projectState(restored),
         };
         if (this.validateCandidate(candidate) === false) throw new TypeError("candidate rejected");
         records.push(Object.freeze(candidate));

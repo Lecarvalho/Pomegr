@@ -70,8 +70,10 @@ function createStubRuntime({ store = null, storageReadiness = "ready" } = {}) {
 function toolCall({ timestamp, actorId = "agent-1", fileChanges }) {
   return { timestamp, actor: { id: actorId }, fileChanges };
 }
+// Legacy launch-bound evidence (restored through withLegacyRepositoryAttribution): the
+// index resolves each session's repository from its launch cwd, as before the identity rule.
 function snapshot({ providerId = "claude", localSessionId, cwd, toolCalls }) {
-  return { providerId, localSessionId, evidence: { session: { cwd }, toolCalls } };
+  return { providerId, localSessionId, evidence: { session: { cwd, repositoryAttribution: "launch" }, toolCalls } };
 }
 function stubResolver(repositoryId, root) {
   return async () => ({ repositoryId, root });

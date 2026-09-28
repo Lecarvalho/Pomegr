@@ -4,6 +4,7 @@ import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { readGitRenamesAsync } from "./git-state.mjs";
 
 const CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const MAX_CHANGES_PER_CALL = 64;
 const GIT_CHECK_MIN_INTERVAL_MS = 60_000;
 const MAX_GIT_RENAMES = 512;
@@ -146,11 +147,14 @@ function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
     if (!Number.isFinite(observedAt) || !agentId) continue;
     for (const entry of entries.slice(0, MAX_CHANGES_PER_CALL)) {
       if (!entry || typeof entry !== "object" || !CHANGE_KINDS.has(entry.kind)) continue;
-      const boundRepositoryId = typeof entry.repositoryId === "string" && /^repo-[a-f0-9]{24}$/u.test(entry.repositoryId)
+      const boundRepositoryId = typeof entry.repositoryId === "string" && REPOSITORY_ID.test(entry.repositoryId)
         ? entry.repositoryId : null;
-      // A Codex record without a U2 repository binding is an old checkpoint or
-      // incomplete observation. Never reinterpret it through a navigated cwd.
-      if (snapshot?.providerId === "codex" && !boundRepositoryId) continue;
+      const repositoryId = boundRepositoryId || fallbackRepositoryId;
+      // An entry without its own per-call binding and no single-repository session
+      // identity to fall back on (an old checkpoint, an incomplete observation, or a
+      // session whose identity is multiple/unknown) is never reinterpreted through a
+      // navigated cwd; see resolveSessionIdentity in monitor/session-identity.mjs.
+      if (!repositoryId) continue;
       const safePath = boundRepositoryId
         ? (isSafeRecordedRepositoryPath(entry.path) ? entry.path : null)
         : safeRebasedPath(root, cwd, entry.path);
@@ -162,10 +166,25 @@ function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
           : safeRebasedPath(root, cwd, entry.previousPath);
         if (!safePreviousPath) continue;
       }
-      changes.push({ repositoryId: boundRepositoryId || fallbackRepositoryId, change: { sessionId, agentId, kind: entry.kind, path: safePath, previousPath: safePreviousPath, observedAt } });
+      changes.push({ repositoryId, change: { sessionId, agentId, kind: entry.kind, path: safePath, previousPath: safePreviousPath, observedAt } });
     }
   }
   return changes;
+}
+
+/**
+ * The fallback repository for entries with no per-call binding of their own,
+ * read only from the session's own recorded identity (evidence.session.repositoryAttribution/
+ * repositoryId; see monitor/session-identity.mjs) — never from a fresh resolveRepository(cwd)
+ * call, and never gated on providerId. A multiple or unknown identity (or an evidence
+ * shape recorded before this rule existed) has no fallback repository. Legacy "launch"
+ * evidence (repository-snapshot.mjs withLegacyRepositoryAttribution) is resolved from its
+ * launch cwd in applySnapshot, exactly as before the rule.
+ */
+function sessionFallbackRepositoryId(snapshot) {
+  const session = snapshot?.evidence?.session;
+  return session?.repositoryAttribution === "single" && REPOSITORY_ID.test(session.repositoryId || "")
+    ? session.repositoryId : "";
 }
 
 async function applySnapshot(store, snapshot, resolveRepository) {
@@ -174,16 +193,28 @@ async function applySnapshot(store, snapshot, resolveRepository) {
   const cwd = snapshot?.evidence?.session?.cwd;
   if (typeof providerId !== "string" || !providerId || typeof localSessionId !== "string" || !localSessionId) return;
   const hasBoundChanges = Array.isArray(snapshot?.evidence?.toolCalls) && snapshot.evidence.toolCalls
-    .some((call) => Array.isArray(call?.fileChanges) && call.fileChanges.some((entry) => /^repo-[a-f0-9]{24}$/u.test(entry?.repositoryId || "")));
-  if (providerId === "codex" && !hasBoundChanges) return;
-  let resolved = null;
-  if (typeof cwd === "string" && cwd) {
-    try { resolved = await resolveRepository(cwd); } catch { resolved = null; }
+    .some((call) => Array.isArray(call?.fileChanges) && call.fileChanges.some((entry) => REPOSITORY_ID.test(entry?.repositoryId || "")));
+  const legacyLaunch = snapshot?.evidence?.session?.repositoryAttribution === "launch";
+  let fallbackRepositoryId = sessionFallbackRepositoryId(snapshot);
+  if (!hasBoundChanges && !fallbackRepositoryId && !legacyLaunch) return;
+  // Only fetch the real root (needed to rebase an unbound path) once the session's own
+  // identity already proved a single repository, or its legacy evidence was launch-bound.
+  // A proven identity is never re-derived: a cwd that resolves elsewhere supplies no root.
+  let root = "";
+  if ((fallbackRepositoryId || legacyLaunch) && typeof cwd === "string" && cwd) {
+    try {
+      // The inventory's cached lookup (no Git subprocess per snapshot). A proven identity
+      // accepts only the root of the same repository ID; launch evidence also accepts the
+      // non-Git fallback root, as before the rule.
+      const resolved = await resolveRepository(cwd);
+      const resolvedId = typeof resolved?.repositoryId === "string" ? resolved.repositoryId : "";
+      if (legacyLaunch && resolvedId) fallbackRepositoryId = resolvedId;
+      if (resolvedId && resolvedId === fallbackRepositoryId && typeof resolved.root === "string" && resolved.root) root = resolved.root;
+    } catch { root = ""; }
   }
-  if (!hasBoundChanges && (!resolved || typeof resolved.repositoryId !== "string" || !resolved.repositoryId
-    || typeof resolved.root !== "string" || !resolved.root)) return;
+  if (!hasBoundChanges && !fallbackRepositoryId) return;
   const sessionId = `${providerId}:${localSessionId}`;
-  const changes = collectChanges(snapshot, sessionId, resolved?.root || "", cwd || "", resolved?.repositoryId || "");
+  const changes = collectChanges(snapshot, sessionId, root, cwd || "", fallbackRepositoryId);
   // Additive: live evidence is a bounded tail (Claude transcript tail, Codex tool-call cap),
   // so a snapshot that no longer carries early tool calls must never delete their committed
   // rows. Already-recorded changes are skipped, which keeps replaying a checkpoint idempotent.

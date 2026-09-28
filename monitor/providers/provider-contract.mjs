@@ -74,7 +74,7 @@ export const PROVIDER_OBSERVATION_API_KEYS = Object.freeze([
   "providerFolders",
   "createObserver",
   "setRepositoryResolver",
-  "repositoryAttributionForSession",
+  "repositoryAttributionForSession", "legacyRepositoryAttribution",
 ]);
 
 /**
@@ -447,7 +447,7 @@ export const providerSessionEvidenceSchema = z.object({
     completeOffset: evidenceCount,
   }).strict().optional(),
   session: z.object({
-    title: evidenceText(512), project: evidenceText(512), cwd: evidenceText(2_048), repositoryId: z.string().regex(/^repo-[a-f0-9]{24}$/).nullable().optional(), repositoryAttribution: z.enum(["single", "multiple", "unknown"]).optional(), startedAt: evidenceNullableTimestamp, updatedAt: evidenceNullableTimestamp,
+    title: evidenceText(512), project: evidenceText(512), cwd: evidenceText(2_048), repositoryId: z.string().regex(/^repo-[a-f0-9]{24}$/).nullable().optional(), repositoryAttribution: z.enum(["single", "multiple", "unknown", "launch"]).optional(), startedAt: evidenceNullableTimestamp, updatedAt: evidenceNullableTimestamp,
     recordedGitBranch: evidenceText(512),
     cost: z.object({ amount: z.number().finite().min(0), currency: z.literal("USD"), type: z.literal("estimated"), observedAt: evidenceTimestamp }).strict().nullable(),
     approvalMode: z.object({ id: evidenceText(64), label: evidenceText(128), observedAt: evidenceNullableTimestamp, source: z.literal("provider") }).strict().nullable(),
@@ -747,9 +747,9 @@ export function defineProvider(adapter) {
   if (adapter.setRepositoryResolver !== undefined && typeof adapter.setRepositoryResolver !== "function") {
     throw new TypeError("Provider setRepositoryResolver must be a function");
   }
-  if (adapter.repositoryAttributionForSession !== undefined && typeof adapter.repositoryAttributionForSession !== "function") {
-    throw new TypeError("Provider repositoryAttributionForSession must be a function");
-  }
+  if (adapter.repositoryAttributionForSession !== undefined && typeof adapter.repositoryAttributionForSession !== "function") throw new TypeError("Provider repositoryAttributionForSession must be a function");
+  // "launch": evidence checkpointed before the session-identity rule was bound to its launch cwd (docs/OBSERVATION_CACHE.md).
+  if (![undefined, "launch"].includes(adapter.legacyRepositoryAttribution)) throw new TypeError("Provider legacyRepositoryAttribution must be \"launch\" when declared");
   if (adapter.resolveReadiness !== undefined && typeof adapter.resolveReadiness !== "function") {
     throw new TypeError("Provider resolveReadiness must be a function");
   }

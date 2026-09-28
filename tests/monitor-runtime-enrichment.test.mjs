@@ -494,7 +494,10 @@ test("historical analysis with no snapshot shows only recorded Git and never que
   const scheduler = controlledScheduler();
   const pullRequestOptions = [];
   const runtime = runtimeFixture({
-    evidence: sessionEvidence({ historical: true, branch: "codex/recorded-branch" }),
+    evidence: (() => {
+      const evidence = sessionEvidence({ historical: true, branch: "codex/recorded-branch" });
+      return { ...evidence, session: { ...evidence.session, repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } };
+    })(),
     scheduleEnrichment: scheduler.scheduleEnrichment,
     readGitState() { assert.fail("historical analysis must not inspect current Git"); },
     async readPullRequests(_records, options) { pullRequestOptions.push(options); return pullRequests(options.branch); },
@@ -736,4 +739,45 @@ test("a session that had a repository stays loading while its attribution is bri
   assert.equal(fixture.read("codex:rebinding", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
   assert.equal(fixture.read("codex:rebinding", evidence, { state: "unknown" }).readiness, "loading");
   assert.equal(fixture.read("codex:rebinding", evidence, { state: "multiple" }).readiness, "ready", "two proven repositories are a confirmed state");
+});
+
+test("a launch-bound live check records the evidence's proven repository ID on its sidecar, and none for launch evidence", async () => {
+  const jobs = [];
+  const checks = new Map();
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => repository("codex/live", root),
+    pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    now: () => 0,
+    cacheMs: 2_500,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  enrichment.setOnRepositoryCheck((sessionId, check) => checks.set(sessionId, check.repositoryId));
+  const evidenceWith = (repositoryAttribution) => {
+    const evidence = sessionEvidence();
+    return { ...evidence, session: { ...evidence.session, repositoryAttribution, repositoryId: repositoryAttribution === "single" ? "repo-0123456789abcdef01234567" : null } };
+  };
+  for (const [sessionId, attribution] of [["claude:proven", "single"], ["claude:launch", "launch"]]) {
+    enrichment.liveEnrichment(sessionId, evidenceWith(attribution), null, (task) => jobs.push(task)).enqueue?.();
+  }
+  while (jobs.length) await jobs.shift()();
+  assert.equal(checks.get("claude:proven"), "repo-0123456789abcdef01234567");
+  assert.equal(checks.get("claude:launch"), null);
+});
+
+test("repository association resolves launch and single evidence from the launch directory, never multiple or unknown", async () => {
+  const { createSessionRepositoryAssociations } = await import("../monitor/session-repository-association.mjs");
+  const associateSession = async () => ({ repositoryId: "repo-0123456789abcdef01234567", contextInventoryRef: null });
+  const associate = async (repositoryAttribution) => {
+    const associations = createSessionRepositoryAssociations({ registry: { repositoryAttributionForSession: () => null }, inventory: { associateSession }, previousReference: () => null, onChange: () => {} });
+    const candidate = { providerId: "claude", localSessionId: `s-${repositoryAttribution}`, evidence: { session: { cwd: "C:\\synthetic\\pomegr", startedAt: null, repositoryAttribution } } };
+    associations.get(candidate);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return associations.get(candidate)?.repositoryId ?? null;
+  };
+  assert.equal(await associate("launch"), "repo-0123456789abcdef01234567");
+  assert.equal(await associate("single"), "repo-0123456789abcdef01234567");
+  assert.equal(await associate("multiple"), null);
+  assert.equal(await associate("unknown"), null);
 });

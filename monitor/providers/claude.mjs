@@ -17,6 +17,7 @@ import { latestContextMachinery, readLatestContextMachinery } from "../context-m
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { buildExecutionTasks } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
+import { memoizeRepositoryResolver } from "../session-identity.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../session-signals.mjs";
@@ -48,6 +49,7 @@ import {
   actorFor,
   projectCwd,
   projectName,
+  readSessionIdentity,
   recordedGitBranch,
   runtimeMetadata,
   sessionTitle,
@@ -81,6 +83,10 @@ export function createClaudeProvider(options = {}) {
   const fileChangeForbiddenRoots = [configRoot, projectsRoot].filter(Boolean);
   const explicitSession = options.explicitSession ?? environment.CLAUDE_SESSION_FILE;
   const now = options.now || (() => Date.now());
+  // Injected once by observation-runtime.mjs (setRepositoryResolver), the same shared
+  // resolver Codex uses, so a Claude and a Codex session in the same repository share
+  // one repositoryId (see monitor/session-identity.mjs, monitor/providers/claude-session-identity.mjs).
+  let repositoryResolver = null;
   const sessionSummaryCache = new Map();
   const titleEnrichment = createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState: options.scanTitleState });
   const contextMachineryCache = new Map();
@@ -480,14 +486,19 @@ export function createClaudeProvider(options = {}) {
     transcriptPathsBySessionId.delete(sessionId);
     transcriptPathsBySessionId.set(sessionId, transcriptPaths);
     while (transcriptPathsBySessionId.size > 64) transcriptPathsBySessionId.delete(transcriptPathsBySessionId.keys().next().value);
+    // The launch directory names the project unless proven mutations point elsewhere
+    // (same provider-neutral rule Codex uses; see monitor/session-identity.mjs).
+    const identity = await readSessionIdentity(mainFile, mainRecords, { resolveRepository: repositoryResolver });
 
     return {
       localId: sessionId,
       historical,
       session: {
         title: mainStat ? (await cachedSessionTitle(mainFile, mainStat, mainRecords, { fast: fastCatalog })).title : sessionTitle(mainRecords),
-        project: projectName(mainFile, mainRecords),
+        project: identity.project,
         cwd,
+        repositoryId: identity.repositoryId,
+        repositoryAttribution: identity.repositoryAttribution,
         startedAt,
         updatedAt: updatedAt || statSafe(mainFile)?.mtime.toISOString(),
         recordedGitBranch: recordedGitBranch(mainRecords),
@@ -730,6 +741,13 @@ export function createClaudeProvider(options = {}) {
     readSessionHistory,
     captureRepositoryContextInventory,
     readRepositoryPluginSetup,
+    setRepositoryResolver(resolver) {
+      // Memoized like Codex's header lookups: a warm read never spawns Git per call.
+      repositoryResolver = typeof resolver === "function" ? memoizeRepositoryResolver(resolver) : null;
+    },
+    // Checkpoints written before readSession recorded repositoryAttribution named the
+    // project from the first record's launch cwd and trusted it as the repository.
+    legacyRepositoryAttribution: "launch",
     createObserver() {
       const observer = observeClaudeRegistryDepartures(createIncrementalProviderObserver({
         providerId: "claude",

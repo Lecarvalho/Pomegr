@@ -404,19 +404,20 @@ test("snapshotFromLiveCheck starts a fresh baseline when a newly bound repositor
   assert.equal(next.committedInWindow, null);
 });
 
-test("sessionRepositorySnapshot rejects unbound, ambiguous, and mismatched Codex sidecars while retaining legacy Claude", () => {
+test("sessionRepositorySnapshot resolves through the recorded single-repository identity (provider-neutral: no providerId argument), rejecting unbound, ambiguous, and mismatched sidecars", () => {
   const snapshot = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567" }));
-  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot, "codex"), snapshot);
-  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-fedcba9876543210fedcba98" } }, snapshot, "codex"), null);
-  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "multiple", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot, "codex"), null);
-  assert.equal(sessionRepositorySnapshot({ session: {} }, snapshot, "codex"), null);
-  assert.equal(sessionRepositorySnapshot({ session: {} }, normalizeRepositorySnapshot(validSnapshot()), "codex"), null);
-  assert.equal(sessionRepositorySnapshot({ session: {} }, normalizeRepositorySnapshot(validSnapshot()), "claude")?.branch, "feat/example");
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot), snapshot);
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-fedcba9876543210fedcba98" } }, snapshot), null);
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "multiple", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot), null);
+  assert.equal(sessionRepositorySnapshot({ session: {} }, snapshot), null);
+  // An evidence shape with no recorded identity (a legacy checkpoint, or a session whose
+  // identity is not yet proven single) never trusts a sidecar unconditionally, for either provider.
+  assert.equal(sessionRepositorySnapshot({ session: {} }, normalizeRepositorySnapshot(validSnapshot())), null);
 });
 
-test("legacy Codex checkpoint branch fallback requires a proven repository identity", () => {
+test("legacy checkpoint branch fallback requires a proven single-repository identity (provider-neutral: resolveCheckpointRepository no longer takes a providerId)", () => {
   const evidence = { session: { project: "Clapline", recordedGitBranch: "feat/clapline" } };
-  const options = { historical: true, providerId: "codex", evidence, snapshot: null,
+  const options = { historical: true, evidence, snapshot: null,
     recordedGitState: (branch) => ({ available: Boolean(branch), branch }), unavailablePullRequests: () => ({ items: [] }) };
   assert.equal(resolveCheckpointRepository(options).repository.available, false);
   evidence.session.repositoryAttribution = "single";
@@ -425,14 +426,17 @@ test("legacy Codex checkpoint branch fallback requires a proven repository ident
 });
 
 test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests never call Git or GitHub when a snapshot exists", async () => {
-  const snapshot = normalizeRepositorySnapshot(validSnapshot());
+  const snapshot = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567" }));
   const deps = {
     recordedGitState: () => assert.fail("must not call recordedGitState when a snapshot exists"),
     unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
     unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
     pullRequestReader: async () => assert.fail("must not call the pull-request reader when a snapshot exists"),
   };
-  const evidence = { session: { cwd: "C:\\synthetic", recordedGitBranch: "feat/example" }, pullRequestCreations: [] };
+  const evidence = { session: {
+    cwd: "C:\\synthetic", recordedGitBranch: "feat/example",
+    repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567",
+  }, pullRequestCreations: [] };
 
   const fromCheckpoint = resolveCheckpointRepository({ historical: true, evidence, snapshot, ...deps });
   assert.equal(fromCheckpoint.repository.branch, "feat/example");
@@ -455,7 +459,10 @@ test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests
     unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
     pullRequestReader: async () => { pullRequestReaderCalls += 1; return { status: "ready", checkedAt: null, items: [] }; },
   };
-  const evidence = { session: { cwd: "C:\\synthetic", recordedGitBranch: "recorded-branch" }, pullRequestCreations: [] };
+  const evidence = { session: {
+    cwd: "C:\\synthetic", recordedGitBranch: "recorded-branch",
+    repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567",
+  }, pullRequestCreations: [] };
 
   const fromCheckpoint = resolveCheckpointRepository({ historical: true, evidence, snapshot: null, ...deps });
   assert.equal(fromCheckpoint.repository.branch, "recorded-branch");
