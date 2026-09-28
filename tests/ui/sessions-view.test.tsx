@@ -72,7 +72,7 @@ describe("Sessions view", () => {
       agentCount: 3,
       activeAgentCount: 1,
       latestContextTotal: 123_000,
-      progress: { phase: "implementing", percent: 42, confidence: "high" as const, reportedAt: loading.updatedAt },
+      progress: { phase: "implementing" as const, percent: 42, confidence: "high" as const, reportedAt: loading.updatedAt },
     };
     view.rerender(<SessionCatalogProvider sessions={[ready]}><SessionsView /></SessionCatalogProvider>);
 

@@ -5,6 +5,7 @@ import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
 import { projectSessionCacheTiming } from "./session-cache-timing.mjs";
 import { createSessionCatalogInventory } from "./session-catalog-inventory.mjs";
+import { scanProviderHeaders } from "./session-header-scan.mjs";
 import { MAX_CATALOG_SHELL_ROWS, catalogSourceScopeKey, catalogStructure, compareCatalogEntries, downgradeRestoredLifecycle, openLiveDeadline, publicCatalogEntry, qualifiedSessionId } from "./session-catalog-runtime.mjs";
 
 const OPEN_LIVE_WINDOW_MS = 5 * 60_000;
@@ -574,28 +575,9 @@ export function createSessionObservationCoordinator(options = {}) {
       if (stopped || signal?.aborted) return;
       catalogInventory.configureProviders((registry.providers || []).map((provider) => provider.id), { scopeKey: catalogSourceScopeKey(registry) });
       catalogInventory.initialize();
-    const scans = new Map();
-    for (const provider of registry.providers || []) {
-      const token = catalogInventory.beginProvider(provider.id);
-      if (token) scans.set(provider.id, token);
-    }
-      await Promise.allSettled([...scans].map(async ([providerId, token]) => {
-      let complete = false;
-      try {
-        const outcome = await registry.enumerateSessionHeaders(providerId, {
-          signal,
-          onBatch: (headers) => {
-            if (stopped || signal?.aborted) return false;
-            const accepted = catalogInventory.upsertHeaders(providerId, headers, token);
-            if (accepted) scheduleCatalogCommit(0);
-            return accepted;
-          },
-        });
-        complete = outcome?.complete === true;
-      } catch { /* finishProvider preserves the previous committed headers */ }
-      if (!stopped && !signal?.aborted) catalogInventory.finishProvider(providerId, token, { complete });
-      scheduleCatalogCommit(0);
-      }));
+      await scanProviderHeaders({
+        registry, catalogInventory, signal, isStopped: () => stopped, onChange: () => scheduleCatalogCommit(0),
+      });
     } finally {
       headerScanRunning = false;
       if (!stopped && !signal?.aborted && typeof registry.enumerateSessionHeaders === "function") {
