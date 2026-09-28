@@ -253,9 +253,9 @@ export function projectProviderSessionEvidence({
     session: {
       id: sessionId,
       title: evidence.session.title,
-      project: sessionId.startsWith("codex:") && !(evidence.session.repositoryAttribution === "single" && /^repo-[a-f0-9]{24}$/u.test(evidence.session.repositoryId || ""))
-        ? evidence.session.repositoryAttribution === "multiple" ? "Multiple repositories" : "Unknown project"
-        : evidence.session.project,
+      // Every provider names the project the same way (see monitor/session-identity.mjs):
+      // provider evidence already carries the resolved project string.
+      project: evidence.session.project,
       // Compatibility field only; recognized roots and provider cwd are private.
       cwd: "",
       ...(evidence.session.repositoryAttribution === "single" && /^repo-[a-f0-9]{24}$/u.test(evidence.session.repositoryId || "")

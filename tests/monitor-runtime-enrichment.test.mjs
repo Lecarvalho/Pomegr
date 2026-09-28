@@ -105,12 +105,14 @@ function runtimeFixture(options = {}) {
   return createMonitorRuntime({ ...options, providerRegistry: registry });
 }
 
-test("legacy Codex checkpoint labels cannot claim a repository before mutation attribution", async () => {
+test("legacy Codex checkpoint labels name the project but cannot claim a repository before attribution", async () => {
   const evidence = sessionEvidence({ historical: true, branch: "feat/clapline" });
   evidence.session.project = "Clapline";
   const runtime = runtimeFixture({ evidence, provider: { ...provider, id: "codex" } });
   const state = await runtime.analyze("codex:legacy");
-  assert.equal(state.session.project, "Unknown project");
+  // The launch directory names the project for every provider (approved 2026-09-27);
+  // without a single-repository attribution no repository or branch is exposed.
+  assert.equal(state.session.project, "Clapline");
   assert.equal(state.session.repository.available, false);
   assert.equal(JSON.stringify(state).includes("feat/clapline"), false);
   evidence.session.repositoryAttribution = "single";

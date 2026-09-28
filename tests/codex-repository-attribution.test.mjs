@@ -51,7 +51,10 @@ async function providerWithEvidence(t, targets) {
   });
   await inventory.ready;
   provider.setRepositoryResolver(inventory.resolveRepository);
-  assert.equal((await provider.listSessions())[0].project, "Unknown project", "launch metadata alone is not repository attribution");
+  // The launch directory is a plain (non-Git) temp directory here, so before any
+  // mutation is proven the session-identity rule names the project after that
+  // directory itself rather than claiming an unproven repository.
+  assert.equal((await provider.listSessions())[0].project, path.basename(launch), "a non-Git launch directory still names the project by its own basename");
   const evidence = await provider.readSession("attribution-session", { historical: true });
   return { evidence, provider, inventory, launch };
 }
@@ -68,6 +71,50 @@ test("Codex provider binds a mutation outside launch cwd to the real repository 
   assert.equal(JSON.stringify(parsed).includes(repository), false);
   assert.equal(JSON.stringify(parsed).includes(launch), false);
   assert.equal(provider.repositoryAttributionForSession("attribution-session")?.state, "single");
+});
+
+test("Codex provider names the project from the launch directory when it is itself a Git repository, with no proven mutation and no restart memory", async (t) => {
+  const codexHome = await temporaryDirectory(t, "pomegr-codex-attribution-home-");
+  const launchRepository = await gitRepository(t, "pomegr-codex-attribution-launch-");
+  const nestedLaunchCwd = path.join(launchRepository, "src");
+  const rollout = path.join(codexHome, "sessions", "2026", "09", "27", "rollout-launch.jsonl");
+  await mkdir(path.dirname(rollout), { recursive: true });
+  const records = [{ type: "session_meta", timestamp: "2026-09-27T10:00:00.000Z", payload: {
+    id: "launch-session", cwd: nestedLaunchCwd, source: "cli", git: { branch: "codex/clapline" },
+  } }];
+  await writeFile(rollout, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+  const provider = createCodexProvider({ codexHome, cacheMs: 0, includeArchived: false });
+  const registry = createProviderRegistry([provider]);
+  const inventory = createRepositoryInventoryRuntime({ registry, persistence: false, storeFile: path.join(codexHome, "inventory.json") });
+  await inventory.ready;
+  provider.setRepositoryResolver(inventory.resolveRepository);
+  const { repositoryId } = await inventory.resolveRepository(launchRepository, { requireGit: true });
+
+  // A fresh provider (in-memory attribution tracker is empty, as after a restart)
+  // and no completed structured file edit yet: catalog rows must still show the
+  // real repository, resolved purely from the launch cwd.
+  const catalog = await provider.listSessions();
+  assert.equal(catalog[0].project, path.basename(launchRepository));
+  assert.equal(JSON.stringify(catalog).includes(launchRepository), false);
+  assert.equal(JSON.stringify(catalog).includes(nestedLaunchCwd), false);
+
+  const headers = [];
+  await provider.enumerateSessionHeaders({ onBatch: (batch) => { headers.push(...batch); return true; } });
+  const header = headers.find((entry) => entry.localId === "launch-session");
+  assert.equal(header.project, path.basename(launchRepository));
+  assert.equal(header.repositoryId, repositoryId);
+  assert.equal(JSON.stringify(headers).includes(launchRepository), false);
+  assert.equal(JSON.stringify(headers).includes(nestedLaunchCwd), false);
+
+  const evidence = await provider.readSession("launch-session", { historical: true });
+  const parsed = parseProviderSessionEvidence(evidence);
+  assert.equal(parsed.session.project, path.basename(launchRepository));
+  assert.equal(parsed.session.repositoryAttribution, "single");
+  assert.equal(parsed.session.repositoryId, repositoryId);
+  assert.equal(parsed.session.recordedGitBranch, "codex/clapline", "the launch directory's own branch validates against its own repository");
+  assert.equal(JSON.stringify(parsed).includes(launchRepository), false);
+  assert.equal(JSON.stringify(parsed).includes(nestedLaunchCwd), false);
+  assert.equal(provider.repositoryAttributionForSession("launch-session")?.state, "single");
 });
 
 test("Codex provider marks two proven mutation repositories as multiple and keeps each binding", async (t) => {

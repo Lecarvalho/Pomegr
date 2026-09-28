@@ -679,12 +679,26 @@ Current-window correlation considers bounded live and recently updated completed
 
 ## Git state
 
-Codex repository attribution uses successful structured file mutations. A launch or
-recorded cwd is retained privately as provider evidence; a read-only visit to another
-checkout does not replace the repository proven by those mutations. Targets outside
-the launch cwd may establish another recognized repository. Multiple proven repositories
+Codex repository attribution follows one provider-neutral rule (approved by the product
+owner on 2026-09-27; see `monitor/session-identity.mjs`): the launch or recorded cwd
+names the project when it resolves to a recognized Git repository, and successful
+structured file mutations refine that project — unchanged when they land in the same
+repository, to a single other recognized repository when they do not. Targets outside
+the launch cwd may establish that other repository. Multiple proven repositories still
 produce **Multiple repositories** and no single-repository Git state or combined touched-file
-list. Their recorded file histories remain separated by repository identity.
+list. Their recorded file histories remain separated by repository identity. A read-only
+visit to another checkout is never a mutation and never changes attribution.
+
+When the repository lookup answers that the launch directory is not in a recognized Git
+repository, the project is that directory's basename, with no repository ID. The basename
+is used only when it is a safe display name: not a drive, device or UNC host/share root, a
+dot-directory, the user's home directory, over 128 characters, or text with control
+characters. A missing launch directory, an unavailable or failing lookup, or a lookup
+slower than its bound (400 ms for a catalog row, 5 s for a full read) gives **Unknown
+project**, so a nested repository subdirectory is never named. Catalog rows reuse the
+attribution a full read established and never overwrite it; rows sharing a launch
+directory share one memoized lookup per five minutes, longer than the 60 s header rescan so a
+slow cold lookup warms the next scan instead of expiring before it.
 
 Live Git enrichment requires a root-bound recorded branch. A checkout on another branch
 cannot supply the viewed session's files, branch comparison, pull requests, or commit

@@ -198,6 +198,11 @@ export function createCodexProvider(options = {}) {
       return combined;
     } });
   const discoveredMetadata = metadataCatalog.read;
+  // Catalog rows resolve identity without hydration and never overwrite a full read's
+  // attribution; the shared rule bounds the (memoized) resolver call per row.
+  function headerSessionIdentity(localId, cwd) {
+    return repositoryAttributionTracker.headerIdentity(localId, { launchCwd: cwd, resolveRepository: repositoryResolver });
+  }
   async function listSessions(listOptions = {}) {
     const metadata = (await discoveredMetadata(listOptions)).map(owningRuntime.decorate);
     // Ownership is a separate background lane; recorded work never waits for it.
@@ -206,27 +211,23 @@ export function createCodexProvider(options = {}) {
     const liveIds = threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId);
     rolloutDiscovery.retain(liveIds);
     sourceLedger.markLive(liveIds);
-    return threads.filter(isTopLevelCodexSession)
-      .map((thread) => {
-        const attribution = repositoryAttributionTracker.get(thread.localId);
-        const project = attribution?.state === "single" ? path.basename(attribution.root) || "Repository"
-          : attribution?.state === "multiple" ? "Multiple repositories" : "Unknown project";
-        return { ...codexSessionReference(thread, sessions.get(thread.localId)), project };
-      })
+    const topLevel = threads.filter(isTopLevelCodexSession);
+    const identities = await Promise.all(topLevel.map((thread) => headerSessionIdentity(thread.localId, thread.cwd)));
+    return topLevel
+      .map((thread, index) => ({ ...codexSessionReference(thread, sessions.get(thread.localId)), project: identities[index].project }))
       .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
       .slice(0, catalogLimit).sort(compareCodexMetadata);
   }
   /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
   async function enumerateSessionHeaders(options = {}) {
     const { onBatch, signal } = options;
-    const normalizeHeader = (header) => {
-        const attribution = repositoryAttributionTracker.get(header.localId);
+    const normalizeHeader = async (header) => {
+        const identity = await headerSessionIdentity(header.localId, header.cwd);
         return {
           localId: header.localId,
           title: header.title,
-          project: attribution?.state === "single" ? path.basename(attribution.root) || "Repository"
-            : attribution?.state === "multiple" ? "Multiple repositories" : "Unknown project",
-          repositoryId: attribution?.state === "single" ? attribution.repositoryId : null,
+          project: identity.project,
+          repositoryId: identity.state === "single" ? identity.repositoryId : null,
           createdAt: header.createdAt || header.updatedAt,
           updatedAt: header.updatedAt,
           isLive: false,
@@ -234,7 +235,7 @@ export function createCodexProvider(options = {}) {
           activityStatus: "unknown",
         };
       };
-    const emit = (headers) => onBatch(headers.map(normalizeHeader));
+    const emit = async (headers) => onBatch(await Promise.all(headers.map(normalizeHeader)));
     const onHeader = (header) => sourceLedger.ingestHeaders([{ file: header.rolloutFile, header: codexHeaderToLedgerHeader(header) }]);
     const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit, onHeader });
     const appServerHeaders = await appServerSessions.enumerateSessionHeaders({ signal, onBatch: emit });
@@ -552,22 +553,13 @@ export function createCodexProvider(options = {}) {
       onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
     });
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
-    const repositoryAttribution = repositoryAttributionTracker.remember(metadata.localId, provenRepositories);
-    let recordedGitBranch = "";
-    if (repositoryAttribution.state === "single" && metadata.recordedGitBranch && typeof repositoryResolver === "function") {
-      try {
-        const launchRepository = await repositoryResolver(metadata.cwd);
-        if (launchRepository?.repositoryId === repositoryAttribution.repositoryId) {
-          recordedGitBranch = metadata.recordedGitBranch;
-        }
-      } catch { /* branch evidence stays unavailable when its recorded cwd cannot be proven */ }
-    }
-    if (repositoryAttribution.state === "single") {
-      repositoryAttributionTracker.set(metadata.localId, { ...repositoryAttribution, recordedBranch: recordedGitBranch || null });
-    }
-    const attributedProject = repositoryAttribution.state === "single"
-      ? path.basename(repositoryAttribution.root) || "Repository"
-      : repositoryAttribution.state === "multiple" ? "Multiple repositories" : "Unknown project";
+    // The launch directory names the project unless proven mutations point elsewhere
+    // (approved by the product owner on 2026-09-27); see monitor/session-identity.mjs.
+    const identity = await repositoryAttributionTracker.resolveIdentity(metadata.localId, {
+      launchCwd: metadata.cwd, recordedBranch: metadata.recordedGitBranch, resolveRepository: repositoryResolver, bindings: provenRepositories,
+    });
+    const recordedGitBranch = identity.recordedBranch || "";
+    const attributedProject = identity.project;
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
     stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
     const callsByActor = new Map();
@@ -621,8 +613,8 @@ export function createCodexProvider(options = {}) {
         title: metadata.title,
         project: attributedProject,
         cwd: metadata.cwd,
-        repositoryId: repositoryAttribution.state === "single" ? repositoryAttribution.repositoryId : null,
-        repositoryAttribution: repositoryAttribution.state,
+        repositoryId: identity.state === "single" ? identity.repositoryId : null,
+        repositoryAttribution: identity.state,
         startedAt,
         updatedAt,
         recordedGitBranch,

@@ -2418,13 +2418,17 @@ repository resolver, before strict normalized evidence is committed. Each accept
 has its own recognized root and normalized repository identity, including targets outside
 the launch cwd. Relative targets require a recorded tool/turn working directory; shell
 command text cannot establish that directory or a file write. A move must validate both
-paths within the same recognized repository. The launch/recorded cwd remains private
-provider evidence and never overrides a proven mutation repository. The public compatibility
+paths within the same recognized repository. The launch/recorded cwd names the session's
+project unless a proven mutation repository points elsewhere (approved by the product
+owner on 2026-09-27; see `monitor/session-identity.mjs`); the cwd itself remains private
+provider evidence. The public compatibility
 `session.cwd` field is empty; roots and raw target inputs never enter browser state.
 
-Private root bindings accumulate across bounded live updates. A single proven repository
-can supply the project association; multiple proven repositories clear the single-repository
-association and leave its Git and touched-file summary unavailable. Per-repository file
+Private root bindings accumulate across bounded live updates. The recognized launch
+repository supplies the project association unless a proven mutation repository refines
+it to a single other repository (approved by the product owner on 2026-09-27); two or
+more distinct proven repositories still clear the single-repository association and
+leave its Git and touched-file summary unavailable. Per-repository file
 listings retain their separately bound records. Catalog projections use the committed
 project and clear obsolete repository IDs instead of falling back to earlier catalog rows.
 Delayed association results are accepted only for the binding that requested them.
