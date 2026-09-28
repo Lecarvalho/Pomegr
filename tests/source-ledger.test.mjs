@@ -263,3 +263,26 @@ test("closure depth does not depend on ingestion order", () => {
   ledger.ingestHeaders(chain.reverse().map((item) => ({ file: null, header: item })));
   assert.equal(ledger.family("link-0").length, 18);
 });
+
+test("a path whose realpath failed once converges on its canonical key after it resolves", async (context) => {
+  const realFile = await tempFile(context, "late.jsonl", 16);
+  const aliasFile = path.join(path.dirname(realFile), "alias-dir", "late.jsonl");
+  let aliasResolves = false;
+  const operations = {
+    ...fs,
+    statSync: (target, ...rest) => fs.statSync(target === aliasFile ? realFile : target, ...rest),
+    realpathSync: (target) => {
+      if (target !== aliasFile) return fs.realpathSync(target);
+      if (!aliasResolves) throw Object.assign(new Error("transient"), { code: "EBUSY" });
+      return fs.realpathSync(realFile);
+    },
+  };
+  let parses = 0;
+  const ledger = createSourceLedger({ now: () => 1000, fs: operations, parseHeader: () => { parses += 1; return header({ localId: "late" }); } });
+  ledger.ingestHeaders([{ file: realFile, header: header({ localId: "late" }) }]);
+  ledger.cachedHeader(aliasFile);
+  aliasResolves = true;
+  assert.deepEqual(ledger.noticeSource(aliasFile), { localId: "late", isNew: false });
+  assert.equal(parses, 0, "once the alias resolves it is recognized under the real path, not re-parsed");
+  assert.equal(ledger.stats().headers, 1, "the alias must not keep a second header key after it resolves");
+});

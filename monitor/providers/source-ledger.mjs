@@ -49,14 +49,17 @@ function statGeneration(file, operations) {
  * resolution so both forms converge on one identity instead of shadowing each other.
  * Resolution is memoized per input string (bounded, LRU-ish) so a file that only appends
  * pays the `realpathSync` cost once, not on every event. A path that cannot be resolved
- * (not yet created, a transient error) keys on its own literal string instead of throwing.
+ * (not yet created, a transient error) keys on its own literal string instead of throwing,
+ * and is not memoized, so a later successful resolution converges on the canonical key.
  */
 function canonicalPathKey(file, operations, cache, limit) {
   if (typeof file !== "string" || !file) return file;
   const cached = cache.get(file);
   if (cached !== undefined) return cached;
   let resolved;
-  try { resolved = operations.realpathSync(file); } catch { resolved = file; }
+  try { resolved = operations.realpathSync(file); } catch {
+    return process.platform === "win32" ? file.toLowerCase() : file;
+  }
   const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
   cache.set(file, key);
   while (cache.size > limit) cache.delete(cache.keys().next().value);

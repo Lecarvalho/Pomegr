@@ -42,6 +42,8 @@ import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifec
 import { claudeFiveHourLimitRejections, createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
 import { createClaudeLiveUsageSnapshotReader } from "./claude-live-usage-snapshots.mjs";
 import { FILE_SUFFIX_SAMPLE_BYTES, fileIdentity, readFileSuffix } from "./claude-file-generation.mjs";
+import { createClaudeTailCache, readJsonlTailCold } from "./claude-tail-cache.mjs";
+import { createRepositoryPathValidator } from "../repository-path.mjs";
 import {
   actorFor,
   projectCwd,
@@ -68,20 +70,6 @@ import { createSourceLedger } from "./source-ledger.mjs";
 import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./claude-session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
-function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
-  const stat = statSafe(file);
-  if (!stat) return [];
-  const bytes = Math.min(stat.size, maxBytes);
-  const buffer = Buffer.alloc(bytes);
-  const fd = fs.openSync(file, "r");
-  try { fs.readSync(fd, buffer, 0, bytes, Math.max(0, stat.size - bytes)); }
-  finally { fs.closeSync(fd); }
-  let text = buffer.toString("utf8");
-  if (stat.size > bytes) text = text.slice(text.indexOf("\n") + 1);
-  return text.split(/\r?\n/).filter(Boolean).flatMap((line) => {
-    try { return [JSON.parse(line)]; } catch { return []; }
-  });
-}
 
 export function createClaudeProvider(options = {}) {
   const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
@@ -97,6 +85,12 @@ export function createClaudeProvider(options = {}) {
   const titleEnrichment = createClaudeCatalogTitleEnrichment({ statSafe, scanTitleState: options.scanTitleState });
   const contextMachineryCache = new Map();
   const contextCompactionsCache = new Map();
+  // Parsed-tail cache for the 2 MiB readSession window only; the 256 KiB catalog-summary
+  // tail below is already guarded by sessionSummaryCache and reads cold via readJsonlTailCold.
+  // Injectable so tests can pre-populate and freeze cached records before exercising readSession.
+  const tailCache = options.tailCache || createClaudeTailCache({ maxBytes: MAX_BYTES_PER_FILE });
+  // One cached path validator per provider instance, shared by every boundedFileChanges call.
+  const validateFileChangePath = createRepositoryPathValidator({ now });
   const liveUsageSnapshots = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: MAX_BYTES_PER_FILE });
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
@@ -200,7 +194,7 @@ export function createClaudeProvider(options = {}) {
         sessions.push({ ...cached.value, ...liveState });
         continue;
       }
-      const records = readJsonlTail(file, MAX_SESSION_SUMMARY_BYTES);
+      const records = readJsonlTailCold(file, MAX_SESSION_SUMMARY_BYTES);
       const titleMetadata = await cachedSessionTitle(file, stat, records, { fast: fastCatalog });
       const fallbackCreatedAtMs = Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
       const value = {
@@ -243,6 +237,7 @@ export function createClaudeProvider(options = {}) {
 
   async function readSession(localSessionId = "", readOptions = {}) {
     liveUsageSnapshots.pruneMissingFiles();
+    tailCache.pruneMissingFiles();
     const resolved = resolveSession(localSessionId);
     if (!resolved) return null;
     const { mainFile, historical, registry } = resolved;
@@ -270,7 +265,7 @@ export function createClaudeProvider(options = {}) {
     const completeReads = new Map();
     for (const file of files) completeReads.set(file, completeHistory ? await readClaudeHistoryRecords(file, options.yieldControl) : null);
     if (completeHistory && [...completeReads.values()].some((item) => !item.complete)) return null;
-    const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || readJsonlTail(file)]));
+    const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || tailCache.read(file)]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
     const mainRecords = recordsByFile.get(mainFile) || [];
     const primaryStartedAt = completeHistory
@@ -384,7 +379,7 @@ export function createClaudeProvider(options = {}) {
             : [];
           const successfulOutcome = firstSuccessfulClaudeToolOutcome(toolOutcomes, content.id, timestamp);
           const fileChanges = successfulOutcome
-            ? boundedFileChanges(claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult), cwd, { forbiddenRoots: fileChangeForbiddenRoots })
+            ? boundedFileChanges(claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult), cwd, { forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath })
             : null;
           toolCalls.push({
             id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),

@@ -22,7 +22,7 @@ function mergeLiveUsageSnapshots(previous, current) {
 export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile }) {
   const cache = new Map();
   function read(file, records, actor, stat, historical, sessionId, compactionTimestamps, unlimited = false) {
-    const parsed = parseClaudeContextRecords(records, {
+    const parse = () => parseClaudeContextRecords(records, {
       actorId: actor.id,
       sourceKey: actor.id,
       fallbackTimestamp: stat.mtime.toISOString(),
@@ -32,14 +32,15 @@ export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile }) {
       includeToolUseIds: true,
       unlimited,
     });
-    if (historical || unlimited) return parsed;
+    if (historical || unlimited) return parse();
     const generation = fileGeneration(file, stat);
     if (!generation) {
       cache.delete(file);
-      return parsed;
+      return parse();
     }
     const cached = cache.get(file);
     if (!cached || cached.actorId !== actor.id) {
+      const parsed = parse();
       cache.set(file, { actorId: actor.id, generation, snapshots: parsed });
       return parsed;
     }
@@ -50,13 +51,15 @@ export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile }) {
       && generation.mtimeMs >= previous.mtimeMs
       && (generation.size > previous.size || generation.mtimeMs === previous.mtimeMs);
     if (!monotonic || !priorFileSuffixStillMatches(file, previous)) {
+      const parsed = parse();
       cache.set(file, { actorId: actor.id, generation, snapshots: parsed });
       return parsed;
     }
 
+    // An unchanged generation serves the retained snapshots, so the tail is not parsed again.
     const snapshots = generation.size === previous.size && generation.mtimeMs === previous.mtimeMs
       ? cached.snapshots
-      : mergeLiveUsageSnapshots(cached.snapshots, parsed);
+      : mergeLiveUsageSnapshots(cached.snapshots, parse());
     cache.set(file, { actorId: actor.id, generation, snapshots });
     return snapshots;
   }

@@ -23,10 +23,10 @@ function cwdRelativeCandidate(target, cwd) {
     : null;
 }
 
-function safeFileChangePath(target, cwd, forbiddenRoots) {
+function safeFileChangePath(target, cwd, forbiddenRoots, validatePath) {
   const relative = cwdRelativeCandidate(target, cwd);
   if (relative === null) return null;
-  const safePath = repositoryRelativePath(relative, cwd, { forbiddenRoots });
+  const safePath = validatePath(relative, cwd, { forbiddenRoots });
   return safePath && safePath.length <= MAX_FILE_CHANGE_PATH ? safePath : null;
 }
 
@@ -36,8 +36,12 @@ function safeFileChangePath(target, cwd, forbiddenRoots) {
  * change evidence rebased onto the session cwd. Anything outside cwd,
  * invalid, over-bound, or of an unrecognized kind is silently dropped;
  * absent evidence returns null so it never enters the checkpointed record.
+ * `validatePath` defaults to the uncached `repositoryRelativePath`; a caller
+ * revalidating the same cwd repeatedly on a hot path (one candidate per
+ * successful tool call) may inject a cached validator with the identical
+ * signature instead, one instance per provider.
  */
-export function boundedFileChanges(candidates, cwd, { forbiddenRoots = [] } = {}) {
+export function boundedFileChanges(candidates, cwd, { forbiddenRoots = [], validatePath = repositoryRelativePath } = {}) {
   if (!Array.isArray(candidates) || typeof cwd !== "string" || !cwd) return null;
   const seen = new Set();
   const changes = [];
@@ -45,11 +49,11 @@ export function boundedFileChanges(candidates, cwd, { forbiddenRoots = [] } = {}
     if (changes.length >= MAX_FILE_CHANGES) break;
     const kind = candidate?.kind;
     if (!FILE_CHANGE_KINDS.has(kind)) continue;
-    const changePath = safeFileChangePath(candidate?.target, cwd, forbiddenRoots);
+    const changePath = safeFileChangePath(candidate?.target, cwd, forbiddenRoots, validatePath);
     if (!changePath) continue;
     let previousPath = null;
     if (kind === "moved") {
-      previousPath = safeFileChangePath(candidate?.previousTarget, cwd, forbiddenRoots);
+      previousPath = safeFileChangePath(candidate?.previousTarget, cwd, forbiddenRoots, validatePath);
       if (!previousPath) continue;
     }
     const dedupeKey = `${changePath}\u0000${kind}`;

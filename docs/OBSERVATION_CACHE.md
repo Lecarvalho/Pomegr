@@ -1008,7 +1008,9 @@ realpath-resolved path (from a notification filter) for the same physical file c
 one ledger identity instead of shadowing each other, which matters for a junction- or
 symlink-aliased provider home. The memoization keeps the cost to one resolution per distinct
 path string, not per event; it holds twice the ledger's entry bound (at least 8,192 strings),
-so a warm pass over a full ledger never re-resolves every file. `cachedHeader()` performs exactly one `statSync` per call and,
+so a warm pass over a full ledger never re-resolves every file. A resolution that fails (a
+path not yet created, a transient error) keys on the literal string (lowercased on Windows) for that call only and is
+not memoized, so the path converges on its canonical key once it resolves. `cachedHeader()` performs exactly one `statSync` per call and,
 on a hit, also refreshes the owning identity's growth observation, so `recency()` stays
 current for any caller that only ever reaches a file through `cachedHeader()` (such as
 Codex's family-member re-read), not only through `noticeSource()`.
@@ -1509,6 +1511,36 @@ reachability.
   selected foreground work and cache serving to proceed between maintenance units.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
+- A warm Claude read parses only records appended since the previous read. A per-file
+  parsed-tail cache holds the same last-2 MiB window of complete records that a cold read
+  returns, validated by file identity, size and a suffix digest. An append parses only the new
+  complete records and trims the window by bytes; a replacement, truncation, or rewrite that
+  changes the sampled 256-byte suffix drops the entry and reads cold (the same generation rule
+  as the other Claude tail readers). An unfinished trailing record is never cached. The cache is
+  bounded to 64 MiB of retained window bytes and 512 files (least recently used first),
+  drops files that no longer exist, and is never persisted or exposed. Its output must equal a
+  cold read at every record boundary.
+- Claude file-change paths go through a per-provider validated-path cache in front of the
+  repository-path validator. Entries are keyed by the recognized root's realpath and file
+  identity, the forbidden roots and the candidate path, and live for 5 s (4,096 entries). The
+  root itself is re-resolved at most once a second, so a replaced or retargeted root stops
+  serving its entries within one second; a miss is cached only when the root was unchanged
+  on both sides of its validation. Links inside the root and the forbidden roots are not
+  re-checked until an entry expires, so a link swapped within those 5 s keeps its earlier
+  answer; a newly seen path is always validated against the current filesystem. A rejection
+  is cached as a rejection; syntax rejections never reach the cache or the filesystem. Other
+  callers use the uncached validator.
+- A live Claude usage-snapshot read whose file generation has not changed serves the retained
+  snapshots without parsing the tail again. Work-kind classification memoizes its bounded
+  WorkKind result by a SHA-256 digest of the classified text (4,096 entries); the text itself
+  is not retained.
+- Codex folds each bounded live delta into its complete normalized story through the shared,
+  provider-neutral `session-fold.mjs`. The provider declares a per-field policy: keyed unions
+  (usage snapshots, tool calls, activity, compactions, pull-request creations) with a bound
+  and a preferred merge on collision, an OR of rule flags, a custom agent merge that depends on
+  the merged tool calls, and retain-if-absent only for the SessionStart plugin marker, which
+  cannot be legitimately cleared. Every undeclared field takes the delta's value, so cleared
+  signals, progress and status stay cleared.
 - Codex fallback discovery collapses multiple rollout generations carrying the same
   top-level session ID into one catalog entry, retaining the earliest recorded creation
   time while the newest rollout remains the private source for current observation.
