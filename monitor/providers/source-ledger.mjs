@@ -5,6 +5,7 @@ const MAX_FAMILY_IDENTITIES = 500;
 const MAX_IDENTITY_LENGTH = 128;
 const DEFAULT_MISS_TTL_MS = 60_000;
 const MAX_REMEMBERED_MISSES = 1024;
+const MIN_CANONICAL_PATH_CACHE = 8_192;
 
 function safeIdentity(value) {
   return typeof value === "string" && value.length > 0 && value.length <= MAX_IDENTITY_LENGTH ? value : null;
@@ -38,6 +39,28 @@ function statGeneration(file, operations) {
   try { stat = operations.statSync(file); } catch { return null; }
   if (!stat.isFile()) return null;
   return { identity: `${stat.dev ?? ""}:${stat.ino ?? ""}`, size: stat.size };
+}
+
+/**
+ * The same underlying file can reach the ledger under two different literal path strings:
+ * an adapter's configured-root path from a directory listing, and a realpath-resolved path
+ * from a notification filter (a junction or symlinked provider home makes these genuinely
+ * different strings). Every map key derived from a file path goes through this one
+ * resolution so both forms converge on one identity instead of shadowing each other.
+ * Resolution is memoized per input string (bounded, LRU-ish) so a file that only appends
+ * pays the `realpathSync` cost once, not on every event. A path that cannot be resolved
+ * (not yet created, a transient error) keys on its own literal string instead of throwing.
+ */
+function canonicalPathKey(file, operations, cache, limit) {
+  if (typeof file !== "string" || !file) return file;
+  const cached = cache.get(file);
+  if (cached !== undefined) return cached;
+  let resolved;
+  try { resolved = operations.realpathSync(file); } catch { resolved = file; }
+  const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  cache.set(file, key);
+  while (cache.size > limit) cache.delete(cache.keys().next().value);
+  return key;
 }
 
 function preferred(candidate, existing) {
@@ -126,29 +149,35 @@ export function createSourceLedger(options = {}) {
 
   /** @type {Map<string, { header: object, file: string|null, generation: object|null, observedGrowthAt: number|null }>} */
   const bySourceId = new Map();
-  /** @type {Map<string, string>} file -> the identity that currently owns it */
+  /** @type {Map<string, string>} canonical file key -> the identity that currently owns it */
   const fileToId = new Map();
-  /** @type {Map<string, { header: object, generation: object }>} file -> its parsed header */
+  /** @type {Map<string, { header: object, generation: object }>} canonical file key -> its parsed header */
   const fileHeaders = new Map();
   const liveIds = new Set();
   /** @type {Map<string, number>} identity -> time until which a cold miss is remembered */
   const misses = new Map();
+  /** @type {Map<string, string>} literal path -> canonical key (see `canonicalPathKey`) */
+  const canonicalCache = new Map();
+  // Two path forms per file at most (configured root and realpath), so a warm pass over a
+  // full ledger never thrashes the memo.
+  const canonicalLimit = Math.max(MIN_CANONICAL_PATH_CACHE, maxEntries * 2);
+  const canon = (file) => canonicalPathKey(file, operations, canonicalCache, canonicalLimit);
 
   function removeEntry(id) {
     const entry = bySourceId.get(id);
     if (!entry) return;
     bySourceId.delete(id);
-    if (entry.file && fileToId.get(entry.file) === id) fileToId.delete(entry.file);
+    if (entry.file && fileToId.get(canon(entry.file)) === id) fileToId.delete(canon(entry.file));
   }
 
-  function detachFile(file, exceptId) {
-    const owner = fileToId.get(file);
+  function detachFile(key, exceptId) {
+    const owner = fileToId.get(key);
     if (!owner || owner === exceptId) return;
-    fileToId.delete(file);
+    fileToId.delete(key);
     const stale = bySourceId.get(owner);
     // The path now carries a different identity. The stale identity keeps its topology
     // record but can no longer resolve to a file.
-    if (stale && stale.file === file) stale.file = null;
+    if (stale && stale.file && canon(stale.file) === key) stale.file = null;
   }
 
   function evictIfNeeded() {
@@ -161,20 +190,29 @@ export function createSourceLedger(options = {}) {
 
   /** The cached header of a file whose filesystem identity is unchanged and which has only
    * grown since it was parsed (an append-only transcript keeps its header), else null.
-   * Cached per path, so an alias path or a non-preferred copy is not parsed again either. */
+   * Cached per canonical path, so an alias path or a non-preferred copy is not parsed again
+   * either. The single stat this performs also refreshes the owning identity's growth
+   * observation, so a caller that only ever reaches a file through this method (rather than
+   * `noticeSource`) still keeps `recency()` current. */
   function cachedHeader(file) {
-    const cached = typeof file === "string" ? fileHeaders.get(file) : null;
+    const key = canon(file);
+    const cached = typeof key === "string" ? fileHeaders.get(key) : null;
     if (!cached) return null;
     const current = statGeneration(file, operations);
-    return current && current.identity === cached.generation.identity && current.size >= cached.generation.size
-      ? cached.header
-      : null;
+    if (!current || current.identity !== cached.generation.identity || current.size < cached.generation.size) return null;
+    const ownerId = fileToId.get(key);
+    const owner = ownerId ? bySourceId.get(ownerId) : null;
+    if (owner && current.size > (owner.generation?.size ?? 0)) {
+      owner.generation = current;
+      owner.observedGrowthAt = now();
+    }
+    return cached.header;
   }
 
-  function rememberFileHeader(file, header, generation) {
-    if (!file || !generation) return;
-    fileHeaders.delete(file);
-    fileHeaders.set(file, { header, generation });
+  function rememberFileHeader(key, header, generation) {
+    if (!key || !generation) return;
+    fileHeaders.delete(key);
+    fileHeaders.set(key, { header, generation });
     while (fileHeaders.size > maxEntries) fileHeaders.delete(fileHeaders.keys().next().value);
   }
 
@@ -184,25 +222,27 @@ export function createSourceLedger(options = {}) {
     misses.delete(header.localId);
     const previous = bySourceId.get(header.localId);
     const filePath = typeof file === "string" && file ? file : previous?.file || null;
-    if (typeof file === "string" && file) rememberFileHeader(file, header, statGeneration(file, operations));
-    if (previous?.file && filePath && previous.file !== filePath) {
+    const filePathKey = filePath ? canon(filePath) : null;
+    const previousKey = previous?.file ? canon(previous.file) : null;
+    if (typeof file === "string" && file) rememberFileHeader(filePathKey, header, statGeneration(file, operations));
+    if (previous?.file && filePath && previousKey !== filePathKey) {
       // Two files carry one identity (an archived copy, a move). Keep the preferred file
       // while it still exists; otherwise follow the new path.
       if (statGeneration(previous.file, operations) && !preferred(header, previous.header)) return header.localId;
-      if (fileToId.get(previous.file) === header.localId) fileToId.delete(previous.file);
+      if (fileToId.get(previousKey) === header.localId) fileToId.delete(previousKey);
     }
-    if (filePath) detachFile(filePath, header.localId);
+    if (filePathKey) detachFile(filePathKey, header.localId);
     const generation = filePath ? statGeneration(filePath, operations) : null;
     let observedGrowthAt = previous?.observedGrowthAt ?? null;
     if (generation) {
-      const priorGeneration = previous?.file === filePath ? previous.generation : null;
+      const priorGeneration = previousKey === filePathKey ? previous.generation : null;
       const rotated = Boolean(priorGeneration?.identity) && priorGeneration.identity !== generation.identity;
       const grew = !rotated && Boolean(priorGeneration) && generation.size > priorGeneration.size;
       if (!priorGeneration || rotated || grew) observedGrowthAt = now();
     }
     bySourceId.delete(header.localId);
     bySourceId.set(header.localId, { header, file: filePath, generation, observedGrowthAt });
-    if (filePath) fileToId.set(filePath, header.localId);
+    if (filePathKey) fileToId.set(filePathKey, header.localId);
     evictIfNeeded();
     return header.localId;
   }
@@ -221,20 +261,12 @@ export function createSourceLedger(options = {}) {
     cachedHeader,
 
     /** Index one file: a file already indexed with the same filesystem identity is not
-     * parsed again; otherwise one bounded header parse runs. Returns null when the file
-     * yields no safe header. */
+     * parsed again (one stat, via `cachedHeader`, which also refreshes growth); otherwise
+     * one bounded header parse runs. Returns null when the file yields no safe header. */
     noticeSource(file) {
       if (typeof file !== "string" || !file || !parseHeader) return null;
       const known = cachedHeader(file);
-      if (known) {
-        const entry = bySourceId.get(known.localId);
-        const generation = statGeneration(file, operations);
-        if (entry && generation && generation.size > (entry.generation?.size ?? 0)) {
-          entry.generation = generation;
-          entry.observedGrowthAt = now();
-        }
-        return { localId: known.localId, isNew: false };
-      }
+      if (known) return { localId: known.localId, isNew: false };
       let header;
       try { header = parseHeader(file); } catch { return null; }
       const localId = safeIdentity(header?.localId);

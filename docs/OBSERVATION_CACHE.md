@@ -1001,7 +1001,20 @@ paths and headers held by the ledger are monitor-private working state: they nev
 evidence, checkpoints, diagnostics, logs, or browser responses, and the ledger's diagnostic
 surface reports bounded counts only.
 
-Codex resolves a selected session's rollout family with `resolveCodexRolloutFamily`
+Every map key the ledger derives from a file path (for cached-header and file-ownership
+lookups) goes through one path-canonicalization step first, memoized per literal input
+string. This is what lets a configured-root path (from a directory listing) and a
+realpath-resolved path (from a notification filter) for the same physical file converge on
+one ledger identity instead of shadowing each other, which matters for a junction- or
+symlink-aliased provider home. The memoization keeps the cost to one resolution per distinct
+path string, not per event; it holds twice the ledger's entry bound (at least 8,192 strings),
+so a warm pass over a full ledger never re-resolves every file. `cachedHeader()` performs exactly one `statSync` per call and,
+on a hit, also refreshes the owning identity's growth observation, so `recency()` stays
+current for any caller that only ever reaches a file through `cachedHeader()` (such as
+Codex's family-member re-read), not only through `noticeSource()`.
+
+Both Claude and Codex resolve their selected session through this same ledger contract, each
+with its own instance. Codex resolves a selected session's rollout family with `resolveCodexRolloutFamily`
 (`monitor/providers/codex-session-metadata.mjs`). The ledger locates the root's file.
 Descendants are always created after their root, so the adapter lists the dated
 `YYYY/MM/DD` rollout directories from one day before the root file's own directory on,
@@ -1535,13 +1548,27 @@ reachability.
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
   transcript or the generic live tail for session-story normalization.
-- Claude resolves an already-known session's main file from a bounded, provider-private
-  index instead of walking its whole projects tree again; the index is fed by every
-  discovery pass the adapter already runs and is re-verified with one file stat before
-  being trusted, falling back to a full walk on a miss or a stale entry (the file is gone
-  or a different file now lives at that path). When one session ID exists in several
-  project folders, the index keeps the copy discovery would choose. Native and Remote
-  Control owner validation reuses a validated owner identity for 1.5 seconds. A
+- Claude resolves an already-known session's main file through the shared source ledger
+  (see "Source ledger" above) instead of walking its whole projects tree again. Claude
+  sessions carry no provider-native parent/fork/group relation, so the adapter only uses
+  `locate()`/`noticeSource()`, never `family()`: every discovery pass ingests each listed
+  `{file, activityMs}` as a header named from the file's own basename, with `activityMs` as
+  the ledger's preference value, so a duplicated session ID across project folders keeps
+  discovery's own newest-activity copy independent of ingestion order. Each pass is ingested
+  oldest first, so over the ledger's 4,096-entry bound the least recent sessions are evicted,
+  never the newest. A located file is re-verified with one file stat before being trusted
+  (a same-path replacement carries the same session ID and is read afresh); a missing file
+  falls back to one full walk. Session detail, paged history keys, and transcript-path copy
+  all resolve through this lookup. An identity the ledger cannot serve (unknown, or its file
+  is gone) falls back to a full walk; if that walk still finds nothing, the miss is
+  remembered for the ledger's own miss TTL, so a repeated read for the same ID does not walk
+  again until the TTL expires or a notification ingests the ID first. A filtered
+  new-transcript notification (a `.jsonl` name outside any session's `subagents` tree — the
+  same files discovery lists as main transcripts — plus realpath containment in the projects
+  root, the same shape as Codex's `trustedRolloutPath` filter) is noticed directly under its
+  configured-root path, clearing any remembered miss without waiting for the next full
+  discovery pass. Native and Remote Control owner validation
+  reuses a validated owner identity for 1.5 seconds. A
   non-spawning liveness check retires a positive identity as soon as its process is gone.
   After 1.5 seconds, on Windows, the last answer is served while one asynchronous process
   enumeration re-confirms the start identity, so a read inside that five-second bound never

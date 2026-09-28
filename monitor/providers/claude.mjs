@@ -64,7 +64,8 @@ import { resolveClaudeProfileRoots } from "./claude-profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "./session-history.mjs";
 import { readClaudeHistoryRecords } from "./claude-history-reader.mjs";
 import { createClaudeSessionWorkStartReader } from "./claude-session-work-start.mjs";
-import { createClaudeSessionLocator, createClaudeSessionResolver } from "./claude-session-locator.mjs";
+import { createSourceLedger } from "./source-ledger.mjs";
+import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./claude-session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
 function readJsonlTail(file, maxBytes = MAX_BYTES_PER_FILE) {
@@ -100,7 +101,9 @@ export function createClaudeProvider(options = {}) {
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const historyCache = new Map();
-  const sessionLocator = createClaudeSessionLocator();
+  // Same 4,096-entry bound the prior Claude-private locator used; Claude sessions have no
+  // provider-native family relation, so only locate()/noticeSource() are exercised here.
+  const sourceLedger = createSourceLedger({ parseHeader: parseClaudeSessionLedgerHeader, maxEntries: 4_096, now });
   const transcriptPathsBySessionId = new Map();
   const sessionWorkStartReader = createClaudeSessionWorkStartReader({ yieldControl: options.yieldControl });
   const catalogPresence = createClaudeCatalogPresence();
@@ -131,8 +134,7 @@ export function createClaudeProvider(options = {}) {
   const readActivity = createClaudeActivityReader();
   const nativeStatus = createClaudeSessionStatusReader({ configRoot, fetch: options.fetch || globalThis.fetch, now });
   function historyKey(localSessionId) {
-    const { files, liveFile } = discoveredSessions();
-    const main = explicitSession && path.basename(explicitSession, ".jsonl") === localSessionId ? explicitSession : files.find((item) => path.basename(item.file, ".jsonl") === localSessionId)?.file || (localSessionId ? null : liveFile);
+    const main = resolveSession(localSessionId)?.mainFile;
     if (!main) return null;
     const subagents = walkJsonl(path.join(path.dirname(main), path.basename(main, ".jsonl"), "subagents"), 1);
     const workflows = discoverClaudeWorkflowAgents(path.join(path.dirname(main), path.basename(main, ".jsonl"), "subagents")).files.map((item) => item.file);
@@ -149,7 +151,7 @@ export function createClaudeProvider(options = {}) {
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
       files.unshift({ file: explicitFile, activityMs: statSafe(explicitFile)?.mtimeMs || 0 });
     }
-    sessionLocator.index(files);
+    ingestClaudeDiscovery(sourceLedger, files);
     const filesBySessionId = new Map(files.map(({ file }) => [path.basename(file, ".jsonl"), file]));
     const preferredRegisteredId = preferredRegisteredSessionId(registry, [...filesBySessionId.keys()]);
     const liveFile = explicitFile || filesBySessionId.get(preferredRegisteredId) || files[0]?.file || null;
@@ -164,6 +166,7 @@ export function createClaudeProvider(options = {}) {
   async function listSessions(listOptions = {}) {
     const fastCatalog = listOptions.fastCatalog === true;
     const { files, liveFiles, registry, closedSessionIds } = discoveredSessions();
+    sourceLedger.markLive([...liveFiles].map((file) => path.basename(file, ".jsonl")));
     backgroundLifecycle.prune(registry);
     const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));
     nativeStatus.apply(registry, transcriptStatusIds);
@@ -233,7 +236,7 @@ export function createClaudeProvider(options = {}) {
   }
 
   const resolveSession = createClaudeSessionResolver({
-    locator: sessionLocator, discover: discoveredSessions, readRegistry: () => registryObservation.read(),
+    ledger: sourceLedger, discover: discoveredSessions, readRegistry: () => registryObservation.read(),
     explicitFile: () => (explicitSession && fs.existsSync(explicitSession) ? explicitSession : null),
     registryAvailable: () => fs.existsSync(registryRoot), now, selectFile: selectedSessionFile,
   });
@@ -530,7 +533,7 @@ export function createClaudeProvider(options = {}) {
     if (agentId === "primary") return null;
     const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
     if (recorded && statSafe(recorded)) return recorded;
-    const mainFile = selectedSessionFile(localSessionId, discoveredSessions().files);
+    const mainFile = localSessionId ? resolveSession(localSessionId)?.mainFile : null;
     if (!mainFile) return null;
     const agentDir = path.join(path.dirname(mainFile), path.basename(mainFile, ".jsonl"), "subagents");
     return discoverClaudeWorkflowAgents(agentDir).files.find((item) => item.id === agentId)?.file
@@ -682,7 +685,7 @@ export function createClaudeProvider(options = {}) {
   }
 
   const routeClaudeSourceEvent = createClaudeSourceEventRouter(projectsRoot, {
-    registryRoot, liveSessionIds: catalogPresence.liveSessionIds,
+    registryRoot, liveSessionIds: catalogPresence.liveSessionIds, ledger: sourceLedger,
   });
   const catalogTitleUpdates = {
     subscribe(listener) {

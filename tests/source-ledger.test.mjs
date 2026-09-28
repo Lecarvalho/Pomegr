@@ -188,6 +188,71 @@ test("stats() is a bounded-count diagnostic that never carries a path or header 
   assert.doesNotMatch(serialized, /[\\/]/, "a bounded-count diagnostic must never contain a path separator");
 });
 
+test("cachedHeader() alone refreshes recency() from growth, with no separate re-ingest", async (context) => {
+  const file = await tempFile(context, "touched-only.jsonl", 16);
+  await new Promise((resolve) => { fs.utimes(file, new Date(0), new Date(0), () => resolve()); });
+  let clock = 1000;
+  const ledger = createSourceLedger({ now: () => clock });
+  ledger.ingestHeaders([{ file, header: header({ localId: "touched-only" }) }]);
+  assert.equal(ledger.recency("touched-only"), new Date(1000).toISOString());
+
+  clock = 5000;
+  await new Promise((resolve) => fs.appendFile(file, "more-bytes", resolve));
+  // A caller that only ever calls cachedHeader() (as Codex's family listing does), never
+  // ingestHeaders/noticeSource again, must still see recency() follow the growth.
+  const cached = ledger.cachedHeader(file);
+  assert.ok(cached, "the header is still valid: same identity, only larger");
+  assert.equal(ledger.recency("touched-only"), new Date(5000).toISOString());
+});
+
+test("cachedHeader() costs exactly one statSync per call on a cache hit", async (context) => {
+  const file = await tempFile(context, "one-stat.jsonl");
+  const ledger = createSourceLedger({ now: () => 1000 });
+  ledger.ingestHeaders([{ file, header: header({ localId: "one-stat" }) }]);
+  let statCalls = 0;
+  const realStatSync = fs.statSync;
+  const spy = context.mock.method(fs, "statSync", (target, ...rest) => {
+    statCalls += 1;
+    return realStatSync(target, ...rest);
+  });
+  try {
+    assert.ok(ledger.cachedHeader(file));
+  } finally {
+    spy.mock.restore();
+  }
+  assert.equal(statCalls, 1, "a cache hit must not stat the file more than once");
+});
+
+test("a file reached through an aliased directory (e.g. a junction) shares one identity with its real path", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-source-ledger-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const realDir = path.join(root, "real");
+  const aliasDir = path.join(root, "alias");
+  fs.mkdirSync(realDir);
+  const realFile = path.join(realDir, "aliased.jsonl");
+  fs.writeFileSync(realFile, "x".repeat(16));
+  try {
+    fs.symlinkSync(realDir, aliasDir, "junction");
+  } catch (error) {
+    context.skip(`platform cannot create a directory junction/symlink here: ${error.code || error.message}`);
+    return;
+  }
+  const aliasFile = path.join(aliasDir, "aliased.jsonl");
+  assert.notEqual(aliasFile, realFile, "the two literal path strings must actually differ");
+
+  const ledger = createSourceLedger({ now: () => 1000 });
+  ledger.ingestHeaders([{ file: realFile, header: header({ localId: "aliased" }) }]);
+  // The alias path resolves to the same physical file, so the ledger must recognize it as
+  // already known (one statSync, no re-parse) rather than tracking a second identity.
+  let parses = 0;
+  const ledgerWithParse = createSourceLedger({ now: () => 1000, parseHeader: () => { parses += 1; return header({ localId: "aliased" }); } });
+  ledgerWithParse.ingestHeaders([{ file: realFile, header: header({ localId: "aliased" }) }]);
+  const first = ledgerWithParse.noticeSource(aliasFile);
+  assert.deepEqual(first, { localId: "aliased", isNew: false }, "the alias path must resolve to the identity already indexed under the real path");
+  assert.equal(parses, 0, "an aliased path already known under its real path is not re-parsed");
+  assert.equal(ledger.cachedHeader(aliasFile)?.localId, "aliased", "cachedHeader also recognizes the alias");
+});
+
 test("closure depth does not depend on ingestion order", () => {
   const ledger = createSourceLedger({ now: () => 1000 });
   const chain = Array.from({ length: 18 }, (_, index) => header({

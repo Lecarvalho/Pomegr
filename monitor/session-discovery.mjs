@@ -89,3 +89,37 @@ export function findSessionById(projectsRoot, sessionId) {
   return listSessionFiles(projectsRoot)
     .find(({ file }) => path.basename(file, ".jsonl") === sessionId)?.file || null;
 }
+
+/**
+ * The single-file equivalent of `liveSessionFiles` above, for one already-resolved main
+ * file, so a fast lookup (e.g. through a session-to-file index) never needs a full-catalog
+ * liveness comparison to answer the same `historical` question `liveSessionFiles` would.
+ * Semantics are copied, not reinterpreted: an explicit session is live only if it is the
+ * selected file; a registered session is always live; a session the registry has recorded
+ * closed is never live; otherwise liveness follows recorded activity (the main file's own
+ * mtime and every file under its own `subagents` tree) within the same registry-aware
+ * window `liveSessionFiles` uses.
+ *
+ * @param {string} file
+ * @param {{explicitFile?: string | null, registrySessionIds?: Iterable<string>, closedSessionIds?: Set<string>, registryAvailable?: boolean, nowMs?: number, agentDir?: string}} [options]
+ */
+export function isClaudeSessionFileLive(file, {
+  explicitFile = null,
+  registrySessionIds,
+  closedSessionIds = new Set(),
+  registryAvailable = false,
+  nowMs = Date.now(),
+  agentDir,
+} = {}) {
+  if (explicitFile) return file === explicitFile;
+  const sessionId = path.basename(file, ".jsonl");
+  const registered = new Set(registrySessionIds || []);
+  if (registered.has(sessionId)) return true;
+  if (closedSessionIds.has(sessionId)) return false;
+  let activityMs = statSafe(file)?.mtimeMs || 0;
+  for (const child of walkJsonl(agentDir)) {
+    const childMtimeMs = statSafe(child)?.mtimeMs || 0;
+    if (childMtimeMs > activityMs) activityMs = childMtimeMs;
+  }
+  return isLiveSessionActivity(activityMs, nowMs, registryAvailable ? SESSION_REGISTRY_GRACE_MS : SESSION_LIVE_WINDOW_MS);
+}
