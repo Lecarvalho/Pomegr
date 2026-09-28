@@ -234,7 +234,7 @@ test("per-priority queue waits are also recorded for urgent and background items
   assert.equal(diagnostics.timings.queueWait.sampleCount, 0, "the aggregate stays source-event-only");
 });
 
-test("a background item promoted to urgent records its urgent wait from the promotion, not from its enqueue", async (context) => {
+test("a background item promoted by selection records its selected wait from the promotion, not from its enqueue", async (context) => {
   const controller = new AbortController();
   const releaseFirst = deferred();
   let clock = 0;
@@ -259,8 +259,8 @@ test("a background item promoted to urgent records its urgent wait from the prom
   clock += 60_000;
   await observer.hydrate("background-b");
   const timings = observer.diagnostics().timings;
-  assert.equal(timings.queueWaitUrgent.sampleCount, 1);
-  assert.equal(timings.queueWaitUrgent.maxMs, 0, "the minute spent waiting as background is not charged to the urgent lane");
+  assert.equal(timings.queueWaitSelected.sampleCount, 1);
+  assert.equal(timings.queueWaitSelected.maxMs, 0, "the minute spent waiting as background is not charged to the selected lane");
 });
 
 test("a session published soon after its own creation gets first-publication priority even though it already finished, while startup catalog sessions are exempt", async (context) => {
@@ -331,4 +331,24 @@ test("a Codex urgent source_queue record carries provider \"codex\" and lane \"u
   assert.ok(acquisition, "an acquisition_normalization span was recorded");
   assert.equal(acquisition.args.provider, "codex");
   assert.equal(acquisition.args.priorityLane, "urgent");
+});
+
+test("a selection's acquisition carries trace lane \"selected\", separate from urgent first publication", async (context) => {
+  const controller = new AbortController();
+  const trace = createPipelineTraceRecorder({ enabled: true, now: () => 0 });
+  const observer = createNormalizedPollingObserver({
+    list: async () => [{ localId: "chosen", isLive: false }],
+    shouldEagerHydrate: () => false,
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    providerId: "claude",
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace });
+  await observer.hydrate("chosen");
+  const acquisition = trace.snapshot().traceEvents.find((event) => event.name === "acquisition_normalization");
+  assert.equal(acquisition?.args.priorityLane, "selected");
+  assert.equal(observer.diagnostics().timings.queueWaitSelected.sampleCount, 1);
+  assert.equal(observer.diagnostics().timings.queueWaitUrgent.sampleCount, 0);
 });

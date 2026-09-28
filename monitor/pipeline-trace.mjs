@@ -32,11 +32,11 @@ export const PIPELINE_TRACE_COUNTERS = Object.freeze([
   "queue_depth", "oldest_pending_ms", "active", "capacity", "cpu", "memory", "event_loop_ms", "bytes", "records",
 ]);
 // The provider ids an observer instance is actually created with, and the fixed priority
-// lanes normalized-polling-observer.mjs already schedules against (its queueWaitUrgent /
+// lanes normalized-polling-observer.mjs already schedules against (its queueWaitSelected / queueWaitUrgent /
 // queueWaitSourceUpdate / queueWaitBackground timings). Attached only to acquisition-side
 // stages that have a known provider/lane at their call site; never a session id or path.
 export const PIPELINE_TRACE_PROVIDERS = Object.freeze(["claude", "codex"]);
-export const PIPELINE_TRACE_PRIORITY_LANES = Object.freeze(["urgent", "source_update", "background"]);
+export const PIPELINE_TRACE_PRIORITY_LANES = Object.freeze(["selected", "urgent", "source_update", "background"]);
 
 const STAGES = new Set(PIPELINE_TRACE_STAGES);
 const DOMAINS = new Set(PIPELINE_TRACE_DOMAINS);

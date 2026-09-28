@@ -139,6 +139,7 @@ export function createPipelineOperationsSnapshot(diagnostics, observedAt = new D
         timings: Object.freeze({
           catalogDiscovery: durationSnapshot(observer.timings?.catalogDiscovery),
           queueWait: durationSnapshot(observer.timings?.queueWait),
+          queueWaitSelected: durationSnapshot(observer.timings?.queueWaitSelected),
           queueWaitUrgent: durationSnapshot(observer.timings?.queueWaitUrgent),
           queueWaitSourceUpdate: durationSnapshot(observer.timings?.queueWaitSourceUpdate),
           queueWaitBackground: durationSnapshot(observer.timings?.queueWaitBackground),
@@ -200,6 +201,7 @@ export function normalizePipelineOperationsSnapshot(value) {
         timings: Object.freeze({
           catalogDiscovery: durationSnapshot(entry.timings?.catalogDiscovery),
           queueWait: durationSnapshot(entry.timings?.queueWait),
+          queueWaitSelected: durationSnapshot(entry.timings?.queueWaitSelected),
           queueWaitUrgent: durationSnapshot(entry.timings?.queueWaitUrgent),
           queueWaitSourceUpdate: durationSnapshot(entry.timings?.queueWaitSourceUpdate),
           queueWaitBackground: durationSnapshot(entry.timings?.queueWaitBackground),

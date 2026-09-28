@@ -119,19 +119,24 @@ export function createNormalizedPollingObserver(options) {
     // background waits here hid which lane was actually starved; the three
     // per-priority series below answer that without removing this one.
     queueWait: createDurationSeries(),
+    // Urgent work a viewer explicitly requested (a selection), recorded apart from
+    // first live publication. Scheduling is unchanged: both share the urgent priority.
+    queueWaitSelected: createDurationSeries(),
     queueWaitUrgent: createDurationSeries(),
     queueWaitSourceUpdate: createDurationSeries(),
     queueWaitBackground: createDurationSeries(),
     preparation: createDurationSeries(),
     acquisitionNormalization: createDurationSeries(),
   });
-  function queueWaitSeriesForPriority(priority) {
+  function queueWaitSeriesForPriority(priority, requested = false) {
+    if (priority === URGENT && requested) return timings.queueWaitSelected;
     if (priority === URGENT) return timings.queueWaitUrgent;
     if (priority === SOURCE_UPDATE) return timings.queueWaitSourceUpdate;
     return timings.queueWaitBackground;
   }
   // The bounded trace priority-lane name for the same priority values above.
-  function priorityLaneName(priority) {
+  function priorityLaneName(priority, requested = false) {
+    if (priority === URGENT && requested) return "selected";
     if (priority === URGENT) return "urgent";
     if (priority === SOURCE_UPDATE) return "source_update";
     return "background";
@@ -165,7 +170,7 @@ export function createNormalizedPollingObserver(options) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     let failureStage = "worker_yield";
-    const laneName = priorityLaneName(priority);
+    const laneName = priorityLaneName(priority, requested);
     try {
       // Provider reducers still contain bounded synchronous work. Yield before
       // every acquisition unit so cache-only serving remains responsive.
@@ -270,7 +275,7 @@ export function createNormalizedPollingObserver(options) {
       // qa counters, and the source_queue trace stay source-event-only, exactly
       // as before.
       const dequeuedAt = monotonicNow();
-      queueWaitSeriesForPriority(item.priority)
+      queueWaitSeriesForPriority(item.priority, item.requested)
         .record(Math.max(0, dequeuedAt - item.laneSince));
       if (Number.isFinite(item.sourceEventAt)) {
         const queueDelayMs = Math.max(0, dequeuedAt - item.sourceEventAt);
@@ -280,7 +285,7 @@ export function createNormalizedPollingObserver(options) {
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
         trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs,
-          flow: item.traceFlow, scope: item.traceScope, provider: observerProviderId, priorityLane: priorityLaneName(item.priority) });
+          flow: item.traceFlow, scope: item.traceScope, provider: observerProviderId, priorityLane: priorityLaneName(item.priority, item.requested) });
       }
       const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope, item.priority);
       runningHydrations.set(item.localSessionId, { promise: taskPromise, priority: item.priority });

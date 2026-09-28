@@ -1094,7 +1094,9 @@ background working set; a session already present in the very first catalog an o
 reads at startup is exempt from this rule, so a restart with many recently created sessions
 already on disk cannot flood the interactive lanes. Per-provider diagnostics record queue
 wait as one aggregate series (source-driven hydrations only, unchanged) plus one series per
-priority tier (urgent, source-update, background); the per-priority series sample every
+priority tier (urgent, source-update, background), with urgent work a viewer explicitly
+selected recorded separately as `queueWaitSelected` (its trace lane is `selected`; scheduling
+is unchanged, selections share urgent priority); the per-priority series sample every
 dequeued item from its own enqueue time, including urgent selections and background
 hydrations that never carried a source event, so a starved lane is visible on its own.
 

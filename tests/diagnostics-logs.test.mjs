@@ -65,6 +65,7 @@ test("pipeline log schema accepts a bounded provider and priority lane, and reje
 
   assert.equal(normalizePipelineLogRecord({ ...span, provider: "openai" }), null, "an unknown provider is rejected");
   assert.equal(normalizePipelineLogRecord({ ...span, priorityLane: "urgent-ish" }), null, "an unknown lane is rejected");
+  assert.equal(normalizePipelineLogRecord({ ...span, priorityLane: "selected" })?.priorityLane, "selected", "a selection lane is accepted");
   assert.equal(normalizePipelineLogRecord({ ...span, region: "us" }), null, "any extra field is rejected");
 });
 

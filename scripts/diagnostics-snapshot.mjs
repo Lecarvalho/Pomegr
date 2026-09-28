@@ -103,6 +103,7 @@ export function formatDiagnosticsSnapshot(value, { provider = "" } = {}) {
     lines.push(
       timingRow(`${entry.id} · catalog discovery`, entry.timings?.catalogDiscovery),
       timingRow(`${entry.id} · source queue`, entry.timings?.queueWait),
+      timingRow(`${entry.id} · source queue (selected)`, entry.timings?.queueWaitSelected),
       timingRow(`${entry.id} · source queue (urgent)`, entry.timings?.queueWaitUrgent),
       timingRow(`${entry.id} · source queue (source update)`, entry.timings?.queueWaitSourceUpdate),
       timingRow(`${entry.id} · source queue (background)`, entry.timings?.queueWaitBackground),

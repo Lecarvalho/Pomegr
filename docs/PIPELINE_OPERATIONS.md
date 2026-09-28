@@ -47,7 +47,7 @@ and retention gaps still prevent complete-history or latency claims.
 `source_queue`, `acquisition_normalization`, `source_preparation`, and `catalog_discovery`
 records may additionally carry a bounded `provider` (`claude`/`codex`, the ids an observer
 is actually constructed with) and, except for `catalog_discovery`, a bounded `priorityLane`
-(`urgent`/`source_update`/`background`, the observer's existing queue-wait lanes). Both are
+(`selected`/`urgent`/`source_update`/`background`, the observer's queue-wait lanes). Both are
 optional and validated against a fixed allowlist; an unattributed or pre-attribution record
 still analyzes normally. Neither field is a session id, path, fingerprint, or free text.
 
