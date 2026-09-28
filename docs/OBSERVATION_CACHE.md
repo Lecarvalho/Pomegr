@@ -1534,6 +1534,23 @@ reachability.
   snapshots without parsing the tail again. Work-kind classification memoizes its bounded
   WorkKind result by a SHA-256 digest of the classified text (4,096 entries); the text itself
   is not retained.
+- One Claude readSession checks each transcript file's generation once: one stat and one
+  256-byte suffix read, shared by the parsed-tail cache, usage snapshots, activity events and
+  agent lifecycle instead of each of those readers opening the file again. Removing entries for
+  deleted files uses one existence check per cached file per read, shared by every per-file
+  cache.
+- Per-file derived evidence is reused while that file's generation (identity, size, mtime and
+  suffix digest) is exactly unchanged: historical usage snapshots (also keyed by agent, session,
+  compaction times and window mode), the execution-task record pass, and the tool-call and
+  user-input scan (also keyed by agent and primary-file role). Cross-file joins, task signals,
+  historical stop times, agent labels and file-change path validation run on every read, so
+  reuse never freezes a cross-file input or a validator answer. Complete-history reads never
+  use or fill these caches. Each is in memory only, bounded to 512 files (least recently used
+  first), drops files that no longer exist, hands out fresh tool-call, user-input and task
+  objects, and its output must equal a cold read. The tool-call scan keeps each structured file
+  tool's candidate target paths, unvalidated, so they can be revalidated on every read; like the
+  parsed-tail records they are monitor-private memory, never persisted, logged or exposed, and
+  they can outlive that file's parsed-tail entry until the scan's own bound evicts them.
 - Codex folds each bounded live delta into its complete normalized story through the shared,
   provider-neutral `session-fold.mjs`. The provider declares a per-field policy: keyed unions
   (usage snapshots, tool calls, activity, compactions, pull-request creations) with a bound

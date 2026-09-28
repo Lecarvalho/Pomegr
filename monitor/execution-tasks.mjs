@@ -1,4 +1,5 @@
 import { classifyExecutionFailure } from "./execution-failures.mjs";
+import { statSafe } from "./session-discovery.mjs";
 import { executionWorkKind } from "./work-kind.mjs";
 
 const SAFE_ID = /^[a-zA-Z0-9_-]{1,128}$/;
@@ -56,7 +57,12 @@ function newerSignal(first, second) {
   return secondTime >= firstTime ? second : first;
 }
 
-export function buildExecutionTasks(records, { historical = false, sessionUpdatedAt = null, taskSignals = new Map() } = {}) {
+/**
+ * Record pass: discover every Bash tool call and fold its result/notification evidence into one
+ * task per tool-use ID, in insertion order. This half of buildExecutionTasks depends only on the
+ * transcript records, so it is safe to cache per file while a file's generation is unchanged.
+ */
+function recordPass(records) {
   const tasks = new Map();
   const toolUseIdByBackgroundId = new Map();
 
@@ -126,8 +132,19 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
     task.failureCause = task.status === "failed" ? notification.failureCause : null;
   }
 
+  return tasks;
+}
+
+/**
+ * Finish pass: signals, the historical "still running" stop rule, sort, and bound. Always runs on
+ * fresh copies of the (possibly cached) record-pass tasks, since taskSignals and sessionUpdatedAt
+ * can differ call to call even when the underlying transcript has not changed, and a cached task
+ * object must never be mutated in place.
+ */
+function finishPass(tasks, { historical = false, sessionUpdatedAt = null, taskSignals = new Map() } = {}) {
   const historicalFinishedAt = safeTimestamp(sessionUpdatedAt);
-  for (const task of tasks.values()) {
+  const finished = [...tasks.values()].map((task) => ({ ...task }));
+  for (const task of finished) {
     task.signal = newerSignal(taskSignals.get(task.id), task.backgroundId ? taskSignals.get(task.backgroundId) : null);
     if (historical && task.status === "running") {
       task.status = "stopped";
@@ -135,11 +152,51 @@ export function buildExecutionTasks(records, { historical = false, sessionUpdate
     }
   }
 
-  return [...tasks.values()]
+  return finished
     .sort((a, b) => {
       if (a.status === "running" && b.status !== "running") return -1;
       if (b.status === "running" && a.status !== "running") return 1;
       return new Date(b.finishedAt || b.startedAt).getTime() - new Date(a.finishedAt || a.startedAt).getTime();
     })
     .slice(0, MAX_TASKS);
+}
+
+export function buildExecutionTasks(records, options = {}) {
+  return finishPass(recordPass(records), options);
+}
+
+/**
+ * Per-file cache of the record pass, reused across warm readSession calls while a file's
+ * generation key is unchanged; the finish pass always reruns on fresh copies. `key` is an opaque
+ * generation-key string from the caller (see claude-file-generation.mjs / claude-read-generations.mjs);
+ * a null key never caches, matching completeHistory/unlimited reads, which must not use or populate
+ * this reuse cache. Bounded to `maxEntries`, evicted least-recently-used.
+ */
+export function createExecutionTaskReader({ maxEntries = 512 } = {}) {
+  const cache = new Map();
+
+  function build(file, key, records, options) {
+    if (!key) return finishPass(recordPass(records), options);
+    const cached = cache.get(file);
+    let tasks;
+    if (cached && cached.key === key) {
+      tasks = cached.tasks;
+      cache.delete(file);
+      cache.set(file, cached);
+    } else {
+      tasks = recordPass(records);
+      cache.delete(file);
+      cache.set(file, { key, tasks });
+      while (cache.size > maxEntries) cache.delete(cache.keys().next().value);
+    }
+    return finishPass(tasks, options);
+  }
+
+  function pruneMissingFiles(exists = (file) => Boolean(statSafe(file))) {
+    for (const file of cache.keys()) {
+      if (!exists(file)) cache.delete(file);
+    }
+  }
+
+  return { build, pruneMissingFiles };
 }

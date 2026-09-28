@@ -11,11 +11,11 @@ import {
   pendingUserInputAt,
   resolveAgentMetadata,
 } from "../agent-metadata.mjs";
-import { claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader, userInputContentType } from "./claude-activity-events.mjs";
-import { boundedActivityDuration, boundedFileChanges, recentActivityEvents } from "../activity-events.mjs";
+import { claudeConversationActivity, claudeSessionWorkStartedAt, claudeTaskNotificationActivity, createClaudeActivityReader } from "./claude-activity-events.mjs";
+import { recentActivityEvents } from "../activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
-import { buildExecutionTasks } from "../execution-tasks.mjs";
+import { createExecutionTaskReader } from "../execution-tasks.mjs";
 import { listSessionFiles, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
 import { memoizeRepositoryResolver } from "../session-identity.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../session-registry.mjs";
@@ -25,16 +25,13 @@ import { latestSessionSummary } from "../session-summary.mjs";
 import { readSessionCost } from "../session-cost.mjs";
 import { latestSessionApprovalMode } from "../session-approval-mode.mjs";
 import { buildSkillUsage } from "../skill-usage.mjs";
-import { mutationScopes, repetitionSignature } from "../tool-efficiency.mjs";
-import { toolWorkKind } from "../work-kind.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createIncrementalProviderObserver, incrementalSourceSetDescriptor } from "./incremental-provider-observer.mjs";
 import { createClaudeSourceEventRouter } from "./claude-source-routing.mjs";
 import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from "./claude-registry-observation.mjs";
 import { createClaudeCatalogPresence } from "./claude-catalog-presence.mjs";
 import { readClaudePullRequestCreations } from "./claude-pull-requests.mjs";
-import { claudeToolResultTimestamps, firstClaudeToolResultAfter, splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
-import { claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./claude-tool-detail.mjs";
+import { splitClaudeRequestCorrelationEvidence, stampClaudeActivityRequestIds } from "./claude-activity-correlation.mjs";
 import { applyClaudeCurrentActivities, createClaudeCurrentActivityReader } from "./claude-current-activity.mjs";
 import { readLatestPomegrPluginMetadata } from "./pomegr-plugin-metadata.mjs";
 import { readClaudeTranscriptPlanTasks } from "./claude-plan-tasks.mjs";
@@ -43,6 +40,8 @@ import { createClaudeBackgroundLifecycleReader } from "./claude-background-lifec
 import { claudeFiveHourLimitRejections, createClaudeUsageLimitsReader } from "./claude-usage-limits.mjs";
 import { createClaudeLiveUsageSnapshotReader } from "./claude-live-usage-snapshots.mjs";
 import { FILE_SUFFIX_SAMPLE_BYTES, fileIdentity, readFileSuffix } from "./claude-file-generation.mjs";
+import { createReadGenerations, generationKey } from "./claude-read-generations.mjs";
+import { createClaudeToolCallEvidenceReader, mergeUpdatedAt } from "./claude-tool-call-evidence.mjs";
 import { createClaudeTailCache, readJsonlTailCold } from "./claude-tail-cache.mjs";
 import { createRepositoryPathValidator } from "../repository-path.mjs";
 import {
@@ -98,6 +97,8 @@ export function createClaudeProvider(options = {}) {
   // One cached path validator per provider instance, shared by every boundedFileChanges call.
   const validateFileChangePath = createRepositoryPathValidator({ now });
   const liveUsageSnapshots = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: MAX_BYTES_PER_FILE });
+  const toolCallEvidence = createClaudeToolCallEvidenceReader();
+  const executionTaskReader = createExecutionTaskReader();
   const transcriptPlanTasksCache = new Map();
   const workflowManifestCache = new Map();
   const historyCache = new Map();
@@ -242,8 +243,10 @@ export function createClaudeProvider(options = {}) {
   });
 
   async function readSession(localSessionId = "", readOptions = {}) {
-    liveUsageSnapshots.pruneMissingFiles();
-    tailCache.pruneMissingFiles();
+    // One existence check per cached file per read, shared by every per-file cache.
+    const existence = new Map();
+    const exists = (file) => { if (!existence.has(file)) existence.set(file, Boolean(statSafe(file))); return existence.get(file); };
+    for (const cache of [liveUsageSnapshots, tailCache, toolCallEvidence, executionTaskReader]) cache.pruneMissingFiles(exists);
     const resolved = resolveSession(localSessionId);
     if (!resolved) return null;
     const { mainFile, historical, registry } = resolved;
@@ -268,17 +271,20 @@ export function createClaudeProvider(options = {}) {
     for (const file of ordinaryAgentFiles) fileByAgentId.set(path.basename(file, ".jsonl"), file);
     const completeHistory = readOptions.completeHistory === true;
     const fastCatalog = readOptions.fastCatalog === true;
+    const readGenerations = createReadGenerations();
+    // Derived per-file reuse is keyed by the shared generation; complete-history reads never reuse.
+    const generationKeyFor = (file) => (completeHistory ? null : generationKey(readGenerations.generation(file)));
     const completeReads = new Map();
     for (const file of files) completeReads.set(file, completeHistory ? await readClaudeHistoryRecords(file, options.yieldControl) : null);
     if (completeHistory && [...completeReads.values()].some((item) => !item.complete)) return null;
-    const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || tailCache.read(file)]));
+    const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || tailCache.read(file, { stat: readGenerations.stat(file), generation: readGenerations.generation(file) })]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
     const mainRecords = recordsByFile.get(mainFile) || [];
     const primaryStartedAt = completeHistory
       ? claudeSessionWorkStartedAt(mainRecords)
       : await sessionWorkStartReader.read(mainFile);
     const cwd = projectCwd(mainRecords);
-    const mainStat = statSafe(mainFile);
+    const mainStat = readGenerations.stat(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
     const signalsByFile = new Map(/** @type {Array<[string, any]>} */ (await Promise.all(files.map(async (file) => [
       file,
@@ -326,14 +332,14 @@ export function createClaudeProvider(options = {}) {
     let updatedAt = null;
 
     for (const file of files) {
-      const stat = statSafe(file);
+      const stat = readGenerations.stat(file);
       if (!stat) continue;
       const actor = actorFor(file, mainFile, agentMetadata, workflowFiles);
       if (completeHistory) {
         const state = { calls: new Map(), launches: new Map(), events: new Map() };
         if (actor.id === "primary") claudeTaskNotificationActivity(recordsByFile.get(file) || [], state, Infinity);
         activity.push(...claudeConversationActivity(recordsByFile.get(file) || [], actor, state.events, Infinity).map((event) => ({ ...event, _historyAgentId: actor.id })));
-      } else activity.push(...await readActivity(file, actor));
+      } else activity.push(...await readActivity(file, actor, readGenerations.descriptor(file)));
       if (file !== mainFile) transcriptPaths.set(actor.id, file);
       const workflowAgent = workflowFiles.get(file) || null;
       const records = recordsByFile.get(file) || [];
@@ -342,7 +348,7 @@ export function createClaudeProvider(options = {}) {
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
       contextCompactionsCache.set(file, observedCompactions);
       const requestEvidence = splitClaudeRequestCorrelationEvidence(liveUsageSnapshots.read(file, records, actor, stat, historical, sessionId,
-        observedCompactions.map((compaction) => compaction.timestamp), completeHistory));
+        observedCompactions.map((compaction) => compaction.timestamp), completeHistory, completeHistory ? undefined : readGenerations.generation(file)));
       for (const [key, toolUseIds] of requestEvidence.toolUseIdsByRequest) activityRequestLinks.toolUseIdsByRequest.set(key, toolUseIds);
       for (const [key, replyId] of requestEvidence.replyIdsByRequest) activityRequestLinks.replyIdsByRequest.set(key, replyId);
       usageSnapshots.push(...requestEvidence.normalizedSnapshots);
@@ -352,57 +358,12 @@ export function createClaudeProvider(options = {}) {
         trigger: compaction.trigger,
         preTokens: compaction.preTokens,
       })));
-      const requestedInputIds = new Set();
-      const resultTimes = claudeToolResultTimestamps(records);
-      const toolOutcomes = claudeToolOutcomes(records);
-      let calls = 0;
-      for (const record of records) {
-        const timestamp = record.timestamp || record.message?.timestamp;
-        if (timestamp) {
-          if (!updatedAt || new Date(timestamp) > new Date(updatedAt)) updatedAt = timestamp;
-        }
-        const userInputType = file === mainFile ? userInputContentType(record, requestedInputIds) : null;
-        if (userInputType) activity.push({
-          id: record.uuid || crypto.createHash("sha1").update(`${file}:${timestamp}:user-input`).digest("hex").slice(0, 12),
-          timestamp: timestamp || stat.mtime.toISOString(),
-          actor: "User",
-          tool: "User input",
-          workKind: "input",
-          detail: userInputType,
-          status: null,
-        });
-        if (record.type !== "assistant" || !Array.isArray(record.message?.content)) continue;
-        for (const content of record.message.content) {
-          if (content.type !== "tool_use") continue;
-          calls += 1;
-          const tool = content.name || "Tool";
-          if (tool === "AskUserQuestion" && content.id) requestedInputIds.add(content.id);
-          const input = content.input || {};
-          const detail = safeDetail(tool, input);
-          const target = input.file_path || input.path;
-          const scopes = typeof target === "string"
-            ? mutationScopes(tool, input).map((scope) => crypto.createHash("sha256").update(scope).digest("hex").slice(0, 20))
-            : [];
-          const successfulOutcome = firstSuccessfulClaudeToolOutcome(toolOutcomes, content.id, timestamp);
-          const fileChanges = successfulOutcome
-            ? boundedFileChanges(claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult), cwd, { forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath })
-            : null;
-          toolCalls.push({
-            id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),
-            timestamp: timestamp || stat.mtime.toISOString(),
-            actor: { id: actor.id, label: actor.label },
-            tool,
-            workKind: toolWorkKind(tool, { detail, input }),
-            detail,
-            status: null,
-            durationMs: boundedActivityDuration(timestamp, firstClaudeToolResultAfter(resultTimes, content.id, timestamp)),
-            requestId: null,
-            repetitionSignature: repetitionSignature(tool, input),
-            mutation: scopes.length ? { display: path.basename(target), scopes } : null,
-            fileChanges,
-          });
-        }
-      }
+      const toolEvidence = toolCallEvidence.read({ file, key: generationKeyFor(file), records, actor, isMain: file === mainFile,
+        stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath });
+      activity.push(...toolEvidence.userInputActivity);
+      toolCalls.push(...toolEvidence.toolCalls);
+      const calls = toolEvidence.calls;
+      updatedAt = mergeUpdatedAt(updatedAt, toolEvidence.updatedAt);
       const runtime = runtimeMetadata(records);
       const recordedTiming = agentTiming(records, stat.mtime.toISOString());
       const timing = actor.id === "primary" && primaryStartedAt
@@ -448,12 +409,12 @@ export function createClaudeProvider(options = {}) {
         ...timing,
       });
     }
-    await applyClaudeAgentTerminals(agents, recordsByFile, fileByAgentId, readAgentLifecycle);
+    await applyClaudeAgentTerminals(agents, recordsByFile, fileByAgentId, (file) => readAgentLifecycle(file, readGenerations.descriptor(file)));
     if (!historical) applyWaitingStatus(agents);
     for (const agent of agents) {
       const file = fileByAgentId.get(agent.id);
       agent.executionTasks = file
-        ? buildExecutionTasks(recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt, taskSignals })
+        ? executionTaskReader.build(file, generationKeyFor(file), recordsByFile.get(file) || [], { historical, sessionUpdatedAt: updatedAt, taskSignals })
         : [];
     }
     publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "claude", sessionId, { agents, activity, toolCalls });

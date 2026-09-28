@@ -83,7 +83,7 @@ function priorSuffixMatches(file, source) {
  */
 export function createClaudeAgentLifecycleReader() {
   const files = new Map();
-  return async function read(file) {
+  return async function read(file, precomputedDescriptor) {
     let item = files.get(file);
     if (!item) {
       if (files.size >= MAX_FILES) {
@@ -112,7 +112,7 @@ export function createClaudeAgentLifecycleReader() {
     const current = item;
     current.pending = Promise.resolve().then(async () => {
       try {
-        const source = incrementalSourceDescriptor(file);
+        const source = precomputedDescriptor !== undefined ? precomputedDescriptor : incrementalSourceDescriptor(file);
         if (!source) return current.known;
         const previous = current.source;
         if (previous && (previous.identity !== source.identity || source.size < previous.size

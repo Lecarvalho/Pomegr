@@ -190,13 +190,13 @@ export function createClaudeTailCache({
     return records;
   }
 
-  function read(file) {
-    const stat = statSafe(file);
+  function read(file, precomputed) {
+    const stat = precomputed ? precomputed.stat : statSafe(file);
     if (!stat) {
       entries.delete(file);
       return [];
     }
-    const generation = fileGeneration(file, stat);
+    const generation = precomputed ? precomputed.generation : fileGeneration(file, stat);
     if (!generation) {
       // No trustworthy generation snapshot (e.g. an empty file, or a losing race
       // with a concurrent writer). Degrade to the uncached cold reference rather
@@ -242,9 +242,10 @@ export function createClaudeTailCache({
   }
 
   /** Drop entries for files that no longer exist on disk. */
-  function pruneMissingFiles() {
+  /** @param {(file: string) => boolean} [exists] shared per-read existence check */
+  function pruneMissingFiles(exists = (file) => Boolean(statSafe(file))) {
     for (const file of [...entries.keys()]) {
-      if (!statSafe(file)) entries.delete(file);
+      if (!exists(file)) entries.delete(file);
     }
   }
 
