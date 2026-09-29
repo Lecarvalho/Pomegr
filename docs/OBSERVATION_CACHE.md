@@ -1541,14 +1541,46 @@ the inventory total. Header scans use batches of at most 100 rows and repeat on 
 60-second reconciliation cadence. The bounded 256-row memory fallback reports partial
 coverage if it overflows; it cannot silently claim a complete large inventory.
 
-Inventory persistence contains only validated normalized catalog fields, revision/coverage
-facts, and one monitor-private opaque source-scope fingerprint. Changed provider roots,
+Inventory persistence contains only validated normalized catalog fields, a durable settled
+lifecycle status (`idle`, `closed`, `stopped`, or null), revision/coverage facts, and one monitor-private opaque source-scope fingerprint. Changed provider roots,
 archive inclusion, explicit transcript selection, or enabled identity sources invalidate
 old inventory rows and completed totals before they can be presented as
 current facts. The fingerprint is never returned to the browser. Transcript paths, raw provider records, private identifiers beyond the existing
 normalized identity contract, prompts, responses, tool content and credentials are excluded.
 Provider source locators remain adapter-private. Committed SQLite queries are cache reads;
 GETs never synchronously enumerate sources, acquire provider evidence, or normalize it.
+
+Each inventory row keeps volatile presence separate from a durable settled status.
+Presence (`is_live`, `needs_input`, and the presence `activity_status` such as working,
+needs input, or open) is reset at monitor start and when a row leaves the provider's
+bounded lifecycle set. The settled status is never reset by either. It is written only
+from a not-live, not-needs-input row whose status is `idle`, `closed`, or `stopped`,
+whether it comes from a provider-projected lifecycle row (`updateProviderLifecycle`) or
+from an adapter header row carrying that adapter's non-live fallback (Claude reports
+`idle`, the documented no-live-session fallback, not proof of completion; Codex header
+rows record no root status and stay `unknown`). Provider-confirmed `closed` or `stopped`
+is never downgraded to `idle`; `unknown`, `open`, or a missing status never overwrites a
+settled value. The column is added by an additive migration guarded by
+`PRAGMA table_info`, so older inventories keep their rows. A directory row's
+`activityStatus` is its presence status while it is live, needs input, or is an expired
+Open row; otherwise it is the settled status, but only after that provider's first
+presence pass (`updateProviderLifecycle`) has committed in the current monitor run, and
+`unknown` before it. A resumed session is therefore live at its first observation and
+never shows Idle and then Working. The Live and Needs input filters and counts read
+presence only. No new field reaches the browser.
+
+The inventory also persists one bounded row summary per row (`summary_json` plus the
+recorded `updatedAt` it is bound to, added by the same guarded additive migration): the
+visible-agent count, the latest all-agent context snapshot, the agent-reported progress,
+and the activity fallback only in its `last_observed` form (fixed label, original
+timestamp, source, actor scope). Current qualification, `currentActivity`, cache timing,
+tool names, task descriptions, IDs and paths are never persisted. The Session row module
+(`monitor/session-catalog-row.mjs`) projects the summary from the committed snapshot and
+validates it before persistence. C writes it after every accepted commit, changed or
+unchanged, so checkpoint-restored records seed summaries at startup, and only when it
+differs from the persisted one and the recorded `updatedAt` is not older. A live row's
+writes coalesce to the checkpoint cadence (5-second quiet, 60-second maximum) and flush
+when the row leaves live or the monitor stops. No write acquires, parses, or hydrates.
 
 Selecting a historical row queues only that session's detail and immediately presents its
 committed identity/loading state. A known selected or live Codex session must not await
@@ -2378,6 +2410,11 @@ reports omit all four fields. Legacy and Codex evidence defaults to empty arrays
 This additive evidence follows the existing complete-replacement, atomic-commit,
 last-known-good retention, revision and checkpoint rules. GETs still serve committed
 responses only; action correlation never runs in S Serving or changes UI polling.
+Directory rows and non-resident shell rows read the persisted row summary described under
+inventory persistence. It is last-known-good: it survives restart and L1 eviction, shows
+`summaryReadiness: "ready"`, reports zero active agents and no `currentActivity` for a
+non-live row, and never carries a `current` fallback. Rows without a summary stay `loading`.
+A resident committed snapshot still supplies the live values for shell rows.
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
 context snapshot, bounded agent-reported progress, the activity fallback described below,

@@ -1,11 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
+import { rowSummaryFields, sanitizeRowSummary } from "./session-catalog-row.mjs";
 
 const PAGE_MAX = 100;
 const MEMORY_MAX = 256;
 const SOURCES = { claude: "Claude Code", codex: "Codex" };
 const ACTIVITY = new Set(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
-const COLUMNS = "provider,local_id AS localId,title,project,created_at AS createdAt,updated_at AS updatedAt,is_live AS isLive,needs_input AS needsInput,activity_status AS activityStatus,repository_id AS repositoryId";
+const COLUMNS = "provider,local_id AS localId,title,project,created_at AS createdAt,updated_at AS updatedAt,is_live AS isLive,needs_input AS needsInput,activity_status AS activityStatus,settled_status AS settledStatus,repository_id AS repositoryId,summary_json AS summaryJson";
+// Durable non-live outcomes, separate from volatile presence. `open` and `unknown` are never settled.
+const SETTLED = new Set(["idle", "closed", "stopped"]);
+const CONFIRMED = new Set(["closed", "stopped"]);
+const settledOf = (row) => !row.isLive && !row.needsInput && SETTLED.has(row.activityStatus) ? row.activityStatus : null;
+// Provider-confirmed closed/stopped outranks the idle fallback; a null incoming value never overwrites.
+const mergeSettled = (previous, incoming) => !incoming ? previous || null : CONFIRMED.has(incoming) || !CONFIRMED.has(previous) ? incoming : previous;
 const ORDER = "created_ms DESC,provider,local_id";
 const clean = (value, max) => typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, max) : "";
 const date = (value) => typeof value === "string" && value.length <= 48 && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
@@ -17,16 +24,16 @@ const compareCreation = (a, b) => b.createdMs - a.createdMs
 function normalize(provider, value) {
   if (!SOURCES[provider] || typeof value?.localId !== "string" || !parseProviderSessionId(`${provider}:${value.localId}`)) return null;
   const createdAt = date(value.createdAt) || date(value.updatedAt);
-  return { provider, localId: value.localId, title: clean(value.title, 160) || "Untitled session",
+  return withSettled({ provider, localId: value.localId, title: clean(value.title, 160) || "Untitled session",
     project: clean(value.project, 160) || "Unknown project", createdAt, updatedAt: date(value.updatedAt) || createdAt,
     isLive: Boolean(value.isLive), needsInput: Boolean(value.needsInput),
-    activityStatus: ACTIVITY.has(value.activityStatus) ? value.activityStatus : "unknown", repositoryId: safeRepository(value.repositoryId) };
+    activityStatus: ACTIVITY.has(value.activityStatus) ? value.activityStatus : "unknown", repositoryId: safeRepository(value.repositoryId) });
 }
-function publicRow(row) {
+function withSettled(row) { return { ...row, settledStatus: settledOf(row) }; }
+function publicRow(row, activityStatus = row.activityStatus) {
   return { id: key(row), provider: row.provider, source: SOURCES[row.provider], title: row.title, project: row.project,
     createdAt: row.createdAt, updatedAt: row.updatedAt, isLive: Boolean(row.isLive), needsInput: Boolean(row.needsInput),
-    activityStatus: row.activityStatus, repositoryId: row.repositoryId || null, summaryReadiness: "loading",
-    agentCount: null, activeAgentCount: null, latestContextTotal: null, progress: null, currentActivity: null };
+    activityStatus, repositoryId: row.repositoryId || null, ...rowSummaryFields(row.summaryJson, Boolean(row.isLive)) };
 }
 function queryParts(query) {
   const pageSize = Math.max(1, Math.min(PAGE_MAX, Math.trunc(Number(query.pageSize) || 25)));
@@ -46,11 +53,19 @@ function queryParts(query) {
 export function createSessionCatalogInventory({ store = () => null, now = Date.now, providers = [], scopeKey: initialScopeKey = "", maxMemoryRows = MEMORY_MAX } = {}) {
   const memory = new Map();
   const lifecycleIds = new Map();
+  // Providers whose first presence pass has committed in this monitor run; settled status is shown only after it.
+  const presenceObserved = new Set();
   const states = new Map(providers.filter((id) => SOURCES[id]).map((id) => [id, { status: "discovering", token: null, invalid: false }]));
   const memoryLimit = Math.max(1, Math.min(MEMORY_MAX, maxMemoryRows));
   let database = null, revision = 0, observedAt = null, lastCompletedTotal = null, lastCompletedAt = null, overflow = false;
   let scopeKey = typeof initialScopeKey === "string" && /^[a-f0-9]{64}$/u.test(initialScopeKey) ? initialScopeKey : "";
   const stamp = () => new Date(now()).toISOString();
+  // Presence wins while live or needing input. Otherwise the settled outcome is shown, but only once
+  // this run has observed the provider's presence, so a resumed session never flashes Idle before Working.
+  // An expired Open row is not live but keeps its presence status, as in the shell feed.
+  const shownStatus = (row) => row.isLive || row.needsInput || row.activityStatus === "needs_input" || row.activityStatus === "open" ? row.activityStatus
+    : presenceObserved.has(row.provider) && SETTLED.has(row.settledStatus) ? row.settledStatus : "unknown";
+  const toPublic = (row) => publicRow(row, shownStatus(row));
   function transaction(fn) { if (!database) return fn(); database.exec("BEGIN IMMEDIATE"); try { const value = fn(); database.exec("COMMIT"); return value; } catch (error) { database.exec("ROLLBACK"); throw error; } }
   function saveFacts() {
     if (!database) return;
@@ -65,13 +80,17 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     database.exec(`CREATE TABLE IF NOT EXISTS session_catalog_headers (
       provider TEXT NOT NULL, local_id TEXT NOT NULL, title TEXT NOT NULL, project TEXT NOT NULL,
       created_at TEXT, updated_at TEXT, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
-      is_live INTEGER NOT NULL, needs_input INTEGER NOT NULL, activity_status TEXT NOT NULL, repository_id TEXT,
+      is_live INTEGER NOT NULL, needs_input INTEGER NOT NULL, activity_status TEXT NOT NULL, settled_status TEXT, repository_id TEXT, summary_json TEXT, summary_updated_ms INTEGER,
       generation TEXT NOT NULL, PRIMARY KEY(provider,local_id)) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS session_catalog_created ON session_catalog_headers(created_ms,provider,local_id);
       CREATE INDEX IF NOT EXISTS session_catalog_title ON session_catalog_headers(title COLLATE NOCASE,provider,local_id);
       CREATE INDEX IF NOT EXISTS session_catalog_project ON session_catalog_headers(project,created_ms);
       CREATE INDEX IF NOT EXISTS session_catalog_repository ON session_catalog_headers(repository_id,created_ms);
       CREATE TABLE IF NOT EXISTS session_catalog_facts (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,observed_at TEXT,completed_total INTEGER,completed_at TEXT,scope_key TEXT NOT NULL DEFAULT '');`);
+    // Additive migration: older inventories (before the settled status and the row summary) keep their rows.
+    for (const [column, type] of [["settled_status", "TEXT"], ["summary_json", "TEXT"], ["summary_updated_ms", "INTEGER"]]) {
+      if (!database.prepare("SELECT 1 AS found FROM pragma_table_info('session_catalog_headers') WHERE name=?").get(column)) database.exec(`ALTER TABLE session_catalog_headers ADD COLUMN ${column} ${type}`);
+    }
     const facts = database.prepare("SELECT revision,observed_at,completed_total,completed_at,scope_key FROM session_catalog_facts WHERE id=1").get();
     if (facts) { revision = Math.max(revision, facts.revision); lastCompletedTotal = Number.isSafeInteger(facts.completed_total) ? facts.completed_total : null; lastCompletedAt = date(facts.completed_at); }
     transaction(() => {
@@ -85,7 +104,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       }
       changed();
     });
-    memory.clear(); overflow = false;
+    memory.clear(); overflow = false; presenceObserved.clear();
     for (const state of states.values()) { state.status = "discovering"; state.token = null; state.invalid = false; }
     return true;
   }
@@ -98,7 +117,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       if (nextScope !== scopeKey || rosterChanged) {
         scopeKey = nextScope;
         if (database) database.prepare("DELETE FROM session_catalog_headers").run();
-        memory.clear(); lifecycleIds.clear(); lastCompletedTotal = null; lastCompletedAt = null; overflow = false;
+        memory.clear(); lifecycleIds.clear(); presenceObserved.clear(); lastCompletedTotal = null; lastCompletedAt = null; overflow = false;
         for (const state of states.values()) {state.status="discovering";state.token=null;}
       }
       for (const id of states.keys()) if (!wanted.has(id)) states.delete(id);
@@ -108,8 +127,8 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   }
   function writeRow(row, generation, overlay, preserveLifecycle = false) {
     if (database) {
-      database.prepare(`INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,repository_id,generation)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,local_id) DO UPDATE SET
+      database.prepare(`INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,local_id) DO UPDATE SET
         title=CASE WHEN ? OR (excluded.title<>'Untitled session' AND excluded.updated_ms >= updated_ms) THEN excluded.title ELSE title END,
         project=CASE WHEN ? OR (excluded.project<>'Unknown project' AND excluded.updated_ms >= updated_ms) THEN excluded.project ELSE project END,
         created_at=CASE WHEN excluded.created_ms > 0 AND (created_ms=0 OR excluded.created_ms < created_ms) THEN excluded.created_at ELSE created_at END,
@@ -119,10 +138,12 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
         is_live=CASE WHEN ? THEN excluded.is_live ELSE is_live END,
         needs_input=CASE WHEN ? THEN excluded.needs_input ELSE needs_input END,
         activity_status=CASE WHEN ? THEN excluded.activity_status ELSE activity_status END,
+        settled_status=CASE WHEN excluded.settled_status IS NULL THEN settled_status
+          WHEN excluded.settled_status IN ('closed','stopped') OR settled_status IS NULL OR settled_status NOT IN ('closed','stopped') THEN excluded.settled_status ELSE settled_status END,
         repository_id=CASE WHEN ? THEN excluded.repository_id ELSE coalesce(excluded.repository_id,repository_id) END,
         generation=CASE WHEN excluded.generation='' THEN generation ELSE excluded.generation END`)
         .run(row.provider,row.localId,row.title,row.project,row.createdAt,row.updatedAt,Date.parse(row.createdAt)||0,Date.parse(row.updatedAt)||0,
-          row.isLive?1:0,row.needsInput?1:0,row.activityStatus,row.repositoryId,generation || "",
+          row.isLive?1:0,row.needsInput?1:0,row.activityStatus,row.settledStatus,row.repositoryId,generation || "",
           overlay?1:0,overlay?1:0,preserveLifecycle?0:overlay?1:0,preserveLifecycle?0:overlay?1:0,preserveLifecycle?0:overlay?1:0,overlay?1:0);
       return;
     }
@@ -133,7 +154,8 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       createdAt: previous?.createdAt && (!row.createdAt || previous.createdAt < row.createdAt) ? previous.createdAt : row.createdAt,
       generation: generation || previous?.generation || "",
       ...(preserveLifecycle && previous ? { isLive: previous.isLive, needsInput: previous.needsInput, activityStatus: previous.activityStatus } : {}),
-      ...(!overlay && previous ? {isLive:previous.isLive,needsInput:previous.needsInput,activityStatus:previous.activityStatus}: {}) });
+      ...(!overlay && previous ? {isLive:previous.isLive,needsInput:previous.needsInput,activityStatus:previous.activityStatus}: {}),
+      settledStatus: mergeSettled(previous?.settledStatus, row.settledStatus) });
   }
   function beginProvider(provider) {
     if (!SOURCES[provider]) return null;
@@ -159,6 +181,26 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       if (semanticChange || previousOverflow !== overflow) changed();
     });
     return true;
+  }
+  // Persists one validated row summary bound to the recorded updatedAt. It never moves to an older
+  // recorded time and writes only when the summary differs from the persisted one.
+  function upsertSummary(provider, localId, summary, updatedAt) {
+    initialize();
+    const clean = sanitizeRowSummary(summary), ms = Date.parse(date(updatedAt) || "");
+    if (!clean || !SOURCES[provider] || !parseProviderSessionId(`${provider}:${localId}`) || !Number.isFinite(ms)) return false;
+    const json = JSON.stringify(clean);
+    return transaction(() => {
+      let written;
+      if (database) written = Number(database.prepare("UPDATE session_catalog_headers SET summary_json=?,summary_updated_ms=? WHERE provider=? AND local_id=? AND coalesce(summary_updated_ms,-1)<=? AND summary_json IS NOT ?")
+        .run(json, ms, provider, localId, ms, json).changes) > 0;
+      else {
+        const row = memory.get(`${provider}:${localId}`);
+        written = Boolean(row) && (row.summaryMs ?? -1) <= ms && row.summaryJson !== json;
+        if (written) Object.assign(row, { summaryJson: json, summaryMs: ms });
+      }
+      if (written) changed();
+      return written;
+    });
   }
   function countAll() { return database ? Number(database.prepare("SELECT COUNT(*) AS n FROM session_catalog_headers").get().n) : memory.size; }
   function finishProvider(provider, token, { complete = false } = {}) {
@@ -192,7 +234,8 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
         }
         else { const row=memory.get(`${provider}:${id}`); if (row) { removed ||= row.isLive || row.needsInput || row.activityStatus !== "unknown"; Object.assign(row,{isLive:false,needsInput:false,activityStatus:"unknown"}); } }
       }
-      lifecycleIds.set(provider,current); if (removed) changed();
+      const firstPass = !presenceObserved.has(provider);
+      lifecycleIds.set(provider,current); presenceObserved.add(provider); if (removed || firstPass) changed();
     });
   }
   // Compatibility publishers only overlay bounded lifecycle rows. A ready shell is not a complete enumeration.
@@ -210,7 +253,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   function get(id) {
     const parsed=parseProviderSessionId(id); if (!parsed) return null;
     const row=database?database.prepare(`SELECT ${COLUMNS} FROM session_catalog_headers WHERE provider=? AND local_id=?`).get(parsed.providerId,parsed.localSessionId):memory.get(id);
-    return row?publicRow(row):null;
+    return row?toPublic(row):null;
   }
   function directory(query={}) {
     const {scope,hash,where,args}=queryParts(query);
@@ -242,9 +285,9 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     const more=rows.length>scope.pageSize; rows=rows.slice(0,scope.pageSize);
     const last=rows.at(-1);
     const facts=coverage();
-    return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:rows.map(publicRow),matchedCount,counts,pageSize:scope.pageSize,
+    return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:rows.map(toPublic),matchedCount,counts,pageSize:scope.pageSize,
       nextCursor:more?Buffer.from(JSON.stringify([hash,last.createdMs,last.provider,last.localId])).toString("base64url"):null,...(cursorReset?{cursorReset:true}:{})};
   }
-  return Object.freeze({initialize,configureProviders,beginProvider,upsertHeaders,finishProvider,updateHeaders,updateProviderLifecycle,replaceProvider,directory,snapshot,coverage,get,
+  return Object.freeze({initialize,configureProviders,beginProvider,upsertHeaders,finishProvider,updateHeaders,updateProviderLifecycle,upsertSummary,replaceProvider,directory,snapshot,coverage,get,
     diagnostics:()=>({residentRows:memory.size,maxResidentRows:memoryLimit,maxPageSize:PAGE_MAX,durable:Boolean(database)})});
 }

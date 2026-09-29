@@ -523,6 +523,9 @@ export function createClaudeProvider(options = {}) {
     const { onBatch, signal } = options;
     if (typeof onBatch !== "function") return { complete: false };
     let batch = [];
+    // One unreadable transcript must not hide every later header; the scan
+    // continues but reports itself incomplete so no committed row is pruned.
+    let partial = false;
     const emit = async () => {
       if (!batch.length) return true;
       const next = batch;
@@ -549,13 +552,13 @@ export function createClaudeProvider(options = {}) {
           let stat, descriptor, header;
           try {
             stat = fs.statSync(file);
-            if (!stat.isFile() || stat.size <= 0) return false;
+            if (!stat.isFile() || stat.size <= 0) { partial = true; continue; }
             descriptor = fs.openSync(file, "r");
             const bytes = Math.min(stat.size, 64 * 1024);
             const buffer = Buffer.alloc(bytes);
-            if (fs.readSync(descriptor, buffer, 0, bytes, 0) !== bytes) return false;
+            if (fs.readSync(descriptor, buffer, 0, bytes, 0) !== bytes) { partial = true; continue; }
             header = buffer.toString("utf8");
-          } catch { return false; }
+          } catch { partial = true; continue; }
           finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
           let recognized = false;
           for (const line of header.split(/\r?\n/)) {
@@ -570,14 +573,15 @@ export function createClaudeProvider(options = {}) {
           // A larger source whose first bounded window cannot validate identity
           // may be incomplete, so exact inventory coverage must degrade.
           if (!recognized) {
-            if (stat.size <= 64 * 1024) continue;
-            return false;
+            if (stat.size > 64 * 1024) partial = true;
+            continue;
           }
           batch.push({
             localId, title: "Untitled session", project: "Unknown project",
             createdAt: new Date(Number.isFinite(stat.birthtimeMs) && stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs).toISOString(),
             updatedAt: stat.mtime.toISOString(), isLive: false, needsInput: false,
-            activityStatus: "unknown",
+            // Adapter-owned non-live fallback; not proof of completion.
+            activityStatus: sessionActivityStatus(false, null),
           });
           if (batch.length === 100 && !await emit()) return false;
         }
@@ -612,7 +616,7 @@ export function createClaudeProvider(options = {}) {
       if (recognized) batch.push({
         localId, title: "Untitled session", project: "Unknown project",
         createdAt: new Date(stat.birthtimeMs || stat.mtimeMs).toISOString(), updatedAt: stat.mtime.toISOString(),
-        isLive: false, needsInput: false, activityStatus: "unknown",
+        isLive: false, needsInput: false, activityStatus: sessionActivityStatus(false, null),
       });
     }
     // Native registrations may legitimately precede transcript creation. They
@@ -633,7 +637,7 @@ export function createClaudeProvider(options = {}) {
       if (batch.length === 100 && !await emit()) return { complete: false };
     }
     const emitted = await emit();
-    return { complete: Boolean(projectsComplete) && Boolean(registryComplete) && emitted };
+    return { complete: Boolean(projectsComplete) && !partial && Boolean(registryComplete) && emitted };
   }
 
   async function observerSource(localSessionId) {

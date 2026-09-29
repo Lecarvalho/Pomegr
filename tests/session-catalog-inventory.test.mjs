@@ -172,3 +172,102 @@ test("directory SELECT materializes only its bounded page and changed source sco
   inventory.configureProviders(["codex"],{scopeKey:"b".repeat(64)});
   assert.equal(inventory.coverage().knownCount,0);assert.equal(inventory.coverage().lastCompletedTotal,null);assert.equal(inventory.coverage().exactTotal,null);
 });
+
+const status=(inventory,id)=>inventory.directory({pageSize:100}).sessions.find((item)=>item.id===id)?.activityStatus;
+const reopen=(store)=>{const next=createSessionCatalogInventory({store:()=>store,providers:["codex","claude"]});next.initialize();return next;};
+
+test("a settled status survives restart and stays unknown until the provider's first presence pass",async(t)=>{
+  const {inventory,store}=await fixture(t);
+  load(inventory,"claude",3);load(inventory,"codex",0);
+  const lifecycle=[row(0,{activityStatus:"idle"}),row(1,{activityStatus:"closed"}),row(2,{isLive:true,activityStatus:"working"})];
+  const ids=["claude:session-0","claude:session-1","claude:session-2"];
+  inventory.updateProviderLifecycle("claude",lifecycle);
+  assert.deepEqual(ids.map((id)=>status(inventory,id)),["idle","closed","working"]);
+  const restarted=reopen(store);
+  assert.equal(restarted.get("claude:session-0").isLive,false);
+  assert.deepEqual(ids.map((id)=>status(restarted,id)),["unknown","unknown","unknown"]);
+  assert.equal(store.database.prepare("SELECT settled_status AS s FROM session_catalog_headers WHERE local_id='session-1'").get().s,"closed");
+  // A resumed session is live at its first observation and never shows an intermediate idle.
+  restarted.updateProviderLifecycle("claude",lifecycle);
+  assert.deepEqual(ids.map((id)=>status(restarted,id)),["idle","closed","working"]);
+  const other=reopen(store);other.updateProviderLifecycle("codex",[]);
+  assert.equal(status(other,"claude:session-0"),"unknown","presence is gated per provider");
+});
+
+test("a row that leaves the lifecycle set keeps its settled status while presence clears",async(t)=>{
+  const {inventory}=await fixture(t);
+  load(inventory,"claude",1);load(inventory,"codex",0);
+  inventory.updateProviderLifecycle("claude",[row(0,{isLive:true,activityStatus:"working"})]);
+  assert.equal(status(inventory,"claude:session-0"),"working");
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"stopped"})]);
+  inventory.updateProviderLifecycle("claude",[]);
+  assert.equal(status(inventory,"claude:session-0"),"stopped");
+  inventory.updateProviderLifecycle("claude",[row(0,{isLive:true,needsInput:true,activityStatus:"needs_input"})]);
+  inventory.updateProviderLifecycle("claude",[]);
+  assert.equal(inventory.get("claude:session-0").isLive,false);assert.equal(inventory.get("claude:session-0").needsInput,false);
+  assert.equal(status(inventory,"claude:session-0"),"stopped");
+});
+
+test("closed and stopped are never downgraded to idle and unknown never overwrites a settled value",async(t)=>{
+  const {inventory}=await fixture(t);
+  load(inventory,"claude",1,{activityStatus:"idle"});load(inventory,"codex",0);
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"idle"})]);
+  assert.equal(status(inventory,"claude:session-0"),"idle");
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"closed"})]);
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"idle"})]);
+  const scan=inventory.beginProvider("claude");inventory.upsertHeaders("claude",[row(0,{activityStatus:"idle"})],scan);inventory.finishProvider("claude",scan,{complete:true});
+  inventory.updateHeaders("claude",[row(0,{activityStatus:"unknown"})],{preserveLifecycle:true});
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"unknown"})]);
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"open"})]);
+  inventory.updateProviderLifecycle("claude",[]);
+  assert.equal(status(inventory,"claude:session-0"),"closed");
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"stopped"})]);
+  assert.equal(status(inventory,"claude:session-0"),"stopped");
+  // An expired Open row is not a settled value: it shows its presence status and stores none.
+  const fresh=createSessionCatalogInventory({providers:["claude"]});load(fresh,"claude",1,{activityStatus:"unknown"});
+  fresh.updateProviderLifecycle("claude",[row(0,{activityStatus:"open"})]);
+  fresh.updateProviderLifecycle("claude",[]);
+  assert.equal(status(fresh,"claude:session-0"),"unknown");
+});
+
+test("header scans supply the adapter fallback without touching presence, in the durable and memory index",async(t)=>{
+  const {inventory,store}=await fixture(t);
+  load(inventory,"claude",2,{activityStatus:"idle"});load(inventory,"codex",2,{activityStatus:"unknown"});
+  inventory.updateProviderLifecycle("claude",[]);inventory.updateProviderLifecycle("codex",[]);
+  assert.equal(status(inventory,"claude:session-0"),"idle");assert.equal(status(inventory,"codex:session-0"),"unknown");
+  assert.equal(store.database.prepare("SELECT settled_status AS s FROM session_catalog_headers WHERE provider='codex' AND local_id='session-0'").get().s,null);
+  const memory=createSessionCatalogInventory({providers:["claude"]});load(memory,"claude",1,{activityStatus:"idle"});
+  assert.equal(status(memory,"claude:session-0"),"unknown");
+  memory.updateProviderLifecycle("claude",[row(0,{activityStatus:"closed"})]);memory.updateProviderLifecycle("claude",[]);
+  const scan=memory.beginProvider("claude");memory.upsertHeaders("claude",[row(0,{activityStatus:"idle"})],scan);memory.finishProvider("claude",scan,{complete:true});
+  assert.equal(status(memory,"claude:session-0"),"closed");
+});
+
+test("Live and Needs input filters and counts use presence only",async(t)=>{
+  const {inventory}=await fixture(t);
+  load(inventory,"claude",4,{activityStatus:"idle"});load(inventory,"codex",0);
+  inventory.updateProviderLifecycle("claude",[row(0,{activityStatus:"closed"}),row(1,{isLive:true,activityStatus:"working"}),row(2,{isLive:true,needsInput:true,activityStatus:"needs_input"})]);
+  const page=inventory.directory({pageSize:100});
+  assert.deepEqual(page.counts,{all:4,live:2,needs:1});
+  assert.equal(inventory.directory({filter:"live"}).matchedCount,2);assert.equal(inventory.directory({filter:"needs"}).matchedCount,1);
+  assert.equal(page.matchedCount,4);
+});
+
+test("an inventory created before the settled column opens, keeps its rows and gains the column",async(t)=>{
+  const directory=await mkdtemp(path.join(os.tmpdir(),"pomegr-catalog-old-"));
+  const store=await openMonitorStore({directory});
+  t.after(async()=>{store.close();await rm(directory,{recursive:true,force:true});});
+  store.database.exec(`CREATE TABLE session_catalog_headers (
+      provider TEXT NOT NULL, local_id TEXT NOT NULL, title TEXT NOT NULL, project TEXT NOT NULL,
+      created_at TEXT, updated_at TEXT, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+      is_live INTEGER NOT NULL, needs_input INTEGER NOT NULL, activity_status TEXT NOT NULL, repository_id TEXT,
+      generation TEXT NOT NULL, PRIMARY KEY(provider,local_id)) WITHOUT ROWID;
+    INSERT INTO session_catalog_headers VALUES ('claude','old-1','Old','Pomegr','2026-01-01T00:00:00.000Z','2026-01-01T00:00:00.000Z',1767225600000,1767225600000,0,0,'idle',NULL,'g');`);
+  const inventory=createSessionCatalogInventory({store:()=>store,providers:["claude"]});
+  assert.equal(inventory.initialize(),true);
+  assert.ok(store.database.prepare("PRAGMA table_info(session_catalog_headers)").all().some((column)=>column.name==="settled_status"));
+  assert.equal(inventory.get("claude:old-1").title,"Old");assert.equal(inventory.get("claude:old-1").activityStatus,"unknown");
+  inventory.updateProviderLifecycle("claude",[{localId:"old-1",activityStatus:"idle",createdAt:"2026-01-01T00:00:00.000Z",updatedAt:"2026-01-01T00:00:00.000Z"}]);
+  assert.equal(inventory.get("claude:old-1").activityStatus,"idle");
+  assert.doesNotThrow(()=>createSessionCatalogInventory({store:()=>store,providers:["claude"]}).initialize());
+});

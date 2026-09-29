@@ -3,8 +3,7 @@ import { createCheckpointRestore } from "./session-checkpoint-restore.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
 import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
-import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
-import { projectSessionCacheTiming } from "./session-cache-timing.mjs";
+import { catalogShellRow, createRowSummaryWriter } from "./session-catalog-row.mjs";
 import { createSessionCatalogInventory } from "./session-catalog-inventory.mjs";
 import { scanProviderHeaders } from "./session-header-scan.mjs";
 import { MAX_CATALOG_SHELL_ROWS, catalogSourceScopeKey, catalogStructure, compareCatalogEntries, downgradeRestoredLifecycle, openLiveDeadline, publicCatalogEntry, qualifiedSessionId } from "./session-catalog-runtime.mjs";
@@ -48,6 +47,8 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointStore = options.checkpointStore || null;
   const checkpointDelayMs = Math.max(0, Number(options.checkpointDelayMs ?? 5_000));
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
+  const rowSummaries = createRowSummaryWriter({ store, inventory: catalogInventory, schedule, cancel, now,
+    quietMs: checkpointDelayMs, maxMs: checkpointMaxDelayMs, isStopped: () => stopped });
   const monotonicNow = options.monotonicNow || (() => performance.now());
   const trace = options.pipelineTrace;
   const traceScopeForSession = typeof options.traceScopeForSession === "function"
@@ -181,44 +182,11 @@ export function createSessionObservationCoordinator(options = {}) {
       catalogInventory.updateProviderLifecycle(providerId, inventoryLifecycleRows(providerId, projectedEntries, checkedAt));
     }
     const entries = [...projectedCatalogs.values()].flat().sort(compareCatalogEntries);
-    const previousRows = new Map((catalogCache.current()?.value?.sessions || []).map((entry) => [entry.id, entry]));
+    rowSummaries.settle(entries.filter((entry) => entry.isLive).map((entry) => entry.id));
     const sessions = entries.slice(0, MAX_CATALOG_SHELL_ROWS).map((entry) => {
       const snapshot = store.getByQualifiedId(entry.id);
-      const state = snapshot?.publicState;
-      const previous = previousRows.get(entry.id);
-      const retainPrevious = !entry.isLive
-        && !snapshot
-        && previous?.summaryReadiness === "ready"
-        && previous.updatedAt === entry.updatedAt;
-      const primaryAgent = Array.isArray(state?.agents)
-        ? state.agents.find((agent) => agent.id === "primary")
-        : null;
-      const publicEntry = { ...entry };
-      delete publicEntry.detailReadiness;
-      return {
-        ...publicEntry,
-        project: state?.session?.project ?? (retainPrevious ? previous.project : entry.project),
-        summaryReadiness: snapshot || retainPrevious ? "ready"
-          : entry.detailReadiness === "unavailable" ? "unavailable" : "loading",
-        agentCount: Number.isFinite(state?.metrics?.agents)
-          ? state.metrics.agents
-          : retainPrevious ? previous.agentCount : null,
-        activeAgentCount: (snapshot || retainPrevious) && !entry.isLive
-          ? 0
-          : Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
-        latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents)
-          ? state.metrics.tokens.allAgents
-          : retainPrevious ? previous.latestContextTotal : null,
-        progress: state?.session?.progress || (retainPrevious ? previous.progress : null),
-        currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
-        activityFallback: retainPrevious ? reconcileSessionActivityFallback(entry, previous.activityFallback)
-          : projectSessionActivityFallback(restoredActivitySessions.has(entry.id) ? { ...entry, isLive: false } : entry,
-            state?.agents, snapshot?.evidence?.toolCalls),
-        cacheTiming: snapshot ? projectSessionCacheTiming(state?.agents, state?.metrics?.tokens?.requestSnapshots)
-          : retainPrevious ? previous.cacheTiming ?? null : null,
-        repositoryId: state?.session ? state.session.repositoryId ?? null : retainPrevious ? previous.repositoryId ?? null : null,
-        contextInventoryRef: state?.session ? state.session.contextInventoryRef ?? null : retainPrevious ? previous.contextInventoryRef ?? null : null,
-      };
+      return catalogShellRow(entry, { snapshot, restoredActivity: restoredActivitySessions.has(entry.id),
+        persisted: snapshot ? null : catalogInventory.get(entry.id) });
     });
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
     // One provider's empty result cannot establish that the combined catalog is
@@ -320,6 +288,7 @@ export function createSessionObservationCoordinator(options = {}) {
           updatedAt: session?.updatedAt || candidate.observedAt, repositoryId: session?.repositoryId ?? null,
         }], { preserveLifecycle: true });
       } catch { /* header enrichment must not reject an accepted session */ }
+      if (snapshot?.accepted) rowSummaries.record(qualifiedId);
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
       trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope,
         outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
@@ -665,6 +634,7 @@ export function createSessionObservationCoordinator(options = {}) {
 
   async function stop() {
     stopped = true;
+    rowSummaries.stop();
     if (headerScanTimer !== null) cancel(headerScanTimer);
     headerScanTimer = null;
     generation += 1;
@@ -716,7 +686,7 @@ export function createSessionObservationCoordinator(options = {}) {
         const existing = baseRows.get(id);
         if (existing) { requested.push(existing); baseRows.delete(id); continue; }
         const identity = catalogInventory.get(id);
-        if (identity) requested.push({ ...identity, summaryReadiness: "loading" });
+        if (identity) requested.push(identity);
       }
       return { revision: current?.revision ?? 0, value: { ...base, sessions: [...requested, ...baseRows.values()].slice(0, MAX_CATALOG_SHELL_ROWS), coverage: catalogInventory.coverage() } };
     },

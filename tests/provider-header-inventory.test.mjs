@@ -34,6 +34,21 @@ test("Claude enumerates every top-level header in bounded batches without transc
   assert.equal(rows.length, 125);
   assert.equal(rows.some((row) => row.localId === "child"), false);
   assert.equal(rows.every((row) => row.title === "Untitled session" && row.project === "Unknown project"), true);
+  assert.equal(rows.every((row) => !row.isLive && row.activityStatus === "idle"), true, "Claude headers carry the adapter non-live fallback");
+});
+
+test("Claude keeps enumerating past an empty transcript but reports the scan incomplete", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-empty-header-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const first = path.join(root, "projects", "a-project"), later = path.join(root, "projects", "b-project");
+  await mkdir(first, { recursive: true });
+  await mkdir(later, { recursive: true });
+  await writeFile(path.join(first, "empty-session.jsonl"), "");
+  await writeFile(path.join(later, "later-session.jsonl"), `${JSON.stringify({ sessionId: "later-session", type: "user" })}\n`);
+  const provider = createClaudeProvider({ claudeProjectsDir: path.join(root, "projects"), claudeConfigDir: root, registryRoot: path.join(root, "registry") });
+  const { result, rows } = await collect(provider);
+  assert.deepEqual(result, { complete: false }, "an incomplete scan never prunes committed rows");
+  assert.deepEqual(rows.map((row) => row.localId), ["later-session"]);
 });
 
 test("Claude includes a configured transcript outside its projects root", async (context) => {
@@ -84,6 +99,7 @@ test("Codex enumerates more than 500 rollout headers, including archive, without
   assert.deepEqual(result, { complete: true });
   assert.equal(rows.length, 551);
   assert.equal(rows.some((row) => row.localId === "archived-header"), true);
+  assert.equal(rows.every((row) => row.activityStatus === "unknown"), true, "Codex headers record no root status");
   assert.equal((await provider.listSessions()).length <= 50, true, "live shell remains bounded");
   blockCatalog = true;
   const globalRead = provider.listSessions({ fresh: true });
