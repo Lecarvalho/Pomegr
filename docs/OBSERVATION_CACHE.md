@@ -1673,6 +1673,15 @@ reachability.
   separate persistence contract above. Detail
   hydration and normalized evidence retention continue under the existing U1/C/P
   contracts, and GETs continue to serve committed response caches only.
+- Codex U1 canonicalizes trusted rollout paths before indexing a session's root and
+  child source parts. Windows short names and directory aliases for one file share
+  a single source identity, including incremental record and generation lookups;
+  watcher hints and copied transcript paths use that same resolved file. A failed
+  resolution remains a bounded unavailable source, and no alias extends trusted
+  discovery beyond the configured provider roots. Repository mutation targets
+  resolve their existing parent before comparing with a recognized Git root, so
+  a Windows alias does not erase structured file-change attribution. None of
+  these private paths enters normalized state or a GET response cache.
 - A Codex source generation replacement revalidates the bounded header identity
   before ingesting records against an existing session. A changed identity queues
   discovery and leaves the prior committed evidence intact; ordinary appends retain

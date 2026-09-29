@@ -9,6 +9,7 @@ import {
 import { createNormalizedPollingObserver } from "./normalized-polling-observer.mjs";
 import { expandCodexSelectedMetadata } from "./codex-session-discovery.mjs";
 import { readCodexRolloutHeader } from "./codex-session-metadata.mjs";
+import { canonicalCodexSourcePath, codexSourcePathKey } from "./codex-source-path.mjs";
 import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
 import { mergeCodexContextSnapshot } from "./codex-context.mjs";
 import { foldSessionEvidence } from "./session-fold.mjs";
@@ -242,10 +243,7 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   const sourceKey = (file) => {
-    try {
-      const resolved = path.resolve(file);
-      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-    } catch { return ""; }
+    try { return codexSourcePathKey(file); } catch { return ""; }
   };
 
   function privateObservationKey(localSessionId, selectedMetadata, entry) {
@@ -301,9 +299,9 @@ export function createCodexIncrementalObserver(options = {}) {
         .filter(Boolean);
       const files = new Set([...selectedIds].flatMap((id) => {
         const rolloutFile = metadataById.get(id)?.rolloutFile;
-        return rolloutFile ? [rolloutFile] : [];
+        return rolloutFile ? [canonicalCodexSourcePath(rolloutFile)] : [];
       }));
-      for (const transcriptPath of transcriptPathsBySessionId.get(localId)?.values() || []) files.add(transcriptPath);
+      for (const transcriptPath of transcriptPathsBySessionId.get(localId)?.values() || []) files.add(canonicalCodexSourcePath(transcriptPath));
       indexSessionSources(localId, files);
       const parts = [...files]
         .map((file) => incrementalSourceDescriptor(file, entry?.isLive === false))

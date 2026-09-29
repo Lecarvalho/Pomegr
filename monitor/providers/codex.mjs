@@ -6,6 +6,7 @@ import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
+import { canonicalCodexSourcePath, codexSourcePathKey } from "./codex-source-path.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
 import { createCodexRolloutDiscovery, noticeCodexRolloutSource } from "./codex-rollout-discovery.mjs";
 import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
@@ -248,10 +249,10 @@ export function createCodexProvider(options = {}) {
     const historical = readOptions.historical !== false;
     const completeStory = readOptions.completeStory === true;
     const incrementalRecordsByFile = readOptions.incrementalRecordsByFile instanceof Map
-      ? readOptions.incrementalRecordsByFile
+      ? new Map([...readOptions.incrementalRecordsByFile].map(([file, value]) => [codexSourcePathKey(file), value]))
       : null;
     const incrementalGenerationsByFile = readOptions.incrementalGenerationsByFile instanceof Map
-      ? readOptions.incrementalGenerationsByFile
+      ? new Map([...readOptions.incrementalGenerationsByFile].map(([file, value]) => [codexSourcePathKey(file), value]))
       : null;
     // Resolve known selected metadata before the global catalog.
     const directRoot = await appServerSessions.readSessionMetadata(localSessionId);
@@ -287,8 +288,8 @@ export function createCodexProvider(options = {}) {
         if (!thread.rolloutFile) continue;
         const incremental = incrementalRecordsByFile
           ? {
-            records: incrementalRecordsByFile.get(thread.rolloutFile) || [],
-            generation: incrementalGenerationsByFile?.get(thread.rolloutFile) || null,
+            records: incrementalRecordsByFile.get(codexSourcePathKey(thread.rolloutFile)) || [],
+            generation: incrementalGenerationsByFile?.get(codexSourcePathKey(thread.rolloutFile)) || null,
           }
           : null;
         const { records, generation } = incremental || await readRolloutRecords(
@@ -670,17 +671,18 @@ export function createCodexProvider(options = {}) {
   async function readTranscriptPath(localSessionId = "", agentId = "") {
     if (!isSafeCodexSessionId(localSessionId) || typeof agentId !== "string" || !agentId.startsWith("agent-")) return null;
     const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
-    if (recorded && fs.existsSync(recorded)) return recorded;
+    if (recorded && fs.existsSync(recorded)) return canonicalCodexSourcePath(recorded);
     const metadataById = new Map((await discoveredMetadata()).map((item) => [item.localId, item]));
     const threadId = agentId.slice("agent-".length);
     if (isTopLevelCodexSession(metadataById.get(localSessionId)) && threadId !== localSessionId) {
       const selectedIds = new Set([localSessionId]);
       expandCodexSelectedMetadata(metadataById, selectedIds);
       const rolloutFile = selectedIds.has(threadId) ? metadataById.get(threadId)?.rolloutFile : null;
-      if (rolloutFile) return rolloutFile;
+      if (rolloutFile) return canonicalCodexSourcePath(rolloutFile);
     }
     await readSession(localSessionId, { historical: true });
-    return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
+    return transcriptPathsBySessionId.get(localSessionId)?.has(agentId)
+      ? canonicalCodexSourcePath(transcriptPathsBySessionId.get(localSessionId).get(agentId)) : null;
   }
   async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }
   const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import fsPromises, { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import fsPromises, { mkdtemp, mkdir, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,19 @@ import {
   resolveCodexRolloutFamily,
 } from "../monitor/providers/codex-session-metadata.mjs";
 import { createSourceLedger } from "../monitor/providers/source-ledger.mjs";
+import { canonicalCodexSourcePath, codexSourcePathKey } from "../monitor/providers/codex-source-path.mjs";
+
+test("Codex source identity collapses aliases of the same rollout", async (context) => {
+  const root = await temporaryRoot(context);
+  const actual = path.join(root, "actual");
+  const alias = path.join(root, "alias");
+  await mkdir(actual);
+  await symlink(actual, alias, process.platform === "win32" ? "junction" : "dir");
+  const file = path.join(actual, "rollout-source.jsonl");
+  await writeFile(file, "{}\n");
+  assert.equal(canonicalCodexSourcePath(path.join(alias, "rollout-source.jsonl")), canonicalCodexSourcePath(file));
+  assert.equal(codexSourcePathKey(path.join(alias, "rollout-source.jsonl")), codexSourcePathKey(file));
+});
 
 // New-rollout routing (a watcher notification reaching the shared source ledger without a
 // directory walk) and header record-time recency, for the Codex adapter.

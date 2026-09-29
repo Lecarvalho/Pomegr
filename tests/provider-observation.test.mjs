@@ -6,6 +6,7 @@ import test from "node:test";
 import { createIncrementalJsonlIngestor } from "../monitor/providers/incremental-jsonl-ingestor.mjs";
 import { createCodexIncrementalObserver, mergeCodexObservationEvidence } from "../monitor/providers/codex-observation.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
+import { canonicalCodexSourcePath } from "../monitor/providers/codex-source-path.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { incrementalSourceSetDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
@@ -569,7 +570,7 @@ test("Codex observation retains the complete story while a child source advances
   watcher("change", path.relative(directory, childFile));
   await nextPublication;
   assert.equal(reads.at(-1).completeStory, false);
-  assert.deepEqual([...reads.at(-1).incrementalRecordsByFile.keys()], [childFile]);
+  assert.deepEqual([...reads.at(-1).incrementalRecordsByFile.keys()], [canonicalCodexSourcePath(childFile)]);
   assert.deepEqual(published.at(-1).compactions.map((item) => item.timestamp), [
     "2026-08-28T10:00:00.000Z",
     "2026-08-28T10:01:00.000Z",
