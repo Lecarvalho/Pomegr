@@ -104,6 +104,8 @@ describe("Pomegr visual contract", () => {
     expect(styles).toMatch(/\.commandPalette > header input:focus-visible\s*\{[^}]*outline:\s*0/);
     expect(shellSource).not.toMatch(/hasBreadcrumb|sessionBreadcrumb/);
     expect(commandPageSource).toMatch(/export function CommandPageHeader/);
+    expect(styles).toMatch(/\.sessionStartedMeta\s*\{[^}]*font:\s*400 var\(--text-xs\)\/1\.4 var\(--font-ui\)/);
+    expect(styles).toMatch(/\.sessionStartedMeta time\s*\{[^}]*font-family:\s*var\(--font-data\);[^}]*font-variant-numeric:\s*tabular-nums/);
     expect(styles).toMatch(/\.commandPageTabs\s*\{[^}]*border-bottom:\s*1px solid var\(--command-line\)/);
     expect(styles).toMatch(/\.commandSidebarLimits\s*\{[^}]*margin-bottom:\s*12px/);
     expect(shellSource).toMatch(/className="commandQuietAction commandPaletteTrigger"/);

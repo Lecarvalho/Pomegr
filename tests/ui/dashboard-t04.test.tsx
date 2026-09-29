@@ -97,6 +97,7 @@ describe("T04 session workspace", () => {
   it("renders persistent summary-only chrome and falls back unknown tabs to Overview", async () => {
     const { fetchMock, container } = mount({ tab: "made-up", agent: "primary", request: "request-1", path: "app/Dashboard.tsx" });
     expect(await screen.findByRole("heading", { name: "Recorded implementation session" })).toBeInTheDocument();
+    expect(container.querySelector(".sessionStartedMeta time")).toHaveAttribute("datetime", "2026-09-14T11:00:00.000Z");
     expect(screen.getByLabelText("Session totals")).toHaveTextContent("Agents");
     expect(screen.getByLabelText("Session totals")).toHaveTextContent("All-agent context");
     expect(screen.getByLabelText("Session totals")).toHaveTextContent("Calls");
