@@ -101,6 +101,17 @@ test("only a validated owner upgrades a live idle runtime to open", () => {
   assert.equal(sessionActivityStatus(false, registry({ status: "idle" }).get("local-session")), "idle");
 });
 
+test("an idle session with a running background shell is open, never unknown", () => {
+  const owned = registry({ status: "shell", entrypoint: "cli" }).get("local-session");
+  assert.equal(owned.status, "idle");
+  assert.equal(registryStatus(owned, "unknown"), "idle", "the primary agent is idle between turns");
+  assert.equal(sessionActivityStatus(true, owned), "open");
+  const unowned = registry({ status: "shell", entrypoint: "cli" });
+  delete unowned.get("local-session").resourceOwner;
+  assert.equal(sessionActivityStatus(true, unowned.get("local-session")), "idle");
+  assert.equal(sessionActivityStatus(true, owned, true), "working", "recognized background work keeps its existing precedence");
+});
+
 test("accepts the older session envelope with the exact native identity", async (t) => {
   const f = await fixture(t);
   const reader = createClaudeSessionStatusReader({ ...f, fetch: async () => reply("running", {}, "session") });

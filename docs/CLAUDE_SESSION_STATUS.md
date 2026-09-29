@@ -76,6 +76,11 @@ A validated registered runtime keeps the session in **Live** between turns, with
 **Open** as its session label after primary and background work become idle. The
 primary agent still shows **idle**. Registration without validated process ownership
 does not establish Open; neither do transcript recency or a fresh browser poll.
+Claude Code writes the local registry status `shell` when the primary agent is idle
+while a background shell task (a backgrounded Bash command or a Monitor) is still
+running. Pomegr reads `shell` as `idle`, so such a session is **Open** with a validated
+owner, never Unknown. Recorded background work that Pomegr recognizes from the
+transcript keeps its existing Working precedence.
 
 A non-live Claude catalog row uses **Closed** when the native registry observer has
 confirmed that its registered runtime owner ended or no longer matches the recorded
