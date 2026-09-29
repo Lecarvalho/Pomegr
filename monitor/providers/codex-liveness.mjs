@@ -6,6 +6,7 @@ import { isSafeCodexSessionId } from "./codex-session-metadata.mjs";
 import { appServerLiveness } from "./codex-owning-runtime.mjs";
 import { readCodexLivenessTail, observedCodexRolloutLifecycle } from "./codex-rollout-lifecycle.mjs";
 import { isActiveCodexWriterLock } from "./codex-cli-observation.mjs";
+import { readCodexWriterLock } from "./codex-writer-presence.mjs";
 import { createCodexSourceRouter, codexInferenceEligible } from "./codex-source-routing.mjs";
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
 import { codexRecordedLiveness, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
@@ -57,7 +58,8 @@ export function createCodexLivenessCoordinator(options = {}) {
   const writerLocksRoot = options.writerLocksRoot ? path.resolve(options.writerLocksRoot) : null;
   const writerLockIsActive = options.writerLockIsActive || ((file) => isActiveCodexWriterLock(file, { platform: options.platform }));
   const currentWriterOwner = options.currentWriterOwner || (() => null);
-  const currentWriterRelease = options.currentWriterRelease || (() => null);
+  const platform = options.platform || process.platform;
+  const readWriterLock = options.readWriterLock || ((file) => readCodexWriterLock(file));
   const now = options.now || (() => Date.now());
   const cacheMs = Number.isFinite(options.cacheMs) ? Math.max(0, options.cacheMs) : CODEX_LIVENESS_CACHE_MS;
   const maximumTailBytes = Number.isInteger(options.maximumTailBytes)
@@ -74,7 +76,6 @@ export function createCodexLivenessCoordinator(options = {}) {
   const recordedSources = new Map();
   const recordedTails = new WeakMap();
   const rolloutObservations = new Map();
-  const releaseBaselines = new Map();
   let cache = null;
   let stats = { rolloutFiles: 0, rolloutBytes: 0 };
 
@@ -90,39 +91,40 @@ export function createCodexLivenessCoordinator(options = {}) {
     } catch { return null; }
   }
 
-  function releaseFor(thread) {
-    if (thread.archived || !isSafeCodexSessionId(thread.localId)) return null;
-    try {
-      const value = currentWriterRelease(thread.localId);
-      return Number.isFinite(value?.since) && Number.isFinite(value?.checkedAt) && value.checkedAt >= value.since
-        ? { since: value.since, checkedAt: value.checkedAt } : null;
-    } catch { return null; }
+  // One observation reads each needed writer lock at most once. Codex takes a
+  // thread's lock before it creates the rollout and holds it while the thread is
+  // loaded, so where Windows lock evidence exists a missing or uncontended lock
+  // proves no process can resolve that thread's recorded work.
+  function writerLockStates() {
+    const states = new Map();
+    let rootAvailable = null;
+    return (localId) => {
+      if (states.has(localId)) return states.get(localId);
+      let state = "unavailable";
+      try {
+        if (options.writerLockState) state = options.writerLockState(localId);
+        else if (platform === "win32" && writerLocksRoot && isSafeCodexSessionId(localId)) {
+          rootAvailable ??= fs.statSync(writerLocksRoot, { throwIfNoEntry: false })?.isDirectory() === true;
+          const file = path.join(writerLocksRoot, `${localId}.lock`);
+          const lock = rootAvailable ? readWriterLock(file)?.state : null;
+          // Release needs the cold-discovery contention probe to agree, so a
+          // writer that takes the lock between the two reads still counts as held.
+          state = lock === "held" ? "held"
+            : lock === "missing" || lock === "unlocked" ? (writerLockIsActive(file) === true ? "held" : "released")
+              : "unavailable";
+        }
+      } catch { state = "unavailable"; }
+      states.set(localId, state);
+      return state;
+    };
   }
 
-  // An unresolved recorded turn stays live through silence while a writer can
-  // still finish it. It ends here only when no writer holds this thread's lock
-  // or its root's, and a scan completed after the current rollout generation was
-  // first observed still found every lock released. The unmatched turn becomes
-  // unknown and not live; nothing about completion, idle, or success is inferred.
-  function writerReleased(thread, releasesById, checkedAt) {
-    if (!thread.rolloutFile) return false;
+  // Unresolved recorded work is live only while a writer could still resolve
+  // it. When neither this thread's lock nor its root's is held, it is unknown
+  // and not live; nothing about completion, idle, or success is inferred.
+  function writerReleased(thread, lockState) {
     const ids = [...new Set([thread.localId, thread.sessionId, thread.parentThreadId].filter(isSafeCodexSessionId))];
-    const releases = ids.map((id) => releasesById.get(id));
-    if (!releases.length || releases.some((value) => !value)) return false;
-    let stat;
-    try { stat = fs.statSync(thread.rolloutFile); } catch { return false; }
-    const key = `${stat.size}:${stat.mtimeMs}`;
-    const since = releases[0].since;
-    let baseline = releaseBaselines.get(thread.localId);
-    if (!baseline || baseline.since !== since || baseline.key !== key) {
-      baseline = { since, key, observedAt: checkedAt };
-      releaseBaselines.delete(thread.localId);
-      releaseBaselines.set(thread.localId, baseline);
-      while (releaseBaselines.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) {
-        releaseBaselines.delete(releaseBaselines.keys().next().value);
-      }
-    }
-    return releases.every((value) => value.checkedAt > baseline.observedAt);
+    return ids.length > 0 && ids.every((id) => lockState(id) === "released");
   }
 
   function releasedLiveness(liveness) {
@@ -256,14 +258,11 @@ export function createCodexLivenessCoordinator(options = {}) {
       const owner = ownerFor(thread);
       return owner ? [[thread.localId, owner]] : [];
     }));
-    const releasesById = new Map(threads.flatMap((thread) => {
-      const release = releaseFor(thread);
-      return release ? [[thread.localId, release]] : [];
-    }));
-    const presenceKey = JSON.stringify([[...resourceOwnersByThreadId], [...releasesById]]);
+    const presenceKey = JSON.stringify([...resourceOwnersByThreadId]);
     if (cache && checkedAt >= cache.checkedAt && checkedAt < cache.expiresAt
       && cache.input === threads && cache.presenceKey === presenceKey) return cache.value;
     stats = { rolloutFiles: 0, rolloutBytes: 0 };
+    const lockState = writerLockStates();
     const topLevelSourceBySessionId = new Map(
       threads
         .filter((thread) => !thread.parentThreadId)
@@ -284,7 +283,7 @@ export function createCodexLivenessCoordinator(options = {}) {
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null, Boolean(owner))
         : null;
       // A current owning-runtime snapshot is authoritative for its loaded task.
-      const released = !app && !owner && rollout?.live === true && writerReleased(thread, releasesById, checkedAt);
+      const released = !app && !owner && rollout?.live === true && writerReleased(thread, lockState);
       const liveness = app || (released ? releasedLiveness(rollout) : rollout);
       return {
         ...thread,

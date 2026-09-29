@@ -252,8 +252,6 @@ export function createCodexWriterPresence(options = {}) {
   const fsImpl = options.fs || fs;
   const root = typeof options.writerLocksRoot === "string" ? path.resolve(options.writerLocksRoot) : null;
   const readLock = options.readLock || ((file) => readCodexWriterLock(file, { fs: fsImpl }));
-  // A missing lock proves release only where this Codex home keeps writer locks.
-  const lockRootAvailable = options.lockRootAvailable || (() => fsImpl.statSync(root).isDirectory());
   const resolveExecutables = options.resolveExecutables || (() => resolveCodexWriterExecutables({ ...options, fs: fsImpl, platform }));
   const query = options.queryOwners || ((files, executables, signal) => queryCodexWriterOwners(files, executables, { ...options, platform, signal }));
   const yieldFn = options.yieldFn || sleepTurn;
@@ -261,9 +259,6 @@ export function createCodexWriterPresence(options = {}) {
   const confirmationMs = Math.min(CODEX_WRITER_PRESENCE_CONFIRMATION_MS, Math.max(cacheMs, options.confirmationMs ?? CODEX_WRITER_PRESENCE_CONFIRMATION_MS));
   let currentById = new Map(); let refreshAt = null; let refreshCompletedAt = null; let refreshSignature = null; let refreshing = null;
   let requested = null; let activeController = null; let generation = 0; let closed = false;
-  // Continuous runs of direct "no writer holds this lock" evidence, keyed by ID.
-  // `since` is the first completed scan of the run, `checkedAt` the latest one.
-  let releasedById = new Map();
   const listeners = new Set();
 
   function sameOwners(left, right) {
@@ -293,22 +288,12 @@ export function createCodexWriterPresence(options = {}) {
       try { listener(); } catch { /* a private wakeup cannot disrupt collection */ }
     }
   }
-  function replaceCurrent(next, checkedAt = safeNow(now), releaseChanged = false) {
-    const changed = releaseChanged || !sameOwners(currentById, next) || !sameEffectiveOwners(currentById, next, checkedAt);
+  function replaceCurrent(next, checkedAt = safeNow(now)) {
+    const changed = !sameOwners(currentById, next) || !sameEffectiveOwners(currentById, next, checkedAt);
     currentById = next;
     if (changed) notify();
   }
-  // A run becomes usable once a later completed scan repeats it, so notify on
-  // that transition and on its end rather than on every repeated scan.
-  function releaseKey(map) {
-    return [...map].filter(([, value]) => value.checkedAt > value.since).map(([id]) => id).sort().join("\n");
-  }
-  function replaceReleased(next) {
-    const changed = releaseKey(releasedById) !== releaseKey(next);
-    releasedById = next;
-    return changed;
-  }
-  function clear() { replaceCurrent(new Map(), safeNow(now), replaceReleased(new Map())); }
+  function clear() { replaceCurrent(new Map()); }
   function candidates(threads) {
     const seen = new Set(); const result = [];
     for (const thread of Array.isArray(threads) ? threads : []) {
@@ -325,26 +310,20 @@ export function createCodexWriterPresence(options = {}) {
   }
   function prune(ids) {
     const allowed = new Set(ids);
-    replaceCurrent(new Map([...currentById].filter(([id]) => allowed.has(id))), safeNow(now),
-      replaceReleased(new Map([...releasedById].filter(([id]) => allowed.has(id)))));
+    replaceCurrent(new Map([...currentById].filter(([id]) => allowed.has(id))));
   }
   async function perform(request, checkedAt, token) {
     const held = [];
-    const released = [];
     let failed = false;
-    let scanFailed = false;
-    let releaseSupported = false;
-    try { releaseSupported = lockRootAvailable() === true; } catch { /* no release evidence */ }
     try {
       for (let index = 0; index < request.ids.length; index += 1) {
         const file = path.join(root, `${request.ids[index]}.lock`);
         const before = readLock(file);
         if (before?.state === "held" && typeof before.identity === "string" && before.identity.length <= 256) held.push({ id: request.ids[index], file, identity: before.identity });
-        else if (releaseSupported && (before?.state === "missing" || before?.state === "unlocked")) released.push(request.ids[index]);
         if ((index + 1) % CODEX_WRITER_PRESENCE_BATCH_SIZE === 0) await yieldFn();
         if (closed || token !== generation) return;
       }
-    } catch { failed = true; scanFailed = true; }
+    } catch { failed = true; }
     let owners = [];
     if (!failed && held.length) {
       let executables = [];
@@ -382,22 +361,12 @@ export function createCodexWriterPresence(options = {}) {
       } catch { next.clear(); failed = true; }
     }
     if (closed || token !== generation) return;
-    // Release is direct per-file evidence, independent of the owner query. A
-    // failed scan proves no release, and a run older than the health age restarts.
-    const nextReleased = new Map();
-    if (!scanFailed) {
-      for (const id of released) {
-        const previous = releasedById.get(id);
-        const continuous = previous && checkedAt >= previous.checkedAt && checkedAt - previous.checkedAt <= confirmationMs;
-        nextReleased.set(id, { since: continuous ? previous.since : checkedAt, checkedAt });
-      }
-    }
     // `checkedAt` is the observation time.  Do not renew it merely because a
     // slow native helper finally completed, but apply the acquisition cooldown
     // from completion so a long query cannot immediately run itself again.
     const completedAt = safeNow(now);
     refreshCompletedAt = completedAt !== null && completedAt >= checkedAt ? completedAt : checkedAt;
-    replaceCurrent(next, refreshCompletedAt, replaceReleased(nextReleased)); refreshAt = checkedAt;
+    replaceCurrent(next, refreshCompletedAt); refreshAt = checkedAt;
     refreshSignature = request.signature;
   }
   async function drain() {
@@ -431,16 +400,6 @@ export function createCodexWriterPresence(options = {}) {
       if (!value) return null;
       return { pid: value.pid, processStartIdentity: value.processStartIdentity };
     },
-    /**
-     * The current run of completed scans that found this thread's lock missing
-     * or uncontended, or null.  Release means no writer holds the lock; it is
-     * never evidence of completion, idle, or success.
-     */
-    released(localId) {
-      const checkedAt = safeNow(now); const value = releasedById.get(localId);
-      if (!value || checkedAt === null || checkedAt < value.checkedAt || checkedAt - value.checkedAt > confirmationMs) return null;
-      return { since: value.since, checkedAt: value.checkedAt };
-    },
     subscribe(listener) {
       if (typeof listener !== "function" || closed) return () => {};
       listeners.add(listener);
@@ -450,9 +409,7 @@ export function createCodexWriterPresence(options = {}) {
       // Let the native helper finish.  Killing it for every watcher event can
       // starve a busy lock directory forever; the generation still suppresses
       // its stale result, while `requested` retains the latest follow-up.
-      // Release runs survive: any lock-directory change would otherwise return
-      // every abandoned session to Live until the follow-up scan completes.
-      generation += 1; replaceCurrent(new Map()); refreshAt = null; refreshCompletedAt = null; refreshSignature = null;
+      generation += 1; clear(); refreshAt = null; refreshCompletedAt = null; refreshSignature = null;
     },
     close() {
       closed = true; generation += 1; requested = null; activeController?.abort(); listeners.clear(); clear();

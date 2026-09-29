@@ -1268,25 +1268,24 @@ re-publishing it. All ownership stays in bounded adapter-private memory, never a
 checkpoint, browser response, diagnostic log, or transcript. This health bound is not
 an idle-session retention heuristic and cannot end an unresolved recorded turn.
 
-The same scan records writer release, as approved by the product owner on 2026-09-28,
-so work abandoned by a killed or crashed Codex process does not stay in Live forever.
-When the provider lock directory exists, a lock file that is missing or readable
-without contention proves that no process holds that thread's writer lock. Consecutive
-completed scans that repeat this form one release run, retained in the same bounded
-private memory under the thirty-second health age. A held lock, a failed lock read, a
-missing lock directory, an unsupported platform, or an expired run ends it. An
-owner-query failure does not, because release needs no owner. Lock-directory
-invalidation keeps release runs, so one lock change cannot return every abandoned session
-to Live until the next scan. An unresolved recorded turn or unmatched input wait loses
-Live status only when the thread has no owning-runtime status or confirmed owner, its own
-lock and its root's lock are both in a release run, and a scan that started after the
-current rollout generation was first observed still found every lock released. Any
-append restarts that check. The thread then reports status `unknown`, evidence
-`unavailable`, freshness `stale`, and reason `writer_released`, with its original
-observation timestamp. Release never establishes completion, idle, stopped, or success,
-and it never changes checkpoints or recorded lifecycle state. A Codex surface that
-writes rollouts without taking writer locks would be misread as released during a quiet
-interval until its next append. Every surface observed so far takes the lock.
+As approved by the product owner on 2026-09-28, work abandoned by a killed or crashed
+Codex process is never presented as live, so it does not enter Live at all, not even
+briefly after a restart. Codex takes a thread's writer lock before it creates the rollout
+(observed: lock 0.7 seconds before the file) and holds it while the thread is loaded. On
+Windows, when the provider lock directory exists, the liveness observation therefore reads
+the lock of each thread whose recorded work is unresolved. Each lock is read once per
+observation, synchronously, and the result is never retained, persisted, or exposed. A
+missing lock, or one readable without contention, is a release only when the
+cold-discovery contention probe agrees; a held lock at either read wins. Unresolved
+recorded work, meaning an open turn or an unmatched input wait, counts as live only when
+a writer could still resolve it: the thread has owning-runtime status or a confirmed
+owner, or its own lock or its root's lock is not released. Otherwise the thread reports
+status `unknown`, evidence `unavailable`, freshness `stale`, and reason `writer_released`,
+with its original observation timestamp. An unreadable lock, a missing lock directory,
+or a non-Windows platform gives no release evidence and keeps the recorded state. Release
+never establishes completion, idle, stopped, or success, and it never changes checkpoints
+or recorded lifecycle state. A Codex surface that wrote rollouts without taking writer
+locks would be misread as released. Every surface observed so far takes the lock.
 
 The lifecycle hook bridge, detached owner watcher, snapshot/lease persistence, and
 plugin build wiring are removed. Existing installed-plugin files and old user data
@@ -1311,8 +1310,8 @@ until a complete replacement validates and commits atomically.
 
 Codex recorded execution state is independent of runtime confirmation. A validated
 start remains in progress, and a structured unmatched input remains needs-input,
-until matching provider evidence resolves it or a confirmed writer release shows that no
-process can still resolve it; transcript silence is not a heartbeat failure or a
+until matching provider evidence resolves it, while a writer could still resolve it (see
+the writer-lock rule above); transcript silence is not a heartbeat failure or a
 completion event. Recognized terminal records retain idle/stopped even
 when old. Their timestamps never advance just because the monitor polls. Structured
 lifecycle freshness means the retained evidence matches a complete acquired source
@@ -1359,7 +1358,7 @@ unknown. A completed idle turn with confirmed current owner-backed presence is
 and stopped evidence retain precedence. Open never follows from a recent file alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
 Unknown non-live entries must never be labeled Complete. A crash without a terminal
 record may leave unresolved work; no elapsed transcript-silence window guesses an end.
-On Windows, a confirmed writer release (above) removes that work from Live as Unknown.
+On Windows, work whose thread and root writer locks are released is never live and shows as Unknown.
 Existing catalog, cold-discovery, working-set, and evidence-cache bounds remain in force.
 
 Live visibility is a shared D catalog projection, not a replacement for provider
