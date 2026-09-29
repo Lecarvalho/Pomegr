@@ -101,6 +101,7 @@ export function createCodexProvider(options = {}) {
   const liveness = createCodexLivenessCoordinator({
     writerLocksRoot,
     currentWriterOwner: (localId) => writerPresence.current(localId),
+    currentWriterRelease: (localId) => writerPresence.released?.(localId) ?? null,
     now,
     cacheMs,
     maximumTailBytes: options.maximumTailBytes,

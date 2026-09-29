@@ -140,7 +140,7 @@ export type Agent = {
     observedAt: string;
     evidence?: "observed" | "inferred" | "unavailable";
     freshness?: "current" | "stale";
-    reason?: "source_not_integrated" | "source_unavailable" | "source_unsupported" | "observation_gap" | "ambiguous_event" | "legacy_snapshot";
+    reason?: "source_not_integrated" | "source_unavailable" | "source_unsupported" | "observation_gap" | "ambiguous_event" | "legacy_snapshot" | "writer_released";
   } | null;
   signal: AgentReportedSignal | null;
   currentActivity?: AgentCurrentActivity | null;

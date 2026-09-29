@@ -398,7 +398,7 @@ const evidenceAgent = z.object({
     observedAt: evidenceTimestamp,
     evidence: z.enum(["observed", "inferred", "unavailable"]).optional(),
     freshness: z.enum(["current", "stale"]).optional(),
-    reason: z.enum(["source_not_integrated", "source_unavailable", "source_unsupported", "observation_gap", "ambiguous_event", "legacy_snapshot"]).optional(),
+    reason: z.enum(["source_not_integrated", "source_unavailable", "source_unsupported", "observation_gap", "ambiguous_event", "legacy_snapshot", "writer_released"]).optional(),
   }).strict().nullable().optional(),
   signal: evidenceSignal.nullable(), currentActivity: z.object({ label: evidenceOneLine(256), observedAt: evidenceTimestamp }).strict().nullable().optional(),
   toolCalls: evidenceCount, skills: z.array(z.object({ name: evidenceOneLine(128), calls: evidenceCount, lastUsed: evidenceNullableTimestamp }).strict()).max(256),
