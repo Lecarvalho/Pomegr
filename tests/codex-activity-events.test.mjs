@@ -12,6 +12,7 @@ import {
 } from "../monitor/providers/codex-activity-events.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
 import { createCodexIncrementalObserver } from "../monitor/providers/codex-observation.mjs";
+import { canonicalCodexSourcePath } from "../monitor/providers/codex-source-path.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -130,7 +131,7 @@ test("Codex observer retains reply events across mirror appends and unrelated ta
     async readEvidence(_id, options) {
       const records = options.completeStory
         ? (await readFile(file, "utf8")).trim().split("\n").map(JSON.parse)
-        : options.incrementalRecordsByFile.get(file) || [];
+        : options.incrementalRecordsByFile.get(canonicalCodexSourcePath(file)) || [];
       return { localId: "root", historical: false, session: {}, agents: [{ ...ACTOR, skills: [], toolCalls: 0 }],
         workflows: [], usageSnapshots: [], toolCalls: [], activity: parseCodexAssistantReplyRecords(records), planTasks: [], compactions: [],
         efficiencyRuleEvidence: {}, pullRequestCreations: [] };

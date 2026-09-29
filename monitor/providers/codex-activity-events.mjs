@@ -519,12 +519,17 @@ async function bindMutationTarget(target, cwd, resolver, forbiddenRoots) {
   const absolute = absoluteMutationTarget(target, cwd);
   const directory = absolute && nearestExistingDirectory(absolute);
   if (!absolute || !directory) return null;
+  // Git can return a long root while the tool target uses an 8.3 alias.
+  // Resolve the existing parent and retain the uncreated target suffix.
+  let canonicalDirectory;
+  try { canonicalDirectory = fs.realpathSync.native(directory); } catch { return null; }
+  const canonicalTarget = path.resolve(canonicalDirectory, path.relative(directory, absolute));
   let resolved;
-  try { resolved = await resolver(directory, { requireGit: true }); } catch { return null; }
+  try { resolved = await resolver(canonicalDirectory, { requireGit: true }); } catch { return null; }
   if (!resolved || typeof resolved.repositoryId !== "string" || !/^repo-[a-f0-9]{24}$/u.test(resolved.repositoryId)
     || typeof resolved.root !== "string" || !path.isAbsolute(resolved.root)
     || (resolved.recognized !== true && resolved.isGit !== true)) return null;
-  const relative = path.relative(resolved.root, absolute);
+  const relative = path.relative(resolved.root, canonicalTarget);
   const safePath = repositoryRelativePath(relative, resolved.root, { forbiddenRoots });
   return safePath ? { repositoryId: resolved.repositoryId, path: safePath, root: resolved.root } : null;
 }

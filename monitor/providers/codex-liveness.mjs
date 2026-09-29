@@ -8,6 +8,7 @@ import { readCodexLivenessTail, observedCodexRolloutLifecycle } from "./codex-ro
 import { isActiveCodexWriterLock } from "./codex-cli-observation.mjs";
 import { readCodexWriterLock } from "./codex-writer-presence.mjs";
 import { createCodexSourceRouter, codexInferenceEligible } from "./codex-source-routing.mjs";
+import { canonicalCodexSourcePath } from "./codex-source-path.mjs";
 import { incrementalSourceDescriptor } from "./incremental-provider-observer.mjs";
 import { codexRecordedLiveness, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
 import { aggregateCodexSessionLifecycle } from "./codex-session-lifecycle.mjs";
@@ -149,7 +150,8 @@ export function createCodexLivenessCoordinator(options = {}) {
     // broadening the ordinary recent/history catalog scan.
     const tailBytes = ownerConfirmed ? maximumOwnerTailBytes : maximumTailBytes;
     const tailRecords = ownerConfirmed ? maximumOwnerTailRecords : CODEX_LIVENESS_MAX_TAIL_RECORDS;
-    const recorded = recordedSources.get(file);
+    const fileKey = canonicalCodexSourcePath(file);
+    const recorded = recordedSources.get(fileKey);
     if (recorded) {
       // Retain full-observer evidence through acquisition lag. A complete,
       // continuous terminal append can close it without waiting for hydration.
@@ -187,7 +189,7 @@ export function createCodexLivenessCoordinator(options = {}) {
       }
     }
     const key = `${current.identity}:${current.size}:${current.mtimeMs}:${current.suffixDigest}:${tailBytes}:${tailRecords}`;
-    let cached = tailCache.get(file);
+    let cached = tailCache.get(fileKey);
     if (!cached || cached.key !== key) {
       const read = readCodexLivenessTail(file, tailBytes, tailRecords);
       const appended = cached && compatibleAppend(file, cached.generation, current);
@@ -208,7 +210,7 @@ export function createCodexLivenessCoordinator(options = {}) {
           complete: read.complete && Boolean(stable),
           continuous: Boolean(tailBoundary) || continuous,
           boundary: observedCodexRolloutLifecycle(read.records, { now: nowMs, previous: previousBoundary }).boundary };
-        tailCache.set(file, cached);
+        tailCache.set(fileKey, cached);
       }
       while (tailCache.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) tailCache.delete(tailCache.keys().next().value);
       stats.rolloutFiles += 1;
@@ -279,7 +281,8 @@ export function createCodexLivenessCoordinator(options = {}) {
       const implementation = sourceFor(topLevelSourceBySessionId.get(thread.sessionId || thread.localId) || thread.sourceKind);
       const coldCandidate = !authoritative && !metadataCanBeLive && implementation.coldCandidate(thread, hasCurrentWriterLock);
       const rollout = !authoritative && (owner || metadataCanBeLive || coldCandidate
-        || recordedSources.has(thread.rolloutFile) || tailCache.has(thread.rolloutFile))
+        || (thread.rolloutFile && recordedSources.has(canonicalCodexSourcePath(thread.rolloutFile)))
+        || (thread.rolloutFile && tailCache.has(canonicalCodexSourcePath(thread.rolloutFile))))
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null, Boolean(owner))
         : null;
       // A current owning-runtime snapshot is authoritative for its loaded task.
@@ -327,7 +330,8 @@ export function createCodexLivenessCoordinator(options = {}) {
       let changed = false;
       for (const { file, generation, state, complete, pending } of observations) {
         if (!state || !generation) continue;
-        const previous = recordedSources.get(file);
+        const fileKey = canonicalCodexSourcePath(file);
+        const previous = recordedSources.get(fileKey);
         // The first full acquisition may still be pending after a complete tail
         // was accepted. Leave that tail in charge until the full candidate is ready.
         if (pending && !previous) continue;
@@ -337,8 +341,8 @@ export function createCodexLivenessCoordinator(options = {}) {
           mtimeMs: generation.mtimeMs, suffixDigest: generation.suffixDigest,
           suffixBytes: generation.suffixBytes }, state, complete };
         if (JSON.stringify(previous) === JSON.stringify(value)) continue;
-        recordedSources.delete(file);
-        recordedSources.set(file, value);
+        recordedSources.delete(fileKey);
+        recordedSources.set(fileKey, value);
         changed = true;
       }
       while (recordedSources.size > CODEX_LIVENESS_MAX_ROLLOUT_OBSERVATIONS) recordedSources.delete(recordedSources.keys().next().value);

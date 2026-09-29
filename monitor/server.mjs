@@ -614,6 +614,11 @@ export async function startMonitorServer(options = {}) {
   let runtime;
   let operationsTransport;
   let startupExtension;
+  let stopObservationPromise;
+  const stopObservationOnce = () => {
+    stopObservationPromise ??= Promise.resolve().then(() => runtime?.stopObservation?.());
+    return stopObservationPromise;
+  };
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
@@ -626,7 +631,7 @@ export async function startMonitorServer(options = {}) {
       normalExitCode: "MONITOR_CLOSED",
       unexpectedExitCode: "MONITOR_EXIT_UNEXPECTED",
       onClose: () => {
-        void runtime.stopObservation?.();
+        void stopObservationOnce().catch(() => {});
         void operationsTransport?.close();
         void startupExtension?.close?.();
       },
@@ -659,7 +664,7 @@ export async function startMonitorServer(options = {}) {
     const close = () => {
       if (closePromise) return closePromise;
       closePromise = (async () => {
-        await runtime.stopObservation?.();
+        await stopObservationOnce();
         await operationsTransport?.close();
         await startupExtension?.close?.();
         await handle.close();
@@ -668,7 +673,7 @@ export async function startMonitorServer(options = {}) {
     };
     return Object.freeze({ ...handle, operationsEndpoint: operationsTransport?.endpoint || null, close });
   } catch (error) {
-    try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
+    try { await stopObservationOnce(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
     try { await startupExtension?.close?.(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -71,6 +71,19 @@ test("Codex provider binds a mutation outside launch cwd to the real repository 
   assert.equal(JSON.stringify(parsed).includes(repository), false);
   assert.equal(JSON.stringify(parsed).includes(launch), false);
   assert.equal(provider.repositoryAttributionForSession("attribution-session")?.state, "single");
+});
+
+test("Codex provider binds a mutation through a repository directory alias", async (t) => {
+  const repository = await gitRepository(t, "pomegr-codex-attribution-alias-");
+  const aliases = await temporaryDirectory(t, "pomegr-codex-alias-parent-");
+  const alias = path.join(aliases, "linked-repository");
+  await symlink(repository, alias, process.platform === "win32" ? "junction" : "dir");
+  const { evidence, inventory } = await providerWithEvidence(t, [path.join(alias, "src", "from-alias.ts")]);
+  const { repositoryId } = await inventory.resolveRepository(repository, { requireGit: true });
+  const parsed = parseProviderSessionEvidence(evidence);
+  assert.equal(parsed.session.repositoryAttribution, "single");
+  assert.equal(parsed.session.project, path.basename(repository));
+  assert.deepEqual(parsed.toolCalls[0].fileChanges, [{ repositoryId, path: "src/from-alias.ts", kind: "created", previousPath: null }]);
 });
 
 test("Codex provider names the project from the launch directory when it is itself a Git repository, with no proven mutation and no restart memory", async (t) => {
