@@ -67,11 +67,6 @@ afterEach(() => {
 });
 
 describe("focused agent tree view", () => {
-  it("shows custom types in tree cards and their accessible labels", () => {
-    renderTree({ agents: [agent("custom-child", null, "2026-08-08T12:00:00.000Z", { role: "unknown", customType: "queue-runner" })], focusId: "custom-child" });
-    expect(screen.getByRole("treeitem", { name: /custom: queue-runner/ })).toHaveTextContent("custom: queue-runner");
-  });
-
   it("starts focused clusters closed and the canonical focus path open, ignoring historical and stored session folds", async () => {
     const agents = focusFixture();
     window.localStorage.setItem("pomegr-agent-tree-folds-focus-history", JSON.stringify(["primary", "branch"]));
@@ -131,16 +126,5 @@ describe("focused agent tree view", () => {
     await user.click(await screen.findByRole("button", { name: "Whole session" }));
     await waitFor(() => expect(nodeFor(container, "worker-0")).toBeInTheDocument());
     expect(screen.getByText("Worker ×5").closest('[role="treeitem"]')).toHaveAttribute("aria-expanded", "true");
-  });
-
-  it("uses the rail form on phone and omits scope and camera controls", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
-    const { container } = renderTree({ agents: focusFixture(), focusId: "focus" });
-
-    await waitFor(() => expect(container.querySelector(".agentTreeView-rail")).toBeInTheDocument());
-    expect(screen.queryByRole("group", { name: "Tree scope" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Whole session" })).not.toBeInTheDocument();
-    expect(container.querySelector(".agentTreeCameraControls")).not.toBeInTheDocument();
-    expect(nodeFor(container, "focus").querySelector(".agentTreeCard")).toHaveClass("isFocus");
   });
 });

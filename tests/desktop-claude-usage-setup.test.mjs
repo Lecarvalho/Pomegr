@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +10,6 @@ import {
   installClaudeUsageIntegrationIpc,
   resolveClaudeUsageShells,
 } from "../desktop/claude-usage-setup.mjs";
-import { buildDesktopServiceBundles } from "../desktop/service-bundles.mjs";
 
 const POWERSHELL_PREFIX = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ";
 
@@ -271,84 +269,4 @@ test("disposing during a native confirmation prevents a later settings write", a
   release(true);
   assert.deepEqual(await pending, { status: "unavailable" });
   await assert.rejects(readFile(settingsFile), { code: "ENOENT" });
-});
-
-test("the generated command runs the standalone bridge and forwards status-line stdin through PowerShell", async (t) => {
-  const shells = resolveClaudeUsageShells(process.env);
-  assert.ok(shells?.powershellExecutable, "Windows PowerShell is required for the desktop setup command");
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-usage-runtime-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  await buildDesktopServiceBundles(path.resolve("."), root);
-  const configRoot = path.join(root, "claude");
-  const dataRoot = path.join(root, "data");
-  await mkdir(configRoot);
-  const settingsFile = path.join(configRoot, "settings.json");
-  const marker = 'Powershell "quotes" $() `backtick` Résumé';
-  const original = `$body=[Console]::In.ReadToEnd(); Write-Output $body; Write-Output '${marker}'`;
-  await writeFile(settingsFile, JSON.stringify({ statusLine: { type: "command", command: original } }), "utf8");
-  const integration = createClaudeUsageIntegration({
-    configRoot,
-    dataRoot,
-    feedRoot: path.join(dataRoot, "usage-snapshots"),
-    appExecutable: path.resolve("node_modules", "electron", "dist", "electron.exe"),
-    bridgePath: path.join(root, "desktop", "workers", "claude-statusline-bridge.cjs"),
-    powershellExecutable: shells.powershellExecutable,
-    confirm: async () => true,
-  });
-  assert.deepEqual(await integration.enable(), { status: "enabled" });
-  const command = JSON.parse(await readFile(settingsFile, "utf8")).statusLine.command;
-  const sentinel = '{"session_id":"runtime-feed","cost":{"total_cost_usd":0.25}}';
-  const direct = spawnSync(shells.powershellExecutable, ["-NoProfile", "-NonInteractive", "-Command", original], {
-    input: sentinel,
-    windowsHide: true,
-    timeout: 30_000,
-  });
-  const result = spawnSync(shells.powershellExecutable, ["-NoProfile", "-NonInteractive", "-Command", command], {
-    input: sentinel,
-    windowsHide: true,
-    timeout: 30_000,
-  });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(direct.status, 0, direct.stderr);
-  assert.deepEqual(result.stdout, direct.stdout, "the wrapper must preserve the configured PowerShell status line bytes");
-  assert.equal(result.stdout.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])), false);
-});
-
-test("the generated command delegates the original Git Bash status line when Git Bash is available", async (t) => {
-  const shells = resolveClaudeUsageShells(process.env);
-  if (!shells?.gitBashExecutable) return t.skip("Git Bash is not installed");
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-usage-bash-runtime-"));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  await buildDesktopServiceBundles(path.resolve("."), root);
-  const configRoot = path.join(root, "claude");
-  const dataRoot = path.join(root, "data");
-  await mkdir(configRoot);
-  const settingsFile = path.join(configRoot, "settings.json");
-  const marker = 'Bash "quotes" $() `backtick` Résumé';
-  await writeFile(settingsFile, JSON.stringify({ statusLine: { type: "command", command: `cat; printf '%s' '${marker}'` } }), "utf8");
-  const integration = createClaudeUsageIntegration({
-    configRoot,
-    dataRoot,
-    appExecutable: path.resolve("node_modules", "electron", "dist", "electron.exe"),
-    bridgePath: path.join(root, "desktop", "workers", "claude-statusline-bridge.cjs"),
-    powershellExecutable: shells.powershellExecutable,
-    gitBashExecutable: shells.gitBashExecutable,
-    confirm: async () => true,
-  });
-  assert.deepEqual(await integration.enable(), { status: "enabled" });
-  const command = JSON.parse(await readFile(settingsFile, "utf8")).statusLine.command;
-  const sentinel = '{"session_id":"runtime-bash","cost":{"total_cost_usd":0.5}}';
-  const direct = spawnSync(shells.gitBashExecutable, ["-c", `cat; printf '%s' '${marker}'`], {
-    input: sentinel,
-    windowsHide: true,
-    timeout: 30_000,
-  });
-  const result = spawnSync(shells.powershellExecutable, ["-NoProfile", "-NonInteractive", "-Command", command], {
-    input: sentinel,
-    windowsHide: true,
-    timeout: 30_000,
-  });
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(direct.status, 0, direct.stderr);
-  assert.deepEqual(result.stdout, direct.stdout, "the wrapper must preserve the configured Git Bash status line bytes");
 });

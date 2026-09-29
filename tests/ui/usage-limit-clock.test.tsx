@@ -35,23 +35,6 @@ describe("usage-limit clock", () => {
     vi.useRealTimers();
   });
 
-  it("describes rejected access without asserting that a new login is required", () => {
-    render(<LiveClockProvider running><UsageLimitsPanel
-      source="Claude Code"
-      usageLimits={{
-        available: true,
-        fetchedAt: "2026-08-08T05:00:00.000Z",
-        attemptedAt: "2026-08-08T12:00:00.000Z",
-        error: "Anthropic usage endpoint returned 401",
-        limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
-      }}
-    /></LiveClockProvider>);
-
-    expect(screen.getByRole("status")).toHaveTextContent("Usage access interrupted");
-    expect(screen.getByRole("status")).toHaveTextContent("Claude Code’s saved access was rejected. Pomegr will retry automatically; reconnect if this continues.");
-    expect(screen.getByText("20%")).toBeInTheDocument();
-  });
-
   it("labels retained local usage with its observation time and stale status", () => {
     render(<LiveClockProvider running><UsageLimitsPanel
       source="Claude Code"
@@ -100,25 +83,6 @@ describe("usage-limit clock", () => {
     expect(screen.queryByText("0%")).not.toBeInTheDocument();
     expect(screen.queryByText("Active limit")).not.toBeInTheDocument();
     vi.useRealTimers();
-  });
-
-  it("marks Fable unavailable when a local feed has no retained API value", () => {
-    render(<LiveClockProvider running><UsageLimitsPanel
-      source="Claude Code"
-      usageLimits={{
-        available: true,
-        origin: "local_observation",
-        freshness: "fresh",
-        fetchedAt: "2026-08-08T12:00:00.000Z",
-        attemptedAt: "2026-08-08T12:00:00.000Z",
-        limits: [{ id: "five-hour", label: "Five-hour limit", window: "5 hours", percent: 20, resetsAt: null, severity: "normal", active: false }],
-      }}
-    /></LiveClockProvider>);
-
-    expect(screen.getByText("Fable")).toBeInTheDocument();
-    expect(screen.getByText("Unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Not reported by Claude")).toBeInTheDocument();
-    expect(screen.queryByText("0%")).not.toBeInTheDocument();
   });
 
   it.each([

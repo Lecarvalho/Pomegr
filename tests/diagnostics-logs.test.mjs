@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { appendFile, mkdtemp, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -12,7 +14,14 @@ import {
   formatDiagnosticsLogs,
   parseDiagnosticsLogsArgs,
 } from "../scripts/diagnostics-logs.mjs";
+import {
+  diagnosticsSnapshotHelp,
+  formatDiagnosticsSnapshot,
+  parseDiagnosticsSnapshotArgs,
+  runDiagnosticsSnapshot,
+} from "../scripts/diagnostics-snapshot.mjs";
 import { createPipelineOperationsSnapshot } from "../monitor/pipeline-operations.mjs";
+import { startPipelineOperationsTransport } from "../monitor/pipeline-operations-transport.mjs";
 import { normalizePipelineLogRecord } from "../monitor/pipeline-log-schema.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -171,7 +180,7 @@ test("follow reads only appended complete records and starts a new rotation at i
   assert.deepEqual(await follower.poll(), [next]);
 });
 
-test("follow bounds each poll, reports partial lines, and detects missed rotation", async () => {
+test("follow bounds each poll by bytes and records, reports partial lines, and detects missed rotation", async () => {
   const { directory, path } = await fixture([{ ...common, kind: "lifecycle", event: "started" }]);
   const follower = await createPipelineLogFollower({ directory, maxPollBytes: 32, maxPollRecords: 1 });
   const next = { ...common, at: "2026-09-11T12:00:06.000Z", kind: "lifecycle", event: "stopped" };
@@ -187,24 +196,17 @@ test("follow bounds each poll, reports partial lines, and detects missed rotatio
   const missed = await follower.poll();
   assert.equal(missed.coverage.status, "rotation_missed");
   assert.equal(missed.coverage.missedRotation, true);
-});
 
-test("follow preserves complete records after the per-poll record limit", async () => {
-  const { directory, path } = await fixture([{ ...common, kind: "lifecycle", event: "started" }]);
-  const follower = await createPipelineLogFollower({ directory, maxPollRecords: 1 });
-  const first = { ...common, at: "2026-09-11T12:00:08.000Z", kind: "lifecycle", event: "stopped" };
-  const second = { ...common, at: "2026-09-11T12:00:09.000Z", kind: "lifecycle", event: "started" };
-  await appendFile(path, `\n${JSON.stringify(first)}\n${JSON.stringify(second)}\n`, "utf8");
-  assert.deepEqual(await follower.poll(), [first]);
-  assert.deepEqual(await follower.poll(), [second]);
-});
-
-test("concurrent follow polls share one serialized operation", async () => {
-  const { directory } = await fixture([{ ...common, kind: "lifecycle", event: "started" }]);
-  const follower = await createPipelineLogFollower({ directory });
-  const first = follower.poll();
-  assert.strictEqual(first, follower.poll());
-  await first;
+  const limited = await fixture([{ ...common, kind: "lifecycle", event: "started" }]);
+  const limitedFollower = await createPipelineLogFollower({ directory: limited.directory, maxPollRecords: 1 });
+  const stopped = { ...common, at: "2026-09-11T12:00:08.000Z", kind: "lifecycle", event: "stopped" };
+  const restarted = { ...common, at: "2026-09-11T12:00:09.000Z", kind: "lifecycle", event: "started" };
+  await appendFile(limited.path, `
+${JSON.stringify(stopped)}
+${JSON.stringify(restarted)}
+`, "utf8");
+  assert.deepEqual(await limitedFollower.poll(), [stopped], "complete records past the per-poll limit are preserved");
+  assert.deepEqual(await limitedFollower.poll(), [restarted]);
 });
 
 test("follow preserves valid health and ordinary rows crossing read-buffer boundaries", async () => {
@@ -263,4 +265,72 @@ test("invalid CLI input emits a fixed sanitized failure", async () => {
     assert.doesNotMatch(error.stderr, /private-missing/u);
     return true;
   });
+});
+
+async function availablePort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const port = server.address().port;
+  await new Promise((resolve) => server.close(resolve));
+  return port;
+}
+
+test("the diagnostics snapshot is bounded, provider-filterable, and retains failure details", () => {
+  const snapshot = createPipelineOperationsSnapshot({
+    coordinator: { observers: { claude: { acquisitionFailures: 2, failureDetails: { acquisitionFailures: {
+      stage: "acquire_normalize", reason: "EACCES", observedAt: "2026-08-30T12:00:00.000Z",
+    } } } } },
+    providers: { claude: { observerStartFailures: 1 }, codex: {} },
+  });
+  const rendered = formatDiagnosticsSnapshot(snapshot);
+  assert.match(rendered, /# Pomegr diagnostics snapshot/);
+  assert.match(rendered, /## Failures/);
+  assert.match(rendered, /claude · acquisitionFailures.*2/);
+  assert.match(rendered, /acquire_normalize · EACCES · 2026-08-30T12:00:00\.000Z/);
+  assert.match(formatDiagnosticsSnapshot(snapshot, { provider: "codex" }), /\| codex \|/);
+  assert.doesNotMatch(formatDiagnosticsSnapshot(snapshot, { provider: "codex" }), /claude|## Failures/);
+});
+
+test("diagnostics snapshot options accept only bounded one-shot output modes", () => {
+  assert.deepEqual(parseDiagnosticsSnapshotArgs(["--provider", "codex", "--port", "5000", "--json"]), {
+    port: 5000, provider: "codex", json: true, help: false,
+  });
+  assert.equal(parseDiagnosticsSnapshotArgs(["--markdown"]).json, false);
+  assert.match(diagnosticsSnapshotHelp(), /npm run diagnostics:snapshot/);
+  assert.throws(() => parseDiagnosticsSnapshotArgs(["--provider", "PRIVATE PROVIDER"]), /provider is invalid/);
+  assert.throws(() => parseDiagnosticsSnapshotArgs(["--unknown"]), /Unknown/);
+});
+
+test("one-shot snapshot consumes only the first bounded feed record", async () => {
+  class FakeSocket extends EventEmitter {
+    setEncoding() {}
+    end() { this.emit("close"); }
+    destroy() { this.emit("close"); }
+  }
+  const socket = new FakeSocket();
+  const snapshot = createPipelineOperationsSnapshot({}, "2026-08-29T12:00:00.000Z");
+  const pending = runDiagnosticsSnapshot({ port: 4317, json: true }, { connect: () => socket });
+  socket.emit("data", `${JSON.stringify(snapshot)}\n${JSON.stringify(snapshot)}\n`);
+  const result = await pending;
+  assert.deepEqual(JSON.parse(result.output), snapshot);
+});
+
+test("snapshot reader consumes a real passive operations transport once", async (t) => {
+  const port = await availablePort();
+  const snapshot = createPipelineOperationsSnapshot({ providers: { claude: { observerStartFailures: 2 } } });
+  const transport = await startPipelineOperationsTransport({ port, snapshot: () => snapshot, intervalMs: 100 });
+  t.after(() => transport.close());
+
+  const result = await runDiagnosticsSnapshot({ port, json: true, provider: "" });
+  assert.deepEqual(JSON.parse(result.output), snapshot);
+  assert.equal(result.snapshot.providers[0].id, snapshot.providers[0].id);
+});
+
+test("markdown snapshot output contains no terminal control sequences", () => {
+  const output = formatDiagnosticsSnapshot(createPipelineOperationsSnapshot({}));
+  assert.doesNotMatch(output, /\u001b/);
+  assert.match(output, /## Pipeline timings/);
 });

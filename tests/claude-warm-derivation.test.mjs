@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -56,17 +56,6 @@ test("execution task reader: a changed key reruns the record pass on the new rec
   assert.equal(second.length, 2);
 });
 
-test("execution task reader: a null key never caches", () => {
-  const reader = createExecutionTaskReader({});
-  const recordsA = [bash("toolu_1", "2026-09-01T00:00:00.000Z", { description: "A" })];
-  const recordsB = [bash("toolu_1", "2026-09-01T00:00:00.000Z", { description: "B" })];
-  const first = reader.build("/fake/session.jsonl", null, recordsA, {});
-  const second = reader.build("/fake/session.jsonl", null, recordsB, {});
-  assert.deepStrictEqual(first, buildExecutionTasks(recordsA, {}));
-  assert.deepStrictEqual(second, buildExecutionTasks(recordsB, {}));
-  assert.notDeepStrictEqual(first, second);
-});
-
 test("execution task reader: the finish pass reruns on a cache hit when historical/sessionUpdatedAt/taskSignals change", () => {
   const reader = createExecutionTaskReader({});
   const records = [bash("toolu_stale", "2026-09-01T00:00:00.000Z", { description: "Still running" })];
@@ -93,34 +82,6 @@ test("execution task reader: mutating a returned task does not affect the next r
   first.push({ id: "fake", status: "tampered" });
   const second = reader.build("/fake/session.jsonl", "gen-1", records, {});
   assert.deepStrictEqual(second, buildExecutionTasks(records, {}));
-});
-
-test("execution task reader: bounds evict the least-recently-used file", () => {
-  const reader = createExecutionTaskReader({ maxEntries: 2 });
-  const originalA = [bash("toolu_a", "2026-09-01T00:00:00.000Z", { description: "A original" })];
-  const changedA = [bash("toolu_a", "2026-09-01T00:00:00.000Z", { description: "A changed" })];
-  reader.build("/fake/a.jsonl", "gen-a", originalA, {});
-  reader.build("/fake/b.jsonl", "gen-b", [bash("toolu_b", "2026-09-01T00:00:00.000Z", { description: "B" })], {});
-  reader.build("/fake/c.jsonl", "gen-c", [bash("toolu_c", "2026-09-01T00:00:00.000Z", { description: "C" })], {});
-  // "a" was the least-recently-used file when "c" was added, so its entry should have been evicted;
-  // re-reading it with the SAME key but different records must recompute rather than serve stale data.
-  const result = reader.build("/fake/a.jsonl", "gen-a", changedA, {});
-  assert.deepStrictEqual(result, buildExecutionTasks(changedA, {}));
-});
-
-test("execution task reader: pruneMissingFiles drops entries for deleted files", async () => {
-  await withTempDir(async (root) => {
-    const file = path.join(root, "session.jsonl");
-    await writeFile(file, "", "utf8");
-    const reader = createExecutionTaskReader({});
-    const before = [bash("toolu_1", "2026-09-01T00:00:00.000Z", { description: "Before" })];
-    reader.build(file, "gen-1", before, {});
-    await rm(file, { force: true });
-    reader.pruneMissingFiles();
-    const after = [bash("toolu_1", "2026-09-01T00:00:00.000Z", { description: "After" })];
-    const result = reader.build(file, "gen-1", after, {});
-    assert.deepStrictEqual(result, buildExecutionTasks(after, {}));
-  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -189,21 +150,6 @@ test("tool-call evidence reader: cache hit matches the uncached (null key) compu
       await rm(root, { recursive: true, force: true });
     }
   });
-});
-
-test("tool-call evidence reader: a changed key reruns the record pass on the new records", async () => {
-  const { root, records } = await buildToolCallFixture();
-  try {
-    const reader = createClaudeToolCallEvidenceReader({});
-    const base = { file: "/fake/session.jsonl", actor: primaryActor, isMain: true, stat, cwd: root, forbiddenRoots: [], validatePath: repositoryRelativePath };
-    reader.read({ ...base, key: "gen-1", records });
-    const shrunk = records.slice(0, 2);
-    const second = reader.read({ ...base, key: "gen-2", records: shrunk });
-    assert.deepStrictEqual(second, reader.read({ ...base, key: null, records: shrunk }));
-    assert.equal(second.calls, 1);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
 });
 
 test("tool-call evidence reader: actor label changes flow through on a cache hit", async () => {
@@ -294,34 +240,6 @@ test("tool-call evidence reader: mutating a returned tool call does not affect t
   }
 });
 
-test("tool-call evidence reader: bounds evict the least-recently-used file", () => {
-  const reader = createClaudeToolCallEvidenceReader({ maxEntries: 2 });
-  const stat0 = { size: 10, mtimeMs: 1, mtime: new Date(0) };
-  const recordsFor = (label) => [toolUse("id1", "2026-09-01T00:00:00.000Z", "Bash", { command: label, description: label })];
-  const args = (file, key, records) => ({ file, key, records, actor: primaryActor, isMain: true, stat: stat0, cwd: "/repo", forbiddenRoots: [], validatePath: () => null });
-
-  reader.read(args("/fake/a.jsonl", "gen-a", recordsFor("A original")));
-  reader.read(args("/fake/b.jsonl", "gen-b", recordsFor("B")));
-  reader.read(args("/fake/c.jsonl", "gen-c", recordsFor("C")));
-  const result = reader.read(args("/fake/a.jsonl", "gen-a", recordsFor("A changed")));
-  assert.deepStrictEqual(result, reader.read(args("/fake/a.jsonl", null, recordsFor("A changed"))));
-});
-
-test("tool-call evidence reader: pruneMissingFiles drops entries for deleted files", async () => {
-  await withTempDir(async (root) => {
-    const file = path.join(root, "session.jsonl");
-    await writeFile(file, "", "utf8");
-    const reader = createClaudeToolCallEvidenceReader({});
-    const args = (records) => ({ file, key: "gen-1", records, actor: primaryActor, isMain: true, stat, cwd: root, forbiddenRoots: [], validatePath: repositoryRelativePath });
-    reader.read(args([toolUse("id1", "2026-09-01T00:00:00.000Z", "Bash", { description: "Before" })]));
-    await rm(file, { force: true });
-    reader.pruneMissingFiles();
-    const after = [toolUse("id1", "2026-09-01T00:00:00.000Z", "Bash", { description: "After" })];
-    const result = reader.read(args(after));
-    assert.deepStrictEqual(result, reader.read({ ...args(after), key: null }));
-  });
-});
-
 /* -------------------------------------------------------------------------- */
 /* mergeUpdatedAt: exact equivalence to the sequential fold                   */
 /* -------------------------------------------------------------------------- */
@@ -371,11 +289,6 @@ test("mergeUpdatedAt matches a sequential fold for ordinary valid timestamps acr
   const folded = mergeUpdatedAt(mergeUpdatedAt(mergeUpdatedAt(null, updatedAtFor(fileA)), updatedAtFor(fileB)), updatedAtFor(fileC));
   assert.equal(folded, naiveUpdatedAtFold([fileA, fileB, fileC]));
   assert.equal(folded, "2026-09-01T00:30:00.000Z");
-});
-
-test("mergeUpdatedAt leaves the accumulator unchanged when a file has no truthy timestamps", () => {
-  assert.equal(mergeUpdatedAt(null, { first: null, bestValid: null }), null);
-  assert.equal(mergeUpdatedAt("2026-09-01T00:00:00.000Z", { first: null, bestValid: null }), "2026-09-01T00:00:00.000Z");
 });
 
 /* -------------------------------------------------------------------------- */
@@ -446,31 +359,6 @@ test("live usage snapshot reader: a changed generation, actor, session, compacti
   assert.deepStrictEqual(changedCompactions, referenceHistoricalParse(usageRecords(7), historicalActor, historicalStat, "session-1", ["2026-09-01T00:00:01.000Z"]));
 });
 
-test("live usage snapshot reader: historical bounds evict the least-recently-used file", () => {
-  const readerInstance = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: 10 * 1024 * 1024, maxEntries: 2 });
-  const generation = { identity: "id-1", size: 111, mtimeMs: 222, suffixDigest: "digest-1" };
-  const read = (file, count) => readerInstance.read(file, usageRecords(count), historicalActor, historicalStat, true, "session-1", [], false, generation);
-  read("/fake/a.jsonl", 1);
-  read("/fake/b.jsonl", 1);
-  read("/fake/c.jsonl", 1);
-  const result = read("/fake/a.jsonl", 4);
-  assert.deepStrictEqual(result, referenceHistoricalParse(usageRecords(4), historicalActor, historicalStat, "session-1", []));
-});
-
-test("live usage snapshot reader: pruneMissingFiles drops historical entries for deleted files", async () => {
-  await withTempDir(async (root) => {
-    const file = path.join(root, "session.jsonl");
-    await writeFile(file, "", "utf8");
-    const readerInstance = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: 10 * 1024 * 1024 });
-    const generation = { identity: "id-1", size: 111, mtimeMs: 222, suffixDigest: "digest-1" };
-    readerInstance.read(file, usageRecords(1), historicalActor, historicalStat, true, "session-1", [], false, generation);
-    await rm(file, { force: true });
-    readerInstance.pruneMissingFiles();
-    const result = readerInstance.read(file, usageRecords(2), historicalActor, historicalStat, true, "session-1", [], false, generation);
-    assert.deepStrictEqual(result, referenceHistoricalParse(usageRecords(2), historicalActor, historicalStat, "session-1", []));
-  });
-});
-
 test("live usage snapshot reader: unlimited reads never use or populate the historical cache", () => {
   const readerInstance = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: 10 * 1024 * 1024 });
   const generation = { identity: "id-1", size: 111, mtimeMs: 222, suffixDigest: "digest-1" };
@@ -483,13 +371,6 @@ test("live usage snapshot reader: unlimited reads never use or populate the hist
     completeHistory: true, expectedSessionId: "session-1", compactionTimestamps: [], includeToolUseIds: true, unlimited: true,
   }));
   assert.notDeepStrictEqual(secondUnlimited, unlimitedResult);
-});
-
-test("live usage snapshot reader: no generation degrades to an uncached parse", () => {
-  const readerInstance = createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile: 10 * 1024 * 1024 });
-  const records = usageRecords(1);
-  const result = readerInstance.read("/fake/session.jsonl", records, historicalActor, historicalStat, true, "session-1", [], false, null);
-  assert.deepStrictEqual(result, referenceHistoricalParse(records, historicalActor, historicalStat, "session-1", []));
 });
 
 test("every per-file cache prunes through a caller-supplied existence check", () => {

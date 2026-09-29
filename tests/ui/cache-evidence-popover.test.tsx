@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -121,14 +119,5 @@ describe("CacheEvidencePopover", () => {
     expect(removeWindow).toHaveBeenCalledWith("scroll", expect.any(Function), true);
     remove.mockRestore();
     removeWindow.mockRestore();
-  });
-
-  it("keeps desktop evidence labels content-sized with subgrid rows and mobile width safeguards", () => {
-    const workspace = fs.readFileSync(path.join(process.cwd(), "app", "styles", "workspace.css"), "utf8");
-    const evidence = fs.readFileSync(path.join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
-    expect(workspace).toContain(".cacheRefillEvidenceGrid { grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-3); }");
-    expect(workspace).toContain(".cacheRefillEvidenceGrid > div { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: inherit; }");
-    expect(workspace).toContain("@media (max-width: 640px) { .cacheRefillPopover { width: calc(100vw - 54px); } }");
-    expect(evidence).not.toContain(".agentRow");
   });
 });

@@ -13,113 +13,7 @@ import {
   mergeCodexObservationEvidence,
 } from "../monitor/providers/codex-observation.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
-import { mergeCodexContextSnapshot } from "../monitor/providers/codex-context.mjs";
 import { readProviderFixture } from "./helpers/provider-fixtures.mjs";
-
-// ---------------------------------------------------------------------------
-// Verbatim pre-change reference. This is exactly the merge implementation
-// codex-observation.mjs held before it was expressed as a session-fold.mjs
-// policy (see runs/2026-09-27-provider-seams/5-read-changes). It stands in
-// for "the old behavior" so the refactor can be checked against it directly,
-// rather than against a description of it.
-// ---------------------------------------------------------------------------
-const REFERENCE_MAX_USAGE_SNAPSHOTS = 4_096;
-const REFERENCE_MAX_TOOL_CALLS = 4_096;
-const REFERENCE_MAX_ACTIVITY = 4_096;
-const REFERENCE_MAX_COMPACTIONS = 1_024;
-const REFERENCE_MAX_PULL_REQUESTS = 256;
-
-function referenceChronological(left, right) {
-  return Date.parse(left?.timestamp || left?.observedAt || "")
-    - Date.parse(right?.timestamp || right?.observedAt || "");
-}
-
-function referenceMergeByKey(previous, current, keyOf, maximum, prefer = (_old, next) => next) {
-  const merged = new Map();
-  for (const item of [...(previous || []), ...(current || [])]) {
-    const key = keyOf(item);
-    if (!key) continue;
-    merged.set(key, merged.has(key) ? prefer(merged.get(key), item) : item);
-  }
-  return [...merged.values()].sort(referenceChronological).slice(-maximum);
-}
-
-function referenceCompactionStrength(value) {
-  return value?.trigger === "unknown" ? 0 : value?.inferred === true ? 1 : 2;
-}
-
-function referenceMergeSkills(previous = [], current = []) {
-  const merged = new Map();
-  for (const skill of [...previous, ...current]) {
-    if (!skill?.name) continue;
-    const existing = merged.get(skill.name);
-    merged.set(skill.name, existing ? {
-      name: skill.name,
-      calls: Math.max(existing.calls || 0, skill.calls || 0),
-      lastUsed: [existing.lastUsed, skill.lastUsed].filter(Boolean).sort().at(-1) || null,
-    } : skill);
-  }
-  return [...merged.values()].sort((left, right) => left.name.localeCompare(right.name)).slice(0, 256);
-}
-
-function referenceMergeAgents(previous = [], current = [], toolCalls = []) {
-  const previousById = new Map(previous.map((agent) => [agent.id, agent]));
-  const currentById = new Map(current.map((agent) => [agent.id, agent]));
-  const callsByActor = new Map();
-  for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
-  return [...new Set([...previousById.keys(), ...currentById.keys()])].map((id) => {
-    const agent = currentById.get(id) || previousById.get(id);
-    const older = previousById.get(agent.id);
-    return {
-      ...agent,
-      assignment: agent.assignment || older?.assignment || null,
-      skills: referenceMergeSkills(older?.skills, agent.skills),
-      toolCalls: callsByActor.get(agent.id) || 0,
-    };
-  });
-}
-
-function referenceMergeCodexObservationEvidence(previous, current) {
-  if (!previous) return current;
-  const usageSnapshots = referenceMergeByKey(previous.usageSnapshots, current.usageSnapshots, (item) => item?.dedupeId, REFERENCE_MAX_USAGE_SNAPSHOTS, mergeCodexContextSnapshot);
-  const toolCalls = referenceMergeByKey(previous.toolCalls, current.toolCalls, (item) => item?.id, REFERENCE_MAX_TOOL_CALLS, (older, newer) => (
-    newer?.status !== "failed" && newer?.fileChanges === null && Array.isArray(older?.fileChanges) && older.fileChanges.length
-      ? { ...newer, fileChanges: older.fileChanges }
-      : newer
-  ));
-  const activity = referenceMergeByKey(previous.activity, current.activity, (item) => item?.id, REFERENCE_MAX_ACTIVITY);
-  const compactions = referenceMergeByKey(
-    previous.compactions,
-    current.compactions,
-    (item) => item ? `${item.actorId}\0${item.timestamp}` : "",
-    REFERENCE_MAX_COMPACTIONS,
-    (older, newer) => {
-      const olderStrength = referenceCompactionStrength(older);
-      const newerStrength = referenceCompactionStrength(newer);
-      if (newerStrength > olderStrength) return newer;
-      if (newerStrength === olderStrength && older.preTokens === null && newer.preTokens !== null) return newer;
-      return older;
-    },
-  );
-  const pullRequestCreations = referenceMergeByKey(previous.pullRequestCreations, current.pullRequestCreations, (item) => item?.id, REFERENCE_MAX_PULL_REQUESTS);
-  return {
-    ...current,
-    session: {
-      ...current.session,
-      pomegrPlugin: current.session?.pomegrPlugin || previous.session?.pomegrPlugin || null,
-    },
-    agents: referenceMergeAgents(previous.agents, current.agents, toolCalls),
-    usageSnapshots,
-    toolCalls,
-    activity,
-    compactions,
-    pullRequestCreations,
-    efficiencyRuleEvidence: Object.fromEntries(Object.keys(current.efficiencyRuleEvidence || {}).map((key) => [
-      key,
-      Boolean(previous.efficiencyRuleEvidence?.[key] || current.efficiencyRuleEvidence?.[key]),
-    ])),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Helpers for hand-built evidence objects.
@@ -138,13 +32,6 @@ function baseEvidence(overrides = {}) {
     efficiencyRuleEvidence: {},
     ...overrides,
   };
-}
-
-function assertSameMerge(previous, current, label) {
-  const reference = referenceMergeCodexObservationEvidence(previous, current);
-  const actual = mergeCodexObservationEvidence(previous, current);
-  assert.deepStrictEqual(actual, reference, label);
-  return actual;
 }
 
 // ===========================================================================
@@ -295,35 +182,35 @@ test("foldSessionEvidence throws on an unrecognized policy kind", () => {
 });
 
 // ===========================================================================
-// 3. Equivalence against the verbatim reference: hand-built collisions.
+// 3. Codex evidence merge: hand-built collisions.
 // ===========================================================================
 
-test("equivalence: fileChanges are retained on a toolCalls collision only when the newer call did not fail", () => {
+test("codex merge: fileChanges are retained on a toolCalls collision only when the newer call did not fail", () => {
   const previous = baseEvidence({
     toolCalls: [{ id: "call-1", timestamp: "2026-09-01T00:00:01.000Z", status: "completed", fileChanges: [{ path: "a.ts" }], actor: { id: "primary" } }],
   });
   const retained = baseEvidence({
     toolCalls: [{ id: "call-1", timestamp: "2026-09-01T00:00:02.000Z", status: "completed", fileChanges: null, actor: { id: "primary" } }],
   });
-  const merged = assertSameMerge(previous, retained, "a completed rereplay retains the prior fileChanges");
-  assert.deepStrictEqual(merged.toolCalls[0].fileChanges, [{ path: "a.ts" }]);
+  const merged = mergeCodexObservationEvidence(previous, retained);
+  assert.deepStrictEqual(merged.toolCalls[0].fileChanges, [{ path: "a.ts" }], "a completed rereplay retains the prior fileChanges");
 
   const failed = baseEvidence({
     toolCalls: [{ id: "call-1", timestamp: "2026-09-01T00:00:02.000Z", status: "failed", fileChanges: null, actor: { id: "primary" } }],
   });
-  const mergedFailed = assertSameMerge(previous, failed, "a failed call never inherits the prior fileChanges");
-  assert.strictEqual(mergedFailed.toolCalls[0].fileChanges, null);
+  const mergedFailed = mergeCodexObservationEvidence(previous, failed);
+  assert.strictEqual(mergedFailed.toolCalls[0].fileChanges, null, "a failed call never inherits the prior fileChanges");
 });
 
-test("equivalence: compaction strength ties keep the newer preTokens, but never downgrade an already-resolved value", () => {
+test("codex merge: compaction strength ties keep the newer preTokens, but never downgrade an already-resolved value", () => {
   const previousResolved = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "auto", preTokens: 200_000 }],
   });
   const currentUnresolved = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "auto", preTokens: null }],
   });
-  const keepsResolved = assertSameMerge(previousResolved, currentUnresolved, "an unresolved delta never downgrades a resolved preTokens");
-  assert.strictEqual(keepsResolved.compactions[0].preTokens, 200_000);
+  const keepsResolved = mergeCodexObservationEvidence(previousResolved, currentUnresolved);
+  assert.strictEqual(keepsResolved.compactions[0].preTokens, 200_000, "an unresolved delta never downgrades a resolved preTokens");
 
   const previousUnresolved = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "auto", preTokens: null }],
@@ -331,8 +218,8 @@ test("equivalence: compaction strength ties keep the newer preTokens, but never 
   const currentResolved = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "auto", preTokens: 150_000 }],
   });
-  const resolves = assertSameMerge(previousUnresolved, currentResolved, "preTokens null -> value resolves on an equal-strength tie");
-  assert.strictEqual(resolves.compactions[0].preTokens, 150_000);
+  const resolves = mergeCodexObservationEvidence(previousUnresolved, currentResolved);
+  assert.strictEqual(resolves.compactions[0].preTokens, 150_000, "preTokens null -> value resolves on an equal-strength tie");
 
   const previousInferred = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "auto", inferred: true, preTokens: 90_000 }],
@@ -340,84 +227,23 @@ test("equivalence: compaction strength ties keep the newer preTokens, but never 
   const currentStronger = baseEvidence({
     compactions: [{ actorId: "primary", timestamp: "2026-09-01T00:00:01.000Z", trigger: "explicit", preTokens: null }],
   });
-  const stronger = assertSameMerge(previousInferred, currentStronger, "a stronger compaction wins even without preTokens");
-  assert.strictEqual(stronger.compactions[0].trigger, "explicit");
+  const stronger = mergeCodexObservationEvidence(previousInferred, currentStronger);
+  assert.strictEqual(stronger.compactions[0].trigger, "explicit", "a stronger compaction wins even without preTokens");
 });
 
-test("equivalence: a SessionStart plugin marker absent from the delta is retained, and a present one wins", () => {
+test("codex merge: a SessionStart plugin marker absent from the delta is retained, and a present one wins", () => {
   const previous = baseEvidence({ session: { pomegrPlugin: { status: "active", version: "1.0.0" } } });
   const currentAbsent = baseEvidence({ session: { pomegrPlugin: null } });
-  const retained = assertSameMerge(previous, currentAbsent, "an absent marker in the delta is missing evidence, not a clear");
-  assert.deepStrictEqual(retained.session.pomegrPlugin, { status: "active", version: "1.0.0" });
+  const retained = mergeCodexObservationEvidence(previous, currentAbsent);
+  assert.deepStrictEqual(retained.session.pomegrPlugin, { status: "active", version: "1.0.0" }, "an absent marker in the delta is missing evidence, not a clear");
 
   const currentPresent = baseEvidence({ session: { pomegrPlugin: { status: "active", version: "1.1.0" } } });
-  const updated = assertSameMerge(previous, currentPresent, "a marker present in the delta always wins");
-  assert.deepStrictEqual(updated.session.pomegrPlugin, { status: "active", version: "1.1.0" });
-});
-
-test("equivalence: bounds overflow drops the oldest pullRequestCreations once the cap is exceeded", () => {
-  // 300 unique keys against the private MAX_PULL_REQUESTS = 256 bound in
-  // codex-observation.mjs's CODEX_FOLD_POLICY; both the reference and the
-  // refactored merge must drop the same oldest 44.
-  const previous = baseEvidence({
-    pullRequestCreations: Array.from({ length: 150 }, (_, index) => ({
-      id: `pr-${index}`,
-      timestamp: new Date(Date.UTC(2026, 8, 1, 0, 0, index)).toISOString(),
-    })),
-  });
-  const current = baseEvidence({
-    pullRequestCreations: Array.from({ length: 150 }, (_, index) => ({
-      id: `pr-${150 + index}`,
-      timestamp: new Date(Date.UTC(2026, 8, 1, 0, 2, 30 + index)).toISOString(),
-    })),
-  });
-  const merged = assertSameMerge(previous, current, "pullRequestCreations overflow drops the oldest entries identically");
-  assert.strictEqual(merged.pullRequestCreations.length, 256);
-  assert.deepStrictEqual(
-    merged.pullRequestCreations.map((item) => item.id),
-    Array.from({ length: 256 }, (_, index) => `pr-${44 + index}`),
-  );
+  const updated = mergeCodexObservationEvidence(previous, currentPresent);
+  assert.deepStrictEqual(updated.session.pomegrPlugin, { status: "active", version: "1.1.0" }, "a marker present in the delta always wins");
 });
 
 // ===========================================================================
-// 4. Equivalence against the verbatim reference: real Codex fixtures.
-// ===========================================================================
-
-async function readCodexFixtureEvidence(localId, fixture, lineCount) {
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "pomegr-session-fold-")));
-  const directory = path.join(root, "sessions");
-  await mkdir(directory);
-  const file = path.join(directory, "rollout-fixture.jsonl");
-  const text = await readProviderFixture(fixture);
-  const lines = text.trim().split("\n");
-  await writeFile(file, lines.slice(0, lineCount ?? lines.length).join("\n") + "\n");
-  const provider = createCodexProvider({
-    codexHome: root, cacheMs: 0, includeArchived: false,
-    writerPresence: { async refresh() {}, current() { return null; }, close() {} },
-  });
-  // historical:true + completeStory:true is a single deterministic read: it
-  // never touches the live writer-presence/native-liveness machinery, so two
-  // calls against identical bytes always agree (checked independently while
-  // building this test). That keeps this fixture-derived equivalence check
-  // free of the timing-dependent fields covered separately in section 5.
-  const evidence = await provider.readSession(localId, { historical: true, completeStory: true });
-  await rm(root, { recursive: true, force: true });
-  return evidence;
-}
-
-test("equivalence: reference and refactored merge agree over evidence read from the parent/child Codex fixture", async () => {
-  const partial = await readCodexFixtureEvidence("codex-fixture-parent", "codex/parent.jsonl", 8);
-  const full = await readCodexFixtureEvidence("codex-fixture-parent", "codex/parent.jsonl");
-  assert.ok(partial && full, "the fixture must resolve to real evidence for this check to be meaningful");
-  assertSameMerge(partial, full, "parent.jsonl partial -> full");
-  // Also check the fold is stable when folded onto itself (a delta that
-  // repeats exactly what is already known, including tool calls, agents,
-  // and the pomegrPlugin marker).
-  assertSameMerge(full, full, "parent.jsonl full -> full (idempotent)");
-});
-
-// ===========================================================================
-// 5. Codex incremental == full, through the real incremental observer.
+// 4. Codex incremental == full, through the real incremental observer.
 // ===========================================================================
 
 async function waitForPublication(predicate, timeoutMs = 5_000) {

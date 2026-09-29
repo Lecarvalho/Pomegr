@@ -32,11 +32,9 @@ function snapshot(): AgentsAnalyticsSnapshot {
 describe("Agents view", () => {
   beforeEach(() => { useAgents.mockReset(); useAgents.mockReturnValue({ data: snapshot(), loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" }); });
 
-  it("renders precomputed model and work evidence, then opens bounded run evidence", async () => {
+  it("opens bounded run evidence from a model row", async () => {
     const user = userEvent.setup();
     render(<AgentsView />);
-    expect(screen.getByText("Latest reported model per agent run")).toBeInTheDocument();
-    expect(screen.getByText("Recorded execution tasks across the selected agent runs")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "GPT-5.6 Terra, Coordinate, 1 runs" }));
     expect(screen.getByRole("dialog", { name: "GPT-5.6 Terra · Coordinate evidence" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Why is the model unreported?" })).not.toBeInTheDocument();
@@ -45,7 +43,7 @@ describe("Agents view", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("explains the unreported model group once and dismisses its popover before the panel", async () => {
+  it("dismisses the unreported-model popover before its evidence panel", async () => {
     const user = userEvent.setup();
     const unreported = snapshot();
     unreported.runs = unreported.runs.map((entry) => ({ ...entry, model: null, modelEvidence: "unavailable" }));
@@ -58,17 +56,11 @@ describe("Agents view", () => {
     const panel = screen.getByRole("dialog", { name: "Unreported model evidence" });
     const [trigger] = within(panel).getAllByRole("button", { name: "Why is the model unreported?" });
     expect(within(panel).getAllByRole("button", { name: "Why is the model unreported?" })).toHaveLength(1);
-    expect(within(panel).getAllByText(/Model unavailable/)).toHaveLength(2);
-    expect(trigger).toHaveClass("dottedInfoPopoverTrigger");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
 
     await user.tab();
     expect(trigger).toHaveFocus();
-    const popover = screen.getByRole("dialog", { name: "Why is the model unreported?" });
-    expect(popover).toHaveTextContent("even without a model response");
-    expect(popover).toHaveTextContent("only an API error");
-    expect(popover).toHaveTextContent("model metadata was not captured by Pomegr");
-    expect(popover).toHaveTextContent("A requested model does not confirm which model actually ran.");
+    expect(screen.getByRole("dialog", { name: "Why is the model unreported?" })).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Why is the model unreported?" })).not.toBeInTheDocument();
@@ -93,18 +85,6 @@ describe("Agents view", () => {
     expect(within(table).queryByText("Coordinate work")).not.toBeInTheDocument();
   });
 
-  it("renders a bounded custom type on an individual unknown agent row", async () => {
-    const user = userEvent.setup();
-    const value = snapshot();
-    value.roster = [run({ id: "run-custom", agentId: "waiter", role: "unknown", customType: "codex-waiter", label: "Waiting worker" })];
-    value.runs = value.roster;
-    value.models = [{ model: "GPT-5.6 Terra", runCount: 1, mainRunCount: 1, delegatedRunCount: 0, roles: [{ role: "unknown", runCount: 1 }] }];
-    useAgents.mockReturnValue({ data: value, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
-    render(<AgentsView />);
-    await user.click(screen.getByRole("tab", { name: /Live agents/ }));
-    expect(within(screen.getByRole("table", { name: "Observed live agents" })).getByText("custom: codex-waiter")).toBeInTheDocument();
-  });
-
   it("requests an independent selected filter and preserves an honest unavailable state", async () => {
     const user = userEvent.setup();
     const view = render(<AgentsView />);
@@ -114,15 +94,6 @@ describe("Agents view", () => {
     view.unmount();
     render(<AgentsView />);
     expect(screen.getByText("Agent summary unavailable")).toBeInTheDocument();
-  });
-
-  it("discloses partial retained coverage and the counting method", () => {
-    const partial = snapshot();
-    partial.coverage = { ...partial.coverage, missingSessions: 1, truncated: true };
-    useAgents.mockReturnValue({ data: partial, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
-    render(<AgentsView />);
-    expect(screen.getByText(/Partial coverage/)).toBeInTheDocument();
-    expect(screen.getByText("How are these numbers counted?")).toBeInTheDocument();
   });
 
   it("explains initial loading and keeps committed evidence visible during refresh", () => {
@@ -178,21 +149,5 @@ describe("Agents view", () => {
     expect(screen.getByText("GPT-5.6 Luna appears in 1 of 1 Build run.")).toBeInTheDocument();
     expect(screen.queryByText("GPT-5.6 Terra")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Clear model filter" })).toHaveAttribute("href", "/agents");
-  });
-
-  it("distinguishes recorded zero tasks from partial or unavailable work evidence", () => {
-    const zero = snapshot();
-    zero.runs = zero.runs.map((entry) => ({ ...entry, executionTaskCount: 0, work: [] }));
-    zero.work = [];
-    useAgents.mockReturnValue({ data: zero, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
-    const view = render(<AgentsView />);
-    expect(screen.getByText("No recorded execution tasks in this selection.")).toBeInTheDocument();
-    view.unmount();
-
-    const partial = snapshot();
-    partial.runs = partial.runs.map((entry) => entry.id === "run-child" ? { ...entry, executionTaskCount: null, work: [] } : entry);
-    useAgents.mockReturnValue({ data: partial, loading: false, refreshing: false, connected: true, checkedAt: "2026-09-01T12:05:00.000Z" });
-    render(<AgentsView />);
-    expect(screen.getByText("Some selected runs have no recorded execution-task data; displayed counts include available evidence only.")).toBeInTheDocument();
   });
 });

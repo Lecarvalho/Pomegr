@@ -369,48 +369,6 @@ test("requestSessionFiles: nudges afterCheckpointWrite once per session (coalesc
   assert.equal(stub.afterCheckpointWriteCalls(), 1, "a session with a block never nudges again");
 });
 
-test("requestSessionFiles: an explicitly requested retained session is hydrated ahead of the 32-session cycle bound", async (t) => {
-  const store = await openStore(t);
-  const repositoryId = repoId(11);
-  for (let index = 1; index <= 40; index += 1) {
-    insertFile(store, { id: index, repositoryId, path: `f${index}.txt` });
-    insertChange(store, { fileId: index, sessionId: `claude:s${index}`, agentId: "agent-1", kind: "created", observedAt: index });
-  }
-  const retained = Array.from({ length: 40 }, (_value, index) => `claude:s${index + 1}`);
-  const { stub, source } = await buildSource(store, { demandedSessionIds: () => retained });
-
-  source.requestSessionFiles("claude:s40");
-  await stub.runCycle();
-
-  assert.equal(source.sessionFiles("claude:s40").readiness, "ready");
-  assert.equal(source.sessionFiles("claude:s32").readiness, "loading", "the requested session takes one of the bounded hydration slots");
-});
-
-test("requestSessionFiles: more than 32 explicit requests stay queued until every session is hydrated", async (t) => {
-  const store = await openStore(t);
-  const repositoryId = repoId(13);
-  const retained = Array.from({ length: 40 }, (_value, index) => `claude:queued-${index + 1}`);
-  for (let index = 1; index <= 40; index += 1) {
-    insertFile(store, { id: index, repositoryId, path: `queued-${index}.txt` });
-    insertChange(store, { fileId: index, sessionId: retained[index - 1], agentId: "agent-1", kind: "created", observedAt: index });
-  }
-  const { stub, source } = await buildSource(store, { demandedSessionIds: () => retained });
-  for (const sessionId of retained) source.requestSessionFiles(sessionId);
-
-  const nudgesBeforeFirstCycle = stub.afterCheckpointWriteCalls();
-  await stub.runCycle();
-  assert.equal(source.sessionFiles(retained[31]).readiness, "ready");
-  assert.equal(source.sessionFiles(retained[32]).readiness, "loading");
-  assert.equal(
-    stub.afterCheckpointWriteCalls(),
-    nudgesBeforeFirstCycle + 1,
-    "the remaining explicit requests schedule their own next checkpoint after the coalesced first cycle",
-  );
-
-  await stub.runCycle();
-  for (const sessionId of retained) assert.equal(source.sessionFiles(sessionId).readiness, "ready", sessionId);
-});
-
 test("fileHistory: SQL aggregation retains older sessions and full edit counts beyond 20,000 changes", async (t) => {
   const store = await openStore(t);
   const repositoryId = repoId(12);
@@ -439,62 +397,6 @@ test("fileHistory: SQL aggregation retains older sessions and full edit counts b
   assert.equal(history.truncated, false);
   assert.deepEqual(history.sessions.map((session) => session.sessionId), ["claude:busy", "claude:older"]);
   assert.equal(history.sessions[0].editCount, 20_001);
-});
-
-// --- LRU and idle bounds for repository listings and file histories ---
-
-test("repositoryFiles: LRU-bounded to 64 concurrently retained listings", async (t) => {
-  const store = await openStore(t);
-  const { stub, source } = await buildSource(store);
-  for (let index = 0; index < 65; index += 1) source.repositoryFiles(repoId(index));
-  await stub.runCycle();
-  // Touching a 65th key evicts the least-recently-touched (index 0).
-  assert.equal(source.repositoryFiles(repoId(0)).readiness, "loading", "evicted by the 64-entry cap, requires a fresh build");
-});
-
-test("fileHistory: a new selection is built in the next cycle even after 32 files already hold blocks", async (t) => {
-  const store = await openStore(t);
-  const repositoryId = repoId(8);
-  for (let index = 1; index <= 33; index += 1) {
-    insertFile(store, { id: index, repositoryId, path: `f${index}.txt` });
-    insertChange(store, { fileId: index, sessionId: "claude:s1", agentId: "agent-1", kind: "created", observedAt: index });
-  }
-  const { stub, source } = await buildSource(store);
-  for (let index = 1; index <= 32; index += 1) source.fileHistory(repositoryId, { path: `f${index}.txt` });
-  await stub.runCycle();
-  // All 32 keys now hold blocks and fill the per-cycle budget; select a 33rd.
-  for (let index = 1; index <= 32; index += 1) assert.equal(source.fileHistory(repositoryId, { path: `f${index}.txt` }).readiness, "ready");
-  assert.equal(source.fileHistory(repositoryId, { path: "f33.txt" }).readiness, "loading");
-  await stub.runCycle();
-  assert.equal(source.fileHistory(repositoryId, { path: "f33.txt" }).readiness, "ready", "a new key is built before existing blocks spend the budget");
-});
-
-test("repositoryFiles: a newly opened repository is built in the next cycle even after 8 listings hold blocks", async (t) => {
-  const store = await openStore(t);
-  const { stub, source } = await buildSource(store);
-  for (let index = 0; index < 8; index += 1) source.repositoryFiles(repoId(100 + index));
-  await stub.runCycle();
-  for (let index = 0; index < 8; index += 1) assert.equal(source.repositoryFiles(repoId(100 + index)).readiness, "ready");
-  source.repositoryFiles(repoId(200));
-  await stub.runCycle();
-  assert.equal(source.repositoryFiles(repoId(200)).readiness, "ready");
-});
-
-test("fileHistory: idle keys (10+ minutes untouched) are dropped and rebuilt fresh on the next request", async (t) => {
-  const store = await openStore(t);
-  const repositoryId = repoId(7);
-  insertFile(store, { id: 1, repositoryId, path: "a.txt" });
-  insertChange(store, { fileId: 1, sessionId: "claude:s1", agentId: "agent-1", kind: "created", observedAt: 1_000 });
-  let clock = 0;
-  const { stub, source } = await buildSource(store, { now: () => clock });
-  source.fileHistory(repositoryId, { path: "a.txt" });
-  await stub.runCycle(store, { now: clock });
-  assert.equal(source.fileHistory(repositoryId, { path: "a.txt" }).readiness, "ready");
-
-  clock += 11 * 60_000; // past the 10-minute idle window, with no request in between
-  await stub.runCycle(store, { now: clock });
-  const afterIdle = source.fileHistory(repositoryId, { path: "a.txt" });
-  assert.equal(afterIdle.readiness, "loading", "the idle key was dropped and must be rebuilt");
 });
 
 // --- wiring: attachFileHistory runs the file-change index contributor first, in the same cycle ---

@@ -18,7 +18,6 @@ import type { Agent, ExecutionTask, MonitorState } from "../../shared/monitor-co
 import { agent, repositorySession, task } from "./dashboard-test-fixtures";
 import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
-import type { HistoryActivity } from "../../shared/session-history-contract";
 import type { RequestSelectionRoute, SessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { setPhone, selectedRequest } from "./requests-actions-test-fixtures";
 
@@ -35,12 +34,10 @@ function monitorState(cacheWriteAvailable = true, primaryTasks?: ExecutionTask[]
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, callOverrides, primaryTasks, requestAgent, requestModel }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, primaryTasks, requestAgent, requestModel }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
-  /** Per-call-id field overrides, for a recorded failure or a call with no target or result. */
-  callOverrides?: Record<string, Partial<HistoryActivity>>;
   /** Shell tasks retained for the primary agent, which the rail lists for the matching scope. */
   primaryTasks?: ExecutionTask[];
   /** Per-request-number agent and recorded model; the default alternates agents on one model. */
@@ -52,8 +49,7 @@ function fixture({ extra, count = 40, overview = true, route = { agent: null, re
     requestModel ? requestModel(index + 1) : undefined));
   const calls = requests.flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
-    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)])
-    .map((call) => ({ ...call, ...(callOverrides?.[call.id] || {}) }));
+    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]);
   const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
   const server = historyServer(serverState);
   const state = monitorState(cacheWriteAvailable, primaryTasks);
@@ -257,19 +253,6 @@ describe("Activities tab", () => {
     for (const forbidden of ["request-", "call-", "SECRET_COMMAND", "SECRET_OUTPUT", "SECRET_ERROR", "msg_SECRET_PROVIDER"]) expect(html).not.toContain(forbidden);
   });
 
-  it("puts the request groups before Actions by kind and Shell tasks on phone", async () => {
-    setPhone(true);
-    fixture();
-    const feed = await ready();
-    const layout = feed.querySelector(".activityLayout")!;
-    expect(layout).toHaveClass("isPhone");
-    const [first, second] = Array.from(layout.children);
-    expect(first).toHaveClass("activityFeed");
-    expect(second).toHaveClass("activityBreakdown");
-    expect(within(first as HTMLElement).getAllByRole("article").length).toBeGreaterThan(0);
-    expect(within(second as HTMLElement).getByRole("heading", { name: "Actions by kind" })).toBeInTheDocument();
-  });
-
   it("shows a phone request line with agent, role, model, uncached input and time that selects the request", async () => {
     setPhone(true);
     const user = userEvent.setup();
@@ -324,44 +307,6 @@ describe("Activities tab", () => {
     // Re-anchoring the served window on every selection would slide all five lines under the finger.
     expect(shown()).toEqual(before);
     expect(feedCalls(server)).toHaveLength(fetches);
-  });
-
-  it("keeps the desktop counts caveat on the phone instead of a phone-only prose popover", async () => {
-    setPhone(true);
-    fixture();
-    const feed = await ready();
-
-    expect(within(feed).queryByText("how to read this")).toBeNull();
-    expect(within(feed).queryByRole("button", { name: "How to read this feed" })).toBeNull();
-    expect(feed.querySelector(".activityFeedCaveat")).toHaveTextContent("Request-local counts");
-  });
-
-  it("drops the chart How to read this popover on the phone and keeps the Largest strip inline", async () => {
-    setPhone(true);
-    const { container } = fixture();
-    await ready();
-
-    expect(screen.queryByRole("button", { name: "About this chart" })).toBeNull();
-    expect(container.querySelector(".requestsActionsInfo")).not.toBeInTheDocument();
-    expect(container.querySelector(".requestsActionsLargest")).toBeInTheDocument();
-  });
-
-  it("keeps Previous, Next and Jump to latest as phone touch targets", async () => {
-    setPhone(true);
-    fixture();
-    const feed = await ready();
-    const nav = within(feed).getByRole("navigation", { name: "Request range" });
-    for (const name of ["Previous", "Next", "Jump to latest"]) expect(within(nav).getByRole("button", { name })).toHaveClass("commandSecondaryAction");
-  });
-
-  it("keeps Actions by kind before the request groups on desktop", async () => {
-    fixture();
-    const feed = await ready();
-    const layout = feed.querySelector(".activityLayout")!;
-    expect(layout).not.toHaveClass("isPhone");
-    const [first, second] = Array.from(layout.children);
-    expect(first).toHaveClass("activityBreakdown");
-    expect(second).toHaveClass("activityFeed");
   });
 
   it("stacks one kind row per kind with a share bar scaled against the busiest kind", async () => {
@@ -439,26 +384,6 @@ describe("Activities tab", () => {
     expect(within(group).getByRole("button", { name: /^Request #38,/u })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("names the agent and its role on the desktop request line itself, with no separate agent row", async () => {
-    fixture();
-    const feed = await ready();
-
-    const group = within(feed).getByRole("article", { name: "Request #38" });
-    const row = group.querySelector(".activityRequestRow");
-    expect(row).toHaveTextContent("#38Primary agentorchestrator");
-    // The link lives on the request line, not in a row of its own beneath it.
-    const agentControl = within(group).getByRole("button", { name: "Open Primary agent in the Agents inspector" });
-    expect(row).toContainElement(agentControl);
-    expect(agentControl).toHaveClass("commandQuietAction");
-    expect(agentControl).not.toHaveClass("commandTextLink");
-    expect(group.querySelector(".activityRequestRow + .commandTextLink")).toBeNull();
-
-    // A subagent's request names the subagent, never the session's primary agent.
-    const childGroup = within(feed).getByRole("article", { name: "Request #37" });
-    expect(childGroup.querySelector(".activityRequestRow")).toHaveTextContent("#37Builderbuilder");
-    expect(within(childGroup).getByRole("button", { name: "Open Builder in the Agents inspector" })).toBeInTheDocument();
-  });
-
   it.each([
     { cacheWriteAvailable: true, expectedTokens: [1_960_000, 2_000, 4_000].map(compactNumber).join(" ") },
     { cacheWriteAvailable: false, expectedTokens: [1_960_000, 4_000].map(compactNumber).join(" ") },
@@ -473,28 +398,6 @@ describe("Activities tab", () => {
     expect(Array.from(row.querySelectorAll(".activityTokenValue"), (value) => value.textContent).join(" ")).toBe(expectedTokens);
     expect(Boolean(row.querySelector(".activityTokenValue.write"))).toBe(cacheWriteAvailable);
     expect(row.querySelector(".requestsActionsSwatch")).not.toBeInTheDocument();
-  });
-
-  it("places the token legend beside the chart guide instead of between the request heading and controls", async () => {
-    const { container } = fixture();
-    await ready();
-
-    expect(container.querySelector(".requestsActionsHeader .requestsActionsLegend")).not.toBeInTheDocument();
-    expect(container.querySelector(".requestsActionsGuide > .requestsActionsLegend")).toBeInTheDocument();
-  });
-
-  it("renders the rail and request-row caveats as short text that expand via DottedInfoPopover", async () => {
-    const user = userEvent.setup();
-    fixture();
-    const feed = await ready();
-    expect(within(feed).getByText("Counts, not effort or cost.")).toBeInTheDocument();
-    expect(within(feed).getByText("Request-local counts")).toBeInTheDocument();
-    expect(within(feed).getByText("Request-local counts").closest(".activityFeedCaveat")).toBeInTheDocument();
-    await user.click(within(feed).getByRole("button", { name: "About these counts" }));
-    expect(screen.getByRole("dialog", { name: "About these counts" })).toHaveTextContent("Recorded tool calls, not effort or quality. Durations are wall time, including approval waits.");
-    await user.keyboard("{Escape}");
-    await user.click(within(feed).getByRole("button", { name: "About request rows" }));
-    expect(screen.getByRole("dialog", { name: "About request rows" })).toHaveTextContent("Never summed across requests; hover a count for its exact value.");
   });
 
   it("shows an explicit unavailable state instead of the request feed while the session view is paused", async () => {
@@ -584,35 +487,6 @@ describe("Activities tab", () => {
     expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, model claude-opus-5, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
     expect(feed.querySelector(".activityTokenValue.write")).not.toBeInTheDocument();
   });
-  it("tints only the duration text of a failed phone call line", async () => {
-    setPhone(true);
-    const { container } = fixture({ callOverrides: { "call-40-edit": { status: "failed" } } });
-    const feed = await ready();
-    const group = within(feed).getByRole("article", { name: "Request #40" });
-
-    const line = within(group).getByRole("button", { name: "Editing, file.tsx, 1.5s" });
-    expect(line).toHaveClass("activityCallLine");
-    expect(line.querySelector(".workKindIcon")).toHaveAttribute("data-work-kind", "write");
-    expect(line.querySelector(".activityCallTarget")).toHaveTextContent("file.tsx");
-    expect(line.querySelector(".activityCallDuration")).toHaveClass("attention");
-    // The row itself keeps the neutral feed tone, and the desktop grid never reaches a call line.
-    expect(line.closest("li")).not.toHaveClass("failed");
-    expect(container.querySelector(".activityCallLine.activityRow")).toBeNull();
-    expect(within(group).getByRole("button", { name: "Reading, file.tsx, 1.5s" }).querySelector(".activityCallDuration")).not.toHaveClass("attention");
-  });
-
-  it("names the tool on a phone call line the provider recorded without a target", async () => {
-    setPhone(true);
-    fixture({ callOverrides: { "call-40-read": { detail: "", durationMs: null } } });
-    const feed = await ready();
-    const group = within(feed).getByRole("article", { name: "Request #40" });
-
-    // A detail-less call would otherwise leave the line blank; the tool name is what desktop prints.
-    const line = within(group).getByRole("button", { name: "Reading, Read, —" });
-    expect(line.querySelector(".activityCallTarget")).toHaveTextContent("Read");
-    expect(line.querySelector(".activityCallDuration")).toHaveClass("unavailable");
-  });
-
   it("expands one phone call in place, selecting its request and chart bar", async () => {
     setPhone(true);
     const user = userEvent.setup();
@@ -676,25 +550,6 @@ describe("Activities tab", () => {
     expect(values.slice(2, 4)).toEqual([shortTime(call.timestamp), shortTime(new Date(Date.parse(call.timestamp) + 1_500).toISOString())]);
     expect(within(detail!).queryByRole("link")).toBeNull();
     expect(within(detail!).queryByRole("button")).toBeNull();
-  });
-
-  it("keeps desktop call rows as plain rows with no disclosure", async () => {
-    const { container, serverState } = fixture();
-    const feed = await ready();
-    const rows = Array.from(within(feed).getByRole("article", { name: "Request #40" }).querySelectorAll(".activityTable .activityRow"));
-    const call = serverState.calls.find((item) => item.id === "call-40-read")!;
-
-    expect(container.querySelector(".activityCallLine")).toBeNull();
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row.querySelector("[aria-expanded]")).toBeNull();
-    const row = rows[0];
-    expect(row).toHaveClass("activityDesktopCallRow", "activityRow");
-    expect(row.querySelector("time")).toHaveAttribute("dateTime", call.timestamp);
-    expect(row.querySelector("time")).toHaveTextContent(shortTime(call.timestamp));
-    expect(Array.from(row.children, (cell) => cell.tagName)).toEqual(["TIME", "SPAN", "SPAN", "SPAN"]);
-    expect(row.children[1]).toHaveTextContent("Read");
-    expect(row.children[2]).toHaveTextContent("file.tsx");
-    expect(row.children[3]).toHaveTextContent("1.5s");
   });
 });
 

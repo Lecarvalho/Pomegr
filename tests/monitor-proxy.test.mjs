@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import test from "node:test";
+import { build } from "esbuild";
+import { Miniflare } from "miniflare";
 import { acceptsGzipEncoding, proxyMonitorJson } from "../app/api/monitor-proxy.ts";
 
 async function withFetch(fetchImpl, action) {
@@ -111,4 +114,88 @@ test("forwards a validated conditional ETag and retains the monitor's bodyless 2
       return Response.json({});
     }, () => proxyMonitorJson({ path: "/api/session-domain", timeoutMs: 100, unavailableBody: {}, ifNoneMatch }));
   }
+});
+
+async function workerScript() {
+  const result = await build({
+    bundle: true,
+    format: "esm",
+    platform: "neutral",
+    conditions: ["workerd", "worker", "browser"],
+    external: ["node:zlib"],
+    write: false,
+    stdin: {
+      loader: "ts",
+      resolveDir: process.cwd(),
+      contents: `
+        import { proxyMonitorJson } from "./app/api/monitor-proxy.ts";
+        export default { fetch(request) {
+          const url = new URL(request.url);
+          return proxyMonitorJson({
+            path: url.pathname + url.search,
+            timeoutMs: 1000,
+            unavailableBody: { error: "unavailable" },
+            acceptEncoding: request.headers.get("accept-encoding"),
+            ifNoneMatch: request.headers.get("if-none-match"),
+          });
+        } };
+      `,
+    },
+  });
+  return result.outputFiles[0].text;
+}
+
+test("serves monitor JSON through Workers with one encoding layer and preserves bodyless conditional revisions", async () => {
+  const largePayload = { sessions: Array.from({ length: 100 }, (_, index) => ({ id: `codex:session-${index}`, title: `Session ${index}` })) };
+  const miniflare = new Miniflare({
+    compatibilityDate: "2026-05-22",
+    compatibilityFlags: ["nodejs_compat"],
+    modules: true,
+    script: await workerScript(),
+    outboundService(request) {
+      assert.equal(new URL(request.url).origin, "http://127.0.0.1:4317");
+      assert.equal(request.headers.get("accept-encoding"), "identity");
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/unchanged") {
+        return new Response(null, { status: 204, headers: { ETag: '"19"', "X-Pomegr-Revision": "19" } });
+      }
+      return Response.json(pathname === "/large" ? largePayload : { sessions: [] }, { headers: { ETag: '"18"', "X-Pomegr-Revision": "18" } });
+    },
+  });
+  try {
+    const large = await miniflare.dispatchFetch("http://pomegr.test/large", { headers: { "accept-encoding": "gzip" } });
+    assert.equal(large.status, 200);
+    assert.deepEqual(await large.json(), largePayload);
+
+    const plain = await miniflare.dispatchFetch("http://pomegr.test/small", { headers: { "accept-encoding": "gzip;q=0, *;q=1" } });
+    assert.equal(plain.headers.get("content-encoding"), null);
+    assert.deepEqual(await plain.json(), { sessions: [] });
+
+    const unchanged = await miniflare.dispatchFetch("http://pomegr.test/unchanged", { headers: { "if-none-match": '"19"' } });
+    assert.equal(unchanged.status, 204);
+    assert.equal(unchanged.headers.get("etag"), '"19"');
+    assert.equal(await unchanged.text(), "");
+  } finally {
+    await miniflare.dispose();
+  }
+});
+
+async function sourceTree(directoryUrl) {
+  const entries = await readdir(directoryUrl, { withFileTypes: true });
+  const sources = await Promise.all(entries.map(async (entry) => {
+    const child = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directoryUrl);
+    if (entry.isDirectory()) return sourceTree(child);
+    return /\.(?:ts|tsx|mjs)$/.test(entry.name) ? readFile(child, "utf8") : "";
+  }));
+  return sources.join("\n");
+}
+
+test("keeps browser components free of filesystem, process, and credential access and the state route a pure proxy", async () => {
+  const [components, stateRoute] = await Promise.all([
+    sourceTree(new URL("../app/components/", import.meta.url)),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(components, /node:fs|node:child_process|CLAUDE_PROJECTS_DIR|credential-file|raw session/i);
+  assert.doesNotMatch(stateRoute, /refreshUsage/);
+  assert.match(stateRoute, /monitorParams\.set\("sessionId", sessionId\)/);
 });

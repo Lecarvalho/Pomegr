@@ -1,20 +1,49 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import { readGitState, readGitStateAsync, refreshRemoteGitState } from "../monitor/git-state.mjs";
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
+const REPOSITORY_NAME = "repository with spaces";
+const REMOTE_NAME = "origin é.git";
+
+// The initial repository and its bare remote are built once. Each test copies that tree and
+// repoints its origin, instead of re-running a dozen Git commands per test.
+let templatePromise = null;
+let templateRoot = null;
+after(async () => {
+  await templatePromise?.catch(() => {});
+  if (templateRoot) await rm(templateRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+});
+async function repositoryTemplate() {
+  templatePromise ??= (async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "pomegr Git template José -"));
+    templateRoot = root;
+    await buildInitialRepository(root);
+    return root;
+  })();
+  return templatePromise;
+}
+
 async function repositoryFixture(context) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr Git José -"));
-  const repository = path.join(root, "repository with spaces");
-  const remote = path.join(root, "origin é.git");
+  const repository = path.join(root, REPOSITORY_NAME);
+  const remote = path.join(root, REMOTE_NAME);
   context.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  await cp(await repositoryTemplate(), root, { recursive: true });
+  git(repository, "remote", "set-url", "origin", remote);
+  return { root, repository, remote };
+}
+
+async function buildInitialRepository(root) {
+  const repository = path.join(root, REPOSITORY_NAME);
+  const remote = path.join(root, REMOTE_NAME);
   execFileSync("git", ["init", "--bare", remote], { stdio: "ignore" });
   execFileSync("git", ["init", "--initial-branch=main", repository], { stdio: "ignore" });
   git(repository, "config", "user.name", "Pomegr Test");
@@ -26,7 +55,6 @@ async function repositoryFixture(context) {
   git(repository, "push", "-u", "origin", "main");
   git(remote, "symbolic-ref", "HEAD", "refs/heads/main");
   git(repository, "remote", "set-head", "origin", "main");
-  return { root, repository, remote };
 }
 
 test("reads recent commits and upstream divergence on the main branch", async (context) => {

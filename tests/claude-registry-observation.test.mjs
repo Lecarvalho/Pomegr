@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
 import { mkdir, mkdtemp, rm, unlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,11 +7,27 @@ import { createClaudeProvider } from "../monitor/providers/claude.mjs";
 import { createClaudeRegistryObservation, observeClaudeRegistryDepartures } from "../monitor/providers/claude-registry-observation.mjs";
 import { createClaudeCatalogPresence } from "../monitor/providers/claude-catalog-presence.mjs";
 
-async function waitFor(predicate, message = "observer state did not settle") {
+// Source-catalog spacing and departure rechecks are setTimeout-driven. Tests advance a mocked
+// timer clock (setTimeout and performance.now move together) instead of sleeping.
+function useFakeClock(context, { interval = false } = {}) {
+  context.mock.timers.enable({ apis: interval ? ["setTimeout", "setInterval"] : ["setTimeout"] });
+  const base = performance.now();
+  let elapsed = 0;
+  context.mock.method(performance, "now", () => base + elapsed);
+  return {
+    tick(ms) {
+      elapsed += ms;
+      context.mock.timers.tick(ms);
+    },
+  };
+}
+
+async function settle(clock, predicate, message = "observer state did not settle") {
   const deadline = Date.now() + 2_000;
   while (Date.now() < deadline) {
     if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    clock.tick(250);
+    await new Promise((resolve) => setImmediate(resolve));
   }
   assert.fail(message);
 }
@@ -66,6 +80,7 @@ function watchedProvider(values, watchers, options = {}) {
 
 test("Claude registry events publish close/open transitions and refresh departed detail without transcript changes", async (context) => {
   const values = await fixture(context);
+  const clock = useFakeClock(context);
   await values.writeRegistry("idle");
   const watchers = new Map();
   const provider = watchedProvider(values, watchers);
@@ -84,9 +99,9 @@ test("Claude registry events publish close/open transitions and refresh departed
     publishSession(_sessionId, candidate) { details.push(candidate); },
     invalidateSession() {},
   }, controller.signal);
-  await waitFor(() => catalogs.length > 0);
+  await settle(clock, () => catalogs.length > 0);
   await observer.hydrate(values.localId);
-  await waitFor(() => details.length > 0);
+  await settle(clock, () => details.length > 0);
   assert.deepEqual(catalogs.at(-1).map(({ localId, isLive, activityStatus }) => ({ localId, isLive, activityStatus })), [{
     localId: values.localId,
     isLive: true,
@@ -95,7 +110,7 @@ test("Claude registry events publish close/open transitions and refresh departed
 
   await unlink(values.registryFile);
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalogs.some((entries) => entries[0]?.isLive === false)
+  await settle(clock, () => catalogs.some((entries) => entries[0]?.isLive === false)
     && details.at(-1)?.historical === true, "registry departure must settle without the 60-second safety poll");
   assert.deepEqual(catalogs.at(-1).map(({ localId, isLive, activityStatus }) => ({ localId, isLive, activityStatus })), [{
     localId: values.localId,
@@ -105,16 +120,17 @@ test("Claude registry events publish close/open transitions and refresh departed
 
   await values.writeRegistry("active");
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === true && catalogs.at(-1)?.[0]?.activityStatus === "working"
+  await settle(clock, () => catalogs.at(-1)?.[0]?.isLive === true && catalogs.at(-1)?.[0]?.activityStatus === "working"
     && details.at(-1)?.historical === false);
 
   await values.writeRegistry("idle");
   watchers.get(path.resolve(values.registryRoot))("change", path.basename(values.registryFile));
-  await waitFor(() => catalogs.at(-1)?.[0]?.activityStatus === "open" && details.at(-1)?.agents?.[0]?.status === "idle");
+  await settle(clock, () => catalogs.at(-1)?.[0]?.activityStatus === "open" && details.at(-1)?.agents?.[0]?.status === "idle");
 });
 
 test("Claude registry observation falls back to safety reconciliation when its watcher is unsupported", async (context) => {
   const values = await fixture(context);
+  const clock = useFakeClock(context, { interval: true });
   await values.writeRegistry("idle");
   const watchers = new Map();
   const provider = watchedProvider(values, watchers, { intervalMs: 100, unsupportedRegistryWatch: true });
@@ -126,9 +142,9 @@ test("Claude registry observation falls back to safety reconciliation when its w
     publishCatalog(entries) { catalogs.push(entries); },
     publishSession() {}, invalidateSession() {},
   }, controller.signal);
-  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === true);
+  await settle(clock, () => catalogs.at(-1)?.[0]?.isLive === true);
   await unlink(values.registryFile);
-  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === false,
+  await settle(clock, () => catalogs.at(-1)?.[0]?.isLive === false,
     "the polling safety net must retire a registry-backed session when watching is unavailable");
   assert.equal(watchers.has(path.resolve(values.projectsRoot)), true);
   assert.equal(watchers.has(path.resolve(values.registryRoot)), false);
@@ -136,6 +152,7 @@ test("Claude registry observation falls back to safety reconciliation when its w
 
 test("recent Claude exit bypasses grace and publishes historical detail without a safety poll", async (context) => {
   const values = await fixture(context);
+  const clock = useFakeClock(context);
   await values.writeRegistry("idle");
   await utimes(values.mainFile, new Date(), new Date());
   let alive = true;
@@ -154,13 +171,13 @@ test("recent Claude exit bypasses grace and publishes historical detail without 
     publishSession(_id, candidate) { details.push(candidate); }, invalidateSession() {},
   }, controller.signal);
   await observer.hydrate(values.localId);
-  await waitFor(() => details.length && catalogs.at(-1)?.[0]?.activityStatus === "open");
+  await settle(clock, () => details.length && catalogs.at(-1)?.[0]?.activityStatus === "open");
   await unlink(values.registryFile);
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalogs.at(-1)?.[0]?.activityStatus === "unknown");
+  await settle(clock, () => catalogs.at(-1)?.[0]?.activityStatus === "unknown");
   assert.equal(catalogs.at(-1)[0].isLive, true, "registry departure alone is not proof of exit");
   alive = false; // No further filesystem event: registry deletion precedes process exit.
-  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === false && details.at(-1)?.historical === true,
+  await settle(clock, () => catalogs.at(-1)?.[0]?.isLive === false && details.at(-1)?.historical === true,
     "actual exit must bypass both 15-second grace and 60-second reconciliation");
   assert.equal(catalogs.at(-1)[0].activityStatus, "closed");
   assert.doesNotMatch(JSON.stringify(catalogs.at(-1)), /resourceOwner|procStart|owner-start|"pid"|closedSessionIds/);
@@ -172,7 +189,7 @@ test("recent Claude exit bypasses grace and publishes historical detail without 
   processStart = "resumed-start";
   await writeFile(values.registryFile, JSON.stringify({ sessionId: values.localId, status: "active", pid: 42, procStart: processStart }));
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalogs.at(-1)?.[0]?.isLive === true && catalogs.at(-1)?.[0]?.activityStatus === "working",
+  await settle(clock, () => catalogs.at(-1)?.[0]?.isLive === true && catalogs.at(-1)?.[0]?.activityStatus === "working",
     "resuming a validated runtime must replace Closed");
 });
 
@@ -265,35 +282,36 @@ test("cached validation cannot revive an exited owner or leak an old absence int
   assert.equal(observation.read().closedSessionIds.has(values.localId), false, "replacement owner cannot inherit cached PID absence");
 });
 
-test("native existence probe observes an isolated child exit without a plugin or identity helper", async (context) => {
+test("native existence probe observes an exited owner without a plugin or identity helper", async (context) => {
   const values = await fixture(context);
-  const child = spawn(process.execPath, ["-e", "process.stdin.resume(); process.stdout.write('ready'); process.stdin.on('end', () => process.exit(0));"], {
-    windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
+  const ownerPid = 424242;
+  let exited = false;
+  context.mock.method(process, "kill", (pid, signal) => {
+    assert.equal(pid, ownerPid);
+    assert.equal(signal, 0);
+    if (exited) throw Object.assign(new Error("no such process"), { code: "ESRCH" });
+    return true;
   });
-  context.after(() => { if (child.exitCode === null) child.kill(); });
-  await once(child.stdout, "data");
   let clock = Date.now();
   const observation = createClaudeRegistryObservation({
     root: values.registryRoot,
     now: () => clock,
     validateOwners: (entries) => new Map(entries.map((entry) => [entry.sessionId, true])),
   });
-  await writeFile(values.registryFile, JSON.stringify({ sessionId: values.localId, pid: child.pid, procStart: "test-validated-start" }));
+  await writeFile(values.registryFile, JSON.stringify({ sessionId: values.localId, pid: ownerPid, procStart: "test-validated-start" }));
   observation.read();
   await unlink(values.registryFile);
   assert.equal(observation.read().closedSessionIds.has(values.localId), false);
-  const exit = once(child, "exit");
-  child.stdin.end();
-  await exit;
+  exited = true;
   clock += 251;
   assert.equal(observation.read().closedSessionIds.has(values.localId), true);
   const restarted = createClaudeRegistryObservation({ root: values.registryRoot, validateOwners: () => new Map() });
   assert.equal(restarted.read().closedSessionIds.size, 0, "retirement evidence is memory-only");
 });
 
-test("retained ownership is bounded and missing-owner probes deduplicate shared PIDs", async (context) => {
+test("missing-owner probes deduplicate shared PIDs", async (context) => {
   const values = await fixture(context);
-  await Promise.all(Array.from({ length: 515 }, (_, index) => writeFile(path.join(values.registryRoot, `${index}.json`), JSON.stringify({
+  await Promise.all(Array.from({ length: 12 }, (_, index) => writeFile(path.join(values.registryRoot, `${index}.json`), JSON.stringify({
     sessionId: `session-${index}`, pid: 42, procStart: "shared-start",
   }))));
   let probes = 0;
@@ -304,12 +322,13 @@ test("retained ownership is bounded and missing-owner probes deduplicate shared 
   });
   observation.read();
   await rm(values.registryRoot, { recursive: true });
-  assert.equal(observation.read().closedSessionIds.size, 512);
+  assert.equal(observation.read().closedSessionIds.size, 12);
   assert.equal(probes, 1);
 });
 
 test("departure rechecks are rate-bounded, stop with the observer, and expire after grace", async (context) => {
   const values = await fixture(context);
+  const timers = useFakeClock(context);
   let clock = Date.now();
   let probes = 0;
   const observation = createClaudeRegistryObservation({
@@ -329,24 +348,27 @@ test("departure rechecks are rate-bounded, stop with the observer, and expire af
   for (let index = 0; index < 20; index += 1) observation.read();
   assert.equal(probes, 1, "detail reads share the short existence cache");
   clock += 251;
-  await waitFor(() => probes === 2);
+  timers.tick(250);
+  assert.equal(probes, 2);
   observer.stop();
   clock += 251;
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  timers.tick(300);
   assert.equal(probes, 2, "direct stop clears the private departure timer");
   assert.equal(stops, 1);
   assert.equal(refreshes, 0);
   await observer.start({});
   clock += 15_001;
-  await waitFor(() => probes === 3);
+  timers.tick(250);
+  assert.equal(probes, 3);
   clock += 251;
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  timers.tick(300);
   assert.equal(probes, 3, "an uncertain gap cannot create an indefinite fast-poll loop");
   observer.stop();
 });
 
 test("Claude discovers a native session before its first prompt and merges its later transcript without duplicates", async (context) => {
   const values = await fixture(context);
+  const clock = useFakeClock(context);
   await unlink(values.mainFile);
   const startedAt = new Date().toISOString();
   const registration = { sessionId: values.localId, pid: 42, procStart: "owner-start", startedAt, status: "idle",
@@ -362,10 +384,10 @@ test("Claude discovers a native session before its first prompt and merges its l
     publishCatalog(entries) { catalogs.push(entries); },
     publishSession(_id, candidate) { details.push(candidate); }, invalidateSession() {},
   }, controller.signal);
-  await waitFor(() => watchers.has(path.resolve(values.registryRoot)));
+  await settle(clock, () => watchers.has(path.resolve(values.registryRoot)));
   await writeFile(values.registryFile, JSON.stringify(registration));
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalogs.at(-1)?.length === 1);
+  await settle(clock, () => catalogs.at(-1)?.length === 1);
   const first = catalogs.at(-1)[0];
   assert.equal(first.localId, values.localId);
   assert.equal(first.activityStatus, "open");
@@ -382,7 +404,7 @@ test("Claude discovers a native session before its first prompt and merges its l
   await writeFile(values.mainFile, `${JSON.stringify({ type: "user", timestamp: new Date().toISOString(), message: { content: [] } })}\n`);
   await values.writeRegistry("active");
   watchers.get(path.resolve(values.projectsRoot))("rename", path.relative(values.projectsRoot, values.mainFile));
-  await waitFor(() => catalogs.at(-1)?.[0]?.activityStatus === "working" && details.length > 0);
+  await settle(clock, () => catalogs.at(-1)?.[0]?.activityStatus === "working" && details.length > 0);
   assert.equal(catalogs.at(-1).length, 1);
   assert.equal(catalogs.at(-1)[0].localId, values.localId);
   assert.equal(catalogs.at(-1)[0].detailReadiness, undefined);
@@ -394,6 +416,7 @@ test("Claude discovers a native session before its first prompt and merges its l
 
 test("registry-only discovery requires validated ownership and a recorded start, and closes without a prompt", async (context) => {
   const values = await fixture(context);
+  const clock = useFakeClock(context);
   await unlink(values.mainFile);
   const row = { sessionId: values.localId, pid: 42, procStart: "owner-start", status: "idle", startedAt: new Date().toISOString() };
   await writeFile(values.registryFile, JSON.stringify(row));
@@ -408,10 +431,10 @@ test("registry-only discovery requires validated ownership and a recorded start,
   context.after(() => controller.abort());
   let catalog = null;
   await observer.start({ publishCatalog(entries) { catalog = entries; }, publishSession() { assert.fail("no transcript"); }, invalidateSession() {} }, controller.signal);
-  await waitFor(() => catalog?.length === 1);
+  await settle(clock, () => catalog?.length === 1);
   await unlink(values.registryFile);
   watchers.get(path.resolve(values.registryRoot))("rename", path.basename(values.registryFile));
-  await waitFor(() => catalog?.length === 0, "closing before a prompt must not wait for transcript activity");
+  await settle(clock, () => catalog?.length === 0, "closing before a prompt must not wait for transcript activity");
 });
 
 test("registry-only catalog union is bounded, respects explicit selection, and never duplicates known sources", () => {

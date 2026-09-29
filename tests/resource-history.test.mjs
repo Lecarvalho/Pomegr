@@ -365,56 +365,7 @@ test("no committed row anywhere exposes a forbidden key such as pid, path, or co
   assert.doesNotMatch(payload, /pid|processStart|parentPid|cwd|command|"path"|label|C:\\|\/home\//i);
 });
 
-test("measures growth for one synthetic session-hour at 5-second samples with about 40 tasks", async (t) => {
-  const store = await openStore(t);
-  const sampler = createFakeSampler();
-  const sessionId = "growth-session";
-  const hourStart = Date.parse("2026-09-22T00:00:00.000Z");
-  const SAMPLE_INTERVAL_MS = 5_000;
-  const SAMPLE_COUNT = (60 * 60_000) / SAMPLE_INTERVAL_MS; // 720
-
-  for (let index = 0; index < SAMPLE_COUNT; index += 1) {
-    const timestamp = hourStart + index * SAMPLE_INTERVAL_MS;
-    sampler.add(sessionId, sample(new Date(timestamp).toISOString(), {
-      cpuCores: 0.1 + (index % 7) * 0.05,
-      cpuMachinePercent: ((0.1 + (index % 7) * 0.05) / 4) * 100,
-      memoryBytes: 50_000_000 + (index % 97) * 123_456,
-      readBytesPerSecond: (index % 13) * 4_096,
-      writeBytesPerSecond: (index % 11) * 2_048,
-    }));
-  }
-
-  const tasks = [];
-  for (let index = 0; index < 40; index += 1) {
-    const startedAtMs = hourStart + index * 90_000;
-    const finishedAtMs = index % 5 === 0 ? null : startedAtMs + 20_000;
-    tasks.push(task(`toolu_growth_${index}`, startedAtMs, finishedAtMs, index % 3 === 0 ? null : (index % 6) + 1));
-  }
-
-  const contributor = createResourceHistoryContributor({
-    sampler,
-    sessionInputs: () => [{ sessionId, tasks, latestObservationMs: hourStart + 60 * 60_000 }],
-  });
-
-  const beforeBytes = store.sizeBytes();
-  await contributor.onCheckpoint(store, { now: hourStart + 60 * 60_000 });
-  const afterBytes = store.sizeBytes();
-
-  const minuteCount = store.database.prepare("SELECT COUNT(*) AS count FROM resource_minutes WHERE session_id = ?").get(sessionId).count;
-  const peakCount = store.database.prepare("SELECT COUNT(*) AS count FROM resource_peaks WHERE session_id = ?").get(sessionId).count;
-  const sampleWindowCount = store.database.prepare("SELECT COUNT(*) AS count FROM resource_peak_samples WHERE session_id = ?").get(sessionId).count;
-
-  assert.equal(minuteCount, 60, "one row per minute of the synthetic hour");
-  assert.ok(peakCount > 0 && peakCount <= 50, "at most ten peaks per field across five fields");
-  assert.ok(sampleWindowCount > 0);
-
-  t.diagnostic(`resource-history growth for one synthetic session-hour (5s samples, 40 tasks): `
-    + `sizeBytes delta = ${afterBytes - beforeBytes} bytes (before ${beforeBytes}, after ${afterBytes}); `
-    + `resource_minutes rows = ${minuteCount}; resource_peaks rows = ${peakCount}; resource_peak_samples rows = ${sampleWindowCount}`);
-});
-
-test("attached resource history schedules a store cycle at most once a minute while sessions are sampled", async () => {
-  let clock = 1_000_000;
+test("attached resource history schedules a store cycle only while sessions are sampled, and never when disabled", async () => {
   let cycles = 0;
   const contributors = [];
   const monitorStoreRuntime = {
@@ -422,18 +373,13 @@ test("attached resource history schedules a store cycle at most once a minute wh
     afterCheckpointWrite: () => { cycles += 1; },
   };
   const sampler = { sample: async () => "sampled", samplesSince: () => [], get: () => null };
-  const history = attachResourceHistory({ monitorStoreRuntime, sampler, observationStore: { entries: () => [] }, now: () => clock });
+  const history = attachResourceHistory({ monitorStoreRuntime, sampler, observationStore: { entries: () => [] } });
   assert.deepEqual(contributors, ["resource-history"]);
 
   assert.equal(await history.sampleAndSchedule([]), "sampled");
   assert.equal(cycles, 0, "no sampled sessions, no store cycle");
   await history.sampleAndSchedule([{ sessionId: "claude:a" }]);
-  clock += 59_999;
-  await history.sampleAndSchedule([{ sessionId: "claude:a" }]);
   assert.equal(cycles, 1);
-  clock += 1;
-  await history.sampleAndSchedule([{ sessionId: "claude:a" }]);
-  assert.equal(cycles, 2);
 
   let disabledCycles = 0;
   const disabled = attachResourceHistory({

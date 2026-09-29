@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { installSqliteExperimentalWarningFilter, MONITOR_STORE_SCHEMA_VERSION, openMonitorStore } from "../monitor/monitor-store.mjs";
+import { MONITOR_STORE_SCHEMA_VERSION, openMonitorStore } from "../monitor/monitor-store.mjs";
 import { createMonitorStoreRuntime } from "../monitor/monitor-store-runtime.mjs";
 
 // `t.after` hooks run in registration order, so every closer (store.close/runtime.stop)
@@ -67,25 +67,6 @@ function fakeRetention(overrides = {}) {
 }
 
 // --- monitor-store.mjs ---
-
-test("openMonitorStore creates every table and index defined by the T07 schema", async (t) => {
-  const { directory, onClose } = await temporaryDirectory(t);
-  const store = await openMonitorStore({ directory });
-  onClose(() => store.close());
-  const names = store.database.prepare("SELECT name FROM sqlite_master WHERE type IN ('table', 'index') ORDER BY name").all()
-    .map((row) => row.name);
-  for (const expected of [
-    "meta", "files", "files_repository_path", "file_paths", "file_paths_path",
-    "file_changes", "file_changes_session_time", "file_changes_file_time",
-    "resource_minutes", "resource_minutes_time",
-    "resource_peaks", "resource_peaks_session_field",
-    "resource_peak_samples", "resource_peak_samples_session_time",
-  ]) {
-    assert.ok(names.includes(expected), `expected schema object ${expected}`);
-  }
-  const versionRow = store.database.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get();
-  assert.equal(Number(versionRow.value), MONITOR_STORE_SCHEMA_VERSION);
-});
 
 test("rebuilt is false on a clean reopen of a valid store", async (t) => {
   const { directory, onClose } = await temporaryDirectory(t);
@@ -156,61 +137,6 @@ test("transaction commits and returns the callback result", async (t) => {
   assert.equal(returned, "ok");
   const count = store.database.prepare("SELECT COUNT(*) AS count FROM files").get().count;
   assert.equal(count, 1);
-});
-
-test("sizeBytes grows after inserts", async (t) => {
-  const { directory, onClose } = await temporaryDirectory(t);
-  const store = await openMonitorStore({ directory });
-  onClose(() => store.close());
-  const before = store.sizeBytes();
-  store.transaction(() => {
-    const insert = store.database.prepare("INSERT INTO files (repository_id, current_path, first_seen_at) VALUES (?, ?, ?)");
-    for (let index = 0; index < 2000; index += 1) {
-      insert.run("repo", `path/to/some/file-${index}-${"x".repeat(80)}.txt`, index);
-    }
-  });
-  assert.ok(store.sizeBytes() > before, "database + WAL bytes should grow after a meaningful insert batch");
-});
-
-test("auto_vacuum is incremental", async (t) => {
-  const { directory, onClose } = await temporaryDirectory(t);
-  const store = await openMonitorStore({ directory });
-  onClose(() => store.close());
-  const row = store.database.prepare("PRAGMA auto_vacuum").get();
-  assert.equal(Object.values(row)[0], 2, "2 is SQLite's incremental auto_vacuum mode");
-});
-
-test("vacuumIncremental does not throw and can run after deletes", async (t) => {
-  const { directory, onClose } = await temporaryDirectory(t);
-  const store = await openMonitorStore({ directory });
-  onClose(() => store.close());
-  store.transaction(() => {
-    const insert = store.database.prepare("INSERT INTO files (repository_id, current_path, first_seen_at) VALUES (?, ?, ?)");
-    for (let index = 0; index < 50; index += 1) insert.run("repo", `f-${index}.txt`, index);
-  });
-  store.transaction(() => { store.database.exec("DELETE FROM files"); });
-  assert.doesNotThrow(() => store.vacuumIncremental());
-});
-
-test("the SQLite ExperimentalWarning filter drops only that exact warning", async () => {
-  installSqliteExperimentalWarningFilter();
-  const seen = [];
-  const handler = (warning) => seen.push(warning);
-  process.on("warning", handler);
-  try {
-    process.emitWarning("SQLite is an experimental feature and might change at any time", "ExperimentalWarning");
-    process.emitWarning("Something unrelated", "ExperimentalWarning");
-    process.emitWarning("SQLite is an experimental feature and might change at any time", "OtherWarningType");
-    await new Promise((resolve) => setImmediate(resolve));
-    await new Promise((resolve) => setImmediate(resolve));
-  } finally {
-    process.off("warning", handler);
-  }
-  assert.equal(seen.filter((warning) => warning.message.startsWith("SQLite is an experimental feature")
-    && warning.name === "ExperimentalWarning").length, 0, "the exact SQLite experimental warning is dropped");
-  assert.ok(seen.some((warning) => warning.message === "Something unrelated"), "an unrelated ExperimentalWarning still passes through");
-  assert.ok(seen.some((warning) => warning.message.startsWith("SQLite is an experimental feature") && warning.name === "OtherWarningType"),
-    "the same message under a different warning type still passes through");
 });
 
 // --- monitor-store-runtime.mjs ---

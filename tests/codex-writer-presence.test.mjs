@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import test from "node:test";
+import { isActiveCodexWriterLock } from "../monitor/providers/codex-cli-observation.mjs";
 import { createCodexWriterPresence, queryCodexWriterOwners, readCodexWriterLock, resolveCodexWriterExecutables } from "../monitor/providers/codex-writer-presence.mjs";
 
 // Native operations are mocked; fixtures use host paths even when simulating win32.
@@ -277,4 +278,58 @@ test("terminal close aborts the helper, removes subscribers, and rejects late ow
   assert.equal(value.presence.current("a"), null);
   assert.equal(notifications, 0, "late work cannot notify after close");
   await value.presence.refresh([thread("a")]); assert.equal(value.presence.current("a"), null);
+});
+
+// Cold-discovery writer-lock probe (native fs operations are injected).
+const probeOptions = (overrides = {}) => ({ platform: "win32", statFileSync: () => ({ isFile: () => true }), ...overrides });
+const errorWith = (code) => Object.assign(new Error(code), { code });
+
+test("writer lock probe never opens or reads outside Windows or for missing and non-file paths", () => {
+  for (const [name, platform, stat, expected] of [
+    ["non-Windows", "linux", () => ({ isFile: () => true }), []],
+    ["missing", "win32", () => { throw errorWith("ENOENT"); }, ["stat"]],
+    ["non-file", "win32", () => ({ isFile: () => false }), ["stat"]],
+  ]) {
+    const calls = [];
+    assert.equal(isActiveCodexWriterLock("writer.lock", {
+      platform,
+      statFileSync: () => { calls.push("stat"); return stat(); },
+      openFileSync: () => { calls.push("open"); return 1; },
+      readSync: () => { calls.push("read"); return 1; },
+    }), false, name);
+    assert.deepEqual(calls, expected, name);
+  }
+});
+
+test("writer lock probe opens read-only, reads one byte at offset zero, and always closes the descriptor", () => {
+  for (const [name, descriptor, bytesRead, closeFails] of [["one byte", 23, 1, false], ["empty file", 4, 0, false], ["descriptor zero", 0, 1, false], ["cleanup failure", 5, 1, true]]) {
+    const calls = [];
+    assert.doesNotThrow(() => assert.equal(isActiveCodexWriterLock("writer.lock", probeOptions({
+      openFileSync: (file, flags) => { calls.push(["open", file, flags]); return descriptor; },
+      readSync: (fd, buffer, offset, length, position) => { calls.push(["read", fd, buffer.byteLength, offset, length, position]); return bytesRead; },
+      closeFileSync: (fd) => { calls.push(["close", fd]); if (closeFails) throw new Error("close failed"); },
+    })), false, name), name);
+    assert.deepEqual(calls, [["open", "writer.lock", "r"], ["read", descriptor, 1, 0, 1, 0], ["close", descriptor]], name);
+  }
+});
+
+test("a sharing violation at open or read means the writer lock is active; permission and other failures do not", () => {
+  let closed = null;
+  assert.equal(isActiveCodexWriterLock("active.lock", probeOptions({
+    openFileSync: () => 9,
+    readSync: () => { throw errorWith("EBUSY"); },
+    closeFileSync: (descriptor) => { closed = descriptor; },
+  })), true);
+  assert.equal(closed, 9);
+  assert.equal(isActiveCodexWriterLock("open-busy.lock", probeOptions({ openFileSync: () => { throw errorWith("EBUSY"); } })), true);
+  for (const code of ["EACCES", "EPERM", "ENOENT", "EIO"]) {
+    assert.equal(isActiveCodexWriterLock("failed.lock", probeOptions({
+      openFileSync: () => 12,
+      readSync: () => { throw errorWith(code); },
+      closeFileSync: () => {},
+    })), false, `read ${code}`);
+  }
+  for (const code of ["EACCES", "EPERM"]) {
+    assert.equal(isActiveCodexWriterLock("open-permission.lock", probeOptions({ openFileSync: () => { throw errorWith(code); } })), false, `open ${code}`);
+  }
 });

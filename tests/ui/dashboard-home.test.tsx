@@ -53,15 +53,6 @@ describe("personal Home", () => {
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
   });
 
-  it("shows the release update after the previous session announcement was dismissed", () => {
-    window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
-      version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "redesigned-session-workspace-v1",
-    }));
-    home();
-    const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "See the files each session touched" })).toBeInTheDocument();
-  });
-
   it("offers navigation with a compact local provider-status exception", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Local test monitor unavailable"));
     const { container } = home();

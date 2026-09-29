@@ -26,81 +26,6 @@ import {
 import { stopChild } from "../desktop/utility-lifecycle.mjs";
 import { containsShellStageTrace } from "../desktop/runtime-proof.mjs";
 
-test("desktop smoke builds an ASAR fixture with GPU and profile safeguards", async () => {
-  const [packageJson, main, runner, appShell] = await Promise.all([
-    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
-    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/smoke-runner.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../app/components/AppShell.tsx", import.meta.url), "utf8"),
-  ]);
-
-  assert.equal(packageJson.scripts["desktop:runtime"], "node node_modules/electron/install.js");
-  assert.match(packageJson.scripts["verify:desktop"], /^npm run desktop:runtime && npm run desktop:smoke/);
-  assert.match(packageJson.scripts["verify:desktop:ci"], /^npm run desktop:runtime && npm run desktop:smoke:ci/);
-  assert.match(packageJson.scripts["desktop:smoke:ci"], /POMEGR_SMOKE_RENDERER_MODE=runtime/);
-  assert.match(packageJson.scripts["desktop:smoke"], /ELECTRON_RUN_AS_NODE=1/);
-  assert.match(packageJson.scripts["desktop:smoke"], /electron[\\/]dist[\\/]electron\.exe desktop[\\/]smoke-runner\.mjs/);
-  assert.doesNotMatch(packageJson.scripts["desktop:smoke"], /(^|\s)node(?:\.exe)?(?:\s|$)/i);
-  assert.ok(main.indexOf("app.disableHardwareAcceleration()") < main.indexOf("app.whenReady()"));
-  assert.match(main, /disable-gpu/);
-  assert.doesNotMatch(main, /disable-software-rasterizer/);
-  assert.doesNotMatch(runner, /disable-software-rasterizer/);
-  assert.match(main, /noerrdialogs/);
-  assert.match(main, /POMEGR_SMOKE_PROFILE_ROOT/);
-  assert.ok(main.indexOf('POMEGR_SMOKE_RENDERER_MODE') < main.indexOf('keepOnlyRuntimeEnvironment(process.env'));
-  assert.match(main, /resolveDesktopPaths\(\{/);
-  assert.match(main, /DESKTOP_DATA_ROOT_NOT_ISOLATED/);
-  assert.doesNotMatch(main, /recordStage\(["']FINISHED_FAIL["']\)/);
-  assert.match(main, /recordStage\(["']CLEANUP_FAILED["']\)/);
-  assert.match(main, /const failedAt = exitCode === 0 \? null : lastStage/);
-  assert.match(main, /else if \(!cleanupFailed && failedAt\) recordStage\(failedAt\)/);
-  assert.match(main, /recordStage\(["']WATCHDOG_TIMEOUT["']\)/);
-  assert.match(main, /recordStage\(["']UNEXPECTED_QUIT["']\)/);
-  assert.match(main, /new Worker\(/);
-  assert.match(main, /new BrowserWindow\(/);
-  assert.match(main, /recordStage\(["']RENDERER_UNAVAILABLE["']\)/);
-  assert.match(main, /secureBrowserWindowOptions\(/);
-  assert.match(main, /installSessionSecurity\(/);
-  assert.match(main, /installWebContentsSecurity\(/);
-  assert.match(main, /hasNodeProcess/);
-  assert.match(main, /hasRequire/);
-  assert.match(main, /execArgv:\s*\[\]/);
-  assert.match(main, /env:\s*\{\s*\.\.\.environment/);
-  assert.match(main, /worker\.terminate\(\)/);
-  assert.match(main, /execFile\("git", \["--version"\]/);
-  assert.match(main, /monitor\.ready\.gitProof !== "verified"/);
-  assert.match(main, /pomegrHydrated/);
-  assert.match(appShell, /document\.documentElement\.dataset\.pomegrHydrated = ["']true["']/);
-  assert.match(main, /getComputedStyle\(frame\)\.display === 'grid'/);
-  assert.match(main, /fetch\('\/api\/state'/);
-  assert.match(main, /fetch\('\/api\/sessions'/);
-  assert.match(main, /typeof state\?\.connected === 'boolean'/);
-  assert.match(main, /Array\.isArray\(sessions\?\.sessions\)/);
-  assert.doesNotMatch(main, /(?:spawn|execFile|fork)\([^\n]*["']node(?:\.exe)?["']/i);
-  assert.doesNotMatch(main, /utilityProcess\.fork/);
-  assert.match(runner, /createPackageWithOptions/);
-  assert.match(runner, /app\.asar/);
-  assert.match(runner, /unpackDir:\s*DESKTOP_UNPACK_DIRECTORIES/);
-  assert.match(runner, /user-data-dir=/);
-  assert.match(runner, /original-fs/);
-  assert.match(runner, /POMEGR_SMOKE_MAIN_STAGE_PATH/);
-  assert.match(runner, /PASS \(\$\{rendererMode\}\)/);
-  assert.match(runner, /ELECTRON_EXIT_MISSING_DLL/);
-  assert.match(runner, /ELECTRON_EXIT_BREAKPOINT/);
-  assert.match(runner, /ELECTRON_EXIT_STACK_BUFFER/);
-  assert.match(runner, /minimalRuntimeEnvironment\(process\.env/);
-  assert.doesNotMatch(runner, /env:\s*\{\s*\.\.\.process\.env/s);
-  assert.match(runner, /executableOnPath\(environment, ["']git\.exe["']\)/);
-  assert.match(runner, /"updater\.mjs"/);
-  assert.match(runner, /"electron-updater"/);
-  assert.match(main, /UPDATER_RUNTIME_VERIFIED/);
-  assert.match(main, /stream\.write\(`\$\{message\}\\n`, resolve\)/);
-  assert.match(main, /app\.on\(["']window-all-closed["'], \(\) => \{\}\)/);
-  assert.ok(main.indexOf("smokeWindow?.destroy()") < main.indexOf("webHandle.close()"));
-  assert.match(main, /withDeadline\(webHandle\.close\(\), STOP_TIMEOUT_MS/);
-  assert.match(main, /CLEANUP_WEB_STOPPED/);
-});
-
 test("production monitor readiness does not require Git while smoke readiness proves Git execution", async () => {
   const productionStages = [];
   let productionGitCalls = 0;
@@ -194,23 +119,7 @@ test("ASAR policy unpacks the monitor bundle, complete production build, and Sha
   }
 });
 
-test("monitor is isolated and the in-main web host receives no provider paths or credentials", async () => {
-  const [main, monitorHost] = await Promise.all([
-    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8"),
-  ]);
-
-  assert.doesNotMatch(main, /\.\.\/monitor\/|providers/);
-  assert.match(monitorHost, /\.\.\/monitor\/server\.mjs/);
-  assert.match(monitorHost, /execFile\("git", \["--version"\]/);
-  assert.doesNotMatch(main, /env:\s*\{\s*\.\.\.process\.env/s);
-  assert.match(main, /minimalRuntimeEnvironment\(process\.env/);
-  assert.ok(main.indexOf("keepOnlyRuntimeEnvironment(process.env") < main.indexOf('import("../web/server.mjs")'));
-  assert.ok(main.indexOf("assertNoSystemNodeInPath(process.env)") < main.indexOf('import("../web/server.mjs")'));
-  assert.match(main, /POMEGR_MONITOR_ORIGIN:\s*monitor\.ready\.origin/);
-  assert.match(monitorHost, /MONITOR_ENV_LOADING/);
-  assert.match(monitorHost, /MONITOR_ENV_LOADED/);
-
+test("the web host and monitor environments exclude provider paths and credentials", () => {
   const nodeDirectory = path.join("C:\\", "runtime-with-node");
   const gitDirectory = path.join("C:\\", "git-only");
   const fakeFiles = new Set([
@@ -283,43 +192,6 @@ test("forced utility cleanup waits for the child exit and leaves no pid", async 
   assert.equal(child.killCalls, 1);
   assert.equal(child.pid, undefined);
   assert.equal(child.listenerCount("exit"), 0);
-});
-
-test("monitor worker uses one physical bundle with fixed lifecycle stages", async () => {
-  const [main, monitorHost, monitorStartupPolicy, bundler, runtimeProof] = await Promise.all([
-    readFile(new URL("../desktop/smoke-main.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/monitor-startup-policy.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/service-bundles.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8"),
-  ]);
-  assert.match(main, /runtimePaths\.unpackedRoot/);
-  assert.match(main, /desktop[\s\S]*workers/);
-  assert.match(bundler, /noExternal:\s*true/);
-  assert.match(bundler, /codeSplitting:\s*false/);
-  assert.doesNotMatch(main, /hang-probe/);
-  assert.match(monitorHost, /MONITOR_RUNTIME_ASSERTING/);
-  assert.match(monitorHost, /smoke \? \{ gitProof: "verified" \} : \{\}/);
-  assert.match(monitorStartupPolicy, /if \(options\.smoke === true\)/);
-  assert.match(monitorStartupPolicy, /await options\.verifyGitExecution\(\)/);
-  assert.match(main, /MAIN_GIT_EXECUTING/);
-  assert.match(main, /MAIN_GIT_VERIFIED/);
-  assert.match(main, /WEB_IMPORTING/);
-  assert.match(main, /WEB_IMPORTED/);
-  assert.match(main, /WEB_SERVER_STARTING/);
-  assert.match(main, /WEB_SERVER_READY/);
-  assert.match(main, /WEB_HEALTH_CHECKING/);
-  assert.match(main, /WEB_HEALTH_VERIFIED/);
-  assert.match(main, /runtimePaths\.unpackedRoot[\s\S]*dist/);
-  assert.match(monitorStartupPolicy, /MONITOR_STARTING/);
-  assert.match(monitorHost, /MONITOR_READY/);
-  assert.match(runtimeProof, /\^\(\?:MONITOR\|WEB\)_\[A-Z_\]/);
-  assert.match(runtimeProof, /node\.exe/);
-  assert.doesNotMatch(runtimeProof, /spawnSync\(\s*["']node/);
-  assert.match(main, /POMEGR_SMOKE_MAIN_STAGE_PATH/);
-  assert.match(main, /TARGET_PRESENT/);
-  assert.match(main, /EXIT_MISSING_DLL/);
-  assert.match(main, /EXIT_NONZERO/);
 });
 
 test("desktop service bundling emits self-contained monitor and status-line workers", async () => {

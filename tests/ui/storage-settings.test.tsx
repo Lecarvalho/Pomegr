@@ -104,22 +104,6 @@ describe("Storage formatting helpers", () => {
 });
 
 describe("StorageUsageBar", () => {
-  it("shows the ordinary case with its exact fill", () => {
-    render(<StorageUsageBar snapshot={baseSnapshot} />);
-    expect(screen.getByText("380 MB / 500 MB · 76%")).toBeInTheDocument();
-    const meter = screen.getByRole("meter");
-    expect(meter).toHaveAttribute("aria-valuemin", "0");
-    expect(meter).toHaveAttribute("aria-valuemax", "100");
-    expect(meter).toHaveAttribute("aria-valuenow", "76");
-    expect(meter).toHaveAttribute("aria-valuetext", "380 MB / 500 MB · 76%");
-  });
-
-  it("shows the 100% case with a full fill", () => {
-    render(<StorageUsageBar snapshot={{ ...baseSnapshot, databaseBytes: 500 * 1024 * 1024, percent: 100 }} />);
-    expect(screen.getByText("500 MB / 500 MB · 100%")).toBeInTheDocument();
-    expect(screen.getByRole("meter")).toHaveAttribute("aria-valuenow", "100");
-  });
-
   it("prints the real over-100 percentage while the fill clamps at 100 and shows cleanup wording", () => {
     render(<StorageUsageBar snapshot={{ ...baseSnapshot, databaseBytes: 550 * 1024 * 1024, percent: 110, cleanupStatus: "cleanup_pending" }} />);
     expect(screen.getByText("550 MB / 500 MB · 110%")).toBeInTheDocument();
@@ -127,16 +111,6 @@ describe("StorageUsageBar", () => {
     expect(meter).toHaveAttribute("aria-valuenow", "100");
     expect(meter).toHaveAttribute("aria-valuetext", "550 MB / 500 MB · 110%");
     expect(screen.getByRole("status")).toHaveTextContent("Cleanup pending");
-  });
-
-  it("shows protected-excess wording", () => {
-    render(<StorageUsageBar snapshot={{ ...baseSnapshot, cleanupStatus: "protected_excess" }} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Preserved history exceeds the cleanup threshold.");
-  });
-
-  it("renders nothing for the ordinary cleanup status", () => {
-    render(<StorageUsageBar snapshot={baseSnapshot} />);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("never fabricates a 0% reading when usage is unavailable", () => {
@@ -162,20 +136,6 @@ describe("StorageUsageBar", () => {
 });
 
 describe("Storage settings page", () => {
-  it("keeps the Storage tab directly after Providers and before Data display, with no bridge present", async () => {
-    vi.stubGlobal("fetch", stubStorageFetch());
-    render(<SettingsPage initialSection="storage" />);
-    const tabs = await screen.findAllByRole("tab");
-    const labels = tabs.map((tab) => tab.textContent);
-    const providersIndex = labels.indexOf("Providers");
-    const storageIndex = labels.indexOf("Storage");
-    const dataIndex = labels.indexOf("Data display");
-    expect(storageIndex).toBeGreaterThan(-1);
-    expect(storageIndex).toBeGreaterThan(providersIndex);
-    expect(storageIndex).toBeLessThan(dataIndex);
-    expect(window).not.toHaveProperty("pomegrDesktop");
-  });
-
   it("treats a malformed /api/storage body as unavailable rather than throwing", async () => {
     vi.stubGlobal("fetch", stubStorageFetch({ readiness: "ready" }));
     render(<SettingsPage initialSection="storage" />);

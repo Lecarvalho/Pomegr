@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -52,18 +52,24 @@ async function writeProviderFixture(file, fixture, replacements = []) {
   await writeFile(file, contents, "utf8");
 }
 
+// A JSONL ingestor whose state is the ordered list of record ids.
+const idIngestor = (options) => createIncrementalJsonlIngestor({
+  parseRecord: (line) => JSON.parse(line.toString("utf8")),
+  initialState: () => [],
+  reduce: (state, record) => [...state, record.id],
+  ...options,
+});
+
 test("incremental provider framing consumes multi-chunk growth and parses each complete record once", async () => {
   const sources = new Map([["one", Buffer.from('{"id":"a"}\n')]]);
   const published = [];
   let parsed = 0;
-  const ingestor = createIncrementalJsonlIngestor({
+  const ingestor = idIngestor({
     readChunk: sourceReader(sources),
     parseRecord: (line) => {
       parsed += 1;
       return JSON.parse(line.toString("utf8"));
     },
-    initialState: () => [],
-    reduce: (state, record) => [...state, record.id],
     chunkBytes: 5,
     maximumFragmentBytes: 20,
   });
@@ -86,20 +92,33 @@ test("incremental provider framing consumes multi-chunk growth and parses each c
   assert.equal(parsed, 5);
 });
 
-test("incremental framing yields between bounded chunks so serving can run", async () => {
-  const source = Buffer.from('{"id":"a"}\n{"id":"b"}\n{"id":"c"}\n');
-  let yields = 0;
-  const ingestor = createIncrementalJsonlIngestor({
-    readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes),
-    parseRecord: (line) => JSON.parse(line.toString("utf8")),
-    initialState: () => [],
-    reduce: (state, record) => [...state, record.id],
-    chunkBytes: 5,
-    maximumFragmentBytes: 20,
-    async yieldControl() { yields += 1; },
-  });
-  await ingestor.observe({ identity: "cooperative", size: source.length }, () => {});
-  assert.equal(yields, Math.ceil(source.length / 5));
+test("incremental reads expose only bounded bytes and record counters, and yield between chunks", async () => {
+  const source = Buffer.from('{"id":"a"}\n{"id":"b"}\n');
+  const run = async (enabled) => {
+    const trace = createPipelineTraceRecorder({ enabled });
+    let yields = 0;
+    const published = [];
+    await idIngestor({
+      readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes),
+      chunkBytes: 5,
+      maximumFragmentBytes: 32,
+      async yieldControl() { yields += 1; },
+      onCounter(counter, value) {
+        trace.recordCounter({ counter, value });
+        throw new Error("diagnostics must not block acquisition");
+      },
+    }).observe({ identity: "synthetic", size: source.length }, (candidate) => published.push(candidate));
+    assert.equal(yields, Math.ceil(source.length / 5), "serving can run between bounded chunks");
+    assert.deepEqual(published.at(-1), ["a", "b"]);
+    return trace.snapshot().traceEvents;
+  };
+
+  assert.deepEqual(await run(false), []);
+  const events = await run(true);
+  const counted = (name) => events.filter((event) => event.ph === "C" && event.name === name).map((event) => event.args.value);
+  assert.deepEqual(counted("bytes"), [source.length]);
+  assert.deepEqual(counted("records"), [2]);
+  assert.doesNotMatch(JSON.stringify(events), /synthetic|PRIVATE|path|session/i);
 });
 
 test("queued hydration yields before provider work begins", async (context) => {
@@ -332,8 +351,7 @@ test("one reconciliation prepares shared source topology once for every session"
   const prepared = new Map([["one", { source: "one" }], ["two", { source: "two" }]]);
   const observed = [];
   let prepareCalls = 0;
-  let finish;
-  const finished = new Promise((resolve) => { finish = resolve; });
+  const { promise: finished, resolve: finish } = deferred();
   const observer = createNormalizedPollingObserver({
     list: async () => [{ localId: "one", updatedAt: observedAt }, { localId: "two", updatedAt: observedAt }],
     now: () => Date.parse(observedAt),
@@ -351,11 +369,7 @@ test("one reconciliation prepares shared source topology once for every session"
     async yieldControl() {},
   });
   context.after(() => controller.abort());
-  await observer.start({
-    publishCatalog() {},
-    publishSession() {},
-    invalidateSession() {},
-  }, controller.signal);
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
   await finished;
   assert.equal(prepareCalls, 1);
   assert.deepEqual(observed.sort(), [["one", "one"], ["two", "two"]]);
@@ -374,8 +388,7 @@ test("startup hydrates only the seven-day working set while old catalog rows rem
   const preparedBatches = [];
   const acquired = [];
   let catalog = [];
-  let finishStartup;
-  const startupFinished = new Promise((resolve) => { finishStartup = resolve; });
+  const { promise: startupFinished, resolve: finishStartup } = deferred();
   const observer = createNormalizedPollingObserver({
     list: async () => entries,
     now: () => nowMs,
@@ -440,14 +453,11 @@ test("replacement staging never mixes source generations and deterministic reduc
 test("a restarted ingestor resumes from the checkpointed complete-record offset", async () => {
   const sources = new Map([["session", Buffer.from('{"id":"a"}\n{"id":"b"}\n')]]);
   const reads = [];
-  const create = () => createIncrementalJsonlIngestor({
+  const create = () => idIngestor({
     readChunk: async (offset, bytes, source) => {
       reads.push(offset);
       return sources.get(source.identity).subarray(offset, offset + bytes);
     },
-    parseRecord: (line) => JSON.parse(line.toString("utf8")),
-    initialState: () => [],
-    reduce: (state, record) => [...state, record.id],
     chunkBytes: 4,
     maximumFragmentBytes: 16,
   });
@@ -468,12 +478,7 @@ test("a restarted ingestor resumes from the checkpointed complete-record offset"
 test("a failed publication remains retryable without another source append", async () => {
   const source = Buffer.from('{"id":"a"}\n');
   let attempts = 0;
-  const ingestor = createIncrementalJsonlIngestor({
-    readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes),
-    parseRecord: (line) => JSON.parse(line.toString("utf8")),
-    initialState: () => [],
-    reduce: (state, record) => [...state, record.id],
-  });
+  const ingestor = idIngestor({ readChunk: async (offset, bytes) => source.subarray(offset, offset + bytes) });
   await assert.rejects(() => ingestor.observe({ identity: "retry", size: source.length }, () => {
     attempts += 1;
     throw new Error("temporary normalization failure");
@@ -533,8 +538,7 @@ test("Codex observation retains the complete story while a child source advances
     efficiencyRuleEvidence: { repetition: false, concurrentMutation: false, unsharedContext: false, healthyFallback: false, cacheUsageClassification: false },
     pullRequestCreations: [],
   });
-  const readRecords = async (file) => (await import("node:fs/promises")).readFile(file, "utf8")
-    .then((text) => text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)));
+  const readRecords = async (file) => (await readFile(file, "utf8")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
   const observer = createCodexIncrementalObserver({
     list: async () => [{ localId: "root", isLive: true, updatedAt: "2026-08-28T10:01:00.000Z" }],
     discoveredMetadata: async () => metadata,
@@ -576,7 +580,7 @@ test("Codex observation retains the complete story while a child source advances
     "2026-08-28T10:01:00.000Z",
     "2026-08-28T10:02:00.000Z",
   ]);
-  assert.equal(published.at(-1).observationSource.completeOffset, Buffer.byteLength(await (await import("node:fs/promises")).readFile(rootFile, "utf8")) + Buffer.byteLength(await (await import("node:fs/promises")).readFile(childFile, "utf8")));
+  assert.equal(published.at(-1).observationSource.completeOffset, Buffer.byteLength(await readFile(rootFile, "utf8")) + Buffer.byteLength(await readFile(childFile, "utf8")));
   assert.equal(observer.diagnostics().routedSourceEvents >= 1, true);
 
   const beforePartial = published.length;

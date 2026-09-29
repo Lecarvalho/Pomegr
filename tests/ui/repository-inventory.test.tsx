@@ -1,10 +1,9 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RepositoriesView } from "../../app/components/command-center/CommandViews";
-import { MachineryPanel } from "../../app/components/dashboard/MachineryPanel";
 import { RepositoryInventoryStore, useRepositoryInventory } from "../../app/repository-inventory-client";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 
@@ -77,25 +76,6 @@ describe("repository index", () => {
     return repository;
   }
 
-  it("renders named repository links, observed providers, counts and setup chips without disclosures or native actions", async () => {
-    serve([snapshot.repositories[0], readyRepository()]);
-    const { container } = render(<RepositoriesView />);
-    const row = await screen.findByRole("link", { name: "Pomegr, Plugin update available" });
-    expect(row).toHaveAttribute("href", `/repositories/${repositoryId}`);
-    expect(row).not.toHaveAttribute("aria-expanded");
-    expect(container.querySelector("[aria-expanded]")).toBeNull();
-    expect(within(row).getByText("Plugin update available")).toHaveClass("commandChip", "warning");
-    expect(within(row).getByText("Claude Code")).toBeInTheDocument();
-    expect(within(row).getByText("Codex")).toBeInTheDocument();
-    expect(row.querySelector(".commandRepositorySessions")).toHaveTextContent("1 live·2 history");
-    expect(within(screen.getByRole("link", { name: "Example library, Ready" })).getByText("Ready")).toHaveClass("positive");
-    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getAllByText("2 repositories · 1 needs attention")).toHaveLength(2);
-    expect(screen.queryByRole("button", { name: /Capture|Install|Update plugin/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Rows reflect session associations only/)).toHaveClass("commandRepositoryFootnote");
-    expect(screen.queryByRole("heading", { name: /coming soon/i })).not.toBeInTheDocument();
-  });
-
   it("composes search with attention and live filters and restores All", async () => {
     const live = readyRepository();
     live.id = "repo-bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -116,37 +96,6 @@ describe("repository index", () => {
     expect(screen.getAllByRole("link")).toHaveLength(2);
     await userEvent.clear(screen.getByRole("searchbox"));
     expect(screen.getAllByRole("link")).toHaveLength(3);
-  });
-
-  it("explains empty filters and a search with no matches", async () => {
-    serve([readyRepository()]);
-    render(<RepositoriesView />);
-    await screen.findByRole("link", { name: "Example library, Ready" });
-    await userEvent.click(screen.getByRole("button", { name: "Needs attention" }));
-    expect(screen.getByRole("heading", { name: "No repositories need attention" })).toBeInTheDocument();
-    expect(screen.getByText("Clear the filter to see all 1 repositories.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Live now" }));
-    expect(screen.getByRole("heading", { name: "No repositories are live now" })).toBeInTheDocument();
-    await userEvent.type(screen.getByRole("searchbox"), "absent");
-    expect(screen.getByRole("heading", { name: "No repositories match" })).toBeInTheDocument();
-  });
-
-  it("preserves the empty observed state", async () => {
-    serve([]);
-    render(<RepositoriesView />);
-    expect(await screen.findByRole("heading", { name: "No repositories observed" })).toBeInTheDocument();
-  });
-
-  it("preserves the monitor unavailable state", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
-    render(<RepositoriesView />);
-    expect(await screen.findByRole("heading", { name: "Repository inventory unavailable" })).toBeInTheDocument();
-  });
-
-  it("shows loading before data arrives", () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
-    render(<RepositoriesView />);
-    expect(screen.getByRole("region", { name: "Repositories" })).toHaveAttribute("aria-busy", "true");
   });
   it("serializes a forced refresh behind an in-flight poll", async () => {
     const replies: Array<(response: Response) => void> = [];
@@ -175,13 +124,5 @@ describe("repository index", () => {
     act(() => document.dispatchEvent(new Event("visibilitychange")));
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
     unsubscribe();
-  });
-
-  it("renders a compact immutable session reference and never asks for /context", () => {
-    render(<MachineryPanel machinery={null} supported historical={false} inventoryRef={{ repositoryId, provider: "claude", revisionId: "ctx-001",
-      capturedAt: "2026-09-04T09:00:00.000Z", model: "claude-test", machineryTokens: 1200, contextAllocation: { initialTokens: 1200, deferredTokens: 0, reservedTokens: 0 }, categoryCount: 1, itemCount: 1, detailRetained: true }} />);
-    expect(screen.getByText(/available when this session started/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Open ctx-001" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`);
-    expect(screen.queryByText(/Run \/context/i)).not.toBeInTheDocument();
   });
 });

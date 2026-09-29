@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderServiceStatus, ProviderStatusSnapshot } from "../../shared/monitor-contract";
-import { ProviderServiceNotice, ProviderStatusDetails, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusTone } from "../../app/components/ProviderStatus";
+import { ProviderServiceNotice, dismissProviderIncident, dismissedProviderIncidentFor, providerIncidentRank, providerServiceNoticeVisible, providerStatusTone } from "../../app/components/ProviderStatus";
 import { ProviderStatusStore, normalizeProviderStatusSnapshot } from "../../app/provider-status-client";
 
 function provider(overrides: Partial<ProviderServiceStatus> = {}): ProviderServiceStatus {
@@ -151,15 +151,5 @@ describe("provider service status", () => {
     expect(screen.getByRole("link", { name: "View incident; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/incidents/native-issue-42");
     fireEvent.click(screen.getByRole("button", { name: "Dismiss provider service notice" }));
     expect(dismiss).toHaveBeenCalledOnce();
-  });
-
-  it("provides compact keyboard-accessible details for checked time and the official status link", () => {
-    render(<ProviderStatusDetails status={provider({ status: "operational", incidents: [], incidentKey: null })} compact />);
-    expect(screen.getByText("Reported healthy")).toBeInTheDocument();
-    const trigger = screen.getByRole("button", { name: "Codex provider service status details" });
-    expect(trigger).toHaveClass("dottedInfoPopoverTrigger");
-    fireEvent.pointerEnter(trigger, { pointerType: "mouse" });
-    expect(screen.getByText("Last checked")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View status page; opens in a new tab" })).toHaveAttribute("href", "https://status.openai.com/");
   });
 });

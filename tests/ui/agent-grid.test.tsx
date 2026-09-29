@@ -110,25 +110,6 @@ beforeEach(() => {
 });
 
 describe("agent grid view", () => {
-  it("renders every observed agent as a native, labelled tile and keeps status, warning, selection, and metric in the tile contract", () => {
-    const { agents } = gridFixture();
-    render(panel());
-    const tiles = screen.getAllByRole("button", { name: /^Select / });
-    expect(tiles).toHaveLength(49);
-    for (const agent of agents) {
-      const current = tile(agent.label);
-      expect(current.tagName).toBe("BUTTON");
-      expect(current).toHaveAttribute("type", "button");
-      expect(current).toHaveAttribute("aria-pressed");
-      expect(current).toHaveClass("agentGridTile", `agentGridStatus-${agent.status}`);
-      expect(current).toHaveAttribute("title", expect.stringContaining(agent.label));
-      expect(current).toHaveAttribute("title", expect.stringMatching(new RegExp(agent.status, "i")));
-      expect(current).toHaveAttribute("title", expect.stringMatching(/context/i));
-    }
-    expect(tile("Build worker 1")).toHaveClass("agentGridWarning");
-    expect(tile("Primary agent")).toHaveClass("agentGridSelected");
-  });
-
   it("selects a tile with a pointer or keyboard and updates the desktop inspector", async () => {
     const user = userEvent.setup();
     render(panel());

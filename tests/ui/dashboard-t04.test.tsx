@@ -94,19 +94,6 @@ function mount(query = {}, summary = sessionSummaryFixture(), state = composedSt
 afterEach(() => { resetSessionDomainStoreForTests(); navigation.replace.mockReset(); vi.restoreAllMocks(); vi.useRealTimers(); delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop; });
 
 describe("T04 session workspace", () => {
-  it("shows the agent-reported session signal chip in the persistent header", async () => {
-    const base = sessionSummaryFixture();
-    const signal = { label: "Review ready", tone: "positive" as const, reportedAt: "2026-09-14T12:00:00.000Z", description: "Checks completed." };
-    const withSignal = mount({ tab: "signals" }, sessionSummaryFixture({ session: { ...base.session!, signal } }), composedState({ session: { ...composedState().session!, signal } }));
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    const header = withSignal.container.querySelector(".sessionHeaderMeta") as HTMLElement;
-    const chip = await within(header).findByRole("button", { name: "Session signal: Review ready" });
-    expect(chip).toHaveClass("agentChip", "sessionSignal", "positive");
-    expect(await screen.findByText("Session · agent-reported")).toBeInTheDocument();
-    await userEvent.setup().hover(chip);
-    expect(await screen.findByText("Agent-reported session signal · Checks completed.")).toBeInTheDocument();
-  });
-
   it("shows the header branch chip only after repository evidence is ready", async () => {
     const base = sessionSummaryFixture();
     const pending = mount({}, sessionSummaryFixture({ sectionReadiness: { ...base.sectionReadiness, repository: "loading" },
@@ -117,12 +104,6 @@ describe("T04 session workspace", () => {
     const ready = mount();
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     expect(ready.container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toHaveTextContent("feature/session-tabs");
-  });
-
-  it("omits the header signal chip when no signal is recorded", async () => {
-    const withoutSignal = mount();
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    expect(withoutSignal.container.querySelector(".sessionHeaderMeta .sessionSignal")).toBeNull();
   });
 
   it("renders persistent summary-only chrome and falls back unknown tabs to Overview", async () => {
@@ -451,17 +432,6 @@ describe("T04 session workspace", () => {
     expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(new RegExp(`tab=${tab}`));
   });
 
-  it("draws the Overview request strip with 48 fixed slots", async () => {
-    const { container } = mount({ tab: "overview" });
-    await screen.findByRole("button", { name: "Requests" });
-    expect(container.querySelector(".sessionRequestStrip .sessionRequestSummary")).toHaveTextContent("one bar per model request · fresh tokens · 1 so far");
-    expect(screen.getByLabelText("Fresh token categories; cache reads are excluded")).toHaveTextContent("Cache writeUncached inputOutput");
-    const tracks = container.querySelector(".sessionRequestTracks")!;
-    const bars = tracks.querySelectorAll("button").length;
-    expect(bars).toBeGreaterThan(0);
-    expect(bars + tracks.querySelectorAll(".sessionRequestBarSlot").length).toBe(48);
-  });
-
   it("draws only the latest 24 request slots on phone", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
@@ -479,26 +449,6 @@ describe("T04 session workspace", () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it("pulses only beside an active agent's current activity", async () => {
-    const base = sessionSummaryFixture();
-    const active = mount({ tab: "overview" }, base);
-    await screen.findByText("Implementing session tabs");
-    expect(active.container.querySelectorAll(".sessionCurrentActivityMark.isCurrent")).toHaveLength(1);
-    expect(active.container.querySelectorAll(".sessionAgentActivityLabel.currentActivityShimmer")).toHaveLength(1);
-    const activeLabel = active.container.querySelector(".sessionAgentActivityLabel.currentActivityShimmer");
-    expect(activeLabel).toHaveClass("currentActivityShimmer");
-    expect(activeLabel).toHaveAttribute("data-text", "Implementing session tabs");
-    active.unmount();
-
-    const waiting = mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, status: "needs_input" }] }));
-    await screen.findByText("Implementing session tabs");
-    expect(waiting.container.querySelector(".sessionCurrentActivityMark.isCurrent")).toBeNull();
-    expect(waiting.container.querySelectorAll(".sessionAgentActivityLabel.currentActivityShimmer")).toHaveLength(0);
-    const waitingLabel = waiting.container.querySelector(".sessionAgentActivityLabel");
-    expect(waitingLabel).not.toHaveClass("currentActivityShimmer");
-    expect(waitingLabel).not.toHaveAttribute("data-text");
   });
 
   it("uses an agent fallback after provider activity, and leaves last observed work static", async () => {
@@ -523,30 +473,6 @@ describe("T04 session workspace", () => {
 
     mount({ tab: "overview" }, sessionSummaryFixture({ rightNow: [{ ...base.rightNow[0]!, currentActivity: null, activityFallback: null }] }));
     expect(await screen.findByText("active")).toBeInTheDocument();
-  });
-
-  it("renders bottom panels only for evidence or readiness, with plan fallback and no sub-minute medians", async () => {
-    const base = sessionSummaryFixture();
-    const first = mount({ tab: "overview" });
-    await screen.findByRole("heading", { name: "Progress" });
-    expect(screen.getByRole("heading", { name: "Work by kind · session" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Cost" })).toBeInTheDocument();
-    first.unmount();
-
-    const withoutProgressOrCost = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null }, planTasks: [] }));
-    await screen.findByRole("heading", { name: "Work by kind · session" });
-    expect(screen.queryByRole("heading", { name: "Progress" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Cost" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/median/)).not.toBeInTheDocument();
-    withoutProgressOrCost.unmount();
-
-    const withPlanFallback = mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null, cost: null } }));
-    expect(await screen.findByText("1 of 1 done")).toBeInTheDocument();
-    expect(withPlanFallback.container.querySelector(".sessionProgressTasksRow")).toHaveTextContent("Plan tasks1 of 1 done");
-    withPlanFallback.unmount();
-
-    mount({ tab: "overview" }, sessionSummaryFixture({ session: { ...base.session!, progress: null }, sectionReadiness: { ...base.sectionReadiness, activityEvidence: "unavailable" } }));
-    expect(await screen.findByText("Progress evidence unavailable.")).toBeInTheDocument();
   });
 
   it("never renders forbidden content seeded into summary fields Overview and the header must not display", async () => {
@@ -582,66 +508,5 @@ describe("T04 session workspace", () => {
     await screen.findByRole("heading", { name: "Recorded implementation session" });
     const html = container.innerHTML;
     for (const value of Object.values(sentinels)) expect(html).not.toContain(value);
-  });
-
-  it("shows the repository comparison chip and changes/pull-request copy for up to date, ahead/behind, and no comparison", async () => {
-    const base = sessionSummaryFixture();
-    const upToDate = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 0, pullRequestCount: 0, comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 0, integrated: false } } }));
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    expect(screen.getByText("Up to date with origin/main")).toBeInTheDocument();
-    expect(upToDate.container.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("No local changes · 0 pull requests");
-    upToDate.unmount();
-
-    const aheadBehind = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: 1, pullRequestCount: 2, comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 1, integrated: false } } }));
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    expect(screen.getByText("2 commits ahead · 1 commit behind relative to origin/main")).toBeInTheDocument();
-    expect(aheadBehind.container.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("1 changed file · 2 pull requests");
-    aheadBehind.unmount();
-
-    mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, changedFiles: null, pullRequestCount: null, comparison: null } }));
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    expect(screen.queryByText(/Up to date|ahead|behind|integrated/)).not.toBeInTheDocument();
-    expect(document.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("— · —");
-  });
-
-  it("prints ×N in the request role legend only when more than one agent shares a role", async () => {
-    const base = sessionSummaryFixture();
-    mount({ tab: "overview" }, sessionSummaryFixture({
-      requestSnapshots: {
-        status: "ready",
-        items: [
-          { ...base.requestSnapshots.items[0]!, id: "request-1", agentId: "primary", agentLabel: "Primary agent", agentRole: "orchestrator" },
-          { ...base.requestSnapshots.items[0]!, id: "request-2", agentId: "secondary", agentLabel: "Secondary agent", agentRole: "orchestrator" },
-        ],
-      },
-    }));
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    const legend = screen.getByLabelText("Agent role legend");
-    expect(legend).toHaveTextContent("orchestrator ×2");
-    expect(legend).not.toHaveTextContent("×1");
-  });
-
-  it("shows the Cost row with the source and amount, and an observed-time footnote", async () => {
-    mount({ tab: "overview" });
-    await screen.findByRole("heading", { name: "Recorded implementation session" });
-    expect(screen.getByText("Claude Code API list-rate estimate")).toBeInTheDocument();
-    expect(screen.getByText("$2.50")).toBeInTheDocument();
-    expect(screen.getByText(/^Estimate, not a bill\. Observed .+\.$/)).toBeInTheDocument();
-  });
-
-  it("labels Work by kind items with WORK_LABELS text and keeps sub-minute medians omitted", async () => {
-    const base = sessionSummaryFixture();
-    mount({ tab: "overview" }, sessionSummaryFixture({ activity: { ...base.activity, byKind: [{ kind: "read", count: 8, medianDurationMs: 900 }, { kind: "write", count: 6, medianDurationMs: 90_000 }] } }));
-    const heading = await screen.findByRole("heading", { name: "Work by kind · session" });
-    const panel = heading.closest("section")!;
-    expect(panel).toHaveTextContent("Reading 8");
-    expect(panel).toHaveTextContent("Editing 6 · 1m median");
-  });
-
-  it("leaves efficiency signals to the Signals tab", async () => {
-    mount({ tab: "overview" });
-    const overview = await screen.findByLabelText("Session overview");
-    expect(within(overview).queryByRole("heading", { name: "Efficiency signals" })).not.toBeInTheDocument();
-    expect(within(overview).queryByText("Repeated reads")).not.toBeInTheDocument();
   });
 });

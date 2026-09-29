@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { openMonitorStore } from "../monitor/monitor-store.mjs";
 import { createSessionCatalogInventory } from "../monitor/session-catalog-inventory.mjs";
+import { catalogSourceScopeKey } from "../monitor/session-catalog-runtime.mjs";
 
 const row = (index, extras = {}) => ({ localId: `session-${index}`, title: `Session ${String(index).padStart(5,"0")}`, project: index % 2 ? "Other" : "Pomegr", createdAt: new Date(1_700_000_000_000 + index * 1000).toISOString(), updatedAt: new Date(1_700_000_000_000 + index * 1000).toISOString(), isLive: false, needsInput: false, activityStatus: "idle", ...extras });
 async function fixture(t, options = {}) {
@@ -270,4 +271,13 @@ test("an inventory created before the settled column opens, keeps its rows and g
   inventory.updateProviderLifecycle("claude",[{localId:"old-1",activityStatus:"idle",createdAt:"2026-01-01T00:00:00.000Z",updatedAt:"2026-01-01T00:00:00.000Z"}]);
   assert.equal(inventory.get("claude:old-1").activityStatus,"idle");
   assert.doesNotThrow(()=>createSessionCatalogInventory({store:()=>store,providers:["claude"]}).initialize());
+});
+
+test("catalog source scope binds opaque provider source configuration", () => {
+  const base = { providerFolders: { folders: { codexHome: "C:/private/codex" } } };
+  const archived = catalogSourceScopeKey({ ...base, providers: [{ id: "codex", catalogSourceScope: "a".repeat(64) }] });
+  const activeOnly = catalogSourceScopeKey({ ...base, providers: [{ id: "codex", catalogSourceScope: "b".repeat(64) }] });
+  assert.match(archived, /^[a-f0-9]{64}$/u);
+  assert.notEqual(archived, activeOnly);
+  assert.doesNotMatch(archived, /private|codex/i);
 });

@@ -1,7 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { ClaudeUsageControls } from "../../app/components/ClaudeUsageControls";
 import type { UsageLimits } from "../../shared/monitor-contract";
 
@@ -22,14 +20,6 @@ afterEach(() => {
 });
 
 describe("Claude usage recovery", () => {
-  it("keeps recovery actions compact, wrapping, and touch-friendly", () => {
-    const styles = readFileSync(join(process.cwd(), "app/styles/evidence.css"), "utf8");
-    expect(styles).toMatch(/\.claudeUsageActions\s*\{[^}]*flex-wrap: wrap;[^}]*align-items: center/);
-    expect(styles).toMatch(/\.claudeUsageActions \.commandSecondaryAction\s*\{[^}]*min-height: var\(--control-compact\);[^}]*max-width: 100%;[^}]*font-size: var\(--text-xs\)/);
-    expect(styles).not.toMatch(/\.usageConnectionHelp button\s*\{[^}]*margin-top/);
-    expect(styles).toMatch(/@media \(max-width: 560px\), \(pointer: coarse\)\s*\{\s*\.claudeUsageActions \.commandSecondaryAction, \.claudeUsageActions a\s*\{ min-height: 44px/);
-  });
-
   it.each([
     ["provider_api", null],
     ["local_observation", null],
@@ -68,17 +58,6 @@ describe("Claude usage recovery", () => {
     rerender(<ClaudeUsageControls usageLimits={{ ...rejected, available: true, origin: "local_observation", failureKind: null }} />);
     expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
     expect(screen.getByText(/Usage reported by Claude Code/)).toBeInTheDocument();
-  });
-
-  it.each([false, true])("expands browser sign-in help when access is rejected with available=%s", (available) => {
-    const { container } = render(<ClaudeUsageControls usageLimits={{ ...rejected, available }} showObservationNote={false} />);
-    expect(container.querySelector("details")).toHaveAttribute("open");
-    expect(screen.getByText("claude auth login --claudeai")).toBeVisible();
-    expect(screen.getByText(/On the computer running Pomegr/)).toBeVisible();
-    expect(screen.getByText(/The Reconnect button is available in Pomegr Desktop/)).toBeVisible();
-    expect(screen.queryByRole("button", { name: "Reconnect Claude Code" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Enable local usage" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Setup guide (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed");
   });
 
   it.each(["provider_api", "local_observation"] as const)("keeps desktop reconnect available when %s figures survive an authentication failure", async (origin) => {

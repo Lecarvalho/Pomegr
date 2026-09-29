@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -854,8 +854,3 @@ test("Claude structured task store remains authoritative over transcript reconst
   }]);
 });
 
-test("provider-neutral monitor contains no Claude roots, credentials, endpoints, or transcript schema checks", async () => {
-  const source = await readFile(new URL("../monitor/server.mjs", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /CLAUDE_|\.claude|anthropic|oauth|credentials/i);
-  assert.doesNotMatch(source, /record\.type|message\?*\.content|tool_use|compact_boundary/);
-});

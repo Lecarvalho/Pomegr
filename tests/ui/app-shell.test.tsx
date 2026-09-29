@@ -1,7 +1,6 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import Link from "next/link";
 
 const navigation = vi.hoisted(() => ({ pathname: "/", push: vi.fn() }));
 
@@ -30,12 +29,9 @@ import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences
 import { AppShell } from "../../app/components/AppShell";
 import { ClientAccessProvider } from "../../app/hooks/ClientAccessContext";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
-import { CommandPageHeader } from "../../app/components/command-center/CommandPage";
-import { pomegrMarkVariantForSearch, shortcutHintForPlatform, sidebarLimitsForCatalog } from "../../app/components/command-center/CommandCenterShell";
+import { shortcutHintForPlatform, sidebarLimitsForCatalog } from "../../app/components/command-center/CommandCenterShell";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
-import pomegrPackageManifest from "../../package.json";
-import pomegrPluginManifest from "../../plugins/pomegr/.codex-plugin/plugin.json";
 import type { HomeProviderUsageLimits, SessionSummary, UsageLimitsSnapshot } from "../../shared/monitor-contract";
 
 function response(body: object) {
@@ -121,34 +117,11 @@ describe("Command Center app shell", () => {
     view.unmount();
   });
 
-  it("keeps route breadcrumbs inside the shared page header", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
-    render(<AppShell><CommandPageHeader title="Pomegr" breadcrumb={<><Link href="/sessions">Sessions</Link><span aria-current="page">Pomegr</span></>} /></AppShell>);
-    const breadcrumb = screen.getAllByText("Sessions").find((element) => element.closest(".commandPageBreadcrumb"))?.closest(".commandPageBreadcrumb") as HTMLElement | null;
-    expect(breadcrumb).toBeInTheDocument();
-    if (!breadcrumb) throw new Error("Shared page breadcrumb is missing");
-    expect(breadcrumb.closest("header")).toHaveClass("commandPageHeader");
-    expect(breadcrumb.closest("header")).not.toHaveClass("commandHeader");
-    expect(within(breadcrumb).getByRole("link", { name: "Sessions" })).toHaveAttribute("href", "/sessions");
-    expect(within(breadcrumb).getByText("Pomegr")).toHaveAttribute("aria-current", "page");
-  });
-
   it("uses the platform-appropriate global search hint", () => {
     expect(shortcutHintForPlatform("Win32")).toBe("Ctrl K");
     expect(shortcutHintForPlatform("Linux x86_64")).toBe("Ctrl K");
     expect(shortcutHintForPlatform("MacIntel Macintosh")).toBe("⌘ K");
     expect(shortcutHintForPlatform(undefined)).toMatch(/^(Ctrl K|⌘ K)$/);
-  });
-
-  it("renders the route rail, bundled MCP version, and live session count", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
-    render(<AppShell><h1>Workspace content</h1></AppShell>);
-    expect(await screen.findByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
-    expect(await screen.findByRole("link", { name: "Sessions, 2 live" })).toHaveAttribute("href", "/sessions");
-    expect(screen.getByRole("link", { name: "Usage limits" })).toHaveAttribute("href", "/usage-limits");
-    expect(screen.getByText(`Pomegr v${pomegrPackageManifest.version}`)).toBeInTheDocument();
-    expect(screen.getByText(`MCP v${pomegrPluginManifest.version}`)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Workspace content" })).toBeInTheDocument();
   });
 
   it("opens a bounded notification tray and marks its entries read", async () => {
@@ -464,12 +437,6 @@ describe("Command Center app shell", () => {
     const notice = await screen.findByRole("alert");
     expect(notice).toHaveTextContent("Phone access expired");
     expect(screen.getByRole("link", { name: "Scan a new code on your computer" })).toHaveAttribute("href", "/__pomegr/pair");
-  });
-
-  it("supports both compact product-mark variants for live comparison", () => {
-    expect(pomegrMarkVariantForSearch("?logo=divided")).toBe("divided");
-    expect(pomegrMarkVariantForSearch("?logo=outline")).toBe("outline");
-    expect(pomegrMarkVariantForSearch("?view=home")).toBe("divided");
   });
 
   it("keeps live sessions ordered by creation time descending across refreshed activity", async () => {

@@ -271,7 +271,7 @@ Regenerate both self-contained runtimes and run package tests:
 
 ```powershell
 npm run build:plugin
-npm run test:plugin
+node --test tests/pomegr-plugin.test.mjs tests/codex-plugin.test.mjs tests/claude-session-title.test.mjs
 ```
 
 After generation, Codex package validation additionally uses the skill and plugin validators:

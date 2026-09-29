@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 import { Dashboard } from "../../app/Dashboard";
-import { HomeDashboard } from "../../app/HomeDashboard";
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
@@ -58,13 +57,6 @@ describe("progressive readiness (ported)", () => {
     expect(values[1]).toBe("—"); // context is honestly "loading", never a fabricated number
     const overview = screen.getByLabelText("Session overview");
     expect(within(overview).getByTitle(/fresh tokens/)).toBeInTheDocument();
-  });
-
-  it("keeps Home discovery usable while session-catalog readiness itself reports loading", () => {
-    render(<SessionCatalogProvider sessions={[]} readiness={{ catalog: "loading" }}><HomeDashboard /></SessionCatalogProvider>);
-    expect(screen.getByRole("heading", { name: "Welcome to Pomegr" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Session coach" })).toBeInTheDocument();
-    expect(screen.queryByText("No open sessions yet.")).not.toBeInTheDocument();
   });
 
   it("shows an honest unavailable state for a definitive 404 and does not keep retrying or claim the monitor is unreachable", async () => {

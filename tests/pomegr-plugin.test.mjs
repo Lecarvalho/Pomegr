@@ -7,21 +7,67 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildPomegrMcpServer } from "../plugins/claude-code/mcp/server.mjs";
-import {
-  DELEGATION_MARKER,
-  findPolicy,
-  POLICY_MAX_BYTES,
-  readPolicy,
-  validatePolicyText,
-} from "../plugins/claude-code/scripts/policy.mjs";
+import * as claudePolicy from "../plugins/claude-code/scripts/policy.mjs";
+import * as codexPolicy from "../plugins/pomegr/scripts/policy.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pluginRoot = path.join(repositoryRoot, "plugins", "claude-code");
+const codexPluginRoot = path.join(repositoryRoot, "plugins", "pomegr");
 const policyScript = path.join(pluginRoot, "scripts", "policy.mjs");
 const policyTemplatePath = path.join(pluginRoot, "skills", "init", "references", "policy-template.md");
-const releaseScriptPath = path.join(repositoryRoot, "scripts", "release-plugin.sh");
-const legacyReleaseScriptPath = path.join(repositoryRoot, "scripts", "release-claude-plugin.sh");
-const restartSkillRoot = path.join(repositoryRoot, ".agents", "skills", "restart-pomegr");
+
+const { DELEGATION_MARKER, readPolicy } = claudePolicy;
+
+const claudeReport = (toolName) => ({
+  type: "assistant",
+  timestamp: "2026-08-14T10:00:00.000Z",
+  message: { content: [{ type: "tool_use", name: toolName, input: { label: "Verified", tone: "positive" } }] },
+});
+const codexReport = (toolName) => ({ type: "response_item", payload: { type: "function_call", name: toolName } });
+
+// The policy script ships as two generated copies (Claude Code and Codex). Their
+// validator is shared; only the hook commands, transcript shapes, and copy differ.
+const providers = [
+  {
+    name: "Claude Code",
+    policy: claudePolicy,
+    script: policyScript,
+    template: policyTemplatePath,
+    sessionStartCommand: "hook",
+    doctor: /\/pomegr:doctor/,
+    quiet: "",
+    transcriptField: "transcript_path",
+    silentTranscript: [
+      { type: "user", message: { content: "Verify the release." } },
+      { type: "assistant", timestamp: "2026-08-14T10:00:00.000Z", message: { content: [{ type: "text", text: "Checks are green." }] } },
+    ],
+    reportRecord: claudeReport,
+    stopHookActiveIsQuiet: true,
+    toolingError: "Delegated agent tooling must declare signal-owning subagent types and attach the Pomegr MCP tools to them.",
+    sessionStartNotes: [/call the Pomegr `rename_session` tool once/i, /Delegation is mechanized/i],
+  },
+  {
+    name: "Codex",
+    policy: codexPolicy,
+    script: path.join(codexPluginRoot, "scripts", "policy.mjs"),
+    template: path.join(codexPluginRoot, "skills", "init", "references", "policy-template.md"),
+    sessionStartCommand: "session-start",
+    doctor: /\$pomegr:doctor/,
+    quiet: "{}",
+    transcriptField: "agent_transcript_path",
+    silentTranscript: [{ type: "event_msg", payload: { message: "Checks are green." } }],
+    reportRecord: codexReport,
+    stopHookActiveIsQuiet: false,
+    toolingError: "Delegated agent tooling must declare signal-owning subagent types and preserve Pomegr MCP access.",
+    sessionStartNotes: [/SubagentStart hook/],
+  },
+];
+
+function policyTest(name, run) {
+  for (const provider of providers) test(`${provider.name}: ${name}`, () => run(provider));
+}
+
+const readTemplate = (provider) => readFile(provider.template, "utf8");
 
 async function withTemporaryDirectory(run) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-plugin-"));
@@ -38,20 +84,21 @@ async function writePolicy(repository, text) {
   await writeFile(path.join(directory, "signals.md"), text, "utf8");
 }
 
-function runPolicyHook(cwd) {
-  return spawnSync(process.execPath, [policyScript, "hook"], {
+function runHook(provider, command, payload) {
+  return spawnSync(process.execPath, [provider.script, command], {
     cwd: repositoryRoot,
     encoding: "utf8",
-    input: JSON.stringify({ cwd }),
+    input: JSON.stringify(payload),
   });
 }
 
-function runPolicyEventHook(command, cwd, payload) {
-  return spawnSync(process.execPath, [policyScript, command], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    input: JSON.stringify({ ...payload, cwd: payload.cwd || cwd }),
-  });
+function runSessionStart(provider, cwd) {
+  return runHook(provider, provider.sessionStartCommand, { hook_event_name: "SessionStart", cwd });
+}
+
+function assertQuiet(provider, result) {
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), provider.quiet);
 }
 
 function withDelegatedAgents(template, rows) {
@@ -72,14 +119,6 @@ async function writeTranscript(directory, name, records) {
   const file = path.join(directory, name);
   await writeFile(file, `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
   return file;
-}
-
-function reportRecord(toolName) {
-  return {
-    type: "assistant",
-    timestamp: "2026-08-14T10:00:00.000Z",
-    message: { content: [{ type: "tool_use", name: toolName, input: { label: "Verified", tone: "positive" } }] },
-  };
 }
 
 async function readMcpToolInventory(server, cwd) {
@@ -137,25 +176,34 @@ async function readMcpToolInventory(server, cwd) {
   }
 }
 
-test("validates the repository policy template and extracts bounded signal rows", async () => {
-  const template = await readFile(policyTemplatePath, "utf8");
-  const lfTemplate = template.replace(/\r\n?/g, "\n");
+test("Codex and Claude Code ship one provider-neutral policy template", async () => {
+  const [claude, codex] = await Promise.all(providers.map(readTemplate));
+  assert.equal(codex.replace(/\r\n?/g, "\n"), claude.replace(/\r\n?/g, "\n"));
+});
+
+policyTest("validates the repository policy template and extracts bounded signal rows", async (provider) => {
+  const lfTemplate = (await readTemplate(provider)).replace(/\r\n?/g, "\n");
+  assert.match(lfTemplate, /## Delegated agent tooling/);
+  assert.match(lfTemplate, /## Delegated agents/);
+  assert.match(lfTemplate, /provider-specific prefixes are not part of this policy/);
   for (const candidate of [lfTemplate, lfTemplate.replaceAll("\n", "\r\n")]) {
-    const result = validatePolicyText(candidate);
+    const result = provider.policy.validatePolicyText(candidate);
     assert.equal(result.status, "valid");
     assert.deepEqual(result.errors, []);
-    assert.match(lfTemplate, /## Delegated agent tooling/);
-    assert.match(lfTemplate, /## Delegated agents/);
-    assert.match(lfTemplate, /provider-specific prefixes are not part of this policy/);
     assert.equal(result.signals["Session signals"][0].label, "Ready for review");
     assert.equal(result.signals["Agent signals"].length, 0);
     assert.equal(result.signals["Task signals"][0].label, "Checks passed");
     assert.deepEqual(result.delegatedAgents, []);
   }
+
+  const legacy = provider.policy.validatePolicyText(lfTemplate.replace("Policy version: 7", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: no\n/, "\n"));
+  assert.equal(legacy.status, "valid");
+  assert.equal(legacy.progressEnabled, false);
 });
 
-test("validates the delegated-agents table and rejects incoherent delegation", async () => {
-  const template = await readFile(policyTemplatePath, "utf8");
+policyTest("validates the delegated-agents table and rejects incoherent delegation", async (provider) => {
+  const { validatePolicyText } = provider.policy;
+  const template = await readTemplate(provider);
 
   const declared = validatePolicyText(withDelegatedAgents(template, ["| release-verifier | task |", "| * | task |"]));
   assert.equal(declared.status, "valid");
@@ -192,19 +240,20 @@ test("validates the delegated-agents table and rejects incoherent delegation", a
   assert.ok(missingSection.errors.some((error) => error.includes('Missing or empty "Delegated agents" section.')));
 });
 
-test("rejects malformed and oversized policies without interpreting their content", async () => {
-  const template = await readFile(policyTemplatePath, "utf8");
-  const malformed = validatePolicyText(template.replace("Policy version: 7", "Policy version: 1"));
+policyTest("rejects malformed and oversized policies without interpreting their content", async (provider) => {
+  const template = await readTemplate(provider);
+  const malformed = provider.policy.validatePolicyText(template.replace("Policy version: 7", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
   assert.ok(malformed.errors.some((error) => error.includes("Policy version must be 7")));
 
-  const oversized = validatePolicyText(`${template}\n${"x".repeat(POLICY_MAX_BYTES)}`);
+  const oversized = provider.policy.validatePolicyText(`${template}\n${"x".repeat(provider.policy.POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
   assert.ok(oversized.errors.some((error) => error.includes("byte limit")));
 });
 
-test("rejects policies that contradict naming, privacy, and signal-lifetime invariants", async () => {
-  const template = await readFile(policyTemplatePath, "utf8");
+policyTest("rejects policies that contradict naming, privacy, and signal-lifetime invariants", async (provider) => {
+  const { validatePolicyText } = provider.policy;
+  const template = await readTemplate(provider);
   const badNaming = validatePolicyText(template.replace(
     "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
     "- Always ask the user to run /rename and report the title.",
@@ -224,137 +273,125 @@ test("rejects policies that contradict naming, privacy, and signal-lifetime inva
     "- Restricted agent definitions may own signals without the Pomegr reporting tools.",
   ));
   assert.equal(missingDelegatedTools.status, "invalid");
-  assert.ok(missingDelegatedTools.errors.includes("Delegated agent tooling must declare signal-owning subagent types and attach the Pomegr MCP tools to them."));
+  assert.ok(missingDelegatedTools.errors.includes(provider.toolingError));
 
   const optionalInjection = validatePolicyText(template.replace(
     "- Never rely on the delegating session remembering to paste the rows. Injection is the mechanism; a pasted copy is only a fallback, and the hook does not append a second copy when the prompt already carries one.",
     "- When delegating such work, include the applicable signal rows and transition rules in the Agent prompt.",
   ));
   assert.equal(optionalInjection.status, "invalid");
-  assert.ok(optionalInjection.errors.includes("Delegated agent tooling must declare signal-owning subagent types and attach the Pomegr MCP tools to them."));
+  assert.ok(optionalInjection.errors.includes(provider.toolingError));
 
-  const permanentSession = validatePolicyText(template.replace(
-    "Replace if review finds new work; clear when the session moves to unrelated work.",
-    "Keep this signal forever.",
-  ));
-  assert.equal(permanentSession.status, "invalid");
-  assert.ok(permanentSession.errors.some((error) => error.includes("replaced or cleared")));
+  const sessionTransition = "Replace if review finds new work; clear when the session moves to unrelated work.";
+  for (const [replacement, expected] of [
+    ["Keep this signal forever.", "replaced or cleared"],
+    ["Never replace or clear this signal.", "affirmatively"],
+    ["This signal is not cleared when the work is resolved.", "affirmatively"],
+  ]) {
+    const invalid = validatePolicyText(template.replace(sessionTransition, replacement));
+    assert.equal(invalid.status, "invalid");
+    assert.ok(invalid.errors.some((error) => error.includes(expected)), replacement);
+  }
 
-  const negatedSessionTransition = validatePolicyText(template.replace(
-    "Replace if review finds new work; clear when the session moves to unrelated work.",
-    "Never replace or clear this signal.",
-  ));
-  assert.equal(negatedSessionTransition.status, "invalid");
-  assert.ok(negatedSessionTransition.errors.some((error) => error.includes("affirmatively")));
-
-  const passiveNegatedSessionTransition = validatePolicyText(template.replace(
-    "Replace if review finds new work; clear when the session moves to unrelated work.",
-    "This signal is not cleared when the work is resolved.",
-  ));
-  assert.equal(passiveNegatedSessionTransition.status, "invalid");
-  assert.ok(passiveNegatedSessionTransition.errors.some((error) => error.includes("affirmatively")));
-
-  const clearableTask = validatePolicyText(template.replace(
-    "Replace only if a later outcome for the same execution task supersedes it; task signals are not cleared.",
-    "Clear the task signal when the task finishes.",
-  ));
-  assert.equal(clearableTask.status, "invalid");
-  assert.ok(clearableTask.errors.some((error) => error.includes("durable and cannot be cleared")));
-
-  const conditionalTaskDurability = validatePolicyText(template.replace(
-    "Replace only if a later outcome for the same execution task supersedes it; task signals are not cleared.",
-    "Replace after a later outcome; task signals are not cleared unless the task finishes.",
-  ));
-  assert.equal(conditionalTaskDurability.status, "invalid");
-  assert.ok(conditionalTaskDurability.errors.some((error) => error.includes("unconditional")));
+  const taskDurability = "Replace only if a later outcome for the same execution task supersedes it; task signals are not cleared.";
+  for (const [replacement, expected] of [
+    ["Clear the task signal when the task finishes.", "durable and cannot be cleared"],
+    ["Replace after a later outcome; task signals are not cleared unless the task finishes.", "unconditional"],
+  ]) {
+    const invalid = validatePolicyText(template.replace(taskDurability, replacement));
+    assert.equal(invalid.status, "invalid");
+    assert.ok(invalid.errors.some((error) => error.includes(expected)), replacement);
+  }
 
   const duplicateHeading = validatePolicyText(`${template}\n## Session naming\n\n- Contradictory duplicate.`);
   assert.equal(duplicateHeading.status, "invalid");
   assert.ok(duplicateHeading.errors.includes('Policy must contain exactly one "Session naming" section.'));
 });
 
-test("rejects a non-regular policy path before reading or injecting it", async () => {
+policyTest("rejects a non-regular policy path before reading or injecting it", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     await mkdir(path.join(repository, ".git"), { recursive: true });
     await mkdir(path.join(repository, ".pomegr", "signals.md"), { recursive: true });
 
-    const policy = readPolicy(repository);
+    const policy = provider.policy.readPolicy(repository);
     assert.equal(policy.status, "invalid");
     assert.deepEqual(policy.errors, ["Policy must be a regular file and cannot be a symbolic link."]);
 
-    const hook = runPolicyHook(repository);
+    const hook = runSessionStart(provider, repository);
     assert.equal(hook.status, 0);
-    assert.match(JSON.parse(hook.stdout).systemMessage, /\/pomegr:doctor/);
+    assert.match(JSON.parse(hook.stdout).systemMessage, provider.doctor);
   });
 });
 
-test("finds a policy upward only as far as the repository root", async () => {
+policyTest("finds a policy upward only as far as the repository root", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     const nested = path.join(repository, "packages", "client", "src");
     await mkdir(path.join(repository, ".git"), { recursive: true });
     await mkdir(nested, { recursive: true });
 
-    const missing = findPolicy(nested);
+    const missing = provider.policy.findPolicy(nested);
     assert.equal(missing.status, "missing");
     assert.equal(missing.path, path.join(repository, ".pomegr", "signals.md"));
 
-    const template = await readFile(policyTemplatePath, "utf8");
-    await writePolicy(repository, template);
-    const found = findPolicy(nested);
+    await writePolicy(repository, await readTemplate(provider));
+    const found = provider.policy.findPolicy(nested);
     assert.equal(found.repositoryRoot, repository);
     assert.equal(found.path, path.join(repository, ".pomegr", "signals.md"));
-    assert.equal(readPolicy(nested).status, "valid");
+    const valid = provider.policy.readPolicy(nested);
+    assert.equal(valid.status, "valid");
+    assert.equal(valid.repositoryRoot, repository);
   });
 });
 
-test("ignores a legacy-only reporting policy while reporting the missing Pomegr policy", async () => {
+policyTest("ignores a legacy-only reporting policy while reporting the missing Pomegr policy", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     const legacyDirectory = path.join(repository, ".threadlight");
     await mkdir(path.join(repository, ".git"), { recursive: true });
     await mkdir(legacyDirectory, { recursive: true });
-    await writeFile(path.join(legacyDirectory, "signals.md"), await readFile(policyTemplatePath, "utf8"), "utf8");
+    await writeFile(path.join(legacyDirectory, "signals.md"), await readTemplate(provider), "utf8");
 
-    const policy = findPolicy(repository);
+    const policy = provider.policy.findPolicy(repository);
     assert.equal(policy.status, "missing");
     assert.equal(policy.path, path.join(repository, ".pomegr", "signals.md"));
 
-    const hook = runPolicyHook(repository);
+    const hook = runSessionStart(provider, repository);
     assert.equal(hook.status, 0);
     assert.match(JSON.parse(hook.stdout).hookSpecificOutput.additionalContext, /"policyStatus":"missing".*"policyVersion":null/);
   });
 });
 
-test("SessionStart hook reports plugin metadata and injects valid policy context", async () => {
+policyTest("SessionStart hook reports plugin metadata and injects valid policy context", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     const nested = path.join(repository, "src");
     await mkdir(path.join(repository, ".git"), { recursive: true });
     await mkdir(nested, { recursive: true });
 
-    const missing = runPolicyHook(nested);
+    const missing = runSessionStart(provider, nested);
     assert.equal(missing.status, 0);
     assert.match(JSON.parse(missing.stdout).hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"policyStatus":"missing".*"policyVersion":null/);
 
-    const template = await readFile(policyTemplatePath, "utf8");
+    const template = await readTemplate(provider);
     await writePolicy(repository, template);
-    const valid = runPolicyHook(nested);
+    const valid = runSessionStart(provider, nested);
     assert.equal(valid.status, 0);
     const validOutput = JSON.parse(valid.stdout);
     assert.equal(validOutput.hookSpecificOutput.hookEventName, "SessionStart");
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /\[Pomegr reporting policy loaded\]/);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /call the Pomegr `rename_session` tool once/i);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /read tools are decision-triggered observations[\s\S]*do not poll routinely or infer causation[\s\S]*Delegation is mechanized/i);
-    assert.match(validOutput.hookSpecificOutput.additionalContext, /# Pomegr reporting policy/);
+    const context = validOutput.hookSpecificOutput.additionalContext;
+    assert.match(context, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
+    assert.match(context, /\[Pomegr reporting policy loaded\]/);
+    assert.match(context, /read tools are decision-triggered observations[\s\S]*do not poll routinely or infer causation/i);
+    assert.match(context, /# Pomegr reporting policy/);
+    for (const note of provider.sessionStartNotes) assert.match(context, note);
 
     await writePolicy(repository, template.replace("Policy version: 7", "Policy version: invalid"));
-    const invalid = runPolicyHook(nested);
+    const invalid = runSessionStart(provider, nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
-    assert.match(invalidOutput.systemMessage, /\/pomegr:doctor/);
+    assert.match(invalidOutput.systemMessage, provider.doctor);
     assert.doesNotMatch(invalid.stdout, /Ready for review/);
     assert.match(invalidOutput.hookSpecificOutput.additionalContext, /"policyStatus":"invalid".*"policyVersion":null/);
   });
@@ -393,7 +430,7 @@ test("reports delegation drift in both directions and stays quiet for uninvolved
     assert.deepEqual(declared.warnings.map((warning) => warning.match(/"([^"]+)"/)[1]), [".claude/agents/restricted.md"]);
     assert.match(declared.warnings[0], /still cannot report/);
 
-    const hook = runPolicyHook(path.join(repository, ".git"));
+    const hook = runSessionStart(providers[0], path.join(repository, ".git"));
     const context = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext;
     assert.match(context, /\[Pomegr policy drift\]/);
     assert.match(context, /restricted\.md/);
@@ -416,12 +453,14 @@ test("reports delegation drift in both directions and stays quiet for uninvolved
   });
 });
 
-test("SubagentStart delegation hook supplies declared rows without rewriting tool input", async () => {
+policyTest("SubagentStart delegation hook supplies declared rows without rewriting tool input", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     await mkdir(path.join(repository, ".git"), { recursive: true });
-    const template = await readFile(policyTemplatePath, "utf8");
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]));
+    await writePolicy(repository, withDelegatedAgents(await readTemplate(provider), ["| release-verifier | task |"]));
+
+    const plan = provider.policy.delegationPlan(provider.policy.readPolicy(repository), "release-verifier");
+    assert.deepEqual(plan.labels, ["Checks passed"]);
 
     const spawnPayload = (overrides = {}) => ({
       hook_event_name: "SubagentStart",
@@ -431,7 +470,7 @@ test("SubagentStart delegation hook supplies declared rows without rewriting too
       ...overrides,
     });
 
-    const injected = runPolicyEventHook("subagent-start", repository, spawnPayload());
+    const injected = runHook(provider, "subagent-start", spawnPayload());
     assert.equal(injected.status, 0);
     const output = JSON.parse(injected.stdout);
     assert.equal(output.hookSpecificOutput.hookEventName, "SubagentStart");
@@ -449,74 +488,66 @@ test("SubagentStart delegation hook supplies declared rows without rewriting too
       spawnPayload({ agent_type: "general-purpose" }),
       spawnPayload({ agent_type: undefined }),
       spawnPayload({ hook_event_name: "PreToolUse" }),
-    ]) {
-      const result = runPolicyEventHook("subagent-start", repository, skipped);
-      assert.equal(result.status, 0);
-      assert.equal(result.stdout, "");
-    }
+    ]) assertQuiet(provider, runHook(provider, "subagent-start", skipped));
 
-    const malformed = spawnSync(process.execPath, [policyScript, "subagent-start", "--cwd", repository], {
+    const malformed = spawnSync(process.execPath, [provider.script, "subagent-start", "--cwd", repository], {
       cwd: repositoryRoot,
       encoding: "utf8",
       input: "not json",
     });
-    assert.equal(malformed.status, 0);
-    assert.equal(malformed.stdout, "");
+    assertQuiet(provider, malformed);
   });
 });
 
-test("delegation hook stays silent for an undeclared policy, a missing policy, and an invalid policy", async () => {
+policyTest("delegation hook stays silent for an undeclared policy, a missing policy, and an invalid policy", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     await mkdir(path.join(repository, ".git"), { recursive: true });
-    const template = await readFile(policyTemplatePath, "utf8");
+    const template = await readTemplate(provider);
     const payload = {
       hook_event_name: "SubagentStart",
       cwd: repository,
       agent_type: "release-verifier",
     };
 
-    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
+    assertQuiet(provider, runHook(provider, "subagent-start", payload));
 
     await writePolicy(repository, template);
-    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
+    assertQuiet(provider, runHook(provider, "subagent-start", payload));
 
     await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 7", "Policy version: 9"));
-    assert.equal(runPolicyEventHook("subagent-start", repository, payload).stdout, "");
+    assertQuiet(provider, runHook(provider, "subagent-start", payload));
   });
 });
 
-test("SubagentStop detector reports a miss without inferring a signal", async () => {
+policyTest("SubagentStop detector reports a miss without inferring a signal or exposing the transcript", async (provider) => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const repository = path.join(temporaryRoot, "repository");
     await mkdir(path.join(repository, ".git"), { recursive: true });
-    const template = await readFile(policyTemplatePath, "utf8");
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]));
+    await writePolicy(repository, withDelegatedAgents(await readTemplate(provider), ["| release-verifier | task |"]));
 
-    const conversation = [
-      { type: "user", message: { content: "Verify the release." } },
-      { type: "assistant", timestamp: "2026-08-14T10:00:00.000Z", message: { content: [{ type: "text", text: "Checks are green." }] } },
-    ];
-    const silent = await writeTranscript(temporaryRoot, "silent.jsonl", conversation);
+    const silent = await writeTranscript(temporaryRoot, "silent.jsonl", provider.silentTranscript);
     const reported = await writeTranscript(temporaryRoot, "reported.jsonl", [
-      ...conversation,
-      reportRecord("mcp__plugin_pomegr_pomegr__report_task_signal"),
+      ...provider.silentTranscript,
+      provider.reportRecord("mcp__plugin_pomegr_pomegr__report_task_signal"),
     ]);
     const sessionOnly = await writeTranscript(temporaryRoot, "session-only.jsonl", [
-      ...conversation,
-      reportRecord("mcp__plugin_pomegr_pomegr__report_session_signal"),
+      ...provider.silentTranscript,
+      provider.reportRecord("mcp__plugin_pomegr_pomegr__report_session_signal"),
     ]);
+    assert.equal(provider.policy.transcriptReportsDelegatedSignal(silent), false);
+    assert.equal(provider.policy.transcriptReportsDelegatedSignal(reported), true);
 
     const payload = (overrides) => ({
       hook_event_name: "SubagentStop",
       cwd: repository,
       agent_id: "a1b2c3",
       agent_type: "release-verifier",
-      transcript_path: silent,
+      [provider.transcriptField]: silent,
       ...overrides,
     });
 
-    const miss = runPolicyEventHook("subagent-stop", repository, payload());
+    const miss = runHook(provider, "subagent-stop", payload());
     assert.equal(miss.status, 0);
     const message = JSON.parse(miss.stdout).systemMessage;
     assert.match(message, /release-verifier/);
@@ -525,109 +556,23 @@ test("SubagentStop detector reports a miss without inferring a signal", async ()
     assert.match(message, /never infers a signal/);
     assert.equal(JSON.parse(miss.stdout).hookSpecificOutput, undefined);
     assert.equal(JSON.parse(miss.stdout).decision, undefined);
-    assert.doesNotMatch(message, /Checks are green/);
+    assert.doesNotMatch(message, /Checks are green|silent\.jsonl/);
 
-    assert.equal(runPolicyEventHook("subagent-stop", repository, payload({ transcript_path: reported })).stdout, "");
+    assertQuiet(provider, runHook(provider, "subagent-stop", payload({ [provider.transcriptField]: reported })));
     assert.match(
-      JSON.parse(runPolicyEventHook("subagent-stop", repository, payload({ transcript_path: sessionOnly })).stdout).systemMessage,
+      JSON.parse(runHook(provider, "subagent-stop", payload({ [provider.transcriptField]: sessionOnly })).stdout).systemMessage,
       /finished without calling a Pomegr reporting tool/,
     );
 
-    for (const quiet of [
+    const quietPayloads = [
       payload({ agent_type: "general-purpose" }),
       payload({ agent_type: "fork" }),
-      payload({ stop_hook_active: true }),
-      payload({ transcript_path: path.join(temporaryRoot, "absent.jsonl") }),
-      payload({ transcript_path: "" }),
-    ]) {
-      const result = runPolicyEventHook("subagent-stop", repository, quiet);
-      assert.equal(result.status, 0);
-      assert.equal(result.stdout, "");
-    }
+      payload({ [provider.transcriptField]: path.join(temporaryRoot, "absent.jsonl") }),
+      payload({ [provider.transcriptField]: "" }),
+    ];
+    if (provider.stopHookActiveIsQuiet) quietPayloads.push(payload({ stop_hook_active: true }));
+    for (const quiet of quietPayloads) assertQuiet(provider, runHook(provider, "subagent-stop", quiet));
   });
-});
-
-test("plugin manifests register every policy hook and the bundled MCP server", async () => {
-  const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".claude-plugin", "marketplace.json"), "utf8"));
-  const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8"));
-  const hooks = JSON.parse(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
-  const hookSource = await readFile(path.join(repositoryRoot, "plugin-src", "claude-hooks.json"), "utf8");
-  const mcp = JSON.parse(await readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
-  const packageManifest = JSON.parse(await readFile(path.join(pluginRoot, "package.json"), "utf8"));
-
-  assert.equal(marketplace.plugins[0].source, "./plugins/claude-code");
-  assert.equal(manifest.name, "pomegr");
-  assert.equal(manifest.displayName, "Pomegr");
-  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-  assert.equal(manifest.icon, "./assets/icon.png");
-  assert.deepEqual(
-    await readFile(path.join(pluginRoot, "assets", "icon.png")),
-    await readFile(path.join(repositoryRoot, "public", "pomegr-logo.png")),
-  );
-  const readme = await readFile(path.join(pluginRoot, "README.md"), "utf8");
-  assert.equal(readme, await readFile(path.join(repositoryRoot, "plugin-src", "claude-readme.md"), "utf8"));
-  assert.ok(readme.trim().split(/\s+/).length >= 40);
-  assert.equal(hooks.hooks.SessionStart[0].matcher, "startup|resume|fork|clear|compact");
-  assert.equal(hooks.hooks.SubagentStart[0].matcher, "");
-  assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
-  assert.equal(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"), hookSource);
-  assert.equal(hooks.hooks.PreToolUse[0].matcher, "mcp__plugin_pomegr_pomegr__rename_session|mcp__pomegr__rename_session");
-  assert.equal(hooks.hooks.SubagentStop[0].matcher, undefined);
-  assert.equal(hooks.hooks.SubagentStart[0].hooks[0].command, "node");
-  assert.deepEqual(hooks.hooks.SubagentStart[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-start"]);
-  assert.match(hooks.hooks.PreToolUse[0].hooks[0].args[0], /rename-session\.bundle\.mjs/);
-  const queryHook = hooks.hooks.PreToolUse[1];
-  assert.match(queryHook.hooks[0].args[0], /query-session\.bundle\.mjs/);
-  const queryMatcher = new RegExp(queryHook.matcher);
-  assert.ok(queryMatcher.test("mcp__plugin_pomegr_pomegr__get_session_report"));
-  assert.ok(queryMatcher.test("mcp__pomegr__get_agent_context"));
-  assert.equal(queryMatcher.test("mcp__pomegr__get_session_report_lookalike"), false);
-  assert.deepEqual(hooks.hooks.SubagentStop[0].hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/scripts/policy.mjs", "subagent-stop"]);
-  for (const event of ["SessionStart", "UserPromptSubmit", "SubagentStart", "PreToolUse", "PostToolUse", "PostToolBatch", "SubagentStop"]) {
-    const hook = hooks.hooks[event][0].hooks[0];
-    assert.equal(hook.command, "node");
-    assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);
-    assert.equal(JSON.stringify(hook).includes("CLAUDE_PROJECT_DIR"), false);
-  }
-  const commandHooks = Object.values(hooks.hooks)
-    .flatMap((matchers) => matchers)
-    .flatMap((matcher) => matcher.hooks);
-  for (const hook of commandHooks) {
-    assert.equal(hook.command, "node");
-    assert.match(hook.args[0], /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+(?:\.bundle)?\.mjs$/);
-    assert.equal(hook.args.slice(1).some((argument) => /[\\/]|\$\{|\$\(|`|[*?{}]/.test(argument)), false);
-  }
-  assert.match(hooks.hooks.PostToolUse[0].hooks[0].args[0], /progress-reminder\.bundle\.mjs/);
-  for (const [event, index = 0] of [["SessionStart", 1], ["UserPromptSubmit"], ["PostToolUse", 1], ["PostToolBatch"]]) {
-    const guard = hooks.hooks[event][0].hooks[index];
-    assert.equal(guard.command, "node");
-    assert.deepEqual(guard.args, ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"]);
-    assert.equal(guard.timeout, 5);
-    assert.equal(guard.additionalContextLimit, 1600);
-  }
-  assert.match(mcp.mcpServers.pomegr.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}/);
-  assert.match(mcp.mcpServers.pomegr.args[0], /server\.bundle\.mjs$/);
-  assert.equal(mcp.mcpServers.pomegr.cwd, undefined);
-  assert.equal(JSON.stringify(mcp).includes("CLAUDE_PROJECT_DIR"), false);
-  assert.doesNotMatch(JSON.stringify({ hooks, mcp }), /\$\{(?!CLAUDE_PLUGIN_ROOT\})/);
-  assert.deepEqual(Object.keys(packageManifest.dependencies).sort(), ["@anthropic-ai/claude-agent-sdk", "@modelcontextprotocol/server", "zod"]);
-  assert.equal(packageManifest.dependencies["@anthropic-ai/claude-agent-sdk"], "0.3.241");
-
-  const doctor = await readFile(path.join(pluginRoot, "skills", "doctor", "SKILL.md"), "utf8");
-  assert.match(doctor, /\[Pomegr reporting policy loaded\]/);
-  assert.match(doctor, /\[Pomegr delegated reporting policy\]/);
-  assert.match(doctor, /delegatedAgents/);
-  assert.match(doctor, /SubagentStop/);
-  assert.match(doctor, /\/hooks/);
-  assert.match(doctor, /\/mcp/);
-
-  const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
-  assert.match(init, /Delegated agents/);
-  assert.match(init, /only the exact reporting tools required/);
-  assert.match(init, /Never grant the full Pomegr namespace or a wildcard/);
-  assert.match(init, /\.claude\/agents\/\*\.md/);
-  assert.match(init, /The user confirms every exact tool at the preview step/);
-  assert.match(init, /thin wrapper around a canonical body/);
 });
 
 test("installed plugin starts its MCP server without node_modules and lists every tool", async () => {
@@ -687,47 +632,6 @@ test("installed plugin starts its MCP server without node_modules and lists ever
   });
 });
 
-test("plugin namespace rejects every legacy Threadlight identifier", async () => {
-  const ownedFiles = [
-    path.join(repositoryRoot, "mcp", "server.mjs"),
-    path.join(repositoryRoot, ".claude-plugin", "marketplace.json"),
-    path.join(pluginRoot, ".claude-plugin", "plugin.json"),
-    path.join(pluginRoot, ".mcp.json"),
-    path.join(pluginRoot, "package.json"),
-    path.join(pluginRoot, "hooks", "hooks.json"),
-    path.join(pluginRoot, "mcp", "server.mjs"),
-    path.join(pluginRoot, "scripts", "rename-session.mjs"),
-    path.join(pluginRoot, "scripts", "session-title.mjs"),
-    path.join(pluginRoot, "scripts", "policy.mjs"),
-    path.join(pluginRoot, "skills", "doctor", "SKILL.md"),
-    path.join(pluginRoot, "skills", "doctor", "agents", "openai.yaml"),
-    path.join(pluginRoot, "skills", "init", "SKILL.md"),
-    path.join(pluginRoot, "skills", "init", "agents", "openai.yaml"),
-    policyTemplatePath,
-    path.join(restartSkillRoot, "SKILL.md"),
-    path.join(restartSkillRoot, "agents", "openai.yaml"),
-    path.join(restartSkillRoot, "scripts", "restart-pomegr.ps1"),
-  ];
-  const legacy = /threadlight|@threadlight|\/threadlight:|\.threadlight|Lecarvalho\/threadlight/i;
-  for (const file of ownedFiles) {
-    assert.doesNotMatch(await readFile(file, "utf8"), legacy, file);
-  }
-
-  await assert.rejects(access(path.join(repositoryRoot, ".codex", "skills", "restart-threadlight")), { code: "ENOENT" });
-  await assert.rejects(access(path.join(restartSkillRoot, "scripts", "restart-threadlight.ps1")), { code: "ENOENT" });
-});
-
-test("restart skill delegates guarded process replacement to npm run dev", async () => {
-  const [skill, script] = await Promise.all([
-    readFile(path.join(restartSkillRoot, "SKILL.md"), "utf8"),
-    readFile(path.join(restartSkillRoot, "scripts", "restart-pomegr.ps1"), "utf8"),
-  ]);
-  assert.match(skill, /npm run dev/u);
-  assert.match(script, /Start-Process/u);
-  assert.match(script, /'npm run dev'/u);
-  assert.doesNotMatch(script, /Get-NetTCPConnection|Stop-Process|Invoke-WebRequest/u);
-});
-
 test("plugin MCP inventory contains bounded reporting, clearing, and native title tools", () => {
   const server = buildPomegrMcpServer();
   const tools = Object.keys(server._registeredTools).sort();
@@ -744,115 +648,4 @@ test("plugin MCP inventory contains bounded reporting, clearing, and native titl
   for (const name of tools.filter((tool) => tool !== "rename_session")) {
     assert.equal(server._registeredTools[name].annotations.readOnlyHint, true);
   }
-});
-
-test("plugin release helper owns one shared Claude and Codex version", async () => {
-  const script = await readFile(releaseScriptPath, "utf8");
-  const [claudeManifest, claudePackage, codexManifest] = await Promise.all([
-    readFile(path.join(repositoryRoot, "plugins", "claude-code", ".claude-plugin", "plugin.json"), "utf8").then(JSON.parse),
-    readFile(path.join(repositoryRoot, "plugins", "claude-code", "package.json"), "utf8").then(JSON.parse),
-    readFile(path.join(repositoryRoot, "plugins", "pomegr", ".codex-plugin", "plugin.json"), "utf8").then(JSON.parse),
-  ]);
-  const sharedVersion = claudeManifest.version;
-
-  await assert.rejects(access(legacyReleaseScriptPath), { code: "ENOENT" });
-  assert.equal(claudePackage.version, sharedVersion);
-  assert.equal(codexManifest.version, sharedVersion);
-  assert.match(await readFile(path.join(repositoryRoot, "plugins", "claude-code", "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
-  assert.match(await readFile(path.join(repositoryRoot, "mcp", "server.mjs"), "utf8"), new RegExp(`version: "${sharedVersion.replaceAll(".", "\\.")}"`));
-  assert.match(await readFile(path.join(repositoryRoot, "plugins", "claude-code", "mcp", "server.bundle.mjs"), "utf8"), new RegExp(`version:\\s*"${sharedVersion.replaceAll(".", "\\.")}"`));
-  assert.match(await readFile(path.join(repositoryRoot, "plugins", "pomegr", "mcp", "server.bundle.mjs"), "utf8"), new RegExp(`version:\\s*"${sharedVersion.replaceAll(".", "\\.")}"`));
-  assert.match(script, /<major\|minor\|patch>/);
-  assert.doesNotMatch(script, /<claude\|codex>/);
-  assert.match(script, /major\|minor\|patch/);
-  assert.match(script, /plugins\/claude-code\/\.claude-plugin\/plugin\.json/);
-  assert.match(script, /plugins\/claude-code\/package\.json/);
-  assert.match(script, /plugins\/claude-code\/mcp\/server\.mjs/);
-  assert.match(script, /plugins\/pomegr\/\.codex-plugin\/plugin\.json/);
-  assert.match(script, /repository_root\/mcp\/server\.mjs/);
-  assert.match(script, /plugins\/pomegr\/mcp\/server\.bundle\.mjs/);
-  assert.match(script, /rename-session/);
-  assert.match(script, /npm run build:plugin/);
-  assert.match(script, /restore_release_files/);
-  assert.match(script, /\/plugin marketplace update pomegr/);
-  assert.match(script, /claude plugin update pomegr@pomegr --scope project/);
-  assert.match(script, /codex plugin marketplace upgrade pomegr/);
-  assert.match(script, /codex plugin add pomegr@pomegr/);
-  assert.doesNotMatch(script, /pomegr:pomegr/);
-});
-
-test("plugin release helper bumps both providers together and restores a failed release", async () => {
-  await withTemporaryDirectory(async (temporaryRoot) => {
-    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\sh.exe" : "bash";
-    const scriptDirectory = path.join(temporaryRoot, "scripts");
-    const claudeRoot = path.join(temporaryRoot, "plugins", "claude-code");
-    const codexRoot = path.join(temporaryRoot, "plugins", "pomegr");
-    const sharedMcpRoot = path.join(temporaryRoot, "mcp");
-    await Promise.all([
-      mkdir(scriptDirectory, { recursive: true }),
-      mkdir(path.join(claudeRoot, ".claude-plugin"), { recursive: true }),
-      mkdir(path.join(claudeRoot, "mcp"), { recursive: true }),
-      mkdir(path.join(claudeRoot, "scripts"), { recursive: true }),
-      mkdir(path.join(codexRoot, ".codex-plugin"), { recursive: true }),
-      mkdir(path.join(codexRoot, "mcp"), { recursive: true }),
-      mkdir(sharedMcpRoot, { recursive: true }),
-    ]);
-
-    const releaseScript = await readFile(releaseScriptPath, "utf8");
-    const rootPackagePath = path.join(temporaryRoot, "package.json");
-    const claudeManifestPath = path.join(claudeRoot, ".claude-plugin", "plugin.json");
-    const claudePackagePath = path.join(claudeRoot, "package.json");
-    const claudeServerPath = path.join(claudeRoot, "mcp", "server.mjs");
-    const codexManifestPath = path.join(codexRoot, ".codex-plugin", "plugin.json");
-    const codexServerPath = path.join(sharedMcpRoot, "server.mjs");
-    await Promise.all([
-      writeFile(path.join(scriptDirectory, "release-plugin.sh"), releaseScript, "utf8"),
-      writeFile(rootPackagePath, JSON.stringify({
-        private: true,
-        scripts: {
-          "build:plugin": "node -e 0",
-        },
-      }), "utf8"),
-      writeFile(claudeManifestPath, JSON.stringify({ name: "pomegr", version: "0.3.1" }, null, 2), "utf8"),
-      writeFile(claudePackagePath, JSON.stringify({ name: "@pomegr/claude-code-plugin", version: "0.3.1" }, null, 2), "utf8"),
-      writeFile(claudeServerPath, 'const identity = { name: "pomegr", version: "0.3.1" };\n', "utf8"),
-      writeFile(path.join(claudeRoot, "mcp", "server.bundle.mjs"), "// bundle\n", "utf8"),
-      writeFile(path.join(claudeRoot, "scripts", "rename-session.mjs"), "// source\n", "utf8"),
-      writeFile(path.join(claudeRoot, "scripts", "session-title.mjs"), "// contract\n", "utf8"),
-      writeFile(path.join(claudeRoot, "scripts", "rename-session.bundle.mjs"), "// bundle\n", "utf8"),
-      writeFile(codexManifestPath, JSON.stringify({ name: "pomegr", version: "0.3.1" }, null, 2), "utf8"),
-      writeFile(codexServerPath, 'const identity = { name: "pomegr", version: "0.3.1" };\n', "utf8"),
-      writeFile(path.join(codexRoot, "mcp", "server.bundle.mjs"), "// bundle\n", "utf8"),
-    ]);
-
-    const runRelease = (increment) => spawnSync(
-      shell,
-      ["scripts/release-plugin.sh", increment],
-      { cwd: temporaryRoot, encoding: "utf8" },
-    );
-
-    const release = runRelease("patch");
-    assert.equal(release.status, 0, release.stderr);
-    assert.equal(JSON.parse(await readFile(claudeManifestPath, "utf8")).version, "0.3.2");
-    assert.equal(JSON.parse(await readFile(claudePackagePath, "utf8")).version, "0.3.2");
-    assert.match(await readFile(claudeServerPath, "utf8"), /version: "0\.3\.2"/);
-    assert.equal(JSON.parse(await readFile(codexManifestPath, "utf8")).version, "0.3.2");
-    assert.match(await readFile(codexServerPath, "utf8"), /version: "0\.3\.2"/);
-    assert.match(release.stdout, /Pomegr plugins prepared: 0\.3\.1 -> 0\.3\.2/);
-
-    await writeFile(rootPackagePath, JSON.stringify({
-      private: true,
-      scripts: {
-        "build:plugin": "node -e process.exit\\(1\\)",
-      },
-    }), "utf8");
-    const failedRelease = runRelease("patch");
-    assert.notEqual(failedRelease.status, 0);
-    assert.equal(JSON.parse(await readFile(claudeManifestPath, "utf8")).version, "0.3.2");
-    assert.equal(JSON.parse(await readFile(claudePackagePath, "utf8")).version, "0.3.2");
-    assert.match(await readFile(claudeServerPath, "utf8"), /version: "0\.3\.2"/);
-    assert.equal(JSON.parse(await readFile(codexManifestPath, "utf8")).version, "0.3.2");
-    assert.match(await readFile(codexServerPath, "utf8"), /version: "0\.3\.2"/);
-    assert.match(failedRelease.stderr, /release files were restored/);
-  });
 });

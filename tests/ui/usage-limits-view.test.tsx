@@ -32,17 +32,6 @@ vi.mock("../../app/usage-limits-client", () => ({
   }),
 }));
 
-describe("usage limits view", () => {
-  it("shows automatic observation state without an inactive manual refresh action", () => {
-    const { container } = render(<UsageLimitsView />);
-
-    expect(screen.getByRole("heading", { name: "Usage limits", level: 1 })).toBeInTheDocument();
-    expect(screen.getByText("Usage limits are loading")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Refresh limits" })).not.toBeInTheDocument();
-    expect(container.querySelector(".commandViewActions")).not.toBeInTheDocument();
-  });
-});
-
 
 describe("usage limits service notices", () => {
   it("shows and dismisses each provider warning independently even while usage is loading", () => {

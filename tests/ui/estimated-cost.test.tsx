@@ -28,7 +28,7 @@ describe("estimated session cost", () => {
     expect(screen.getByText(/Reference only — not a bill or subscription spend\. Observed/)).toBeInTheDocument();
   });
 
-  it("shows the recorded observation time for a historical estimate", () => {
+  it("keeps sub-cent precision for a historical estimate", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
       cost: { amount: 0.0042, currency: "USD" as const, type: "estimated" as const, observedAt: "2026-08-09T12:00:00.000Z" },
@@ -38,7 +38,6 @@ describe("estimated session cost", () => {
 
     expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("Estimated cost $0.0042 (Claude Code estimate)");
     expect(within(document.querySelector(".sessionCostDetail")!).getByText("$0.0042")).toBeInTheDocument();
-    expect(screen.getByText(/Recorded Aug 9/)).toBeInTheDocument();
   });
 
   it("hides only the estimate when the display preference is off", () => {

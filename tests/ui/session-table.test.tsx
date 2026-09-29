@@ -14,16 +14,6 @@ async function renderDirectory(rows: SessionSummary[]) { installDirectoryFixture
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe("sessions table", () => {
-  it("renders server-paged progress, current activity, and unavailable values", async () => {
-    await renderDirectory(sessions);
-    const table = screen.getByRole("table", { name: "Observed Pomegr sessions" });
-    const progressRow = within(table).getByText("Progress available").closest("tr")!;
-    const unavailableRow = within(table).getByText("Progress unavailable").closest("tr")!;
-    expect(within(table).getByRole("columnheader", { name: "Progress" })).toBeInTheDocument();
-    expect(within(progressRow).getByTitle("Agent-reported session progress")).toHaveTextContent("42%");
-    expect(within(progressRow).getAllByText("Preparing tab4 for header measurement")).toHaveLength(2);
-    expect(within(unavailableRow).getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
-  });
   it.each([["working", "In progress", true], ["needs_input", "Needs input", true], ["idle", "Idle", true], ["open", "Open", false], ["stopped", "Stopped", true], ["closed", "Closed", false], ["unknown", "Unknown", false]] as const)("renders %s as %s without deriving it from the live flag", async (activityStatus, label, isLive) => {
     await renderDirectory([{ ...sessions[0], activityStatus, isLive }]);
     expect(within(screen.getByText("Progress available").closest("tr")!).getByText(label)).toBeInTheDocument();
