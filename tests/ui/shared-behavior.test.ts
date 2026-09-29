@@ -203,12 +203,13 @@ describe("monitor proxy", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{"sessions":[]}', { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await sessionsGet(new Request("http://localhost/api/sessions?mode=directory&query=work&filter=live&project=Pomegr&repositoryId=repo-1&sort=title&pageSize=25&cursor=opaque&revision=7&selected=codex%3Aone&pinned=codex%3Atwo&private=drop"));
+    await sessionsGet(new Request("http://localhost/api/sessions?mode=directory&query=work&filter=live&project=Pomegr&repositoryId=repo-1&sort=drop&pageSize=25&cursor=opaque&revision=7&selected=codex%3Aone&pinned=codex%3Atwo&private=drop"));
 
     const upstream = String(fetchMock.mock.calls[0][0]);
     expect(upstream).toContain("/api/sessions?");
-    for (const value of ["mode=directory", "query=work", "filter=live", "project=Pomegr", "repositoryId=repo-1", "sort=title", "pageSize=25", "cursor=opaque", "revision=7", "selected=codex%3Aone", "pinned=codex%3Atwo"]) expect(upstream).toContain(value);
+    for (const value of ["mode=directory", "query=work", "filter=live", "project=Pomegr", "repositoryId=repo-1", "pageSize=25", "cursor=opaque", "revision=7", "selected=codex%3Aone", "pinned=codex%3Atwo"]) expect(upstream).toContain(value);
     expect(upstream).not.toContain("private=drop");
+    expect(upstream).not.toContain("sort=");
   });
 
   it("streams only the monitor event body through the loopback proxy", async () => {

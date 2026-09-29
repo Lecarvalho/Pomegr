@@ -74,7 +74,7 @@ test("dedupe uses provider identity, retains earliest creation and validates pri
   assert.ok(!columns.some(column=>/prompt|path|raw|content/.test(column)));
 });
 
-test("search/filter/sort and query/revision-bound cursors read committed data only",async(t)=>{
+test("search/filter, newest-created order, and query-bound cursors read committed data only",async(t)=>{
   const {inventory,store}=await fixture(t);
   load(inventory,"codex",120);load(inventory,"claude",0);
   inventory.updateHeaders("codex",[row(10,{isLive:true,needsInput:true,activityStatus:"needs_input"})]);
@@ -82,19 +82,38 @@ test("search/filter/sort and query/revision-bound cursors read committed data on
   assert.equal(inventory.directory({filter:"needs"}).matchedCount,1);
   assert.equal(inventory.directory({project:"Pomegr"}).matchedCount,60);
   assert.equal(inventory.directory({query:"Session 00010"}).sessions[0].id,"codex:session-10");
-  assert.equal(inventory.directory({sort:"oldest"}).sessions[0].id,"codex:session-0");
-  assert.equal(inventory.directory({sort:"newest"}).sessions[0].id,"codex:session-119");
+  assert.equal(inventory.directory({}).sessions[0].id,"codex:session-119");
   const first=inventory.directory({pageSize:2});
   assert.equal(inventory.directory({pageSize:2,cursor:first.nextCursor}).sessions[0].id,"codex:session-117");
   assert.equal(inventory.directory({pageSize:2,cursor:first.nextCursor,query:"Other"}).cursorReset,true);
+  assert.equal(inventory.directory({pageSize:2,cursor:"not-a-cursor"}).cursorReset,true);
   const before=store.database.prepare("SELECT total_changes() AS n").get().n;
   for(let i=0;i<5;i++){inventory.directory({query:"Pomegr",filter:"live"});inventory.get("codex:session-10");inventory.coverage();}
   assert.equal(store.database.prepare("SELECT total_changes() AS n").get().n,before);
-  inventory.updateHeaders("codex",[row(121)]);
-  assert.equal(inventory.directory({pageSize:2,cursor:first.nextCursor}).cursorReset,true);
 });
 
-test("reopen preserves completed facts but requires fresh enumeration and rejects old process cursors",async(t)=>{
+test("later pages stay in place while live sessions update and new sessions arrive",async(t)=>{
+  const {inventory}=await fixture(t);
+  load(inventory,"codex",10);load(inventory,"claude",0);
+  const second=inventory.directory({pageSize:3,cursor:inventory.directory({pageSize:3}).nextCursor});
+  assert.deepEqual(second.sessions.map((item)=>item.id),["codex:session-6","codex:session-5","codex:session-4"]);
+  inventory.updateProviderLifecycle("codex",[row(8,{isLive:true,activityStatus:"working",updatedAt:"2030-01-01T00:00:00Z"})]);
+  inventory.updateHeaders("codex",[row(10)]);
+  const again=inventory.directory({pageSize:3,cursor:inventory.directory({pageSize:3}).nextCursor});
+  assert.equal(again.cursorReset,undefined);
+  assert.deepEqual(inventory.directory({pageSize:3}).sessions.map((item)=>item.id),["codex:session-10","codex:session-9","codex:session-8"]);
+  const third=inventory.directory({pageSize:3,cursor:second.nextCursor});
+  assert.equal(third.cursorReset,undefined);
+  assert.deepEqual(third.sessions.map((item)=>item.id),["codex:session-3","codex:session-2","codex:session-1"]);
+  assert.deepEqual(inventory.directory({pageSize:3,cursor:third.nextCursor}).sessions.map((item)=>item.id),["codex:session-0"]);
+  assert.equal(inventory.directory({pageSize:3,cursor:third.nextCursor}).nextCursor,null);
+  const memory=createSessionCatalogInventory({providers:["codex"]});load(memory,"codex",7);
+  const ids=[];let cursor;
+  do {const page=memory.directory({pageSize:3,cursor});ids.push(...page.sessions.map((item)=>item.id));cursor=page.nextCursor;} while(cursor);
+  assert.deepEqual(ids,[6,5,4,3,2,1,0].map((index)=>`codex:session-${index}`));
+});
+
+test("reopen preserves completed facts but requires fresh enumeration and keeps page cursors",async(t)=>{
   const {inventory,store}=await fixture(t);load(inventory,"codex",120);load(inventory,"claude",0);
   inventory.updateProviderLifecycle("codex",[row(1,{isLive:true,needsInput:true,activityStatus:"needs_input"})]);
   const before=inventory.coverage(), cursor=inventory.directory({pageSize:2}).nextCursor;
@@ -102,7 +121,8 @@ test("reopen preserves completed facts but requires fresh enumeration and reject
   assert.equal(restarted.coverage().exactTotal,null);assert.equal(restarted.coverage().knownCount,120);
   assert.equal(restarted.coverage().lastCompletedTotal,120);assert.equal(restarted.coverage().lastCompletedAt,before.lastCompletedAt);
   assert.equal(restarted.get("codex:session-1").isLive,false);
-  assert.equal(restarted.directory({pageSize:2,cursor}).cursorReset,true);
+  assert.equal(restarted.directory({pageSize:2,cursor}).cursorReset,undefined);
+  assert.equal(restarted.directory({pageSize:2,cursor}).sessions[0].id,"codex:session-117");
 });
 
 test("bounded fallback never claims exactness after overflow and stale scans cannot finish",()=>{
@@ -144,9 +164,11 @@ test("directory SELECT materializes only its bounded page and changed source sco
   }});
   const inventory=createSessionCatalogInventory({store:()=>({database}),providers:["codex"]});
   inventory.configureProviders(["codex"],{scopeKey:"a".repeat(64)});inventory.initialize();load(inventory,"codex",700);
-  for(const query of [{},{sort:"title"},{query:"Session"},{filter:"live"}]) inventory.directory(query);
+  const next=inventory.directory({}).nextCursor;
+  for(const query of [{cursor:next},{query:"Session"},{filter:"live"}]) inventory.directory(query);
   assert.equal(materializations.length,4);
-  for(const result of materializations){assert.match(result.sql,/LIMIT \? OFFSET \?/);assert.ok(result.count<=25);}
+  // One lookahead row decides whether a next page exists.
+  for(const result of materializations){assert.match(result.sql,/LIMIT \?$/);assert.ok(result.count<=26);}
   inventory.configureProviders(["codex"],{scopeKey:"b".repeat(64)});
   assert.equal(inventory.coverage().knownCount,0);assert.equal(inventory.coverage().lastCompletedTotal,null);assert.equal(inventory.coverage().exactTotal,null);
 });

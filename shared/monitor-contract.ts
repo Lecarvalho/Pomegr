@@ -451,7 +451,7 @@ export type SessionDirectorySnapshot = SessionCatalogSnapshot & {
   counts: { all: number; live: number; needs: number };
   pageSize: number;
   nextCursor: string | null;
-  /** A stale cursor restarts pagination against the returned committed revision. */
+  /** An invalid cursor, or one issued for a different query, restarts at the first page. */
   cursorReset?: boolean;
 };
 

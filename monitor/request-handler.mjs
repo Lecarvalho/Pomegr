@@ -321,25 +321,23 @@ export function createRequestHandler({
       try {
         if (runtime.observationActive?.()) {
           if (requestUrl.searchParams.get("mode") === "directory") {
-            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "sort", "pageSize", "cursor", "revision"]);
+            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "pageSize", "cursor"]);
             const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
             const filter = requestUrl.searchParams.get("filter") || "all";
-            const sort = requestUrl.searchParams.get("sort") || "newest";
             const pageSize = requestUrl.searchParams.get("pageSize") || "";
             const boundedText = (value, maximum) => value.length <= maximum && !/[\u0000-\u001f\u007f]/u.test(value);
             const query = requestUrl.searchParams.get("query") || "";
             const project = requestUrl.searchParams.get("project") || "";
             const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
             const cursor = requestUrl.searchParams.get("cursor") || "";
-            if (!oneEach || !["all", "live", "needs"].includes(filter) || !["newest", "oldest", "title"].includes(sort)
+            if (!oneEach || !["all", "live", "needs"].includes(filter)
               || (pageSize && !/^(?:[1-9]|[1-9][0-9]|100)$/.test(pageSize)) || !boundedText(query, 120)
               || !boundedText(project, 160) || !boundedText(repositoryId, 160) || !/^[A-Za-z0-9_-]{0,256}$/u.test(cursor)) {
               response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
             }
             const page = runtime.serveSessionDirectory?.({
-              query, filter, project, repositoryId, sort, pageSize: pageSize ? Number(pageSize) : 25,
-              cursor, revision: requestUrl.searchParams.get("revision") || "",
+              query, filter, project, repositoryId, pageSize: pageSize ? Number(pageSize) : 25, cursor,
             });
             response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
               "X-Pomegr-Revision": String(page?.revision ?? 0), ETag: `"${page?.revision ?? 0}"` });

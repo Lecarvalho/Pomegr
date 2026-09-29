@@ -1525,11 +1525,14 @@ inaccessible, or inconclusive sources prevent that claim. A rescan retains the l
 total and its original observation timestamp separately, without calling it currently exact.
 
 `/api/sessions?mode=directory` serves a bounded page from committed normalized inventory.
-Search, lifecycle filters, project/repository scope, and sorting execute monitor-side.
-Pages default to 25 rows and cannot exceed 100. SQLite performs filtering, counting,
-ordering, and page selection without materializing the complete inventory in memory.
-Cursors bind to the query and revision; an expired revision restarts at the first page
-instead of mixing rows from different inventories. The directory never receives a global
+Search, lifecycle filters, and project/repository scope execute monitor-side. Rows are
+always ordered newest-created first; there is no other directory order. Pages default to
+25 rows and cannot exceed 100. SQLite performs filtering, counting, ordering, and page
+selection without materializing the complete inventory in memory. A cursor binds to the
+query and names the last row's creation position (keyset), not an offset or revision, so
+live-status updates and newly created sessions never move a later page; new sessions
+appear only on the first page. A cursor for another query or a malformed cursor restarts
+at the first page. The directory never receives a global
 session array. The default catalog response is a separate small shell feed for live,
 needs-input, pinned, and selected destinations, capped at 200 rows; its length is not
 the inventory total. Header scans use batches of at most 100 rows and repeat on a

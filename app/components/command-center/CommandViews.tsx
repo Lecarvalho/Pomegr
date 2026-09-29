@@ -172,9 +172,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [cursorPageBase, setCursorPageBase] = useState(0);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const requestRef = useRef(0);
-  const revisionRef = useRef<string | number | null>(null);
   const directoryQuery = useMemo(() => {
-    const params = new URLSearchParams({ mode: "directory", filter, sort: "newest", pageSize: String(SESSION_PAGE_SIZE) });
+    const params = new URLSearchParams({ mode: "directory", filter, pageSize: String(SESSION_PAGE_SIZE) });
     if (query.trim()) params.set("query", query.trim());
     if (project) params.set("project", project);
     if (initialRepositoryId) params.set("repositoryId", initialRepositoryId);
@@ -190,7 +189,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     const request = ++requestRef.current;
     const params = new URLSearchParams(directoryQuery);
     if (cursor) params.set("cursor", cursor);
-    if (cursor && revisionRef.current !== null) params.set("revision", String(revisionRef.current));
     // Background refreshes keep the page key, so they never disable page navigation.
     const pageKey = `${directoryQuery}\u0000${cursor || ""}`;
     void fetch(`/api/sessions?${params}`, { cache: "no-store", signal: controller.signal })
@@ -200,7 +198,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
       })
       .then((next) => {
         if (controller.signal.aborted || request !== requestRef.current || !Array.isArray(next.sessions) || !next.coverage) return;
-        revisionRef.current = next.revision;
         setDirectory(next);
         setDirectoryQueryKey(directoryQuery);
         setFulfilledPageKey(pageKey);

@@ -6,11 +6,14 @@ const MEMORY_MAX = 256;
 const SOURCES = { claude: "Claude Code", codex: "Codex" };
 const ACTIVITY = new Set(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
 const COLUMNS = "provider,local_id AS localId,title,project,created_at AS createdAt,updated_at AS updatedAt,is_live AS isLive,needs_input AS needsInput,activity_status AS activityStatus,repository_id AS repositoryId";
-const ORDERS = { newest: "created_ms DESC,provider,local_id", oldest: "created_ms ASC,provider,local_id", title: "title COLLATE NOCASE,provider,local_id" };
+const ORDER = "created_ms DESC,provider,local_id";
 const clean = (value, max) => typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, " ").trim().slice(0, max) : "";
 const date = (value) => typeof value === "string" && value.length <= 48 && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 const safeRepository = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(value) ? value : null;
 const key = (row) => `${row.provider}:${row.localId}`;
+// Newest-created first, matching ORDER's binary provider/local_id tiebreak.
+const compareCreation = (a, b) => b.createdMs - a.createdMs
+  || (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : a.localId < b.localId ? -1 : a.localId > b.localId ? 1 : 0);
 function normalize(provider, value) {
   if (!SOURCES[provider] || typeof value?.localId !== "string" || !parseProviderSessionId(`${provider}:${value.localId}`)) return null;
   const createdAt = date(value.createdAt) || date(value.updatedAt);
@@ -28,7 +31,7 @@ function publicRow(row) {
 function queryParts(query) {
   const pageSize = Math.max(1, Math.min(PAGE_MAX, Math.trunc(Number(query.pageSize) || 25)));
   const scope = { query: clean(query.query, 120).toLowerCase(), filter: ["live", "needs"].includes(query.filter) ? query.filter : "all",
-    project: clean(query.project, 160), repositoryId: clean(query.repositoryId, 160), sort: ORDERS[query.sort] ? query.sort : "newest", pageSize };
+    project: clean(query.project, 160), repositoryId: clean(query.repositoryId, 160), pageSize };
   const hash = createHash("sha256").update(JSON.stringify(scope)).digest("hex").slice(0, 24);
   const where = [], args = [];
   if (scope.query) { where.push("instr(lower(title || ' ' || project || ' ' || CASE provider WHEN 'codex' THEN 'Codex' ELSE 'Claude Code' END), ?) > 0"); args.push(scope.query); }
@@ -45,7 +48,6 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   const lifecycleIds = new Map();
   const states = new Map(providers.filter((id) => SOURCES[id]).map((id) => [id, { status: "discovering", token: null, invalid: false }]));
   const memoryLimit = Math.max(1, Math.min(MEMORY_MAX, maxMemoryRows));
-  const epoch = randomUUID();
   let database = null, revision = 0, observedAt = null, lastCompletedTotal = null, lastCompletedAt = null, overflow = false;
   let scopeKey = typeof initialScopeKey === "string" && /^[a-f0-9]{64}$/u.test(initialScopeKey) ? initialScopeKey : "";
   const stamp = () => new Date(now()).toISOString();
@@ -212,29 +214,36 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   }
   function directory(query={}) {
     const {scope,hash,where,args}=queryParts(query);
-    let offset=0,cursorReset=false;
+    // Keyset cursors name the last row's creation position, so live updates and newly
+    // created sessions never move a later page; new sessions appear only on the first page.
+    let after=null,cursorReset=false;
     if (query.cursor) {
       let cursor;
       try { if (typeof query.cursor !== "string" || query.cursor.length>1024) throw new Error(); cursor=JSON.parse(Buffer.from(query.cursor,"base64url").toString("utf8")); } catch { cursor=null; }
-      if (!Array.isArray(cursor) || cursor[0]!==epoch || cursor[1]!==revision || cursor[2]!==hash || !Number.isSafeInteger(cursor[3]) || cursor[3]<0) cursorReset=true;
-      else offset=cursor[3];
+      if (!Array.isArray(cursor) || cursor.length!==4 || cursor[0]!==hash || !Number.isSafeInteger(cursor[1]) || cursor[1]<0
+        || !parseProviderSessionId(`${cursor[2]}:${cursor[3]}`) || !SOURCES[cursor[2]]) cursorReset=true;
+      else after={createdMs:cursor[1],provider:cursor[2],localId:cursor[3]};
     }
-    if (query.revision!==undefined && query.revision!=="" && String(query.revision)!==String(revision)) {offset=0;cursorReset=true;}
     let rows,matchedCount,counts;
     if (database) {
       matchedCount=Number(database.prepare(`SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
       const tallies=database.prepare("SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN needs_input=1 OR activity_status='needs_input' THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers").get();
       counts={all:Number(tallies.all_count),live:Number(tallies.live),needs:Number(tallies.needs)};
-      rows=database.prepare(`SELECT ${COLUMNS} FROM session_catalog_headers${where} ORDER BY ${ORDERS[scope.sort]} LIMIT ? OFFSET ?`).all(...args,scope.pageSize,offset);
+      const keyset=after?`${where?" AND":" WHERE"} (created_ms < ? OR (created_ms = ? AND (provider,local_id) > (?,?)))`:"";
+      rows=database.prepare(`SELECT ${COLUMNS},created_ms AS createdMs FROM session_catalog_headers${where}${keyset} ORDER BY ${ORDER} LIMIT ?`)
+        .all(...args,...(after?[after.createdMs,after.createdMs,after.provider,after.localId]:[]),scope.pageSize+1);
     } else {
       const all=[...memory.values()]; counts={all:all.length,live:all.filter(row=>row.isLive).length,needs:all.filter(row=>row.needsInput||row.activityStatus==="needs_input").length};
-      const matches=all.filter(row=>(!scope.query||`${row.title} ${row.project} ${SOURCES[row.provider]}`.toLowerCase().includes(scope.query))&&(!scope.project||row.project===scope.project)&&(!scope.repositoryId||row.repositoryId===scope.repositoryId)&&(scope.filter!=="live"||row.isLive)&&(scope.filter!=="needs"||row.needsInput||row.activityStatus==="needs_input"));
-      matches.sort((a,b)=> (scope.sort==="title"?a.title.toLowerCase().localeCompare(b.title.toLowerCase()):(scope.sort==="oldest"?1:-1)*((Date.parse(a.createdAt)||0)-(Date.parse(b.createdAt)||0))) || key(a).localeCompare(key(b)));
-      matchedCount=matches.length; rows=matches.slice(offset,offset+scope.pageSize);
+      const matches=all.filter(row=>(!scope.query||`${row.title} ${row.project} ${SOURCES[row.provider]}`.toLowerCase().includes(scope.query))&&(!scope.project||row.project===scope.project)&&(!scope.repositoryId||row.repositoryId===scope.repositoryId)&&(scope.filter!=="live"||row.isLive)&&(scope.filter!=="needs"||row.needsInput||row.activityStatus==="needs_input"))
+        .map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
+      const start=after?matches.findIndex(row=>compareCreation(row,after)>0):0;
+      matchedCount=matches.length; rows=start<0?[]:matches.slice(start,start+scope.pageSize+1);
     }
+    const more=rows.length>scope.pageSize; rows=rows.slice(0,scope.pageSize);
+    const last=rows.at(-1);
     const facts=coverage();
     return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:rows.map(publicRow),matchedCount,counts,pageSize:scope.pageSize,
-      nextCursor:offset+rows.length<matchedCount?Buffer.from(JSON.stringify([epoch,revision,hash,offset+rows.length])).toString("base64url"):null,...(cursorReset?{cursorReset:true}:{})};
+      nextCursor:more?Buffer.from(JSON.stringify([hash,last.createdMs,last.provider,last.localId])).toString("base64url"):null,...(cursorReset?{cursorReset:true}:{})};
   }
   return Object.freeze({initialize,configureProviders,beginProvider,upsertHeaders,finishProvider,updateHeaders,updateProviderLifecycle,replaceProvider,directory,snapshot,coverage,get,
     diagnostics:()=>({residentRows:memory.size,maxResidentRows:memoryLimit,maxPageSize:PAGE_MAX,durable:Boolean(database)})});

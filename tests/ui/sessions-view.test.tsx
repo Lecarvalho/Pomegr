@@ -121,7 +121,7 @@ describe("Sessions view", () => {
     const requested = fetchMock.mock.calls.map(([url]) => String(url));
     const directoryRequests = requested.filter((url) => url.includes("/api/sessions?mode=directory"));
     expect(directoryRequests[0]).toContain("filter=all");
-    expect(directoryRequests.every((url) => url.includes("sort=newest"))).toBe(true);
+    expect(directoryRequests.some((url) => url.includes("sort=") || url.includes("revision="))).toBe(false);
     expect(directoryRequests.at(-1)).toContain("cursor=cursor-2");
   });
 
