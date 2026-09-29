@@ -18,7 +18,7 @@ Show this to the user, then immediately proceed to Step 2. The user reads and th
 
 ### 2. Spawn sub-agents
 
-Spawn 3+ sub-agents in parallel using the Agent tool. Each must produce a **radically different** interface for the deepened module.
+Spawn 3+ sub-agents in parallel, on the cheapest capable model as `AGENTS.md` requires. Each must produce a **radically different** interface for the deepened module.
 
 Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Give each agent a different design constraint:
 
@@ -27,7 +27,7 @@ Prompt each sub-agent with a separate technical brief (file paths, coupling deta
 - Agent 3: "Optimise for the most common caller — make the default case trivial."
 - Agent 4 (if applicable): "Design around ports & adapters for cross-seam dependencies."
 
-Include both [LANGUAGE.md](LANGUAGE.md) vocabulary and docs/CONTEXT.md vocabulary in the brief so each sub-agent names things consistently with the architecture language and the project's domain language.
+Include both [LANGUAGE.md](LANGUAGE.md) vocabulary and Pomegr's domain vocabulary (the sources listed in [SKILL.md](SKILL.md#pomegr-sources)) in the brief so each sub-agent names things consistently with the architecture language and the project's domain language. Also give each brief the `AGENTS.md` invariants and forbidden dependency directions from `docs/AGENT-WORKFLOW.md` that the area must keep; a design that breaks one is out of bounds, not a trade-off.
 
 Each sub-agent outputs:
 
