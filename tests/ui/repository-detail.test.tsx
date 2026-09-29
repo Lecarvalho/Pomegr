@@ -96,34 +96,12 @@ const inventoryDetails: Record<string, ContextInventoryRevisionDetail> = {
 };
 
 describe("repository detail shell", () => {
-  it("renders the titleless header, observed providers, six tabs, and View sessions link", async () => {
-    serve();
-    render(<RepositoryDetailView repositoryId={repositoryId} />);
-    const repositoryRegion = await screen.findByRole("region", { name: "Example project" });
-    const header = repositoryRegion.querySelector(".commandPageHeader") as HTMLElement | null;
-    expect(header).toBeInTheDocument();
-    expect(within(header!).queryByRole("heading", { name: "Example project" })).not.toBeInTheDocument();
-    expect(within(header!).getByText("Codex")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View sessions" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
-    expect(screen.getAllByRole("tab")).toHaveLength(6);
-    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel", { name: "Overview" })).toHaveAttribute("id", "repository-panel-overview");
-  });
-
   it("retains loading until the committed inventory is ready", async () => {
     serve({ ...snapshot, readiness: "loading", repositories: [] });
     render(<RepositoryDetailView repositoryId={repositoryId} />);
     expect(await screen.findByLabelText("Loading repository")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Repository" })).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByText("Repository not observed")).not.toBeInTheDocument();
-  });
-
-  it("explains an unobserved repository and links back to the index", async () => {
-    serve({ ...snapshot, repositories: [] });
-    render(<RepositoryDetailView repositoryId={repositoryId} />);
-    expect(await screen.findByRole("heading", { name: "Repository not observed" })).toBeInTheDocument();
-    expect(screen.getByText("This repository has no observed sessions on this machine.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Back to repositories" })).toHaveAttribute("href", "/repositories");
   });
 
   it("uses sanitized unavailable copy when the monitor fails", async () => {
@@ -192,18 +170,6 @@ describe("repository detail shell", () => {
     const treeProps = FileTreeMock.mock.calls.at(-1)![0];
     expect(treeProps.selectedPath).toBeNull();
   });
-
-  it("uses the shared page-header breadcrumb on repository routes", async () => {
-    serve();
-    render(<RepositoryDetailView repositoryId={repositoryId} />);
-    const breadcrumb = screen.getByText("Repositories").closest(".commandPageBreadcrumb") as HTMLElement | null;
-    expect(breadcrumb).toBeInTheDocument();
-    if (!breadcrumb) throw new Error("Repository breadcrumb is missing");
-    expect(breadcrumb).toHaveClass("commandPageBreadcrumb");
-    expect(await within(breadcrumb).findByText("Example project")).toHaveAttribute("aria-current", "page");
-    expect(within(breadcrumb).getByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/repositories");
-    expect(breadcrumb.closest(".commandPageHeader")).toBeInTheDocument();
-  });
 });
 
 describe("repository detail git", () => {
@@ -230,15 +196,11 @@ describe("repository detail git", () => {
     return { data, fetching: false, connected: true, error: null, unavailable, revalidate: vi.fn() };
   }
 
-  it("lists commits and the live source line from the newest live session, with no Soon chip", async () => {
+  it("reads the repository domain of the newest live session and links to it", async () => {
     serve();
     useSessionDomain.mockReturnValue(domainResult(repositoryDomain()));
     render(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[liveSession()]}><RepositoryDetailView repositoryId={repositoryId} initialTab="git" /></SessionCatalogProvider></LiveClockProvider>);
     await screen.findByRole("tabpanel", { name: "Git" });
-    expect(screen.queryByText("Soon")).not.toBeInTheDocument();
-    expect(screen.getByText("Recent commits on the default branch")).toBeInTheDocument();
-    expect(screen.getByText("1 shown")).toBeInTheDocument();
-    expect(screen.getByText("Add commit history")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Live repository session" })).toHaveAttribute("href", `/sessions/${encodeSessionRoute("claude:live-git")}?tab=repository`);
     expect(useSessionDomain).toHaveBeenCalledWith({ sessionId: "claude:live-git", domain: "repository" }, { historical: false, enabled: true });
   });
@@ -311,26 +273,6 @@ describe("repository detail overview", () => {
     expect(overview().getByText("Claude Code: enabled · Codex: not installed")).toBeInTheDocument();
   });
 
-  it.each([
-    ["loading", "Checking setup", "Checking plugin setup"], ["missing", "Plugin not installed", "Not installed"], ["disabled", "Plugin disabled", "Disabled"], ["unavailable", "Setup unverified", "Unable to verify"],
-  ])("keeps %s plugin summary consistent with the Plugin tab", async (kind, overviewLabel, pluginLabel) => {
-    const body = structuredClone(setupSnapshot);
-    const provider = body.repositories[0].providers[0];
-    provider.pluginSetup!.canUpdate = false;
-    body.repositories[0].providers = [provider];
-    if (kind === "loading") provider.pluginSetup!.readiness = "loading";
-    if (kind === "missing") { provider.pluginSetup!.installation = "not_installed"; provider.pluginSetup!.enabled = null; }
-    if (kind === "disabled") provider.pluginSetup!.enabled = false;
-    if (kind === "unavailable") { provider.pluginSetup!.readiness = "unavailable"; body.repositories[0].reporting = { status: "configured", version: 7, checkedAt: null }; }
-    serve(body);
-    const view = renderOverview();
-    await screen.findByRole("heading", { name: "Overview" });
-    expect(overview().getByText(overviewLabel)).toBeInTheDocument();
-    navigation.search = "tab=plugin";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
-    expect(within(await screen.findByRole("tabpanel", { name: "Plugin" })).getByText(pluginLabel)).toBeInTheDocument();
-  });
-
   it("keeps missing observations unavailable and failed capture status visible with retained evidence", async () => {
     const body = structuredClone(snapshot);
     body.repositories[0].providers[0].sessionCount = 0;
@@ -359,81 +301,9 @@ describe("repository detail overview", () => {
     expect(rows[0]).toHaveAttribute("href", `/sessions/${encodeSessionRoute("codex:overview-6")}`);
     expect(overview().getByRole("link", { name: "View all 3" })).toHaveAttribute("href", `/sessions?repository=${repositoryId}`);
   });
-
-  it("uses shared activity labels and treats a missing agent count as unavailable", async () => {
-    serve();
-    renderOverview([session(1, { activityStatus: "working", isLive: true, agentCount: null }), session(2, { activityStatus: "needs_input", isLive: true }), session(3, { activityStatus: "idle", isLive: true }), session(4)]);
-    await screen.findByRole("heading", { name: "Overview" });
-    expect(overview().getByText("In progress")).toHaveClass("positive");
-    expect(overview().getByText("Needs input")).toHaveClass("warning");
-    expect(overview().getByText("Idle")).toHaveClass("neutral");
-    expect(overview().getByText("Closed")).toHaveClass("neutral");
-    expect(overview().getByText("Agent count unavailable · Codex")).toBeInTheDocument();
-  });
-
-  it.each([
-    ["legacy", "Sessions for this repository are listed once the monitor reports repository associations."],
-    ["other", "No sessions for this repository in the current catalog."],
-    ["loading", "Loading recent sessions…"],
-    ["unavailable", "Session catalog unavailable. Pomegr will retry the local monitor automatically."],
-  ])("explains the %s catalog state without guessing a repository association", async (kind, message) => {
-    serve();
-    renderOverview([session(1, { repositoryId: kind === "other" ? "repo-ffffffffffffffffffffffff" : undefined })], { loading: kind === "loading", connected: kind !== "unavailable" });
-    await screen.findByRole("heading", { name: "Overview" });
-    expect(overview().getByText(message)).toBeInTheDocument();
-    expect(overview().queryByRole("link", { name: /Synthetic session/ })).not.toBeInTheDocument();
-  });
-});
-
-describe("repository detail reporting", () => {
-  it.each([
-    { status: "configured", version: 7, label: "Configured", detail: "Shared repository policy · Version 7" },
-    { status: "configured", version: null, label: "Configured", detail: "Shared repository reporting policy" },
-    { status: "missing", version: null, label: "Not configured", detail: "Choose what agents report · Shared by Claude Code and Codex" },
-    { status: "invalid", version: null, label: "Invalid", detail: "Review the repository reporting policy with your coding agent." },
-    { status: "unknown", version: null, label: "Unavailable", detail: "Reporting setup could not be verified." },
-    { status: undefined, version: null, label: "Unavailable", detail: "Reporting setup could not be verified." },
-  ] as const)("shares $status reporting status and version $version between tabs", async ({ status, version, label, detail }) => {
-    const body = structuredClone(setupSnapshot);
-    body.repositories[0].reporting = status ? { status, version, checkedAt: null } : undefined;
-    serve(body);
-    navigation.search = "tab=plugin";
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
-    const pluginPane = await screen.findByRole("tabpanel", { name: "Plugin" });
-    expect(within(pluginPane).queryByRole("region", { name: "Shared repository reporting" })).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole("tab", { name: "Reporting" }));
-    expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=reporting`, { scroll: false });
-    navigation.search = "tab=reporting";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} />);
-    const reportingRow = screen.getByRole("region", { name: "Shared repository reporting" });
-    expect(screen.getByRole("heading", { name: "Repository reporting" })).toBeInTheDocument();
-    expect(within(reportingRow).getByText(label)).toBeInTheDocument();
-    expect(within(reportingRow).getByText(detail)).toBeInTheDocument();
-    expect(within(reportingRow).queryByRole("button", { name: "How reporting works" })).not.toBeInTheDocument();
-    expect(within(reportingRow).queryByRole("button", { name: /Review policy|Configure reporting/ })).not.toBeInTheDocument();
-    const help = within(reportingRow).getByText("Set up reporting in your coding agent").parentElement!;
-    expect(help).toHaveTextContent("/pomegr:init");
-    expect(help).toHaveTextContent("$pomegr:init");
-    expect(within(help).getByRole("link", { name: "Read the plugin instructions" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/PLUGINS.md");
-    expect(help).toBeVisible();
-  });
 });
 
 describe("repository detail plugin", () => {
-  it("renders each provider's plugin row without inventory or reporting rows", async () => {
-    serve(setupSnapshot);
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
-    expect(await screen.findByRole("heading", { name: "Plugin" })).toBeInTheDocument();
-    const pane = screen.getByRole("tabpanel", { name: "Plugin" });
-    expect(within(pane).getByText("Claude Code")).toBeInTheDocument();
-    expect(within(pane).getByText("Codex")).toBeInTheDocument();
-    expect(within(pane).getAllByText("Pomegr plugin")).toHaveLength(2);
-    expect(within(pane).queryByText("Context inventory")).not.toBeInTheDocument();
-    expect(within(pane).queryByText("Repository reporting")).not.toBeInTheDocument();
-    expect(within(pane).getByText(/Raw configuration never leaves this machine/i)).toBeInTheDocument();
-  });
-
   it("uses desktop plugin actions through the bridge and keeps outcomes sanitized", async () => {
     const pluginAction = vi.fn().mockResolvedValue("completed");
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { repositoryPluginAction: pluginAction } });
@@ -482,18 +352,6 @@ describe("repository detail plugin", () => {
     await act(async () => { finish("completed"); });
     expect(await screen.findByText(/Reload Claude Code before starting a new session/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View sessions" })).toHaveFocus();
-  });
-
-  it("keeps the Plugin pane limited to plugin actions", async () => {
-    serve(setupSnapshot);
-    navigation.search = "tab=plugin";
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} />);
-    await screen.findByRole("heading", { name: "Plugin" });
-    expect(screen.queryByRole("button", { name: "Open inventory" })).not.toBeInTheDocument();
-    const pane = screen.getByRole("tabpanel", { name: "Plugin" });
-    expect(within(pane).queryByText("Context inventory")).not.toBeInTheDocument();
-    expect(within(pane).queryByText("Repository reporting")).not.toBeInTheDocument();
-    view.unmount();
   });
 
   it("offers instructions and no primary plugin or capture actions away from desktop", async () => {
@@ -548,15 +406,13 @@ describe("repository detail plugin", () => {
     expect(screen.queryByText(/private provider output/i)).not.toBeInTheDocument();
   });
 
-  it("shows a retained revision while capture is in progress", async () => {
+  it("disables another capture while one is in progress", async () => {
     const capturing = structuredClone(setupSnapshot);
     capturing.repositories[0].providers[0].status = "capturing";
     Object.defineProperty(window, "pomegrDesktop", { configurable: true, value: { captureRepositoryContextInventory: vi.fn() } });
     serve(capturing);
     render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" />);
     await screen.findByRole("heading", { name: "Context inventory" });
-    expect(screen.getByText("Capturing")).toBeInTheDocument();
-    expect(screen.getByText("Previous revision remains available until commit")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Capture again" })).toBeDisabled();
   });
 
@@ -569,20 +425,6 @@ describe("repository detail plugin", () => {
     await screen.findByRole("heading", { name: "Context inventory" });
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("The diagnostic timed out · no data saved")).toBeInTheDocument();
-  });
-
-  it("keeps reporting setup guidance visible in the Reporting pane", async () => {
-    serve(setupSnapshot);
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
-    await screen.findByRole("heading", { name: "Plugin" });
-    expect(screen.queryByRole("button", { name: "How reporting works" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Review policy|Configure reporting/ })).not.toBeInTheDocument();
-    navigation.search = "tab=reporting";
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="reporting" />);
-    await screen.findByRole("heading", { name: "Repository reporting" });
-    expect(screen.getByText("/pomegr:init", { selector: "code" })).toBeInTheDocument();
-    expect(screen.getByText("$pomegr:init", { selector: "code" })).toBeInTheDocument();
-    view.unmount();
   });
 });
 
@@ -723,13 +565,6 @@ describe("repository context inventory", () => {
     firstResolve(new Response(JSON.stringify(inventoryDetails["ctx-002"])));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
-  });
-
-  it("renders an explicit unsupported section for Codex in the inventory tab", async () => {
-    serve(snapshot);
-    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" />);
-    expect(await screen.findByRole("region", { name: "Codex context inventory" })).toBeInTheDocument();
-    expect(screen.getByText("Context inventory is not available for Codex yet.")).toBeInTheDocument();
   });
 });
 

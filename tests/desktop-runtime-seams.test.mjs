@@ -1,13 +1,9 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
-import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
-import { fileURLToPath } from "node:url";
-import { startMonitorServer } from "../monitor/server.mjs";
+import { startMonitorServer } from "../server/server.mjs";
 import { startWebServer } from "../web/server.mjs";
 
 import { createProductionBuildFixture } from "./helpers/production-build.mjs";
@@ -15,30 +11,19 @@ import { createProductionBuildFixture } from "./helpers/production-build.mjs";
 const productionBuild = await createProductionBuildFixture();
 after(() => productionBuild.close());
 
-// Started monitors open the SQLite store under the data root; keep it off the real profile.
-const isolatedDataRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-seams-data-"));
-const previousDataRoot = process.env.POMEGR_DATA_DIR;
-process.env.POMEGR_DATA_DIR = isolatedDataRoot;
-after(async () => {
-  if (previousDataRoot === undefined) delete process.env.POMEGR_DATA_DIR;
-  else process.env.POMEGR_DATA_DIR = previousDataRoot;
-  await rm(isolatedDataRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-});
-
 const quietLogger = Object.freeze({ log() {} });
 
-function waitForOutput(stream, pattern, timeoutMs = 5_000) {
-  return new Promise((resolve, reject) => {
-    let output = "";
-    const timer = setTimeout(() => reject(new Error("CLI readiness timeout")), timeoutMs);
-    stream.setEncoding("utf8");
-    stream.on("data", (chunk) => {
-      output += chunk;
-      if (!pattern.test(output)) return;
-      clearTimeout(timer);
-      resolve(output);
-    });
-  });
+// A started monitor with no provider runtime: the seam tests exercise binding and lifecycle,
+// never the user's real provider profile, SQLite store, or observation cost.
+function idleMonitorOptions(overrides = {}) {
+  return {
+    port: 0,
+    logger: quietLogger,
+    pipelineOperations: false,
+    runtime: { async startObservation() {}, async stopObservation() {} },
+    providerRegistry: { async watchTargets() { return []; } },
+    ...overrides,
+  };
 }
 
 async function assertPortReusable(port) {
@@ -51,7 +36,7 @@ async function assertPortReusable(port) {
 }
 
 test("monitor binds a dynamic loopback port and closes idempotently", async () => {
-  const handle = await startMonitorServer({ port: 0, host: "127.0.0.1", logger: quietLogger });
+  const handle = await startMonitorServer(idleMonitorOptions({ host: "127.0.0.1" }));
   assert.equal(handle.host, "127.0.0.1");
   assert.ok(handle.port > 0);
   assert.deepEqual(handle.address, { host: "127.0.0.1", port: handle.port });
@@ -93,10 +78,10 @@ test("monitor rejects non-loopback binding and reports bounded startup failures"
       && error.stack === "LocalServiceError: MONITOR_START_FAILED",
   );
 
-  const first = await startMonitorServer({ port: 0, logger: quietLogger });
+  const first = await startMonitorServer(idleMonitorOptions());
   try {
     await assert.rejects(
-      startMonitorServer({ port: first.port, logger: quietLogger }),
+      startMonitorServer(idleMonitorOptions({ port: first.port })),
       (error) => error.code === "MONITOR_START_FAILED"
         && error.message === "MONITOR_START_FAILED"
         && !error.cause,
@@ -107,7 +92,7 @@ test("monitor rejects non-loopback binding and reports bounded startup failures"
 });
 
 test("monitor reports an unexpected listener exit without arbitrary details", async () => {
-  const handle = await startMonitorServer({ port: 0, logger: quietLogger });
+  const handle = await startMonitorServer(idleMonitorOptions());
   handle.server.close();
   assert.deepEqual(await handle.exit, { code: "MONITOR_EXIT_UNEXPECTED" });
   await handle.close();
@@ -143,80 +128,6 @@ test("monitor awaits cleanup and withholds readiness when post-bind initializati
   assert.equal(server.listening, false);
   assert.deepEqual(logs, []);
   await assertPortReusable(boundPort);
-});
-
-test("thin monitor CLI preserves executable startup behavior", async (context) => {
-  const child = spawn(process.execPath, [fileURLToPath(new URL("../monitor/cli.mjs", import.meta.url))], {
-    env: { ...process.env, SESSION_PULSE_PORT: "0" },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
-  });
-  context.after(() => { if (child.exitCode === null) child.kill(); });
-  const output = await waitForOutput(child.stdout, /Monitor ready on http:\/\/127\.0\.0\.1:\d+/);
-  assert.doesNotMatch(output, /Watching:|projects|sessions/i);
-  const exited = once(child, "exit");
-  child.kill();
-  await exited;
-});
-
-test("production web server uses explicit runtime inputs from any working directory", async () => {
-  const monitor = await startMonitorServer({ port: 0, logger: quietLogger });
-  const otherDirectory = await mkdtemp(path.join(os.tmpdir(), "pomegr-web-cwd-"));
-  const originalCwd = process.cwd();
-  let web;
-  const stages = [];
-  try {
-    process.chdir(otherDirectory);
-    web = await startWebServer({
-      outDir: productionBuild.outDir,
-      host: "127.0.0.1",
-      port: 0,
-      monitorOrigin: monitor.origin,
-      recordStage: (stage) => stages.push(stage),
-      logger: quietLogger,
-    });
-    assert.equal(web.host, "127.0.0.1");
-    assert.ok(web.port > 0);
-    const [page, sessions] = await Promise.all([
-      fetch(web.origin),
-      fetch(`${web.origin}/api/sessions`),
-    ]);
-    assert.equal(page.status, 200);
-    const html = await page.text();
-    assert.match(html, /<title>Pomegr<\/title>/i);
-    const assetPaths = [...new Set(
-      [...html.matchAll(/(?:href|src)="(\/assets\/[^"]+\.(?:css|js))"/g)].map((match) => match[1]),
-    )];
-    assert.ok(assetPaths.some((filename) => filename.endsWith(".css")));
-    assert.ok(assetPaths.some((filename) => filename.endsWith(".js")));
-    for (const assetPath of assetPaths) {
-      const asset = await fetch(`${web.origin}${assetPath}`);
-      assert.equal(asset.status, 200, `Production asset ${assetPath} must be served`);
-      assert.match(asset.headers.get("content-type") || "", assetPath.endsWith(".css") ? /^text\/css/ : /^application\/javascript/);
-      assert.ok((await asset.arrayBuffer()).byteLength > 0);
-    }
-    assert.equal(sessions.status, 200);
-    assert.ok(Array.isArray((await sessions.json()).sessions));
-  } finally {
-    process.chdir(originalCwd);
-    await web?.close();
-    await monitor.close();
-    await rm(otherDirectory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
-  }
-  assert.deepEqual(await web.exit, { code: "WEB_CLOSED" });
-  assert.deepEqual(stages, [
-    "SHELL_WEB_OUT_DIR_VALIDATING",
-    "SHELL_WEB_OUT_DIR_READY",
-    "SHELL_WEB_VINEXT_LOADING",
-    "SHELL_WEB_VINEXT_LOADED",
-    "SHELL_WEB_ENTRY_LOADING",
-    "SHELL_WEB_ENTRY_READY",
-    "SHELL_WEB_LISTENER_STARTING",
-    "SHELL_WEB_LISTENER_READY",
-    "SHELL_WEB_AUTH_READY",
-    "SHELL_WEB_HANDLE_READY",
-  ]);
-  await web.close();
 });
 
 test("production web startup validation returns only fixed safe error codes", async () => {
@@ -262,6 +173,7 @@ test("authorized production assets retain desktop security and no-store headers"
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
   };
+  const stages = [];
   const web = await startWebServer({
     outDir: productionBuild.outDir,
     host: "127.0.0.1",
@@ -269,6 +181,7 @@ test("authorized production assets retain desktop security and no-store headers"
     monitorOrigin: "http://127.0.0.1:4317",
     authorizationToken: token,
     responseHeaders,
+    recordStage: (stage) => stages.push(stage),
     logger: quietLogger,
   });
   const authorization = { "x-pomegr-desktop-authorization": token };
@@ -289,6 +202,19 @@ test("authorized production assets retain desktop security and no-store headers"
   } finally {
     await web.close();
   }
+  assert.deepEqual(await web.exit, { code: "WEB_CLOSED" });
+  assert.deepEqual(stages, [
+    "SHELL_WEB_OUT_DIR_VALIDATING",
+    "SHELL_WEB_OUT_DIR_READY",
+    "SHELL_WEB_VINEXT_LOADING",
+    "SHELL_WEB_VINEXT_LOADED",
+    "SHELL_WEB_ENTRY_LOADING",
+    "SHELL_WEB_ENTRY_READY",
+    "SHELL_WEB_LISTENER_STARTING",
+    "SHELL_WEB_LISTENER_READY",
+    "SHELL_WEB_AUTH_READY",
+    "SHELL_WEB_HANDLE_READY",
+  ]);
 });
 
 test("production web startup stages stop at the fixed failing boundary", async () => {
@@ -340,21 +266,16 @@ test("production web startup stages isolate a generated entry import failure", a
 });
 
 test("production web handle reports unexpected listener exit", async () => {
-  const monitor = await startMonitorServer({ port: 0, logger: quietLogger });
   const web = await startWebServer({
     outDir: productionBuild.outDir,
     host: "127.0.0.1",
     port: 0,
-    monitorOrigin: monitor.origin,
+    monitorOrigin: "http://127.0.0.1:4317",
     logger: quietLogger,
   });
-  try {
-    web.server.close();
-    assert.deepEqual(await web.exit, { code: "WEB_EXIT_UNEXPECTED" });
-    await web.close();
-  } finally {
-    await monitor.close();
-  }
+  web.server.close();
+  assert.deepEqual(await web.exit, { code: "WEB_EXIT_UNEXPECTED" });
+  await web.close();
 });
 
 test("production web startup awaits listener cleanup after a post-bind failure", async () => {

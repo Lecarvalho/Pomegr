@@ -180,7 +180,7 @@ npm run lint
 
 Files: `app/components/dashboard/SessionOverview.tsx`, `app/styles/session.css`.
 
-Background: the monitor already limits the overview strip to the last 48 requests (`monitor/session-domain-projection.mjs` line 252, `requests.items.slice(-48)`). The strip therefore always draws 48 slots. With 5 requests, 5 slots hold bars and 43 slots hold only a baseline, so a bar has the same width in a new session and in a long one.
+Background: the monitor already limits the overview strip to the last 48 requests (`server/sessions/domain/session-domain-projection.mjs` line 252, `requests.items.slice(-48)`). The strip therefore always draws 48 slots. With 5 requests, 5 slots hold bars and 43 slots hold only a baseline, so a bar has the same width in a new session and in a long one.
 
 1. At the top of `SessionOverview.tsx`, after the imports, add `const REQUEST_STRIP_SLOTS = 48;`.
 2. Inside the component, before `return`, add:

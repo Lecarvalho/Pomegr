@@ -7,7 +7,7 @@ const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 const DRIVE_PREFIX = /^[A-Za-z]:/u;
 
-// Shape-only mirror of the monitor's `isSafeRecordedRepositoryPath` (monitor/repository-snapshot.mjs):
+// Shape-only mirror of the monitor's `isSafeRecordedRepositoryPath` (server/repository/repository-snapshot.mjs):
 // an early, low-cost rejection. The monitor is the real authority and re-validates every path itself.
 function isSafeRepositoryPath(value: string) {
   if (value.length < 1 || value.length > MAX_REPOSITORY_PATH_LENGTH || CONTROL.test(value) || value.includes("\\") || DRIVE_PREFIX.test(value)) {

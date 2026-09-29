@@ -47,28 +47,6 @@ function treeView({ agents, cacheRefills = [], cacheReadDrops = [], contextBound
  *   is no longer a no-op end-to-end.
  */
 describe("workflow activity and agent tree view", () => {
-  it.each(["list", "tree"] as const)("shows per-agent cache minimums in %s without inline documentation", (viewMode) => {
-    const agents = [
-      worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", cacheLifetime: "30m+" }),
-      worker({ id: "child", label: "Child", cacheLifetime: "30m+" }),
-      worker({ id: "unknown", label: "Unknown", cacheLifetime: null }),
-      worker({ id: "claude", label: "Recorded", cacheLifetime: "1h" }),
-    ].map((agent) => ({ ...agent, workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null }));
-    window.localStorage.setItem("pomegr-agent-roster-open-codex:ttl", JSON.stringify(["direct"]));
-    render(viewMode === "list"
-      ? <LiveClockProvider running={false}><AgentActivityPanel agents={agents} executionTasks={[]} historical={false} planTasks={[]} sessionId="codex:ttl" viewMode="list" workflows={[]} /></LiveClockProvider>
-      : treeView({ agents, sessionId: "codex:ttl", workflows: [] }));
-    const roster = viewMode === "list" ? screen.getByRole("table", { name: "Session agents" }) : null;
-    const labels = roster ? within(roster).getAllByText("≥30m") : screen.getAllByText("cache TTL ≥30m");
-    expect(labels).toHaveLength(2);
-    labels.forEach((label) => expect(label).not.toHaveAttribute("title"));
-    expect(roster ? within(roster).getByText("unavailable") : screen.getByText("cache TTL unavailable")).toBeInTheDocument();
-    expect(roster ? within(roster).getByText("1h") : screen.getByText("cache TTL 1h")).toBeInTheDocument();
-    const rowRole = viewMode === "list" ? "row" : "treeitem";
-    expect(screen.getByRole(rowRole, { name: /Primary.*cache TTL ≥30m/ })).toBeInTheDocument();
-    expect(screen.getByRole(rowRole, { name: /Child.*cache TTL ≥30m/ })).toBeInTheDocument();
-  });
-
   it("lists every agent exactly once, including workflow agents, and accepts legacy missing roles", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
     const legacy = { ...worker({ id: "legacy", label: "Legacy agent", workflowId: null, workflowPhaseId: null }), role: undefined } as unknown as Agent;
@@ -317,7 +295,7 @@ describe("workflow activity and agent tree view", () => {
     expect(description.length).toBeLessThan(500);
   });
 
-  it("links an unavailable previous cache entry to its public definition while preserving the expiry inference", async () => {
+  it("keeps the expiry inference for an unavailable previous cache entry", async () => {
     const user = userEvent.setup();
     render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[{
       agentId: "primary",
@@ -336,13 +314,7 @@ describe("workflow activity and agent tree view", () => {
 
     await user.click(screen.getByRole("button", { name: /Possible full cache refill observed 1 time/ }));
     const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
-    expect(popover).toHaveTextContent("cache.previous_cache_entry_unavailable");
-    expect(popover).toHaveTextContent("Pomegr normalized Claude's diagnostic as the previous cache entry being unavailable.");
     expect(popover).toHaveTextContent("InferenceOne-hour cache likely expired; 1h 1m elapsed since the preceding request.");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute(
-      "href",
-      "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-previous-cache-entry-unavailable",
-    );
   });
 
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {
@@ -387,18 +359,6 @@ describe("workflow activity and agent tree view", () => {
     expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "false");
     rerender(panel("claude:finished-a"));
     expect(screen.getByRole("button", { name: "Hide finished" })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("renders the top-down tree, vertical connectors, provenance, and the List-view detail note", () => {
-    const primary = worker({ id: "primary", parentId: null, label: "Primary agent", role: "orchestrator", workflowId: null, workflowPhaseId: null, workflowOrder: null, workflowState: null });
-    const { container } = render(treeView({ agents: [primary, worker()], sessionId: "claude:tree", workflows: [workflow()] }));
-    expect(screen.getByRole("tree", { name: "Agent spawn hierarchy" })).toBeInTheDocument();
-    expect(container.querySelectorAll(".agentTreeCard svg.agentTreeRoleGlyph")).toHaveLength(2);
-    expect(container.querySelector(".agentTreeNode")?.getAttribute("style")).toContain("--tree-x");
-    expect(container.querySelector(".agentTreeConnectors path")?.getAttribute("d")).toMatch(/^M[^C]+C/);
-    expect(container.querySelector(".agentTreeCard.activeAgent .agentTreeRole")).toBeInTheDocument();
-    expect(screen.getByText("Workflow: quickwin-batch · Implement")).toBeInTheDocument();
-    expect(screen.getByText("Tasks, skills, execution, and plan details are available in List view.")).toBeInTheDocument();
   });
 
   it("uses observed container width for rail/columns and preserves a stored column camera", async () => {

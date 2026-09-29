@@ -84,17 +84,17 @@ this document retains authority over acquisition, committed evidence, and servin
 
 Use these names in code, tests, diagnostics, and architecture discussions:
 
-| Phase | Owner | Consumes | Produces or writes |
+| Phase | Owner (folder) | Consumes | Produces or writes |
 | --- | --- | --- | --- |
-| **U1 — Acquisition** | Backend, provider adapter | Raw provider-owned files, events, or APIs | Complete native records and adapter-private cursor state; no committed cache mutation |
-| **U2 — Normalization** | Backend, provider adapter | Complete provider-native records | Bounded, privacy-filtered normalized candidate evidence |
-| **C — Commit** | Backend, shared observation store | A validated normalized candidate | One immutable L1 evidence revision |
-| **D — Derivation** | Backend, monitor jobs | Committed L1 evidence plus independently committed Git, resource, and usage state | Independently revisioned session domains, composed public state, catalog, Home, correlation, or usage responses |
-| **P — Persistence** | Backend, bounded persistence owner and incremental history store | Committed normalized evidence | Atomic L2 checkpoints and committed normalized history; maintenance runs separately |
-| **S — Serving** | Backend, API handlers | Committed L1 response revisions | A response body, loading shell, or `204 No Content`; never normalized evidence |
-| **F — Presentation** | Frontend, React | Provider-neutral API responses | Frontend view state and independently rendered regions |
+| **U1 — Acquisition** | `server/providers/claude/` and `server/providers/codex/` on `server/providers/kernel/`; Git in `server/repository/`, resources in `server/resources/` | Raw provider-owned files, events, or APIs | Complete native records and adapter-private cursor state; no committed cache mutation |
+| **U2 — Normalization** | The provider adapters, using the `server/normalize/` kernel | Complete provider-native records | Bounded, privacy-filtered normalized candidate evidence |
+| **C — Commit** | `server/sessions/checkpoints/session-observation-store.mjs` and `server/persistence/committed-response-cache.mjs` | A validated normalized candidate | One immutable L1 evidence revision |
+| **D — Derivation** | `server/sessions/domain/`, `server/sessions/catalog/`, `server/analytics/`, `server/repository/`, `server/resources/` | Committed L1 evidence plus independently committed Git, resource, and usage state | Independently revisioned session domains, composed public state, catalog, Home, correlation, or usage responses |
+| **P — Persistence** | `server/sessions/checkpoints/`, `server/sessions/history/`, `server/persistence/` | Committed normalized evidence | Atomic L2 checkpoints and committed normalized history; maintenance runs separately |
+| **S — Serving** | `server/serving/request-handler.mjs` and the serving projections in `server/sessions/domain/` | Committed L1 response revisions | A response body, loading shell, or `204 No Content`; never normalized evidence |
+| **F — Presentation** | `app/` (React) | Provider-neutral API responses | Frontend view state and independently rendered regions |
 
-U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream consumers of
+`server/runtime/` orchestrates the phases; it owns scheduling, not evidence. U1 and U2 are the upstream raw-data boundary. C, D, P, and S are downstream consumers of
 normalized state. P writes the durable cache; S only consumes committed response caches.
 F consumes the browser API and never fills or owns a backend cache.
 
@@ -965,7 +965,7 @@ clients read `GET /api/storage` only and render the controls read-only.
 ## Provider observer contract
 
 Every provider adapter must expose the observation lifecycle required by
-`monitor/providers/provider-contract.mjs`:
+`server/providers/provider-contract.mjs`:
 
 - start and stop its observer with the monitor lifecycle;
 - publish a bounded normalized catalog independently from detailed hydration;
@@ -988,7 +988,7 @@ revision or checkpoint semantics, or the browser privacy boundary.
 
 ### Source ledger
 
-A provider-neutral source ledger (`monitor/providers/source-ledger.mjs`) indexes
+A provider-neutral source ledger (`server/providers/kernel/source-ledger.mjs`) indexes
 session-to-file topology (root, child, fork, shared group) and one filesystem generation
 per known file, so a selected session's family can be resolved without walking an entire
 transcript tree on every read. It parses no provider record itself: an adapter translates
@@ -1026,7 +1026,7 @@ Codex's family-member re-read), not only through `noticeSource()`.
 
 Both Claude and Codex resolve their selected session through this same ledger contract, each
 with its own instance. Codex resolves a selected session's rollout family with `resolveCodexRolloutFamily`
-(`monitor/providers/codex-session-metadata.mjs`). The ledger locates the root's file.
+(`server/providers/codex/session-metadata.mjs`). The ledger locates the root's file.
 Descendants are always created after their root, so the adapter lists the dated
 `YYYY/MM/DD` rollout directories from one day before the root file's own directory on,
 every undated directory, and the whole archive root; an archived or undated root, or one
@@ -1391,7 +1391,7 @@ probe means no confirmed contention, not confirmed idle or completion. Non-Windo
 platforms do not inherit Windows mandatory-read-lock semantics. This predicate only
 gates bounded CLI acquisition; contention alone is not native session-presence authority.
 
-Native writer ownership has a separate lifecycle acceptance suite. The opt-in `tests/codex-native-lock-acceptance.test.mjs`
+Native writer ownership has a separate lifecycle acceptance suite. The opt-in `tests/server/providers/codex/native-lock-acceptance.test.mjs`
 suite uses an explicitly selected native executable and isolated temporary provider
 home, without credentials, installed plugins, or model turns. Its read-only owner
 query checks stable file identity, read contention, a unique file user, exact native
@@ -1575,7 +1575,7 @@ visible-agent count, the latest all-agent context snapshot, the agent-reported p
 and the activity fallback only in its `last_observed` form (fixed label, original
 timestamp, source, actor scope). Current qualification, `currentActivity`, cache timing,
 tool names, task descriptions, IDs and paths are never persisted. The Session row module
-(`monitor/session-catalog-row.mjs`) projects the summary from the committed snapshot and
+(`server/sessions/catalog/session-catalog-row.mjs`) projects the summary from the committed snapshot and
 validates it before persistence. C writes it after every accepted commit, changed or
 unchanged, so checkpoint-restored records seed summaries at startup, and only when it
 differs from the persisted one and the recorded `updatedAt` is not older. A live row's
@@ -2570,7 +2570,7 @@ the launch cwd. Relative targets require a recorded tool/turn working directory;
 command text cannot establish that directory or a file write. A move must validate both
 paths within the same recognized repository. The launch/recorded cwd names the session's
 project unless a proven mutation repository points elsewhere (approved by the product
-owner on 2026-09-27; see `monitor/session-identity.mjs`); the cwd itself remains private
+owner on 2026-09-27; see `server/normalize/session-identity.mjs`); the cwd itself remains private
 provider evidence. The public compatibility
 `session.cwd` field is empty; roots and raw target inputs never enter browser state.
 
@@ -2607,7 +2607,7 @@ keep the last committed value.
 Repository sidecar version 4 carries a nullable normalized repository ID. A sidecar is
 served only for the same single-repository identity in normalized session evidence, for
 every provider (`session.repositoryAttribution`/`repositoryId`; see
-`monitor/session-identity.mjs`); an older sidecar recorded before that identity was
+`server/normalize/session-identity.mjs`); an older sidecar recorded before that identity was
 proven, or with a mismatched identity, remains unavailable. A new identity starts a new
 baseline and cannot inherit another repository's files, PRs, comparisons, or Git-observed
 lists.
@@ -2617,7 +2617,7 @@ Checkpoint evidence written before the session-identity rule has no
 cwd declares `legacyRepositoryAttribution: "launch"` in its adapter (Claude does; Codex
 does not). At restore only, the checkpoint store gives that provider's legacy evidence the
 generic attribution `launch` (`withLegacyRepositoryAttribution` in
-`monitor/repository-snapshot.mjs`) without rewriting the checkpoint file. `launch` keeps
+`server/repository/repository-snapshot.mjs`) without rewriting the checkpoint file. `launch` keeps
 the behavior that evidence had before the rule: its recorded sidecar and recorded branch
 are served, its unbound file changes resolve through its launch cwd, and restore reads role
 configuration from that cwd. Shared modules read only the attribution value, never the
@@ -2637,7 +2637,7 @@ repository ID; they came from the launch directory, so a `single` session of a p
 declares `legacyRepositoryAttribution: "launch"` adopts its unbound sidecar, both for serving
 and as the carry-forward baseline of its next live check. Codex never adopts one.
 
-The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a derivative of
+The monitor-owned file-history index (`server/repository/file-change-index.mjs`) is a derivative of
 committed file-change evidence plus Git state acquired asynchronously outside S Serving.
 It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
 written since the last cycle. Bound Codex paths use their own normalized per-call
@@ -2645,7 +2645,7 @@ repository ID; the index never reinterprets them through the session cwd. Every 
 entry — including every Claude entry, since Claude has no per-call binding — is attributed
 only through the session's own recorded identity (`session.repositoryAttribution`/
 `repositoryId`, the same provider-neutral rule for every provider; see
-`monitor/session-identity.mjs`): when that identity is a proven single repository, the
+`server/normalize/session-identity.mjs`): when that identity is a proven single repository, the
 path is rebased from the recorded working directory onto the private Git root and
 revalidated, and a working directory that resolves to another repository supplies no
 root; `launch` evidence (above) resolves its repository from the launch cwd as
@@ -2676,7 +2676,7 @@ weaken last-known-good retention. Git can establish repository-scoped path and f
 identity continuity in the index's file-path records; it cannot establish which session,
 agent, or request made a change or add a session-level file-change count.
 
-The `file-history-domain` source (`monitor/file-history-domain.mjs`) serves the index. It
+The `file-history-domain` source (`server/repository/file-history-domain.mjs`) serves the index. It
 registers after the file-change-index contributor, so each cycle groups already-committed
 rows, and reports `rebuildComplete: true` because it is a derived cache, never a rebuild
 target. Per cycle it builds at most 32 demanded sessions' touched-file summaries (at most
@@ -2728,7 +2728,7 @@ with no checkpoint for more than 24 hours; a sidecar recorded before its session
 checkpoint write is kept. Historical serving prefers the recorded snapshot and otherwise
 keeps the branch-only recorded state, itself shown only when the session's own recorded
 identity resolved a proven single repository (`session.repositoryAttribution`/
-`repositoryId`, the same rule for every provider; see `monitor/session-identity.mjs`), or
+`repositoryId`, the same rule for every provider; see `server/normalize/session-identity.mjs`), or
 when the evidence carries the `launch` attribution.
 GETs never inspect Git or GitHub, and a recorded snapshot is never refreshed from them. The no-snapshot fallback leaves pull requests
 unavailable rather than asking through the current checkout. Nothing
@@ -2778,7 +2778,7 @@ Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never u
 history described in the approved persistence contract above; `files`, `file_paths`, and
 `file_changes` are populated by the file-change index, and `resource_minutes`,
 `resource_peaks`, and `resource_peak_samples` by the resource-history contributor
-(`monitor/resource-history.mjs`). The database path and any raw SQLite error text never appear in browser state,
+(`server/resources/resource-history.mjs`). The database path and any raw SQLite error text never appear in browser state,
 logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.
 
 The store is a rebuildable index, never a migration target. It rebuilds (recreating an

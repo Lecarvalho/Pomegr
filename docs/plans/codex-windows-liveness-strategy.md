@@ -6,7 +6,7 @@
 
 ## Implementation status
 
-Implemented by `POMEGR-CX-14` in `monitor/providers/codex-liveness.mjs`, `scripts/codex-lifecycle-bridge.mjs`, and `scripts/codex-lifecycle-owner.mjs`. The Codex adapter applies the source priority below to current views, retains the normalized evidence source and observation timestamp, and strips all current liveness evidence from historical reads.
+Implemented by `POMEGR-CX-14` in `server/providers/codex/liveness.mjs`, `scripts/codex-lifecycle-bridge.mjs`, and `scripts/codex-lifecycle-owner.mjs`. The Codex adapter applies the source priority below to current views, retains the normalized evidence source and observation timestamp, and strips all current liveness evidence from historical reads.
 
 ## Context
 

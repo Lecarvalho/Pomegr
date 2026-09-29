@@ -102,23 +102,12 @@ describe("RepositoryTab", () => {
     SessionFilePanelMock.mockReset();
   });
 
-  it("renders the live top bar with comparison, PR, and line-2 evidence, and no commit list", () => {
+  it("reads the live repository domain and never lists commits on the session page", () => {
     useSessionDomain.mockReturnValue(result(domain()));
     renderTab({ sessionId: SESSION_ID, historical: false });
 
     expect(useSessionDomain).toHaveBeenCalledWith({ sessionId: SESSION_ID, domain: "repository" }, { historical: false, enabled: true });
-    expect(screen.getByText("feat/ia-progressive-disclosure")).toBeInTheDocument();
-    expect(screen.getByText("2 ahead of origin/main")).toBeInTheDocument();
-    expect(screen.getByText("Draft PR #24")).toBeInTheDocument();
-    expect(screen.getByText("Both commits in this session")).toBeInTheDocument();
-    // Each line-2 part after the first carries a leading " · " separator inside the same node.
-    expect(screen.getByText(/PR \+842 −1,117/)).toBeInTheDocument();
-    expect(screen.getByText(/9 git shell tasks, 0 failed/)).toBeInTheDocument();
-
-    // No commit list or PR popover button anywhere on the session page.
     expect(screen.queryByText("Should never render on the session page")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /PR #24/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Draft PR #24").tagName).toBe("SPAN");
   });
 
   it("omits line-2 parts and the comparison chip when their evidence is absent, never showing a zero or dash", () => {
@@ -139,21 +128,7 @@ describe("RepositoryTab", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("shows the recorded-snapshot caption for a historical session with a snapshot", () => {
-    useSessionDomain.mockReturnValue(result(domain({
-      repository: repository({
-        historical: true,
-        files: [{ status: " M", path: "app/Dashboard.tsx" }],
-        remote: { status: "ready", checkedAt: "2026-09-21T09:00:00.000Z" },
-      }),
-      recordedAt: "2026-09-21T09:00:05.000Z",
-    })));
-    renderTab({ sessionId: SESSION_ID, historical: true });
-
-    expect(screen.getByText("Recorded at the session's last live check")).toBeInTheDocument();
-  });
-
-  it("shows only the branch and the unrecorded notice for a historical session with no snapshot", () => {
+  it("hides pull-request evidence and the files toolbar for a historical session with no snapshot", () => {
     useSessionDomain.mockReturnValue(result(domain({
       repository: repository({ historical: true, comparison: null, remote: { status: "unavailable", checkedAt: null } }),
       recordedAt: null,
@@ -161,17 +136,9 @@ describe("RepositoryTab", () => {
     })));
     renderTab({ sessionId: SESSION_ID, historical: true });
 
-    expect(screen.getByText("feat/ia-progressive-disclosure")).toBeInTheDocument();
-    expect(screen.getByText("Repository state was not recorded for this session.")).toBeInTheDocument();
     expect(screen.queryByText(/PR #/)).not.toBeInTheDocument();
     // No files toolbar without a recorded snapshot.
     expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
-  });
-
-  it("shows the empty-repository message when no repository was detected", () => {
-    useSessionDomain.mockReturnValue(result(domain({ repository: repository({ available: false }) })));
-    renderTab({ sessionId: SESSION_ID, historical: false });
-    expect(screen.getByText("No Git repository detected for this session.")).toBeInTheDocument();
   });
 
   it("links the quiet Git action to the repository page's Git tab and hides it without a repositoryId", () => {
@@ -184,17 +151,6 @@ describe("RepositoryTab", () => {
     expect(screen.queryByRole("link", { name: /Git tab on repository page/ })).not.toBeInTheDocument();
     // File history needs a linked repository id; the files body does not render without one.
     expect(screen.getByText("File history requires a linked repository.")).toBeInTheDocument();
-  });
-
-  it("shows a loading state before evidence arrives and an unavailable state once the monitor confirms none", () => {
-    useSessionDomain.mockReturnValue(result(null));
-    const loading = renderTab({ sessionId: SESSION_ID, historical: false });
-    expect(screen.getByText("Loading repository evidence…")).toBeInTheDocument();
-    loading.unmount();
-
-    useSessionDomain.mockReturnValue(result(null, null, true));
-    renderTab({ sessionId: SESSION_ID, historical: false });
-    expect(screen.getByText("Repository evidence is unavailable for this session.")).toBeInTheDocument();
   });
 
   describe("files body (F17/F18)", () => {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readCodexWriterLock, queryCodexWriterOwners } from "../../monitor/providers/codex-writer-presence.mjs";
+import { readCodexWriterLock, queryCodexWriterOwners } from "../../server/providers/codex/writer-presence.mjs";
 
 // Acceptance-only facade over the production read-only acquisition primitives.
 // Return bounded proof fields; no native paths, PIDs or start identities.

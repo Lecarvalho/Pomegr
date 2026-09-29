@@ -19,8 +19,8 @@ import {
   installRendererFailureHandler,
   startOptionalDesktopIntegration,
 } from "../desktop/native-security.mjs";
-import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
-import { PROVIDER_OBSERVATION_API_KEYS } from "../monitor/providers/provider-contract.mjs";
+import { createDefaultProviderRegistry } from "../server/providers/index.mjs";
+import { PROVIDER_OBSERVATION_API_KEYS } from "../server/providers/provider-contract.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import { installLocalRequestGate, startWebServer } from "../web/server.mjs";
 import { PRIVATE_FIXTURE_SENTINELS } from "./helpers/provider-fixtures.mjs";

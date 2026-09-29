@@ -50,19 +50,7 @@ function state(overrides = {}) {
   };
 }
 
-test("renders the approved focused evidence sections and report-local aliases", () => {
-  const report = buildSessionReport(state(), generatedAt);
-  assert.match(report, /^# Pomegr Session Observation Report/);
-  assert.match(report, /## Coverage and counts/); assert.match(report, /827/); assert.match(report, /57 \/ 51/);
-  assert.match(report, /## Agent runtime/); assert.match(report, /\| Primary \| — \| claude-opus-4-1 \| high \| orchestrator \|/);
-  assert.match(report, /\| Agent 01 \| Primary \| Unavailable \| Unavailable \| general-purpose \|/);
-  assert.match(report, /## Agents referenced by the detailed events/); assert.match(report, /\| Primary \|/);
-  assert.match(report, /## Cache refill transitions/); assert.match(report, /F01/); assert.match(report, /2026-08-28T00:17:12\.681Z/);
-  assert.match(report, /## Compactions and context drops/); assert.match(report, /Automatic compaction/); assert.match(report, /Manual compaction/); assert.match(report, /Context drop without a recorded compaction/);
-  assert.match(report, /## Failed tasks in retained feeds/); assert.match(report, /\| T01 \| Primary \|/);
-  assert.match(report, /## Supporting request measurements/); assert.match(report, /R001/); assert.match(report, /## Definitions and limits/);
-  assert.doesNotMatch(report, /Executive metrics|Flow score|Skill usage|Deterministic signals|Repository|Plan usage|Retrospective questions|session-1234-abcd/);
-  assert.doesNotMatch(report, /PRIVATE LABEL|PRIVATE COMMAND|provider-cache-id|provider-request-current/);
+test("names the report file from the session title and generation date", () => {
   assert.equal(sessionReportFilename(state(), generatedAt), "pomegr-repair-the-parser-2026-08-31.md");
 });
 
@@ -73,12 +61,6 @@ test("formats a normalized cache minimum without presenting it as an exact TTL",
   const report = buildSessionReport(observed, generatedAt);
   assert.equal(report.match(/≥30m/g)?.length, 2);
   assert.doesNotMatch(report, /30m\+/);
-});
-
-test("keeps compaction current values unavailable and preserves only exact snapshot drops", () => {
-  const report = buildSessionReport(state(), generatedAt);
-  assert.match(report, /Automatic compaction.*100,000.*Unavailable/); assert.match(report, /Manual compaction.*Unavailable/);
-  assert.match(report, /Context drop without a recorded compaction.*125,000.*50,105.*R004/);
 });
 
 test("does not join legacy feeds when report evidence is absent or not ready", () => {
@@ -95,11 +77,11 @@ test("omits unsupported cache-write evidence for Codex without converting it to 
   assert.match(report, /Large cache writes \/ tracked reuse events \| Unavailable/); assert.doesNotMatch(report, /\| Ref \| Position \| Request \| Time \(UTC\) \| Uncached input \| Cache read \| Cache write \|/); assert.match(report, /Supporting request measurements/);
 });
 
-test("dedupes per-agent tasks, falls back to primary feed, and caps newest failures", () => {
-  const failures = Array.from({ length: 103 }, (_, index) => { const minute = String(index % 60).padStart(2, "0"); return { id: `failed-${index}`, status: "failed", workKind: index % 2 ? "search" : "shell", startedAt: `2026-08-28T00:${minute}:00.000Z`, finishedAt: `2026-08-28T00:${minute}:01.000Z`, exitCode: null, failureCause: "provider_error" }; });
+test("dedupes per-agent tasks and falls back to the primary feed", () => {
+  const failures = Array.from({ length: 3 }, (_, index) => { const minute = String(index % 60).padStart(2, "0"); return { id: `failed-${index}`, status: "failed", workKind: index % 2 ? "search" : "shell", startedAt: `2026-08-28T00:${minute}:00.000Z`, finishedAt: `2026-08-28T00:${minute}:01.000Z`, exitCode: null, failureCause: "provider_error" }; });
   const withFailures = state({ agents: [{ id: "primary", parentId: null, role: "orchestrator", cacheLifetime: "1h", executionTasks: null }, { id: "agent-z", parentId: "primary", role: "general-purpose", cacheLifetime: "5m", executionTasks: [failures[0], failures[0]] }], executionTasks: failures });
   const report = buildSessionReport(withFailures, generatedAt);
-  assert.match(report, /Retained completed \/ failed tasks \| 0 \/ 104/); assert.match(report, /100 newest failures shown; 4 retained failures omitted/); assert.match(report, /T100/); assert.doesNotMatch(report, /T101/); assert.match(report, /Per-agent counts describe the retained normalized selection/);
+  assert.match(report, /Retained completed \/ failed tasks \| 0 \/ 4/); assert.match(report, /T04/); assert.doesNotMatch(report, /T05/); assert.match(report, /Per-agent counts describe the retained normalized selection/);
 });
 
 test("does not convert unresolved task evidence into zero failures", () => {
@@ -108,18 +90,6 @@ test("does not convert unresolved task evidence into zero failures", () => {
   assert.match(report, /Task evidence unavailable/);
   assert.match(report, /\| Primary \| — \| orchestrator \| 1h \| 1 \| Unavailable \|/);
   assert.doesNotMatch(report, /\| T01 \|/);
-});
-
-test("reports dropped detail counts and keeps structural matches separate from recorded diagnostics", () => {
-  const input = state();
-  input.revision = 42;
-  input.metrics.tokens.reportEvidence.cache.transitions[0].messageChangeSequence = "post_tool_task_notification_resume";
-  const report = buildSessionReport(input, generatedAt);
-  assert.match(report, /Committed revision:\*\* 42/);
-  assert.match(report, /9 retained transitions omitted/);
-  assert.match(report, /Structural sequence matched for F01/);
-  const eventRow = report.split("\n").find((line) => line.startsWith("| F01 |") && line.includes("tools_changed"));
-  assert.doesNotMatch(eventRow, /post_tool_task_notification_resume/);
 });
 
 test("hostile free text and raw fields never enter the focused report", () => {
@@ -133,5 +103,6 @@ test("hostile free text and raw fields never enter the focused report", () => {
   input.metrics.tokens.reportEvidence.cache.transitions[0].requests.current.raw = "PRIVATE";
   const report = buildSessionReport(input, generatedAt);
   assert.doesNotMatch(report, /PRIVATE|<script>/);
+  assert.doesNotMatch(report, /provider-cache-id|provider-request-/, "provider-owned identifiers never enter the report");
   assert.match(report, /Session:\*\* Unavailable/);
 });

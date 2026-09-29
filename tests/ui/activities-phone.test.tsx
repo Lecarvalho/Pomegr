@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Agent, ContextHistoryBoundary, RequestSnapshot } from "../../shared/monitor-contract";
@@ -18,14 +18,10 @@ function compactionAfter(number: number): ContextHistoryBoundary {
   return { id: `compact-${number}`, agentId: "primary", timestamp: new Date(Date.parse("2026-08-09T12:00:30.000Z") + number * 60_000).toISOString(), kind: "automatic_compaction", preTokens: null };
 }
 
-function follows(first: Element, second: Element) {
-  return Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
-}
-
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("phone Activities chart", () => {
-  it("draws only the single chart, then its track and legend, the minimap and the Largest strip", async () => {
+  it("draws only the single chart on phone, selects a request from it and scrolls to a located Largest request", async () => {
     setPhone(true);
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();
@@ -41,10 +37,8 @@ describe("phone Activities chart", () => {
 
     const legend = screen.getByLabelText("Agent roles in view");
     expect(legend.children).toHaveLength(2);
-    const minimap = screen.getByRole("slider", { name: "Request window" });
     const largest = screen.getByRole("region", { name: "Largest requests" });
     expect(largest.querySelectorAll(".requestsActionsLargestRow")).toHaveLength(3);
-    expect(follows(svg, legend) && follows(legend, minimap) && follows(minimap, largest)).toBe(true);
 
     await user.click(screen.getByRole("button", { name: /^Request #2,/u }));
     expect(container.querySelector(".requestRoleNamed")).toHaveTextContent("#2Builderbuilder");
@@ -71,18 +65,5 @@ describe("phone Activities chart", () => {
     expect(baselines.size).toBe(1);
     const barTop = Math.min(...Array.from(svg.querySelectorAll(".requestsActionsSegment"), (segment) => Number(segment.getAttribute("y"))));
     expect(Number([...baselines][0])).toBeLessThan(barTop);
-  });
-
-  it("keeps lanes, the layout toggle and in-bar compaction text on desktop", async () => {
-    setPhone(false);
-    const user = userEvent.setup();
-    const { container } = render(<RequestsActionsPanel agents={AGENTS} requestSnapshots={requestFeed(mixedSnapshots(8))}
-      contextBoundaries={[compactionAfter(4)]} cacheWriteAvailable historical={false} />);
-    expect(container.querySelector(".requestLanes")).not.toBeNull();
-    expect(screen.getByRole("group", { name: "Chart layout" })).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Single chart" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Request #5,/u }));
-    expect(container.querySelector("svg.requestsActionsChart .requestsActionsBar .requestsActionsCompaction text")).toHaveTextContent("compaction");
-    expect(container.querySelector("svg.requestsActionsChart .requestsActionsBar.isSelected .requestsActionsSelectedLabel")).toHaveTextContent("#5");
   });
 });

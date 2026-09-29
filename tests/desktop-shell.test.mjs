@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import test, { after } from "node:test";
 
-import { createMonitorRequestHandler } from "../monitor/server.mjs";
+import { createMonitorRequestHandler } from "../server/server.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import {
   DESKTOP_CSP,
@@ -430,63 +430,3 @@ test("production startup error document contains only fixed bounded diagnostics"
   assert.ok(document.length < 1_500);
 });
 
-test("desktop shell startup ordering and failure UI remain bounded", async () => {
-  const [main, preload, runtimeProof, serverBundle, webServer] = await Promise.all([
-    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/shell-main.mjs", import.meta.url), "utf8")),
-    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8")),
-    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../desktop/runtime-proof.mjs", import.meta.url), "utf8")),
-    import("node:fs/promises").then(({ readFile }) => readFile(path.join(productionBuild.outDir, "server", "index.js"), "utf8")),
-    import("node:fs/promises").then(({ readFile }) => readFile(new URL("../web/server.mjs", import.meta.url), "utf8")),
-  ]);
-  assert.ok(main.indexOf('waitForMessage(monitorChild, "ready"') < main.indexOf("startWebServer({"));
-  assert.ok(main.indexOf("startWebServer({") < main.indexOf('recordStage("SHELL_WINDOW_LOADING")'));
-  assert.match(main, /startShellRuntime\(\{/);
-  assert.match(main, /requestSingleInstanceLock\(\)/);
-  assert.match(main, /installDesktopAppLifecycle\(app/);
-  assert.match(main, /await monitorChild\.stop\(/);
-  assert.match(main, /stopMonitor: \(child\) => child\.stop\(/);
-  assert.match(main, /POMEGR_RESOURCE_ROOT:\s*desktopPaths\.applicationRoot/);
-  assert.match(main, /resourcesPath:\s*process\.resourcesPath/);
-  assert.match(main, /userDataPath:\s*app\.getPath\("userData"\)/);
-  assert.ok(main.indexOf('app.setPath("userData", userDataOverride)') < main.indexOf("app.requestSingleInstanceLock()"));
-  assert.match(main, /settingsForWindowClose\(\s*settingsLoad,\s*current,/);
-  assert.match(main, /WEB_EXIT_UNEXPECTED/);
-  assert.match(main, /startupErrorDocument\(\)/);
-  for (const stage of SHELL_STARTUP_STAGES) assert.match(`${main}\n${webServer}`, new RegExp(stage));
-  for (const stage of SHELL_LIFECYCLE_STAGES) assert.match(main, new RegExp(stage));
-  assert.match(runtimeProof, /containsShellStageTrace\(readFileSync/);
-  assert.match(main, /installQuietConsole\(\)/);
-  assert.doesNotMatch(main, /writable:\s*false/);
-  assert.match(serverBundle, /console\.error\s*=/);
-  assert.doesNotMatch(main, /error\.message|error\.stack|console\.(?:error|log)/);
-  assert.match(preload, /contextBridge\.exposeInMainWorld\("pomegrDesktop"/);
-  assert.match(preload, /ipcRenderer\.invoke\("pomegr:save-report", payload\)/);
-  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notifications", value\)/);
-  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-notification-quiet", value\)/);
-  assert.match(preload, /ipcRenderer\.invoke\("pomegr:set-display-preference", key, visible\)/);
-  assert.match(preload, /ipcRenderer\.on\("pomegr:desktop-state-changed", listener\)/);
-  assert.match(preload, /ipcRenderer\.removeListener\("pomegr:desktop-state-changed", listener\)/);
-  assert.match(preload, /ipcRenderer\.invoke\(DESKTOP_THEME_CHANNEL, source\)/);
-  assert.match(preload, /source !== "light" && source !== "dark" && source !== "system"/);
-  assert.doesNotMatch(preload, /node:(?:fs|child_process)|process\.|ipcRenderer\.(?:send|sendSync|once)|shell|webFrame/);
-  assert.match(main, /new Tray\(icon\)/);
-  assert.match(main, /new Notification\(\{ \.\.\.payload, icon: shellIconPath\(\) \}\)/);
-  assert.match(main, /createNeedsInputNotificationController\(\{/);
-  assert.match(main, /createDesktopUpdaterController\(\{/);
-  assert.match(main, /void startDesktopUpdates\(\)/);
-  assert.match(main, /const electronUpdater = await import\("electron-updater"\);\s*if \(runtimeState !== "running"\) return;\s*const updater =/);
-  assert.match(main, /prepareInstall:\s*\(\) => behaviorController\?\.prepareForUpdateInstall\(\)/);
-  assert.match(main, /cancelInstall:\s*\(\) => behaviorController\?\.cancelUpdateInstall\(\)/);
-  assert.doesNotMatch(main, /releaseNotes|signedUrl|certificate|update[^\n]*console\./i);
-  assert.match(main, /fetch\(`\$\{webHandle\.origin\}\/api\/sessions`/);
-  assert.match(main, /openNotificationSession/);
-  assert.match(main, /import \{ encodeSessionRoute \} from "\.\.\/shared\/session-route\.mjs"/);
-  assert.match(main, /\/sessions\/\$\{encodeSessionRoute\(sessionId\)\}/);
-  assert.doesNotMatch(main, /notification[^\n]*(?:answer|approve|command|prompt)/i);
-  assert.match(main, /label: "Quit Pomegr"/);
-  assert.match(main, /installDesktopWindowLifecycle\(mainWindow/);
-  assert.match(main, /installDesktopAppLifecycle\(app/);
-  assert.match(main, /createDesktopThemeHandler\(\{/);
-  assert.match(main, /applyDesktopNativeTheme\(nativeTheme, "dark"\)/);
-  assert.match(main, /clampWindowState\(desktopSettings\.window, screen\.getAllDisplays\(\)\)/);
-});

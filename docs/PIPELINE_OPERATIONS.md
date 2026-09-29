@@ -109,7 +109,7 @@ Use focused checks after changing diagnostics:
 
 ```powershell
 npm run test:diagnostics
-node --test tests/provider-observation.test.mjs tests/session-observation-coordinator.test.mjs
+node --test tests/server/providers/provider-observation.test.mjs tests/server/runtime/session-observation-coordinator.test.mjs
 npm run check:architecture
 npm run check:boundaries
 ```

@@ -147,7 +147,7 @@ Make the monitor and production web application startable and stoppable programm
 
 ### Work
 
-- Refactor `monitor/server.mjs` so startup accepts explicit host and port inputs and returns a handle containing the actual bound address and an idempotent async close method.
+- Refactor `server/server.mjs` so startup accepts explicit host and port inputs and returns a handle containing the actual bound address and an idempotent async close method.
 - Preserve direct `npm run monitor` behavior through a thin executable entry point.
 - Add a production web-server entry point that can be started with an explicit loopback host, dynamic port, and monitor origin.
 - Remove production-runtime assumptions about repository current working directory.

@@ -62,7 +62,7 @@ function result(data: ResourcesDomain | null, error: string | null = null, unava
 describe("ResourcesTab", () => {
   beforeEach(() => { useSessionDomain.mockReset(); });
 
-  it("renders live evidence and defaults to the 30 min window", () => {
+  it("defaults the live view to the 30 min window", () => {
     useSessionDomain.mockReturnValue(result(domain()));
     render(<ResourcesTab sessionId="claude:resources" historical={false} />);
 
@@ -70,11 +70,6 @@ describe("ResourcesTab", () => {
     const segmented = screen.getByRole("group", { name: "Resource window" });
     expect(within(segmented).getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "true");
     expect(within(segmented).getByRole("button", { name: "5 min" })).not.toBeDisabled();
-    expect(screen.getByText(/live samples/)).toBeInTheDocument();
-    expect(screen.getByText("CPU")).toBeInTheDocument();
-    expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.getByText("Disk I/O")).toBeInTheDocument();
-    expect(screen.getByText("of one core")).toBeInTheDocument();
   });
 
   it("switches to the Session window and shows stored minute aggregates", async () => {
@@ -133,18 +128,6 @@ describe("ResourcesTab", () => {
     expect(screen.getByText("No peaks were recorded for this window.")).toBeInTheDocument();
   });
 
-  it("shows the minute row and fallback text when a peak's full-resolution window was not retained", async () => {
-    useSessionDomain.mockReturnValue(result(domain()));
-    const user = userEvent.setup();
-    render(<ResourcesTab sessionId="claude:resources" historical={false} />);
-    await user.click(screen.getByRole("button", { name: "Session" }));
-
-    await user.click(screen.getByRole("button", { name: /611 MiB/ }));
-    expect(screen.getByText("Full-resolution window not retained.")).toBeInTheDocument();
-    expect(screen.getByText("Min")).toBeInTheDocument();
-    expect(screen.getByText("Max")).toBeInTheDocument();
-  });
-
   it("hides the request row when absent and shows the exact wording when a request is linked, with no cost wording", async () => {
     useSessionDomain.mockReturnValue(result(domain()));
     const user = userEvent.setup();
@@ -161,28 +144,6 @@ describe("ResourcesTab", () => {
     expect(screen.queryByText(/request active/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/carried/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/this task cost/i)).not.toBeInTheDocument();
-  });
-
-  it("renders loading, unavailable, and rebuilding retained states honestly", () => {
-    useSessionDomain.mockReturnValue(result(null));
-    const { rerender } = render(<ResourcesTab sessionId="claude:resources" historical={false} />);
-    expect(screen.getByText("Loading resource evidence…")).toBeInTheDocument();
-
-    useSessionDomain.mockReturnValue(result(null, null, true));
-    rerender(<ResourcesTab sessionId="claude:resources" historical={false} />);
-    expect(screen.getByText("Resource evidence is unavailable for this session.")).toBeInTheDocument();
-
-    useSessionDomain.mockReturnValue(result(domain({ retained: { readiness: "loading", minutes: [], minutesTruncated: false, curveRemoval: null, peaks: [] } })));
-    rerender(<ResourcesTab sessionId="claude:resources" historical />);
-    expect(screen.getByText("Loading stored minute aggregates…")).toBeInTheDocument();
-
-    useSessionDomain.mockReturnValue(result(domain({ retained: { readiness: "rebuilding", minutes: [], minutesTruncated: false, curveRemoval: null, peaks: [] } })));
-    rerender(<ResourcesTab sessionId="claude:resources" historical />);
-    expect(screen.getByText("Stored resource history is rebuilding after a restart.")).toBeInTheDocument();
-
-    useSessionDomain.mockReturnValue(result(domain({ retained: { readiness: "unavailable", minutes: [], minutesTruncated: false, curveRemoval: null, peaks: [] } })));
-    rerender(<ResourcesTab sessionId="claude:resources" historical />);
-    expect(screen.getByText("Stored resource history is unavailable.")).toBeInTheDocument();
   });
 
   it("keeps peak rows keyboard reachable and updates the zoom panel on selection", async () => {

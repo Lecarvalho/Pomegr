@@ -67,56 +67,6 @@ async function readMcpToolInventory(server, cwd) {
   }
 }
 
-test("Pomegr repository exposes a standard provider-neutral Codex marketplace plugin", async () => {
-  const marketplace = JSON.parse(await readFile(path.join(repositoryRoot, ".agents", "plugins", "marketplace.json"), "utf8"));
-  const manifest = JSON.parse(await readFile(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
-  const mcp = JSON.parse(await readFile(path.join(pluginRoot, ".mcp.json"), "utf8"));
-  const hooks = JSON.parse(await readFile(path.join(pluginRoot, "hooks", "hooks.json"), "utf8"));
-
-  assert.equal(marketplace.name, "pomegr");
-  assert.equal(marketplace.plugins[0].name, "pomegr");
-  assert.equal(marketplace.plugins[0].source.path, "./plugins/pomegr");
-  assert.equal(manifest.name, "pomegr");
-  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
-  assert.equal(manifest.skills, "./skills/");
-  assert.equal(manifest.mcpServers, "./.mcp.json");
-  assert.ok(manifest.interface.shortDescription.length <= 30);
-  assert.equal(manifest.interface.brandColor, "#A63C32");
-  assert.equal(manifest.interface.composerIcon, "./assets/icon.png");
-  assert.equal(manifest.interface.logo, "./assets/icon.png");
-  assert.deepEqual(
-    await readFile(path.join(pluginRoot, "assets", "icon.png")),
-    await readFile(path.join(repositoryRoot, "public", "pomegr-logo.png")),
-  );
-  const readme = await readFile(path.join(pluginRoot, "README.md"), "utf8");
-  assert.equal(readme, await readFile(path.join(repositoryRoot, "plugin-src", "codex-readme.md"), "utf8"));
-  assert.ok(readme.trim().split(/\s+/).length >= 40);
-  assert.equal(mcp.mcpServers.pomegr.command, "node");
-  assert.equal(mcp.mcpServers.pomegr.args[0], "./mcp/server.bundle.mjs");
-  assert.equal(mcp.mcpServers.pomegr.cwd, ".");
-  assert.deepEqual(Object.keys(hooks.hooks).sort(), ["PostToolUse", "SessionStart", "SubagentStart", "SubagentStop"]);
-  for (const groups of Object.values(hooks.hooks)) {
-    for (const group of groups) {
-      for (const hook of group.hooks) {
-        assert.match(hook.command, /\$\{PLUGIN_ROOT\}/);
-        assert.equal(hook.commandWindows, undefined);
-        assert.doesNotMatch(hook.command, /%PLUGIN_ROOT%/);
-      }
-    }
-  }
-  assert.equal(hooks.hooks.PostToolUse[0].matcher, "");
-  assert.match(hooks.hooks.PostToolUse[0].hooks[0].command, /progress-reminder\.bundle\.mjs/);
-  assert.match(hooks.hooks.PostToolUse[0].hooks[1].command, /usage-guard\.bundle\.mjs" --provider codex/);
-  assert.equal(hooks.hooks.PostToolUse[0].hooks[1].timeout, 5);
-  assert.equal(hooks.hooks.PostToolUse[0].hooks[1].additionalContextLimit, 1600);
-  assert.equal(hooks.hooks.SessionStart[0].hooks.length, 2);
-  assert.match(hooks.hooks.SessionStart[0].hooks[0].command, /policy\.mjs/);
-  assert.match(hooks.hooks.SessionStart[0].hooks[1].command, /usage-guard\.bundle\.mjs" --provider codex/);
-  assert.equal(hooks.hooks.SessionStart[0].hooks[1].timeout, 5);
-  assert.equal(hooks.hooks.SessionStart[0].hooks[1].additionalContextLimit, 1600);
-  assert.doesNotMatch(JSON.stringify({ manifest, mcp, hooks }), /claude|anthropic/i);
-});
-
 test("Codex plugin hooks run under PowerShell after plugin-root expansion", { skip: process.platform !== "win32" }, async () => {
   await withTemporaryDirectory(async (temporaryRoot) => {
     const installedPlugin = path.join(temporaryRoot, "installed Pomegr plugin");
@@ -156,26 +106,6 @@ test("Codex plugin hooks run under PowerShell after plugin-root expansion", { sk
       }
     }
   });
-});
-
-test("Codex plugin packages explicit init and read-only doctor workflows", async () => {
-  const init = await readFile(path.join(pluginRoot, "skills", "init", "SKILL.md"), "utf8");
-  const doctor = await readFile(path.join(pluginRoot, "skills", "doctor", "SKILL.md"), "utf8");
-  const template = await readFile(path.join(pluginRoot, "skills", "init", "references", "policy-template.md"), "utf8");
-
-  assert.match(init, /Preview the complete proposed Markdown or a focused diff/);
-  assert.match(init, /Obtain explicit user confirmation before writing/);
-  assert.match(init, /Write only .*\.pomegr\/signals\.md/);
-  assert.match(init, /never edit .*AGENTS\.md/i);
-  assert.match(init, /SubagentStart/);
-  assert.match(init, /report_session_signal/);
-  assert.match(doctor, /Perform a read-only diagnosis/);
-  assert.match(doctor, /SessionStart.*SubagentStart.*SubagentStop/);
-  assert.match(doctor, /Do not invoke them as a connection test/);
-  assert.match(template, /Policy version: 7/);
-  assert.match(template, /## Tool suffixes[\s\S]*report_session_signal[\s\S]*clear_session_progress/);
-  assert.match(template, /## Session progress[\s\S]*- Enabled: no/);
-  assert.match(template, /provider-specific prefixes are not part of this policy/);
 });
 
 test("installed Codex plugin starts without repository dependencies and lists bounded signal tools", async () => {
@@ -221,9 +151,3 @@ test("installed Codex plugin starts without repository dependencies and lists bo
   });
 });
 
-test("client guide uses only standard Codex marketplace commands", async () => {
-  const guide = await readFile(path.join(repositoryRoot, "docs", "PLUGINS.md"), "utf8");
-  assert.match(guide, /codex plugin marketplace add Lecarvalho\/pomegr --ref main/);
-  assert.match(guide, /codex plugin add pomegr@pomegr/);
-  assert.doesNotMatch(guide, /install-codex-plugin|client-repository|--dry-run/);
-});

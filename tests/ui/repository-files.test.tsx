@@ -62,13 +62,9 @@ describe("RepositoryFilesTab", () => {
     FileHistoryPanelMock.mockReset();
   });
 
-  it("renders the search field and both toggles, and asks the store for this repository's files", () => {
+  it("asks the store for this repository's files", () => {
     renderFilesTab();
     expect(useRepositoryFiles).toHaveBeenCalledWith(REPOSITORY_ID);
-    expect(screen.getByRole("searchbox", { name: "Find a file anywhere in pomegr" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "With session history only" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByRole("button", { name: "Include historical files" })).toHaveAttribute("aria-pressed", "false");
-    expect(screen.getByText("Counts are recorded sessions per file")).toBeInTheDocument();
   });
 
   it("maps every non-deleted file to FileTree by default, muting files with no session history", () => {

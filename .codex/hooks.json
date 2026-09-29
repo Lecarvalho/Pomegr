@@ -10,6 +10,12 @@
             "timeout": 5,
             "statusMessage": "Checking UI changes",
             "commandWindows": "if exist \".agents/skills/impeccable/scripts/hook.mjs\" (node \".agents/skills/impeccable/scripts/hook.mjs\" & exit /b)"
+          },
+          {
+            "type": "command",
+            "command": "node scripts/agent-edit-check.mjs",
+            "timeout": 60,
+            "statusMessage": "Checking dependency boundaries"
           }
         ]
       }

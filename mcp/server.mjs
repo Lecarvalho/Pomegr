@@ -21,7 +21,7 @@ import {
   SESSION_PROGRESS_CONFIDENCES,
   SESSION_SIGNAL_TONES,
   TASK_SIGNAL_TOOL,
-} from "../monitor/session-signals.mjs";
+} from "../server/normalize/session-signals.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "./agent-query-tools.mjs";
 import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../shared/agent-query-transport.mjs";
 

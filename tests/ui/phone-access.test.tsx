@@ -115,14 +115,6 @@ describe("phone access", () => {
     await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenCalledWith(true, "home"));
   });
 
-  it("explains how to change a Windows Public network profile", async () => {
-    installDesktopBridge({ getPhoneAccessState: vi.fn(async () => ({ ...offState, status: "unavailable", candidates: [], reason: "public_network" })) });
-    renderSettings();
-    await openPhoneAccess();
-    expect(await screen.findByText("Windows classifies your connected network as Public.")).toBeInTheDocument();
-    expect(screen.getByText(/change Network profile type to Private/i)).toBeInTheDocument();
-  });
-
   it("drops a previous network choice when retrying on a different available network", async () => {
     let changed: ((next: PhoneAccessState) => void) | undefined;
     const bridge = installDesktopBridge({

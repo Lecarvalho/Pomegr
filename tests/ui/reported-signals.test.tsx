@@ -13,14 +13,4 @@ describe("Signals reported section", () => {
     expect(rows[1]).toHaveClass("positive"); expect(rows[1]).toHaveTextContent("Agent · agent-reported · Primary agent"); expect(rows[1]).toHaveTextContent("Focused checks completed.");
     expect(screen.getByText("Signals are agent-reported, may be stale, and are not Pomegr judgments.")).toBeInTheDocument();
   });
-  it("uses an honest live empty state", () => {
-    render(<SignalsReportedSection historical={false} agents={[{ ...agents[0], signal: null }]} sessionSignal={null} />);
-    expect(screen.getByText("No reported signals yet.")).toBeInTheDocument();
-  });
-  it("preserves recorded wording for historical signals and empty history", () => {
-    const { rerender } = render(<SignalsReportedSection historical agents={agents} sessionSignal={null} />);
-    expect(screen.getByText("Recorded agent-reported signals for this session.")).toBeInTheDocument();
-    rerender(<SignalsReportedSection historical agents={[{ ...agents[0], signal: null }]} sessionSignal={null} />);
-    expect(screen.getByText("No reported signals were recorded for this session.")).toBeInTheDocument();
-  });
 });

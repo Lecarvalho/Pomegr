@@ -27,8 +27,8 @@ function Get-DevStopPlan {
   foreach ($entry in $Processes) {
     $entryId = [int]$entry.ProcessId
     if ($protected.Contains($entryId)) { continue }
-    $known = (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'monitor\dev-cli.mjs')) -or
-             (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'monitor\cli.mjs')) -or
+    $known = (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'server\dev-cli.mjs')) -or
+             (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'server\cli.mjs')) -or
       (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'scripts\run-vinext.mjs') 'dev') -or
       (Test-NodeEntrypoint $entry (Join-Path $RepositoryRoot 'node_modules\vinext\dist\cli.js') 'dev')
     if (-not $known) { continue }

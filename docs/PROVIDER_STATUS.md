@@ -20,7 +20,7 @@ are absent. It does not depend on the nonworking OpenAI Statuspage-style unresol
 incident endpoint or infer an active incident from historical RSS entries. Recognized
 structured incident data in the summary, when supplied, is filtered by affected component.
 
-Mappings live inside `monitor/providers/provider-service-status.mjs`. New or missing
+Mappings live inside `server/providers/kernel/provider-service-status.mjs`. New or missing
 component identities and unknown statuses cannot silently establish healthy service.
 Only active maintenance affects current health. Public status may cover a broader scope
 than one account or model, so notices describe reported service issues and possible
@@ -41,6 +41,6 @@ header, historical session evidence, quota errors, or exported session reports.
 Focused checks:
 
 ```powershell
-node --test tests/provider-service-status.test.mjs tests/provider-status-observation.test.mjs
+node --test tests/server/providers/kernel/provider-service-status.test.mjs tests/server/runtime/provider-status-observation.test.mjs
 npx vitest run tests/ui/provider-status-api.test.ts tests/ui/provider-status.test.tsx
 ```

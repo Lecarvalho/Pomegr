@@ -22,7 +22,7 @@ Before starting any task:
 
 ## Architectural direction
 
-- Keep `monitor/server.mjs` as the provider-neutral HTTP monitor and orchestrator.
+- Keep `server/server.mjs` as the provider-neutral HTTP monitor and orchestrator.
 - Move provider-specific discovery and parsing under `monitor/providers/`.
 - Prefer the documented Codex app-server contract for stable thread metadata and account rate limits.
 - Use Codex rollout JSONL only for persisted history or metadata that the read-only app-server surface does not provide reliably.
@@ -71,7 +71,7 @@ Before starting any task:
 ### Implementation notes
 
 - Added the typed provider boundary and sanitized evidence shapes in `monitor/providers/provider-contract.ts`.
-- Added deny-by-default capability validation, fixed provider provenance, and safe provider-qualified session ID helpers in `monitor/providers/provider-contract.mjs`.
+- Added deny-by-default capability validation, fixed provider provenance, and safe provider-qualified session ID helpers in `server/providers/provider-contract.mjs`.
 - Made empty monitor state provider-aware while preserving `Claude Code` as the existing default.
 - Added focused provider-contract tests and kept all current runtime behavior unchanged.
 
@@ -207,18 +207,18 @@ npm run test:node
 
 ### Implementation notes
 
-- Added the Claude provider adapter in `monitor/providers/claude.mjs`, with discovery, registry selection, transcript parsing, runtime metadata, tasks, cost, context machinery, summaries, approval mode, signals, compactions, and authenticated usage limits behind the provider boundary.
+- Added the Claude provider adapter in `server/providers/claude/index.mjs`, with discovery, registry selection, transcript parsing, runtime metadata, tasks, cost, context machinery, summaries, approval mode, signals, compactions, and authenticated usage limits behind the provider boundary.
 - Kept Git inspection, GitHub metadata lookup, context aggregation, activity grouping, scoring, and deterministic efficiency rules in the provider-neutral monitor orchestration.
 - Moved Claude transcript PR-result parsing into a provider helper and passed only canonical successful creation URLs to shared GitHub metadata lookup.
 - Added synthetic adapter regression/privacy tests and a source assertion that the monitor contains no Claude credential paths, Anthropic endpoints, or transcript schema checks.
 
 ### Goal
 
-Move Claude-specific discovery and parsing out of `monitor/server.mjs` without changing observable Claude behavior.
+Move Claude-specific discovery and parsing out of `server/server.mjs` without changing observable Claude behavior.
 
 ### Work
 
-- Create `monitor/providers/claude.mjs` and provider-focused helpers where useful.
+- Create `server/providers/claude/index.mjs` and provider-focused helpers where useful.
 - Move Claude roots, environment overrides, registry access, transcript discovery, record decoding, title extraction, runtime metadata, task-store access, status-line cost, context machinery, summary, approval mode, and authenticated plan usage behind the adapter.
 - Keep Git inspection, GitHub metadata lookup, HTTP routing, caching orchestration, normalized metrics, and deterministic rule evaluation provider-neutral.
 - Preserve existing exported helper APIs until their tests are migrated intentionally.
@@ -227,7 +227,7 @@ Move Claude-specific discovery and parsing out of `monitor/server.mjs` without c
 ### Acceptance criteria
 
 - Claude session catalog, live selection, history, agents, metrics, usage limits, signals, Git, and reports remain unchanged.
-- `monitor/server.mjs` no longer contains Claude credential paths, Anthropic URLs, or Claude transcript schema checks.
+- `server/server.mjs` no longer contains Claude credential paths, Anthropic URLs, or Claude transcript schema checks.
 - Provider failures still degrade independently.
 
 ### Verification
@@ -305,7 +305,7 @@ List Codex sessions and load a selected persisted session without yet deriving f
 
 ### Work
 
-- Create `monitor/providers/codex.mjs` plus focused parser helpers.
+- Create `server/providers/codex/index.mjs` plus focused parser helpers.
 - Discover Codex home from supported configuration/environment rules.
 - Prefer documented app-server `thread/list`/`thread/read` metadata where practical; use `session_index.jsonl` and rollout headers as bounded fallbacks.
 - Use only safe title sources such as the explicit thread name. Never expose the app-server `preview`, because it may be the first user prompt.
@@ -322,7 +322,7 @@ List Codex sessions and load a selected persisted session without yet deriving f
 ### Verification
 
 ```powershell
-node --test tests/codex-session-discovery.test.mjs tests/session-registry.test.mjs
+node --test tests/server/providers/codex/session-discovery.test.mjs tests/server/normalize/session-registry.test.mjs
 npm run build
 ```
 
@@ -364,7 +364,7 @@ Build the normalized primary-agent and subagent tree for Codex sessions.
 ### Verification
 
 ```powershell
-node --test tests/codex-agent-metadata.test.mjs tests/agent-metadata.test.mjs
+node --test tests/server/providers/codex/agent-metadata.test.mjs tests/server/normalize/agent-metadata.test.mjs
 npm run build
 ```
 
@@ -406,7 +406,7 @@ Convert Codex canonical items and rollout calls into Pomegr's safe activity and 
 ### Verification
 
 ```powershell
-node --test tests/codex-activity-events.test.mjs tests/activity-events.test.mjs tests/tool-efficiency.test.mjs
+node --test tests/server/providers/codex/activity-events.test.mjs tests/server/normalize/activity-events.test.mjs tests/server/normalize/tool-efficiency.test.mjs
 npm run build
 ```
 
@@ -447,7 +447,7 @@ Represent Codex command executions using the existing safe execution-task contra
 ### Verification
 
 ```powershell
-node --test tests/codex-execution-tasks.test.mjs tests/execution-tasks.test.mjs
+node --test tests/server/providers/codex/execution-tasks.test.mjs tests/server/normalize/execution-tasks.test.mjs
 npm run build
 ```
 
@@ -490,7 +490,7 @@ Map Codex token-count events to Pomegr's latest-context metric without introduci
 ### Verification
 
 ```powershell
-node --test tests/codex-context.test.mjs tests/context-growth-timeline.test.mjs tests/efficiency-signals.test.mjs
+node --test tests/server/providers/codex/context.test.mjs tests/server/context-growth-timeline.test.mjs tests/server/analytics/efficiency-signals.test.mjs
 npm run build
 ```
 
@@ -532,7 +532,7 @@ Expose bounded Codex approval-policy metadata and the latest structured plan whe
 ### Verification
 
 ```powershell
-node --test tests/codex-approval-mode.test.mjs tests/session-approval-mode.test.mjs tests/codex-plan-tasks.test.mjs tests/session-tasks.test.mjs
+node --test tests/server/providers/codex/approval-mode.test.mjs tests/server/normalize/session-approval-mode.test.mjs tests/server/providers/codex/plan-tasks.test.mjs tests/server/normalize/session-tasks.test.mjs
 npm run build
 npm run test:ui
 ```
@@ -576,7 +576,7 @@ Map Codex account rate-limit windows to Pomegr's provider-neutral usage-limit pa
 ### Verification
 
 ```powershell
-node --test tests/codex-usage-limits.test.mjs tests/usage-limits.test.mjs
+node --test tests/server/providers/codex/usage-limits.test.mjs tests/server/normalize/usage-limits.test.mjs
 npm run build
 ```
 
@@ -619,7 +619,7 @@ Feed normalized Codex events into the shared higher-level Pomegr features.
 ### Verification
 
 ```powershell
-node --test tests/codex-session-signals.test.mjs tests/session-signals.test.mjs tests/codex-skill-usage.test.mjs tests/skill-usage.test.mjs tests/pull-requests.test.mjs tests/efficiency-signals.test.mjs
+node --test tests/server/providers/codex/session-signals.test.mjs tests/server/normalize/session-signals.test.mjs tests/server/providers/codex/skill-usage.test.mjs tests/server/normalize/skill-usage.test.mjs tests/server/repository/pull-requests.test.mjs tests/server/analytics/efficiency-signals.test.mjs
 npm run build
 ```
 
@@ -664,7 +664,7 @@ Implement the liveness design chosen in `POMEGR-CX-02` and make automatic sessio
 ### Verification
 
 ```powershell
-node --test tests/codex-liveness.test.mjs tests/session-discovery.test.mjs tests/agent-metadata.test.mjs
+node --test tests/server/providers/codex/liveness.test.mjs tests/server/normalize/session-discovery.test.mjs tests/server/normalize/agent-metadata.test.mjs
 npm run build
 ```
 
@@ -808,7 +808,7 @@ Reference the current official OpenAI prompt-caching and data-retention document
 
 - Preserve enough bounded, chronological `last_token_usage` evidence to compare adjacent Codex requests for the same normalized agent without exposing `total_token_usage` or accumulating transcript throughput.
 - Add an explicit provider evidence capability for prompt-cache classification. Missing, malformed, synthetic, cumulative-only, or provider-unsupported usage must disable the rule.
-- Centralize the rule and its fixed thresholds in `monitor/efficiency-signals.mjs`. Start with conservative candidate boundaries and validate them against synthetic fixtures:
+- Centralize the rule and its fixed thresholds in `server/analytics/efficiency-signals.mjs`. Start with conservative candidate boundaries and validate them against synthetic fixtures:
   - current input context of at least 8,000 tokens;
   - previous cached-input share of at least 80 percent;
   - current cached-input share of at most 10 percent;
@@ -833,7 +833,7 @@ Reference the current official OpenAI prompt-caching and data-retention document
 ### Verification
 
 ```powershell
-node --test tests/codex-context.test.mjs tests/efficiency-signals.test.mjs tests/privacy.test.mjs
+node --test tests/server/providers/codex/context.test.mjs tests/server/analytics/efficiency-signals.test.mjs tests/privacy.test.mjs
 npm run build
 npm test
 ```
@@ -889,7 +889,7 @@ Show the latest bounded Codex activity summary for each agent in the existing ex
 ### Verification
 
 ```powershell
-node --test tests/codex-activity-events.test.mjs tests/codex-execution-tasks.test.mjs tests/api-serialization.test.mjs tests/privacy.test.mjs
+node --test tests/server/providers/codex/activity-events.test.mjs tests/server/providers/codex/execution-tasks.test.mjs tests/server/api-serialization.test.mjs tests/privacy.test.mjs
 npm run build
 npm test
 ```

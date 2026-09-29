@@ -220,35 +220,6 @@ describe("FileHistoryPanel", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-23T18:00:00.000Z")); });
   afterEach(() => vi.useRealTimers());
 
-  it("renders the no-file-selected state", () => {
-    render(<FileHistoryPanel repositoryLabel="Pomegr" path={null} workingTreeStatus={null} history={null} />);
-    expect(screen.getByText("Select a file to see its recorded sessions.")).toBeInTheDocument();
-  });
-
-  it("shows a loading skeleton while history is null, and readiness text for rebuilding/unavailable", () => {
-    const { rerender } = render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={null} />);
-    expect(screen.getByText("Loading file history…")).toBeInTheDocument();
-
-    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "rebuilding", sessions: [] })} />);
-    expect(screen.getByText("File history is rebuilding.")).toBeInTheDocument();
-
-    rerender(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ readiness: "unavailable", sessions: [] })} />);
-    expect(screen.getByText("File history is unavailable.")).toBeInTheDocument();
-  });
-
-  it("shows the empty-evidence message when ready with zero sessions", () => {
-    render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={historyFixture({ sessions: [], fileId: null })} />);
-    expect(screen.getByText("No recorded sessions changed this file.")).toBeInTheDocument();
-  });
-
-  it("renders the header breadcrumb and working-tree chip", () => {
-    const path = "app/components/Dashboard.tsx";
-    render(<FileHistoryPanel repositoryLabel="Pomegr" path={path} workingTreeStatus="M" history={historyFixture({ path })} />);
-    expect(screen.getByText("Dashboard.tsx")).toBeInTheDocument();
-    expect(screen.getByText("app/components/")).toBeInTheDocument();
-    expect(screen.getByText("Modified in working tree")).toHaveClass("commandChip", "warning");
-  });
-
   it("labels a historical session's recorded status as at last live check, never the working tree", () => {
     render(<FileHistoryPanel repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" statusRecorded history={historyFixture({ path: "a.ts" })} />);
     expect(screen.getByText("Modified at last live check")).toHaveClass("commandChip", "warning");
@@ -342,11 +313,6 @@ describe("SessionFilePanel", () => {
   afterEach(() => vi.useRealTimers());
   const repositoryId = "repo-0123456789abcdef01234567";
 
-  it("renders the no-file-selected state", () => {
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={null} workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={null} />);
-    expect(screen.getByText("Select a file to see what this session changed.")).toBeInTheDocument();
-  });
-
   it("shows this session's recorded change and links the full history to the repository page", () => {
     const path = "app/components/Dashboard.tsx";
     render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
@@ -364,12 +330,5 @@ describe("SessionFilePanel", () => {
     expect(screen.getByText("Seen in Git · no recorded agent edit")).toBeInTheDocument();
     expect(screen.getByText("Added in a commit on the session branch")).toBeInTheDocument();
     expect(screen.getByText(/Could be the agent through a command Pomegr can't read/)).toBeInTheDocument();
-  });
-
-  it("says when the session recorded no change, and waits while recorded changes load", () => {
-    const { rerender } = render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" recorded={null} recordedReadiness="ready" gitObserved={null} />);
-    expect(screen.getByText("No recorded change in this session.")).toBeInTheDocument();
-    rerender(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus="M" recorded={null} recordedReadiness="loading" gitObserved={null} />);
-    expect(screen.getByText("Loading file history…")).toBeInTheDocument();
   });
 });

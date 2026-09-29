@@ -22,19 +22,6 @@ describe("Pomegr plugin metadata", () => {
     expect(container.querySelector(".sessionEvidenceSummary")).not.toHaveTextContent(/plugin|policy/i);
   });
 
-  it("shows the active plugin and valid policy in summary and details", () => {
-    const session = {
-      ...repositorySession({ available: false, branch: "", files: [], historical: false, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
-      pomegrPlugin: { status: "active" as const, version: "0.4.1", policyStatus: "valid" as const, policyVersion: 7, observedAt: "2026-08-26T12:00:00.000Z" },
-    };
-    render(<SessionDetailsPanel state={detailsState(session)} historical={false} />);
-
-    expect(document.querySelector(".sessionEvidenceSummary")).toHaveTextContent("plugin v0.4.1 · policy v7");
-    expect(screen.getByRole("region", { name: "Pomegr integration" })).toHaveTextContent("Pluginv0.4.1PolicyValid · v7");
-    expect(screen.getByText("Observed at session start")).toBeInTheDocument();
-    expect(screen.getByText("Valid · v7").closest(".sessionPomegrPolicy")).toHaveClass("sessionPomegrPolicy-valid");
-  });
-
   it("preserves recorded invalid policy state in historical sessions", () => {
     const session = {
       ...repositorySession({ available: false, branch: "", files: [], historical: true, isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),

@@ -1,7 +1,7 @@
 import { createConnection } from "node:net";
 import { fileURLToPath } from "node:url";
-import { normalizePipelineOperationsSnapshot } from "../monitor/pipeline-operations.mjs";
-import { pipelineOperationsEndpoint } from "../monitor/pipeline-operations-transport.mjs";
+import { normalizePipelineOperationsSnapshot } from "../server/diagnostics/pipeline-operations.mjs";
+import { pipelineOperationsEndpoint } from "../server/diagnostics/pipeline-operations-transport.mjs";
 
 const DEFAULT_PORT = 4317;
 const MAX_LINE_BYTES = 256 * 1024;

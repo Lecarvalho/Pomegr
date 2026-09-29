@@ -249,10 +249,10 @@ Reference: `mockup-main.html`, from the breadcrumb down to and including the thr
      `.insight` rows, max 2 visible, then "Show all {n}" link that expands in place.
      `Insight` has no agent field (`{ id, level, title, detail }`). To link an insight to
      an agent, add an optional `agentId: string | null` to `Insight` and to `LoopPattern`
-     in `shared/monitor-contract.ts`, populate them in `monitor/efficiency-signals.mjs`
+     in `shared/monitor-contract.ts`, populate them in `server/analytics/efficiency-signals.mjs`
      where the ids are built (`prompt-cache-miss-${event.agentId}`,
      `automatic-compaction-${agent.id}`, `loop-${loop.actor.id}-${index}`; `overlap-*`
-     stays `null`) and in `monitor/session-projection.mjs` ~line 199 (`loop.actor.id`;
+     stays `null`) and in `server/sessions/domain/session-projection.mjs` ~line 199 (`loop.actor.id`;
      the existing `agent` field there is the label, keep it), and extend the
      api-serialization allowlists for insights and loops. Each warning row with an
      `agentId` gets a "Show agent" link that selects that agent in the roster (SP-08 wires
@@ -406,23 +406,23 @@ model had available before the request, and the tool calls the request issued. N
 about those tools crosses the provider boundary.
 
 Today there is no stored link between a request snapshot and tool calls:
-`monitor/providers/claude-context.mjs` `parseClaudeContextRecords` builds one usage
+`server/providers/claude/context.mjs` `parseClaudeContextRecords` builds one usage
 snapshot per assistant record and discards the record's `content[]`;
-`monitor/providers/claude.mjs` (lines ~583-606) builds `toolCalls[]` with `id = content.id`
+`server/providers/claude/index.mjs` (lines ~583-606) builds `toolCalls[]` with `id = content.id`
 and `workKind = toolWorkKind(tool, { detail, input })`, but that list has no foreign key to
 the snapshot. This task adds the link inside the adapter and exposes only counts.
 
 ### Work
 
-1. In `monitor/providers/claude-context.mjs`, inside `parseClaudeContextRecords`, walk the
+1. In `server/providers/claude/context.mjs`, inside `parseClaudeContextRecords`, walk the
    records in file order and maintain, per `actorId`:
    - `pendingResults: Map<WorkKind, number>` — reset to empty after each assistant record
      that produces a snapshot.
    - `issuedKinds: Map<toolUseId, WorkKind>` — populated from each assistant record's
      `message.content[]` blocks with `type === "tool_use"`, using
      `toolWorkKind(content.name || "Tool", { detail: safeDetail(...), input: content.input || {} })`
-     imported from `monitor/work-kind.mjs`. If `safeDetail` lives only in `claude.mjs`,
-     move it to a small shared module under `monitor/providers/claude-tool-detail.mjs` and
+     imported from `server/normalize/work-kind.mjs`. If `safeDetail` lives only in `claude.mjs`,
+     move it to a small shared module under `server/providers/claude/tool-detail.mjs` and
      import it from both places; do not duplicate it.
    For each record:
    - `type === "user"` with `message.content[]` blocks of `type === "tool_result"`: for
@@ -440,13 +440,13 @@ the snapshot. This task adds the link inside the adapter and exposes only counts
      `issuedWork: []`.
 2. Add both fields to the usage snapshot object built at claude-context.mjs ~line 349.
    Add to the adapter schema `evidenceUsageSnapshot` in
-   `monitor/providers/provider-contract.mjs` (~line 366) as
+   `server/providers/provider-contract.mjs` (~line 366) as
    `precedingWork: z.array(evidenceWorkCount).max(8)` and `issuedWork: z.array(evidenceWorkCount).max(8)`
    where `evidenceWorkCount = z.object({ kind: z.enum(WORK_KINDS), count: z.number().int().min(1).max(999) }).strict()`.
-   Make both **optional with default `[]`** so the Codex adapter (`monitor/providers/codex-context.mjs`
+   Make both **optional with default `[]`** so the Codex adapter (`server/providers/codex/context.mjs`
    or wherever Codex usage snapshots are built) validates unchanged. Codex correlation is
    out of scope; its snapshots carry empty arrays.
-3. In `monitor/request-snapshots.mjs` `requestSnapshotFromEvidence`, copy
+3. In `server/normalize/request-snapshots.mjs` `requestSnapshotFromEvidence`, copy
    `precedingWork` and `issuedWork` through (re-validate bounds: drop unknown kinds, cap 8
    entries, cap 999). Add a third field `precedingAssociation: "transcript_adjacency" | null`
    set to `"transcript_adjacency"` when `precedingWork.length > 0`, else `null`. Add
@@ -454,13 +454,13 @@ the snapshot. This task adds the link inside the adapter and exposes only counts
 4. Compaction handling: a compaction between two assistant records must **clear**
    `pendingResults` for that actor (results before a compaction are not "available" to
    the next request in any reliable sense). `claude-context.mjs` does not parse
-   compactions itself; `monitor/providers/claude.mjs` (~line 542-563) collects them via
-   `monitor/context-compactions.mjs` (`contextCompactions`, `readContextCompactions`).
+   compactions itself; `server/providers/claude/index.mjs` (~line 542-563) collects them via
+   `server/normalize/context-compactions.mjs` (`contextCompactions`, `readContextCompactions`).
    Pass the recognized compaction timestamps for the actor into `parseClaudeContextRecords`
    through `options.compactionTimestamps: string[]` and clear the tally when a compaction
    timestamp falls after the previous assistant record and at or before the current one.
    Do not re-parse compaction records inside claude-context.mjs.
-5. Tests, in `tests/claude-context.test.mjs` and `tests/request-snapshots.test.mjs`:
+5. Tests, in `tests/server/providers/claude/context.test.mjs` and `tests/server/normalize/request-snapshots.test.mjs`:
    - assistant with two `tool_use` (Read, Bash `npm test`) → `issuedWork = [{read,1},{test,1}]`.
    - following user record with two `tool_result` for those ids, then an assistant →
      `precedingWork = [{read,1},{test,1}]`, and the first snapshot's `precedingWork` is `[]`.
@@ -478,7 +478,7 @@ the snapshot. This task adds the link inside the adapter and exposes only counts
 - [x] Every Claude usage snapshot carries `precedingWork` and `issuedWork` arrays bounded
       to 8 entries × count ≤ 999, kinds from `WORK_KINDS` only.
 - [x] No tool name, tool_use id, tool input, file path, or result text is stored on the
-      snapshot. `grep -n "tool_use_id\|content.id" monitor/request-snapshots.mjs` returns
+      snapshot. `grep -n "tool_use_id\|content.id" server/normalize/request-snapshots.mjs` returns
       nothing.
 - [x] Codex evidence validates without changes.
 - [x] `npm run test:contracts` passes (provider conformance).
@@ -486,9 +486,9 @@ the snapshot. This task adds the link inside the adapter and exposes only counts
 ### Verification
 
 ```powershell
-node --test tests/claude-context.test.mjs
-node --test tests/request-snapshots.test.mjs
-node --test tests/provider-fixtures.test.mjs
+node --test tests/server/providers/claude/context.test.mjs
+node --test tests/server/normalize/request-snapshots.test.mjs
+node --test tests/server/providers/provider-fixtures.test.mjs
 npm run test:contracts
 ```
 
@@ -513,7 +513,7 @@ semantics.
    issuedAssociation: "recorded_link" | null;
    ```
 
-2. `tests/api-serialization.test.mjs` line ~489: extend the exact key list for request
+2. `tests/server/api-serialization.test.mjs` line ~489: extend the exact key list for request
    snapshot items to
    `["agentId","cacheLifetime","cacheReadTokens","cacheWriteTokens","id","issuedAssociation","issuedWork","observedAt","outputTokens","precedingAssociation","precedingWork","totalTokens","uncachedInputTokens"]`
    and assert every `kind` is in the `WORK_KINDS` allowlist and no entry has extra keys.
@@ -523,7 +523,7 @@ semantics.
 3. `app/session-report.mjs` and `monitor/session-report*.mjs`: reports embed request
    snapshots through `reportEvidence`. Either pass the new fields through the same
    allowlist or strip them; pick **strip** (reports stay unchanged) and add an assertion in
-   `tests/session-report-evidence.test.mjs` that report items have no `precedingWork`.
+   `tests/server/sessions/domain/session-report-evidence.test.mjs` that report items have no `precedingWork`.
 4. `docs/METRICS.md` → section `## Request snapshots`: add a paragraph:
 
    > Each request may carry two bounded work-kind tallies. `issuedWork` counts the
@@ -555,8 +555,8 @@ semantics.
 ### Verification
 
 ```powershell
-node --test tests/api-serialization.test.mjs
-node --test tests/session-report-evidence.test.mjs
+node --test tests/server/api-serialization.test.mjs
+node --test tests/server/sessions/domain/session-report-evidence.test.mjs
 npm run typecheck
 npm run check:provider-docs
 ```
@@ -1325,7 +1325,7 @@ npm run lint
 | 2026-09-05 | POMEGR-SP-05 | Complete | Requests & actions now renders after the KPI strip with 60/20-request desktop/phone windows, scoped stable scale/rankings, keyboard selection, draggable minimap, live identity retention and request-local action details. Cache evidence moved to a saved closed disclosure with exact agent/timestamp links. Build, plugin/operations/inventory suites and 966 node tests passed (1 skipped); after correcting two integration-test expectations, all 434 UI tests and 25 focused panel/model/disclosure tests passed. verify:fast passed with existing lint warnings. Browser checked 1440/390px in both themes and 360px without overflow using actual components/CSS and synthetic normalized evidence; independent reviewer returned Ship. Scale includes output to avoid clipping and uncached copy describes cache classification rather than a never-seen claim; those plan clarifications are reflected above. SP-06 must remove the legacy ContextHistoryPanel and RequestSnapshotsPanel renders/files and preference; shared cache rows and snapshotEventKey now live in CacheEvidenceDisclosure.tsx. No provider/API fields or polling changes. |
 | 2026-09-05 | POMEGR-SP-04 | Complete | Verified SP-03's shared request contract/re-export, exact browser allowlists, bounded work-kind assertions, report stripping and AGENTS privacy rule. API fixture setup now retains tool-input private-path sentinels; report tests cover non-empty action tallies and omit all four fields from transition/boundary evidence. Documented request-local prompt outlines and committed-only presentation; chart replacement is explicitly pending SP-05/SP-06 and personal Home cadence remains unchanged. All 15 focused API/report tests and verify:fast passed (existing lint warnings only). No production code changes; unrelated UI test edit preserved. |
 | 2026-09-05 | POMEGR-SP-03 | Complete | Claude request-local issued/result work counts, actor-scoped parsing, recognized compaction resets, bounded projection and legacy/Codex defaults. Shared tool detail extraction, golden fixture, privacy and checkpoint coverage added. Full npm test passed (966 node tests, 1 skipped; 409 UI tests); final verify:fast and 53 focused parser/projection/privacy/checkpoint tests passed. Required SP-04 compatibility landed here: browser types/allowlists, report stripping and current evidence/privacy documentation; request types are re-exported from shared/request-snapshot-contract.ts. SP-04 remains responsible for its future panel/presentation wording. Concurrent SP-02 changes preserved; its recorded architecture blockers are resolved. |
-| 2026-09-05 | POMEGR-SP-02 | Complete | Repository and Session details are independent saved disclosures, closed by default, with bounded desktop/phone summaries and preference-gated estimated cost. Resource use stays in place. Browser verified 52px rows, padding, chevrons, keyboard toggles and persistence at 1440/390/360px; no phone horizontal overflow. Build, 409 UI tests, focused design contract, privacy/serialization and dependency checks passed. Full test wrapper was run; concurrent SP-03 request-action failures passed focused rechecks, and a temporary cleanup failure passed the node rerun (963 passed, 1 skipped, only the subsequently fixed provider fixture failed). verify:fast passes through provider docs but stops on concurrent SP-03 line limits in shared/monitor-contract.ts, tests/api-serialization.test.mjs and tests/claude-provider.test.mjs; those files were left to their owner. |
+| 2026-09-05 | POMEGR-SP-02 | Complete | Repository and Session details are independent saved disclosures, closed by default, with bounded desktop/phone summaries and preference-gated estimated cost. Resource use stays in place. Browser verified 52px rows, padding, chevrons, keyboard toggles and persistence at 1440/390/360px; no phone horizontal overflow. Build, 409 UI tests, focused design contract, privacy/serialization and dependency checks passed. Full test wrapper was run; concurrent SP-03 request-action failures passed focused rechecks, and a temporary cleanup failure passed the node rerun (963 passed, 1 skipped, only the subsequently fixed provider fixture failed). verify:fast passes through provider docs but stops on concurrent SP-03 line limits in shared/monitor-contract.ts, tests/server/api-serialization.test.mjs and tests/server/providers/claude/provider.test.mjs; those files were left to their owner. |
 | 2026-09-05 | Plan | Updated | Added phone layout: `mockup-mobile.html`, `mockup-mobile-inspector.html` (+PNGs), SP-01M, and Phone subsections in SP-02, SP-05, SP-07, SP-08, SP-09, SP-10, SP-11. |
 | 2026-09-04 | Plan | Written | Mockups copied to `docs/plans/session-page-redesign/`. Canvas: https://claude.ai/code/artifact/663c33bb-fb5f-41ba-9e78-8c11e0219ba2 |
 | 2026-09-05 | POMEGR-SP-01 | Complete | Hero status card, five-cell KPI strip, three summary cards, normalized insight/loop agent links. HTML typography retained (Inter headline numbers, Geist Mono compact data). Explicit open/stopped/unknown evidence remains labeled. Full npm test, final build, verify:fast, focused UI/privacy checks passed; 1440px and 390px checked in both themes. |

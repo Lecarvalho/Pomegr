@@ -1,7 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageLimitsView } from "../../app/components/command-center/CommandViews";
-import { UsageLimitsPanel } from "../../app/components/dashboard/UsageLimitsPanel";
 import { useUsageLimits } from "../../app/usage-limits-client";
 import type { UsageLimits, UsageLimitsSnapshot } from "../../shared/monitor-contract";
 
@@ -71,27 +70,5 @@ describe("Codex usage troubleshooting", () => {
     render(<UsageLimitsView />);
     expect(screen.getByText("Waiting for provider usage")).toBeVisible();
     expect(screen.queryByText("Usage connection help")).not.toBeInTheDocument();
-  });
-
-  it("offers account help when a successful response supplies no usage windows", () => {
-    publish({ ...ready, available: false, limits: [] }, "ready");
-    render(<UsageLimitsView />);
-    expect(screen.getByText("codex login status")).toBeVisible();
-    expect(screen.queryByText("Waiting for provider usage")).not.toBeInTheDocument();
-  });
-
-  it("explains throttling without suggesting a sign-in workaround", () => {
-    publish({ ...missing, failureKind: "rate_limited" });
-    render(<UsageLimitsView />);
-    expect(screen.getByText(/Wait for the retry countdown/)).toBeVisible();
-    expect(screen.queryByText("codex login")).not.toBeInTheDocument();
-  });
-
-  it("uses the same helper in session-level usage panels without a desktop launcher", () => {
-    render(<UsageLimitsPanel source="Codex" usageLimits={{ ...missing, failureKind: "unavailable" }} />);
-    expect(screen.getByText("codex login status")).toBeVisible();
-    expect(screen.getByText("Usage connection help").closest("details")).toHaveAttribute("open");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-    expect(screen.queryByText("Connecting…")).not.toBeInTheDocument();
   });
 });

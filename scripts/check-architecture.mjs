@@ -26,9 +26,9 @@ const SKIP_DIRECTORIES = new Set([
 // Existing large files are grandfathered at their current size. They may shrink,
 // but a change that makes one of them larger fails the verifier.
 const GRANDFATHERED_LINE_LIMITS = new Map([
-  ["monitor/providers/codex-liveness.mjs", 881],
-  ["tests/claude-provider.test.mjs", 861],
-  ["tests/codex-liveness.test.mjs", 985],
+  ["server/providers/codex/liveness.mjs", 881],
+  ["tests/server/providers/claude/provider.test.mjs", 861],
+  ["tests/server/providers/codex/liveness.test.mjs", 985],
   ["tests/pomegr-plugin.test.mjs", 900],
 ]);
 

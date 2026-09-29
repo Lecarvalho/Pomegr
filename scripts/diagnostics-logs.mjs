@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import { lstat, open, readdir } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { normalizePipelineLogRecord } from "../monitor/pipeline-log-schema.mjs";
+import { normalizePipelineLogRecord } from "../server/diagnostics/pipeline-log-schema.mjs";
 
 const DEFAULT_DIRECTORY = "outputs/pipeline-logs";
 const MAX_FILE_COUNT = 10;

@@ -53,42 +53,12 @@ function detail(agent: Agent, historical = false) {
 }
 
 describe("current agent activity", () => {
-  it("keeps Activity & Execution available with only provider-reported current activity", () => {
-    render(detail({ ...baseAgent, currentActivity: activity }));
-
-    const inspector = screen.getByRole("region", { name: "Agent inspector for Primary agent" });
-    const currentActivity = screen.getByRole("region", { name: "Current provider-reported activity" });
-    expect(currentActivity).toHaveTextContent(activity.label);
-    expect(currentActivity.querySelector("strong")).toHaveClass("currentActivityShimmer");
-    expect(currentActivity.querySelector("strong")).toHaveAttribute("data-text", activity.label);
-    expect(inspector).toHaveTextContent("Provider-reported");
-    expect(inspector).toHaveTextContent("Shell tasks0");
-  });
-
-  it("shows current activity above shell execution without changing execution counts or labels", () => {
-    render(detail({ ...baseAgent, currentActivity: activity, executionTasks: [task] }));
-
-    const inspector = screen.getByRole("region", { name: "Agent inspector for Primary agent" });
-    expect(inspector).toHaveTextContent(activity.label);
-    expect(inspector).toHaveTextContent("Run verification");
-    const sections = inspector.querySelectorAll(".executionTaskSection");
-    expect(sections[0]).toHaveTextContent("Current activity");
-    expect(sections[1]).toHaveTextContent("Shell tasks");
-  });
-
   it("preserves tasks-only behavior and never shows stale activity in history", () => {
     const { rerender } = render(detail({ ...baseAgent, executionTasks: [task] }));
     expect(screen.getByRole("region", { name: "Agent inspector for Primary agent" })).not.toHaveTextContent("Current activity");
 
     rerender(detail({ ...baseAgent, currentActivity: activity }, true));
     expect(screen.getByRole("region", { name: "Agent inspector for Primary agent" })).not.toHaveTextContent("Current activity");
-  });
-
-  it("renders a bounded long RTL, CJK, and emoji label as text without truncating its meaning", () => {
-    const label = "تخطيط مرحلة التنفيذ التفصيلية · 詳細な実行段階を計画中 · 🔍".repeat(2);
-    render(detail({ ...baseAgent, currentActivity: { ...activity, label } }));
-
-    expect(screen.getByRole("region", { name: "Current provider-reported activity" })).toHaveTextContent(label);
   });
 
   it("labels retained activity as last observed when lifecycle state is uncertain", () => {

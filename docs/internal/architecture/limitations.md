@@ -3,12 +3,12 @@
 > Scope: current provider evidence gaps and Pomegr's own observation, attribution,
 > and presentation limits.
 > Authority: maintained limitations inventory. The executable
-> [provider contract](../../../monitor/providers/provider-contract.mjs) and adapter
+> [provider contract](../../../server/providers/provider-contract.mjs) and adapter
 > manifests own capability declarations; [Observation cache](../../OBSERVATION_CACHE.md)
 > owns acquisition and serving; [Metrics](../../METRICS.md) and
 > [Global session statuses](../../SESSION_STATUS.md) own exact rules.
-> Related code and checks: [Claude adapter](../../../monitor/providers/claude.mjs),
-> [Codex adapter](../../../monitor/providers/codex.mjs),
+> Related code and checks: [Claude adapter](../../../server/providers/claude/index.mjs),
+> [Codex adapter](../../../server/providers/codex/index.mjs),
 > `npm run check:provider-docs`.
 
 This page lists known limitations of Pomegr's current behavior. The first section
