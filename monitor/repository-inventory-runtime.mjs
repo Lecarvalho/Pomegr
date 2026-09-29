@@ -210,16 +210,26 @@ export function createRepositoryInventoryRuntime(options = {}) {
     }
   }
 
-  const ready = (async () => {
+  async function load() {
     let loaded = null;
-    if (persistence) try { loaded = safePersistedState(JSON.parse(await readFile(storeFile, "utf8")), now); } catch { /* first run or invalid store */ }
-    if (persistence && !loaded) {
+    try { loaded = safePersistedState(JSON.parse(await readFile(storeFile, "utf8")), now); } catch { /* first run or invalid store */ }
+    if (!loaded) {
       try { loaded = safePersistedState(JSON.parse(await readFile(`${storeFile}.bak`, "utf8")), now); } catch { /* no valid backup */ }
     }
+    return loaded;
+  }
+
+  const ready = (async () => {
+    const loaded = persistence ? await load() : null;
     state = loaded || freshState(now);
     // File evidence can use opaque IDs before any single-session association
     // exists (for example a multi-repository session). Save their salt first.
-    if (persistence && !loaded) await persist(state);
+    if (!persistence || loaded) return;
+    try { await persist(state); } catch {
+      // A concurrent first-run writer (Windows rejects the contended rename) may
+      // have committed its own salt; adopt it. Otherwise the next commit retries.
+      state = await load() || state;
+    }
   })();
 
   async function commitState(transform) {

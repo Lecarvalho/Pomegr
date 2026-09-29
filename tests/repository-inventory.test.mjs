@@ -27,6 +27,25 @@ test("strict mutation resolution rejects non-Git fallback and persists repositor
   assert.equal((await restored.resolveRepository(root, { requireGit: true })).repositoryId, bound.repositoryId);
 });
 
+test("concurrent first-run writers settle readiness on one shared repository identity", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-first-run-"));
+  const options = { registry: { providers: [] }, storeFile: path.join(directory, "inventory.json"), gitRoot: async (cwd) => cwd };
+  const runtimes = Array.from({ length: 6 }, () => createRepositoryInventoryRuntime(options));
+  await Promise.all(runtimes.map((runtime) => runtime.ready));
+  const restored = createRepositoryInventoryRuntime(options);
+  assert.ok((await restored.resolveRepository(directory)).repositoryId);
+});
+
+test("an unwritable first-run store degrades to in-memory identity instead of rejecting readiness", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-unwritable-"));
+  const blocker = path.join(directory, "blocker");
+  await writeFile(blocker, "not a directory");
+  const runtime = createRepositoryInventoryRuntime({ registry: { providers: [] },
+    storeFile: path.join(blocker, "inventory.json"), gitRoot: async (cwd) => cwd });
+  await runtime.ready;
+  assert.match((await runtime.resolveRepository(directory)).repositoryId, /^repo-[a-f0-9]{24}$/u);
+});
+
 test("repository inventories use opaque identities, immutable revisions, and future-only bindings", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-inventory-"));
   const storeFile = path.join(directory, "inventory.json");
