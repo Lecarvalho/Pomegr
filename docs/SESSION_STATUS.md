@@ -6,6 +6,10 @@ This is the editable comparison of Pomegr's session-level status rules. Keep eac
 
 Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [OBSERVATION_CACHE.md](OBSERVATION_CACHE.md) remains the operational contract.
 
+The inventory of evidence and integration gaps is
+[Limitations](internal/architecture/limitations.md#session-status-coverage).
+This page owns the precise status rules and precedence.
+
 Implementation note: the Claude non-live -> Idle rule below is implemented in the working tree. This review did not restart the monitor, so an already-running process can still use the previous Unknown fallback.
 
 ## Global scope requirement

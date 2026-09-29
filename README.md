@@ -78,7 +78,9 @@ confirmation in Pomegr desktop; browser and phone clients show setup guidance.
 ## Current limitations
 
 - Desktop downloads are currently available for Windows x64 only.
-- Claude Code and Codex expose different amounts of session data.
+- Claude Code and Codex expose different amounts of session data; see
+  [Limitations](docs/internal/architecture/limitations.md) for provider-related
+  and Pomegr-specific limits.
 - Efficiency signals are deterministic heuristics, not authoritative judgments.
 
 ## Licence

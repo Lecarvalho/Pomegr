@@ -6,7 +6,7 @@ import { providerRegistry } from "../monitor/providers/index.mjs";
 import { PROVIDER_CAPABILITY_CATALOG } from "../monitor/providers/provider-contract.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const documentationFile = path.join(repositoryRoot, "docs", "CONFIGURATION.md");
+const documentationFile = path.join(repositoryRoot, "docs", "internal", "architecture", "limitations.md");
 const START = "<!-- provider-capabilities:start -->";
 const END = "<!-- provider-capabilities:end -->";
 
@@ -40,7 +40,7 @@ const normalizedCurrent = current.replace(/\r\n/g, "\n");
 const normalizedExpected = expected.replace(/\r\n/g, "\n");
 if (process.argv.includes("--write")) {
   await writeFile(documentationFile, expected, "utf8");
-  console.log("Updated docs/CONFIGURATION.md provider capability matrix.");
+  console.log("Updated docs/internal/architecture/limitations.md provider capability matrix.");
 } else if (normalizedCurrent !== normalizedExpected) {
   console.error("Provider capability documentation is out of sync. Run: npm run docs:providers");
   process.exitCode = 1;

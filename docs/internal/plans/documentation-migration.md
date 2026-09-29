@@ -221,7 +221,7 @@ Targets are relative to `docs/internal/`.
 - [ ] **INT-08** `docs/CACHE_TIMING.md` -> `architecture/cache-timing.md`; finish PUB-09 extraction.
 - [ ] **INT-09** `docs/SIGNAL_DICTIONARY.md` -> `architecture/signal-dictionary.md`; preserve identifiers.
 - [ ] **INT-10** `docs/COMMAND_TABLE.md` -> `development/command-table.md` for technical integration guidance only; promote missing visual examples to `/design-system`, link that authority, and remove duplicated styling specifications.
-- [ ] **INT-11** `docs/CONFIGURATION.md` -> `development/configuration.md` after public extraction. Preserve environment/configuration detail. Update `scripts/provider-capability-docs.mjs`, generated-region paths, diagnostics, and tests together.
+- [ ] **INT-11** `docs/CONFIGURATION.md` -> `development/configuration.md` after public extraction. Preserve environment/configuration detail and its link to the maintained [Limitations](../architecture/limitations.md) reference. The generated capability region already lives there; keep its generator and checks aligned with that page.
 - [ ] **INT-12** `docs/MCP_QUERIES.md` -> `architecture/mcp-queries.md`; finish PUB-13 extraction.
 - [ ] **INT-13** `docs/PIPELINE_OPERATIONS.md` -> `operations/pipeline-diagnostics.md`; preserve current runbook/contract and transfer unfinished future milestones to an active plan.
 - [ ] **INT-14** `docs/PLUGINS.md` -> `development/plugins.md` after PUB-06; retain precise source/output ownership, generation, validation, versioning, and release procedures.

@@ -1,5 +1,9 @@
 # Claude Code session status
 
+The [Limitations inventory](internal/architecture/limitations.md)
+records provider-related and Pomegr-specific gaps. This page owns the exact Claude status sources,
+normalization, and request boundary.
+
 ## Source and evidence
 
 Claude Code has two distinct status surfaces. The interactive REPL updates its local

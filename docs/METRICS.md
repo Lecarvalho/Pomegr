@@ -5,6 +5,9 @@ Pomegr currently makes no model calls. Every value and recommendation comes from
 Metric evidence retention and request-independent serving follow the canonical
 [observation cache contract](OBSERVATION_CACHE.md). A provider acquisition bound is never
 a metric history bound.
+Current provider and Pomegr limitations affecting these rules are inventoried in
+[Limitations](internal/architecture/limitations.md);
+this page owns the deterministic rules and their evidence gates.
 
 ## Session closure
 

@@ -12,6 +12,7 @@ source.
 | Download and launch the Windows app | [Install Pomegr](public/get-started/install.md) |
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
 | Read context, input, output, and cache numbers | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
+| Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
 | Query already-observed state through MCP | [MCP observation queries](MCP_QUERIES.md) |
@@ -25,6 +26,8 @@ during the documentation migration.
 The [maintainer index](internal/README.md) maps architecture, development,
 operations, and decisions to their current owners. It also identifies which
 documents govern behavior and which record proposals or historical evidence.
+The [Limitations reference](internal/architecture/limitations.md) owns the
+provider-related and Pomegr-specific inventory and generated capability matrix.
 
 Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Coding
 agents follow [AGENTS.md](../AGENTS.md) and the

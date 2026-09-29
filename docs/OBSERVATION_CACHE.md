@@ -4,6 +4,9 @@ This document is the canonical operational contract for Pomegr's provider-neutra
 session observation cache, API serving model, and progressive UI readiness. Design plans
 under `docs/plans/` are historical records; when a plan and this document differ, this
 document and `AGENTS.md` govern repository changes.
+The [Limitations reference](internal/architecture/limitations.md)
+owns the provider-related and Pomegr-specific inventory and capability matrix;
+this document retains authority over acquisition, committed evidence, and serving.
 
 ## Non-negotiable invariants
 
