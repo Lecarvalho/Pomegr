@@ -107,6 +107,18 @@ describe("T04 session workspace", () => {
     expect(await screen.findByText("Agent-reported session signal · Checks completed.")).toBeInTheDocument();
   });
 
+  it("shows the header branch chip only after repository evidence is ready", async () => {
+    const base = sessionSummaryFixture();
+    const pending = mount({}, sessionSummaryFixture({ sectionReadiness: { ...base.sectionReadiness, repository: "loading" },
+      repository: { ...base.repository, available: false, branch: "Not a Git repository" } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(pending.container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toBeNull();
+    pending.unmount();
+    const ready = mount();
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(ready.container.querySelector(".sessionHeaderMeta .sessionBranchChip")).toHaveTextContent("feature/session-tabs");
+  });
+
   it("omits the header signal chip when no signal is recorded", async () => {
     const withoutSignal = mount();
     await screen.findByRole("heading", { name: "Recorded implementation session" });

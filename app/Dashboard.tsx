@@ -159,7 +159,7 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     <span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span>
     {signal && <AgentChip className={`sessionSignal ${signal.tone}`} ariaLabel={`Session signal: ${signal.label}`} title={signal.description ? `Agent-reported session signal · ${signal.description}` : "Agent-reported session signal"}>{signal.label}</AgentChip>}
     <SessionIdChip sessionId={nativeId} />
-    {summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}
+    {summary.sectionReadiness.repository === "ready" && summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}
     <span className="sessionStartedMeta">Started {summary.session.startedAt ? <time dateTime={summary.session.startedAt}>{sessionListTime(summary.session.startedAt)}</time> : "time unavailable"}</span>
   </div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>

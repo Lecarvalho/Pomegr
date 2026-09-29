@@ -150,6 +150,10 @@ export function createObservationRuntime(options = {}) {
   const repositoryAssociations = createSessionRepositoryAssociations({
     registry, inventory: repositoryInventory,
     previousReference: (candidate) => observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
+    previousAssociation: (candidate) => {
+      const session = observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session;
+      return session ? { repositoryId: session.repositoryId ?? null, contextInventoryRef: session.contextInventoryRef ?? null } : null;
+    },
     onChange: (sessionId) => observationCoordinator.refreshProjection(sessionId),
   });
   const historyTrace = options.pipelineTrace;

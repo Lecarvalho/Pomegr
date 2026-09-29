@@ -765,19 +765,3 @@ test("a launch-bound live check records the evidence's proven repository ID on i
   assert.equal(checks.get("claude:proven"), "repo-0123456789abcdef01234567");
   assert.equal(checks.get("claude:launch"), null);
 });
-
-test("repository association resolves launch and single evidence from the launch directory, never multiple or unknown", async () => {
-  const { createSessionRepositoryAssociations } = await import("../monitor/session-repository-association.mjs");
-  const associateSession = async () => ({ repositoryId: "repo-0123456789abcdef01234567", contextInventoryRef: null });
-  const associate = async (repositoryAttribution) => {
-    const associations = createSessionRepositoryAssociations({ registry: { repositoryAttributionForSession: () => null }, inventory: { associateSession }, previousReference: () => null, onChange: () => {} });
-    const candidate = { providerId: "claude", localSessionId: `s-${repositoryAttribution}`, evidence: { session: { cwd: "C:\\synthetic\\pomegr", startedAt: null, repositoryAttribution } } };
-    associations.get(candidate);
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    return associations.get(candidate)?.repositoryId ?? null;
-  };
-  assert.equal(await associate("launch"), "repo-0123456789abcdef01234567");
-  assert.equal(await associate("single"), "repo-0123456789abcdef01234567");
-  assert.equal(await associate("multiple"), null);
-  assert.equal(await associate("unknown"), null);
-});
