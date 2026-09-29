@@ -44,9 +44,15 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     if (!appendCompatible) entry.identity = `${source.identity}:work-start:${++entry.generation}`;
     entry.source = source;
     await entry.ingestor.observe({ identity: entry.identity, size: source.size }, (state) => {
+      // The state covers bytes up to `source.size`. A live transcript that only grew during
+      // the observation still holds that exact prefix, so the state stays valid and the next
+      // read continues from it; only a replaced, truncated, or rewritten prefix is rejected.
       const confirmed = incrementalSourceDescriptor(file);
-      if (!confirmed || confirmed.identity !== source.identity || confirmed.size !== source.size
-        || confirmed.mtimeMs !== source.mtimeMs || confirmed.suffixDigest !== source.suffixDigest) {
+      const unchanged = confirmed && confirmed.size === source.size && confirmed.mtimeMs === source.mtimeMs
+        && confirmed.suffixDigest === source.suffixDigest;
+      const appended = confirmed && confirmed.size > source.size
+        && (source.size === 0 || priorFileSuffixStillMatches(file, source));
+      if (!confirmed || confirmed.identity !== source.identity || !(unchanged || appended)) {
         throw new Error("Session timing source changed during observation");
       }
       entry.startedAt = state.startedAt;

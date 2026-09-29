@@ -1,4 +1,5 @@
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
+import { createCheckpointRestore } from "./session-checkpoint-restore.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
 import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
@@ -481,47 +482,47 @@ export function createSessionObservationCoordinator(options = {}) {
     },
   });
 
+  // Applies one validated L2 record from the bulk or on-demand restore. Fresh
+  // candidates and already committed revisions always win over a saved record.
+  function applyRestoredRecord(record, freshSessions) {
+    const id = qualifiedSessionId(record.providerId, record.localSessionId);
+    if (freshSessions.size >= 4096 || freshSessions.has(id)
+      || store.getByQualifiedId(id) || pendingSessions.has(id)) return false;
+    const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
+    if (!provider) return false;
+    const restored = store.restore(downgradeRestoredLifecycle(record));
+    if (!restored.accepted) return false;
+    restoredActivitySessions.add(restored.snapshot.qualifiedId);
+    const scope = traceScope(record.providerId, record.localSessionId);
+    // Rederive the restored evidence, including its downgraded lifecycle; the
+    // original checkpoint must not resurrect a prior process's status.
+    pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
+      providerId: record.providerId, localSessionId: record.localSessionId, evidence: restored.snapshot.evidence,
+      source: provider.source || "", checkpointSource: record.source, observedAt: record.observedAt,
+      pinned: Boolean(record.evidence?.historical === false), queuedAt: monotonicNow(),
+      traceScope: scope, traceFlow: trace?.createFlow({ scope }),
+    }));
+    scheduleSessionCommit(restored.snapshot.qualifiedId);
+    return true;
+  }
+
+  // Last-known-good evidence stays available; a restored lifecycle is never current.
+  const checkpointRestore = createCheckpointRestore({ checkpointStore, ready: () => options.checkpointRestoreReady?.(),
+    projectState: options.restoreState || (({ evidence }) => evidence), apply: applyRestoredRecord });
+
+  // A requested miss during the startup restore reads its own checkpoint first (one file,
+  // asynchronously); `onMissing` keeps today's hydration when none is valid.
+  function restoreRequested(qualifiedId, onMissing) {
+    return checkpointRestore.request(qualifiedId, (restored) => {
+      const snapshot = stopped ? null : store.getByQualifiedId(qualifiedId);
+      if (restored && snapshot) notify({ type: "session", qualifiedId, revision: snapshot.revision, freshObservation: false });
+      else if (!stopped && !snapshot) onMissing();
+    });
+  }
+
   async function restoreCheckpoints(workGeneration, freshSessions) {
     try {
-      if (checkpointStore) {
-        const ready = options.checkpointRestoreReady?.();
-        if (ready) await ready;
-        if (stopped || generation !== workGeneration) return;
-        const loaded = await checkpointStore.load({
-          // Checkpoint loading is already bounded by its store contract. Keep
-          // last-known-good historical evidence available for a later indexed
-          // selection; do not reinterpret a restored lifecycle as current.
-          includeRecord() { return true; },
-          projectState: options.restoreState || (({ evidence }) => evidence),
-        });
-        if (stopped || generation !== workGeneration) return;
-        for (const record of loaded.records) {
-          const id = qualifiedSessionId(record.providerId, record.localSessionId);
-          if (freshSessions.size >= 4096 || freshSessions.has(id)
-            || store.getByQualifiedId(id) || pendingSessions.has(id)) continue;
-          if (!registry.providers?.some((provider) => provider.id === record.providerId)) continue;
-          const restored = store.restore(downgradeRestoredLifecycle(record));
-          if (!restored.accepted) continue;
-          restoredActivitySessions.add(restored.snapshot.qualifiedId);
-          const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
-          const scope = traceScope(record.providerId, record.localSessionId);
-          pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
-            providerId: record.providerId,
-            localSessionId: record.localSessionId,
-            // Rederive the restored evidence, including its downgraded lifecycle;
-            // the original checkpoint must not resurrect a prior process's status.
-            evidence: restored.snapshot.evidence,
-            source: provider?.source || "",
-            checkpointSource: record.source,
-            observedAt: record.observedAt,
-            pinned: Boolean(record.evidence?.historical === false),
-            queuedAt: monotonicNow(),
-            traceScope: scope,
-            traceFlow: trace?.createFlow({ scope }),
-          }));
-          scheduleSessionCommit(restored.snapshot.qualifiedId);
-        }
-      }
+      await checkpointRestore.bulk({ isCurrent: () => !stopped && generation === workGeneration, freshSessions });
     } catch { /* Checkpoints are optional; live acquisition remains available. */ }
     finally {
       if (restoreFreshSessions === freshSessions) restoreFreshSessions = null;
@@ -760,7 +761,7 @@ export function createSessionObservationCoordinator(options = {}) {
             snapshot: null,
           });
         }
-        hydrate(selectedId, { selected: true });
+        if (!restoreRequested(selectedId, () => hydrate(selectedId, { selected: true }))) hydrate(selectedId, { selected: true });
         return Object.freeze({
           status: "loading",
           selectedId,

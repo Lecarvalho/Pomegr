@@ -30,6 +30,10 @@ document and `AGENTS.md` govern repository changes.
   established start: the adapter reads complete records in yielding bounded chunks and
   retains only the earliest eligible timestamp and bounded pending command linkage in
   a bounded private per-file cache. Source-generation checks invalidate replaced files.
+  A transcript that only grew while it was being read (same identity, and the 256-byte
+  suffix ending at the observed size still matches) keeps the observed prefix's answer, and
+  the next read continues from that prefix. A replaced, truncated, or rewritten prefix still
+  fails that acquisition.
   Refresh and checkpoint replacement retain the last known-good revision until a complete
   validated candidate commits; GETs never reclassify raw records. A changed Claude source
   normalization identity schedules existing checkpoints for re-observation without
@@ -1128,6 +1132,29 @@ session sooner. The router emits only provider-local session IDs and a catalog-d
 to the shared scheduler. Native paths, filenames, headers, and schemas never enter the
 normalized candidate, checkpoint, diagnostics, or browser response.
 
+A notification that marks the catalog dirty does not start its own discovery pass. The
+shared observer (every provider) keeps one catalog-dirty bit: an idle observer whose last
+catalog pass began at least one second earlier starts a fresh pass at once; otherwise a
+single trailing pass starts when that second has elapsed, or when the in-flight pass
+finishes if that is later. Any catalog pass that begins after the notification, including
+the ten-second reconciliation, answers it and is upgraded to a cache-bypassing pass. A
+burst of notifications therefore costs at most one discovery pass per second, and the last
+notification is always followed by a pass that starts after it, so a new session appears
+within about one second plus its discovery time. Known-session hydration is not delayed by
+this spacing; it still enters the queue in the same event-loop turn. Catalog-dirty session
+IDs are retained for the pass that answers them, and a failed pass keeps them for retry.
+
+Claude catalog discovery walks the projects tree through `fs.promises`, so the event loop
+is free between directory reads and file-stat batches. Each directory's listing is reused
+while its identity and modification time are unchanged and it had been unmodified for at
+least two seconds when it was read, since adding, removing, or renaming an entry advances
+the parent directory's modification time; every transcript is still stat-ed on every pass
+because appends do not change the directory. The result equals a full synchronous walk for
+the same tree: traversal order, the six-level depth limit, entry classification, missing
+roots, and read errors. Listings live only in memory, are replaced by each completed pass,
+and are never persisted, logged, or exposed. The rare synchronous resolver fallback walk
+shares the same listings.
+
 For Codex, a new rollout notification is filtered to a rollout-*.jsonl name with realpath
 containment in a configured root — the same check `notice`/`trustedRootFor` already apply —
 and, only then, noticed in the shared source ledger directly, so the owning session is
@@ -1405,9 +1432,35 @@ React, persisted checkpoints, or browser API fields.
   been evicted. Other valid working-set records restore normally. This preserves
   last-known-good checkpoint evidence without allowing a delayed L2 record to
   replace newer U1/U2 evidence.
+- While that restoration is still running, a session requested through `/api/state`
+  or a session-domain GET that misses the L1 store, where it would otherwise queue a
+  selected hydration, restores its own checkpoint first. The bounded uncatalogued
+  probe is unchanged.
+  The GET only queues this work and answers `loading`; it never reads or parses
+  synchronously. The asynchronous load reads the one identity-keyed checkpoint file
+  (no directory scan), waits for the same private sidecar readiness, and applies the
+  same payload, legacy-upgrade, candidate-validation, lifecycle-downgrade, and
+  preserved-revision rules as the bulk pass. Fresh or already committed evidence
+  still wins. Each identity is tried at most once per restore window (at most 256),
+  and the bulk pass skips identities claimed on demand, so a record is never restored
+  twice and cannot replace a newer committed revision. A restored record publishes a
+  session revision event and is then served and revalidated exactly like a
+  bulk-restored one. A missing, invalid, or rejected checkpoint queues the ordinary
+  selected hydration. After restoration finishes, a miss hydrates directly as before.
+  This persists and exposes nothing new.
 - Header discovery inventories every eligible top-level session within the configured
   provider roots and archive scope. Its acquisition batches and resident pages are bounded;
   a batch limit is never a permanent limit on identities reachable in the directory.
+- Codex header enumeration reads each rollout header asynchronously through one file
+  handle, so the event loop is free between files. The same read classifies a header with
+  no valid session record (a complete window of at most 64 KiB is an explicit
+  non-candidate; anything else keeps the pass incomplete), without a second open. A
+  provider-owned in-memory cache reuses a rollout's header, or its non-candidate
+  classification, while the file's identity, size, modification and change times are
+  unchanged and it had been settled for two seconds when read; inconclusive reads are never
+  cached. Missing files leave the cache, a complete pass drops every file it did not visit,
+  and the cache holds at most 16,384 entries. Output equals an uncached pass. The cache is
+  never persisted, logged, or exposed.
 - Startup source preparation, transcript hydration and normalization are eager only for
   live or needs-input sessions. Recent timestamps alone do not authorize detail hydration.
   Historical identities remain selectable without acquiring their transcript bodies.
@@ -2458,6 +2511,12 @@ branch evidence or a root/branch mismatch preserves the last verified session sn
 leaves the existing unavailable state. It never commits the unrelated checkout state to a
 historical sidecar. Historical fallback without a sidecar does not query current GitHub
 state through the checkout. All resolution and Git work remains outside S Serving.
+Concurrent live Git inspections of the same working tree (for example two live sessions in
+one repository) share one in-flight set of Git processes, and each caller receives its own
+copy of that answer. A finished inspection is never reused, so each session's check keeps
+its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`) run once
+per directory: concurrent callers share the lookup, and its answer is reused for the same
+300-second freshness the providers' memoized repository resolver already applies.
 A live session with no repository binding (a Codex session without one proven repository,
 or a Claude session without a recorded branch) has nothing to check: its repository
 readiness is `ready` with no repository, a factual empty result, so it cannot hold the

@@ -20,6 +20,7 @@ const BACKGROUND = 2;
 // like a first live publication even if it has already finished, so a short
 // session is not queued behind the whole historical working set.
 const NEW_SESSION_PRIORITY_WINDOW_MS = 10 * 60_000;
+const SOURCE_CATALOG_INTERVAL_MS = 1_000;
 
 function watchFilename(value) {
   if (typeof value === "string") return value;
@@ -41,6 +42,10 @@ export function createNormalizedPollingObserver(options) {
     ingest,
     prepare,
     intervalMs = 10_000,
+    // Minimum spacing between catalog passes a source notification can cause. A burst of
+    // notifications inside this window shares one trailing pass; 0 restores one pass per
+    // idle notification.
+    sourceCatalogIntervalMs = SOURCE_CATALOG_INTERVAL_MS,
     concurrency = 2,
     interactiveConcurrency = options?.interactiveConcurrency ?? Math.max(1, concurrency),
     backgroundConcurrency = options?.backgroundConcurrency ?? 1,
@@ -64,6 +69,11 @@ export function createNormalizedPollingObserver(options) {
   if (!Number.isInteger(intervalMs) || intervalMs < 100) {
     throw new TypeError("Normalized polling observer interval must be at least 100 ms");
   }
+  if (!Number.isInteger(sourceCatalogIntervalMs) || sourceCatalogIntervalMs < 0 || sourceCatalogIntervalMs > 60_000) {
+    throw new TypeError("Normalized polling observer source catalog interval must be between 0 and 60000 ms");
+  }
+  // Never space source-driven passes wider than routine reconciliation.
+  const sourceCatalogSpacingMs = Math.min(sourceCatalogIntervalMs, intervalMs);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
     throw new TypeError("Normalized polling observer concurrency must be between 1 and 16");
   }
@@ -96,6 +106,11 @@ export function createNormalizedPollingObserver(options) {
   let refreshPending = false;
   let refreshQueued = false;
   let refreshQueuedFresh = false;
+  // Source-driven catalog dirtiness. Any catalog pass that starts after the notification
+  // satisfies it (upgraded to a fresh pass); otherwise one trailing timer runs it.
+  let sourceCatalogDirty = false;
+  let sourceCatalogTimer = null;
+  let lastCatalogPassAt = -Infinity;
   let eagerPreparationActive = false;
   let preparationGeneration = 0;
   let pendingEagerEntries = null;
@@ -426,6 +441,12 @@ export function createNormalizedPollingObserver(options) {
       return;
     }
     refreshPending = true;
+    lastCatalogPassAt = monotonicNow();
+    if (sourceCatalogDirty) {
+      // This pass reads the catalog after the pending notification, so it answers it.
+      sourceCatalogDirty = false;
+      fresh = true;
+    }
     const rehydrate = new Map(catalogHydrations);
     catalogHydrations.clear();
     qa.reconciliationRuns += 1;
@@ -482,8 +503,38 @@ export function createNormalizedPollingObserver(options) {
         // A queued watcher/reconciliation pass must not form a microtask-only
         // loop that starves the monitor's HTTP server.
         void yieldControl().then(() => refresh({ fresh: queuedFresh }), () => {});
-      }
+      } else scheduleSourceCatalog();
     }
+  }
+
+  /**
+   * Source notifications mark the catalog dirty instead of each starting a full discovery
+   * pass. An idle observer whose last pass began at least `sourceCatalogSpacingMs` ago starts
+   * one immediately; otherwise one trailing pass runs when the spacing elapses (or when an
+   * in-flight pass finishes, whichever is later). A burst of N notifications therefore costs
+   * at most one pass per spacing window, and the last notification is always followed by a
+   * pass that starts after it.
+   */
+  function requestSourceCatalog(sessionIds, sourceEventAt) {
+    for (const id of sessionIds) {
+      if (!catalogHydrations.has(id)) catalogHydrations.set(id, sourceEventAt);
+    }
+    sourceCatalogDirty = true;
+    scheduleSourceCatalog();
+  }
+
+  function scheduleSourceCatalog() {
+    if (!sourceCatalogDirty || sourceCatalogTimer || refreshPending || stopped || signal?.aborted) return;
+    const waitMs = lastCatalogPassAt + sourceCatalogSpacingMs - monotonicNow();
+    if (waitMs <= 0) {
+      void refresh({ fresh: true });
+      return;
+    }
+    sourceCatalogTimer = setTimeout(() => {
+      sourceCatalogTimer = null;
+      scheduleSourceCatalog();
+    }, Math.ceil(waitMs));
+    sourceCatalogTimer.unref?.();
   }
 
   async function handleSourceEvent(change) {
@@ -503,7 +554,7 @@ export function createNormalizedPollingObserver(options) {
     // Unknown/new sources require a cache-bypassing catalog pass. Known
     // sources skip discovery and enter acquisition immediately.
     if (routed.catalog) {
-      void refresh({ fresh: true, sessionIds: routed.sessionIds, sourceEventAt });
+      requestSourceCatalog(routed.sessionIds, sourceEventAt);
       if (routed.afterCatalog) return;
     }
     for (const localSessionId of routed.sessionIds) {
@@ -538,6 +589,9 @@ export function createNormalizedPollingObserver(options) {
     stopped = true;
     if (timer) clearInterval(timer);
     timer = null;
+    if (sourceCatalogTimer) clearTimeout(sourceCatalogTimer);
+    sourceCatalogTimer = null;
+    sourceCatalogDirty = false;
     for (const watcher of watchers.splice(0)) {
       try { watcher.close(); } catch { /* best-effort observer shutdown */ }
     }

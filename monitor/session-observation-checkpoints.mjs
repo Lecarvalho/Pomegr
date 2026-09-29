@@ -201,7 +201,7 @@ export class SessionObservationCheckpointStore {
     this.fileLocks = new Map();
     this.writeGeneration = 0;
     this.maintenance = { cursor: null, inventory: new Map(), sidecars: new Map(), removals: [], cycle: 0, startedGeneration: 0 };
-    this.qa = { writes: 0, writtenBytes: 0, loads: 0, restored: 0, skipped: 0, ignored: 0, pruned: 0,
+    this.qa = { writes: 0, writtenBytes: 0, loads: 0, restored: 0, singleLoads: 0, singleRestored: 0, skipped: 0, ignored: 0, pruned: 0,
       maintenanceEntries: 0, maintenanceDeletes: 0, maintenanceCycles: 0 };
   }
 
@@ -320,20 +320,7 @@ export class SessionObservationCheckpointStore {
         continue;
       }
       try {
-        const evidence = this.upgradeEvidence ? this.upgradeEvidence(payload.providerId, payload.evidence) : payload.evidence;
-        const restored = evidence === payload.evidence ? payload : { ...payload, evidence };
-        const candidate = {
-          providerId: restored.providerId,
-          localSessionId: restored.localSessionId,
-          source: restored.source,
-          evidence: restored.evidence,
-          readiness: restored.readiness,
-          revision: restored.revision,
-          observedAt: restored.observedAt,
-          publicState: projectState(restored),
-        };
-        if (this.validateCandidate(candidate) === false) throw new TypeError("candidate rejected");
-        records.push(Object.freeze(candidate));
+        records.push(this.#restoreCandidate(payload, projectState));
       } catch {
         ignored += 1;
       }
@@ -346,6 +333,44 @@ export class SessionObservationCheckpointStore {
     this.qa.skipped += skipped;
     this.qa.ignored += ignored;
     return Object.freeze({ records: Object.freeze(records), skipped, ignored });
+  }
+
+  /**
+   * Read one session's checkpoint by its identity-keyed filename, with the same
+   * payload, upgrade and candidate validation as `load`. It never enumerates the
+   * directory. Returns null when the file is absent, invalid or rejected.
+   */
+  async loadOne(providerId, localSessionId, { projectState = ({ evidence }) => evidence } = {}) {
+    if (typeof projectState !== "function") throw new TypeError("checkpoint load hooks must be functions");
+    assertIdentity({ providerId, localSessionId });
+    this.qa.singleLoads += 1;
+    const payload = await this.#readPayload(checkpointFilename(providerId, localSessionId));
+    if (!payload || payload.providerId !== providerId || payload.localSessionId !== localSessionId) return null;
+    try {
+      const candidate = this.#restoreCandidate(payload, projectState);
+      this.qa.singleRestored += 1;
+      return candidate;
+    } catch {
+      this.qa.ignored += 1;
+      return null;
+    }
+  }
+
+  #restoreCandidate(payload, projectState) {
+    const evidence = this.upgradeEvidence ? this.upgradeEvidence(payload.providerId, payload.evidence) : payload.evidence;
+    const restored = evidence === payload.evidence ? payload : { ...payload, evidence };
+    const candidate = {
+      providerId: restored.providerId,
+      localSessionId: restored.localSessionId,
+      source: restored.source,
+      evidence: restored.evidence,
+      readiness: restored.readiness,
+      revision: restored.revision,
+      observedAt: restored.observedAt,
+      publicState: projectState(restored),
+    };
+    if (this.validateCandidate(candidate) === false) throw new TypeError("candidate rejected");
+    return Object.freeze(candidate);
   }
 
   async prune({ preserveFilename = null } = {}) {

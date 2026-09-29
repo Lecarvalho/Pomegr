@@ -9,6 +9,30 @@ import { contextAllocationFromCategories, contextCategoryKind } from "./context-
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
 const execFile = promisify(execFileCallback);
+// A `rev-parse --show-toplevel` answer is reused for the same freshness the providers'
+// memoized repository resolver already applies (session-identity.mjs, 300 s).
+const GIT_ROOT_TTL_MS = 300_000;
+const GIT_ROOT_MAX_ENTRIES = 256;
+
+/**
+ * One Git root lookup per normalized directory: concurrent callers share the in-flight
+ * `git rev-parse --show-toplevel`, and its answer (a root or null) is reused for `ttlMs`
+ * from when that lookup started. A rejected lookup is not retained.
+ */
+export function createGitRootLookup(readGitRoot, { now = Date.now, ttlMs = GIT_ROOT_TTL_MS, maxEntries = GIT_ROOT_MAX_ENTRIES } = {}) {
+  const entries = new Map();
+  return function gitRoot(cwd) {
+    const key = path.resolve(cwd);
+    const cached = entries.get(key);
+    if (cached && now() - cached.at < ttlMs) return cached.value;
+    const entry = { at: now(), value: Promise.resolve().then(() => readGitRoot(key)) };
+    entries.delete(key);
+    entries.set(key, entry);
+    while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+    entry.value.catch(() => { if (entries.get(key) === entry) entries.delete(key); });
+    return entry.value;
+  };
+}
 const STORE_VERSION = 1;
 const MAX_REVISIONS_PER_TARGET = 10;
 const MAX_REVISIONS = 100;
@@ -151,7 +175,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
   const persistence = options.persistence !== false;
   const storeFile = options.storeFile;
   if (typeof storeFile !== "string" || !path.isAbsolute(storeFile)) throw new TypeError("Repository inventory store requires an absolute file path");
-  const gitRoot = options.gitRoot || (async (cwd) => {
+  const readGitRoot = options.gitRoot || (async (cwd) => {
     try {
       const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
         windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024,
@@ -160,6 +184,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
       return path.isAbsolute(root) && !/[\u0000-\u001f\u007f]/u.test(root) ? path.resolve(root) : null;
     } catch { return null; }
   });
+  const gitRoot = createGitRootLookup(readGitRoot, { now, ttlMs: GIT_ROOT_TTL_MS, maxEntries: GIT_ROOT_MAX_ENTRIES });
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const targets = new Map();
   const roots = new Map();

@@ -16,7 +16,7 @@ import { recentActivityEvents } from "../activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../context-compactions.mjs";
 import { createExecutionTaskReader } from "../execution-tasks.mjs";
-import { listSessionFiles, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
+import { createSessionFileLister, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../session-discovery.mjs";
 import { memoizeRepositoryResolver } from "../session-identity.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../session-registry.mjs";
 import { readSessionTasks } from "../session-tasks.mjs";
@@ -145,8 +145,12 @@ export function createClaudeProvider(options = {}) {
     return fast ? titleEnrichment.fast(file, stat, records) : titleEnrichment.exact(file, stat, records);
   }
 
-  function discoveredSessions() {
-    const files = listSessionFiles(projectsRoot);
+  // Catalog passes walk asynchronously and reuse unchanged directory listings; the rare
+  // synchronous resolver fallback shares the same listings.
+  const sessionFileLister = createSessionFileLister();
+  const discoveredSessions = () => discoveredFromFiles(sessionFileLister.list(projectsRoot));
+  const discoveredSessionsAsync = async () => discoveredFromFiles(await sessionFileLister.listAsync(projectsRoot));
+  function discoveredFromFiles(files) {
     const { registry, closedSessionIds } = registryObservation.read();
     const explicitFile = explicitSession && fs.existsSync(explicitSession) ? explicitSession : null;
     if (explicitFile && !files.some(({ file }) => file === explicitFile)) {
@@ -166,7 +170,7 @@ export function createClaudeProvider(options = {}) {
 
   async function listSessions(listOptions = {}) {
     const fastCatalog = listOptions.fastCatalog === true;
-    const { files, liveFiles, registry, closedSessionIds } = discoveredSessions();
+    const { files, liveFiles, registry, closedSessionIds } = await discoveredSessionsAsync();
     sourceLedger.markLive([...liveFiles].map((file) => path.basename(file, ".jsonl")));
     backgroundLifecycle.prune(registry);
     const transcriptStatusIds = files.slice(0, 50).filter(({ file }) => liveFiles.has(file)).map(({ file }) => path.basename(file, ".jsonl"));

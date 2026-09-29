@@ -173,44 +173,154 @@ function rolloutRecency(file, stat, headText, maximumBytes, createdAt) {
   if (stat.size <= maximumBytes) return newestParsedRecordTimestamp(headText) || createdAt;
   const cached = recencyCache.get(file);
   if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.updatedAt;
-  const mtime = stat.mtime.toISOString();
   const updatedAt = newestParsedRecordTimestamp(readBoundedFile(file, DEFAULT_HEADER_BYTES, true))
     || (stat.size > DEFAULT_HEADER_BYTES ? newestParsedRecordTimestamp(readBoundedFile(file, WIDE_RECENCY_BYTES, true)) : null)
-    || (createdAt && Date.parse(createdAt) >= Date.parse(mtime) ? createdAt : mtime);
+    || recencyFallback(stat, createdAt);
+  return rememberRecency(file, stat, updatedAt);
+}
+
+/** `rolloutRecency` with asynchronous tail reads; same cache, same answer. */
+async function rolloutRecencyAsync(file, stat, headText, maximumBytes, createdAt) {
+  if (stat.size <= maximumBytes) return newestParsedRecordTimestamp(headText) || createdAt;
+  const cached = recencyCache.get(file);
+  if (cached && cached.size === stat.size && cached.mtimeMs === stat.mtimeMs) return cached.updatedAt;
+  const updatedAt = newestParsedRecordTimestamp((await readBoundedFileAsync(file, DEFAULT_HEADER_BYTES, true)).text)
+    || (stat.size > DEFAULT_HEADER_BYTES ? newestParsedRecordTimestamp((await readBoundedFileAsync(file, WIDE_RECENCY_BYTES, true)).text) : null)
+    || recencyFallback(stat, createdAt);
+  return rememberRecency(file, stat, updatedAt);
+}
+
+function recencyFallback(stat, createdAt) {
+  const mtime = stat.mtime.toISOString();
+  return createdAt && Date.parse(createdAt) >= Date.parse(mtime) ? createdAt : mtime;
+}
+
+function rememberRecency(file, stat, updatedAt) {
   recencyCache.delete(file);
   recencyCache.set(file, { size: stat.size, mtimeMs: stat.mtimeMs, updatedAt });
   while (recencyCache.size > RECENCY_CACHE_LIMIT) recencyCache.delete(recencyCache.keys().next().value);
   return updatedAt;
 }
 
-export function readCodexRolloutHeader(file, options = {}) {
-  const maximumBytes = options.maximumBytes ?? DEFAULT_HEADER_BYTES;
-  const headText = readBoundedFile(file, maximumBytes);
-  let sessionRecord = null;
+/** `readBoundedFile` through one async file handle. Also reports the handle's stat and
+ * the bytes actually read, so a caller can classify an unusable header without a second
+ * open. Text is decoded from the full requested buffer, exactly as the sync reader does. */
+async function readBoundedFileAsync(file, maximum, fromEnd = false) {
+  let handle;
+  try { handle = await fs.promises.open(file, "r"); } catch { return { text: "", stat: null, bytesRead: 0 }; }
+  try {
+    let stat;
+    try { stat = await handle.stat(); } catch { return { text: "", stat: null, bytesRead: 0 }; }
+    if (!stat.isFile() || stat.size <= 0) return { text: "", stat, bytesRead: 0 };
+    const bytes = Math.min(stat.size, maximum);
+    const buffer = Buffer.alloc(bytes);
+    let bytesRead;
+    try {
+      ({ bytesRead } = await handle.read(buffer, 0, bytes, fromEnd ? Math.max(0, stat.size - bytes) : 0));
+    } catch { return { text: "", stat: null, bytesRead: 0 }; }
+    let text = buffer.toString("utf8");
+    if (fromEnd && stat.size > bytes) {
+      const firstNewline = text.indexOf("\n");
+      text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+    }
+    return { text, stat, bytesRead };
+  } finally {
+    try { await handle.close(); } catch { /* best-effort close */ }
+  }
+}
+
+function findSessionRecord(headText) {
   for (const line of headText.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const record = JSON.parse(line);
-      if (record?.type === "session_meta" && record.payload && typeof record.payload === "object") {
-        sessionRecord = record;
-        break;
-      }
+      if (record?.type === "session_meta" && record.payload && typeof record.payload === "object") return record;
     } catch {
       // Live writes and damaged history can leave one bad line without invalidating the file.
     }
   }
-  if (!sessionRecord) return null;
+  return null;
+}
+
+/**
+ * The asynchronous equivalent of `readCodexRolloutHeader` for the default header window:
+ * one file handle for the stat and header read, async recency tails, and, when no header
+ * results, the same `invalid`/`inconclusive` classification `enumerateCodexRolloutHeaders`
+ * previously established with a second open. `stat` is null when the file could not be
+ * opened, stat-ed, or read.
+ */
+async function inspectCodexRolloutHeader(file, options = {}) {
+  const { text: headText, stat, bytesRead } = await readBoundedFileAsync(file, DEFAULT_HEADER_BYTES);
+  const sessionRecord = findSessionRecord(headText);
+  const localId = sessionRecord ? sessionRecord.payload.id ?? sessionRecord.payload.thread_id : null;
+  if (!stat || !sessionRecord || !isSafeCodexSessionId(localId)) {
+    const complete = Boolean(stat?.isFile()) && bytesRead === Math.min(stat.size, HEADER_READ_BYTES);
+    return { header: null, stat, invalid: complete && stat.size <= HEADER_READ_BYTES };
+  }
+  const createdAt = codexTimestamp(sessionRecord.payload.timestamp ?? sessionRecord.timestamp);
+  const updatedAt = await rolloutRecencyAsync(file, stat, headText, DEFAULT_HEADER_BYTES, createdAt);
+  return { header: buildRolloutHeader(file, sessionRecord, createdAt, updatedAt, options), stat, invalid: false };
+}
+
+const HEADER_CACHE_LIMIT = 16_384;
+const HEADER_SETTLE_MS = 2_000;
+
+function headerGeneration(stat) {
+  return `${stat.dev ?? ""}:${stat.ino ?? ""}:${stat.birthtimeMs ?? ""}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs ?? ""}`;
+}
+
+/**
+ * A bounded, in-memory header cache for `enumerateCodexRolloutHeaders`, keyed by file,
+ * archived flag, and file generation (identity, size, modification and change times). An
+ * entry is reused only when that generation is unchanged and the file had been settled for
+ * `settleMs` when it was read, so a change inside the timestamp granularity is read again.
+ * Unusable headers cache their `invalid` classification the same way. Entries for missing
+ * files are dropped, a complete enumeration drops every file it did not visit, and the
+ * oldest entries leave first past the bound. Never persisted, logged, or exposed.
+ * @param {{now?: () => number, settleMs?: number, maxEntries?: number}} [options]
+ */
+export function createCodexRolloutHeaderCache({ now = Date.now, settleMs = HEADER_SETTLE_MS, maxEntries = HEADER_CACHE_LIMIT } = {}) {
+  const entries = new Map();
+  let visited = null;
+  function key(file, archived) { return `${archived ? 1 : 0}\0${file}`; }
+  return Object.freeze({
+    beginPass() { visited = new Set(); },
+    endPass(complete) {
+      if (complete && visited) for (const cacheKey of [...entries.keys()]) if (!visited.has(cacheKey)) entries.delete(cacheKey);
+      visited = null;
+    },
+    async read(file, archived) {
+      const cacheKey = key(file, archived);
+      visited?.add(cacheKey);
+      let stat = null;
+      if (maxEntries > 0) {
+        try { stat = await fs.promises.stat(file); } catch (error) {
+          if (["ENOENT", "ENOTDIR"].includes(error?.code)) entries.delete(cacheKey);
+        }
+      }
+      const cached = stat && entries.get(cacheKey);
+      if (cached && cached.generation === headerGeneration(stat)) {
+        return { header: cached.header ? { ...cached.header } : null, invalid: cached.invalid };
+      }
+      const readAt = now();
+      const result = await inspectCodexRolloutHeader(file, { archived });
+      entries.delete(cacheKey);
+      const settledAt = result.stat ? Math.max(result.stat.mtimeMs, result.stat.ctimeMs ?? 0) : Number.POSITIVE_INFINITY;
+      if (result.stat && (result.header || result.invalid) && readAt - settledAt > settleMs) {
+        entries.set(cacheKey, { generation: headerGeneration(result.stat), header: result.header ? { ...result.header } : null, invalid: result.invalid });
+        while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+      }
+      return { header: result.header, invalid: result.invalid };
+    },
+    size: () => entries.size,
+  });
+}
+
+function buildRolloutHeader(file, sessionRecord, createdAt, updatedAt, options) {
   const payload = sessionRecord.payload;
   const localId = payload.id ?? payload.thread_id;
-  if (!isSafeCodexSessionId(localId)) return null;
-  let stat;
-  try { stat = fs.statSync(file); } catch { return null; }
   const cwd = boundedPath(payload.cwd);
-  const sourceKind = codexSourceKind(payload.source);
-  const parentThreadId = sessionParentId(payload);
   const spawned = sessionSpawnMetadata(payload);
-  const createdAt = codexTimestamp(payload.timestamp ?? sessionRecord.timestamp);
-  const updatedAt = rolloutRecency(file, stat, headText, maximumBytes, createdAt);
   return {
     localId,
     provider: "codex",
@@ -220,10 +330,10 @@ export function readCodexRolloutHeader(file, options = {}) {
     cwd,
     createdAt,
     updatedAt,
-    sourceKind,
+    sourceKind: codexSourceKind(payload.source),
     approvalReviewer: isCodexApprovalReviewerSource(payload.source),
     sessionId: safeRelatedId(payload.sessionId ?? payload.session_id) || localId,
-    parentThreadId,
+    parentThreadId: sessionParentId(payload),
     forkedFromId: safeRelatedId(payload.forkedFromId ?? payload.forked_from_id),
     agentPath: boundedText(payload.agentPath ?? payload.agent_path ?? spawned.agent_path ?? spawned.agentPath, MAX_AGENT_PATH_LENGTH),
     agentNickname: boundedText(payload.agentNickname ?? payload.agent_nickname ?? spawned.agent_nickname ?? spawned.agentNickname, MAX_TITLE_LENGTH),
@@ -233,6 +343,18 @@ export function readCodexRolloutHeader(file, options = {}) {
     archived: Boolean(options.archived),
     rolloutFile: file,
   };
+}
+
+export function readCodexRolloutHeader(file, options = {}) {
+  const maximumBytes = options.maximumBytes ?? DEFAULT_HEADER_BYTES;
+  const headText = readBoundedFile(file, maximumBytes);
+  const sessionRecord = findSessionRecord(headText);
+  if (!sessionRecord || !isSafeCodexSessionId(sessionRecord.payload.id ?? sessionRecord.payload.thread_id)) return null;
+  let stat;
+  try { stat = fs.statSync(file); } catch { return null; }
+  const createdAt = codexTimestamp(sessionRecord.payload.timestamp ?? sessionRecord.timestamp);
+  const updatedAt = rolloutRecency(file, stat, headText, maximumBytes, createdAt);
+  return buildRolloutHeader(file, sessionRecord, createdAt, updatedAt, options);
 }
 
 function walkRecentRollouts(root, maximumFiles, maximumDepth = 5) {
@@ -517,7 +639,7 @@ export async function findCodexRolloutFamily(roots, localSessionId, options = {}
  * This is deliberately separate from the bounded, recency-oriented discovery
  * cache used by the live shell.  It reads only the fixed rollout header window.
  */
-/** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, onHeader?: (header: any) => void, signal?: AbortSignal }} [options] */
+/** @param {{ onBatch?: (batch: any[]) => boolean | Promise<boolean>, onHeader?: (header: any) => void, signal?: AbortSignal, headerCache?: ReturnType<typeof createCodexRolloutHeaderCache> }} [options] */
 export async function enumerateCodexRolloutHeaders(roots, options = {}) {
   const { onBatch, onHeader, signal } = options;
   if (typeof onBatch !== "function" || !Array.isArray(roots) || roots.length === 0) return { complete: false };
@@ -528,23 +650,12 @@ export async function enumerateCodexRolloutHeaders(roots, options = {}) {
     batch = [];
     try { return (await onBatch(next)) !== false; } catch { return false; }
   };
-  function readableOrInvalid(file) {
-    let descriptor;
-    try {
-      const stat = fs.statSync(file);
-      if (!stat.isFile()) return "inconclusive";
-      const bytes = Math.min(stat.size, HEADER_READ_BYTES);
-      const buffer = Buffer.alloc(bytes);
-      descriptor = fs.openSync(file, "r");
-      const read = fs.readSync(descriptor, buffer, 0, bytes, 0);
-      if (read !== bytes) return "inconclusive";
-      // A full bounded header with no valid session_meta is an explicit
-      // non-candidate. A larger file whose header cannot establish identity
-      // may be mid-write or truncated, so exactness must degrade.
-      return stat.size <= HEADER_READ_BYTES ? "invalid" : "inconclusive";
-    } catch { return "inconclusive"; }
-    finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
-  }
+  // Header reads are asynchronous, one open per changed file; unchanged files come from
+  // the provider's header cache. A full bounded header with no valid session_meta is an
+  // explicit non-candidate (`invalid`); a larger or unreadable file whose header cannot
+  // establish identity may be mid-write or truncated, so exactness degrades.
+  const headerCache = options.headerCache || createCodexRolloutHeaderCache({ maxEntries: 0 });
+  headerCache.beginPass();
   async function walk(directory, archived, depth) {
     if (depth > 16 || signal?.aborted) return false;
     let handle;
@@ -558,9 +669,9 @@ export async function enumerateCodexRolloutHeaders(roots, options = {}) {
           continue;
         }
         if (!entry.isFile() || !/^rollout-.*\.jsonl$/i.test(entry.name)) continue;
-        const header = readCodexRolloutHeader(file, { archived });
+        const { header, invalid } = await headerCache.read(file, archived);
         if (!header) {
-          if (readableOrInvalid(file) !== "invalid") return false;
+          if (!invalid) return false;
           continue;
         }
         onHeader?.(header);
@@ -572,12 +683,18 @@ export async function enumerateCodexRolloutHeaders(roots, options = {}) {
     } catch { return false; }
     finally { try { await handle?.close(); } catch { /* iteration may already close it */ } }
   }
-  for (const source of roots) {
-    if (signal?.aborted || !source || typeof source.root !== "string" || !source.root) return { complete: false };
-    if (!await walk(source.root, Boolean(source.archived), 0)) {
-      if (!signal?.aborted) await emit();
-      return { complete: false };
+  let walked = false;
+  try {
+    for (const source of roots) {
+      if (signal?.aborted || !source || typeof source.root !== "string" || !source.root) return { complete: false };
+      if (!await walk(source.root, Boolean(source.archived), 0)) {
+        if (!signal?.aborted) await emit();
+        return { complete: false };
+      }
     }
+    walked = true;
+    return { complete: await emit() };
+  } finally {
+    headerCache.endPass(walked);
   }
-  return { complete: await emit() };
 }

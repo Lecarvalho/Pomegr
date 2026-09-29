@@ -41,7 +41,7 @@ import {
   codexHeaderToLedgerHeader,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
-  enumerateCodexRolloutHeaders,
+  createCodexRolloutHeaderCache, enumerateCodexRolloutHeaders,
   readCodexLedgerHeader,
   readCodexSessionIndex,
   resolveCodexRolloutFamily,
@@ -168,6 +168,7 @@ export function createCodexProvider(options = {}) {
   let rolloutDiscovery = makeRolloutDiscovery();
   const rolloutRoots = [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])];
   const archivedPrefix = path.resolve(archivedRoot) + path.sep;
+  const rolloutHeaderCache = createCodexRolloutHeaderCache(); // header inventory: unchanged rollouts are not reopened
   const sourceLedger = createSourceLedger({
     parseHeader: (file) => readCodexLedgerHeader(file, { archived: path.resolve(file).startsWith(archivedPrefix) }),
     now,
@@ -237,7 +238,7 @@ export function createCodexProvider(options = {}) {
       };
     const emit = async (headers) => onBatch(await Promise.all(headers.map(normalizeHeader)));
     const onHeader = (header) => sourceLedger.ingestHeaders([{ file: header.rolloutFile, header: codexHeaderToLedgerHeader(header) }]);
-    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit, onHeader });
+    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit, onHeader, headerCache: rolloutHeaderCache });
     const appServerHeaders = await appServerSessions.enumerateSessionHeaders({ signal, onBatch: emit });
     return { complete: Boolean(files.complete) && Boolean(appServerHeaders.complete) };
   }
