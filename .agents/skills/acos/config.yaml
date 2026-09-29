@@ -1,5 +1,7 @@
-# ACOS project configuration, derived by `/acos init`.
-# Values here fill `{{ project.* }}` placeholders in presets and blocks.
+# Project defaults for ACOS in Pomegr, derived by `/acos init`.
+# Catalog files reference these with {{ project.* }}. No model ids here or
+# in the catalog: stages ask for a tier, and compose writes the current id
+# into the manifest.
 
 acos: "0.1"
 
@@ -19,26 +21,18 @@ providers:
   - anthropic
   - openai
 
-# Each harness resolves its provider, model tiers, and startup load here.
-# Shared verify, capture, limits, and gates deliberately remain top-level.
-harnesses:
-  claude:
-    provider: anthropic
-    models:
-      fast: claude-haiku-4-5
-      balanced: claude-sonnet-5-5
-      strong: claude-opus-5-5
-    startup:
-      orchestrator: 40000
-      subagent: 27000
-      basis: "estimated 2026-09-18 from Claude Code's loaded project and harness surface; no /context reading yet"
+# The Claude Code session's native provider and startup load. Tiers resolve
+# through catalog/providers.yaml.
+provider: anthropic
+startup:
+  orchestrator: 40000
+  subagent: 27000
+  basis: "estimated 2026-09-18 from Claude Code's loaded project and harness surface; no /context reading yet"
 
+# A Codex session reads these in place of the top-level provider and startup.
+harnesses:
   codex:
     provider: openai
-    models:
-      fast: gpt-6-luna
-      balanced: gpt-6-sol
-      strong: gpt-6-astra
     startup:
       orchestrator: 46000
       subagent: 29000

@@ -33,15 +33,15 @@ above the manifest. Do not run it until GO.
 |----------|--------|
 | segment | one script, `meta.phases` = one entry per stage in it |
 | stage | `agent(prompt, {label: stage.name, phase: stage.name, ...})` |
-| `provider` / `model` | `model` option, harness alias (`opus`, `sonnet`, `haiku`). Omit when the model equals the session model. Non-native providers cannot run in a workflow: compose error before GO. |
-| `effort` | `effort` option: low, medium, high, max, unchanged |
+| `provider` / `tier` | `model` option, the tier's alias from `catalog/providers.yaml` (`opus`, `sonnet`, `haiku`), never the manifest's concrete id. Omit when the model equals the session model. Non-native providers cannot run in a workflow: compose error before GO. |
+| `effort` | `effort` option: low, medium, high, max. Omit it on `inherit`. |
 | `inputs` | previous agents' return values, interpolated into the prompt |
 | `outputs` | the agent's return value, kept in a `artifacts` object and returned at the end |
 | `check.kind: command` | one extra low-effort agent per iteration: runs the command, returns `{pass, output}` via schema. The script has no shell access itself. |
 | `check.kind: review` | schema on the review agent: `{verdict: "PASS" \| "FAIL", findings}` |
 | `check.kind: none` | no check agent |
 | `on_fail: retry` + `max_iterations` | `for` loop around the stage agent, check output appended to the prompt |
-| `on_fail: escalate` + `escalation` | same loop; `model`/`effort` taken from `escalation[i-1]`, last entry reused when exhausted |
+| `on_fail: escalate` + `escalation` | same loop; tier alias and `effort` taken from `escalation[i-1]`, last entry reused when exhausted |
 | `on_fail: ask` | `return {status: "ask", stage, output, artifacts}` |
 | `on_fail: stop` | `return {status: "failed", stage, output, artifacts}` |
 | stages with no input dependency on each other | `parallel([...])` in one phase. Each gets its own `phase` option. |
@@ -90,7 +90,7 @@ const artifacts = { ...(args.artifacts || {}) }
 
 const IMPLEMENT_MAX = 3
 const IMPLEMENT_ESCALATION = [
-  { model: 'sonnet', effort: 'medium' },   // iteration 1: manifest model
+  { model: 'sonnet', effort: 'medium' },   // iteration 1: the stage tier's alias
   { model: 'opus',   effort: 'high'   },   // iteration 2+: escalation[0]
 ]
 
@@ -121,7 +121,7 @@ ${SCOPE ? 'Scope notes: ' + SCOPE : ''}
 // ---- explore --------------------------------------------------------
 artifacts.context = await agent(header(`You are the explorer. Do not modify any file.
 Find what the intent touches: relevant files, conventions, verify command, risks.
-Under 40 lines. No code dumps.`), { label: 'explore', phase: 'explore', model: 'haiku', effort: 'low' })
+Under 40 lines. No code dumps.`), { label: 'explore', phase: 'explore', model: 'haiku' })
 
 // ---- plan -----------------------------------------------------------
 artifacts.plan = await agent(header(`You are the planner. Do not modify any file.

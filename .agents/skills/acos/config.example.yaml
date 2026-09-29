@@ -1,0 +1,54 @@
+# Project defaults for ACOS. `/acos init` writes this as config.yaml in the
+# skill folder; edit if you like.
+# Catalog files reference these with {{ project.* }}. No model ids here or
+# in the catalog: stages ask for a tier, and compose writes the current id
+# into the manifest.
+
+acos: "0.1"
+
+# preset: plan-build-review    # optional. Default is ad hoc composition from blocks.
+
+provider: anthropic              # tiers resolve through catalog/providers.yaml
+
+# Per-block choices for this repo, only where it disagrees with the block
+# defaults. `tier` and `effort` apply when the block runs delegated; an
+# inline stage runs on the session's model and effort, whatever is set here.
+# stages:
+#   review:    { tier: strong, effort: high }
+#   implement: { tier: balanced, effort: medium }
+
+verify: "npm test"               # substituted into {{ project.verify }}
+
+# Captures a cropped screenshot for a part's try-it page; substituted into
+# {{ project.shot }}. A project whose interface is not a web page replaces this
+# with its own capture command; one without a visible surface removes the key.
+shot: "node .claude/skills/acos/scripts/shot.mjs"  # the installed skill folder
+
+gates:
+  go: required                   # `auto` only here, never in a preset
+
+# What a session of this project holds before it reads a line of code:
+# system prompt, tool schemas, MCP servers, project memory, skill
+# descriptions. Sizing subtracts startup.orchestrator from
+# limits.orchestrator_tokens, so with the values below a part has 80k to
+# spend, not 120k. `/acos init` measures it; re-run init after adding an
+# MCP server, a skill or a memory file.
+startup:
+  orchestrator: 40000
+  subagent: 25000                # what a fresh worker pays before its first read
+  basis: "claude code /context, fresh session, 2026-09-18"
+
+# Session limits. Advisory and compose-time only: they split big tasks
+# into a plan and cap delegation. files/lines size a part; token limits are
+# per context unless explicitly named `_total`. Nothing checks them mid-run;
+# `/acos calibrate` reports afterwards how often runs outgrew them.
+limits:
+  files: 8                       # per context: one inline part, or one slice of a
+                                 # fan-out, tests included. A session running three
+                                 # slices legitimately touches three times this.
+  lines: 400                     # added plus removed, same per-context meaning
+  orchestrator_tokens: 120000    # context the orchestrating session may spend
+  worker_context_tokens: 300000  # each subagent/workflow/external worker may spend
+  # worker_tokens_total: 900000  # optional aggregate ceiling across workers
+  agents: 3                      # delegations per run
+  stages: 5

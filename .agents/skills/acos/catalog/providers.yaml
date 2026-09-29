@@ -1,0 +1,43 @@
+# ACOS provider catalog: one entry per provider a stage may route to.
+# Tiers map to model families, not ids; the manifest records concrete ids.
+# Semantics: SKILL.md (tiers, aliases), references/adapters.md (invoke,
+# {{alias}}/{{effort}} substitution, effort_map).
+
+acos: "0.1"
+
+providers:
+
+  anthropic:
+    label: Anthropic (Claude)
+    invoke:
+      inline: native
+      subagent: native
+      workflow: native
+      external: "claude -p --model {{alias}}"
+    effort_map:            # provider-agnostic effort -> provider setting
+      low: low
+      medium: medium
+      high: high
+      max: max
+    tiers:
+      strong:   { alias: opus,   effort: [low, medium, high, max] }
+      balanced: { alias: sonnet, effort: [low, medium, high, max] }
+      fast:     { alias: haiku }   # no effort list: inherit only
+
+  openai:
+    label: OpenAI
+    invoke:
+      inline: null
+      subagent: null
+      workflow: null
+      # Codex wants full ids: the generation lives here, the family below.
+      external: "codex exec --model gpt-6-{{alias}} -c model_reasoning_effort={{effort}}"
+    effort_map:
+      low: low
+      medium: medium
+      high: high
+      max: high
+    tiers:
+      strong:   { alias: astra, effort: [low, medium, high, max] }
+      balanced: { alias: sol,   effort: [low, medium, high, max] }
+      fast:     { alias: luna,  effort: [low, medium, high, max] }

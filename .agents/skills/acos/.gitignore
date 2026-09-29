@@ -1,0 +1,3 @@
+# Run output. Delete this line to commit runs, so /acos calibrate sees
+# history across machines. Commit calibration.md either way.
+runs/

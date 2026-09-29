@@ -5,6 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const skill = '.agents/skills/acos'
 
 function stripComment(line) {
   let quote = null
@@ -19,6 +20,24 @@ function stripComment(line) {
   return line
 }
 
+function splitFlow(body) {
+  const parts = []
+  let depth = 0
+  let current = ''
+  for (const character of body) {
+    if (character === '[' || character === '{') depth += 1
+    if (character === ']' || character === '}') depth -= 1
+    if (character === ',' && depth === 0) {
+      parts.push(current)
+      current = ''
+    } else {
+      current += character
+    }
+  }
+  if (current.trim() !== '') parts.push(current)
+  return parts
+}
+
 function scalar(value) {
   const trimmed = value.trim()
   if (trimmed === 'null') return null
@@ -29,9 +48,20 @@ function scalar(value) {
     || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
     return trimmed.slice(1, -1)
   }
-  const inlineMap = trimmed.match(/^\{\s*([^:]+):\s*([^}]+)\s*\}$/)
-  if (inlineMap) return { [inlineMap[1].trim()]: scalar(inlineMap[2]) }
+  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+    return splitFlow(trimmed.slice(1, -1)).map(scalar)
+  }
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    return Object.fromEntries(splitFlow(trimmed.slice(1, -1)).map((entry) => {
+      const separator = entry.indexOf(':')
+      return [entry.slice(0, separator).trim(), scalar(entry.slice(separator + 1))]
+    }))
+  }
   return trimmed
+}
+
+function stripComments(source) {
+  return source.split(/\r?\n/).map(stripComment).join('\n')
 }
 
 function parseYaml(source) {
@@ -74,50 +104,48 @@ function parseYaml(source) {
   return block(0, 0).value
 }
 
-test('ACOS harness profiles resolve to compatible native provider tiers', async () => {
+test('ACOS harness profiles resolve to catalog tiers without model ids', async () => {
   const [configSource, catalogSource] = await Promise.all([
-    readFile(path.join(root, '.acos.yaml'), 'utf8'),
-    readFile(path.join(root, 'acos/catalog/providers.yaml'), 'utf8'),
+    readFile(path.join(root, skill, 'config.yaml'), 'utf8'),
+    readFile(path.join(root, skill, 'catalog/providers.yaml'), 'utf8'),
   ])
   const config = parseYaml(configSource)
   const catalog = parseYaml(catalogSource)
 
-  assert.deepEqual(Object.keys(config.harnesses).sort(), ['claude', 'codex'])
-  assert.equal(config.provider, undefined)
+  assert.doesNotMatch(stripComments(configSource), /claude-|gpt-/, 'config.yaml names tiers, never model ids')
   assert.equal(config.models, undefined)
-  assert.equal(config.startup, undefined)
   assert.equal(typeof config.verify, 'string')
   assert.equal(typeof config.shot, 'string')
   assert.ok(config.limits)
   assert.ok(config.gates)
 
-  for (const [harness, profile] of Object.entries(config.harnesses)) {
+  const profiles = {
+    claude: { provider: config.provider, startup: config.startup },
+    ...config.harnesses,
+  }
+  assert.deepEqual(Object.keys(profiles).sort(), ['claude', 'codex'])
+
+  for (const [harness, profile] of Object.entries(profiles)) {
+    assert.equal(profile.models, undefined, `${harness} names no model ids`)
     assert.ok(config.providers.includes(profile.provider), `${harness} selects a listed provider`)
     const provider = catalog.providers[profile.provider]
     assert.ok(provider, `${harness} provider exists in the catalog`)
     for (const tier of ['fast', 'balanced', 'strong']) {
-      const model = provider.models[profile.models[tier]]
-      assert.ok(model, `${harness} ${tier} model exists in its provider catalog`)
-      assert.equal(model.tier, tier, `${harness} ${tier} model has the matching catalog tier`)
+      assert.equal(typeof provider.tiers[tier]?.alias, 'string', `${harness} ${tier} tier has an alias`)
     }
-    assert.equal(provider.invoke.inline.native_harness, harness)
-    assert.equal(provider.invoke.subagent.native_harness, harness)
     assert.equal(typeof profile.startup.orchestrator, 'number')
     assert.equal(typeof profile.startup.subagent, 'number')
     assert.equal(typeof profile.startup.basis, 'string')
   }
 
-  assert.equal(catalog.providers.anthropic.invoke.workflow.native_harness, 'claude')
-  assert.equal(catalog.providers.openai.invoke.workflow, null)
   assert.match(catalog.providers.openai.invoke.external, /model_reasoning_effort=\{\{effort\}\}/)
-  assert.equal(catalog.providers.openai.effort_map.max, 'max')
 })
 
 test('ACOS operating files do not point to absent local specifications', async () => {
   const files = [
-    '.agents/skills/acos/SKILL.md',
-    'acos/catalog/blocks/implement.yaml',
-    'acos/catalog/blocks/plan.yaml',
+    `${skill}/SKILL.md`,
+    `${skill}/catalog/blocks/implement.yaml`,
+    `${skill}/catalog/blocks/plan.yaml`,
   ]
   const danglingLocalFile = /(?:SPEC\.md|schema\/acos\.schema\.json|install\.md)/
   for (const file of files) {

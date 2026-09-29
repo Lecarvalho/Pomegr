@@ -240,7 +240,6 @@ async function captureWithPlaywright(playwright, binary, flags) {
 
     let box = { x: 0, y: 0, width: flags.width, height: flags.height };
     if (flags.selector) {
-      const locator = page.locator(flags.selector).first();
       try { await page.waitForSelector(flags.selector, { state: 'attached' }); }
       catch (error) {
         if (error?.name === 'TimeoutError') {
@@ -248,21 +247,21 @@ async function captureWithPlaywright(playwright, binary, flags) {
         }
         throw error;
       }
-      await locator.scrollIntoViewIfNeeded();
-      box = await locator.boundingBox();
-      if (!box) {
-        throw failure(E_EMPTY_BOX, `${flags.selector} has no area to capture`);
-      }
+      box = await page.locator(flags.selector).first().evaluate(element => {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.left + window.scrollX,
+          y: rect.top + window.scrollY,
+          width: rect.width,
+          height: rect.height,
+        };
+      });
     }
-    const left = Math.max(0, box.x - flags.pad);
-    const top = Math.max(0, box.y - flags.pad);
-    const right = Math.min(flags.width, box.x + box.width + flags.pad);
-    const bottom = Math.min(flags.height, box.y + box.height + flags.pad);
     const clip = {
-      x: left,
-      y: top,
-      width: right - left,
-      height: bottom - top,
+      x: Math.max(0, box.x - flags.pad),
+      y: Math.max(0, box.y - flags.pad),
+      width: box.width + flags.pad * 2,
+      height: box.height + flags.pad * 2,
     };
     if (clip.width <= 0 || clip.height <= 0) {
       throw failure(E_EMPTY_BOX, `${flags.selector ?? 'the viewport'} has no area to capture`);

@@ -9,23 +9,12 @@ returns text (the stage output) plus, when available, token counts.
 The orchestrator does the work itself in the current session.
 
 - Use the session's own tools (read, edit, run commands).
-- `provider`, `model` and `effort` are absent, and the schema rejects
-  them here. The stage runs on the session's model at the session's
-  reasoning effort, both fixed for the session's whole life: a manifest
-  cannot raise effort for one stage and lower it for the next, and a
-  summary that shows it is describing something no runner can do. How
-  deeply the stage works belongs in the block prompt, not in an effort
-  field.
-- The session's startup load (`.acos.yaml` `startup.orchestrator`) was
-  spent before the first stage began. It belongs in the estimate, not in
-  the stage record.
+- No `provider`, `tier`, `model` or `effort`: the session's are fixed.
+  How deeply the stage works belongs in the block prompt.
 - Tokens: not reported by the harness. Leave `tokens` out of the stage
   record; do not estimate.
-- Escalation on an inline stage always delegates: run the retry as a
-  `subagent` on the `escalation` entry's model and effort — even when it
-  names the session model, since the session cannot raise its own
-  effort — count it against `limits.agents`, and log the iteration with
-  `adapter: subagent`.
+- Escalation on an inline stage always delegates, even to the session's
+  own tier: run the retry as a `subagent` (see `execute.md`).
 
 Best for: nearly everything. Plan, implement, verify, and review of small
 changes. This is the default adapter.
@@ -36,23 +25,20 @@ Spawn one agent with the Agent tool.
 
 - `subagent_type`: `general-purpose` for implement, `Explore` for explore,
   `Plan` for plan, `general-purpose` for review. Use a project-defined
-  agent type instead if `.acos.yaml` names one under `agents.<block>`.
-- `model`: pass the stage model through the Agent tool `model` field when
-  the harness accepts it. Map catalog ids to the harness's short names
-  (`claude-opus-5` to `opus`, `claude-sonnet-5` to `sonnet`,
-  `claude-haiku-4-5` to `haiku`). If the harness cannot select that model,
-  log the model actually used.
+  agent type instead if `config.yaml` names one under `agents.<block>`.
+- `model`: pass the stage tier's alias from `catalog/providers.yaml`
+  (`opus`, `sonnet`, `haiku`) through the Agent tool `model` field when
+  the harness accepts it, never the manifest's concrete id. Log the id
+  that actually ran if the result reports it, otherwise the manifest's.
 - `effort`: state it in the prompt as a one-line instruction, e.g.
-  "Effort: low. Minimal exploration, terse report."
+  "Effort: low. Minimal exploration, terse report." On `inherit` write
+  no effort line: the agent runs at the harness default.
 - The prompt must be self-contained: the agent has no conversation
   context. Include intent, scope notes, inputs, and the block prompt.
 - Ask the agent to end with a clear final report; that report is the stage
   output.
 - Tokens: log the total the Agent tool result reports, if any. Never an
   estimate.
-- Startup: a fresh agent pays its own harness load (`.acos.yaml`
-  `startup.subagent`) before your prompt buys anything. The 150k floor
-  in SKILL.md already contains it.
 - Each spawn counts against `limits.agents`. A retry is a new spawn.
 
 Parallel stages: consecutive `subagent` stages that share no
@@ -95,8 +81,11 @@ folder. Load the `workflow-authoring` skill before writing the script.
 
 Run a shell command from the provider catalog.
 
-- Take `providers.<provider>.invoke.external`. Substitute `{{model}}` and
-  `{{effort}}` (via the provider's `effort_map`).
+- Take `providers.<provider>.invoke.external`. Substitute `{{alias}}`
+  with the stage tier's alias and `{{effort}}` through the provider's
+  `effort_map`. An empty value (unmapped tier, `inherit`) drops the
+  whole argument holding it and the flag in front of it, so the CLI
+  runs at its own default.
 - Pass the built prompt on stdin. Capture stdout as the stage output.
 - Non-zero exit is a stage error, distinct from a check failure. Log the
   exit code and the last lines of stderr, then apply `on_fail`.
@@ -120,7 +109,7 @@ Store the shortest decisive check output in the log, not the full stream.
 ## Artifacts
 
 A stage output goes to `runs/<id>/artifacts/<output-name>.md` only when
-another context reads it (SKILL.md section 5, step 2d). A delegated stage
+another context reads it (`execute.md`, Each stage, step 4). A delegated stage
 receives its inputs inline in the prompt under a heading per input name.
 If an input is larger than about 400 lines, pass the file path instead
 and tell the worker to read it.
