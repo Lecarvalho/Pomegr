@@ -17,7 +17,7 @@ import { ProviderBadge } from "../ProviderBadge";
 import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
 import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { SessionCacheTiming } from "./SessionCacheTiming";
-import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandSelect, CommandStatus, CommandToolbar } from "./CommandPage";
+import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
 import { subscribeLiveEvents } from "../../live-events";
 export { AgentsView } from "../agents/AgentsView";
@@ -151,7 +151,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const { sessions: committedSessions, connected, paused, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "live" | "needs">("all");
-  const [sort, setSort] = useState<"newest" | "oldest" | "title">("newest");
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
   const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
   const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
@@ -163,12 +162,12 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const requestRef = useRef(0);
   const revisionRef = useRef<string | number | null>(null);
   const directoryQuery = useMemo(() => {
-    const params = new URLSearchParams({ mode: "directory", filter, sort, pageSize: String(SESSION_PAGE_SIZE) });
+    const params = new URLSearchParams({ mode: "directory", filter, sort: "newest", pageSize: String(SESSION_PAGE_SIZE) });
     if (query.trim()) params.set("query", query.trim());
     if (project) params.set("project", project);
     if (initialRepositoryId) params.set("repositoryId", initialRepositoryId);
     return params.toString();
-  }, [filter, initialRepositoryId, project, query, sort]);
+  }, [filter, initialRepositoryId, project, query]);
   const resetDirectory = () => { setCursor(null); setCursorTrail([]); setCursorPageBase(0); };
   const updateQuery = (value: string) => { setQuery(value); resetDirectory(); };
   const updateFilter = (value: typeof filter) => { setFilter(value); resetDirectory(); };
@@ -243,7 +242,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
-        <CommandSelect aria-label="Sort sessions" value={sort} onChange={(event) => { setSort(event.currentTarget.value as typeof sort); resetDirectory(); }}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title">Title</option></CommandSelect>
         {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
       </CommandToolbar></div>
       {coverage && <SessionDirectoryCoverage coverage={coverage} />}

@@ -82,7 +82,7 @@ describe("Sessions view", () => {
     expect(row).toHaveTextContent("42%");
   });
 
-  it("uses committed directory pages for search, server sort, and cursor navigation", async () => {
+  it("uses committed directory pages with newest-first ordering and cursor navigation", async () => {
     const first = directorySnapshot([session(25)], { nextCursor: "cursor-2" });
     const second = directorySnapshot([session(24)], { nextCursor: null });
     const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/api/sessions?mode=directory") ? (String(url).includes("cursor=cursor-2") ? second : first) : {}), { status: 200 })));
@@ -92,15 +92,14 @@ describe("Sessions view", () => {
 
     await waitFor(() => expect(screen.getByText("Session 25")).toBeInTheDocument());
     expect(screen.getByText(/^52 sessions in the complete catalog\./)).toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: "Sort sessions" }), "title");
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(screen.queryByRole("combobox", { name: "Sort sessions" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => expect(screen.getByText("Session 24")).toBeInTheDocument());
     const requested = fetchMock.mock.calls.map(([url]) => String(url));
     const directoryRequests = requested.filter((url) => url.includes("/api/sessions?mode=directory"));
     expect(directoryRequests[0]).toContain("filter=all");
-    expect(directoryRequests.some((url) => url.includes("sort=title"))).toBe(true);
+    expect(directoryRequests.every((url) => url.includes("sort=newest"))).toBe(true);
     expect(directoryRequests.at(-1)).toContain("cursor=cursor-2");
   });
 
