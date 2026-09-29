@@ -46,6 +46,26 @@ function directorySnapshot(rows: SessionSummary[], overrides: Record<string, unk
 }
 
 describe("Sessions view", () => {
+  it("defaults to Live when the committed catalog has live sessions and preserves an explicit filter", async () => {
+    const live = { ...session(1), isLive: true, activityStatus: "working" as const };
+    const fetchMock = vi.fn((url: string) => {
+      const rows = String(url).includes("filter=live") ? [live] : [live, session(2)];
+      return Promise.resolve(new Response(JSON.stringify(directorySnapshot(rows, { matchedCount: rows.length })), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    const view = render(<SessionCatalogProvider sessions={[]} loading readiness={{ catalog: "loading" }}><SessionsView /></SessionCatalogProvider>);
+
+    view.rerender(<SessionCatalogProvider sessions={[live]} readiness={{ catalog: "ready" }}><SessionsView /></SessionCatalogProvider>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Live/ })).toHaveAttribute("aria-pressed", "true"));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("filter=live"))).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: /All sessions/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /All sessions/ })).toHaveAttribute("aria-pressed", "true"));
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("filter=all");
+  });
+
   it("shows a live summary spinner until committed metrics are available", async () => {
     const loading = {
       ...session(1),
@@ -77,9 +97,10 @@ describe("Sessions view", () => {
     view.rerender(<SessionCatalogProvider sessions={[ready]}><SessionsView /></SessionCatalogProvider>);
 
     await waitFor(() => expect(screen.queryByRole("status", { name: "Loading metrics for Session 1" })).not.toBeInTheDocument());
-    expect(row).toHaveTextContent("1/3");
-    expect(row).toHaveTextContent("123k");
-    expect(row).toHaveTextContent("42%");
+    const readyRow = screen.getByText("Session 1").closest("tr");
+    expect(readyRow).toHaveTextContent("1/3");
+    expect(readyRow).toHaveTextContent("123k");
+    expect(readyRow).toHaveTextContent("42%");
   });
 
   it("uses committed directory pages with newest-first ordering and cursor navigation", async () => {

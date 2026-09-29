@@ -161,7 +161,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions: committedSessions, connected, paused, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "live" | "needs">("all");
+  const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | null>(null);
+  const filter = selectedFilter ?? (committedSessions.some((session) => session.isLive) ? "live" : "all");
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
   const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
   const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
