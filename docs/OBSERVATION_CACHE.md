@@ -1673,6 +1673,9 @@ reachability.
   separate persistence contract above. Detail
   hydration and normalized evidence retention continue under the existing U1/C/P
   contracts, and GETs continue to serve committed response caches only.
+- Monitor shutdown coalesces the explicit close and listener-close callbacks into
+  one observation stop, allowing the persistence writer and its SQLite handle to
+  drain before a desktop runtime releases its private data root.
 - Codex U1 canonicalizes trusted rollout paths before indexing a session's root and
   child source parts. Windows short names and directory aliases for one file share
   a single source identity, including incremental record and generation lookups;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -277,7 +278,9 @@ test("Codex binds successful structured targets to their own real Git repository
     { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: { type: "function_call", name: "apply_patch", call_id: "cross-root", arguments: JSON.stringify({ patch }) } },
     { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "cross-root" } },
   ], { actor: ACTOR, cwd: launch, deferFileChanges: true });
-  const roots = new Map([[launch, { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: launch, recognized: true }], [other, { repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", root: other, recognized: true }]]);
+  const canonicalLaunch = fs.realpathSync.native(launch);
+  const canonicalOther = fs.realpathSync.native(other);
+  const roots = new Map([[canonicalLaunch, { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalLaunch, recognized: true }], [canonicalOther, { repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", root: canonicalOther, recognized: true }]]);
   const bound = await bindCodexFileChanges(pending, { resolveRepository(directory) {
     return [...roots].find(([root]) => directory === root || directory.startsWith(`${root}${path.sep}`))?.[1] || null;
   } });
@@ -316,6 +319,7 @@ test("Codex repository binding deduplicates directories and caps resolver concur
     id: `call-${index}`, status: "completed", fileChangeCwd: root,
     fileChangeCandidates: [{ target: path.join(directory, "created.ts"), kind: "created" }],
   }));
+  const canonicalRoot = fs.realpathSync.native(root);
   let active = 0;
   let peak = 0;
   let callsToResolver = 0;
@@ -325,7 +329,7 @@ test("Codex repository binding deduplicates directories and caps resolver concur
     peak = Math.max(peak, active);
     await new Promise((resolve) => setTimeout(resolve, 10));
     active -= 1;
-    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root, recognized: true };
+    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalRoot, recognized: true };
   } });
   assert.equal(callsToResolver, directories.length, "one lookup per distinct existing target directory");
   assert.ok(peak <= 4, `expected at most four concurrent lookups, saw ${peak}`);
@@ -333,7 +337,7 @@ test("Codex repository binding deduplicates directories and caps resolver concur
 
   await bindCodexFileChanges([calls[0], calls[0]], { async resolveRepository() {
     callsToResolver += 1;
-    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root, recognized: true };
+    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalRoot, recognized: true };
   } });
   assert.equal(callsToResolver, directories.length + 1, "repeated directory shares one promise within a bind pass");
 });
