@@ -36,7 +36,7 @@ providers:
         tier: strong
         context: 1000000
         price: { input_per_mtok: 4.00, output_per_mtok: 20.00, currency: USD }
-      claude-sonnet-5:
+      claude-sonnet-5-5:
         tier: balanced
         context: 1000000
         price: { input_per_mtok: 2.00, output_per_mtok: 10.00, currency: USD }
