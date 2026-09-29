@@ -91,7 +91,8 @@ describe("Sessions view", () => {
     render(<SessionCatalogProvider sessions={[session(1)]}><SessionsView /></SessionCatalogProvider>);
 
     await waitFor(() => expect(screen.getByText("Session 25")).toBeInTheDocument());
-    expect(screen.getByText(/^52 sessions in the complete catalog\./)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All sessions, 52 discovered" })).toBeInTheDocument();
+    expect(screen.queryByText(/sessions in the complete catalog/)).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Sort sessions" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Next" }));
 
@@ -103,18 +104,29 @@ describe("Sessions view", () => {
     expect(directoryRequests.at(-1)).toContain("cursor=cursor-2");
   });
 
-  it("keeps known count honest while discovery is incomplete and preserves its completed fact", async () => {
+  it("shows an incomplete catalog as a rounded-down lower bound in the All filter", async () => {
     const partial = directorySnapshot([], {
-      coverage: { status: "partial", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: 49, lastCompletedAt: "2026-09-26T12:00:00.000Z" },
-      matchedCount: 0,
-      counts: { all: 0, live: 0, needs: 0 },
+      coverage: { status: "partial", knownCount: 1447, exactTotal: null, observedAt: null, lastCompletedTotal: 1432, lastCompletedAt: "2026-09-26T12:00:00.000Z" },
+      matchedCount: 1447,
+      counts: { all: 1447, live: 0, needs: 0 },
     });
     vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/api/sessions?mode=directory") ? partial : {}), { status: 200 }))));
     render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
 
-    await waitFor(() => expect(screen.getByText(/0 known sessions while discovery is partial/)).toBeInTheDocument());
-    expect(screen.getByText(/Last complete catalog: 49 completed/)).toBeInTheDocument();
-    expect(screen.queryByText(/0 sessions in the complete catalog/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "All sessions, at least 1,400 discovered" })).toHaveTextContent("All1,400+"));
+    expect(screen.queryByText(/discovery is partial/)).not.toBeInTheDocument();
+  });
+
+  it("shows a complete catalog as a rounded magnitude in the All filter", async () => {
+    const complete = directorySnapshot([], {
+      coverage: { status: "complete", knownCount: 1447, exactTotal: 1447, observedAt: "2026-09-27T12:00:00.000Z", lastCompletedTotal: 1447, lastCompletedAt: "2026-09-27T12:00:00.000Z" },
+      matchedCount: 1447,
+      counts: { all: 1447, live: 0, needs: 0 },
+    });
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(complete), { status: 200 }))));
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "All sessions, approximately 1,400" })).toHaveTextContent("All~1,400"));
   });
 
   it("discards a late page for an old search and accepts only the current committed query", async () => {
@@ -162,7 +174,7 @@ describe("Sessions view", () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(completeNow ? complete : discovering), { status: 200 }))));
     render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
     await act(async () => { await Promise.resolve(); });
-    expect(screen.getByText(/3 known sessions while discovery is discovering/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All sessions, 3 discovered" })).toBeInTheDocument();
     completeNow = true;
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
     expect(screen.getByText("Discovered session")).toBeInTheDocument();

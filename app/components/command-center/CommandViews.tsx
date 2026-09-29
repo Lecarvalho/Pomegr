@@ -92,6 +92,17 @@ function SessionCurrentActivity({ session, compact = false }: { session: Session
 
 const SESSION_PAGE_SIZE = 25;
 
+function sessionCountMagnitude(coverage: SessionCatalogCoverage | undefined, fallback: number | undefined) {
+  const count = coverage?.knownCount ?? fallback;
+  if (count === undefined) return { value: undefined, label: undefined };
+  if (count < 100) return { value: String(count), label: `All sessions, ${count} discovered` };
+  const grouped = Math.floor(count / 100) * 100;
+  const formatted = grouped.toLocaleString("en-US");
+  return coverage?.status === "complete"
+    ? { value: `~${formatted}`, label: `All sessions, approximately ${formatted}` }
+    : { value: `${formatted}+`, label: `All sessions, at least ${formatted} discovered` };
+}
+
 function SessionSummaryLoading({ session }: { session: SessionSummary }) {
   if (!session.isLive || session.summaryReadiness !== "loading") return null;
   return <span className="commandSessionSummaryLoading" role="status" aria-label={`Loading metrics for ${session.title}`} title="Loading session metrics">
@@ -229,6 +240,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
   const liveSessionCount = counts?.live;
   const needsInputCount = counts?.needs;
+  const allSessionCount = sessionCountMagnitude(coverage, counts?.all);
   const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
   const catalogLoading = !directoryMatchesQuery && !catalogUnavailable && !directoryUnavailable && !paused;
   const providerSettingsAvailable = useProviderSettingsAvailable();
@@ -238,13 +250,12 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <div className="commandSessionFilters" role="group" aria-label="Session scope">
           {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
-          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={counts?.all}>All</CommandFilter>
+          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={allSessionCount.value} ariaLabel={allSessionCount.label}>All</CommandFilter>
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
         {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
       </CommandToolbar></div>
-      {coverage && <SessionDirectoryCoverage coverage={coverage} />}
       <CommandTable
         caption="Observed Pomegr sessions"
         rows={pageRows}
@@ -265,12 +276,6 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
       {(catalogUnavailable || directoryUnavailable) && pageRows.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;
-}
-
-function SessionDirectoryCoverage({ coverage }: { coverage: SessionCatalogCoverage }) {
-  if (coverage.status === "complete" && coverage.exactTotal !== null) return <p className="commandUnavailableNote" role="status">{coverage.exactTotal} sessions in the complete catalog.{coverage.observedAt ? ` Observed ${sessionListTime(coverage.observedAt)}.` : ""}</p>;
-  const previous = coverage.lastCompletedTotal === null ? null : `${coverage.lastCompletedTotal} completed ${coverage.lastCompletedAt ? sessionListTime(coverage.lastCompletedAt) : "previously"}`;
-  return <p className="commandUnavailableNote" role="status">{coverage.knownCount} known sessions while discovery is {coverage.status}.{previous ? ` Last complete catalog: ${previous}.` : " The total is not yet exact."}</p>;
 }
 
 function usageResetLabel(value: string | null) {

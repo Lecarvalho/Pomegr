@@ -59,8 +59,8 @@ export function CommandSearch({ value, onChange, placeholder, label }: { value: 
 export function CommandSelect({ className, ...props }: ComponentProps<"select">) {
   return <span className="commandSelect"><select {...props} className={className} /></span>;
 }
-export function CommandFilter({ active, children, onClick, count }: { active: boolean; children: ReactNode; onClick: () => void; count?: number }) {
-  return <button className={`commandFilterChip${active ? " active" : ""}`} type="button" aria-pressed={active} onClick={onClick}>{children}{count === undefined ? null : <span className="commandFilterCount">{count}</span>}</button>;
+export function CommandFilter({ active, children, onClick, count, ariaLabel }: { active: boolean; children: ReactNode; onClick: () => void; count?: ReactNode; ariaLabel?: string }) {
+  return <button className={`commandFilterChip${active ? " active" : ""}`} type="button" aria-label={ariaLabel} aria-pressed={active} onClick={onClick}>{children}{count === undefined ? null : <span className="commandFilterCount" aria-hidden={ariaLabel ? true : undefined}>{count}</span>}</button>;
 }
 
 export function CommandStatus({ state, children }: { state: "active" | "attention" | "idle" | "unknown"; children: ReactNode }) {
