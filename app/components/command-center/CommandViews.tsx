@@ -166,7 +166,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
   const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
   const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
-  const [fulfilledRequestKey, setFulfilledRequestKey] = useState<string | null>(null);
+  const [fulfilledPageKey, setFulfilledPageKey] = useState<string | null>(null);
   const [cursorTrail, setCursorTrail] = useState<string[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [cursorPageBase, setCursorPageBase] = useState(0);
@@ -191,7 +191,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     const params = new URLSearchParams(directoryQuery);
     if (cursor) params.set("cursor", cursor);
     if (cursor && revisionRef.current !== null) params.set("revision", String(revisionRef.current));
-    const requestKey = `${directoryQuery}\u0000${cursor || ""}\u0000${refreshNonce}`;
+    // Background refreshes keep the page key, so they never disable page navigation.
+    const pageKey = `${directoryQuery}\u0000${cursor || ""}`;
     void fetch(`/api/sessions?${params}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Session directory unavailable");
@@ -202,7 +203,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         revisionRef.current = next.revision;
         setDirectory(next);
         setDirectoryQueryKey(directoryQuery);
-        setFulfilledRequestKey(requestKey);
+        setFulfilledPageKey(pageKey);
         setDirectoryUnavailable(false);
         if (next.cursorReset) { setCursor(null); setCursorTrail([]); setCursorPageBase(0); }
       })
@@ -226,8 +227,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   }, [directoryQuery, paused]);
 
   const directoryMatchesQuery = directoryQueryKey === directoryQuery;
-  const activeRequestKey = `${directoryQuery}\u0000${cursor || ""}\u0000${refreshNonce}`;
-  const directoryLoading = !paused && fulfilledRequestKey !== activeRequestKey;
+  const directoryLoading = !paused && fulfilledPageKey !== `${directoryQuery}\u0000${cursor || ""}`;
   const committedSessionsById = useMemo(() => new Map(committedSessions.map((session) => [session.id, session])), [committedSessions]);
   const pageRows = useMemo(() => {
     if (!directoryMatchesQuery) return [];

@@ -201,4 +201,19 @@ describe("Sessions view", () => {
     expect(screen.getByText("Discovered session")).toBeInTheDocument();
     vi.useRealTimers();
   });
+
+  it("keeps page navigation enabled while a background refresh is in flight", async () => {
+    vi.useFakeTimers();
+    const first = directorySnapshot([{ ...session(2), title: "First page" }], { nextCursor: "cursor-2" });
+    let refreshing = false;
+    vi.stubGlobal("fetch", vi.fn(() => refreshing ? new Promise<Response>(() => {}) : Promise.resolve(new Response(JSON.stringify(first), { status: 200 }))));
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    refreshing = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(screen.getByText("First page")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    vi.useRealTimers();
+  });
 });
