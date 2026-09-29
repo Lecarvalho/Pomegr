@@ -1,7 +1,11 @@
 export async function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // A denied clipboard permission rejects; the selection copy below may still work.
+    }
   }
   const textarea = document.createElement("textarea");
   textarea.value = value;

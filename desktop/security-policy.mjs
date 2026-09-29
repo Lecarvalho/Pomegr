@@ -87,8 +87,18 @@ export function secureBrowserWindowOptions({ preloadPath, browserSession, window
 export function installSessionSecurity(browserSession, { webOrigin, authorizationToken }) {
   const expectedOrigin = new URL(webOrigin).origin;
   const token = requireDesktopToken(authorizationToken);
-  browserSession.setPermissionCheckHandler(() => false);
-  browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // Only the trusted app origin may write sanitized text to the clipboard
+  // (explicit copy actions); clipboard reads and every other permission stay denied.
+  const trustedClipboardWrite = (permission, url) => {
+    if (permission !== "clipboard-sanitized-write" || typeof url !== "string") return false;
+    try { return new URL(url).origin === expectedOrigin; } catch { return false; }
+  };
+  browserSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => (
+    trustedClipboardWrite(permission, requestingOrigin)
+  ));
+  browserSession.setPermissionRequestHandler((_webContents, permission, callback, details) => (
+    callback(trustedClipboardWrite(permission, details?.requestingUrl))
+  ));
   browserSession.setDevicePermissionHandler?.(() => false);
   browserSession.on("will-download", (event) => event.preventDefault());
   browserSession.webRequest.onBeforeSendHeaders((details, callback) => {

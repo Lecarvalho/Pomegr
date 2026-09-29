@@ -123,9 +123,19 @@ test("desktop session injects local authorization and denies permissions and dow
   });
 
   assert.equal(hooks.permissionCheck(), false);
-  let permissionResult;
-  hooks.permissionRequest(null, "camera", (allowed) => { permissionResult = allowed; });
-  assert.equal(permissionResult, false);
+  assert.equal(hooks.permissionCheck(null, "clipboard-read", "http://127.0.0.1:4444"), false);
+  assert.equal(hooks.permissionCheck(null, "clipboard-sanitized-write", "http://127.0.0.1:4444"), true);
+  assert.equal(hooks.permissionCheck(null, "clipboard-sanitized-write", "https://example.com"), false);
+  const request = (permission, requestingUrl) => {
+    let allowed;
+    hooks.permissionRequest(null, permission, (value) => { allowed = value; }, { requestingUrl });
+    return allowed;
+  };
+  assert.equal(request("camera", "http://127.0.0.1:4444/"), false);
+  assert.equal(request("clipboard-read", "http://127.0.0.1:4444/"), false);
+  assert.equal(request("clipboard-sanitized-write", "http://127.0.0.1:4444/sessions"), true);
+  assert.equal(request("clipboard-sanitized-write", "https://example.com/"), false);
+  assert.equal(request("clipboard-sanitized-write", undefined), false);
   assert.equal(hooks.devicePermission(), false);
   const downloadEvent = { prevented: false, preventDefault() { this.prevented = true; } };
   browserSession.emit("will-download", downloadEvent);

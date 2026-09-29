@@ -267,6 +267,39 @@ test("Codex apply_patch headers become created/edited/moved/deleted only for a c
   assert.equal(noCwd[0].fileChanges, null, "without a cwd, evidence degrades to null instead of throwing");
 });
 
+test("Codex code-mode FileChange items record structured changes; the wrapping exec call records none", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-exec-file-change-");
+  const fileChangeItem = (id, status, changes) => ({ timestamp: "2026-09-22T11:00:01.000Z", type: "event_msg", payload: {
+    type: "item_completed", item: { type: "FileChange", id, status, changes, stdout: "PRIVATE_OUTPUT_MUST_NOT_LEAK", stderr: "" },
+  } });
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "custom_tool_call", name: "exec", call_id: "exec-cell", input: "await tools.apply_patch(PRIVATE_PATCH)",
+    } },
+    fileChangeItem("exec-change-ok", "completed", {
+      [path.join(cwd, "src", "edited.ts")]: { type: "update", unified_diff: "PRIVATE_DIFF", move_path: null },
+      [path.join(cwd, "src", "created.ts")]: { type: "add", content: "PRIVATE_CONTENT" },
+      [path.join(cwd, "src", "deleted.ts")]: { type: "delete" },
+      [path.join(cwd, "src", "renamed-from.ts")]: { type: "update", unified_diff: "", move_path: path.join(cwd, "src", "renamed-to.ts") },
+    }),
+    fileChangeItem("exec-change-failed", "failed", { [path.join(cwd, "src", "failed.ts")]: { type: "update" } }),
+    { timestamp: "2026-09-22T11:00:02.000Z", type: "response_item", payload: {
+      type: "custom_tool_call_output", call_id: "exec-cell", output: "PRIVATE_OUTPUT_MUST_NOT_LEAK",
+    } },
+  ], { actor: ACTOR, sourceKey: "exec-file-change", cwd });
+  const fileChanges = calls.filter((call) => call.tool === "File change");
+  assert.equal(fileChanges.length, 2);
+  assert.deepEqual(fileChanges.find((call) => call.status === "completed").fileChanges, [
+    { path: "src/edited.ts", kind: "edited", previousPath: null },
+    { path: "src/created.ts", kind: "created", previousPath: null },
+    { path: "src/deleted.ts", kind: "deleted", previousPath: null },
+    { path: "src/renamed-to.ts", kind: "moved", previousPath: "src/renamed-from.ts" },
+  ]);
+  assert.equal(fileChanges.find((call) => call.status === "failed").fileChanges, null);
+  assert.equal(calls.find((call) => call.tool === "Dynamic tool").fileChanges, null);
+  assertNoPrivateFixtureSentinels(calls, "Codex code-mode FileChange");
+});
+
 test("Codex binds successful structured targets to their own real Git repository without retaining roots", async (t) => {
   const launch = await realTempDir(t, "pomegr-codex-launch-repo-");
   const other = await realTempDir(t, "pomegr-codex-other-repo-");

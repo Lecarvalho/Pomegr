@@ -202,13 +202,31 @@ function canonicalFileChangeKind(kind) {
   return null;
 }
 
-/** Structured candidates from canonical app-server fileChange items: add/update/delete only. */
+/** Structured candidates from canonical fileChange items: add/update/delete, plus update moves. */
 function canonicalFileChangeCandidates(changes) {
   return (Array.isArray(changes) ? changes : []).flatMap((change) => {
     const target = typeof change?.path === "string" ? change.path : null;
     const kind = canonicalFileChangeKind(change?.kind);
-    return target && kind ? [{ target, kind }] : [];
+    if (!target || !kind) return [];
+    const movePath = change.kind?.move_path ?? change.kind?.movePath;
+    if (kind === "edited" && typeof movePath === "string" && movePath) {
+      return [{ target: movePath, kind: "moved", previousTarget: target }];
+    }
+    return [{ target, kind }];
   });
+}
+
+/** Rollout FileChange items key changes by path; reshape them into canonical change entries. */
+function rolloutFileChangeList(changes) {
+  if (Array.isArray(changes)) return changes;
+  if (!changes || typeof changes !== "object") return [];
+  return Object.entries(changes).map(([changePath, change]) => ({ path: changePath, kind: change }));
+}
+
+function isRolloutFileChangeItem(payload) {
+  const type = String(payload?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const itemType = String(payload?.item?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return type === "itemcompleted" && itemType === "filechange";
 }
 
 function functionDescriptor(name, input, namespace = "") {
@@ -718,6 +736,23 @@ export function parseCodexActivityRecords(records, options = {}) {
     if (["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(eventType)) {
       const id = eventCallId(payload);
       if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
+      continue;
+    }
+    // Patches applied inside a code-mode exec cell are recorded only as a
+    // completed FileChange item; the wrapping exec call carries no mutation evidence.
+    if (isRolloutFileChangeItem(payload)) {
+      const item = payload.item;
+      const providerCallId = rawCallId(item.id);
+      calls.push(makeCall({
+        actor,
+        providerCallId,
+        fallbackIdentity: `${sourceKey}:${order}:${payload.type}`,
+        timestamp,
+        descriptor: canonicalDescriptor({ type: "fileChange", changes: rolloutFileChangeList(item.changes) }),
+        status: normalizedStatus(item.status, "completed"),
+        fileChangeCwd: sourceCwd || recordedCwd,
+      }));
+      if (providerCallId && observedTimestamp) options.onCall?.(order, calls.at(-1));
       continue;
     }
     const descriptor = eventDescriptor(payload);

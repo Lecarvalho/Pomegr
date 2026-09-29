@@ -2531,7 +2531,9 @@ is present only for `moved`. Only a call with recorded success evidence carries 
 a non-error tool result, with `Write` classified `created` from the structured result type;
 Codex: a completed patch or file-change item). Only structured file tools with an explicit
 target contribute: Claude `Write`, `Edit`, `MultiEdit`, and `NotebookEdit`, and Codex patch
-and file-change items. Claude `Bash`/`PowerShell` calls and Codex shell items never carry
+and file-change items, including the rollout `item_completed` `FileChange` item Codex records
+for a patch applied inside a code-mode `exec` cell (the wrapping `exec` call itself carries
+none). Claude `Bash`/`PowerShell` calls and Codex shell items never carry
 `fileChanges`: the files a command writes cannot be known reliably from its text, so those
 changes surface only through the Git-observed lists below. `assertCheckpointPayload` rejects any
 absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
