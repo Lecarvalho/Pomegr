@@ -114,6 +114,12 @@ is an approved, not yet implemented UI change to the session Overview and Signal
 tabs. It reuses the redesign prototype artboards and moves its rules into
 [DESIGN.md](../../DESIGN.md) as its tasks complete.
 
+The [guidance impact plan](plans/guidance-impact.md) is a design-approved plan (2026-09-22,
+no code yet) to tag sessions with the repository guidance revision they ran under
+(skills, `AGENTS.md`, hooks, reporting policy), compare friction, outcome, and
+compliance signals across cohorts, and run opt-in randomized experiments. Nothing
+in it is shipped or authoritative.
+
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not
 make them current authority or evidence of shipped features. Active plans will
