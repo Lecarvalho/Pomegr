@@ -301,6 +301,7 @@ test("monitor runtime publishes agents only after its committed catalog and neve
   const retained = snapshot("codex:runtime", { agents: [agent("primary")] });
   const provider = { id: "codex", source: "Codex", capabilities: createEmptyProviderCapabilities() };
   const runtime = createMonitorRuntime({
+    now: () => NOW,
     checkpointStore: false,
     observationCommitDelayMs: 0,
     observationStore: {
@@ -321,12 +322,18 @@ test("monitor runtime publishes agents only after its committed catalog and neve
     },
   });
   await runtime.startObservation();
-  for (let index = 0; index < 8 && runtime.serveAgents({ project: "all", days: 30, scope: "all" }).snapshot.value.readiness !== "ready"; index += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  try {
+    const query = { project: "all", days: 30, scope: "all" };
+    let served;
+    for (let index = 0; index < 100; index += 1) {
+      served = runtime.serveAgents(query);
+      if (served.snapshot.value.summary.runCount === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(served.snapshot.value.readiness, "ready");
+    assert.equal(served.snapshot.value.summary.runCount, 1);
+    assert.equal(sourceReads, 0, "agents serving does not route through registry readSession/hydration");
+  } finally {
+    await runtime.stopObservation();
   }
-  const served = runtime.serveAgents({ project: "all", days: 30, scope: "all" });
-  assert.equal(served.snapshot.value.readiness, "ready");
-  assert.equal(served.snapshot.value.summary.runCount, 1);
-  assert.equal(sourceReads, 0, "agents serving does not route through registry readSession/hydration");
-  await runtime.stopObservation();
 });

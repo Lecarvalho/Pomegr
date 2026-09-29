@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rename, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { CODEX_ROLLOUT_APPROVAL_GRACE_MS, CODEX_ROLLOUT_LIVE_WINDOW_MS } from "../monitor/providers/codex-lifecycle-constants.mjs";
-import { createCodexLivenessCoordinator } from "../monitor/providers/codex-liveness.mjs";
+import { createCodexLivenessCoordinator, isActiveCodexWriterLock } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexOwningRuntime, appServerLiveness } from "../monitor/providers/codex-owning-runtime.mjs";
 import { incrementalSourceDescriptor } from "../monitor/providers/incremental-provider-observer.mjs";
 import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "../monitor/providers/codex-recorded-lifecycle.mjs";
@@ -47,6 +47,68 @@ test("Codex source routing keeps CLI and recorded vscode cold policies independe
   assert.equal(cli.infer(pendingEdit, { now: START + CODEX_ROLLOUT_APPROVAL_GRACE_MS }).needsInputKind, "pending_file_edit");
   assert.equal(vscode.infer(pendingEdit, { now: START + CODEX_ROLLOUT_APPROVAL_GRACE_MS }).needsInput, false);
   assert.equal(unknown.infer(pendingEdit, { now: START + CODEX_ROLLOUT_APPROVAL_GRACE_MS }).needsInput, false);
+});
+
+test("cold Codex CLI discovery requires an actively held writer lock for stale approval metadata", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-cli-approval-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const rolloutFile = path.join(root, "rollout-cold-cli-approval.jsonl");
+  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
+  await writeFile(rolloutFile, [
+    JSON.stringify({ timestamp: new Date(START).toISOString(), type: "turn_context", payload: {} }),
+    JSON.stringify({
+      timestamp: new Date(now - CODEX_ROLLOUT_APPROVAL_GRACE_MS).toISOString(),
+      type: "response_item",
+      payload: {
+        type: "custom_tool_call",
+        name: "exec",
+        call_id: "pending-cli-patch",
+        input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
+      },
+    }),
+  ].join("\n") + "\n", "utf8");
+  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
+  await utimes(rolloutFile, staleTime, staleTime);
+  const writerLocksRoot = path.join(root, "thread-writer-locks");
+  await mkdir(writerLocksRoot, { recursive: true });
+  const writerLock = path.join(writerLocksRoot, "cold-cli.lock");
+  await writeFile(writerLock, "", "utf8");
+  const candidate = {
+    ...lifecycleThread()[0], localId: "cold-cli", sessionId: "cold-cli",
+    updatedAt: staleTime.toISOString(), rolloutFile,
+  };
+
+  const unlocked = createCodexLivenessCoordinator({ writerLocksRoot, now: () => now, cacheMs: 0 });
+  const stale = unlocked.observe([candidate]);
+  assert.equal(unlocked.stats().rolloutFiles, 0);
+  assert.equal(stale.sessions.get("cold-cli").needsInput, false);
+  assert.equal(isActiveCodexWriterLock(writerLock, { platform: "win32" }), false);
+
+  const activeLock = (file) => isActiveCodexWriterLock(file, {
+    platform: "win32",
+    statFileSync: () => ({ isFile: () => true }),
+    openFileSync: () => 17,
+    readSync: () => {
+      const error = new Error("synthetic Windows sharing violation");
+      error.code = "EBUSY";
+      throw error;
+    },
+    closeFileSync: () => {},
+  });
+  assert.equal(activeLock(writerLock), true);
+  const coordinator = createCodexLivenessCoordinator({
+    writerLocksRoot,
+    writerLockIsActive: (file) => file === writerLock && activeLock(file),
+    now: () => now,
+    cacheMs: 0,
+    deterministicAvailability: {
+      owningRuntime: "unsupported", writerPresence: "unsupported", structuredRollout: "unsupported",
+    },
+  });
+  const observed = coordinator.observe([candidate]);
+  assert.equal(coordinator.stats().rolloutFiles, 1);
+  assert.equal(observed.sessions.get("cold-cli").needsInput, true);
+  assert.equal(observed.threads[0].liveStatus, "needs_input");
 });
 
 test("Codex timing inference requires affirmative unavailable-channel assessment", () => {

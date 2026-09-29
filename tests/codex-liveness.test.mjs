@@ -10,7 +10,6 @@ import {
   CODEX_ROLLOUT_APPROVAL_GRACE_MS,
   CODEX_ROLLOUT_LIVE_WINDOW_MS,
   createCodexLivenessCoordinator,
-  isActiveCodexWriterLock,
   parseCodexRolloutLiveness,
 } from "../monitor/providers/codex-liveness.mjs";
 import { createCodexProvider } from "../monitor/providers/codex.mjs";
@@ -580,74 +579,6 @@ test("cold Codex Desktop discovery reads a bounded stale-mtime rollout whose rec
   })]);
   assert.equal(coordinator.stats().rolloutFiles, 1);
   assert.equal(observed.sessions.get("cold-desktop").needsInput, true);
-  assert.equal(observed.threads[0].liveStatus, "needs_input");
-});
-
-test("cold Codex CLI discovery requires an actively held writer lock for stale approval metadata", async (context) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-cold-cli-approval-"));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const rolloutFile = path.join(root, "rollout-cold-cli-approval.jsonl");
-  const now = START + CODEX_ROLLOUT_LIVE_WINDOW_MS + 10_000;
-  await writeFile(rolloutFile, [
-    JSON.stringify({ timestamp: new Date(START).toISOString(), type: "turn_context", payload: {} }),
-    JSON.stringify({
-      timestamp: new Date(now - CODEX_ROLLOUT_APPROVAL_GRACE_MS).toISOString(),
-      type: "response_item",
-      payload: {
-        type: "custom_tool_call",
-        name: "exec",
-        call_id: "pending-cli-patch",
-        input: "const result = await tools.apply_patch(\"PRIVATE_PATCH_MUST_NOT_LEAK\");",
-      },
-    }),
-  ].join("\n") + "\n", "utf8");
-  const staleTime = new Date(START - CODEX_ROLLOUT_LIVE_WINDOW_MS - 1);
-  await utimes(rolloutFile, staleTime, staleTime);
-  const writerLocksRoot = path.join(root, "thread-writer-locks");
-  await mkdir(writerLocksRoot, { recursive: true });
-  const writerLock = path.join(writerLocksRoot, "cold-cli.lock");
-  await writeFile(writerLock, "", "utf8");
-
-  const unlocked = createCodexLivenessCoordinator({
-    writerLocksRoot,
-    now: () => now,
-    cacheMs: 0,
-  });
-  const stale = unlocked.observe([thread("cold-cli", {
-    sourceKind: "cli",
-    updatedAt: staleTime.toISOString(),
-    rolloutFile,
-  })]);
-  assert.equal(unlocked.stats().rolloutFiles, 0);
-  assert.equal(stale.sessions.get("cold-cli").needsInput, false);
-  assert.equal(isActiveCodexWriterLock(writerLock, { platform: "win32" }), false);
-
-  const activeLock = (file) => isActiveCodexWriterLock(file, {
-    platform: "win32",
-    statFileSync: () => ({ isFile: () => true }),
-    openFileSync: () => 17,
-    readSync: () => {
-      const error = new Error("synthetic Windows sharing violation");
-      error.code = "EBUSY";
-      throw error;
-    },
-    closeFileSync: () => {},
-  });
-  assert.equal(activeLock(writerLock), true);
-  const coordinator = createCodexLivenessCoordinator({
-    writerLocksRoot,
-    writerLockIsActive: (file) => file === writerLock && activeLock(file),
-    now: () => now,
-    cacheMs: 0,
-    deterministicAvailability: LEGACY_INFERENCE,
-  });
-  const observed = coordinator.observe([thread("cold-cli", {
-    sourceKind: "cli",
-    updatedAt: staleTime.toISOString(),
-    rolloutFile,
-  })]);
-  assert.equal(coordinator.stats().rolloutFiles, 1);
-  assert.equal(observed.sessions.get("cold-cli").needsInput, true);
   assert.equal(observed.threads[0].liveStatus, "needs_input");
 });
 
