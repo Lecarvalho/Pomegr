@@ -323,19 +323,31 @@ html[data-theme="dark"] .sunIcon { display: block; }
 .resourcePeakZoomRow { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--line); font-size: var(--text-xs); }
 .resourcePeakZoomRowLabel { color: var(--muted); }
 .resourcePeakZoomEmpty { color: var(--muted); }
-.resourcePeakZoomTasks { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; color: var(--ink); }
+.resourcePeakZoomTasks { width: 100%; table-layout: fixed; border-collapse: collapse; color: var(--ink); }
+.resourcePeakZoomTasks th { padding: 0 var(--space-2) 4px 0; color: var(--muted); font-size: var(--text-caption); font-weight: 500; text-align: start; }
+.resourcePeakZoomTasks td { padding: 3px var(--space-2) 3px 0; line-height: 1.4; vertical-align: baseline; }
+.resourcePeakZoomTasks th:nth-child(1) { width: 104px; }
+.resourcePeakZoomTasks th:nth-child(3) { width: 72px; }
+.resourcePeakZoomTasks th:nth-child(4) { width: 88px; }
+.resourcePeakZoomTasks th:nth-child(n+3), .resourcePeakZoomTaskNumber { padding-inline-end: 0; text-align: end; }
+.resourcePeakZoomTaskKind { color: var(--muted); }
+.resourcePeakZoomTaskLabel { overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.resourcePeakZoomTaskNumber { font-family: var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .resourcePeakZoomRequest p { margin: 0; display: flex; align-items: baseline; gap: 4px; flex-wrap: wrap; color: var(--ink); }
 .resourcePeakZoomCaveat, .resourcePeaksCaveat { margin: 0; color: var(--muted); font-size: var(--text-caption); }
 
 .resourcePeaksTableHeader { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
 .resourcePeaksRows { display: flex; flex-direction: column; }
-.resourcePeaksRow { display: grid; grid-template-columns: 70px minmax(0, 1fr) 70px; align-items: center; gap: var(--space-2); border-top: 1px solid var(--line); }
+.resourcePeaksRow { display: grid; grid-template-columns: 84px 112px minmax(0, 1fr) 48px; align-items: center; gap: var(--space-2); border-top: 1px solid var(--line); }
 .resourcePeaksRow:first-child { border-top: 0; }
 .resourcePeaksRow.isSelected { background: var(--panel-2); }
 .resourcePeaksRowSelect { display: contents; }
-.resourcePeaksRowSelect > * { padding-block: 8px; }
-.resourcePeaksRowTime { padding-inline-start: var(--space-1); color: var(--muted); font: var(--text-xs)/1.4 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; }
-.resourcePeaksRowSummary { min-width: 0; color: var(--ink); font-size: var(--text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+.resourcePeaksRowSelect > * { padding-block: 8px; text-align: start; }
+.resourcePeaksRowTime { padding-inline-start: var(--space-1); color: var(--muted); font: var(--text-xs)/1.4 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.resourcePeaksRowMetric { color: var(--ink); font: 500 var(--text-xs)/1.4 var(--font-geist-mono), Consolas, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.resourcePeaksRowSummary { min-width: 0; display: flex; align-items: baseline; gap: var(--space-1); color: var(--ink); font-size: var(--text-xs); line-height: 1.4; }
+.resourcePeaksRowTask { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resourcePeaksRowMore { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
 .resourcePeaksRowRequest { padding-inline-end: var(--space-1); text-align: end; }
 .resourcePeaksRowRequest a { color: var(--muted); font: var(--text-xs)/1.4 var(--font-geist-mono), Consolas, monospace; }
 .resourcePeaksRowRequest a:hover { color: var(--ink); }
@@ -388,7 +400,9 @@ footer { display: flex; justify-content: space-between; margin-top: auto; color:
   .disclosureSummaryMetrics { gap: 5px 12px; }
   .agentTreeCanvas { padding: 14px; }.agentTreeCard { gap: 6px 10px; padding: 11px; }.agentTreeEvidence { gap-inline: 8px; }.agentTreeNote { margin: 8px 14px 14px; }
   .resourceCardsGrid, .resourcesLowerGrid { grid-template-columns: 1fr; }
-  .resourcePeaksRow { grid-template-columns: 60px minmax(0, 1fr) 60px; }
+  .resourcePeaksRow { grid-template-columns: 76px 96px minmax(0, 1fr) 40px; }
+  .resourcePeakZoomTasks th:nth-child(1) { width: 72px; }
+  .resourcePeakZoomTasks th:nth-child(4) { width: 76px; }
   .resourcePeakZoomRow { grid-template-columns: 1fr; gap: 4px; }
 }
 

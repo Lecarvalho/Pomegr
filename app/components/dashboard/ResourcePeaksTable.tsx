@@ -16,6 +16,11 @@ function requestHref(sessionId: string, requestNumber: number) {
   try { return `/sessions/${encodeSessionRoute(sessionId)}?tab=activities&request=${requestNumber}`; } catch { return "/sessions"; }
 }
 
+function taskDuration(durationMs: number | null) {
+  if (durationMs === null) return "running";
+  return durationMs < 60_000 ? "<1m" : formatDuration(durationMs);
+}
+
 const ZOOM_WIDTH = 560;
 const ZOOM_HEIGHT = 96;
 
@@ -76,9 +81,17 @@ export function ResourcePeakZoomPanel({ sessionId, peak }: { sessionId: string; 
     {peak.window.status === "retained" ? <ZoomChart peak={peak} /> : <MinuteFallback peak={peak} />}
     <div className="resourcePeakZoomRow">
       <span className="resourcePeakZoomRowLabel">Overlapping tasks</span>
-      {peak.tasks.length === 0 ? <span className="resourcePeakZoomEmpty">No overlapping tasks were recorded.</span> : <ul className="resourcePeakZoomTasks">
-        {peak.tasks.map((task) => <li key={task.id}>{WORK_LABELS[task.workKind]} · <b>{task.label}</b> · {task.durationMs === null ? "running" : formatDuration(task.durationMs)} · started {resourceClockTime(task.startedAt)}</li>)}
-      </ul>}
+      {peak.tasks.length === 0 ? <span className="resourcePeakZoomEmpty">No overlapping tasks were recorded.</span> : <table className="resourcePeakZoomTasks">
+        <thead><tr><th scope="col">Kind</th><th scope="col">Task</th><th scope="col">Duration</th><th scope="col">Started</th></tr></thead>
+        <tbody>
+          {peak.tasks.map((task) => <tr key={task.id}>
+            <td className="resourcePeakZoomTaskKind">{WORK_LABELS[task.workKind]}</td>
+            <td className="resourcePeakZoomTaskLabel" title={task.label}>{task.label}</td>
+            <td className="resourcePeakZoomTaskNumber">{taskDuration(task.durationMs)}</td>
+            <td className="resourcePeakZoomTaskNumber">{resourceClockTime(task.startedAt)}</td>
+          </tr>)}
+        </tbody>
+      </table>}
     </div>
     {peak.request && <div className="resourcePeakZoomRow resourcePeakZoomRequest">
       <span className="resourcePeakZoomRowLabel">Request</span>
@@ -110,9 +123,9 @@ export function ResourcePeaksTable({ sessionId, peaks, selectedPeakId, onSelect 
         return <div className={`resourcePeaksRow${selected ? " isSelected" : ""}`} key={peak.id}>
           <button type="button" className="resourcePeaksRowSelect" aria-pressed={selected} onClick={() => onSelect(peak.id)}>
             <span className="resourcePeaksRowTime">{resourceClockTime(peak.observedAt)}</span>
+            <span className="resourcePeaksRowMetric">{RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, peak.value)}</span>
             <span className="resourcePeaksRowSummary">
-              {RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, peak.value)}
-              {primaryTask && <> · during <b>{primaryTask.label}</b>{peak.tasks.length > 1 ? ` +${peak.tasks.length - 1} more` : ""}</>}
+              {primaryTask && <><span className="resourcePeaksRowTask">{primaryTask.label}</span>{peak.tasks.length > 1 && <span className="resourcePeaksRowMore" title={`${peak.tasks.length - 1} more overlapping tasks`}>+{peak.tasks.length - 1}</span>}</>}
             </span>
           </button>
           <span className="resourcePeaksRowRequest">{peak.request && <Link href={requestHref(sessionId, peak.request.number)}>{`#${peak.request.number}`}</Link>}</span>
