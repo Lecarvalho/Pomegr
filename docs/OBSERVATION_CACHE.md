@@ -150,9 +150,11 @@ D projects each committed session into seven independently revisioned response d
 `session-summary` alone contains the session header and Overview inputs: lifecycle,
 readiness-qualified agent status counts, all-agent context, current-agent rows, two efficiency signals, a repository summary,
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
-kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
-flag used only to decide whether the Resources tab can be hidden. `signals` owns the
-committed Efficiency, Cache lifetime, and agent-reported Reported signals sections.
+kind totals, the bounded session signal for the header tag, the normalized cost
+estimate, and a readiness-qualified resources-presence flag used only to decide
+whether the Resources tab can be hidden. `signals` owns the committed Efficiency,
+Cache lifetime, and agent-reported Reported signals sections, including the same
+session signal in its detailed row.
 Deterministic evidence and labeled inferences remain distinct from
 agent-reported signals, which may be stale. Missing source evidence remains unavailable;
 historical and current projections remain isolated. Current-agent fallbacks come from

@@ -47,7 +47,7 @@ export type SessionSummaryDomain = SessionDomainBase & {
   view: MonitorState["view"];
   sectionReadiness: SessionDomainSectionReadiness<"core" | "agentEvidence" | "contextEvidence" | "activityEvidence" | "repository">;
   session: Pick<NonNullable<MonitorState["session"]>,
-    "id" | "title" | "project" | "startedAt" | "updatedAt" | "durationMs" | "cost" | "summary" | "progress" | "pomegrPlugin"> | null;
+    "id" | "title" | "project" | "startedAt" | "updatedAt" | "durationMs" | "cost" | "summary" | "signal" | "progress" | "pomegrPlugin"> | null;
   metrics: Pick<MonitorState["metrics"], "agents" | "activeAgents" | "toolCalls" | "repeatedCalls"> & {
     idleAgents: number | null;
     finishedAgents: number | null;

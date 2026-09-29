@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MonitorState, SessionSummary } from "../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../shared/session-domain-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
+import { AgentChip } from "./components/AgentChip";
 import { ActivitiesTab } from "./components/dashboard/ActivitiesTab";
 import { AgentsTab } from "./components/dashboard/AgentsTab";
 import { LegacySessionTab } from "./components/dashboard/LegacySessionTab";
@@ -152,7 +153,15 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
 
   const status = sessionState(summary.lifecycle);
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
-  const meta = <div className="sessionHeaderMeta"><ProviderBadge source={summary.source} /><span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span><SessionIdChip sessionId={nativeId} />{summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}<span className="sessionStartedMeta">Started {summary.session.startedAt ? <time dateTime={summary.session.startedAt}>{sessionListTime(summary.session.startedAt)}</time> : "time unavailable"}</span></div>;
+  const signal = summary.session.signal;
+  const meta = <div className="sessionHeaderMeta">
+    <ProviderBadge source={summary.source} />
+    <span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span>
+    {signal && <AgentChip className={`sessionSignal ${signal.tone}`} ariaLabel={`Session signal: ${signal.label}`} title={signal.description ? `Agent-reported session signal · ${signal.description}` : "Agent-reported session signal"}>{signal.label}</AgentChip>}
+    <SessionIdChip sessionId={nativeId} />
+    {summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}
+    <span className="sessionStartedMeta">Started {summary.session.startedAt ? <time dateTime={summary.session.startedAt}>{sessionListTime(summary.session.startedAt)}</time> : "time unavailable"}</span>
+  </div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
     <CommandPageHeader breadcrumb={<><Link href="/sessions">Sessions</Link><CommandBreadcrumbSeparator /><span aria-current="page">{summary.session.project}</span></>} title={summary.session.title} meta={meta}
       actions={<button type="button" className="commandQuietAction" disabled={reportGenerating} onClick={() => void generateReport()}>{reportGenerating ? "Preparing…" : "Download report"}</button>} />

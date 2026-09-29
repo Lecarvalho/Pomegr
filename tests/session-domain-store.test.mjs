@@ -169,13 +169,20 @@ test("does not publish a revision or event when only observedAt changes", () => 
   assert.equal(store.read(SESSION_ID, "session-summary").snapshot.value.observedAt, OBSERVED_AT);
 });
 
-test("a session signal updates only the signals domain", () => {
+test("a session signal updates the header summary and signals domains", () => {
   const store = createSessionDomainStore();
   store.commit(SESSION_ID, snapshot(state()));
-  const next = state({ session: { ...state().session, signal: { label: "Review ready", tone: "positive", reportedAt: OBSERVED_AT, description: null } } });
+  const signal = { label: "Review ready", tone: "positive", reportedAt: OBSERVED_AT, description: null };
+  const next = state({ session: { ...state().session, signal: { ...signal, rawPrompt: "PRIVATE_SIGNAL_CONTENT" } } });
   const changed = store.commit(SESSION_ID, snapshot(next));
-  assert.deepEqual(changed.map((event) => event.domain), ["signals"]);
-  assert.deepEqual(store.read(SESSION_ID, "signals").snapshot.value.sessionSignal, next.session.signal);
+  assert.deepEqual(changed.map((event) => event.domain).sort(), ["session-summary", "signals"]);
+  assert.deepEqual(store.read(SESSION_ID, "session-summary").snapshot.value.session.signal, signal);
+  assert.deepEqual(store.read(SESSION_ID, "signals").snapshot.value.sessionSignal, signal);
+  assert.doesNotMatch(store.read(SESSION_ID, "session-summary").snapshot.serialized, /PRIVATE_SIGNAL_CONTENT/);
+  const cleared = state();
+  assert.deepEqual(store.commit(SESSION_ID, snapshot(cleared)).map((event) => event.domain).sort(), ["session-summary", "signals"]);
+  assert.equal(store.read(SESSION_ID, "session-summary").snapshot.value.session.signal, null);
+  assert.equal(store.read(SESSION_ID, "signals").snapshot.value.sessionSignal, null);
 });
 
 test("preserves sectional and request readiness without presenting missing evidence as zero", () => {

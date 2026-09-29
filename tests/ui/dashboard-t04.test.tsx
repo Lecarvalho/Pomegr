@@ -94,6 +94,25 @@ function mount(query = {}, summary = sessionSummaryFixture(), state = composedSt
 afterEach(() => { resetSessionDomainStoreForTests(); navigation.replace.mockReset(); vi.restoreAllMocks(); vi.useRealTimers(); delete (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop; });
 
 describe("T04 session workspace", () => {
+  it("shows the agent-reported session signal chip in the persistent header", async () => {
+    const base = sessionSummaryFixture();
+    const signal = { label: "Review ready", tone: "positive" as const, reportedAt: "2026-09-14T12:00:00.000Z", description: "Checks completed." };
+    const withSignal = mount({ tab: "signals" }, sessionSummaryFixture({ session: { ...base.session!, signal } }), composedState({ session: { ...composedState().session!, signal } }));
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    const header = withSignal.container.querySelector(".sessionHeaderMeta") as HTMLElement;
+    const chip = await within(header).findByRole("button", { name: "Session signal: Review ready" });
+    expect(chip).toHaveClass("agentChip", "sessionSignal", "positive");
+    expect(await screen.findByText("Session · agent-reported")).toBeInTheDocument();
+    await userEvent.setup().hover(chip);
+    expect(await screen.findByText("Agent-reported session signal · Checks completed.")).toBeInTheDocument();
+  });
+
+  it("omits the header signal chip when no signal is recorded", async () => {
+    const withoutSignal = mount();
+    await screen.findByRole("heading", { name: "Recorded implementation session" });
+    expect(withoutSignal.container.querySelector(".sessionHeaderMeta .sessionSignal")).toBeNull();
+  });
+
   it("renders persistent summary-only chrome and falls back unknown tabs to Overview", async () => {
     const { fetchMock, container } = mount({ tab: "made-up", agent: "primary", request: "request-1", path: "app/Dashboard.tsx" });
     expect(await screen.findByRole("heading", { name: "Recorded implementation session" })).toBeInTheDocument();

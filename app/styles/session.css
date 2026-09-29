@@ -85,10 +85,11 @@
 
 /* Persistent session summary chrome and the single mounted evidence tab. */
 .commandSessionView { display: grid; gap: 18px; }
+.commandSessionView > .commandPageHeader .commandPageMeta { max-width: none; }
 .sessionHeaderMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; color: var(--command-muted); font-size: var(--text-sm); }
 .sessionHeaderMeta .commandChip { gap: 6px; }
 .sessionHeaderMeta .commandChip .commandStatusText { font-size: var(--text-caption); }
-.sessionStartedMeta { font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionStartedMeta { flex-basis: 100%; font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionStartedMeta time { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
 .sessionBranchChip .commandIcon { width: 13px; height: 13px; }
 .sessionIdChip { font-family: var(--font-data); text-transform: none; }
