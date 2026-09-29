@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { captureClaudeStatuslineCost } from "../monitor/session-cost.mjs";
-import { captureClaudeStatuslineUsage } from "../monitor/providers/claude-usage-feed.mjs";
+import { captureClaudeStatuslineCost } from "../server/normalize/session-cost.mjs";
+import { captureClaudeStatuslineUsage } from "../server/providers/claude/usage-feed.mjs";
 
 async function main() {
   const chunks = [];

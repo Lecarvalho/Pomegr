@@ -430,7 +430,7 @@ Move `RevisionEvidence` into its own tab per `mockup-detail-inventory.html`.
 
 ```powershell
 npx vitest run tests/ui/repository-detail.test.tsx
-node --test tests/repository-inventory.test.mjs
+node --test tests/server/repository-inventory.test.mjs
 npm run typecheck
 ```
 

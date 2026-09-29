@@ -19,7 +19,7 @@ import {
 } from "./environment-policy.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const runtimeDirectories = ["dist", "monitor", "shared", "web"];
+const runtimeDirectories = ["dist", "server", "shared", "web"];
 const desktopFiles = [
   "asar-policy.mjs",
   "artifact-privacy.mjs",

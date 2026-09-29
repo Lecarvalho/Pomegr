@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import test, { after } from "node:test";
 
-import { createMonitorRequestHandler } from "../monitor/server.mjs";
+import { createMonitorRequestHandler } from "../server/server.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 import {
   DESKTOP_CSP,

@@ -407,7 +407,7 @@ Owner: UI (`app/Dashboard.tsx`, `app/components/dashboard/`). Artboards: `Main.h
 
 ### T05 Agents tab and inspector
 
-Owner: UI and agents analytics (`app/components/dashboard/agent-roster/`, `app/agents/`, `monitor/agents-analytics.mjs`). Artboards: `SessionAgents`, `Mobile`.
+Owner: UI and agents analytics (`app/components/dashboard/agent-roster/`, `app/agents/`, `server/analytics/agents-analytics.mjs`). Artboards: `SessionAgents`, `Mobile`.
 
 Depends on T04 and the T02 agents/agent domains.
 
@@ -478,7 +478,7 @@ Owner: UI (`app/components/repositories/`, `app/components/dashboard/`). Artboar
 - Repository page Files tab beside the existing tabs; Git tab gains the commit lists that left the session page.
 - Deep links with `path` on both sides.
 - Links follow the prototype README link rule (2026-09-20): **Git tab on repository page** and **All history on repository page** are quiet actions with a trailing chevron, not brand text links; session titles in the file history panel stay ink-colored.
-- Historical sessions: recorded branch, recorded files, PR state at last check, never the current tree. This needs the T00 checkpoint additions: today `recordedGitState` in `monitor/server.mjs` keeps only the branch and returns empty files, null comparison, empty commits, and unavailable pull requests for historical sessions. Persist files, comparison, and pull-request state at the last live check and serve them from the `repository` domain.
+- Historical sessions: recorded branch, recorded files, PR state at last check, never the current tree. This needs the T00 checkpoint additions: today `recordedGitState` in `server/server.mjs` keeps only the branch and returns empty files, null comparison, empty commits, and unavailable pull requests for historical sessions. Persist files, comparison, and pull-request state at the last live check and serve them from the `repository` domain.
 - "Commits in session" is a new count. Today the repository section carries the last eight commits on HEAD regardless of session. Count commits whose committed time falls inside the session's wall-time window on the recorded branch, or drop the number from the second line.
 - Compare against both artboards.
 
@@ -565,10 +565,10 @@ the repository Files tab and path deep links (T08). Part 4 (evidence, independen
 docs and closure) is uncommitted on top of `d483655`.
 
 **Review.** One independent Opus review of `git diff main...HEAD` returned FAIL with one
-blocker, now fixed: `monitor/file-history-domain.mjs` spent its per-cycle budget (8
+blocker, now fixed: `server/repository/file-history-domain.mjs` spent its per-cycle budget (8
 listings, 32 histories) oldest-first on keys that already had blocks, so a new selection
 could stay loading for up to ten minutes. Keys without a block are now built first,
-newest-touched first. Also fixed from the review: `tests/resource-domain.test.mjs` was not
+newest-touched first. Also fixed from the review: `tests/server/resources/resource-domain.test.mjs` was not
 registered in `test:node`; a failed or `503` repository-files poll replaced a ready body
 (it now keeps the last resolved response); checkpoint prune deleted a repository-snapshot
 sidecar written before its session's first checkpoint (it now removes only sidecars of
@@ -577,7 +577,7 @@ session's recorded file status read "in working tree" (now "at last live check")
 Resources retention message called the global setting "this session's". Each fix has a
 regression test that fails on the old code.
 
-**Evidence.** The first pass returned FAIL on two real defects, now fixed: `monitor/server.mjs`
+**Evidence.** The first pass returned FAIL on two real defects, now fixed: `server/server.mjs`
 never forwarded `serveRepositoryFiles`, so `/api/repository-files` answered an empty `200`
 and every file-history panel and repository tree read "unavailable" (the handler now
 returns `503` for a missing hook, and a source test checks that every observation serve
@@ -586,12 +586,12 @@ now wraps). The second pass returned `VERDICT: PASS` for claims G-A..G-D and F-A
 see `runs/2026-09-22-ia-session-5/4-evidence-review-closure/artifacts/try-it.md`. Part 1's
 evidence verdict was PASS against the Resources artboard.
 
-**Part 4 changed files.** `monitor/file-history-domain.mjs`, `monitor/request-handler.mjs`,
-`monitor/server.mjs`, `monitor/session-observation-checkpoints.mjs`,
+**Part 4 changed files.** `server/repository/file-history-domain.mjs`, `server/serving/request-handler.mjs`,
+`server/server.mjs`, `server/sessions/checkpoints/session-observation-checkpoints.mjs`,
 `app/repository-files-store.ts`, `app/components/repositories/FileHistoryPanel.tsx`,
 `app/components/dashboard/RepositoryTab.tsx`, `app/components/dashboard/ResourcesTab.tsx`,
-`app/styles/file-history.css`, `package.json`, `tests/file-history-domain.test.mjs`,
-`tests/session-observation-checkpoints.test.mjs`, `tests/ui/file-tree.test.tsx`,
+`app/styles/file-history.css`, `package.json`, `tests/server/repository/file-history-domain.test.mjs`,
+`tests/server/sessions/checkpoints/session-observation-checkpoints.test.mjs`, `tests/ui/file-tree.test.tsx`,
 `tests/ui/repository-files-store.test.tsx` (new), `AGENTS.md`, `docs/OBSERVATION_CACHE.md`,
 `docs/METRICS.md`, and this plan.
 
@@ -652,7 +652,7 @@ the Settings → Storage usage bar. Part 5 (independent review and closure) is u
 on top of `b447828`.
 
 **Review.** One independent Opus review of `git diff main...HEAD` returned FAIL with one
-blocker, now fixed. `monitor/file-change-index.mjs` replaced a session's `file_changes`
+blocker, now fixed. `server/repository/file-change-index.mjs` replaced a session's `file_changes`
 on every snapshot. Live evidence is a bounded tail, so older changes were deleted once
 they left the window. Writes are now additive and skip changes that are already recorded.
 Also fixed: a confirmed `protected_excess` no longer flips back to `cleanup_pending`
@@ -665,9 +665,9 @@ on the old code. Docs changed in the same pass: the storage IPC subsection in
 AGENTS.md (file-change history now ships monitor-side; the two desktop storage enums),
 and the METRICS.md peak-to-request wording.
 
-**Part 5 changed files.** `monitor/file-change-index.mjs`, `monitor/monitor-store-runtime.mjs`,
-`monitor/store-retention.mjs`, `tests/file-change-index.test.mjs`,
-`tests/monitor-store.test.mjs`, `tests/store-retention.test.mjs`, `AGENTS.md`,
+**Part 5 changed files.** `server/repository/file-change-index.mjs`, `server/persistence/monitor-store-runtime.mjs`,
+`server/persistence/store-retention.mjs`, `tests/server/repository/file-change-index.test.mjs`,
+`tests/server/persistence/monitor-store.test.mjs`, `tests/server/persistence/store-retention.test.mjs`, `AGENTS.md`,
 `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, and this plan.
 
 **Verification.** Focused suites passed 91/91 at review. After the fixes,
@@ -691,11 +691,11 @@ track is unrounded (the off-scale 3px radius was rejected).
 yet. Serve them through committed domain caches filled on the store cycle, never as
 synchronous SQLite reads inside a GET. The store handle is `monitorStore.store()` on the
 observation runtime; it is null while loading or unavailable.
-- `monitor/file-change-index.mjs` (store first; page default 100, max 200; ISO timestamps):
+- `server/repository/file-change-index.mjs` (store first; page default 100, max 200; ISO timestamps):
   `listSessionFileChanges(store, sessionId, { limit, before })`,
   `listRepositoryFiles(store, repositoryId, { historical, limit, after })`,
   `fileHistory(store, fileId, { limit, before })`.
-- `monitor/resource-history.mjs` `createResourceHistoryQueries(store)`:
+- `server/resources/resource-history.mjs` `createResourceHistoryQueries(store)`:
   `sessionResourceCurves(sessionId, { fromMs, toMs })`, `sessionResourcePeaks(sessionId)`,
   `peakSampleWindow(peakId)`. These use epoch-ms fields; normalize them to the file index's
   ISO form. `peakSampleWindow` is not session-scoped, so check ownership first.
@@ -729,11 +729,11 @@ observation runtime; it is null while loading or unavailable.
 `runs/2026-09-22-ia-session-4/1-store-foundation`. `node:sqlite` loads inside a
 `worker_threads` worker under Electron 43.3.0 (Node 24.18.1, SQLite 3.53.1) without
 printing a warning, so T07 needs no SQLite fallback. System Node 24 still prints the
-`ExperimentalWarning`; `monitor/monitor-store.mjs` filters only that warning. The store
+`ExperimentalWarning`; `server/persistence/monitor-store.mjs` filters only that warning. The store
 (`monitor-store-v1/monitor.sqlite` under the data root) holds the full T07 schema, rebuilds
 when missing, corrupt or on another schema version, and runs age/size retention after
 checkpoint writes. It serves committed readiness through `GET /api/storage`.
-`monitor/monitor-store-runtime.mjs` `registerContributor` is the seam that parts 2 and 3
+`server/persistence/monitor-store-runtime.mjs` `registerContributor` is the seam that parts 2 and 3
 extend. `npm run verify:fast` and `npm run test:node` passed (1,189 passing tests, one
 skipped). Committed on branch `feat/persistence-and-storage`. Session 4 stays unchecked.
 
@@ -1056,16 +1056,16 @@ M  app/session-domain-store.ts
 M  docs/AGENT-WORKFLOW.md
 M  docs/OBSERVATION_CACHE.md
 M  docs/internal/plans/ia-redesign.md
-M  monitor/observation-runtime.mjs
-M  monitor/session-observation-coordinator.mjs
-M  tests/session-domain-runtime.test.mjs
-M  tests/session-domain-transport.test.mjs
+M  server/runtime/observation-runtime.mjs
+M  server/runtime/session-observation-coordinator.mjs
+M  tests/server/session-domain-runtime.test.mjs
+M  tests/server/session-domain-transport.test.mjs
 M  tests/ui/dashboard-readiness.test.tsx
 M  tests/ui/dashboard-t04.test.tsx
 D  tests/ui/legacy-session-tab.test.tsx
 M  tests/ui/session-domain-store.test.tsx
 M  tests/ui/session-tabs.test.tsx
-?? monitor/session-domain-serving.mjs
+?? server/sessions/domain/session-domain-serving.mjs
 ?? tests/ui/transitional-session-tab.test.tsx
 ```
 
@@ -1077,7 +1077,7 @@ M  tests/ui/session-tabs.test.tsx
 | N2 Agents List/Grid toggle a no-op, persistence deleted | `app/components/dashboard/AgentsTab.tsx` restores controlled `viewMode` and the `pomegr-agent-activity-view-<sessionId>` localStorage key; ported to `tests/ui/agents-tab.test.tsx`. Recorded as a T05 file-ownership exception. |
 | N3 browser confirmation blocked by the "defects" state | Unblocked once N1, N2 and S1 landed; `confirm-navigation-r3.md`/`reconfirm-navigation-r3.md` passed every flow. |
 | Checkpoint step 4, historical 503 stall | Monitor serves the retained loading body through an in-flight poll failure instead of dead-ending; the browser store retries. |
-| S1 literal NUL bytes in `monitor/session-domain-store.mjs` | Restored to a normal text escape at both separator sites; the file diffs as text again. |
+| S1 literal NUL bytes in `server/sessions/domain/session-domain-store.mjs` | Restored to a normal text escape at both separator sites; the file diffs as text again. |
 | S2 retained loading body hid poll errors | `app/Dashboard.tsx` now surfaces `summaryResult.error` on the loading-with-no-session branch. |
 | S3 Resources deep link redirected while still loading | `SessionTabs.tsx` redirects only once `resourceAvailability.readiness` has actually resolved. |
 | S4 unported Details assertions / report-mismatch test | Ported into the renamed `tests/ui/transitional-session-tab.test.tsx` and `tests/ui/dashboard-t04.test.tsx`. |
@@ -1113,7 +1113,7 @@ before Session 2 could close; assigned here:
 (a) **Failure-versus-absence deferral.** A hydration probe that fails mid-read for a
 session outside the provider catalog window is still served as 404 until the 30 s
 recheck, the same as a proven-absent session; the two cases are not distinguished. Owner:
-unassigned, next provider-observer change in `monitor/providers/normalized-polling-observer.mjs`
+unassigned, next provider-observer change in `server/providers/kernel/normalized-polling-observer.mjs`
 and `registry.mjs` (these already collapse a failure and a missing source into `false`); no
 task in the current session queue owns provider-observer internals.
 
@@ -1156,11 +1156,11 @@ empty).
 
 **Round 5: architecture fix, no behavior change.** The first full verification (under
 round 4) failed `npm run verify:fast` at `check:architecture` with two violations that
-predated round 4: `monitor/observation-runtime.mjs` at 913 lines (cap 800), and
+predated round 4: `server/runtime/observation-runtime.mjs` at 913 lines (cap 800), and
 `tests/ui/legacy-session-tab.test.tsx` using a legacy/versioned source filename. Fixed by
-extracting `monitor/session-domain-serving.mjs` (168 lines; `createSessionDomainServing`
+extracting `server/sessions/domain/session-domain-serving.mjs` (168 lines; `createSessionDomainServing`
 returning `commit`/`forget`/`clear`/`protectedSessionIds`/`serveSessionDomain`), which
-brought `monitor/observation-runtime.mjs` down to 780 lines, and renaming the test file to
+brought `server/runtime/observation-runtime.mjs` down to 780 lines, and renaming the test file to
 `tests/ui/transitional-session-tab.test.tsx` (byte-identical copy). The three path
 references in this plan and one row in `docs/AGENT-WORKFLOW.md` were updated to match. The
 orchestrator's normalized-line comparison against the pre-extraction file found only
@@ -1270,15 +1270,15 @@ dependencies), and 35 targeted node tests (`session-domain-store`, `session-doma
 
 Fixed between rounds (round-1 blockers, now resolved and tested):
 
-- Monitor re-commit/eviction flap (`monitor/session-domain-store.mjs`,
-  `monitor/observation-runtime.mjs`): catalog events previously re-committed every catalog
+- Monitor re-commit/eviction flap (`server/sessions/domain/session-domain-store.mjs`,
+  `server/runtime/observation-runtime.mjs`): catalog events previously re-committed every catalog
   session and refreshed retention on each one, so bound-based eviction dropped the newest
   (live) rows first, producing the observed revision flap (0/0/76003/0/76105…) and a
   permanently "Loading session…" page. Fixed with demand-ordered retention, no-op identical
   re-commits, a protected-session exemption for live/working/needs_input/open rows, and
   hydration triggered from `serveSessionDomain` for hydratable rows with no committed
-  evidence. Tests: `tests/session-domain-runtime.test.mjs` (catalog-churn and
-  hydration-reaches-ready cases), `tests/session-domain-store.test.mjs`.
+  evidence. Tests: `tests/server/session-domain-runtime.test.mjs` (catalog-churn and
+  hydration-reaches-ready cases), `tests/server/sessions/domain/session-domain-store.test.mjs`.
 - Legacy consumer corrections (`app/components/dashboard/LegacySessionTab.tsx`): first 204,
   last-known-good plus notice, 1s/5s/reconnect cadence, hidden/focus handling,
   `refreshAfterFlight`, session reset, late-abort non-commit are now covered by
@@ -1297,7 +1297,7 @@ Fixed between rounds (round-1 blockers, now resolved and tested):
 Remaining resume steps, in order (file:line verified against source on 2026-09-16; adjust
 if source has moved):
 
-1. **Restore two literal NUL bytes in `monitor/session-domain-store.mjs`.** Lines 62
+1. **Restore two literal NUL bytes in `server/sessions/domain/session-domain-store.mjs`.** Lines 62
    (`function key(sessionId, domain) { return `${sessionId}<NUL>${domain}`; }`) and 224
    (`recordKey.lastIndexOf("<NUL>")`) contain a literal NUL byte where an escape sequence
    (for example `::`) was intended. Behavior is unaffected today because both sides use the
@@ -1308,7 +1308,7 @@ if source has moved):
    restart.** `app/session-domain-store.ts:110-111` treats any response with
    `value.revision < retained.revision` (or a `loading` response at or below the retained
    revision) as stale and keeps the old body forever. Per-domain revision clocks in
-   `monitor/session-domain-store.mjs` restart at 0 on every monitor process start (for
+   `server/sessions/domain/session-domain-store.mjs` restart at 0 on every monitor process start (for
    example `npm run dev`, the restart-pomegr skill, or a desktop monitor-worker restart), so
    a page left open across a restart receives revisions permanently below its retained one
    and never recovers — a live session can show a stale "In progress" state indefinitely with
@@ -1441,7 +1441,7 @@ Changed T04 ownership:
 - New `app/session-domain-store.ts`: exact-query body/revision retention,
   shared events, current plus two recent sessions, historical/live cadence,
   cancellation and last-known-good data. This remains under final review.
-- `monitor/session-domain-projection.mjs` and
+- `server/sessions/domain/session-domain-projection.mjs` and
   `shared/session-domain-contract.ts`: summary-native agent status counts and
   resource availability. No navigation-driven eager domain acquisition.
 - New `app/role-family.ts`, role tokens, session styles, design-system samples,
@@ -1499,7 +1499,7 @@ Latest actual verification:
   (`outputs/ia-session2-integration-lint.log`); architecture passed for 726
   source files; provider documentation check passed. The earlier boundary run
   failed only on orphan SessionCommandBar, since removed; rerun is required.
-- Parent `node --test tests/session-domain-store.test.mjs` passed 10 tests
+- Parent `node --test tests/server/sessions/domain/session-domain-store.test.mjs` passed 10 tests
   (`outputs/ia-session2-domain-test.log`). All nine local Markdown file links
   across this plan, OBSERVATION_CACHE and DESIGN resolve.
 - Main/Mobile and SessionAgents/Mobile comparisons passed after one correction
@@ -1624,10 +1624,10 @@ the Sol-or-cheaper ceiling. No Session 2 implementation started.
 Changed ownership areas:
 
 - Domain contracts and committed projections: `shared/session-domain-contract.ts`,
-  `monitor/session-domain-projection.mjs`, `monitor/session-domain-store.mjs`,
+  `server/sessions/domain/session-domain-projection.mjs`, `server/sessions/domain/session-domain-store.mjs`,
   observation runtime, request handler and `app/api/session-domain/route.ts`.
 - Request-range history and privacy: `shared/session-history-contract.ts`,
-  `monitor/session-history-groups.mjs`, history store, dedicated repository-path
+  `server/sessions/history/session-history-groups.mjs`, history store, dedicated repository-path
   validator, Git-root enrichment, and focused domain/history/path serialization tests.
 - Transport: `app/live-events.ts`, history publications, AppShell, Dashboard,
   Activity/Requests hooks, request preload, shared repository inventory, JSON proxies

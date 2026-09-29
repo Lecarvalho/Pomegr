@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 
-import { startMonitorServer } from "../monitor/server.mjs";
-import { createDefaultProviderRegistry } from "../monitor/providers/index.mjs";
+import { startMonitorServer } from "../server/server.mjs";
+import { createDefaultProviderRegistry } from "../server/providers/index.mjs";
 import { environmentValue, MONITOR_PRIVATE_ENVIRONMENT_NAMES } from "./environment-policy.mjs";
 import { startMonitorAfterEnvironment } from "./monitor-startup-policy.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";

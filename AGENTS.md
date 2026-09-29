@@ -14,7 +14,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 
 - The user grants standing permission to use subagents for repository work whenever parallel or independent assessment would improve the result. Do not ask for subagent permission again.
 - Default subagents and workflow workers to the cheapest capable model, such as Sonnet, Haiku (Claude), Terra, Luna (Codex). Reserve larger models for stages that genuinely need stronger reasoning, and never leave investigative or probe agents on the session's default model by accident.
-- Real provider sessions (`codex exec`, `claude`, a Codex app-server, or similar) may be launched when a fix genuinely needs live evidence, but they are temporary scaffolding. Prefer letting each run finish on its own over killing it mid-turn; a killed run leaves an unfinished turn in the user's catalog. When the fix is done, delete the probe that launched them. Never keep one as a script, a persistent test, or an automated step. Durable tests use synthetic transcripts or an isolated temporary provider home, as in the opt-in `tests/codex-native-lock-acceptance.test.mjs`.
+- Real provider sessions (`codex exec`, `claude`, a Codex app-server, or similar) may be launched when a fix genuinely needs live evidence, but they are temporary scaffolding. Prefer letting each run finish on its own over killing it mid-turn; a killed run leaves an unfinished turn in the user's catalog. When the fix is done, delete the probe that launched them. Never keep one as a script, a persistent test, or an automated step. Durable tests use synthetic transcripts or an isolated temporary provider home, as in the opt-in `tests/server/providers/codex/native-lock-acceptance.test.mjs`.
 
 ## Change routing
 
@@ -23,11 +23,11 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 - Delete plans and unneeded attachments in the change that completes, cancels, or supersedes them, after transferring enduring findings, assigning unfinished work, and repairing references under the maintenance workflow. Do not create an archive copy.
 - Use `docs/AGENT-WORKFLOW.md` to locate the behavior owner, focused test command, and forbidden dependency direction for monitor, provider, UI, desktop, landing, or generated-plugin work.
 - Treat `docs/OBSERVATION_CACHE.md` as the canonical operational contract for provider observation phases, cache ownership and bounds, checkpoint cadence, endpoint serving, revision semantics, readiness, UI polling, and skeleton behavior. Plans in `docs/internal/plans/` or legacy `docs/plans/` describe work or historical reasoning, not runtime authority.
-- Provider adapters must satisfy the executable catalog, manifest, readiness, evidence, and conformance rules in `monitor/providers/provider-contract.mjs`; provider-specific transcript schemas stay inside their adapter modules.
+- Provider adapters must satisfy the executable catalog, manifest, readiness, evidence, and conformance rules in `server/providers/provider-contract.mjs`; provider-specific transcript schemas stay inside their adapter modules.
 
 ## Architecture
 
-- `monitor/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.
+- `server/server.mjs` owns discovery, transcript history indexing, parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics.
 - `app/Dashboard.tsx` renders normalized state and must not access credentials or raw session files.
 - `app/api/state/route.ts`, `app/api/sessions/route.ts`, `app/api/home/route.ts`, and `app/api/usage-limits/route.ts` are same-origin proxies to the loopback monitor.
 - `scripts/dev.mjs` starts the monitor and web application together.
@@ -96,7 +96,7 @@ Pomegr is a local-first, read-only observer for coding-agent sessions. It presen
 
 - Claude Code is the current adapter.
 - Codex support must produce the same normalized session, agent, activity, token, repository, and insight shapes.
-- Extract provider code into `monitor/providers/<provider>.mjs` before adding a second transcript format.
+- Keep each provider in its own `server/providers/<provider>/` folder, built on `server/providers/kernel/` and `server/normalize/`; adapters never import each other.
 - Provider failures must degrade independently.
 
 ## Commands

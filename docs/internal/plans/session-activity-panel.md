@@ -45,7 +45,7 @@
 > checks and build passed. verify:fast passed. The independent development
 > terminal is PID 30448, parent Explorer, outside a Windows job; both listeners
 > descend from it and both state endpoints return 200. Preserve the unrelated
-> monitor/providers/claude-usage-limits.mjs changes. No commit has been made.
+> server/providers/claude/usage-limits.mjs changes. No commit has been made.
 > Remaining: user review only; retain this plan and mockups until explicit approval.
 > Review hold: restored on 2026-09-09 at the user's request. Keep this plan until
 > the user explicitly approves deletion, overriding the retirement instruction below.
@@ -153,10 +153,10 @@ new heuristics.
 | Surface | File | Reuse |
 | --- | --- | --- |
 | Activity list | `app/components/dashboard/ActivityPanel.tsx`, CSS in `app/styles/evidence.css` (`.activityTable`, `.activityRow`) | Replace in place. |
-| Activity projection | `monitor/session-projection.mjs` → `recentActivityEvents(allEvents)` in `monitor/activity-events.mjs` (browser gets newest 30) | Raise bound, add fields. |
+| Activity projection | `server/sessions/domain/session-projection.mjs` → `recentActivityEvents(allEvents)` in `server/normalize/activity-events.mjs` (browser gets newest 30) | Raise bound, add fields. |
 | Work-kind list | `app/components/agents/AgentsModelPanels.tsx` “Observed work” (`.workRow`, `.workBar` in `AgentsView.module.css`), labels in `app/components/agents/agent-presentation.ts` (`WORK_LABELS`) | Same row anatomy and labels for the new breakdown rail. |
 | Work-kind icons | `app/components/WorkKindIcon.tsx` | Reuse as is. |
-| Request ↔ tool-call link | `monitor/providers/claude-context.mjs` (`structuredToolUseIds`, `issuedWork` with `recorded_link`), `monitor/request-snapshots.mjs` | Source of the request ID for each activity event. |
+| Request ↔ tool-call link | `server/providers/claude/context.mjs` (`structuredToolUseIds`, `issuedWork` with `recorded_link`), `server/normalize/request-snapshots.mjs` | Source of the request ID for each activity event. |
 | Request selection | `app/components/dashboard/requests-actions/useRequestSelection.ts` (follow-latest, pinning, windowing) | Lift to Dashboard; keep rules unchanged. |
 | Pagination controls | `.commandSecondaryAction` Previous / page numbers (`aria-current="page"`) / Next, documented in `DESIGN.md` | Reuse verbatim. |
 | Disclosure rows | `app/components/dashboard/DashboardDisclosurePanel.tsx` | Phone breakdown fold. |
@@ -201,7 +201,7 @@ message id. `byKind` uses only the bounded `WorkKind` enum.
    later `tool_result` record carrying the same `tool_use_id`; duration is the
    difference of the two record timestamps. Codex pairs `function_call` /
    `custom_tool_call` with their `*_output` records by `call_id`
-   (`monitor/providers/codex-activity-events.mjs`). Shell execution tasks already
+   (`server/providers/codex/activity-events.mjs`). Shell execution tasks already
    have `startedAt`/`finishedAt`; use them for failed-shell events. No result
    yet → `null`. Cap at a sane maximum (24 h) and never negative.
 2. **Request link.** `claude-context.mjs` already resolves which request issued
@@ -222,7 +222,7 @@ message id. `byKind` uses only the bounded `WorkKind` enum.
    (10 pages of 20). The upstream retention stays as documented (Claude 256,
    Codex 4,096 merged). Record the new bound in `docs/OBSERVATION_CACHE.md`.
 5. **Checkpoints.** New fields are contract-valid normalized evidence and may be
-   persisted; verify `tests/session-observation-checkpoints.test.mjs` round-trips
+   persisted; verify `tests/server/sessions/checkpoints/session-observation-checkpoints.test.mjs` round-trips
    them.
 
 ## Dashboard work
@@ -342,14 +342,14 @@ do not trigger this navigation. Keep the off-page link for manual paging away.
 
 ## Tests
 
-- `tests/activity-events.test.mjs`, `tests/session-activity.test.mjs`: duration
+- `tests/server/normalize/activity-events.test.mjs`, `tests/server/session-activity.test.mjs`: duration
   pairing (Claude `tool_result`, Codex `*_output`, failed shell), `null` for
   running and unmatched, request id stamping, aggregates, 200 bound.
-- `tests/request-snapshots.test.mjs` / `tests/claude-context.test.mjs`: the
+- `tests/server/normalize/request-snapshots.test.mjs` / `tests/server/providers/claude/context.test.mjs`: the
   `toolUseId → snapshotId` mapping matches `issuedWork` counts.
-- `tests/api-serialization.test.mjs`: `/api/state` still serializes no prompt,
+- `tests/server/api-serialization.test.mjs`: `/api/state` still serializes no prompt,
   response, command, or provider ids; `requestId` equals a served snapshot id.
-- `tests/session-observation-checkpoints.test.mjs`: new fields round-trip.
+- `tests/server/sessions/checkpoints/session-observation-checkpoints.test.mjs`: new fields round-trip.
 - `tests/ui/requests-actions.test.tsx`: selection lifted, follow-latest and
   pinning unchanged, chip line and merged caveat.
 - New `tests/ui/activity-panel.test.tsx`: paging, live anchor on page > 1,

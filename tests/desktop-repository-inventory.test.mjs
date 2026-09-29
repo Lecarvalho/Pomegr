@@ -3,8 +3,8 @@ import http from "node:http";
 import test from "node:test";
 
 import { createRepositoryInventoryCaptureHandler } from "../desktop/repository-inventory-action.mjs";
-import { createCommittedResponseCache } from "../monitor/committed-response-cache.mjs";
-import { createRequestHandler } from "../monitor/request-handler.mjs";
+import { createCommittedResponseCache } from "../server/persistence/committed-response-cache.mjs";
+import { createRequestHandler } from "../server/serving/request-handler.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
 
 test("desktop repository capture accepts only trusted bounded targets", async () => {

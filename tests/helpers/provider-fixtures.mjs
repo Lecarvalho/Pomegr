@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { providerSource, qualifyProviderSessionId } from "../../monitor/providers/provider-contract.mjs";
-import { projectProviderSessionEvidence } from "../../monitor/session-projection.mjs";
+import { providerSource, qualifyProviderSessionId } from "../../server/providers/provider-contract.mjs";
+import { projectProviderSessionEvidence } from "../../server/sessions/domain/session-projection.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 
 export const PROVIDER_FIXTURE_ROOT = new URL("../fixtures/providers/", import.meta.url);
@@ -65,7 +65,7 @@ export function assertNoPrivateFixtureSentinels(value, label = "serialized provi
 
 /**
  * @param {"claude" | "codex"} providerId
- * @param {import("../../monitor/providers/provider-contract.mjs").ProviderSessionEvidence} evidence
+ * @param {import("../../server/providers/provider-contract.mjs").ProviderSessionEvidence} evidence
  * @returns {import("../../shared/monitor-contract").MonitorState}
  */
 export function monitorStateFromProviderEvidence(providerId, evidence) {

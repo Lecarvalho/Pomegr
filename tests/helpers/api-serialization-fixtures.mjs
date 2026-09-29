@@ -2,9 +2,9 @@ import { once } from "node:events";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createMonitorServer } from "../../monitor/server.mjs";
-import { createClaudeProvider } from "../../monitor/providers/claude.mjs";
-import { createCodexProvider } from "../../monitor/providers/codex.mjs";
+import { createMonitorServer } from "../../server/server.mjs";
+import { createClaudeProvider } from "../../server/providers/claude/index.mjs";
+import { createCodexProvider } from "../../server/providers/codex/index.mjs";
 import { readProviderFixture } from "./provider-fixtures.mjs";
 
 export const SAFE_CWD = "C:\\synthetic\\pomegr-api-fixture";

@@ -31,7 +31,7 @@ export function repositoryTab(value: unknown): RepositoryTab | undefined {
 /** Shared by the repository page and the session Repository tab: a bounded repository-relative
  * path safe to carry in a URL query and hand to useFileHistory. Rejects anything that could read
  * as absolute, a Windows path, or a traversal segment; the monitor independently revalidates the
- * value server-side (see shared/repository-files-contract.ts, monitor/repository-snapshot.mjs). */
+ * value server-side (see shared/repository-files-contract.ts, server/repository/repository-snapshot.mjs). */
 export function repositoryFilePath(value: unknown): string | undefined {
   const raw = Array.isArray(value) ? value[0] : value;
   if (typeof raw !== "string" || raw.length === 0 || raw.length > MAX_ROUTE_FILE_PATH_LENGTH) return undefined;

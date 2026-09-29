@@ -6,18 +6,47 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
 | Documentation, migration, and temporary artifacts | [Maintenance workflow](internal/development/documentation.md), [style guide](STYLE_GUIDE.md), and [maintainer index](internal/README.md); use the workflow's documentation checks and `npm run verify:fast` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
-| Provider discovery, parsing, normalization | `monitor/providers/` and `monitor/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
-| Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `monitor/observation-runtime.mjs`, `monitor/session-domain-serving.mjs`, and `monitor/session-observation-*.mjs` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
-| Monitor indexing, projection, enrichment | `monitor/server.mjs`, `monitor/` utilities | Browser credentials, prompts, responses, and provider-native payloads |
-| Internal pipeline operations and timing | `docs/PIPELINE_OPERATIONS.md`, `monitor/dev-diagnostics.mjs`, `monitor/pipeline-log-*.mjs`, `monitor/pipeline-operations*.mjs`, `monitor/pipeline-trace*.mjs`, and diagnostic scripts; run `npm run test:diagnostics`, `npm run check:boundaries`, and focused production/desktop exclusion checks | Browser API fields, session/transcript/source identity, prompts/content/errors in diagnostics, diagnostic reads that trigger pipeline work, a second development JSONL writer, or any capture/export/viewer path |
-| Agents model and work analytics | `monitor/agents-analytics.mjs`, `monitor/agents-observation.mjs`, `shared/agents-contract.ts`, and `app/agents/` | Provider acquisition or aggregation in GETs; browser-owned analytics caches |
-| Browser/API state | `app/`, `shared/`, `app/api/` | `monitor/providers/` imports from React |
+| Provider discovery, parsing, normalization | `server/providers/claude/` or `server/providers/codex/`, the shared `server/providers/kernel/`, the `server/normalize/` kernel, and `server/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
+| Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `server/runtime/observation-runtime.mjs`, `server/sessions/domain/session-domain-serving.mjs`, and `server/sessions/checkpoints/` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
+| Server indexing, projection, enrichment | `server/server.mjs`, then the owning folder in the server layout below | Browser credentials, prompts, responses, and provider-native payloads |
+| Internal pipeline operations and timing | `docs/PIPELINE_OPERATIONS.md`, `server/diagnostics/`, and diagnostic scripts; run `npm run test:diagnostics`, `npm run check:boundaries`, and focused production/desktop exclusion checks | Browser API fields, session/transcript/source identity, prompts/content/errors in diagnostics, diagnostic reads that trigger pipeline work, a second development JSONL writer, or any capture/export/viewer path |
+| Agents model and work analytics | `server/analytics/agents-analytics.mjs`, `server/runtime/agents-observation.mjs`, `shared/agents-contract.ts`, and `app/agents/` | Provider acquisition or aggregation in GETs; browser-owned analytics caches |
+| Browser/API state | `app/`, `shared/`, `app/api/` | `server/` imports from React |
 | Repository index and detail (`/repositories`, `/repositories/<repositoryId>`) | `app/components/repositories/`, `app/repositories/`, shared Settings geometry in `app/styles/shell.css`, and repository styles in `app/styles/workspace.css`; run `npx vitest run tests/ui/repository-inventory.test.tsx tests/ui/repository-detail.test.tsx` | New acquisition in browser GETs, raw repository paths/configuration, or bypassing native action confirmation |
 | Any UI control, chip, token, or style | `DESIGN.md` first, then `app/styles/tokens.css` and the button roles in `app/styles/shell.css`; verify on `/design-system` and in `tests/ui/pomegr-design-contract.test.tsx` | Literal colors, radii, or font sizes; a seventh button style; bespoke chip formats |
 | Design-system reference (web only, `/design-system`) | `app/design-system/page.tsx`, `app/components/design-system/`, `app/styles/design-system.css`, hidden paths in `desktop/security-policy.mjs`, `DESIGN.md` | Navigation entries, LAN gateway `APP_PATHS`, desktop `loadURL` triggers, monitor fetches, session data, edits to shared shell/session/evidence styles |
-| Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw monitor files |
+| Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw server files |
 | Landing site | `landing/` and its own `package.json` | Main application scripts and monitor state |
 | Generated plugins | `plugin-src/`, then `npm run build:plugin` | Direct edits to `plugins/**` generated artifacts |
+
+## Server layout
+
+`server/` is the private loopback backend (the "monitor" process). Each folder owns one
+behavior, and `npm run check:boundaries` enforces the import column with one
+dependency-cruiser rule per folder. A post-edit agent hook
+(`scripts/agent-edit-check.mjs`) runs the same check after every source edit.
+
+| Folder | Owns | Pipeline phase | May import (inside `server/`) |
+| --- | --- | --- | --- |
+| `server.mjs`, `cli.mjs`, `dev-cli.mjs` | Entry points and composition | — | Anything; the only importers of `runtime/` and `serving/` |
+| `runtime/` | Observation lifecycle, coordination, startup | Orchestrates U1–P | Anything except `serving/` |
+| `normalize/` | Record normalizers and value primitives shared by core and adapters | U2 kernel | `normalize/` only |
+| `providers/` | `index`, `registry`, `provider-contract`: the only provider files generic code may import | U1/U2 seam | `providers/**`, `normalize/` |
+| `providers/kernel/` | Provider-neutral ingestors, observers, ledgers | U1 | `normalize/`, `diagnostics/pipeline-operations{,-failures}.mjs` |
+| `providers/claude/`, `providers/codex/` | One adapter each; never import each other | U1, U2 | `providers/kernel/`, `providers/provider-contract.mjs`, `normalize/` |
+| `sessions/catalog/` | Session catalog rows and inventory | D | `normalize/`, `sessions/domain/`, provider contract |
+| `sessions/domain/` | Session projections and domain serving | D | `normalize/`, `analytics/`, `repository/`, provider contract |
+| `sessions/checkpoints/` | L1 observation store, checkpoints, restore | C, P | `normalize/`, `repository/`, `sessions/catalog/`, `sessions/domain/`, provider contract |
+| `sessions/history/` | Incremental session history store and refresh | P | `normalize/` |
+| `analytics/` | Cache, context, efficiency, and agent derivations | D | `normalize/` |
+| `repository/` | Git state, pull requests, snapshots, file history | U1 (Git), D | `normalize/`, `persistence/` |
+| `resources/` | Resource sampling and history | U1 (OS), D | `normalize/` |
+| `persistence/` | SQLite store, retention, committed response caches | C, P | `normalize/` |
+| `serving/` | HTTP request handling | S | `normalize/`, `persistence/`, `repository/`, `sessions/domain/`, provider contract |
+| `diagnostics/` | Pipeline operations, logs, dev tracing | — | `normalize/`, provider contract |
+
+Tests mirror this tree under `tests/server/<same path>.test.mjs`; cross-cutting server
+tests sit at the `tests/server/` root.
 
 ## Focused verification
 

@@ -549,7 +549,7 @@ For Claude Code, the start is the first recorded user input that initiates model
 
 ## Efficiency signals
 
-`monitor/efficiency-signals.mjs` is the executable catalog for rules shown in the **Efficiency signals** panel. Cache evidence thresholds live in `monitor/cache-events.mjs`; the efficiency catalog consumes normalized miss-refill events rather than reinterpreting provider snapshots. Rule changes remain covered by focused tests and reflected here.
+`server/analytics/efficiency-signals.mjs` is the executable catalog for rules shown in the **Efficiency signals** panel. Cache evidence thresholds live in `server/analytics/cache-events.mjs`; the efficiency catalog consumes normalized miss-refill events rather than reinterpreting provider snapshots. Rule changes remain covered by focused tests and reflected here.
 
 The current catalog contains these deterministic rules. IDs containing angle-bracket placeholders are per-event patterns rather than literal browser values.
 
@@ -687,7 +687,7 @@ Current-window correlation considers bounded live and recently updated completed
 ## Git state
 
 Codex repository attribution follows one provider-neutral rule (approved by the product
-owner on 2026-09-27; see `monitor/session-identity.mjs`): the launch or recorded cwd
+owner on 2026-09-27; see `server/normalize/session-identity.mjs`): the launch or recorded cwd
 names the project when it resolves to a recognized Git repository, and successful
 structured file mutations refine that project — unchanged when they land in the same
 repository, to a single other recognized repository when they do not. Targets outside

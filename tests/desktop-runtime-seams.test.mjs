@@ -3,7 +3,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
-import { startMonitorServer } from "../monitor/server.mjs";
+import { startMonitorServer } from "../server/server.mjs";
 import { startWebServer } from "../web/server.mjs";
 
 import { createProductionBuildFixture } from "./helpers/production-build.mjs";

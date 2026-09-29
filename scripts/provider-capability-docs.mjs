@@ -2,8 +2,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { providerRegistry } from "../monitor/providers/index.mjs";
-import { PROVIDER_CAPABILITY_CATALOG } from "../monitor/providers/provider-contract.mjs";
+import { providerRegistry } from "../server/providers/index.mjs";
+import { PROVIDER_CAPABILITY_CATALOG } from "../server/providers/provider-contract.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const documentationFile = path.join(repositoryRoot, "docs", "internal", "architecture", "limitations.md");

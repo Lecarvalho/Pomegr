@@ -85,7 +85,7 @@ no-store semantics, and cancels upstream requests when clients disconnect. It cr
 no provider jobs or observation cache. Future mobile/backend authentication is a separate
 milestone rather than an extension of these temporary local browser credentials.
 
-`monitor/server.mjs` currently:
+`server/server.mjs` currently:
 
 1. Starts provider-owned observers that discover Claude Code and Codex session trees and normalize source changes before browser requests.
 2. Commits validated evidence into immutable provider-neutral L1 revisions and restores compatible normalized L2 checkpoints on restart.
@@ -280,11 +280,11 @@ When a Claude Code session has recorded `/context` output, `session.contextMachi
 ## Provider boundary
 
 ```text
-monitor/providers/
-├── claude.mjs
-├── codex.mjs
-├── codex-liveness.mjs
-└── provider-contract.mjs
+server/providers/
+├── index.mjs, registry.mjs, provider-contract.mjs   the seam generic code may import
+├── kernel/                                          provider-neutral ingestors, observers, ledgers
+├── claude/index.mjs                                 Claude Code adapter
+└── codex/index.mjs, codex/liveness.mjs              Codex adapter
 ```
 
 Each adapter implements session discovery, agent relationships, labels, context snapshots, model/effort metadata, sanitized activity, timestamps, and optional capabilities. For live resource attribution, an adapter may additionally return a current owner PID and process-start identity through the private provider contract; the provider registry removes both before catalog serialization and marks duplicate owners unavailable. Git remains provider-independent after an adapter returns a working directory. Plan usage remains optional and is excluded from historical views.
@@ -308,7 +308,7 @@ The provider registry queries adapters independently and merges their allowliste
 
 For Codex, the adapter prefers an explicitly connected owning app-server for allowlisted thread metadata and canonical items. It never serializes thread previews or loaded turns directly. Persisted rollout headers and `session_index.jsonl` fill gaps and keep history available when the app-server is absent. The CLI state database's automatic `threads.title` and catalog `display_title` values are not metadata fallbacks because they may be verbatim or shortened first-user-message content; only an explicitly named app-server thread may supply that path's title. A separate transient account-only client resolves an installed native Codex CLI, starts `app-server --stdio`, reads `account/rateLimits/read`, and always exits. It is injected only into the default provider registry, is never used for thread/catalog/liveness/turn truth, and refreshes through the shared five-minute usage cache. Runtime capability resolution disables only `usageLimits` when executable validation fails, without mutating the provider's frozen declared capabilities or starting a historical read. Once a valid CLI is established, authentication and temporary read failures retain the capability and degrade to a fixed sanitized unavailable or stale state. The browser receives only normalized bucket IDs/labels, percentages, windows, reset times, active state, and severity; raw RPC frames, stderr, account/workspace/plan/credit data, and credentials remain private. Unknown record/item types, malformed JSONL lines, and a truncated final live write are ignored individually. A missing child rollout produces bounded neutral child metadata when the relationship is still documented elsewhere.
 
-Provider evidence crosses into `monitor/server.mjs` only after raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, tool output, credentials, environment values, private transcript/auth paths, and unrecognized MCP arguments have been discarded. The monitor adds provider-neutral Git, pull-request, metric, and deterministic-rule data in background derivation jobs. `/api/home`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/sessions`, and `/api/usage-limits` serve only committed serialized revisions; caught exceptions use fixed messages rather than arbitrary provider or filesystem error text. Browser reports are derived from the same committed state.
+Provider evidence crosses into `server/server.mjs` only after raw prompts, answers, responses, reasoning, commands, patches, stdout, stderr, tool output, credentials, environment values, private transcript/auth paths, and unrecognized MCP arguments have been discarded. The monitor adds provider-neutral Git, pull-request, metric, and deterministic-rule data in background derivation jobs. `/api/home`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/sessions`, and `/api/usage-limits` serve only committed serialized revisions; caught exceptions use fixed messages rather than arbitrary provider or filesystem error text. Browser reports are derived from the same committed state.
 
 Codex guardian rollouts remain ordinary child agents but normalize to the provider-neutral **Approval reviewer** label and reviewer role. Their optional review-decision feed exposes only a bounded `allowed` or `denied` outcome, fixed provider-reported `low`, `medium`, `high`, or `unknown` risk, a capped provider-reported duration, completion timestamp, and a bounded monitor-derived action category, with outcome totals and a truncation flag. The category classifier reads only the final structured request envelope through a bounded provider-private tail and degrades malformed or unrecognized evidence to `privileged_action`. The reviewed request, command, working directory, path, justification, provider turn identity, authorization evidence, rationale, messages, and reasoning never cross the provider boundary.
 

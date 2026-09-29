@@ -34,7 +34,7 @@ Everything in this plan preserves the non-negotiable boundaries in `AGENTS.md`:
 2. **Multiple PCs on one subscription duplicate provider polling.** Two PCs running
    Claude Code under the same subscription each run a Pomegr monitor, and each monitor
    independently polls the provider's usage-limit API. The duplicated schedules produce
-   `429` rate-limit errors. `monitor/usage-limits.mjs` already uses a five-minute refresh
+   `429` rate-limit errors. `server/normalize/usage-limits.mjs` already uses a five-minute refresh
    interval, a single-flight cache, and honors `Retry-After` on `429`, but nothing
    coordinates *across machines*.
 3. **Native mobile apps are planned.** Android and iOS apps are the intended remote
@@ -150,7 +150,7 @@ never dilute it.
 Numbered `R` (remote platform) to stay distinct from the desktop `POMEGR-DT` tasks.
 
 - **R1 — Cross-machine 429 mitigation (no backend).** Add exponential backoff,
-  jitter, and machine-derived phase offset to `monitor/usage-limits.mjs`. Small,
+  jitter, and machine-derived phase offset to `server/normalize/usage-limits.mjs`. Small,
   shippable immediately, and still the fallback path after the backend exists.
 - **R2 — Device pairing and auth.** QR/short-code pairing, per-device tokens, and a
   token check in the Next.js API proxies. Transport-agnostic: secures the LAN

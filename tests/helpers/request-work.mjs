@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { WORK_KINDS } from "../../monitor/work-kind.mjs";
+import { WORK_KINDS } from "../../server/normalize/work-kind.mjs";
 
 export function assertRequestWork(work, association, expectedAssociation) {
   assert.equal(Array.isArray(work) && work.length <= 8, true);

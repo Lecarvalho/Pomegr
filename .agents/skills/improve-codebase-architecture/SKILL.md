@@ -37,7 +37,7 @@ Pomegr has no single domain glossary or ADR folder. Its domain language and sett
 | --- | --- |
 | Domain vocabulary | [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) (runtime map, normalized state), [docs/OBSERVATION_CACHE.md](../../../docs/OBSERVATION_CACHE.md) (U1 Acquisition, U2 Normalization, C Commit, D Derivation, P Persistence, S Serving, F Presentation), [docs/METRICS.md](../../../docs/METRICS.md), [docs/SIGNAL_DICTIONARY.md](../../../docs/SIGNAL_DICTIONARY.md), and [PRODUCT.md](../../../PRODUCT.md) |
 | Behavior owners and forbidden dependency directions | [docs/AGENT-WORKFLOW.md](../../../docs/AGENT-WORKFLOW.md), `.dependency-cruiser.cjs`, and `scripts/check-architecture.mjs` |
-| Settled decisions (the equivalent of ADRs) | [AGENTS.md](../../../AGENTS.md) security, privacy, and metric invariants, including dated product-owner decisions; [docs/OBSERVATION_CACHE.md](../../../docs/OBSERVATION_CACHE.md); the executable [provider contract](../../../monitor/providers/provider-contract.mjs); [DESIGN.md](../../../DESIGN.md) for UI; and [limitations](../../../docs/internal/architecture/limitations.md) for accepted gaps |
+| Settled decisions (the equivalent of ADRs) | [AGENTS.md](../../../AGENTS.md) security, privacy, and metric invariants, including dated product-owner decisions; [docs/OBSERVATION_CACHE.md](../../../docs/OBSERVATION_CACHE.md); the executable [provider contract](../../../server/providers/provider-contract.mjs); [DESIGN.md](../../../DESIGN.md) for UI; and [limitations](../../../docs/internal/architecture/limitations.md) for accepted gaps |
 | Where authority sits when sources conflict | [docs/internal/README.md](../../../docs/internal/README.md). Plans in `docs/internal/plans/` or `docs/plans/` are work records, not decisions |
 
 ## Process
@@ -51,12 +51,12 @@ Pomegr has no single domain glossary or ADR folder. Its domain language and sett
 
 Read the Pomegr sources above for the area you're touching. Use `docs/AGENT-WORKFLOW.md` to find the behavior owner and focused test command for each hot spot.
 
-Then spawn exploration sub-agents to walk the codebase, on the cheapest capable model as `AGENTS.md` requires. Split independent areas (for example `monitor/providers/`, the observation runtime, `app/`, `desktop/`) across parallel agents. Don't follow rigid heuristics; explore organically and note where you experience friction:
+Then spawn exploration sub-agents to walk the codebase, on the cheapest capable model as `AGENTS.md` requires. Split independent areas (for example `server/providers/`, the observation runtime, `app/`, `desktop/`) across parallel agents. Don't follow rigid heuristics; explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow**, with an interface nearly as complex as the implementation?
 - Where have pure functions been extracted just for testability, but the real bugs hide in how they're called (no **locality**)?
-- Where do tightly-coupled modules leak across their seams? In Pomegr, watch especially for provider transcript schemas escaping `monitor/providers/`, serving handlers doing acquisition or normalization, and React code reaching past the normalized API.
+- Where do tightly-coupled modules leak across their seams? In Pomegr, watch especially for provider transcript schemas escaping `server/providers/`, serving handlers doing acquisition or normalization, and React code reaching past the normalized API.
 - Which parts of the codebase are untested, or hard to test through their current interface?
 
 Apply the **deletion test** to anything you suspect is shallow: would deleting it concentrate complexity, or just move it? A "yes, concentrates" is the signal you want.

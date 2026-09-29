@@ -26,11 +26,11 @@ Check these in code and tests:
 
 Inspect at least:
 
-- `monitor/providers/normalized-polling-observer.mjs`
-- `monitor/session-history-refresh-scheduler.mjs`
-- `monitor/session-history-runtime.mjs`
-- `monitor/observation-runtime.mjs`
-- `monitor/request-handler.mjs`
+- `server/providers/kernel/normalized-polling-observer.mjs`
+- `server/sessions/history/session-history-refresh-scheduler.mjs`
+- `server/sessions/history/session-history-runtime.mjs`
+- `server/runtime/observation-runtime.mjs`
+- `server/serving/request-handler.mjs`
 - `app/Dashboard.tsx`
 - `app/live-events.ts`
 - `app/components/dashboard/useActivityHistory.ts`
@@ -41,7 +41,7 @@ Inspect at least:
 Run the deterministic scheduling and serving tests:
 
 ```powershell
-node --test tests/normalized-polling-observer.test.mjs tests/session-history-refresh-scheduler.test.mjs tests/selected-history-priority.test.mjs tests/selected-session-revalidation.test.mjs tests/provider-observation.test.mjs tests/progressive-history-runtime.test.mjs tests/observation-serving.test.mjs tests/session-domain-runtime.test.mjs tests/session-domain-transport.test.mjs
+node --test tests/server/providers/kernel/normalized-polling-observer.test.mjs tests/server/sessions/history/session-history-refresh-scheduler.test.mjs tests/server/selected-history-priority.test.mjs tests/server/selected-session-revalidation.test.mjs tests/server/providers/provider-observation.test.mjs tests/server/progressive-history-runtime.test.mjs tests/server/observation-serving.test.mjs tests/server/session-domain-runtime.test.mjs tests/server/session-domain-transport.test.mjs
 ```
 
 Run the browser transport and history-behavior tests:

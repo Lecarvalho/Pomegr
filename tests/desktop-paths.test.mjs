@@ -12,8 +12,8 @@ import {
 import { desktopUserDataOverride, resolveDesktopPaths } from "../desktop/paths.mjs";
 import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/report-save.mjs";
 import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings, settingsForWindowClose } from "../desktop/settings.mjs";
-import { createClaudeProvider } from "../monitor/providers/claude.mjs";
-import { createCodexProvider, resolveCodexHome } from "../monitor/providers/codex.mjs";
+import { createClaudeProvider } from "../server/providers/claude/index.mjs";
+import { createCodexProvider, resolveCodexHome } from "../server/providers/codex/index.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 
 test("installed and portable desktop paths ignore cwd and preserve spaces and non-ASCII", () => {

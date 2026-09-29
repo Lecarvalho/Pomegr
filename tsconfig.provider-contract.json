@@ -7,7 +7,7 @@
     "noEmit": true
   },
   "include": [
-    "monitor/providers/provider-contract.mjs"
+    "server/providers/provider-contract.mjs"
   ],
   "exclude": ["node_modules"]
 }

@@ -1,6 +1,6 @@
-import { parseClaudeContextRecords } from "../../monitor/providers/claude-context.mjs";
-import { buildCacheEvents } from "../../monitor/cache-events.mjs";
-import { buildRequestSnapshots } from "../../monitor/request-snapshots.mjs";
+import { parseClaudeContextRecords } from "../../server/providers/claude/context.mjs";
+import { buildCacheEvents } from "../../server/analytics/cache-events.mjs";
+import { buildRequestSnapshots } from "../../server/normalize/request-snapshots.mjs";
 
 /** Fabricated provider records: request 44 resumes after a synthetic message. */
 export function claudeCacheRefillRecords() {

@@ -14,7 +14,7 @@ if ($env:OS -ne 'Windows_NT') {
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $packageJsonPath = Join-Path $repositoryRoot 'package.json'
 $devScriptPath = Join-Path $repositoryRoot 'scripts\dev.mjs'
-$monitorCliPath = Join-Path $repositoryRoot 'monitor\cli.mjs'
+$monitorCliPath = Join-Path $repositoryRoot 'server\cli.mjs'
 $runVinextPath = Join-Path $repositoryRoot 'scripts\run-vinext.mjs'
 $vinextCliPath = Join-Path $repositoryRoot 'node_modules\vinext\dist\cli.js'
 $electronInstallerPath = Join-Path $repositoryRoot 'node_modules\electron\install.js'

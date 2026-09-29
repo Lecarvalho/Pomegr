@@ -11,10 +11,10 @@
     "skipLibCheck": true
   },
   "files": [
-    "monitor/providers/provider-contract.mjs",
-    "monitor/providers/registry.mjs",
-    "monitor/providers/claude.mjs",
-    "monitor/providers/codex.mjs"
+    "server/providers/provider-contract.mjs",
+    "server/providers/registry.mjs",
+    "server/providers/claude/index.mjs",
+    "server/providers/codex/index.mjs"
   ],
   "exclude": ["node_modules"]
 }
