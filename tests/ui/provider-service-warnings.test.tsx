@@ -14,6 +14,7 @@ vi.mock("../../app/provider-status-client", async () => ({
 import { CommandCenterShell } from "../../app/components/command-center/CommandCenterShell";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
+import { installDirectoryFixture } from "./session-directory-test-fixture";
 
 const checkedAt = "2026-09-02T12:00:00.000Z";
 
@@ -54,6 +55,7 @@ function shell(sessions: SessionSummary[] = []) {
 afterEach(() => {
   providerState.current = { revision: 1, generatedAt: null, providers: [] };
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("provider service warnings", () => {
@@ -63,7 +65,9 @@ describe("provider service warnings", () => {
     const live = session(providerId, true);
     const historical = session(providerId, false);
     const unrelated = session(other, true);
-    const view = render(<SessionCatalogProvider sessions={[live, historical, unrelated]}><SessionsView /></SessionCatalogProvider>);
+    installDirectoryFixture([live, historical, unrelated]);
+    const view = render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await screen.findByText(`${providerId} live session`);
     expect(screen.getAllByText("Degraded service")).toHaveLength(1);
     expect(within(screen.getByText(`${providerId} live session`).closest("tr")!).getByText("Degraded service")).toBeInTheDocument();
     expect(within(screen.getByText(`${other} live session`).closest("tr")!).queryByText("Degraded service")).toBeNull();
@@ -73,14 +77,19 @@ describe("provider service warnings", () => {
     expect(screen.getByText(`${providerId} history session`)).toBeInTheDocument();
     expect(screen.getByText(`${other} live session`)).toBeInTheDocument();
     expect(screen.getAllByText("Degraded service")).toHaveLength(1);
-    view.rerender(<SessionCatalogProvider sessions={[historical]}><SessionsView /></SessionCatalogProvider>);
+    view.unmount();
+    installDirectoryFixture([historical]);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await screen.findByText(`${providerId} history session`);
     expect(screen.queryByText("Degraded service")).toBeNull();
   });
 
-  it.each(["stale", "unknown", "loading", "operational"] as const)("excludes %s status from live row and notification warnings", (scenario) => {
+  it.each(["stale", "unknown", "loading", "operational"] as const)("excludes %s status from live row and notification warnings", async (scenario) => {
     const status = scenario === "unknown" ? "unknown" : scenario === "operational" ? "operational" : "degraded";
     providerState.current = snapshot([provider("codex", { status, freshness: scenario === "stale" ? "stale" : "fresh", readiness: scenario === "loading" ? "loading" : "ready", incidentKey: scenario === "operational" ? null : "codex-incident-1", incidents: scenario === "operational" ? [] : provider("codex").incidents }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })]);
-    render(<SessionCatalogProvider sessions={[session("codex")] }><SessionsView /></SessionCatalogProvider>);
+    installDirectoryFixture([session("codex")]);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await screen.findByText("codex live session");
     expect(screen.queryByText("Degraded service")).toBeNull();
     render(shell([session("codex")]));
     expect(screen.getByRole("button", { name: "Notifications" })).not.toHaveAccessibleName(/attention available/);

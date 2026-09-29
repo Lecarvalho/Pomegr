@@ -446,3 +446,12 @@ test("catalog preserves explicit open, stopped, and closed states without invent
   assert.equal(rows.get("codex:old-active").activityStatus, "unknown");
   assert.doesNotMatch(JSON.stringify([...rows.values()]), /presenceConfirmed|resourceOwner|turn_id|rolloutFile/);
 });
+
+test("reports a provider's declared legacy repository attribution only as the fixed launch value", () => {
+  const { capabilities: _derived, ...declaration } = provider("claude", []);
+  const claude = defineProvider({ ...declaration, legacyRepositoryAttribution: "launch" });
+  const registry = createProviderRegistry([claude, provider("codex", [])]);
+  assert.equal(registry.legacyRepositoryAttribution("claude"), "launch");
+  assert.equal(registry.legacyRepositoryAttribution("codex"), null);
+  assert.equal(registry.legacyRepositoryAttribution("unknown"), null);
+});

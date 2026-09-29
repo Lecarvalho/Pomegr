@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeProviderUsageLimits, ProviderServiceStatus, SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, ProviderServiceStatus, SessionCatalogCoverage, SessionDirectorySnapshot, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
-import { newestSessionsFirst, relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
+import { relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
 import { usageLimitDisplay, usageLimitFailureKind, usageLimitFailureMessage } from "../../usage-limit-presentation";
 import { useUsageLimits } from "../../usage-limits-client";
@@ -19,6 +19,7 @@ import { CommandTable, type CommandTableColumn } from "./CommandTable";
 import { SessionCacheTiming } from "./SessionCacheTiming";
 import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
+import { subscribeLiveEvents } from "../../live-events";
 export { AgentsView } from "../agents/AgentsView";
 export { RepositoryInventoryView as RepositoriesView } from "../repositories/RepositoryInventoryView";
 
@@ -89,7 +90,26 @@ function SessionCurrentActivity({ session, compact = false }: { session: Session
   </AgentChip>;
 }
 
-const SESSION_PAGE_SIZE = 10;
+const SESSION_PAGE_SIZE = 25;
+
+function sessionCountMagnitude(coverage: SessionCatalogCoverage | undefined, fallback: number | undefined) {
+  const count = coverage?.knownCount ?? fallback;
+  if (count === undefined) return { value: undefined, label: undefined };
+  if (count < 100) return { value: String(count), label: `All sessions, ${count} discovered` };
+  const grouped = Math.floor(count / 100) * 100;
+  const formatted = grouped.toLocaleString("en-US");
+  return coverage?.status === "complete"
+    ? { value: `~${formatted}`, label: `All sessions, approximately ${formatted}` }
+    : { value: `${formatted}+`, label: `All sessions, at least ${formatted} discovered` };
+}
+
+function SessionSummaryLoading({ session }: { session: SessionSummary }) {
+  if (!session.isLive || session.summaryReadiness !== "loading") return null;
+  return <span className="commandSessionSummaryLoading" role="status" aria-label={`Loading metrics for ${session.title}`} title="Loading session metrics">
+    <span className="commandSessionSummarySpinner" aria-hidden="true" />
+  </span>;
+}
+
 function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<SessionSummary>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
@@ -97,7 +117,7 @@ function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<
   },
   {
     id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
-    renderCell: (session) => { const state = sessionState(session); return <CommandStatus state={state.state}>{state.label}</CommandStatus>; },
+    renderCell: (session) => { const state = sessionState(session); return <span className="commandSessionState"><CommandStatus state={state.state}>{state.label}</CommandStatus><SessionSummaryLoading session={session} /></span>; },
   },
   {
     id: "activity", label: "Last activity", className: "commandTableActivityColumn", colClassName: "commandSessionColActivity",
@@ -139,46 +159,107 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [project, setProject] = useState(initialProject);
   const { providers } = useProviderStatus();
   const columns = useMemo(() => sessionColumns(providers), [providers]);
-  const { sessions, loading, connected, readiness } = useSessionCatalog();
+  const { sessions: committedSessions, connected, paused, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | null>(null);
-  const [page, setPage] = useState(1);
-  const liveSessionCount = sessions.filter((session) => session.isLive).length;
-  const filter = selectedFilter ?? (liveSessionCount > 0 ? "live" : "all");
-  const filteredSessions = useMemo(() => newestSessionsFirst(sessions.filter((session) => {
-    if (initialRepositoryId && session.repositoryId !== initialRepositoryId) return false;
-    if (project && session.project !== project) return false;
-    const haystack = `${session.title} ${session.project} ${session.source}`.toLowerCase();
-    if (query.trim() && !haystack.includes(query.trim().toLowerCase())) return false;
-    if (filter === "live" && !session.isLive) return false;
-    if (filter === "needs" && !(session.needsInput || session.activityStatus === "needs_input")) return false;
-    return true;
-  })), [filter, project, initialRepositoryId, query, sessions]);
-  const updateQuery = (value: string) => { setQuery(value); setPage(1); };
-  const updateFilter = (value: typeof filter) => { setFilter(value); setPage(1); };
-  const needsInputCount = sessions.filter((session) => session.needsInput || session.activityStatus === "needs_input").length;
+  const filter = selectedFilter ?? (committedSessions.some((session) => session.isLive) ? "live" : "all");
+  const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
+  const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
+  const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
+  const [fulfilledPageKey, setFulfilledPageKey] = useState<string | null>(null);
+  const [cursorTrail, setCursorTrail] = useState<string[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorPageBase, setCursorPageBase] = useState(0);
+  const [refreshNonce, setRefreshNonce] = useState(0);
+  const requestRef = useRef(0);
+  const directoryQuery = useMemo(() => {
+    const params = new URLSearchParams({ mode: "directory", filter, pageSize: String(SESSION_PAGE_SIZE) });
+    if (query.trim()) params.set("query", query.trim());
+    if (project) params.set("project", project);
+    if (initialRepositoryId) params.set("repositoryId", initialRepositoryId);
+    return params.toString();
+  }, [filter, initialRepositoryId, project, query]);
+  const resetDirectory = () => { setCursor(null); setCursorTrail([]); setCursorPageBase(0); };
+  const updateQuery = (value: string) => { setQuery(value); resetDirectory(); };
+  const updateFilter = (value: typeof filter) => { setFilter(value); resetDirectory(); };
+
+  useEffect(() => {
+    if (paused) return;
+    const controller = new AbortController();
+    const request = ++requestRef.current;
+    const params = new URLSearchParams(directoryQuery);
+    if (cursor) params.set("cursor", cursor);
+    // Background refreshes keep the page key, so they never disable page navigation.
+    const pageKey = `${directoryQuery}\u0000${cursor || ""}`;
+    void fetch(`/api/sessions?${params}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Session directory unavailable");
+        return response.json() as Promise<SessionDirectorySnapshot>;
+      })
+      .then((next) => {
+        if (controller.signal.aborted || request !== requestRef.current || !Array.isArray(next.sessions) || !next.coverage) return;
+        setDirectory(next);
+        setDirectoryQueryKey(directoryQuery);
+        setFulfilledPageKey(pageKey);
+        setDirectoryUnavailable(false);
+        if (next.cursorReset) { setCursor(null); setCursorTrail([]); setCursorPageBase(0); }
+      })
+      .catch(() => { if (!controller.signal.aborted && request === requestRef.current) setDirectoryUnavailable(true); });
+    return () => controller.abort();
+  }, [cursor, directoryQuery, paused, refreshNonce]);
+
+  useEffect(() => {
+    if (paused) return;
+    let timer: number | null = null;
+    const refresh = () => setRefreshNonce((value) => value + 1);
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => { refresh(); schedule(); }, document.hidden ? 60_000 : 30_000);
+    };
+    const visibility = () => { if (!document.hidden) refresh(); };
+    const unsubscribe = subscribeLiveEvents((event) => { if (event.type === "revision" && event.domain === "sessions") refresh(); });
+    document.addEventListener("visibilitychange", visibility);
+    schedule();
+    return () => { unsubscribe(); document.removeEventListener("visibilitychange", visibility); if (timer !== null) window.clearTimeout(timer); };
+  }, [directoryQuery, paused]);
+
+  const directoryMatchesQuery = directoryQueryKey === directoryQuery;
+  const directoryLoading = !paused && fulfilledPageKey !== `${directoryQuery}\u0000${cursor || ""}`;
+  const committedSessionsById = useMemo(() => new Map(committedSessions.map((session) => [session.id, session])), [committedSessions]);
+  const pageRows = useMemo(() => {
+    if (!directoryMatchesQuery) return [];
+    return (directory?.sessions || []).map((session) => {
+      const committed = committedSessionsById.get(session.id);
+      return committed ? { ...session, ...committed } : session;
+    });
+  }, [committedSessionsById, directory?.sessions, directoryMatchesQuery]);
+  const coverage = directoryMatchesQuery ? directory?.coverage : undefined;
+  const counts = directoryMatchesQuery ? directory?.counts : undefined;
+  const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
+  const liveSessionCount = counts?.live;
+  const needsInputCount = counts?.needs;
+  const allSessionCount = sessionCountMagnitude(coverage, counts?.all);
   const catalogUnavailable = readiness.catalog === "unavailable" || !connected;
-  const catalogLoading = !sessions.length && !catalogUnavailable && (loading || readiness.catalog === "loading");
+  const catalogLoading = !directoryMatchesQuery && !catalogUnavailable && !directoryUnavailable && !paused;
   const providerSettingsAvailable = useProviderSettingsAvailable();
   return <CommandPage title="Sessions" description="Live and historical coding-agent sessions, organized for fast triage without exposing conversation content." busy={catalogLoading}>
     <div className="commandSessionsDirectory">
       <div className="commandSessionsToolbar"><CommandToolbar label="Filter sessions">
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <div className="commandSessionFilters" role="group" aria-label="Session scope">
-          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); setPage(1); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
-          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={catalogLoading ? undefined : sessions.length}>All</CommandFilter>
+          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
+          <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={allSessionCount.value} ariaLabel={allSessionCount.label}>All</CommandFilter>
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
-        {!catalogLoading && <span className="commandToolbarCount" aria-live="polite">{filteredSessions.length} matches</span>}
+        {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
       </CommandToolbar></div>
       <CommandTable
         caption="Observed Pomegr sessions"
-        rows={filteredSessions}
-        columns={columns}
+        rows={pageRows}
+        columns={columns.map((column) => ({ ...column, sortValue: undefined }))}
         getRowKey={(session) => session.id}
         className="commandSessionTable"
-        pagination={{ page, pageSize: SESSION_PAGE_SIZE, onPageChange: setPage, label: "Session pages" }}
         emptyState={catalogLoading ? <div className="commandSessionsSkeleton" role="status" aria-label="Loading sessions">
           <p>Loading sessions</p>
           <div aria-hidden="true">{[0, 1, 2].map((row) => <div className="commandSessionsSkeletonRow" key={row}>
@@ -186,10 +267,11 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
             <span className="uiSkeleton commandSessionsSkeletonDetail" />
             <span className="uiSkeleton commandSessionsSkeletonMeta" />
           </div>)}</div>
-        </div> : catalogUnavailable && !sessions.length ? <CommandEmpty title="Session catalog unavailable" detail="Pomegr will retry the local monitor automatically." icon="sessions" /> : <CommandEmpty title={sessions.length ? "No sessions match" : "No sessions observed"} detail={sessions.length ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+        </div> : (catalogUnavailable || directoryUnavailable || paused) && !pageRows.length ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={matchedCount ? "No sessions match" : "No sessions observed"} detail={matchedCount ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
-      {!sessions.length && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
-      {catalogUnavailable && sessions.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
+      {directoryMatchesQuery && directory && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
+      {!pageRows.length && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
+      {(catalogUnavailable || directoryUnavailable) && pageRows.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;
 }

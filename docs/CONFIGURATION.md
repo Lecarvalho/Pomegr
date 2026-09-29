@@ -227,29 +227,9 @@ browser GETs remain cache-only.
 
 ## Capability availability
 
-This matrix is generated from the same explicit manifests enforced for every provider adapter. Runtime readiness and the presence of evidence in one session are separate: “Supported” does not imply that an optional executable is installed or that every session contains the evidence.
-
-<!-- provider-capabilities:start -->
-| Capability | Normalized evidence | Claude Code | Codex |
-| --- | --- | --- | --- |
-| Approval mode | `session.approvalMode` | Supported | Supported |
-| Automatic compactions | `compactions` | Supported | Supported |
-| Context machinery | `session.contextMachinery` | Supported | Unsupported — Codex session evidence does not expose normalized context-machinery categories. |
-| Repository context inventory | `repository.contextInventory` | Supported | Unsupported — Codex does not expose a comparable repository context inventory diagnostic. |
-| Repository plugin setup | `repository.pluginSetup` | Supported | Supported |
-| Estimated cost | `session.cost` | Supported | Unsupported — Codex session evidence does not expose a provider cost estimate. |
-| Live sessions | `catalog.isLive` | Supported | Supported |
-| Needs-input state | `catalog.needsInput` | Supported | Supported |
-| Plan tasks | `planTasks` | Supported | Supported |
-| Cache-write usage | `usageSnapshots.cacheWrite` | Supported | Unsupported — Codex usage evidence does not provide normalized cache-write tokens. |
-| Cache usage classification | `usageSnapshots.cacheComparable` | Supported | Unsupported — Codex usage evidence cannot safely classify cache-write behavior. |
-| Session summary | `session.summary` | Supported | Unsupported — Codex session evidence does not expose a bounded provider session summary. |
-| Agent-reported signals | `session.signal` | Supported | Supported |
-| Usage limits | `usageLimits` | Supported | Supported |
-| Workflows | `workflows` | Supported | Unsupported — Codex does not expose the structured workflow artifacts required by the normalized workflow contract. |
-<!-- provider-capabilities:end -->
-
-Unavailable features are capability-gated and omitted. A missing value is not rendered as zero.
+The generated capability matrix and current provider-related gaps are in
+[Limitations](internal/architecture/limitations.md#provider-related-limitations).
+The same reference lists Pomegr-specific limitations separately.
 
 ## Environment variables
 

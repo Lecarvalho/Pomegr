@@ -4,6 +4,7 @@ import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { createEmptyProviderStatusSnapshot } from "../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "./session-domain-store.mjs";
+import { parseProviderSessionId } from "./providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "./store-retention.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
@@ -319,12 +320,51 @@ export function createRequestHandler({
     if (requestUrl.pathname === "/api/sessions") {
       try {
         if (runtime.observationActive?.()) {
-          writeCommitted(runtime.serveCatalog(requestedRevision), {
-            revision: 0,
-            readiness: { catalog: "loading" },
-            sessions: [],
-          });
-          return;
+          if (requestUrl.searchParams.get("mode") === "directory") {
+            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "pageSize", "cursor"]);
+            const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
+            const filter = requestUrl.searchParams.get("filter") || "all";
+            const pageSize = requestUrl.searchParams.get("pageSize") || "";
+            const boundedText = (value, maximum) => value.length <= maximum && !/[\u0000-\u001f\u007f]/u.test(value);
+            const query = requestUrl.searchParams.get("query") || "";
+            const project = requestUrl.searchParams.get("project") || "";
+            const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
+            const cursor = requestUrl.searchParams.get("cursor") || "";
+            if (!oneEach || !["all", "live", "needs"].includes(filter)
+              || (pageSize && !/^(?:[1-9]|[1-9][0-9]|100)$/.test(pageSize)) || !boundedText(query, 120)
+              || !boundedText(project, 160) || !boundedText(repositoryId, 160) || !/^[A-Za-z0-9_-]{0,256}$/u.test(cursor)) {
+              response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+              response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
+            }
+            const page = runtime.serveSessionDirectory?.({
+              query, filter, project, repositoryId, pageSize: pageSize ? Number(pageSize) : 25, cursor,
+            });
+            response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
+              "X-Pomegr-Revision": String(page?.revision ?? 0), ETag: `"${page?.revision ?? 0}"` });
+            response.end(JSON.stringify(page || { revision: 0, sessions: [], matchedCount: 0, counts: { all: 0, live: 0, needs: 0 }, pageSize: 25, nextCursor: null,
+              coverage: { status: "discovering", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: null, lastCompletedAt: null } }));
+            return;
+          }
+          const safeId = (value) => Boolean(parseProviderSessionId(value));
+          const selected = requestUrl.searchParams.get("selected") || "";
+          const pinned = (requestUrl.searchParams.get("pinned") || "").split(",").filter(Boolean);
+          if ((!selected && !pinned.length)) {
+            writeCommitted(runtime.serveCatalog(requestedRevision), {
+              revision: 0,
+              readiness: { catalog: "loading" },
+              sessions: [],
+            });
+            return;
+          }
+          if ((!selected || safeId(selected)) && pinned.length <= 12 && pinned.every((id) => safeId(id))) {
+            const shell = runtime.serveCatalogShell?.({ selected, pinned });
+            const queryTag = Buffer.from(`${selected}\0${pinned.join("\0")}`).toString("base64url");
+            response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
+              "X-Pomegr-Revision": String(shell?.revision ?? 0), ETag: `"${shell?.revision ?? 0}-${queryTag}"` });
+            response.end(JSON.stringify(shell?.value || { readiness: { catalog: "loading" }, sessions: [] }));
+            return;
+          }
+          response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ error: "Invalid session shell query" })); return;
         }
         const body = JSON.stringify(await runtime.sessionFeed());
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });

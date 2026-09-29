@@ -6,9 +6,10 @@ import { applyWaitingStatus } from "../agent-metadata.mjs";
 import { defineProvider } from "./provider-contract.mjs";
 import { createCodexPluginSetupReader } from "./codex-plugin-setup.mjs";
 import { createCodexIncrementalObserver } from "./codex-observation.mjs";
+import { canonicalCodexSourcePath, codexSourcePathKey } from "./codex-source-path.mjs";
 import { createCodexCatalogCache } from "./codex-catalog-cache.mjs";
-import { createCodexRolloutDiscovery } from "./codex-rollout-discovery.mjs";
-import { mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
+import { createCodexRolloutDiscovery, noticeCodexRolloutSource } from "./codex-rollout-discovery.mjs";
+import { bindCodexFileChanges, mergeCodexActivityEvents, mergeCodexToolCalls } from "./codex-activity-events.mjs";
 import { mergeCodexExecutionTasks, parseCodexExecutionTaskStateRecords } from "./codex-execution-tasks.mjs";
 import { latestCodexPlanSnapshot, parseCodexApprovalPlanRecords } from "./codex-approval-plan.mjs";
 import { parseCodexRequestActivityEvidence, stampCodexActivityRequestIds } from "./codex-activity-correlation.mjs";
@@ -23,6 +24,8 @@ import { createCodexWriterPresence } from "./codex-writer-presence.mjs";
 import { createCodexOwningRuntime } from "./codex-owning-runtime.mjs";
 import { createCodexLiveState } from "./codex-live-state.mjs";
 import { createCodexAppServerSessionReader } from "./codex-app-server-session.mjs";
+import { createSourceLedger } from "./source-ledger.mjs";
+import { createCodexRepositoryAttributionTracker } from "./codex-repository-attribution.mjs";
 import {
   boundedInteger,
   codexSessionReference,
@@ -36,12 +39,15 @@ import { createHistoryOwnershipProjection, publishNormalizedHistoryActivity, pub
 import {
   DEFAULT_CODEX_CATALOG_LIMIT,
   DEFAULT_CODEX_SCAN_LIMIT,
+  codexHeaderToLedgerHeader,
   isSafeCodexSessionId,
   isTopLevelCodexSession,
+  createCodexRolloutHeaderCache, enumerateCodexRolloutHeaders,
+  readCodexLedgerHeader,
   readCodexSessionIndex,
+  resolveCodexRolloutFamily,
 } from "./codex-session-metadata.mjs";
-export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024;
-export const CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
+export const CODEX_LIVE_STATE_MAX_TAIL_BYTES = 512 * 1024, CODEX_LIVE_TASK_HISTORY_MAX_BYTES = 8 * 1024 * 1024;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
 export function resolveCodexHome(options = {}) {
   const environment = options.env ?? process.env;
@@ -76,6 +82,8 @@ export function createCodexProvider(options = {}) {
   // never supply session, catalog, liveness, or canonical-turn evidence.
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
+  let repositoryResolver = null;
+  const repositoryAttributionTracker = createCodexRepositoryAttributionTracker();
   const makeWriterPresence = () => options.writerPresence || createCodexWriterPresence({
     writerLocksRoot, now, platform: options.platform, env: options.env,
   });
@@ -94,6 +102,7 @@ export function createCodexProvider(options = {}) {
   const liveness = createCodexLivenessCoordinator({
     writerLocksRoot,
     currentWriterOwner: (localId) => writerPresence.current(localId),
+    platform: options.platform,
     now,
     cacheMs,
     maximumTailBytes: options.maximumTailBytes,
@@ -159,6 +168,19 @@ export function createCodexProvider(options = {}) {
     maximumFiles: scanLimit, now,
   });
   let rolloutDiscovery = makeRolloutDiscovery();
+  const rolloutRoots = [{ root: sessionsRoot, archived: false }, ...(includeArchived ? [{ root: archivedRoot, archived: true }] : [])];
+  const archivedPrefix = path.resolve(archivedRoot) + path.sep;
+  const rolloutHeaderCache = createCodexRolloutHeaderCache(); // header inventory: unchanged rollouts are not reopened
+  const sourceLedger = createSourceLedger({
+    parseHeader: (file) => readCodexLedgerHeader(file, { archived: path.resolve(file).startsWith(archivedPrefix) }),
+    now,
+  });
+  async function resolveExactRolloutMetadata(localSessionId) {
+    return await appServerSessions.readSessionMetadata(localSessionId)
+      || rolloutDiscovery.peek(localSessionId)
+      || (await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localSessionId))?.find((item) => item.localId === localSessionId)
+      || null;
+  }
   async function readFallbackMetadata(readOptions, indexNames = readCodexSessionIndex(indexFile)) {
     return (await rolloutDiscovery.read(readOptions)).map((item) => {
       const indexed = indexNames.get(item.localId);
@@ -173,36 +195,79 @@ export function createCodexProvider(options = {}) {
       const appServerMetadata = await appServerSessions.readCatalog();
       const fallbackMetadata = await readFallbackMetadata(readOptions);
       const combined = mergeCodexMetadata([...fallbackMetadata, ...(appServerMetadata || [])]);
+      sourceLedger.ingestHeaders(combined.filter((item) => item.rolloutFile).map((item) => ({ file: item.rolloutFile, header: codexHeaderToLedgerHeader(item) })));
       const knownRolloutFiles = new Set(combined.map((item) => item.rolloutFile).filter(Boolean));
       pruneKnownFiles(knownRolloutFiles);
       return combined;
     } });
   const discoveredMetadata = metadataCatalog.read;
+  // Catalog rows resolve identity without hydration and never overwrite a full read's
+  // attribution; the shared rule bounds the (memoized) resolver call per row.
+  function headerSessionIdentity(localId, cwd) {
+    return repositoryAttributionTracker.headerIdentity(localId, { launchCwd: cwd, resolveRepository: repositoryResolver });
+  }
   async function listSessions(listOptions = {}) {
     const metadata = (await discoveredMetadata(listOptions)).map(owningRuntime.decorate);
     // Ownership is a separate background lane; recorded work never waits for it.
     void writerPresence.refresh(metadata).catch(() => {});
     const { threads, sessions } = liveness.observe(metadata);
-    rolloutDiscovery.retain(threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId));
-    return threads.filter(isTopLevelCodexSession)
-      .map((thread) => codexSessionReference(thread, sessions.get(thread.localId)))
+    const liveIds = threads.filter((thread) => thread.livenessLive).map((thread) => thread.localId);
+    rolloutDiscovery.retain(liveIds);
+    sourceLedger.markLive(liveIds);
+    const topLevel = threads.filter(isTopLevelCodexSession);
+    const identities = await Promise.all(topLevel.map((thread) => headerSessionIdentity(thread.localId, thread.cwd)));
+    return topLevel
+      .map((thread, index) => ({ ...codexSessionReference(thread, sessions.get(thread.localId)), project: identities[index].project }))
       .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
       .slice(0, catalogLimit).sort(compareCodexMetadata);
+  }
+  /** @param {{ onBatch?: (batch: unknown[]) => boolean | Promise<boolean>, signal?: AbortSignal }} [options] */
+  async function enumerateSessionHeaders(options = {}) {
+    const { onBatch, signal } = options;
+    const normalizeHeader = async (header) => {
+        const identity = await headerSessionIdentity(header.localId, header.cwd);
+        return {
+          localId: header.localId,
+          title: header.title,
+          project: identity.project,
+          repositoryId: identity.state === "single" ? identity.repositoryId : null,
+          createdAt: header.createdAt || header.updatedAt,
+          updatedAt: header.updatedAt,
+          isLive: false,
+          needsInput: false,
+          activityStatus: "unknown",
+        };
+      };
+    const emit = async (headers) => onBatch(await Promise.all(headers.map(normalizeHeader)));
+    const onHeader = (header) => sourceLedger.ingestHeaders([{ file: header.rolloutFile, header: codexHeaderToLedgerHeader(header) }]);
+    const files = await enumerateCodexRolloutHeaders(rolloutRoots, { signal, onBatch: emit, onHeader, headerCache: rolloutHeaderCache });
+    const appServerHeaders = await appServerSessions.enumerateSessionHeaders({ signal, onBatch: emit });
+    return { complete: Boolean(files.complete) && Boolean(appServerHeaders.complete) };
   }
   async function readSession(localSessionId = "", readOptions = {}) {
     if (!isSafeCodexSessionId(localSessionId)) return null;
     const historical = readOptions.historical !== false;
     const completeStory = readOptions.completeStory === true;
     const incrementalRecordsByFile = readOptions.incrementalRecordsByFile instanceof Map
-      ? readOptions.incrementalRecordsByFile
+      ? new Map([...readOptions.incrementalRecordsByFile].map(([file, value]) => [codexSourcePathKey(file), value]))
       : null;
     const incrementalGenerationsByFile = readOptions.incrementalGenerationsByFile instanceof Map
-      ? readOptions.incrementalGenerationsByFile
+      ? new Map([...readOptions.incrementalGenerationsByFile].map(([file, value]) => [codexSourcePathKey(file), value]))
       : null;
-    const discovered = await discoveredMetadata();
-    const appServerTree = await appServerSessions.readSessionTree(localSessionId);
+    // Resolve known selected metadata before the global catalog.
+    const directRoot = await appServerSessions.readSessionMetadata(localSessionId);
+    const retainedFamily = directRoot?.rolloutFile ? [] : await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, localSessionId) || [];
+    const retainedRoot = directRoot ? null : retainedFamily.find((item) => item.localId === localSessionId) || null;
+    const rootLocator = directRoot || retainedRoot;
+    const appServerTree = directRoot
+      ? await appServerSessions.readSessionTree(localSessionId)
+      : rootLocator
+      ? { metadata: [], descendantIds: new Set(), freshIds: new Set() }
+      : await appServerSessions.readSessionTree(localSessionId);
+    const exactIndexNames = rootLocator ? readCodexSessionIndex(indexFile) : null, discovered = rootLocator ? mergeCodexMetadata(retainedFamily).map((item) => ({ ...item, title: exactIndexNames.get(item.localId)?.title || item.title })) : await discoveredMetadata();
     const mergedMetadata = mergeFreshCodexSessionTreeMetadata(discovered, appServerTree);
     const metadataById = new Map(mergedMetadata.map((item) => [item.localId, item]));
+    if (metadataById.size > scanLimit) throw new Error("selected_family_limit");
     const rootMetadata = metadataById.get(localSessionId) || null;
     if (appServer && !appServerTree.metadata.length && !rootMetadata?.rolloutFile) return null;
     if (!rootMetadata || !isTopLevelCodexSession(rootMetadata)) return null;
@@ -223,8 +288,8 @@ export function createCodexProvider(options = {}) {
         if (!thread.rolloutFile) continue;
         const incremental = incrementalRecordsByFile
           ? {
-            records: incrementalRecordsByFile.get(thread.rolloutFile) || [],
-            generation: incrementalGenerationsByFile?.get(thread.rolloutFile) || null,
+            records: incrementalRecordsByFile.get(codexSourcePathKey(thread.rolloutFile)) || [],
+            generation: incrementalGenerationsByFile?.get(codexSourcePathKey(thread.rolloutFile)) || null,
           }
           : null;
         const { records, generation } = incremental || await readRolloutRecords(
@@ -252,6 +317,15 @@ export function createCodexProvider(options = {}) {
         }
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
+          if (!metadataById.has(collaboration.childThreadId)) {
+            const childFamily = await resolveCodexRolloutFamily(sourceLedger, rolloutRoots, collaboration.childThreadId) || [];
+            for (const child of childFamily) {
+              if (metadataById.has(child.localId)) continue;
+              if (metadataById.size >= scanLimit) throw new Error("selected_family_limit");
+              metadataById.set(child.localId, child);
+              mergedMetadata.push(child);
+            }
+          }
           if (metadataById.has(collaboration.childThreadId)) selectedIds.add(collaboration.childThreadId);
         }
       }
@@ -380,7 +454,7 @@ export function createCodexProvider(options = {}) {
           ? previousContext?.snapshots : [],
         // File-change evidence rebases onto this thread's own recorded cwd and
         // never resolves into the adapter's own Codex home.
-        cwd: thread.cwd, forbiddenRoots: [codexHome],
+        cwd: thread.cwd, forbiddenRoots: [codexHome], deferFileChanges: true,
       });
       let existingState = historical
         ? null
@@ -469,13 +543,26 @@ export function createCodexProvider(options = {}) {
       compactions.push(...normalizedContext.compactions);
       return context.toolCalls;
     });
-    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls: mergeCodexToolCalls([rolloutCalls]) });
     const canonicalEvidence = await Promise.all([...actorByThreadId].map(([threadId, actor]) => (
       appServerSessions.readThreadEvidence(threadId, actor, summaries.get(threadId)?.updatedAt || updatedAt, {
-        cwd: allMetadata.find((thread) => thread.localId === threadId)?.cwd, forbiddenRoots: [codexHome],
+        cwd: allMetadata.find((thread) => thread.localId === threadId)?.cwd, forbiddenRoots: [codexHome], deferFileChanges: true,
       })
     )));
-    const toolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const pendingToolCalls = mergeCodexToolCalls([rolloutCalls, ...canonicalEvidence.map((item) => item.toolCalls)]);
+    const provenRepositories = new Map();
+    const toolCalls = await bindCodexFileChanges(pendingToolCalls, {
+      resolveRepository: repositoryResolver,
+      forbiddenRoots: [codexHome],
+      onRepositoryBinding(binding) { provenRepositories.set(binding.repositoryId, binding); },
+    });
+    publishNormalizedHistoryActivity(readOptions.onHistoryActivity, "codex", metadata.localId, { agents, activity: historyOwnership.project(mergeCodexActivityEvents([rolloutReplies], Infinity)), toolCalls });
+    // The launch directory names the project unless proven mutations point elsewhere
+    // (approved by the product owner on 2026-09-27); see monitor/session-identity.mjs.
+    const identity = await repositoryAttributionTracker.resolveIdentity(metadata.localId, {
+      launchCwd: metadata.cwd, recordedBranch: metadata.recordedGitBranch, resolveRepository: repositoryResolver, bindings: provenRepositories,
+    });
+    const recordedGitBranch = identity.recordedBranch || "";
+    const attributedProject = identity.project;
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
     stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
     const callsByActor = new Map();
@@ -527,11 +614,13 @@ export function createCodexProvider(options = {}) {
       historical,
       session: {
         title: metadata.title,
-        project: metadata.project,
+        project: attributedProject,
         cwd: metadata.cwd,
+        repositoryId: identity.state === "single" ? identity.repositoryId : null,
+        repositoryAttribution: identity.state,
         startedAt,
         updatedAt,
-        recordedGitBranch: metadata.recordedGitBranch,
+        recordedGitBranch,
         cost: null,
         approvalMode: approvalPlan.approvalMode,
         contextMachinery: null,
@@ -576,31 +665,31 @@ export function createCodexProvider(options = {}) {
     usageLimits: { status: "supported" },
     workflows: { status: "unsupported", limitation: { code: "unsupported_transcript_format", documentation: "Codex does not expose the structured workflow artifacts required by the normalized workflow contract." } },
   };
-
   // One copy action needs one file location, so resolve it from the cached thread-metadata
   // tree instead of reading every rollout. Only a child that tree cannot place, such as one
   // linked solely by a parent rollout record, still needs the full session read.
   async function readTranscriptPath(localSessionId = "", agentId = "") {
     if (!isSafeCodexSessionId(localSessionId) || typeof agentId !== "string" || !agentId.startsWith("agent-")) return null;
     const recorded = transcriptPathsBySessionId.get(localSessionId)?.get(agentId);
-    if (recorded && fs.existsSync(recorded)) return recorded;
+    if (recorded && fs.existsSync(recorded)) return canonicalCodexSourcePath(recorded);
     const metadataById = new Map((await discoveredMetadata()).map((item) => [item.localId, item]));
     const threadId = agentId.slice("agent-".length);
     if (isTopLevelCodexSession(metadataById.get(localSessionId)) && threadId !== localSessionId) {
       const selectedIds = new Set([localSessionId]);
       expandCodexSelectedMetadata(metadataById, selectedIds);
       const rolloutFile = selectedIds.has(threadId) ? metadataById.get(threadId)?.rolloutFile : null;
-      if (rolloutFile) return rolloutFile;
+      if (rolloutFile) return canonicalCodexSourcePath(rolloutFile);
     }
     await readSession(localSessionId, { historical: true });
-    return transcriptPathsBySessionId.get(localSessionId)?.get(agentId) || null;
+    return transcriptPathsBySessionId.get(localSessionId)?.has(agentId)
+      ? canonicalCodexSourcePath(transcriptPathsBySessionId.get(localSessionId).get(agentId)) : null;
   }
   async function readSessionHistory(localSessionId = "") { return readCompleteSessionHistory((options) => readSession(localSessionId, options)); }
-
   const watchTargets = [sessionsRoot, ...(includeArchived ? [archivedRoot] : []), indexFile, writerLocksRoot];
   return defineProvider({
     id: "codex",
     source: "Codex",
+    catalogSourceScope: createHash("sha256").update(JSON.stringify({ sessionsRoot, archivedRoot, includeArchived, appServer: Boolean(appServer) })).digest("hex"),
     capabilityManifest,
     homePolicy: {
       requestModelObservations: true,
@@ -638,19 +727,34 @@ export function createCodexProvider(options = {}) {
       };
     },
     listSessions,
+    enumerateSessionHeaders,
     readSession,
     readSessionHistory,
     readRepositoryPluginSetup: createCodexPluginSetupReader({ env: options.env ?? process.env, codexHome }),
+    setRepositoryResolver(resolver) {
+      repositoryResolver = typeof resolver === "function" ? resolver : null;
+    },
+    repositoryAttributionForSession(localSessionId) {
+      return repositoryAttributionTracker.get(localSessionId);
+    },
     createObserver: () => createCodexIncrementalObserver({
       list: listSessions, now,
       readEvidence: readSession,
       discoveredMetadata,
-      noticeRollout: (file) => rolloutDiscovery.notice(file),
+      peekMetadata: () => metadataCatalog.peek(),
+      resolveExactMetadata: resolveExactRolloutMetadata,
+      noticeRollout: (file) => { void noticeCodexRolloutSource(rolloutDiscovery, sourceLedger, file).catch(() => {}); },
       transcriptPathsBySessionId,
       intervalMs: options.observerIntervalMs ?? 10_000,
       concurrency: options.observerConcurrency ?? 2,
       watchTargets,
       catalogWatchTargets: [indexFile, writerLocksRoot],
+      // Codex keeps two routine source-update lanes so one slow normalization
+      // cannot hide activity in every other live session. The normalized
+      // observer still reserves the third interactive lane for first-live
+      // publication and explicit selection.
+      interactiveConcurrency: options.observerInteractiveConcurrency ?? 3,
+      backgroundConcurrency: options.observerBackgroundConcurrency ?? 1,
       subscribeLifecycleChanges: (notify) => writerPresence.subscribe?.(notify),
       onCatalogSourceEvent({ target }) {
         if (path.resolve(target) === path.resolve(writerLocksRoot)) writerPresence.invalidate();
@@ -667,7 +771,7 @@ export function createCodexProvider(options = {}) {
         const states = liveness.observe(selectedMetadata.map(owningRuntime.decorate)).threads.map((thread) => [
           thread.localId, thread.liveStatus, thread.liveness, thread.livenessLive, thread.presenceConfirmed,
         ]);
-        return createHash("sha256").update(JSON.stringify(["codex-activity-v2", catalogEntry?.isLive, states])).digest("hex");
+        return createHash("sha256").update(JSON.stringify(["codex-activity-v3", catalogEntry?.isLive, states])).digest("hex");
       },
     }),
     readTranscriptPath,

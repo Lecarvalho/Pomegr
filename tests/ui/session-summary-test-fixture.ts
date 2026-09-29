@@ -9,7 +9,7 @@ export function sessionSummaryFixture(overrides: Partial<SessionSummaryDomain> =
     sectionReadiness: { core: "ready", agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready", repository: "ready" },
     session: {
       id: sessionId, title: "Recorded implementation session", project: "Pomegr", startedAt: "2026-09-14T11:00:00.000Z", updatedAt: "2026-09-14T12:00:00.000Z", durationMs: 3_600_000,
-      cost: { amount: 2.5, currency: "USD", type: "estimated", observedAt: "2026-09-14T12:00:00.000Z" }, summary: null,
+      cost: { amount: 2.5, currency: "USD", type: "estimated", observedAt: "2026-09-14T12:00:00.000Z" }, summary: null, signal: null,
       progress: { phase: "implementing", percent: 60, confidence: "medium", reportedAt: "2026-09-14T12:00:00.000Z" }, pomegrPlugin: null,
     },
     metrics: { agents: 2, activeAgents: 1, idleAgents: 1, finishedAgents: 0, toolCalls: 14, repeatedCalls: 2 },

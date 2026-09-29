@@ -3,6 +3,8 @@
 Pomegr keeps agent execution state separate from cache timing. Agent labels such
 as **active**, **warm**, **idle**, and **finished** describe observed execution or
 liveness evidence; they do not describe prompt-cache availability.
+The [Limitations reference](internal/architecture/limitations.md#usage-cache-and-estimates)
+lists source and interpretation gaps; this page owns the timing presentation rules.
 
 ## Times shown for an agent
 

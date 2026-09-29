@@ -221,7 +221,7 @@ function priorSuffixMatches(file, source) {
 /** Complete, yielding replay retains normalized deliveries independently of acquisition tails. */
 export function createClaudeActivityReader() {
   const files = new Map();
-  return async function read(file, actor = { id: "primary", label: "Primary agent" }) {
+  return async function read(file, actor = { id: "primary", label: "Primary agent" }, precomputedDescriptor) {
     const key = `${file}\0${actor.id}`;
     const labelEvents = (events) => events.map((event) => event.tool === "Assistant replied" ? { ...event, actor: actor.label } : event);
     let item = files.get(key);
@@ -256,7 +256,7 @@ export function createClaudeActivityReader() {
     const current = item;
     current.pending = Promise.resolve().then(async () => {
       try {
-        const source = incrementalSourceDescriptor(file);
+        const source = precomputedDescriptor !== undefined ? precomputedDescriptor : incrementalSourceDescriptor(file);
         if (!source) return current.known;
         const previous = current.source;
         if (previous && (previous.identity !== source.identity || source.size < previous.size

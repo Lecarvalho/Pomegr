@@ -466,7 +466,7 @@ test("an evicted live snapshot cannot leave a running fallback on a completed ca
   const completed = coordinator.catalog().snapshot.value.sessions[0];
   assert.equal(completed.summaryReadiness, "ready");
   assert.equal(completed.agentCount, 1);
-  assert.equal(completed.activityFallback, null);
+  assert.equal(completed.activityFallback.state, "last_observed");
   await coordinator.stop();
 });
 

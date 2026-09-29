@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createNormalizedPollingObserver } from "../monitor/providers/normalized-polling-observer.mjs";
+import { createPipelineTraceRecorder } from "../monitor/pipeline-trace.mjs";
 
 function deferred() {
   let resolve;
@@ -170,4 +171,184 @@ test("initial live preparation starts before synchronous background preparation"
   await observer.start({ publishCatalog() {}, publishSession(id) { published.push(id); }, invalidateSession() {} }, controller.signal);
   await waitFor(() => published.length === 2);
   assert.deepEqual(prepared[0], ["live"]);
+});
+
+test("per-priority queue-wait timings are recorded separately for urgent, source-update, and background hydrations", async (context) => {
+  const controller = new AbortController();
+  const entries = [
+    { localId: "live-one", isLive: true },
+    { localId: "background-one", isLive: false },
+  ];
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    shouldEagerHydrate: () => false,
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await waitFor(() => observer.diagnostics().reconciliationRuns === 1);
+
+  await observer.refresh({ sessionIds: ["live-one"], sourceEventAt: 0 });
+  await waitFor(() => observer.diagnostics().timings.queueWaitUrgent.sampleCount === 1,
+    100, () => JSON.stringify(observer.diagnostics().timings.queueWaitUrgent));
+
+  await observer.refresh({ sessionIds: ["live-one"], sourceEventAt: 0 });
+  await waitFor(() => observer.diagnostics().timings.queueWaitSourceUpdate.sampleCount === 1);
+
+  await observer.refresh({ sessionIds: ["background-one"], sourceEventAt: 0 });
+  await waitFor(() => observer.diagnostics().timings.queueWaitBackground.sampleCount === 1);
+
+  const timings = observer.diagnostics().timings;
+  assert.equal(timings.queueWaitUrgent.sampleCount, 1);
+  assert.equal(timings.queueWaitSourceUpdate.sampleCount, 1);
+  assert.equal(timings.queueWaitBackground.sampleCount, 1);
+  assert.equal(timings.queueWait.sampleCount, 3, "the aggregate still reflects every priority");
+});
+
+test("per-priority queue waits are also recorded for urgent and background items with no source event, from their own enqueue time", async (context) => {
+  const controller = new AbortController();
+  const releaseUrgent = deferred();
+  const entries = [
+    { localId: "live-one", isLive: true },
+    { localId: "background-one", isLive: false },
+  ];
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    shouldEagerHydrate: () => true,
+    ingest: async (id) => (id === "live-one" ? releaseUrgent.promise.then(() => ({})) : {}),
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  releaseUrgent.resolve();
+  await waitFor(() => observer.diagnostics().timings.queueWaitUrgent.sampleCount === 1
+    && observer.diagnostics().timings.queueWaitBackground.sampleCount === 1);
+
+  const diagnostics = observer.diagnostics();
+  assert.equal(diagnostics.timings.queueWaitUrgent.sampleCount, 1);
+  assert.equal(diagnostics.timings.queueWaitBackground.sampleCount, 1);
+  assert.equal(diagnostics.sourceEventQueueSamples, 0, "no item here ever carried a source event");
+  assert.equal(diagnostics.timings.queueWait.sampleCount, 0, "the aggregate stays source-event-only");
+});
+
+test("a background item promoted by selection records its selected wait from the promotion, not from its enqueue", async (context) => {
+  const controller = new AbortController();
+  const releaseFirst = deferred();
+  let clock = 0;
+  const entries = [
+    { localId: "background-a", isLive: false },
+    { localId: "background-b", isLive: false },
+  ];
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    shouldEagerHydrate: () => true,
+    ingest: async (id) => (id === "background-a" ? releaseFirst.promise.then(() => ({})) : {}),
+    monotonicNow: () => clock,
+    backgroundConcurrency: 1,
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  context.after(() => releaseFirst.resolve());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await waitFor(() => observer.diagnostics().timings.queueWaitBackground.sampleCount === 1);
+
+  clock += 60_000;
+  await observer.hydrate("background-b");
+  const timings = observer.diagnostics().timings;
+  assert.equal(timings.queueWaitSelected.sampleCount, 1);
+  assert.equal(timings.queueWaitSelected.maxMs, 0, "the minute spent waiting as background is not charged to the selected lane");
+});
+
+test("a session published soon after its own creation gets first-publication priority even though it already finished, while startup catalog sessions are exempt", async (context) => {
+  const controller = new AbortController();
+  const nowMs = Date.parse("2026-09-27T12:00:00.000Z");
+  let entries = [
+    { localId: "startup-recent", isLive: false, createdAt: new Date(nowMs - 60_000).toISOString() },
+    { localId: "startup-old", isLive: false, createdAt: new Date(nowMs - 90 * 24 * 60 * 60_000).toISOString() },
+  ];
+  const bulkBatches = [];
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    now: () => nowMs,
+    shouldEagerHydrate: () => true,
+    async prepare(batch) {
+      bulkBatches.push(batch.map((entry) => entry.localId));
+      return new Map(batch.map((entry) => [entry.localId, entry]));
+    },
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await waitFor(() => observer.diagnostics().reconciliationRuns === 1);
+  await waitFor(() => observer.diagnostics().activeHydrations === 0 && observer.diagnostics().pendingHydrations === 0);
+  assert.deepEqual(bulkBatches.map((batch) => [...batch].sort()), [["startup-old", "startup-recent"]],
+    "every startup-catalog session, however recently created, is prepared through the ordinary background batch");
+
+  entries = [...entries, { localId: "new-recent", isLive: false, createdAt: new Date(nowMs - 30_000).toISOString() }];
+  await observer.refresh({ fresh: true });
+  await waitFor(() => bulkBatches.some((batch) => batch.includes("new-recent")));
+  assert.equal(bulkBatches.some((batch) => batch.length === 1 && batch[0] === "new-recent"), true,
+    "a genuinely new, recently created session is prepared alone through the first-publication (urgent) lane");
+  assert.equal(bulkBatches.some((batch) => batch.includes("new-recent") && batch.length > 1), false,
+    "a new session is never folded into the historical background batch");
+});
+
+test("a Codex urgent source_queue record carries provider \"codex\" and lane \"urgent\"", async (context) => {
+  const controller = new AbortController();
+  let clock = 0;
+  const entries = [{ localId: "live-one", isLive: true }];
+  const trace = createPipelineTraceRecorder({ enabled: true, now: () => clock });
+  const observer = createNormalizedPollingObserver({
+    list: async () => entries,
+    shouldEagerHydrate: () => false,
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    providerId: "codex",
+    monotonicNow: () => clock,
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace });
+  await waitFor(() => observer.diagnostics().reconciliationRuns === 1);
+
+  clock += 5;
+  await observer.refresh({ sessionIds: ["live-one"], sourceEventAt: 0 });
+  await waitFor(() => observer.diagnostics().timings.queueWaitUrgent.sampleCount === 1);
+
+  const { traceEvents } = trace.snapshot();
+  const sourceQueue = traceEvents.find((event) => event.name === "source_queue");
+  assert.ok(sourceQueue, "a source_queue span was recorded");
+  assert.equal(sourceQueue.args.provider, "codex");
+  assert.equal(sourceQueue.args.priorityLane, "urgent");
+
+  const acquisition = traceEvents.find((event) => event.name === "acquisition_normalization");
+  assert.ok(acquisition, "an acquisition_normalization span was recorded");
+  assert.equal(acquisition.args.provider, "codex");
+  assert.equal(acquisition.args.priorityLane, "urgent");
+});
+
+test("a selection's acquisition carries trace lane \"selected\", separate from urgent first publication", async (context) => {
+  const controller = new AbortController();
+  const trace = createPipelineTraceRecorder({ enabled: true, now: () => 0 });
+  const observer = createNormalizedPollingObserver({
+    list: async () => [{ localId: "chosen", isLive: false }],
+    shouldEagerHydrate: () => false,
+    ingest: async () => ({}),
+    intervalMs: 60_000,
+    providerId: "claude",
+    async yieldControl() {},
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace });
+  await observer.hydrate("chosen");
+  const acquisition = trace.snapshot().traceEvents.find((event) => event.name === "acquisition_normalization");
+  assert.equal(acquisition?.args.priorityLane, "selected");
+  assert.equal(observer.diagnostics().timings.queueWaitSelected.sampleCount, 1);
+  assert.equal(observer.diagnostics().timings.queueWaitUrgent.sampleCount, 0);
 });

@@ -3,6 +3,8 @@
 Pomegr reads public provider status reporting. It does not probe inference endpoints,
 test an account, measure provider availability, or attribute a session failure to an
 incident. The pipeline/cadence/cache contract is in `OBSERVATION_CACHE.md`.
+The [Limitations reference](internal/architecture/limitations.md#usage-cache-and-estimates)
+records the provider status interpretation boundary.
 
 ## Sources and relevance
 

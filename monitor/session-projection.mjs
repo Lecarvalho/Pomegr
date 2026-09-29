@@ -253,8 +253,13 @@ export function projectProviderSessionEvidence({
     session: {
       id: sessionId,
       title: evidence.session.title,
+      // Every provider names the project the same way (see monitor/session-identity.mjs):
+      // provider evidence already carries the resolved project string.
       project: evidence.session.project,
-      cwd: evidence.session.cwd,
+      // Compatibility field only; recognized roots and provider cwd are private.
+      cwd: "",
+      ...(evidence.session.repositoryAttribution === "single" && /^repo-[a-f0-9]{24}$/u.test(evidence.session.repositoryId || "")
+        ? { repositoryId: evidence.session.repositoryId } : {}),
       repository,
       pullRequests,
       startedAt: evidence.session.startedAt,

@@ -1,5 +1,9 @@
 # Claude Code session status
 
+The [Limitations inventory](internal/architecture/limitations.md)
+records provider-related and Pomegr-specific gaps. This page owns the exact Claude status sources,
+normalization, and request boundary.
+
 ## Source and evidence
 
 Claude Code has two distinct status surfaces. The interactive REPL updates its local
@@ -76,6 +80,11 @@ A validated registered runtime keeps the session in **Live** between turns, with
 **Open** as its session label after primary and background work become idle. The
 primary agent still shows **idle**. Registration without validated process ownership
 does not establish Open; neither do transcript recency or a fresh browser poll.
+Claude Code writes the local registry status `shell` when the primary agent is idle
+while a background shell task (a backgrounded Bash command or a Monitor) is still
+running. Pomegr reads `shell` as `idle`, so such a session is **Open** with a validated
+owner, never Unknown. Recorded background work that Pomegr recognizes from the
+transcript keeps its existing Working precedence.
 
 A non-live Claude catalog row uses **Closed** when the native registry observer has
 confirmed that its registered runtime owner ended or no longer matches the recorded
@@ -84,6 +93,9 @@ reason, or task completion. Registry removal alone and failed process inspection
 not establish Closed. A new validated registration replaces that closure observation.
 The bounded ownership and closure evidence remains monitor-private and memory-only;
 after monitor restart, sessions without fresh closure evidence use the normal fallback.
+An owner whose process has exited loses validation on the next read. A reused process ID
+keeps a cached validation for at most five seconds, while the start identity is being
+re-confirmed.
 
 Other non-live Claude catalog rows use **Idle** as a fallback meaning no live session
 is detected. With the registry available, this applies after the session has no

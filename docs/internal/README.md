@@ -17,6 +17,7 @@ readable in the repository and must not contain secrets or private session data.
 | Runtime structure | [Architecture](../ARCHITECTURE.md) maps the system; the focused contracts below define their respective behavior. |
 | Observation phases, cache ownership, serving, readiness, and polling | [Observation cache](../OBSERVATION_CACHE.md) is the canonical operational contract. It and AGENTS.md take precedence over conflicting plans. |
 | Provider conformance | [Executable provider contract](../../monitor/providers/provider-contract.mjs) defines catalog, manifest, readiness, evidence, and conformance requirements. Transcript schemas stay in adapters. |
+| Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
 | Metrics and evidence | [Metrics](../METRICS.md) owns deterministic rules; [signal dictionary](../SIGNAL_DICTIONARY.md) defines stable evidence codes and limits. |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; [license history](../LICENSE_HISTORY.md) explains the transition. |
@@ -33,6 +34,7 @@ paths relative to `docs/internal/`, not additional authoritative copies.
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
 | [Architecture](../ARCHITECTURE.md) | Runtime map and data flow | `architecture/overview.md` |
+| [Limitations](architecture/limitations.md) | Provider-related and Pomegr-specific gaps; capability availability | Maintained at this path |
 | [Observation cache](../OBSERVATION_CACHE.md) | Operational boundaries and committed evidence | `architecture/observation-cache.md` |
 | [Metrics](../METRICS.md) | Deterministic rules and evidence limits | `architecture/metrics.md` |
 | [Claude Code session status](../CLAUDE_SESSION_STATUS.md) | Provider lifecycle sources and privacy | `architecture/claude-session-status.md` |
@@ -51,7 +53,7 @@ its canonical verification requirements before handing off a change.
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
 | [Agent workflow](../AGENT-WORKFLOW.md) | Change routing and verification | `development/agent-workflow.md` |
-| [Configuration and troubleshooting](../CONFIGURATION.md) | Configuration and generated provider capability reference | `development/configuration.md`, after public guidance is extracted |
+| [Configuration and troubleshooting](../CONFIGURATION.md) | Configuration and troubleshooting; links the provider capability reference | `development/configuration.md`, after public guidance is extracted |
 | [Pomegr plugins](../PLUGINS.md) | Canonical sources, generation, versioning, and release | `development/plugins.md`, after public guidance is extracted |
 | [Command table](../COMMAND_TABLE.md) | Component integration; visual authority remains the design system | `development/command-table.md` |
 
@@ -111,6 +113,12 @@ The [overview sparse state and link rule plan](plans/overview-sparse-and-links.m
 is an approved, not yet implemented UI change to the session Overview and Signals
 tabs. It reuses the redesign prototype artboards and moves its rules into
 [DESIGN.md](../../DESIGN.md) as its tasks complete.
+
+The [guidance impact plan](plans/guidance-impact.md) is a design-approved plan (2026-09-22,
+no code yet) to tag sessions with the repository guidance revision they ran under
+(skills, `AGENTS.md`, hooks, reporting policy), compare friction, outcome, and
+compliance signals across cohorts, and run opt-in randomized experiments. Nothing
+in it is shipped or authoritative.
 
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not

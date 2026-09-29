@@ -1,4 +1,6 @@
 import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
+import type { SessionCatalogCoverage } from "./session-catalog-contract";
+export type { SessionCatalogCoverage, SessionDirectoryQuery } from "./session-catalog-contract";
 import type { CacheLifetime, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
 import type { ResourceUsage } from "./resource-usage-contract";
@@ -138,7 +140,7 @@ export type Agent = {
     observedAt: string;
     evidence?: "observed" | "inferred" | "unavailable";
     freshness?: "current" | "stale";
-    reason?: "source_not_integrated" | "source_unavailable" | "source_unsupported" | "observation_gap" | "ambiguous_event" | "legacy_snapshot";
+    reason?: "source_not_integrated" | "source_unavailable" | "source_unsupported" | "observation_gap" | "ambiguous_event" | "legacy_snapshot" | "writer_released";
   } | null;
   signal: AgentReportedSignal | null;
   currentActivity?: AgentCurrentActivity | null;
@@ -438,6 +440,19 @@ export type SessionCatalogSnapshot = {
   /** Optional during migration; absent means legacy catalog semantics. */
   revision?: number | string | null;
   readiness?: Pick<HomeReadiness, "catalog">;
+  coverage?: SessionCatalogCoverage;
+};
+
+/** One bounded page from a committed inventory revision. */
+export type SessionDirectorySnapshot = SessionCatalogSnapshot & {
+  revision: string | number;
+  coverage: SessionCatalogCoverage;
+  matchedCount: number;
+  counts: { all: number; live: number; needs: number };
+  pageSize: number;
+  nextCursor: string | null;
+  /** An invalid cursor, or one issued for a different query, restarts at the first page. */
+  cursorReset?: boolean;
 };
 
 export type HomeContextHistory = {
@@ -465,6 +480,9 @@ export type HomeSessionSummary = {
 
 export type HomeProjectHistory = {
   status?: "loading" | "ready";
+  /** Summary of retained observations; never a complete inventory aggregate. */
+  coverage?: "retained";
+  observedSessionCount?: number;
   windowDays: 7;
   completed: number;
   medianWallTimeMs: number | null;

@@ -29,6 +29,21 @@ test("continuous logs expose starts immediately and retain events beyond an in-m
   assert.ok(rows.every(normalizePipelineLogRecord));
 });
 
+test("file records carry the bounded provider and priority lane of an attributed span", () => {
+  const rows = [];
+  const stream = createPipelineLogStream({ writer: { write(row) { rows.push(row); return true; }, stats: () => ({}) }, run, now: () => at });
+  let time = 0;
+  const recorder = createPipelineTraceRecorder({ rolling: true, retainEvents: false, onEvent: stream.event, now: () => time });
+  time = 100;
+  recorder.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: 5, provider: "codex", priorityLane: "urgent" });
+  const span = recorder.begin({ stage: "acquisition_normalization", domain: "acquisition", provider: "claude", priorityLane: "source_update" });
+  recorder.end(span, { outcome: "completed" });
+  const attributed = rows.filter((row) => row.kind === "span" || row.kind === "span_start");
+  assert.deepEqual(attributed.map(({ provider, priorityLane }) => [provider, priorityLane]),
+    [["codex", "urgent"], ["claude", "source_update"], ["claude", "source_update"]]);
+  assert.ok(rows.every(normalizePipelineLogRecord));
+});
+
 test("file records reject arbitrary fields and strip private metadata from health and event inputs", () => {
   const rows = [];
   const stream = createPipelineLogStream({ writer: { write(row) { rows.push(row); return true; }, stats: () => ({}) }, run, now: () => at });

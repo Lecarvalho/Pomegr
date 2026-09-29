@@ -1,3 +1,4 @@
+import { createHistoryContributionPublisher } from "./history-contribution-publisher.mjs";
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { createObservationMonitorStoreRuntime, wrapCheckpointStoreForStore } from "./monitor-store-runtime.mjs";
@@ -16,13 +17,16 @@ import { createAgentsObservation } from "./agents-observation.mjs";
 import { createAgentQueryProjectionCache } from "./agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "./repository-inventory-runtime.mjs";
 import { attachFileHistory } from "./file-history-domain.mjs";
+import { createSessionRepositoryAssociations } from "./session-repository-association.mjs";
+import { liveRepositoryReadiness } from "./session-repository-enrichment.mjs";
 import { SessionHistoryStore } from "./session-history-store.mjs";
 import { createSessionHistoryRuntime } from "./session-history-runtime.mjs";
 import { createSessionDomainStore } from "./session-domain-store.mjs";
 import { createSessionDomainServing } from "./session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests } from "./repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "./repository-snapshot.mjs";
 import { createObservationStartupRepository } from "./observation-startup-repository.mjs";
 import { createCheckpointStateProjector } from "./checkpoint-state-projector.mjs";
+import { createPersistenceMaintenance } from "./persistence-maintenance.mjs";
 
 function qualifiedSessionId(providerId, localSessionId) { return `${providerId}:${localSessionId}`; }
 
@@ -82,6 +86,8 @@ export function createObservationRuntime(options = {}) {
   let observationStartPromise = null;
   let unsubscribeObservation = null;
 
+  // A provider whose legacy evidence was launch-bound recorded launch-bound sidecars without a repository ID.
+  const adoptsUnboundSidecar = (providerId) => registry.legacyRepositoryAttribution?.(providerId) === "launch";
   const validateObservation = ({ localSessionId, evidence }) => {
     parseProviderSessionEvidence(evidence, localSessionId);
     return true;
@@ -97,12 +103,13 @@ export function createObservationRuntime(options = {}) {
     : options.checkpointStore || new SessionObservationCheckpointStore({
       directory: path.join(resolvePomegrDataRoot(pomegrPaths), "observation-cache-v1"),
       validateCandidate: validateObservation,
+      upgradeEvidence: (providerId, evidence) => withLegacyRepositoryAttribution(evidence, registry.legacyRepositoryAttribution?.(providerId)),
       maxEntries: options.checkpointMaxEntries,
       maxBytes: options.checkpointMaxBytes,
     });
   // Bounded historical snapshots persist as sidecars next to checkpoints; disabled together,
   // and also when an injected checkpoint store (a minimal test double) predates the sidecar.
-  const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now }) : null;
+  const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now, adoptsUnboundSidecar }) : null;
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
   // Registered after resource-history so its cycle contributor reads fresh writes; onChange
@@ -116,6 +123,9 @@ export function createObservationRuntime(options = {}) {
     storeFile: path.join(resolvePomegrDataRoot(pomegrPaths), "repository-inventory-v1.json"),
     ...options.repositoryInventoryOptions,
   });
+  for (const provider of registry.providers || []) {
+    provider.setRepositoryResolver?.(repositoryInventory.resolveRepository);
+  }
   // Registers the file-change index contributor plus this committed cache; forward-references sessionDomains/observationCoordinator below, same pattern as resourceDomainSource above.
   const fileHistorySource = attachFileHistory(monitorStoreRuntime, {
     resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now, demandedSessionIds: () => sessionDomains.sessionIds(),
@@ -132,11 +142,20 @@ export function createObservationRuntime(options = {}) {
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
-    gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(repositorySnapshotRecorder?.recorded(sessionId) || null), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
+    gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(sessionRepositorySnapshot(
+      observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
+      { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
+    )), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
-  const historyContributionRetries = new Map();
-  const repositoryAssociations = new Map();
-  const pendingRepositoryAssociations = new Set();
+  const repositoryAssociations = createSessionRepositoryAssociations({
+    registry, inventory: repositoryInventory,
+    previousReference: (candidate) => observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
+    previousAssociation: (candidate) => {
+      const session = observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session;
+      return session ? { repositoryId: session.repositoryId ?? null, contextInventoryRef: session.contextInventoryRef ?? null } : null;
+    },
+    onChange: (sessionId) => observationCoordinator.refreshProjection(sessionId),
+  });
   const historyTrace = options.pipelineTrace;
   const traceScopeForSession = typeof options.traceScopeForSession === "function"
     ? options.traceScopeForSession
@@ -157,107 +176,13 @@ export function createObservationRuntime(options = {}) {
     backgroundConcurrency: options.historyBackgroundConcurrency ?? 1,
   });
 
-  function retainRepositoryAssociation(sessionId, association) {
-    repositoryAssociations.set(sessionId, association);
-    while (repositoryAssociations.size > 128) {
-      const oldest = repositoryAssociations.keys().next().value;
-      repositoryAssociations.delete(oldest);
-    }
-  }
-
-  function associateRepositoryInBackground(candidate) {
-    const sessionId = qualifiedSessionId(candidate.providerId, candidate.localSessionId);
-    if (repositoryAssociations.has(sessionId) || pendingRepositoryAssociations.has(sessionId)) return;
-    pendingRepositoryAssociations.add(sessionId);
-    void repositoryInventory.associateSession({
-      sessionId,
-      provider: candidate.providerId,
-      startedAt: candidate.evidence.session.startedAt,
-      cwd: candidate.evidence.session.cwd,
-      previousReference: observationStore.get(candidate.providerId, candidate.localSessionId)?.publicState?.session?.contextInventoryRef,
-    }).then(
-      (association) => retainRepositoryAssociation(sessionId, association || null),
-      () => retainRepositoryAssociation(sessionId, null),
-    ).finally(() => {
-      pendingRepositoryAssociations.delete(sessionId);
-      observationCoordinator.refreshProjection(sessionId);
-    });
-  }
-
-  function retryHistoryContribution(domain, sessionId, contribution, attempt = 1) {
-    if (!observationServingActive) return;
-    const key = `${domain}:${sessionId}`;
-    const existing = historyContributionRetries.get(key);
-    if (existing) { existing.contribution = contribution; existing.version += 1; return; }
-    if (attempt > 3) return;
-    const pending = { contribution, timer: null, version: 1 };
-    historyContributionRetries.set(key, pending);
-    pending.timer = setTimeout(() => {
-      const current = historyContributionRetries.get(key);
-      if (current !== pending || !observationServingActive) {
-        if (current === pending) historyContributionRetries.delete(key);
-        return;
-      }
-      const version = current.version;
-      const retryContribution = current.contribution;
-      const publish = domain === "requests" ? historyStore.publishRequestContribution.bind(historyStore) : historyStore.publishActivityContribution.bind(historyStore);
-      const scope = ownedTraceScope(sessionId);
-      const flow = historyTrace?.createFlow?.({ scope }) || null;
-      const span = historyTrace?.begin?.({ stage: "history_contribution", domain: domain === "requests" ? "requests" : "activity", flow, scope }) || null;
-      publish(sessionId, retryContribution).then(
-        () => {
-          historyTrace?.end?.(span, { outcome: "accepted" });
-          historyTrace?.finishFlow?.(flow, { outcome: "completed" });
-          if (historyContributionRetries.get(key) !== pending) return;
-          historyContributionRetries.delete(key);
-          if (observationServingActive && pending.version !== version) retryHistoryContribution(domain, sessionId, pending.contribution, attempt);
-        },
-        () => {
-          historyTrace?.end?.(span, { outcome: "failed" });
-          historyTrace?.finishFlow?.(flow, { outcome: "failed" });
-          if (historyContributionRetries.get(key) !== pending) return;
-          historyContributionRetries.delete(key);
-          if (observationServingActive) retryHistoryContribution(domain, sessionId, pending.contribution, attempt + 1);
-        },
-      );
-    }, attempt * 100);
-  }
-
-  function publishHistoryContribution(providerId, localSessionId, contribution) {
-    if (!observationServingActive) return Promise.resolve(null);
-    const sessionId = qualifiedSessionId(providerId, localSessionId);
-    const scope = ownedTraceScope(sessionId);
-    const flow = historyTrace?.createFlow?.({ scope }) || null;
-    const span = historyTrace?.begin?.({ stage: "history_contribution", domain: "activity", flow, scope }) || null;
-    return historyStore.publishActivityContribution(sessionId, contribution).then(
-      (record) => {
-        historyTrace?.end?.(span, { outcome: record ? "accepted" : "unchanged" });
-        historyTrace?.finishFlow?.(flow, { outcome: record ? "completed" : "rejected" });
-        return record;
-      },
-      () => {
-        historyTrace?.end?.(span, { outcome: "failed" });
-        historyTrace?.finishFlow?.(flow, { outcome: "failed" });
-        retryHistoryContribution("activity", sessionId, contribution);
-        return null;
-      },
-    );
-  }
-  function publishHistoryRequestContribution(providerId, localSessionId, contribution) {
-    if (!observationServingActive) return Promise.resolve(null);
-    const sessionId = qualifiedSessionId(providerId, localSessionId);
-    const scope = ownedTraceScope(sessionId);
-    const flow = historyTrace?.createFlow?.({ scope }) || null;
-    const span = historyTrace?.begin?.({ stage: "history_contribution", domain: "requests", flow, scope }) || null;
-    return historyStore.publishRequestContribution(sessionId, contribution).then(
-      (record) => {
-        historyTrace?.end?.(span, { outcome: record ? "accepted" : "unchanged" });
-        historyTrace?.finishFlow?.(flow, { outcome: record ? "completed" : "rejected" });
-        return record;
-      },
-      () => { historyTrace?.end?.(span, { outcome: "failed" }); historyTrace?.finishFlow?.(flow, { outcome: "failed" }); retryHistoryContribution("requests", sessionId, contribution); return null; },
-    );
-  }
+  const historyPublisher = createHistoryContributionPublisher({
+    store: historyStore, isActive: () => observationServingActive, trace: historyTrace, scopeForSession: ownedTraceScope,
+  });
+  const publishHistoryContribution = (providerId, localSessionId, contribution) =>
+    historyPublisher.publish("activity", qualifiedSessionId(providerId, localSessionId), contribution);
+  const publishHistoryRequestContribution = (providerId, localSessionId, contribution) =>
+    historyPublisher.publish("requests", qualifiedSessionId(providerId, localSessionId), contribution);
 
   const checkpointPublicState = createCheckpointStateProjector({
     registry, recordedSnapshot: (sessionId) => repositorySnapshotRecorder?.recorded(sessionId) || null,
@@ -383,6 +308,10 @@ export function createObservationRuntime(options = {}) {
     });
   }
 
+  // Private per-projection live repository check state (none, pending or
+  // confirmed), keyed by the projected state object; never serialized.
+  const liveRepositoryChecks = new WeakMap();
+
   async function projectSelection(selection, { useObservedUsage = false, trace = null, scope = null } = {}) {
     const { evidence, provider, sessionId } = selection;
     const historical = evidence.historical;
@@ -400,6 +329,11 @@ export function createObservationRuntime(options = {}) {
     let repository;
     let pullRequests;
     let enqueueLiveEnrichment = null;
+    let repositoryCheck = "pending";
+    const repositoryAttribution = selection.repositoryAttribution
+      || options.repositoryAttributionForSession?.(sessionId)
+      || registry.repositoryAttributionForSession?.(sessionId)
+      || null;
     if (historical) {
       // A live historical source can arrive while the private sidecar cache is
       // still loading. Wait only for that projection dependency so its saved
@@ -407,13 +341,17 @@ export function createObservationRuntime(options = {}) {
       await repositoryStartup.checkpointRestoreReady();
       // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
       ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
+        adoptsUnboundSidecar: adoptsUnboundSidecar(provider.id),
         evidence, snapshot: repositorySnapshotRecorder?.recorded(sessionId) || null,
         recordedGitState, pullRequestReader, unavailablePullRequests,
       }));
     } else {
-      const live = liveEnrichment(sessionId, evidence);
+      // Root binding is private runtime state. It deliberately stays out of
+      // normalized evidence/checkpoints, where a filesystem root is forbidden.
+      const live = liveEnrichment(sessionId, evidence, repositoryAttribution);
       ({ repository, pullRequests } = live.value);
       enqueueLiveEnrichment = live.enqueue;
+      repositoryCheck = live.check || "pending";
     }
     const currentUsageLimits = useObservedUsage
       ? observedUsageLimits(provider.id, historical)
@@ -433,7 +371,9 @@ export function createObservationRuntime(options = {}) {
         sessionId,
         source: provider.source,
         capabilities,
-        repositoryRoles: repositoryRoleMappings(evidence.session.cwd),
+        repositoryRoles: repositoryRoleMappings(repositoryAttribution
+          ? repositoryAttribution.state === "single" ? repositoryAttribution.root : ""
+          : evidence.session.cwd),
         repository,
         pullRequests,
         usageLimits: currentUsageLimits,
@@ -445,6 +385,7 @@ export function createObservationRuntime(options = {}) {
       throw error;
     }
     enqueueLiveEnrichment?.();
+    if (!historical && state && typeof state === "object") liveRepositoryChecks.set(state, repositoryCheck);
     return state;
   }
 
@@ -453,7 +394,6 @@ export function createObservationRuntime(options = {}) {
     for (const snapshot of observationStore.entries()) {
       sessionDomainServing.commit(snapshot.qualifiedId, snapshot);
       sessionHistory.ensureObserved(snapshot.qualifiedId, snapshot.revision);
-      sessionHistory.refresh(snapshot.qualifiedId, 2, false);
     }
     agentQueryProjection.refresh();
   }
@@ -461,12 +401,14 @@ export function createObservationRuntime(options = {}) {
   const observationCoordinator = createSessionObservationCoordinator({
     registry,
     store: observationStore,
+    monitorStoreRuntime,
     checkpointStore: checkpointStoreForCoordinator,
     schedule: scheduleObservation,
     cancel: cancelObservation,
     commitDelayMs: options.observationCommitDelayMs,
     checkpointDelayMs: options.checkpointDelayMs,
     checkpointMaxDelayMs: options.checkpointMaxDelayMs,
+    persistenceQueueOptions: options.persistenceQueueOptions,
     now,
     pipelineTrace: options.pipelineTrace,
     traceScopeForSession,
@@ -492,20 +434,22 @@ export function createObservationRuntime(options = {}) {
         options.pipelineTrace?.end?.(projectionSpan, { outcome: "failed" });
         throw error;
       }
-      // Repository inventory is optional local enrichment. Start its one-time
+      // Repository inventory is optional local enrichment. Refresh its binding
       // association after projection and rederive when it settles; it must
       // never hold back the already-normalized session publication.
       const sessionId = qualifiedSessionId(candidate.providerId, candidate.localSessionId);
-      const hasAssociation = repositoryAssociations.has(sessionId);
-      const association = repositoryAssociations.get(sessionId) || null;
-      if (!hasAssociation) associateRepositoryInBackground(candidate);
+      const association = repositoryAssociations.get(candidate);
       const publicState = basePublicState.session && association ? {
         ...basePublicState,
         session: { ...basePublicState.session, ...association },
       } : basePublicState;
       const usageReadiness = usageResponseCache.current()?.value?.readiness?.[candidate.providerId] || "loading";
       const readiness = createSessionReadiness("ready", {
-        repository: candidate.evidence.historical || publicState.session?.repository?.available ? "ready" : "loading",
+        repository: liveRepositoryReadiness({
+          historical: candidate.evidence.historical,
+          available: publicState.session?.repository?.available,
+          check: liveRepositoryChecks.get(basePublicState),
+        }),
         resources: candidate.evidence.historical
           ? "ready"
           : publicState.metrics?.resources?.status === "unavailable" ? "unavailable"
@@ -513,6 +457,20 @@ export function createObservationRuntime(options = {}) {
         usageLimits: candidate.evidence.historical ? "unavailable" : usageReadiness,
       });
       return { publicState: { ...publicState, readiness }, readiness };
+    },
+  });
+  const persistenceMaintenance = createPersistenceMaintenance({
+    ...options.persistenceMaintenanceOptions,
+    steps: [
+      ...(typeof checkpointStore?.maintenanceStep === "function" ? [(batch) => checkpointStore.maintenanceStep(batch)] : []),
+      ...(typeof historyStore.maintenanceStep === "function" ? [(batch) => historyStore.maintenanceStep(batch)] : []),
+    ],
+    isBusy() {
+      if (!observationServingActive || observationCoordinator.persistenceBusy()) return true;
+      const history = sessionHistory.diagnostics();
+      if (history.active || history.pending || historyPublisher.busy() || historyStore.persistenceBusy?.()) return true;
+      return Object.values(observationCoordinator.diagnostics().observers).some((observer) =>
+        observer.activeHydrations > 0 || observer.pendingHydrations > 0);
     },
   });
   const agentsObservation = createAgentsObservation({
@@ -600,6 +558,7 @@ export function createObservationRuntime(options = {}) {
   async function startObservation() {
     if (observationStartPromise) return observationStartPromise;
     observationServingActive = true;
+    historyStore.start?.();
     sessionHistory.start();
     // This D-only cache begins from the committed store and catalog. It never
     // invokes observers, hydration, parsing, or any provider read.
@@ -625,12 +584,11 @@ export function createObservationRuntime(options = {}) {
         const committed = observationStore.getByQualifiedId(event.qualifiedId);
         if (committed) { sessionDomainServing.forget(event.qualifiedId); sessionDomainServing.commit(event.qualifiedId, committed); }
         options.onSessionCommitted?.(event.qualifiedId);
-        // Provider history acquisition belongs to the background observation
-        // lifecycle. Serving only reads the committed, normalized history file.
+        // Complete history is intentionally demand-only. New evidence updates
+        // the committed cache, but neither observation nor state polling may
+        // replay an arbitrary historical transcript.
         if (event.freshObservation) {
           sessionHistory.observe(event.qualifiedId, event.revision);
-          const historical = observationStore.getByQualifiedId(event.qualifiedId)?.evidence?.historical !== false;
-          sessionHistory.refresh(event.qualifiedId, historical ? 2 : 1, true, true);
         }
       }
       if (event.type === "invalidation") sessionDomainServing.commit(event.qualifiedId);
@@ -649,6 +607,7 @@ export function createObservationRuntime(options = {}) {
     repositoryStartup.start();
     observationStartPromise = (async () => {
       await observationCoordinator.start();
+      persistenceMaintenance.start();
       agentQueryProjection.refresh();
       void refreshUsageResponses().then(scheduleObservedHomeRefresh).catch(() => {});
       void refreshObservedResources();
@@ -662,6 +621,7 @@ export function createObservationRuntime(options = {}) {
     try { await observationStartPromise; }
     catch (error) {
       observationServingActive = false;
+      await persistenceMaintenance.stop();
       repositoryStartup.stop();
       await repositoryInventory.stopPluginObservation?.();
       agentsObservation.stop();
@@ -676,11 +636,11 @@ export function createObservationRuntime(options = {}) {
 
   async function stopObservation() {
     observationServingActive = false;
+    await persistenceMaintenance.stop();
     repositoryStartup.stop();
     await repositoryInventory.stopPluginObservation?.();
     agentsObservation.stop();
     await providerStatus.stop();
-    await monitorStoreRuntime.stop();
     if (usageRefreshTimer) clearInterval(usageRefreshTimer);
     if (resourceRefreshTimer) clearInterval(resourceRefreshTimer);
     usageRefreshTimer = null;
@@ -690,12 +650,15 @@ export function createObservationRuntime(options = {}) {
     unavailableSessionResponses.clear();
     sessionDomains.clear();
     sessionDomainServing.clear();
-    for (const pending of historyContributionRetries.values()) clearTimeout(pending.timer);
-    historyContributionRetries.clear();
-    sessionHistory.stop();
+    historyPublisher.stop();
+    await sessionHistory.stop();
     repositoryAssociations.clear();
-    pendingRepositoryAssociations.clear();
     await observationCoordinator.stop();
+    await historyStore.stop?.();
+    await checkpointStore?.closeMaintenance?.();
+    // The last checkpoint may still notify SQLite contributors. Close their
+    // store only after all accepted P work has drained.
+    await monitorStoreRuntime.stop();
     await Promise.allSettled([usageRefreshInFlight, resourceRefreshInFlight].filter(Boolean));
     observationStartPromise = null;
   }
@@ -733,11 +696,10 @@ export function createObservationRuntime(options = {}) {
     stopObservation,
     observationActive: () => observationServingActive,
     serveCatalog: (revision) => observationCoordinator.catalog(revision),
+    serveCatalogShell: (selection) => observationCoordinator.shell(selection),
+    serveSessionDirectory: (query) => observationCoordinator.directory(query),
     serveSession(sessionId, revision) {
       const result = observationCoordinator.session(sessionId, revision);
-      if (result.selectedId && result.status !== "empty" && result.status !== "unavailable") {
-        sessionHistory.prioritize(result.selectedId);
-      }
       if (result.status === "unavailable") {
         return { ...result, unavailableSnapshot: unavailableSessionResponses.get(result.selectedId) || null };
       }
@@ -749,14 +711,16 @@ export function createObservationRuntime(options = {}) {
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
     async serveSessionHistory(sessionId, query) {
+      // The Activity/Requests surface is the sole demand signal for a full
+      // replay. The scheduler coalesces duplicate requests by session id.
+      const selection = observationCoordinator.session(sessionId);
+      sessionHistory.refresh(sessionId, 0, false);
       const servedAt = performance.now();
       const page = await historyStore.read(sessionId, query);
-      if (page.status === "unavailable") {
-        sessionHistory.invalidate(sessionId);
-      }
       historyTrace?.recordDuration?.({ stage: "cache_serve", domain: "serving", durationMs: Math.max(0, performance.now() - servedAt),
         outcome: page.status === "ready" ? "accepted" : page.status === "loading" ? "unchanged" : "rejected" });
       if (page.status !== "unavailable" || !observationServingActive) return page;
+      if (selection.status === "loading") return { ...page, status: "loading" };
       const snapshot = observationStore.getByQualifiedId(sessionId);
       const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
       if (snapshot && typeof provider?.readSessionHistory === "function") {
@@ -792,6 +756,7 @@ export function createObservationRuntime(options = {}) {
       }),
       agents: agentsObservation.diagnostics(),
       historyRefresh: sessionHistory.diagnostics(),
+      persistenceMaintenance: persistenceMaintenance.stats(),
     }),
   });
 }

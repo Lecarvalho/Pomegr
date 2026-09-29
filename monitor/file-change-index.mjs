@@ -1,14 +1,18 @@
 import path from "node:path";
 import { repositoryRelativePath } from "./repository-path.mjs";
+import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { readGitRenamesAsync } from "./git-state.mjs";
 
 const CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const MAX_CHANGES_PER_CALL = 64;
 const GIT_CHECK_MIN_INTERVAL_MS = 60_000;
 const MAX_GIT_RENAMES = 512;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
-const FILE_INDEX_VERSION = "1";
+// v2 stops replaying unbound Codex paths through session.cwd. Old rows can be
+// attributed to the wrong checkout, so rebuilds discard this derived index.
+const FILE_INDEX_VERSION = "2";
 
 function readMeta(store, key) {
   const row = store.database.prepare("SELECT value FROM meta WHERE key = ?").get(key);
@@ -132,7 +136,7 @@ function safeRebasedPath(root, cwd, relativeToCwd) {
  * entry relative to the session cwd; every path is re-validated here against the real
  * Git root before it can reach the store.
  */
-function collectChanges(snapshot, sessionId, root, cwd) {
+function collectChanges(snapshot, sessionId, root, cwd, fallbackRepositoryId) {
   const toolCalls = Array.isArray(snapshot?.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
   const changes = [];
   for (const toolCall of toolCalls) {
@@ -143,36 +147,79 @@ function collectChanges(snapshot, sessionId, root, cwd) {
     if (!Number.isFinite(observedAt) || !agentId) continue;
     for (const entry of entries.slice(0, MAX_CHANGES_PER_CALL)) {
       if (!entry || typeof entry !== "object" || !CHANGE_KINDS.has(entry.kind)) continue;
-      const safePath = safeRebasedPath(root, cwd, entry.path);
+      const boundRepositoryId = typeof entry.repositoryId === "string" && REPOSITORY_ID.test(entry.repositoryId)
+        ? entry.repositoryId : null;
+      const repositoryId = boundRepositoryId || fallbackRepositoryId;
+      // An entry without its own per-call binding and no single-repository session
+      // identity to fall back on (an old checkpoint, an incomplete observation, or a
+      // session whose identity is multiple/unknown) is never reinterpreted through a
+      // navigated cwd; see resolveSessionIdentity in monitor/session-identity.mjs.
+      if (!repositoryId) continue;
+      const safePath = boundRepositoryId
+        ? (isSafeRecordedRepositoryPath(entry.path) ? entry.path : null)
+        : safeRebasedPath(root, cwd, entry.path);
       if (!safePath) continue;
       let safePreviousPath = null;
       if (entry.kind === "moved") {
-        safePreviousPath = safeRebasedPath(root, cwd, entry.previousPath);
+        safePreviousPath = boundRepositoryId
+          ? (isSafeRecordedRepositoryPath(entry.previousPath) ? entry.previousPath : null)
+          : safeRebasedPath(root, cwd, entry.previousPath);
         if (!safePreviousPath) continue;
       }
-      changes.push({ sessionId, agentId, kind: entry.kind, path: safePath, previousPath: safePreviousPath, observedAt });
+      changes.push({ repositoryId, change: { sessionId, agentId, kind: entry.kind, path: safePath, previousPath: safePreviousPath, observedAt } });
     }
   }
   return changes;
+}
+
+/**
+ * The fallback repository for entries with no per-call binding of their own,
+ * read only from the session's own recorded identity (evidence.session.repositoryAttribution/
+ * repositoryId; see monitor/session-identity.mjs) — never from a fresh resolveRepository(cwd)
+ * call, and never gated on providerId. A multiple or unknown identity (or an evidence
+ * shape recorded before this rule existed) has no fallback repository. Legacy "launch"
+ * evidence (repository-snapshot.mjs withLegacyRepositoryAttribution) is resolved from its
+ * launch cwd in applySnapshot, exactly as before the rule.
+ */
+function sessionFallbackRepositoryId(snapshot) {
+  const session = snapshot?.evidence?.session;
+  return session?.repositoryAttribution === "single" && REPOSITORY_ID.test(session.repositoryId || "")
+    ? session.repositoryId : "";
 }
 
 async function applySnapshot(store, snapshot, resolveRepository) {
   const providerId = snapshot?.providerId;
   const localSessionId = snapshot?.localSessionId;
   const cwd = snapshot?.evidence?.session?.cwd;
-  if (typeof providerId !== "string" || !providerId || typeof localSessionId !== "string" || !localSessionId
-    || typeof cwd !== "string" || !cwd) return;
-  let resolved;
-  try { resolved = await resolveRepository(cwd); } catch { resolved = null; }
-  if (!resolved || typeof resolved.repositoryId !== "string" || !resolved.repositoryId
-    || typeof resolved.root !== "string" || !resolved.root) return;
+  if (typeof providerId !== "string" || !providerId || typeof localSessionId !== "string" || !localSessionId) return;
+  const hasBoundChanges = Array.isArray(snapshot?.evidence?.toolCalls) && snapshot.evidence.toolCalls
+    .some((call) => Array.isArray(call?.fileChanges) && call.fileChanges.some((entry) => REPOSITORY_ID.test(entry?.repositoryId || "")));
+  const legacyLaunch = snapshot?.evidence?.session?.repositoryAttribution === "launch";
+  let fallbackRepositoryId = sessionFallbackRepositoryId(snapshot);
+  if (!hasBoundChanges && !fallbackRepositoryId && !legacyLaunch) return;
+  // Only fetch the real root (needed to rebase an unbound path) once the session's own
+  // identity already proved a single repository, or its legacy evidence was launch-bound.
+  // A proven identity is never re-derived: a cwd that resolves elsewhere supplies no root.
+  let root = "";
+  if ((fallbackRepositoryId || legacyLaunch) && typeof cwd === "string" && cwd) {
+    try {
+      // The inventory's cached lookup (no Git subprocess per snapshot). A proven identity
+      // accepts only the root of the same repository ID; launch evidence also accepts the
+      // non-Git fallback root, as before the rule.
+      const resolved = await resolveRepository(cwd);
+      const resolvedId = typeof resolved?.repositoryId === "string" ? resolved.repositoryId : "";
+      if (legacyLaunch && resolvedId) fallbackRepositoryId = resolvedId;
+      if (resolvedId && resolvedId === fallbackRepositoryId && typeof resolved.root === "string" && resolved.root) root = resolved.root;
+    } catch { root = ""; }
+  }
+  if (!hasBoundChanges && !fallbackRepositoryId) return;
   const sessionId = `${providerId}:${localSessionId}`;
-  const changes = collectChanges(snapshot, sessionId, resolved.root, cwd);
+  const changes = collectChanges(snapshot, sessionId, root, cwd || "", fallbackRepositoryId);
   // Additive: live evidence is a bounded tail (Claude transcript tail, Codex tool-call cap),
   // so a snapshot that no longer carries early tool calls must never delete their committed
   // rows. Already-recorded changes are skipped, which keeps replaying a checkpoint idempotent.
   store.transaction(() => {
-    for (const change of changes) applyChange(store, resolved.repositoryId, change);
+    for (const { repositoryId, change } of changes) applyChange(store, repositoryId, change);
   });
 }
 
@@ -219,10 +266,38 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
   async function ensureRebuilt(store) {
     if (rebuildDone || rebuildStarted) return;
     rebuildStarted = true;
-    const needsRebuild = store.rebuilt === true || readMeta(store, "file_index_version") !== FILE_INDEX_VERSION;
-    if (needsRebuild && checkpointStore) {
+    const priorVersion = readMeta(store, "file_index_version");
+    const needsRebuild = store.rebuilt === true || priorVersion !== FILE_INDEX_VERSION;
+    if (needsRebuild) {
       let loaded;
-      try { loaded = await checkpointStore.load(); } catch { loaded = null; }
+      if (checkpointStore) {
+        try { loaded = await checkpointStore.load(); } catch {
+          rebuildStarted = false;
+          return;
+        }
+      }
+      // v1 Codex rows were assigned through session.cwd and cannot be trusted.
+      // Keep Claude's longer-lived additive history; only a database-declared
+      // full rebuild clears every provider.
+      store.transaction(() => {
+        if (store.rebuilt === true) {
+          store.database.prepare("DELETE FROM file_changes").run();
+        } else if (priorVersion !== FILE_INDEX_VERSION) {
+          // A v1 Codex move/delete may have rewritten the shared `files` row
+          // and its path timeline before this migration starts. Removing only
+          // the Codex change would leave that false path/deletion attached to
+          // a surviving Claude row, so discard every identity touched by an
+          // unbound legacy Codex change. Untouched Claude identities remain.
+          store.database.prepare(`
+            DELETE FROM file_changes
+            WHERE file_id IN (
+              SELECT DISTINCT file_id FROM file_changes WHERE session_id LIKE 'codex:%'
+            )
+          `).run();
+        }
+        store.database.prepare("DELETE FROM file_paths WHERE file_id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
+        store.database.prepare("DELETE FROM files WHERE id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
+      });
       for (const record of loaded?.records || []) {
         try { await applySnapshot(store, record, resolveRepository); } catch { /* one bad retained checkpoint cannot block the rest */ }
       }
@@ -292,7 +367,9 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
  */
 export function registerFileChangeIndexContributor(monitorStoreRuntime, { resolveRepository, checkpointStore, readRenames = readGitRenamesAsync, now } = {}) {
   if (typeof resolveRepository !== "function") return;
-  monitorStoreRuntime.registerContributor(createFileChangeIndexContributor({ resolveRepository, checkpointStore, readRenames, now }));
+  const contributor = createFileChangeIndexContributor({ resolveRepository, checkpointStore, readRenames, now });
+  monitorStoreRuntime.registerContributor(contributor);
+  return contributor;
 }
 
 /** Newest-first, keyset-paged file-change history for one session. */

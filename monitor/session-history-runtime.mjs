@@ -17,6 +17,7 @@ export function createSessionHistoryRuntime(options = {}) {
   const completedSources = new Map();
   const attemptedSources = new Map();
   const observationKeys = new Map();
+  let generation = 0;
 
   function sourceKey(sessionId, snapshot) {
     const source = snapshot?.source;
@@ -29,6 +30,7 @@ export function createSessionHistoryRuntime(options = {}) {
 
   async function run(sessionId, priority) {
     if (!isActive()) return;
+    const owner = generation;
     const snapshot = observationStore.getByQualifiedId(sessionId);
     const provider = snapshot && registry.providers?.find((entry) => entry.id === snapshot.providerId);
     if (!snapshot || typeof provider?.readSessionHistory !== "function") return;
@@ -42,6 +44,7 @@ export function createSessionHistoryRuntime(options = {}) {
       .then((activityFence) => provider.readSessionHistory(snapshot.localSessionId)
         .then((history) => {
           trace?.end?.(readSpan, { outcome: "completed" });
+          if (!isActive() || owner !== generation) { historyOutcome = "cancelled"; return null; }
           const publishSpan = trace?.begin?.({ stage: "history_publish", domain: "activity", flow, scope }) || null;
           const publication = typeof historyStore.publishOutcome === "function"
             ? historyStore.publishOutcome(sessionId, history, { activityFence })
@@ -49,8 +52,8 @@ export function createSessionHistoryRuntime(options = {}) {
               .then((record) => ({ record, accepted: Boolean(record), reason: record ? "accepted" : "incomplete" }));
           return publication.then(({ record, accepted, reason }) => {
             trace?.end?.(publishSpan, { outcome: accepted ? "accepted" : "unchanged" });
-            if (accepted && record && history?.complete === true && key) rememberBounded(completedSources, sessionId, key);
-            else if (reason === "stale_fence" && isActive()) refresh(sessionId, priority, true, true);
+            if (accepted && record && history?.complete === true && key && owner === generation && isActive()) rememberBounded(completedSources, sessionId, key);
+            else if (reason === "stale_fence" && owner === generation && isActive()) refresh(sessionId, priority, true, true);
             return record;
           }, (error) => { trace?.end?.(publishSpan, { outcome: "failed" }); throw error; });
         }))
@@ -81,7 +84,11 @@ export function createSessionHistoryRuntime(options = {}) {
 
   return Object.freeze({
     start: scheduler.start,
-    stop() { completedSources.clear(); attemptedSources.clear(); observationKeys.clear(); scheduler.stop(); },
+    stop() {
+      generation += 1;
+      scheduler.stop();
+      completedSources.clear(); attemptedSources.clear(); observationKeys.clear();
+    },
     observe(sessionId, revision) {
       if (Number.isSafeInteger(revision)) rememberBounded(observationKeys, sessionId, revision);
     },

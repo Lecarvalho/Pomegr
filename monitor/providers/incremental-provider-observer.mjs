@@ -8,23 +8,34 @@ function fingerprint(providerId, localSessionId, identity) {
   return crypto.createHash("sha256").update(`${providerId}\0${localSessionId}\0${identity}`).digest("hex");
 }
 
-/** @param {string | null | undefined} file @param {boolean} [historical] */
-export function incrementalSourceDescriptor(file, historical = false) {
+/**
+ * @param {string | null | undefined} file
+ * @param {boolean} [historical]
+ * @param {{ stat: import("node:fs").Stats, suffix: { bytes: number, digest: string } } | undefined} [precomputed]
+ *   Reuse a stat and 256-byte suffix a caller already has this call (e.g. from the per-readSession
+ *   read-generations helper) instead of statting and opening the file again. Behavior is unchanged
+ *   when omitted: every other caller still stats and reads the file itself.
+ */
+export function incrementalSourceDescriptor(file, historical = false, precomputed) {
   if (typeof file !== "string" || !file) return null;
   try {
-    const stat = fs.statSync(file);
+    const stat = precomputed?.stat ?? fs.statSync(file);
     if (!stat.isFile() || stat.size < 0) return null;
     const identity = Number.isFinite(stat.ino) && stat.ino > 0
       ? `${Number.isFinite(stat.dev) ? stat.dev : "device"}:${stat.ino}`
       : `birth:${Number.isFinite(stat.birthtimeMs) ? stat.birthtimeMs : "unknown"}`;
-    const bytes = Math.min(stat.size, 256);
-    const descriptor = fs.openSync(file, "r");
-    let suffixDigest;
-    try {
-      const suffix = Buffer.alloc(bytes);
-      fs.readSync(descriptor, suffix, 0, bytes, stat.size - bytes);
-      suffixDigest = crypto.createHash("sha256").update(suffix).digest("hex");
-    } finally { fs.closeSync(descriptor); }
+    let suffixDigest, bytes;
+    if (precomputed?.suffix) {
+      ({ digest: suffixDigest, bytes } = precomputed.suffix);
+    } else {
+      bytes = Math.min(stat.size, 256);
+      const descriptor = fs.openSync(file, "r");
+      try {
+        const suffix = Buffer.alloc(bytes);
+        fs.readSync(descriptor, suffix, 0, bytes, stat.size - bytes);
+        suffixDigest = crypto.createHash("sha256").update(suffix).digest("hex");
+      } finally { fs.closeSync(descriptor); }
+    }
     return { file, identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixDigest, suffixBytes: bytes, historical, sourceFiles: [file] };
   } catch { return null; }
 }
@@ -215,6 +226,7 @@ export function createIncrementalProviderObserver(options = {}) {
   }
 
   const observer = createNormalizedPollingObserver({
+    providerId,
     list,
     ingest: acquire,
     prepare: prepareSources,

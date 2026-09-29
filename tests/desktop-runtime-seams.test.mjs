@@ -65,6 +65,20 @@ test("monitor binds a dynamic loopback port and closes idempotently", async () =
   await handle.close();
 });
 
+test("monitor shutdown stops observation once when the listener also closes", async () => {
+  let stops = 0;
+  const handle = await startMonitorServer({
+    port: 0, logger: quietLogger, pipelineOperations: false,
+    runtime: { async startObservation() {}, async stopObservation() { stops += 1; } },
+    providerRegistry: { async watchTargets() { return []; } },
+    serverFactory: () => http.createServer(),
+  });
+  await handle.close();
+  assert.equal(stops, 1);
+  await handle.close();
+  assert.equal(stops, 1);
+});
+
 test("monitor rejects non-loopback binding and reports bounded startup failures", async () => {
   await assert.rejects(
     startMonitorServer({ port: 0, host: "0.0.0.0" }),

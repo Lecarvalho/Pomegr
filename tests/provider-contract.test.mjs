@@ -77,6 +77,8 @@ test("validates provider declarations and optional usage readers", () => {
   assert.throws(() => defineProvider({ ...base, capabilityManifest: capabilityManifest({ usageLimits: true }) }), /must implement readUsageLimits/);
   assert.throws(() => defineProvider({ ...base, watchTargets: [""] }), /watchTargets/);
   assert.throws(() => defineProvider({ ...base, unavailableMessage: "private" }), /unavailableMessage/);
+  assert.equal(defineProvider({ ...base, legacyRepositoryAttribution: "launch" }).legacyRepositoryAttribution, "launch");
+  assert.throws(() => defineProvider({ ...base, legacyRepositoryAttribution: "single" }), /legacyRepositoryAttribution/);
   assert.throws(() => defineProvider({ ...base, resolveCapabilities: true }), /resolveCapabilities/);
   assert.throws(() => defineProvider({ ...base, resolveReadiness: async () => ({}) }), /declared together/);
   assert.throws(() => defineProvider({ ...base, readinessCapabilities: ["liveSessions"] }), /declared together/);

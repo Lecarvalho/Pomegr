@@ -16,6 +16,11 @@ export { createIncrementalJsonlIngestor } from "./incremental-jsonl-ingestor.mjs
 const URGENT = 0;
 const SOURCE_UPDATE = 1;
 const BACKGROUND = 2;
+// A session first published within this long of its own creation is treated
+// like a first live publication even if it has already finished, so a short
+// session is not queued behind the whole historical working set.
+const NEW_SESSION_PRIORITY_WINDOW_MS = 10 * 60_000;
+const SOURCE_CATALOG_INTERVAL_MS = 1_000;
 
 function watchFilename(value) {
   if (typeof value === "string") return value;
@@ -37,6 +42,10 @@ export function createNormalizedPollingObserver(options) {
     ingest,
     prepare,
     intervalMs = 10_000,
+    // Minimum spacing between catalog passes a source notification can cause. A burst of
+    // notifications inside this window shares one trailing pass; 0 restores one pass per
+    // idle notification.
+    sourceCatalogIntervalMs = SOURCE_CATALOG_INTERVAL_MS,
     concurrency = 2,
     interactiveConcurrency = options?.interactiveConcurrency ?? Math.max(1, concurrency),
     backgroundConcurrency = options?.backgroundConcurrency ?? 1,
@@ -47,7 +56,12 @@ export function createNormalizedPollingObserver(options) {
     now = Date.now,
     monotonicNow = () => performance.now(),
     shouldEagerHydrate = (entry) => isObservationWorkingSetEntry(entry, now()),
+    // The fixed provider id this observer instance was constructed for (e.g. "claude" or
+    // "codex"). Attached only to trace records at acquisition call sites below; an
+    // unrecognized or missing value simply leaves those records unattributed.
+    providerId = null,
   } = options || {};
+  const observerProviderId = typeof providerId === "string" && providerId ? providerId : null;
   const acquire = ingest || read;
   if (typeof list !== "function" || typeof acquire !== "function") {
     throw new TypeError("Normalized polling observer requires list and ingest functions");
@@ -55,6 +69,11 @@ export function createNormalizedPollingObserver(options) {
   if (!Number.isInteger(intervalMs) || intervalMs < 100) {
     throw new TypeError("Normalized polling observer interval must be at least 100 ms");
   }
+  if (!Number.isInteger(sourceCatalogIntervalMs) || sourceCatalogIntervalMs < 0 || sourceCatalogIntervalMs > 60_000) {
+    throw new TypeError("Normalized polling observer source catalog interval must be between 0 and 60000 ms");
+  }
+  // Never space source-driven passes wider than routine reconciliation.
+  const sourceCatalogSpacingMs = Math.min(sourceCatalogIntervalMs, intervalMs);
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 16) {
     throw new TypeError("Normalized polling observer concurrency must be between 1 and 16");
   }
@@ -87,6 +106,11 @@ export function createNormalizedPollingObserver(options) {
   let refreshPending = false;
   let refreshQueued = false;
   let refreshQueuedFresh = false;
+  // Source-driven catalog dirtiness. Any catalog pass that starts after the notification
+  // satisfies it (upgraded to a fresh pass); otherwise one trailing timer runs it.
+  let sourceCatalogDirty = false;
+  let sourceCatalogTimer = null;
+  let lastCatalogPassAt = -Infinity;
   let eagerPreparationActive = false;
   let preparationGeneration = 0;
   let pendingEagerEntries = null;
@@ -98,13 +122,40 @@ export function createNormalizedPollingObserver(options) {
   const latestEntries = new Map();
   const catalogHydrations = new Map();
   const hydratedSessions = new Set();
+  // The first catalog this observer ever reads (its "startup catalog"). Any
+  // session already present in it is excluded from the new-session priority
+  // rule below, so a restart with many recently created sessions cannot flood
+  // the interactive lanes; only a session that genuinely appears later is new.
+  let startupCatalogIds = null;
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
+    // The aggregate across every priority. Mixing urgent, source-update, and
+    // background waits here hid which lane was actually starved; the three
+    // per-priority series below answer that without removing this one.
     queueWait: createDurationSeries(),
+    // Urgent work a viewer explicitly requested (a selection), recorded apart from
+    // first live publication. Scheduling is unchanged: both share the urgent priority.
+    queueWaitSelected: createDurationSeries(),
+    queueWaitUrgent: createDurationSeries(),
+    queueWaitSourceUpdate: createDurationSeries(),
+    queueWaitBackground: createDurationSeries(),
     preparation: createDurationSeries(),
     acquisitionNormalization: createDurationSeries(),
   });
+  function queueWaitSeriesForPriority(priority, requested = false) {
+    if (priority === URGENT && requested) return timings.queueWaitSelected;
+    if (priority === URGENT) return timings.queueWaitUrgent;
+    if (priority === SOURCE_UPDATE) return timings.queueWaitSourceUpdate;
+    return timings.queueWaitBackground;
+  }
+  // The bounded trace priority-lane name for the same priority values above.
+  function priorityLaneName(priority, requested = false) {
+    if (priority === URGENT && requested) return "selected";
+    if (priority === URGENT) return "urgent";
+    if (priority === SOURCE_UPDATE) return "source_update";
+    return "background";
+  }
   const qa = {
     reconciliationRuns: 0,
     watcherWakeups: 0,
@@ -130,10 +181,11 @@ export function createNormalizedPollingObserver(options) {
     } catch { return null; }
   }
 
-  async function runHydration(localSessionId, prepared, requested, flow = null, scope = null) {
+  async function runHydration(localSessionId, prepared, requested, flow = null, scope = null, priority = BACKGROUND) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
     let failureStage = "worker_yield";
+    const laneName = priorityLaneName(priority, requested);
     try {
       // Provider reducers still contain bounded synchronous work. Yield before
       // every acquisition unit so cache-only serving remains responsive.
@@ -142,7 +194,7 @@ export function createNormalizedPollingObserver(options) {
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
         const preparationStartedAt = monotonicNow();
-        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope });
+        const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope, provider: observerProviderId, priorityLane: laneName });
         try {
           context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
           trace?.end(preparationSpan, { outcome: "completed" });
@@ -154,7 +206,7 @@ export function createNormalizedPollingObserver(options) {
         }
       }
       const acquisitionStartedAt = monotonicNow();
-      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition", flow, scope });
+      const acquisitionSpan = trace?.begin({ stage: "acquisition_normalization", domain: "acquisition", flow, scope, provider: observerProviderId, priorityLane: laneName });
       failureStage = "acquire_normalize";
       let candidate;
       try {
@@ -189,6 +241,14 @@ export function createNormalizedPollingObserver(options) {
     return Boolean(entry?.isLive || entry?.needsInput) && !hydratedSessions.has(localSessionId);
   }
 
+  /** A session that first appears (outside the startup catalog) soon after it was created is not left behind the historical background queue, even if it already finished. */
+  function isNewSessionPriorityEligible(entry) {
+    if (!entry?.localId || hydratedSessions.has(entry.localId)) return false;
+    if (!startupCatalogIds || startupCatalogIds.has(entry.localId)) return false;
+    const ageMs = now() - Date.parse(entry.createdAt || "");
+    return Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= NEW_SESSION_PRIORITY_WINDOW_MS;
+  }
+
   function nextPendingHydration(allowInteractive, allowSourceUpdate, allowBackground) {
     let selected = null;
     for (const item of pendingHydrations.values()) {
@@ -217,23 +277,32 @@ export function createNormalizedPollingObserver(options) {
       const allowInteractive = activeInteractive < interactiveConcurrency;
       const allowBackground = activeBackground < backgroundConcurrency;
       if (!allowInteractive && !allowBackground) break;
-      // Keep one of the default two interactive slots available for first live
-      // publication or selection, even during a continuous source-update burst.
+      // Keep one interactive slot available for first live publication or
+      // selection, even during a continuous source-update burst.
       const item = nextPendingHydration(allowInteractive,
         activeSourceUpdates < sourceUpdateConcurrency, allowBackground);
       if (!item) break;
       pendingHydrations.delete(item.localSessionId);
+      // Every dequeued item — urgent selection, an ordinary source update, or a
+      // background hydration with no source event at all — gets a per-priority
+      // sample from the time it entered its current lane (its enqueue, or its
+      // promotion to a higher priority). The aggregate queueWait series, the
+      // qa counters, and the source_queue trace stay source-event-only, exactly
+      // as before.
+      const dequeuedAt = monotonicNow();
+      queueWaitSeriesForPriority(item.priority, item.requested)
+        .record(Math.max(0, dequeuedAt - item.laneSince));
       if (Number.isFinite(item.sourceEventAt)) {
-        const queueDelayMs = Math.max(0, monotonicNow() - item.sourceEventAt);
+        const queueDelayMs = Math.max(0, dequeuedAt - item.sourceEventAt);
         qa.sourceEventQueueSamples += 1;
         qa.sourceEventQueueDelayTotalMs += queueDelayMs;
         qa.sourceEventQueueDelayMaxMs = Math.max(qa.sourceEventQueueDelayMaxMs, queueDelayMs);
         qa.sourceEventQueueDelayLastMs = queueDelayMs;
         timings.queueWait.record(queueDelayMs);
         trace?.recordDuration({ stage: "source_queue", domain: "acquisition", durationMs: queueDelayMs,
-          flow: item.traceFlow, scope: item.traceScope });
+          flow: item.traceFlow, scope: item.traceScope, provider: observerProviderId, priorityLane: priorityLaneName(item.priority, item.requested) });
       }
-      const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope);
+      const taskPromise = runHydration(item.localSessionId, item.prepared, item.requested, item.traceFlow, item.traceScope, item.priority);
       runningHydrations.set(item.localSessionId, { promise: taskPromise, priority: item.priority });
       void taskPromise.then((result) => {
         for (const resolve of item.waiters) resolve(result);
@@ -263,6 +332,8 @@ export function createNormalizedPollingObserver(options) {
     const result = wait ? new Promise((resolve) => { resolveWaiter = resolve; }) : true;
     const pending = pendingHydrations.get(localSessionId);
     if (pending) {
+      // A promoted item's wait in its new lane starts at the promotion, not at its enqueue.
+      if (priority < pending.priority) pending.laneSince = monotonicNow();
       pending.priority = Math.min(pending.priority, priority);
       pending.requested ||= requested;
       if (priority < BACKGROUND || (pending.priority === BACKGROUND && prepared !== undefined)) pending.prepared = prepared;
@@ -287,6 +358,7 @@ export function createNormalizedPollingObserver(options) {
       priority,
       sequence: queueSequence += 1,
       queuedAt: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
+      laneSince: Number.isFinite(sourceEventAt) ? sourceEventAt : monotonicNow(),
       waiters: resolveWaiter ? [resolveWaiter] : [],
       sourceEventAt: Number.isFinite(sourceEventAt) ? sourceEventAt : null,
       traceScope: scope,
@@ -309,7 +381,8 @@ export function createNormalizedPollingObserver(options) {
         try {
           if (prepare && batch.length) {
             const preparationStartedAt = monotonicNow();
-            const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition" });
+            // Every entry queued here is background priority; see scheduleEagerHydration.
+            const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", provider: observerProviderId, priorityLane: "background" });
             try {
               prepared = await prepare(batch.map(({ entry }) => entry));
               trace?.end(preparationSpan, { outcome: "completed" });
@@ -344,7 +417,7 @@ export function createNormalizedPollingObserver(options) {
     const background = [];
     for (const entry of entries) {
       if (entry.detailReadiness === "unavailable" || !shouldEagerHydrate(entry)) continue;
-      if (needsInitialLiveHydration(entry.localId)) {
+      if (needsInitialLiveHydration(entry.localId) || isNewSessionPriorityEligible(entry)) {
         // Do not wait for preparation of unrelated history. Keep retrying this
         // lane across catalog refreshes until initial evidence is published.
         enqueueHydration(entry.localId, { priority: URGENT, rerunIfActive: true });
@@ -368,12 +441,19 @@ export function createNormalizedPollingObserver(options) {
       return;
     }
     refreshPending = true;
+    lastCatalogPassAt = monotonicNow();
+    if (sourceCatalogDirty) {
+      // This pass reads the catalog after the pending notification, so it answers it.
+      sourceCatalogDirty = false;
+      fresh = true;
+    }
     const rehydrate = new Map(catalogHydrations);
     catalogHydrations.clear();
     qa.reconciliationRuns += 1;
     try {
       const discoveryStartedAt = monotonicNow();
-      const discoverySpan = trace?.begin({ stage: "catalog_discovery", domain: "acquisition" });
+      // Catalog discovery has no priority lane; it carries only the provider id.
+      const discoverySpan = trace?.begin({ stage: "catalog_discovery", domain: "acquisition", provider: observerProviderId });
       let entries;
       try {
         entries = await list({ fresh });
@@ -390,6 +470,7 @@ export function createNormalizedPollingObserver(options) {
       for (const entry of entries) {
         if (entry && typeof entry.localId === "string" && entry.localId) latestEntries.set(entry.localId, entry);
       }
+      if (startupCatalogIds === null) startupCatalogIds = new Set(latestEntries.keys());
       publisher.publishCatalog(entries);
       for (const id of hydratedSessions) {
         if (!latestEntries.has(id)) hydratedSessions.delete(id);
@@ -422,8 +503,38 @@ export function createNormalizedPollingObserver(options) {
         // A queued watcher/reconciliation pass must not form a microtask-only
         // loop that starves the monitor's HTTP server.
         void yieldControl().then(() => refresh({ fresh: queuedFresh }), () => {});
-      }
+      } else scheduleSourceCatalog();
     }
+  }
+
+  /**
+   * Source notifications mark the catalog dirty instead of each starting a full discovery
+   * pass. An idle observer whose last pass began at least `sourceCatalogSpacingMs` ago starts
+   * one immediately; otherwise one trailing pass runs when the spacing elapses (or when an
+   * in-flight pass finishes, whichever is later). A burst of N notifications therefore costs
+   * at most one pass per spacing window, and the last notification is always followed by a
+   * pass that starts after it.
+   */
+  function requestSourceCatalog(sessionIds, sourceEventAt) {
+    for (const id of sessionIds) {
+      if (!catalogHydrations.has(id)) catalogHydrations.set(id, sourceEventAt);
+    }
+    sourceCatalogDirty = true;
+    scheduleSourceCatalog();
+  }
+
+  function scheduleSourceCatalog() {
+    if (!sourceCatalogDirty || sourceCatalogTimer || refreshPending || stopped || signal?.aborted) return;
+    const waitMs = lastCatalogPassAt + sourceCatalogSpacingMs - monotonicNow();
+    if (waitMs <= 0) {
+      void refresh({ fresh: true });
+      return;
+    }
+    sourceCatalogTimer = setTimeout(() => {
+      sourceCatalogTimer = null;
+      scheduleSourceCatalog();
+    }, Math.ceil(waitMs));
+    sourceCatalogTimer.unref?.();
   }
 
   async function handleSourceEvent(change) {
@@ -443,7 +554,7 @@ export function createNormalizedPollingObserver(options) {
     // Unknown/new sources require a cache-bypassing catalog pass. Known
     // sources skip discovery and enter acquisition immediately.
     if (routed.catalog) {
-      void refresh({ fresh: true, sessionIds: routed.sessionIds, sourceEventAt });
+      requestSourceCatalog(routed.sessionIds, sourceEventAt);
       if (routed.afterCatalog) return;
     }
     for (const localSessionId of routed.sessionIds) {
@@ -478,6 +589,9 @@ export function createNormalizedPollingObserver(options) {
     stopped = true;
     if (timer) clearInterval(timer);
     timer = null;
+    if (sourceCatalogTimer) clearTimeout(sourceCatalogTimer);
+    sourceCatalogTimer = null;
+    sourceCatalogDirty = false;
     for (const watcher of watchers.splice(0)) {
       try { watcher.close(); } catch { /* best-effort observer shutdown */ }
     }
@@ -541,6 +655,9 @@ export function createNormalizedPollingObserver(options) {
       pendingHydrations: pendingHydrations.size,
       oldestPendingMs: Math.max(0, ...[...pendingHydrations.values()].map((item) => monotonicNow() - item.queuedAt)),
       hydrationConcurrency: concurrency,
+      interactiveHydrationConcurrency: interactiveConcurrency,
+      sourceUpdateConcurrency,
+      backgroundHydrationConcurrency: backgroundConcurrency,
       failureDetails: failures.snapshot(),
       timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
     }),

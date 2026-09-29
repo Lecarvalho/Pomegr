@@ -60,8 +60,10 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
   }
 
   function read() {
+    let complete = true;
     const registry = readSessionRegistry(root, {
       normalizeEntry: normalizeClaudeSessionRegistryEntry,
+      onIncomplete() { complete = false; },
       validateOwners(entries) {
         const validation = validateOwners(entries);
         for (const entry of entries) {
@@ -107,7 +109,7 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
       }
     }
     schedule();
-    return { registry, closedSessionIds: closed };
+    return { registry, closedSessionIds: closed, complete };
   }
 
   return {

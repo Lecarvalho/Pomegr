@@ -1,94 +1,27 @@
 import { createCommittedResponseCache } from "./committed-response-cache.mjs";
-import { isObservationWorkingSetEntry } from "./observation-working-set.mjs";
+import { createCheckpointRestore } from "./session-checkpoint-restore.mjs";
 import { createDurationSeries } from "./pipeline-operations.mjs";
+import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
 import { parseProviderSessionId } from "./providers/provider-contract.mjs";
-import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "./session-current-activity.mjs";
-import { projectSessionCacheTiming } from "./session-cache-timing.mjs";
+import { catalogShellRow, createRowSummaryWriter } from "./session-catalog-row.mjs";
+import { createSessionCatalogInventory } from "./session-catalog-inventory.mjs";
+import { scanProviderHeaders } from "./session-header-scan.mjs";
+import { MAX_CATALOG_SHELL_ROWS, catalogSourceScopeKey, catalogStructure, compareCatalogEntries, downgradeRestoredLifecycle, openLiveDeadline, publicCatalogEntry, qualifiedSessionId } from "./session-catalog-runtime.mjs";
 
 const OPEN_LIVE_WINDOW_MS = 5 * 60_000;
 
-// Live is a recent working-set view; Open remains the provider's presence state.
-// Never use observation time here: polling and restarts are not user activity.
-function openLiveDeadline(entry, nowMs) {
-  if (!entry.isLive || entry.activityStatus !== "open" || entry.needsInput) return null;
-  const activityAt = typeof entry.updatedAt === "string" ? Date.parse(entry.updatedAt) : NaN;
-  return Number.isFinite(nowMs) && Number.isFinite(activityAt) && activityAt <= nowMs
-    ? activityAt + OPEN_LIVE_WINDOW_MS : Number.NEGATIVE_INFINITY;
+function projectOpenVisibility(entry, checkedAt) {
+  const deadline = openLiveDeadline(entry, checkedAt, OPEN_LIVE_WINDOW_MS);
+  return deadline !== null && !(deadline > checkedAt) ? { ...entry, isLive: false } : entry;
 }
 
-function qualifiedSessionId(providerId, localSessionId) {
-  return `${providerId}:${localSessionId}`;
+function inventoryLifecycleRows(providerId, entries, checkedAt) {
+  return entries.slice(0, 100).map((entry) => ({
+    ...projectOpenVisibility(entry, checkedAt),
+    localId: entry.id.slice(providerId.length + 1),
+  }));
 }
 
-function compareCatalogEntries(left, right) {
-  return Date.parse(right.createdAt || right.updatedAt || "") - Date.parse(left.createdAt || left.updatedAt || "")
-    || left.id.localeCompare(right.id);
-}
-
-function publicCatalogEntry(providerId, source, entry) {
-  const localId = String(entry?.localId || "");
-  if (!localId) return null;
-  return Object.freeze({
-    id: qualifiedSessionId(providerId, localId),
-    provider: providerId,
-    source,
-    title: String(entry.title || "Untitled session"),
-    project: String(entry.project || "Unknown project"),
-    createdAt: entry.createdAt || entry.updatedAt || null,
-    updatedAt: entry.updatedAt || null,
-    isLive: Boolean(entry.isLive),
-    needsInput: Boolean(entry.needsInput),
-    activityStatus: entry.activityStatus || "unknown",
-    // This is monitor-private catalog metadata. It is deliberately stripped
-    // before the browser-facing row is committed below.
-    detailReadiness: entry?.detailReadiness === "unavailable" ? "unavailable" : null,
-  });
-}
-
-function catalogStructure(entries = []) {
-  return entries
-    .map((entry) => `${entry.id}\0${entry.isLive ? 1 : 0}\0${entry.needsInput ? 1 : 0}\0${entry.activityStatus || "unknown"}\0${entry.detailReadiness || "loading"}`)
-    .sort()
-    .join("\n");
-}
-
-// Lifecycle observations in an L2 checkpoint describe a previous provider
-// process; they are useful context after restart but cannot be current truth.
-function downgradeRestoredLifecycle(record) {
-  const historical = record.evidence?.historical === true;
-  const downgradeAgent = (agent) => {
-    if (!agent || typeof agent !== "object" || !agent.liveness) return agent;
-    if (historical) return { ...agent, liveness: null };
-    return {
-      ...agent,
-      status: "unknown",
-      liveness: {
-        ...agent.liveness,
-        evidence: "unavailable",
-        freshness: "stale",
-        reason: "legacy_snapshot",
-      },
-    };
-  };
-  const downgradeAgents = (value) => value && Array.isArray(value.agents)
-    ? { ...value, agents: value.agents.map(downgradeAgent) }
-    : value;
-  return {
-    ...record,
-    evidence: downgradeAgents(record.evidence),
-    publicState: downgradeAgents(record.publicState),
-  };
-}
-
-function checkpointFailureStage(error) {
-  const message = typeof error?.message === "string" ? error.message : "";
-  if (message === "checkpoint exceeds byte budget") return "checkpoint_size";
-  if (message === "checkpoint privacy validation failed") return "checkpoint_privacy";
-  if (message === "checkpoint collection is invalid") return "checkpoint_collection";
-  if (message === "checkpoint candidate was rejected") return "checkpoint_candidate";
-  if (message.startsWith("checkpoint ")) return "checkpoint_validation";
-  return "checkpoint_storage";
-}
 
 /** Coordinates U1/U2 provider observers with C/D committed session snapshots. */
 export function createSessionObservationCoordinator(options = {}) {
@@ -100,11 +33,22 @@ export function createSessionObservationCoordinator(options = {}) {
   const catalogStructuralDelayMs = Math.max(0, Number(options.catalogStructuralDelayMs ?? 0));
   const schedule = options.schedule || ((task, delay) => setTimeout(task, delay));
   const cancel = options.cancel || clearTimeout;
+  const now = options.now || Date.now;
   const catalogCache = options.catalogCache || createCommittedResponseCache({ includeRevision: true });
+  // The directory owns all normalized headers. The coordinator retains only a
+  // bounded shell for live/selected consumers; never use that shell as an
+  // inventory or a count.
+  const catalogInventory = options.catalogInventory || createSessionCatalogInventory({
+    store: () => options.monitorStoreRuntime?.store?.() || null,
+    now,
+    providers: (registry.providers || []).map((provider) => provider.id),
+    scopeKey: catalogSourceScopeKey(registry),
+  });
   const checkpointStore = options.checkpointStore || null;
   const checkpointDelayMs = Math.max(0, Number(options.checkpointDelayMs ?? 5_000));
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
-  const now = options.now || Date.now;
+  const rowSummaries = createRowSummaryWriter({ store, inventory: catalogInventory, schedule, cancel, now,
+    quietMs: checkpointDelayMs, maxMs: checkpointMaxDelayMs, isStopped: () => stopped });
   const monotonicNow = options.monotonicNow || (() => performance.now());
   const trace = options.pipelineTrace;
   const traceScopeForSession = typeof options.traceScopeForSession === "function"
@@ -123,7 +67,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const scheduledSessions = new Map();
   const sessionRetryAttempts = new Map();
   const deferredProjectionRefreshes = new Set();
-  const checkpointTimers = new Map();
+  let persistenceQueue = null;
   const restoredActivitySessions = new Set();
   const restoredHydrations = new Map();
   const subscribers = new Set();
@@ -139,6 +83,8 @@ export function createSessionObservationCoordinator(options = {}) {
   let selectedPinnedId = null;
   let startupSelection = null;
   let restoreFreshSessions = null;
+  let headerScanTimer = null;
+  let headerScanRunning = false;
   const timings = Object.freeze({
     catalogCommitWait: createDurationSeries(),
     catalogProjectionCommit: createDurationSeries(),
@@ -165,24 +111,33 @@ export function createSessionObservationCoordinator(options = {}) {
 
   function scheduleCheckpoint(snapshot) {
     if (!checkpointStore) return;
-    const previous = checkpointTimers.get(snapshot.qualifiedId);
-    if (previous) cancel(previous.timer);
-    const firstDirtyAt = previous?.firstDirtyAt ?? now();
-    const maximumRemaining = Math.max(0, checkpointMaxDelayMs - (now() - firstDirtyAt));
-    const delay = Math.min(checkpointDelayMs, maximumRemaining);
-    const timer = schedule(() => {
-      checkpointTimers.delete(snapshot.qualifiedId);
-      const scope = traceScope(snapshot.providerId, snapshot.localSessionId);
-      const span = trace?.begin({ stage: "checkpoint", domain: "persistence", scope });
-      void checkpointStore.write(store.getByQualifiedId(snapshot.qualifiedId) || snapshot).then(
-        () => { trace?.end(span, { outcome: "accepted" }); },
-        (error) => {
+    if (!persistenceQueue) persistenceQueue = createObservationPersistenceQueue({
+      ...options.persistenceQueueOptions,
+      schedule, cancel, now,
+      onEvent(event) {
+        const outcomes = { started: "accepted", coalesced: "superseded", rejected: "rejected", retry: "incomplete", exhausted: "failed" };
+        if (outcomes[event.kind]) trace?.recordDuration({
+          stage: "source_queue", domain: "persistence", outcome: outcomes[event.kind],
+          durationMs: event.kind === "started" ? event.waitedMs : 0,
+        });
+      },
+      async write(candidate) {
+        const scope = traceScope(candidate.providerId, candidate.localSessionId);
+        const span = trace?.begin({ stage: "checkpoint", domain: "persistence", scope });
+        try {
+          await checkpointStore.write(candidate);
+          trace?.end(span, { outcome: "accepted" });
+        } catch (error) {
           trace?.end(span, { outcome: "failed" });
           trace?.recordDuration({ stage: checkpointFailureStage(error), domain: "persistence", durationMs: 0, outcome: "failed", scope });
-        },
-      );
-    }, delay);
-    checkpointTimers.set(snapshot.qualifiedId, { timer, firstDirtyAt });
+          throw error;
+        }
+      },
+    });
+    const result = persistenceQueue.enqueue(snapshot, { delayMs: checkpointDelayMs, maxDelayMs: checkpointMaxDelayMs });
+    if (result?.accepted === false && result.reason === "invalid") {
+      trace?.recordDuration({ stage: "checkpoint", domain: "persistence", durationMs: 0, outcome: "rejected" });
+    }
   }
 
   function notify(event) {
@@ -213,48 +168,25 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.recordDuration({ stage: "catalog_commit_wait", domain: "commit", durationMs: delayMs });
       catalogDirtyAt = null;
     }
-    const entries = [...catalogsByProvider.values()].flat().sort(compareCatalogEntries);
-    const previousRows = new Map((catalogCache.current()?.value?.sessions || []).map((entry) => [entry.id, entry]));
-    const sessions = entries.map((nativeEntry) => {
-      const deadline = openLiveDeadline(nativeEntry, checkedAt);
-      const expired = deadline !== null && !(deadline > checkedAt);
-      if (deadline !== null && deadline > checkedAt) nextOpenExpiry = Math.min(nextOpenExpiry, deadline);
-      const entry = expired ? { ...nativeEntry, isLive: false } : nativeEntry;
+    const projectedCatalogs = new Map();
+    for (const [providerId, nativeEntries] of catalogsByProvider) {
+      const projectedEntries = nativeEntries.map((nativeEntry) => {
+        const deadline = openLiveDeadline(nativeEntry, checkedAt, OPEN_LIVE_WINDOW_MS);
+        if (deadline !== null && deadline > checkedAt) nextOpenExpiry = Math.min(nextOpenExpiry, deadline);
+        return projectOpenVisibility(nativeEntry, checkedAt);
+      });
+      projectedCatalogs.set(providerId, projectedEntries);
+      // Directory filters and counts must use the same lifecycle projection as
+      // the committed shell. In particular, an expired Open row is historical
+      // even while the provider still reports native process presence.
+      catalogInventory.updateProviderLifecycle(providerId, inventoryLifecycleRows(providerId, projectedEntries, checkedAt));
+    }
+    const entries = [...projectedCatalogs.values()].flat().sort(compareCatalogEntries);
+    rowSummaries.settle(entries.filter((entry) => entry.isLive).map((entry) => entry.id));
+    const sessions = entries.slice(0, MAX_CATALOG_SHELL_ROWS).map((entry) => {
       const snapshot = store.getByQualifiedId(entry.id);
-      const state = snapshot?.publicState;
-      const previous = previousRows.get(entry.id);
-      const retainPrevious = !entry.isLive
-        && !snapshot
-        && previous?.summaryReadiness === "ready"
-        && previous.updatedAt === entry.updatedAt;
-      const primaryAgent = Array.isArray(state?.agents)
-        ? state.agents.find((agent) => agent.id === "primary")
-        : null;
-      const publicEntry = { ...entry };
-      delete publicEntry.detailReadiness;
-      return {
-        ...publicEntry,
-        summaryReadiness: snapshot || retainPrevious ? "ready"
-          : entry.detailReadiness === "unavailable" ? "unavailable" : "loading",
-        agentCount: Number.isFinite(state?.metrics?.agents)
-          ? state.metrics.agents
-          : retainPrevious ? previous.agentCount : null,
-        activeAgentCount: (snapshot || retainPrevious) && !entry.isLive
-          ? 0
-          : Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
-        latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents)
-          ? state.metrics.tokens.allAgents
-          : retainPrevious ? previous.latestContextTotal : null,
-        progress: state?.session?.progress || (retainPrevious ? previous.progress : null),
-        currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
-        activityFallback: retainPrevious ? reconcileSessionActivityFallback(entry, previous.activityFallback)
-          : projectSessionActivityFallback(restoredActivitySessions.has(entry.id) ? { ...entry, isLive: false } : entry,
-            state?.agents, snapshot?.evidence?.toolCalls),
-        cacheTiming: snapshot ? projectSessionCacheTiming(state?.agents, state?.metrics?.tokens?.requestSnapshots)
-          : retainPrevious ? previous.cacheTiming ?? null : null,
-        repositoryId: state?.session?.repositoryId || previous?.repositoryId || null,
-        contextInventoryRef: state?.session?.contextInventoryRef || previous?.contextInventoryRef || null,
-      };
+      return catalogShellRow(entry, { snapshot, restoredActivity: restoredActivitySessions.has(entry.id),
+        persisted: snapshot ? null : catalogInventory.get(entry.id) });
     });
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
     // One provider's empty result cannot establish that the combined catalog is
@@ -270,6 +202,7 @@ export function createSessionObservationCoordinator(options = {}) {
         catalog: catalogReadiness,
       },
       sessions,
+      coverage: catalogInventory.coverage(),
     });
     notify({ type: "catalog", revision: committed.revision });
     if (Number.isFinite(nextOpenExpiry)) {
@@ -347,6 +280,15 @@ export function createSessionObservationCoordinator(options = {}) {
         timings.sessionStoreCommit.record(monotonicNow() - storeStartedAt);
         trace?.end(storeSpan, { outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
       }
+      if (snapshot?.accepted) try {
+        const session = derived.publicState?.session;
+        catalogInventory.updateHeaders(candidate.providerId, [{
+          localId: candidate.localSessionId, title: session?.title || "Untitled session",
+          project: session?.project || "Unknown project", createdAt: session?.startedAt || candidate.observedAt,
+          updatedAt: session?.updatedAt || candidate.observedAt, repositoryId: session?.repositoryId ?? null,
+        }], { preserveLifecycle: true });
+      } catch { /* header enrichment must not reject an accepted session */ }
+      if (snapshot?.accepted) rowSummaries.record(qualifiedId);
       timings.sessionCandidateToCommit.record(monotonicNow() - candidate.queuedAt);
       trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope,
         outcome: snapshot?.accepted ? (snapshot.unchanged ? "unchanged" : "accepted") : "rejected" });
@@ -432,8 +374,18 @@ export function createSessionObservationCoordinator(options = {}) {
       const normalized = Array.isArray(entries)
         ? entries.map((entry) => publicCatalogEntry(providerId, provider?.source || entry?.source || "", entry)).filter(Boolean)
         : [];
-      const structuralChange = catalogStructure(catalogsByProvider.get(providerId)) !== catalogStructure(normalized);
-      catalogsByProvider.set(providerId, normalized);
+      // Retain only the current shell. Historical directory pages are served
+      // from the inventory index, so a large provider scan cannot become a
+      // resident browser-facing catalog array.
+      const shell = normalized.slice().sort((left, right) => Number(right.isLive || right.needsInput) - Number(left.isLive || left.needsInput)
+        || compareCatalogEntries(left, right)).slice(0, MAX_CATALOG_SHELL_ROWS);
+      // The ordinary observer catalog is a bounded lifecycle shell. It may
+      // update current live state for known headers, but it cannot establish
+      // completeness or let header scans erase an observed lifecycle.
+      catalogInventory.updateProviderLifecycle(providerId, inventoryLifecycleRows(providerId, shell, now()));
+      if (readiness === "unavailable") catalogInventory.replaceProvider(providerId, [], "unavailable");
+      const structuralChange = catalogStructure(catalogsByProvider.get(providerId)) !== catalogStructure(shell);
+      catalogsByProvider.set(providerId, shell);
       catalogReadinessByProvider.set(providerId, readiness === "unavailable" ? "unavailable" : "ready");
       if (structuralChange) qa.catalogStructuralFastPaths += 1;
       scheduleCatalogCommit(structuralChange ? catalogStructuralDelayMs : commitDelayMs);
@@ -499,50 +451,47 @@ export function createSessionObservationCoordinator(options = {}) {
     },
   });
 
+  // Applies one validated L2 record from the bulk or on-demand restore. Fresh
+  // candidates and already committed revisions always win over a saved record.
+  function applyRestoredRecord(record, freshSessions) {
+    const id = qualifiedSessionId(record.providerId, record.localSessionId);
+    if (freshSessions.size >= 4096 || freshSessions.has(id)
+      || store.getByQualifiedId(id) || pendingSessions.has(id)) return false;
+    const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
+    if (!provider) return false;
+    const restored = store.restore(downgradeRestoredLifecycle(record));
+    if (!restored.accepted) return false;
+    restoredActivitySessions.add(restored.snapshot.qualifiedId);
+    const scope = traceScope(record.providerId, record.localSessionId);
+    // Rederive the restored evidence, including its downgraded lifecycle; the
+    // original checkpoint must not resurrect a prior process's status.
+    pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
+      providerId: record.providerId, localSessionId: record.localSessionId, evidence: restored.snapshot.evidence,
+      source: provider.source || "", checkpointSource: record.source, observedAt: record.observedAt,
+      pinned: Boolean(record.evidence?.historical === false), queuedAt: monotonicNow(),
+      traceScope: scope, traceFlow: trace?.createFlow({ scope }),
+    }));
+    scheduleSessionCommit(restored.snapshot.qualifiedId);
+    return true;
+  }
+
+  // Last-known-good evidence stays available; a restored lifecycle is never current.
+  const checkpointRestore = createCheckpointRestore({ checkpointStore, ready: () => options.checkpointRestoreReady?.(),
+    projectState: options.restoreState || (({ evidence }) => evidence), apply: applyRestoredRecord });
+
+  // A requested miss during the startup restore reads its own checkpoint first (one file,
+  // asynchronously); `onMissing` keeps today's hydration when none is valid.
+  function restoreRequested(qualifiedId, onMissing) {
+    return checkpointRestore.request(qualifiedId, (restored) => {
+      const snapshot = stopped ? null : store.getByQualifiedId(qualifiedId);
+      if (restored && snapshot) notify({ type: "session", qualifiedId, revision: snapshot.revision, freshObservation: false });
+      else if (!stopped && !snapshot) onMissing();
+    });
+  }
+
   async function restoreCheckpoints(workGeneration, freshSessions) {
     try {
-      if (checkpointStore) {
-        const ready = options.checkpointRestoreReady?.();
-        if (ready) await ready;
-        if (stopped || generation !== workGeneration) return;
-        const loaded = await checkpointStore.load({
-          includeRecord(record) {
-            return isObservationWorkingSetEntry({
-              isLive: record.evidence?.historical === false,
-              needsInput: record.evidence?.session?.needsInput,
-              updatedAt: record.observedAt,
-            }, now());
-          },
-          projectState: options.restoreState || (({ evidence }) => evidence),
-        });
-        if (stopped || generation !== workGeneration) return;
-        for (const record of loaded.records) {
-          const id = qualifiedSessionId(record.providerId, record.localSessionId);
-          if (freshSessions.size >= 4096 || freshSessions.has(id)
-            || store.getByQualifiedId(id) || pendingSessions.has(id)) continue;
-          if (!registry.providers?.some((provider) => provider.id === record.providerId)) continue;
-          const restored = store.restore(downgradeRestoredLifecycle(record));
-          if (!restored.accepted) continue;
-          restoredActivitySessions.add(restored.snapshot.qualifiedId);
-          const provider = registry.providers?.find((candidate) => candidate.id === record.providerId);
-          const scope = traceScope(record.providerId, record.localSessionId);
-          pendingSessions.set(restored.snapshot.qualifiedId, Object.freeze({
-            providerId: record.providerId,
-            localSessionId: record.localSessionId,
-            // Rederive the restored evidence, including its downgraded lifecycle;
-            // the original checkpoint must not resurrect a prior process's status.
-            evidence: restored.snapshot.evidence,
-            source: provider?.source || "",
-            checkpointSource: record.source,
-            observedAt: record.observedAt,
-            pinned: Boolean(record.evidence?.historical === false),
-            queuedAt: monotonicNow(),
-            traceScope: scope,
-            traceFlow: trace?.createFlow({ scope }),
-          }));
-          scheduleSessionCommit(restored.snapshot.qualifiedId);
-        }
-      }
+      await checkpointRestore.bulk({ isCurrent: () => !stopped && generation === workGeneration, freshSessions });
     } catch { /* Checkpoints are optional; live acquisition remains available. */ }
     finally {
       if (restoreFreshSessions === freshSessions) restoreFreshSessions = null;
@@ -571,6 +520,10 @@ export function createSessionObservationCoordinator(options = {}) {
         return null;
       }
       lifecycle = observerLifecycle;
+      // Directory scans run independently from observer startup. Tokens for
+      // every configured source are opened before any one source can finish,
+      // so a partial rescan can never momentarily claim a global exact count.
+      void startCatalogHeaderEnumeration(controller.signal);
       if (startupSelection) {
         const selectedId = startupSelection;
         startupSelection = null;
@@ -580,6 +533,28 @@ export function createSessionObservationCoordinator(options = {}) {
     })();
     try { return await startPromise; }
     catch (error) { if (generation === workGeneration) startPromise = null; throw error; }
+  }
+
+  async function startCatalogHeaderEnumeration(signal) {
+    if (headerScanRunning || stopped || signal?.aborted || typeof registry.enumerateSessionHeaders !== "function") return;
+    headerScanRunning = true;
+    try {
+      // Header inventory persistence is independent from live observer startup.
+      // A slow or unavailable store must never delay selected/live publication.
+      try { await options.monitorStoreRuntime?.start?.(); } catch { /* bounded partial fallback remains explicit */ }
+      if (stopped || signal?.aborted) return;
+      catalogInventory.configureProviders((registry.providers || []).map((provider) => provider.id), { scopeKey: catalogSourceScopeKey(registry) });
+      catalogInventory.initialize();
+      await scanProviderHeaders({
+        registry, catalogInventory, signal, isStopped: () => stopped, onChange: () => scheduleCatalogCommit(0),
+      });
+    } finally {
+      headerScanRunning = false;
+      if (!stopped && !signal?.aborted && typeof registry.enumerateSessionHeaders === "function") {
+        headerScanTimer = schedule(() => { headerScanTimer = null; void startCatalogHeaderEnumeration(signal); }, 60_000);
+        headerScanTimer?.unref?.();
+      }
+    }
   }
 
   function hydrate(requestedSessionId, { selected = false, restored = false } = {}) {
@@ -659,6 +634,9 @@ export function createSessionObservationCoordinator(options = {}) {
 
   async function stop() {
     stopped = true;
+    rowSummaries.stop();
+    if (headerScanTimer !== null) cancel(headerScanTimer);
+    headerScanTimer = null;
     generation += 1;
     abortController?.abort();
     if (catalogTimer !== null) cancel(catalogTimer);
@@ -675,15 +653,11 @@ export function createSessionObservationCoordinator(options = {}) {
     restoredHydrations.clear();
     startupSelection = null;
     restoreFreshSessions = null;
-    for (const [qualifiedId, pendingCheckpoint] of checkpointTimers) {
-      cancel(pendingCheckpoint.timer);
-      const snapshot = store.getByQualifiedId(qualifiedId);
-      if (snapshot) {
-        try { await checkpointStore?.write(snapshot); } catch { /* checkpoint failure cannot block shutdown */ }
-      }
-    }
-    checkpointTimers.clear();
     try { await lifecycle?.stop?.(); } catch { /* shutdown remains best-effort */ }
+    // Producers stop before the bounded P owner drains its newest accepted revisions.
+    // Maintenance is deliberately not part of this durable-write barrier.
+    await persistenceQueue?.stop();
+    persistenceQueue = null;
     lifecycle = null;
     startPromise = null;
   }
@@ -696,7 +670,27 @@ export function createSessionObservationCoordinator(options = {}) {
     prioritizeRestoredLive: (qualifiedId) => prioritizeRestoredLive(qualifiedId),
     probeUncatalogued,
     refreshProjection,
+    persistenceBusy: () => {
+      const pending = persistenceQueue?.stats();
+      return pendingSessions.size > 0 || scheduledSessions.size > 0 || Boolean(pending?.pending || pending?.active);
+    },
     catalog: (revision) => catalogCache.read(revision),
+    directory: (query) => catalogInventory.directory(query),
+    shell: ({ selected = "", pinned = [] } = {}) => {
+      const current = catalogCache.current();
+      const base = current?.value || { readiness: { catalog: "loading" }, sessions: [] };
+      const requested = [];
+      const baseRows = new Map((base.sessions || []).map((entry) => [entry.id, entry]));
+      for (const id of [selected, ...pinned]) {
+        if (!id || requested.some((entry) => entry.id === id)) continue;
+        const existing = baseRows.get(id);
+        if (existing) { requested.push(existing); baseRows.delete(id); continue; }
+        const identity = catalogInventory.get(id);
+        if (identity) requested.push(identity);
+      }
+      return { revision: current?.revision ?? 0, value: { ...base, sessions: [...requested, ...baseRows.values()].slice(0, MAX_CATALOG_SHELL_ROWS), coverage: catalogInventory.coverage() } };
+    },
+    catalogIdentity: (sessionId) => catalogInventory.get(sessionId),
     catalogReadiness: () => Object.freeze(Object.fromEntries((registry.providers || []).map((provider) => [
       provider.id,
       catalogReadinessByProvider.get(provider.id) || "loading",
@@ -709,9 +703,11 @@ export function createSessionObservationCoordinator(options = {}) {
         : catalog.find((entry) => entry.isLive)?.id || catalog[0]?.id || "";
       if (!selectedId) return Object.freeze({ status: "empty", selectedId: "", catalogEntry: null, snapshot: null });
       const snapshot = store.getByQualifiedId(selectedId);
-      const catalogEntry = catalog.find((entry) => entry.id === selectedId) || null;
+      const indexedIdentity = catalogInventory.get(selectedId);
+      const catalogEntry = catalog.find((entry) => entry.id === selectedId)
+        || (indexedIdentity ? { ...indexedIdentity, summaryReadiness: "loading" } : null);
       if (!lifecycle) startupSelection = null;
-      if (snapshot || catalogEntry) {
+      if (snapshot || catalogEntry || parsed) {
         const selected = parseProviderSessionId(selectedId);
         // Pin a known selection before hydration so other commits cannot evict
         // its first snapshot before the next browser poll receives it.
@@ -735,7 +731,7 @@ export function createSessionObservationCoordinator(options = {}) {
             snapshot: null,
           });
         }
-        hydrate(selectedId, { selected: true });
+        if (!restoreRequested(selectedId, () => hydrate(selectedId, { selected: true }))) hydrate(selectedId, { selected: true });
         return Object.freeze({
           status: "loading",
           selectedId,
@@ -764,6 +760,7 @@ export function createSessionObservationCoordinator(options = {}) {
           : 0,
         store: store.stats?.() || null,
         checkpoints: checkpointStore?.stats?.() || null,
+        persistence: persistenceQueue?.stats() || null,
         observers: lifecycle?.diagnostics?.() || {},
         timings: Object.freeze(Object.fromEntries(Object.entries(timings).map(([key, series]) => [key, series.snapshot()]))),
       });

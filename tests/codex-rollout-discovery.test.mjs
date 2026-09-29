@@ -195,3 +195,28 @@ test("rejects traversal hints and symlink-escape realpaths before header inspect
   assert.equal(discovery.stats().rejectedHints >= 2, true);
   discovery.close();
 });
+
+test("trustedRolloutPath resolves a valid rollout path and rejects a bad name, an escaping realpath, and an outside-root path", async (context) => {
+  const root = await temporaryRoot(context);
+  const candidate = await rollout(root, "rollout-inside.jsonl", "inside", BASE);
+  const escaping = await rollout(root, "rollout-escapes.jsonl", "escapes", BASE);
+  const outside = path.join(root, "..", "outside", "rollout-escape.jsonl");
+  const discovery = createCodexRolloutDiscovery({
+    roots: [{ root }],
+    maximumFiles: 4,
+    advanceIntervalMs: 60_000,
+    operations: {
+      ...fs,
+      async realpath(value) {
+        if (path.resolve(value) === path.resolve(escaping)) return outside;
+        return fs.realpath(value);
+      },
+    },
+  });
+
+  assert.equal(await discovery.trustedRolloutPath(candidate), await fs.realpath(candidate));
+  assert.equal(await discovery.trustedRolloutPath(path.join(root, "not-a-rollout.jsonl")), null);
+  assert.equal(await discovery.trustedRolloutPath(escaping), null, "a symlink/junction realpath outside the root is rejected");
+  assert.equal(await discovery.trustedRolloutPath(path.join(root, "..", "outside", "rollout-traversal.jsonl")), null);
+  discovery.close();
+});

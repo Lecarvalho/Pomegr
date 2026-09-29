@@ -421,7 +421,26 @@ export function readGitState(cwd, { forbiddenRoots = [] } = {}) {
   };
 }
 
-export async function readGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
+const gitStateInFlight = new Map();
+
+/**
+ * Live Git state for one working tree. Concurrent callers for the same directory and
+ * forbidden roots share one in-flight inspection (the same Git commands at the same
+ * moment), and each receives its own copy of the answer. Nothing is reused after the
+ * inspection finishes, so every later call observes Git afresh.
+ */
+export function readGitStateAsync(cwd, options = {}) {
+  const forbiddenRoots = Array.isArray(options?.forbiddenRoots) ? options.forbiddenRoots : [];
+  const key = JSON.stringify([cwd || "", forbiddenRoots]);
+  let pending = gitStateInFlight.get(key);
+  if (!pending) {
+    pending = inspectGitStateAsync(cwd, { forbiddenRoots }).finally(() => { gitStateInFlight.delete(key); });
+    gitStateInFlight.set(key, pending);
+  }
+  return pending.then((state) => structuredClone(state));
+}
+
+async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   const empty = {
     available: false,
     branch: "Not a Git repository",

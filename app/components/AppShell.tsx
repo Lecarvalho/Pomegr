@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import { decodeSessionRoute } from "../../shared/session-route.mjs";
 import { useHomePreferences } from "../hooks/useHomePreferences";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { HomeReadiness, SessionCatalogSnapshot, SessionSummary } from "../../shared/monitor-contract";
 import { newestSessionsFirst } from "../dashboard-utils";
 import { LiveClockProvider } from "../hooks/LiveClockContext";
@@ -42,7 +42,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
   useProviderStatusPollingPause(Boolean(desktopState?.paused));
   useRepositoryInventoryPollingPause(Boolean(desktopState?.paused));
-  const { ready: homePreferencesReady, rememberSession } = useHomePreferences();
+  const { ready: homePreferencesReady, rememberSession, pins } = useHomePreferences();
+  const selectedSessionId = pathname.startsWith("/sessions/")
+    ? decodeSessionRoute(pathname.slice("/sessions/".length))
+    : null;
+  const pinnedSessionKey = useMemo(() => pins.filter((pin) => pin.kind === "session").map((pin) => pin.id).join(","), [pins]);
 
   useEffect(() => {
     if (!homePreferencesReady || !pathname.startsWith("/sessions/")) return;
@@ -77,7 +81,11 @@ export function AppShell({ children }: { children: ReactNode }) {
       requestInFlight = true;
       let succeeded = false;
       try {
-        const query = catalogRevisionRef.current === null ? "" : `?revision=${encodeURIComponent(String(catalogRevisionRef.current))}`;
+        const params = new URLSearchParams();
+        if (catalogRevisionRef.current !== null) params.set("revision", String(catalogRevisionRef.current));
+        if (selectedSessionId) params.set("selected", selectedSessionId);
+        if (pinnedSessionKey) params.set("pinned", pinnedSessionKey);
+        const query = params.size ? `?${params}` : "";
         const response = await fetch(`/api/sessions${query}`, { cache: "no-store", signal: controller.signal });
         if (controller.signal.aborted) return;
         if (response.status === 204) {
@@ -180,7 +188,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       if (focusListener) window.removeEventListener("focus", focusListener);
       if (visibilityListener) document.removeEventListener("visibilitychange", visibilityListener);
     };
-  }, [clientAccessMode, desktopState?.paused, markAccessExpired, refreshAccess]);
+  }, [clientAccessMode, desktopState?.paused, markAccessExpired, pinnedSessionKey, refreshAccess, selectedSessionId]);
 
   useEffect(() => {
     const bridge = desktopBridge();
@@ -196,12 +204,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const installUpdate = useCallback(() => {
     void desktopBridge()?.installUpdate().then((state) => { if (state) setDesktopState(state); }, () => {});
-  }, []);
+  }, [setDesktopState]);
 
   return (
     <DisplayPreferencesProvider>
       <LiveClockProvider running={!desktopState?.paused}>
-        <SessionCatalogProvider sessions={sessions} loading={loading} connected={connected} readiness={catalogReadiness}>
+        <SessionCatalogProvider sessions={sessions} loading={loading} connected={connected} paused={Boolean(desktopState?.paused)} readiness={catalogReadiness}>
           <CommandCenterShell
             pathname={pathname}
             sessions={sessions}

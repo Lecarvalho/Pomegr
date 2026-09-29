@@ -26,8 +26,8 @@ harnesses:
     provider: anthropic
     models:
       fast: claude-haiku-4-5
-      balanced: claude-sonnet-5
-      strong: claude-opus-5
+      balanced: claude-sonnet-5-5
+      strong: claude-opus-5-5
     startup:
       orchestrator: 40000
       subagent: 27000
@@ -36,8 +36,8 @@ harnesses:
   codex:
     provider: openai
     models:
-      fast: gpt-5.6-luna
-      balanced: gpt-5.6-terra
+      fast: gpt-6-luna
+      balanced: gpt-6-sol
       strong: gpt-6-astra
     startup:
       orchestrator: 46000

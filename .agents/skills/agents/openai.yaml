@@ -1,0 +1,5 @@
+interface:
+  display_name: "ACOS"
+  short_description: "Size a task against the project's session limits, compose an ACOS run manifest."
+policy:
+  allow_implicit_invocation: false

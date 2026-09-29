@@ -362,6 +362,7 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
       durationMs: session.durationMs,
       cost: fields(session.cost, ["amount", "currency", "type", "observedAt"]),
       summary: fields(session.summary, ["text", "observedAt", "source"]),
+      signal: publicSignal(session.signal),
       progress: fields(session.progress, ["phase", "percent", "remainingMinutesMin", "remainingMinutesMax", "confidence", "reportedAt"]),
       pomegrPlugin: fields(session.pomegrPlugin, ["status", "version", "policyStatus", "policyVersion", "observedAt"]),
     } : null,

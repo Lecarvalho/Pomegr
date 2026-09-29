@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +12,7 @@ import {
   firstSuccessfulClaudeToolOutcome,
 } from "../monitor/providers/claude-tool-detail.mjs";
 import { createClaudeProvider } from "../monitor/providers/claude.mjs";
-import { parseCodexActivityRecords, parseCodexCanonicalTurns } from "../monitor/providers/codex-activity-events.mjs";
+import { bindCodexFileChanges, parseCodexActivityRecords, parseCodexCanonicalTurns } from "../monitor/providers/codex-activity-events.mjs";
 import { parseProviderSessionEvidence } from "../monitor/providers/provider-contract.mjs";
 import { SessionObservationCheckpointStore } from "../monitor/session-observation-checkpoints.mjs";
 import {
@@ -263,6 +265,139 @@ test("Codex apply_patch headers become created/edited/moved/deleted only for a c
   ], { actor: ACTOR, sourceKey: "apply-patch-no-cwd" });
   assert.equal(noCwd[0].status, "completed");
   assert.equal(noCwd[0].fileChanges, null, "without a cwd, evidence degrades to null instead of throwing");
+});
+
+test("Codex binds successful structured targets to their own real Git repository without retaining roots", async (t) => {
+  const launch = await realTempDir(t, "pomegr-codex-launch-repo-");
+  const other = await realTempDir(t, "pomegr-codex-other-repo-");
+  await Promise.all([mkdir(path.join(launch, "src")), mkdir(path.join(other, "src"))]);
+  for (const root of [launch, other]) execFileSync("git", ["-C", root, "init", "--quiet"], { stdio: "ignore" });
+  const absoluteTarget = path.join(other, "src", "outside-launch.ts");
+  const patch = `*** Begin Patch\n*** Add File: ${absoluteTarget}\n+x\n*** End Patch`;
+  const pending = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: { type: "function_call", name: "apply_patch", call_id: "cross-root", arguments: JSON.stringify({ patch }) } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "cross-root" } },
+  ], { actor: ACTOR, cwd: launch, deferFileChanges: true });
+  const canonicalLaunch = fs.realpathSync.native(launch);
+  const canonicalOther = fs.realpathSync.native(other);
+  const roots = new Map([[canonicalLaunch, { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalLaunch, recognized: true }], [canonicalOther, { repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", root: canonicalOther, recognized: true }]]);
+  const bound = await bindCodexFileChanges(pending, { resolveRepository(directory) {
+    return [...roots].find(([root]) => directory === root || directory.startsWith(`${root}${path.sep}`))?.[1] || null;
+  } });
+  assert.deepEqual(bound[0].fileChanges, [{ repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", path: "src/outside-launch.ts", kind: "created", previousPath: null }]);
+  assert.equal(JSON.stringify(bound).includes(launch), false);
+  assert.equal(JSON.stringify(bound).includes(other), false);
+});
+
+test("Codex binding rejects traversal and folders the resolver cannot prove as Git roots", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-binding-invalid-");
+  const pending = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: { type: "function_call", name: "apply_patch", call_id: "invalid", arguments: JSON.stringify({ patch: "*** Begin Patch\n*** Add File: ../escape.ts\n+x\n*** End Patch" }) } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "invalid" } },
+  ], { actor: ACTOR, cwd, deferFileChanges: true });
+  const bound = await bindCodexFileChanges(pending, { resolveRepository: async () => ({ repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: cwd }) });
+  assert.equal(bound[0].fileChanges, null);
+});
+
+test("Codex uses the recorded turn cwd for a relative structured mutation", () => {
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "turn_context", payload: { cwd: "C:\\repo-b" } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: { type: "function_call", name: "apply_patch", call_id: "turn-cwd", arguments: JSON.stringify({ patch: "*** Begin Patch\n*** Add File: src/from-turn.ts\n+x\n*** End Patch" }) } },
+    { timestamp: "2026-09-22T11:00:02.000Z", type: "response_item", payload: { type: "function_call_output", call_id: "turn-cwd" } },
+  ], { actor: ACTOR, cwd: "C:\\repo-a", deferFileChanges: true });
+  assert.equal(calls[0].fileChangeCwd, "C:\\repo-b");
+});
+
+test("Codex repository binding deduplicates directories and caps resolver concurrency", async (t) => {
+  const root = await realTempDir(t, "pomegr-codex-binding-concurrency-");
+  const directories = await Promise.all(Array.from({ length: 12 }, async (_, index) => {
+    const directory = path.join(root, `dir-${index}`);
+    await mkdir(directory);
+    return directory;
+  }));
+  const calls = directories.map((directory, index) => ({
+    id: `call-${index}`, status: "completed", fileChangeCwd: root,
+    fileChangeCandidates: [{ target: path.join(directory, "created.ts"), kind: "created" }],
+  }));
+  const canonicalRoot = fs.realpathSync.native(root);
+  let active = 0;
+  let peak = 0;
+  let callsToResolver = 0;
+  const bound = await bindCodexFileChanges(calls, { async resolveRepository() {
+    callsToResolver += 1;
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    active -= 1;
+    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalRoot, recognized: true };
+  } });
+  assert.equal(callsToResolver, directories.length, "one lookup per distinct existing target directory");
+  assert.ok(peak <= 4, `expected at most four concurrent lookups, saw ${peak}`);
+  assert.equal(bound.every((call) => call.fileChanges?.length === 1), true);
+
+  await bindCodexFileChanges([calls[0], calls[0]], { async resolveRepository() {
+    callsToResolver += 1;
+    return { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: canonicalRoot, recognized: true };
+  } });
+  assert.equal(callsToResolver, directories.length + 1, "repeated directory shares one promise within a bind pass");
+});
+
+test("Codex exec never infers nested apply_patch evidence from wrapper source or completion", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-exec-file-change-");
+  const execInput = `const result = await tools.apply_patch(${JSON.stringify(APPLY_PATCH_TEXT)});`;
+  const call = (callId, output) => parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "custom_tool_call", name: "exec", call_id: callId, input: execInput,
+    } },
+    ...output ? [{ timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: {
+      type: "custom_tool_call_output", call_id: callId, ...output,
+    } }] : [],
+  ], { actor: ACTOR, sourceKey: callId, cwd });
+
+  const succeeded = call("exec-patch-ok", { output: "PRIVATE_OUTPUT_MUST_NOT_LEAK" });
+  assert.equal(succeeded[0].tool, "Dynamic tool", "the outer exec remains the recorded activity");
+  assert.equal(succeeded[0].detail, "exec");
+  assert.equal(succeeded[0].status, "completed");
+  assert.equal(succeeded[0].fileChanges, null);
+  assert.equal(Object.hasOwn(succeeded[0], "fileChangeCandidates"), false);
+  assertNoPrivateFixtureSentinels(succeeded, "Codex nested apply_patch wrapper");
+
+  const failed = call("exec-patch-failed", { output: "PRIVATE_OUTPUT_MUST_NOT_LEAK", is_error: true });
+  assert.equal(failed[0].status, "failed");
+  assert.equal(failed[0].fileChanges, null);
+
+  const running = call("exec-patch-running", null);
+  assert.equal(running[0].status, "running");
+  assert.equal(running[0].fileChanges, null);
+});
+
+test("Codex exec ignores apply_patch decoys and dynamic arguments", async (t) => {
+  const cwd = await realTempDir(t, "pomegr-codex-exec-decoys-");
+  const literalCall = `tools.apply_patch(${JSON.stringify(APPLY_PATCH_TEXT)})`;
+  const input = [
+    `const quoted = ${JSON.stringify(literalCall)};`,
+    `// ${literalCall}`,
+    `/* ${literalCall} */`,
+    "const template = `tools.apply_patch('*** Begin Patch\\n*** Add File: decoy.ts\\n*** End Patch')`;",
+    `const patch = ${JSON.stringify(APPLY_PATCH_TEXT)};`,
+    "await tools.apply_patch(patch);",
+    `await tools.apply_patch(${JSON.stringify(APPLY_PATCH_TEXT)} + suffix);`,
+    `await tools.other(${JSON.stringify(APPLY_PATCH_TEXT)});`,
+    `await fake.tools.apply_patch(${JSON.stringify(APPLY_PATCH_TEXT)});`,
+  ].join("\n");
+  const calls = parseCodexActivityRecords([
+    { timestamp: "2026-09-22T11:00:00.000Z", type: "response_item", payload: {
+      type: "custom_tool_call", name: "exec", call_id: "exec-decoys", input,
+    } },
+    { timestamp: "2026-09-22T11:00:01.000Z", type: "response_item", payload: {
+      type: "custom_tool_call_output", call_id: "exec-decoys", output: "PRIVATE_OUTPUT_MUST_NOT_LEAK",
+    } },
+  ], { actor: ACTOR, sourceKey: "exec-decoys", cwd });
+
+  assert.equal(calls[0].tool, "Dynamic tool");
+  assert.equal(calls[0].status, "completed");
+  assert.equal(calls[0].fileChanges, null);
+  assertNoPrivateFixtureSentinels(calls, "Codex nested apply_patch decoys");
 });
 
 test("Codex shell/exec command items never record file changes", async (t) => {

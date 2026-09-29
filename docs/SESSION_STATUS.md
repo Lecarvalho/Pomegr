@@ -6,6 +6,10 @@ This is the editable comparison of Pomegr's session-level status rules. Keep eac
 
 Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [OBSERVATION_CACHE.md](OBSERVATION_CACHE.md) remains the operational contract.
 
+The inventory of evidence and integration gaps is
+[Limitations](internal/architecture/limitations.md#session-status-coverage).
+This page owns the precise status rules and precedence.
+
 Implementation note: the Claude non-live -> Idle rule below is implemented in the working tree. This review did not restart the monitor, so an already-running process can still use the previous Unknown fallback.
 
 ## Global scope requirement
@@ -57,7 +61,7 @@ Evidence owners: [Claude catalog](../monitor/providers/claude.mjs), [Claude back
 | Provider | Condition | Limitation |
 | --- | --- | --- |
 | Claude | An explicit source-file override is live. Otherwise, when the registry directory exists, a retained registration or primary/subagent file activity within 15 seconds establishes live status. Without that directory, file activity within five minutes establishes live status. | Registry entries are removed on a positive process-owner mismatch. Missing owner fields or process-inspection failure can leave registration usable without proving ownership. Recency is a compatibility heuristic, not proof that a process is executing. |
-| Codex | At least one root/related agent is live under its selected lifecycle evidence: owning-runtime presence, validated native Windows runtime ownership, or unresolved structured execution/input evidence. | Recorded starts can remain active through silence. A recorded completed turn alone is non-live; validated runtime ownership can keep an idle agent live. Native lock semantics are not inferred on Unix without validation. |
+| Codex | At least one root/related agent is live under its selected lifecycle evidence: owning-runtime presence, validated native Windows runtime ownership, or unresolved structured execution/input evidence. | Recorded starts can remain active through silence. On Windows, unresolved work whose thread and root writer locks are missing or uncontended when observed is never live; it shows as Unknown without claiming completion. A recorded completed turn alone is non-live; validated runtime ownership can keep an idle agent live. Native lock semantics are not inferred on Unix without validation. |
 
 Sources: [Claude discovery](../monitor/session-discovery.mjs), [registry ownership](../monitor/session-registry.mjs), [Codex observation](../monitor/providers/codex-liveness.mjs).
 

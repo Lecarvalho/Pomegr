@@ -70,8 +70,10 @@ function createStubRuntime({ store = null, storageReadiness = "ready" } = {}) {
 function toolCall({ timestamp, actorId = "agent-1", fileChanges }) {
   return { timestamp, actor: { id: actorId }, fileChanges };
 }
+// Legacy launch-bound evidence (restored through withLegacyRepositoryAttribution): the
+// index resolves each session's repository from its launch cwd, as before the identity rule.
 function snapshot({ providerId = "claude", localSessionId, cwd, toolCalls }) {
-  return { providerId, localSessionId, evidence: { session: { cwd }, toolCalls } };
+  return { providerId, localSessionId, evidence: { session: { cwd, repositoryAttribution: "launch" }, toolCalls } };
 }
 function stubResolver(repositoryId, root) {
   return async () => ({ repositoryId, root });
@@ -151,6 +153,38 @@ test("sessionFiles groups file_changes by file: newest kind, change count, newes
 });
 
 // --- repositoryFiles: distinct folder rollups, never sums ---
+
+test("file history hides stale indexed rows until repository-binding migration completes", async (t) => {
+  const store = await openStore(t);
+  let ready = false;
+  insertFile(store, { id: 1, repositoryId: repoId(1), path: "old.ts" });
+  insertChange(store, { fileId: 1, sessionId: "codex:old", kind: "edited", observedAt: 1 });
+  const { stub, source } = await buildSource(store, { demandedSessionIds: () => ["codex:old"], indexReady: () => ready });
+  source.repositoryFiles(repoId(1));
+  await stub.runCycle();
+  assert.deepEqual(source.sessionFiles("codex:old"), { readiness: "rebuilding", files: [], truncated: false });
+  assert.equal(source.repositoryFiles(repoId(1)).readiness, "rebuilding");
+  ready = true;
+  await stub.runCycle();
+  assert.equal(source.sessionFiles("codex:old").readiness, "ready");
+});
+
+test("multi-repository session paths stay unavailable in the single-repository summary", async (t) => {
+  const store = await openStore(t);
+  const sessionId = "codex:cross-repository";
+  for (const id of [1, 2]) {
+    insertFile(store, { id, repositoryId: repoId(id), path: "src/shared.ts" });
+    insertChange(store, { fileId: id, sessionId, agentId: "primary", kind: "edited", observedAt: id });
+  }
+  const { stub, source } = await buildSource(store, { demandedSessionIds: () => [sessionId] });
+  await stub.runCycle();
+  assert.deepEqual(source.sessionFiles(sessionId), { readiness: "unavailable", files: [], truncated: false });
+  source.repositoryFiles(repoId(1));
+  source.repositoryFiles(repoId(2));
+  await stub.runCycle();
+  assert.equal(source.repositoryFiles(repoId(1)).files[0].fileId, "f1");
+  assert.equal(source.repositoryFiles(repoId(2)).files[0].fileId, "f2");
+});
 
 test("repositoryFiles: distinct-session folder rollups (never a per-file sum), deleted flag, folders vs historicalFolders", async (t) => {
   const store = await openStore(t);

@@ -9,6 +9,30 @@ import { contextAllocationFromCategories, contextCategoryKind } from "./context-
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
 const execFile = promisify(execFileCallback);
+// A `rev-parse --show-toplevel` answer is reused for the same freshness the providers'
+// memoized repository resolver already applies (session-identity.mjs, 300 s).
+const GIT_ROOT_TTL_MS = 300_000;
+const GIT_ROOT_MAX_ENTRIES = 256;
+
+/**
+ * One Git root lookup per normalized directory: concurrent callers share the in-flight
+ * `git rev-parse --show-toplevel`, and its answer (a root or null) is reused for `ttlMs`
+ * from when that lookup started. A rejected lookup is not retained.
+ */
+export function createGitRootLookup(readGitRoot, { now = Date.now, ttlMs = GIT_ROOT_TTL_MS, maxEntries = GIT_ROOT_MAX_ENTRIES } = {}) {
+  const entries = new Map();
+  return function gitRoot(cwd) {
+    const key = path.resolve(cwd);
+    const cached = entries.get(key);
+    if (cached && now() - cached.at < ttlMs) return cached.value;
+    const entry = { at: now(), value: Promise.resolve().then(() => readGitRoot(key)) };
+    entries.delete(key);
+    entries.set(key, entry);
+    while (entries.size > maxEntries) entries.delete(entries.keys().next().value);
+    entry.value.catch(() => { if (entries.get(key) === entry) entries.delete(key); });
+    return entry.value;
+  };
+}
 const STORE_VERSION = 1;
 const MAX_REVISIONS_PER_TARGET = 10;
 const MAX_REVISIONS = 100;
@@ -151,15 +175,16 @@ export function createRepositoryInventoryRuntime(options = {}) {
   const persistence = options.persistence !== false;
   const storeFile = options.storeFile;
   if (typeof storeFile !== "string" || !path.isAbsolute(storeFile)) throw new TypeError("Repository inventory store requires an absolute file path");
-  const gitRoot = options.gitRoot || (async (cwd) => {
+  const readGitRoot = options.gitRoot || (async (cwd) => {
     try {
       const { stdout } = await execFile("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
         windowsHide: true, timeout: 5_000, maxBuffer: 16 * 1024,
       });
-      const root = path.resolve(String(stdout || "").trim());
-      return path.isAbsolute(root) ? root : path.resolve(cwd);
-    } catch { return path.resolve(cwd); }
+      const root = String(stdout || "").trim();
+      return path.isAbsolute(root) && !/[\u0000-\u001f\u007f]/u.test(root) ? path.resolve(root) : null;
+    } catch { return null; }
   });
+  const gitRoot = createGitRootLookup(readGitRoot, { now, ttlMs: GIT_ROOT_TTL_MS, maxEntries: GIT_ROOT_MAX_ENTRIES });
   const cache = createCommittedResponseCache({ includeRevision: true, now });
   const targets = new Map();
   const roots = new Map();
@@ -185,13 +210,26 @@ export function createRepositoryInventoryRuntime(options = {}) {
     }
   }
 
-  const ready = (async () => {
+  async function load() {
     let loaded = null;
-    if (persistence) try { loaded = safePersistedState(JSON.parse(await readFile(storeFile, "utf8")), now); } catch { /* first run or invalid store */ }
-    if (persistence && !loaded) {
+    try { loaded = safePersistedState(JSON.parse(await readFile(storeFile, "utf8")), now); } catch { /* first run or invalid store */ }
+    if (!loaded) {
       try { loaded = safePersistedState(JSON.parse(await readFile(`${storeFile}.bak`, "utf8")), now); } catch { /* no valid backup */ }
     }
+    return loaded;
+  }
+
+  const ready = (async () => {
+    const loaded = persistence ? await load() : null;
     state = loaded || freshState(now);
+    // File evidence can use opaque IDs before any single-session association
+    // exists (for example a multi-repository session). Save their salt first.
+    if (!persistence || loaded) return;
+    try { await persist(state); } catch {
+      // A concurrent first-run writer (Windows rejects the contended rename) may
+      // have committed its own salt; adopt it. Otherwise the next commit retries.
+      state = await load() || state;
+    }
   })();
 
   async function commitState(transform) {
@@ -244,12 +282,12 @@ export function createRepositoryInventoryRuntime(options = {}) {
     };
   }
 
-  async function identify(cwd) {
+  async function identify(cwd, recognizedRoot = null) {
     await ready;
     const normalizedCwd = path.resolve(cwd);
-    let root = roots.get(normalizedCwd);
+    let root = recognizedRoot || roots.get(normalizedCwd);
     if (!root) {
-      root = await gitRoot(normalizedCwd);
+      root = await gitRoot(normalizedCwd) || normalizedCwd;
       roots.set(normalizedCwd, root);
     }
     const identityRoot = process.platform === "win32" ? root.toLowerCase() : root;
@@ -264,12 +302,15 @@ export function createRepositoryInventoryRuntime(options = {}) {
    * repository ID plus the real Git (or fallback) root, reusing the same identity
    * `identify` computes. The root never leaves this function's callers.
    */
-  async function resolveRepository(cwd) {
-    if (typeof cwd !== "string" || cwd.length === 0) return null;
+  async function resolveRepository(cwd, { requireGit = false } = {}) {
+    if (typeof cwd !== "string" || cwd.length === 0 || !path.isAbsolute(cwd)
+      || /[\u0000-\u001f\u007f]/u.test(cwd)) return null;
     try {
-      const { repositoryId } = await identify(cwd);
+      const recognizedRoot = requireGit ? await gitRoot(cwd) : null;
+      if (requireGit && (!recognizedRoot || !path.isAbsolute(recognizedRoot))) return null;
+      const { repositoryId } = await identify(cwd, recognizedRoot);
       const target = targets.get(repositoryId);
-      return target ? { repositoryId, root: target.root } : null;
+      return target ? { repositoryId, root: target.root, ...(requireGit ? { recognized: true } : {}) } : null;
     } catch {
       return null;
     }

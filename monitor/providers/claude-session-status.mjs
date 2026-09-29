@@ -17,6 +17,10 @@ function remoteIdentity(value) {
 // Provider transport identities stay inside the adapter, never in catalog/evidence.
 export function normalizeClaudeSessionRegistryEntry(value, updatedAt) {
   const entry = normalizeSessionRegistryEntry(value, updatedAt);
+  // Claude Code writes `shell` when the primary agent is idle while a background
+  // shell task (a backgrounded Bash command or a Monitor) is still running. The
+  // session is idle between turns, so an owned one stays Open, never Unknown.
+  if (entry?.status === "shell") entry.status = "idle";
   const ownerStart = typeof value?.startedAt === "number" ? value.startedAt : Date.parse(value?.startedAt || "");
   if (entry && Number.isFinite(ownerStart) && ownerStart > 0) entry.ownerStartedAt = ownerStart;
   if (entry && value.entrypoint === "sdk-cli" && remoteIdentity(value.bridgeSessionId)) {

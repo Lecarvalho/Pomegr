@@ -429,7 +429,9 @@ test("keeps only current and previous immutable page generations", async (t) => 
   for (let revision = 1; revision <= 3; revision += 1) {
     await store.publish("codex:prune", { requests: [request(`${revision}`.padStart(16, "0"), `2026-09-04T00:0${revision}:00Z`)], activity: [], complete: true });
   }
-  await new Promise((resolve) => setTimeout(resolve, 25));
+  const firstStep = await store.maintenanceStep({ budget: 1 });
+  assert.equal(firstStep.complete, false, "maintenance yields after its bounded directory-entry budget");
+  await store.drain();
   const generations = (await readdir(directory, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
   assert.equal(generations.length, 2);
   assert.equal((await new SessionHistoryStore({ directory }).read("codex:prune", { kind: "requests" })).status, "ready");

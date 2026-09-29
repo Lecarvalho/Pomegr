@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { realpath, writeFile } from "node:fs/promises";
+import fs from "node:fs";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { createMonitorRuntime } from "../monitor/server.mjs";
@@ -293,7 +294,7 @@ test("the transcript path endpoint is one-shot, agent-scoped, and rejects browse
   assert.deepEqual([claudePath.status, codexPath.status, primaryPath.status, deniedPath.status], [200, 200, 404, 403]);
   assert.deepEqual(await claudePath.json(), { path: transcriptPaths.claudeChildFile });
   // Codex discovery resolves aliases, including Windows runner short temp paths.
-  assert.deepEqual(await codexPath.json(), { path: await realpath(transcriptPaths.codexChildFile) });
+  assert.deepEqual(await codexPath.json(), { path: fs.realpathSync.native(transcriptPaths.codexChildFile) });
   assert.doesNotMatch(await primaryPath.text(), /claudeFile|\.jsonl|PRIVATE/i);
   assert.doesNotMatch(await deniedPath.text(), /agent-child-fixture|\.jsonl|PRIVATE/i);
 });
@@ -318,7 +319,7 @@ test("Claude transcript paths resolve by discovery, including agents recorded af
 
 test("Codex transcript paths resolve from thread metadata without a full session read", async (context) => {
   const { codex, codexTurnReads, transcriptPaths } = await syntheticProviders(context);
-  assert.equal(await codex.readTranscriptPath("codex-fixture-parent", "agent-codex-fixture-child"), await realpath(transcriptPaths.codexChildFile));
+  assert.equal(await codex.readTranscriptPath("codex-fixture-parent", "agent-codex-fixture-child"), fs.realpathSync.native(transcriptPaths.codexChildFile));
   assert.deepEqual(codexTurnReads, [], "a copy lookup never reads thread turns");
   assert.equal(await codex.readTranscriptPath("codex-fixture-parent", "primary"), null);
   assert.equal(await codex.readTranscriptPath("../codex-fixture-parent", "agent-codex-fixture-child"), null);

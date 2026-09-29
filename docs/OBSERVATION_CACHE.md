@@ -4,6 +4,9 @@ This document is the canonical operational contract for Pomegr's provider-neutra
 session observation cache, API serving model, and progressive UI readiness. Design plans
 under `docs/plans/` are historical records; when a plan and this document differ, this
 document and `AGENTS.md` govern repository changes.
+The [Limitations reference](internal/architecture/limitations.md)
+owns the provider-related and Pomegr-specific inventory and capability matrix;
+this document retains authority over acquisition, committed evidence, and serving.
 
 ## Non-negotiable invariants
 
@@ -30,6 +33,10 @@ document and `AGENTS.md` govern repository changes.
   established start: the adapter reads complete records in yielding bounded chunks and
   retains only the earliest eligible timestamp and bounded pending command linkage in
   a bounded private per-file cache. Source-generation checks invalidate replaced files.
+  A transcript that only grew while it was being read (same identity, and the 256-byte
+  suffix ending at the observed size still matches) keeps the observed prefix's answer, and
+  the next read continues from that prefix. A replaced, truncated, or rewritten prefix still
+  fails that acquisition.
   Refresh and checkpoint replacement retain the last known-good revision until a complete
   validated candidate commits; GETs never reclassify raw records. A changed Claude source
   normalization identity schedules existing checkpoints for re-observation without
@@ -83,7 +90,7 @@ Use these names in code, tests, diagnostics, and architecture discussions:
 | **U2 — Normalization** | Backend, provider adapter | Complete provider-native records | Bounded, privacy-filtered normalized candidate evidence |
 | **C — Commit** | Backend, shared observation store | A validated normalized candidate | One immutable L1 evidence revision |
 | **D — Derivation** | Backend, monitor jobs | Committed L1 evidence plus independently committed Git, resource, and usage state | Independently revisioned session domains, composed public state, catalog, Home, correlation, or usage responses |
-| **P — Persistence** | Backend, checkpoint writer | Committed L1 evidence | Privacy-filtered L2 checkpoint JSON |
+| **P — Persistence** | Backend, bounded persistence owner and incremental history store | Committed normalized evidence | Atomic L2 checkpoints and committed normalized history; maintenance runs separately |
 | **S — Serving** | Backend, API handlers | Committed L1 response revisions | A response body, loading shell, or `204 No Content`; never normalized evidence |
 | **F — Presentation** | Frontend, React | Provider-neutral API responses | Frontend view state and independently rendered regions |
 
@@ -143,9 +150,11 @@ D projects each committed session into seven independently revisioned response d
 `session-summary` alone contains the session header and Overview inputs: lifecycle,
 readiness-qualified agent status counts, all-agent context, current-agent rows, two efficiency signals, a repository summary,
 the latest 48 request-local snapshots with agent roles, plan progress and tasks, work
-kind totals, the normalized cost estimate, and a readiness-qualified resources-presence
-flag used only to decide whether the Resources tab can be hidden. `signals` owns the
-committed Efficiency, Cache lifetime, and agent-reported Reported signals sections.
+kind totals, the bounded session signal for the header tag, the normalized cost
+estimate, and a readiness-qualified resources-presence flag used only to decide
+whether the Resources tab can be hidden. `signals` owns the committed Efficiency,
+Cache lifetime, and agent-reported Reported signals sections, including the same
+session signal in its detailed row.
 Deterministic evidence and labeled inferences remain distinct from
 agent-reported signals, which may be stale. Missing source evidence remains unavailable;
 historical and current projections remain isolated. Current-agent fallbacks come from
@@ -262,6 +271,50 @@ The overview adds no provider identities, work details, paths, or raw records.
 Request-page preloads use `overview=0` to omit the already-loaded overview;
 omission or `overview=1` retains the default response. Other values are rejected.
 
+#### Incremental history persistence
+
+Disk-backed contribution publication uses per-session SQLite schema version 5 in
+the existing private history directory. Indexed request/activity rows and stable
+request-number records are the bounded storage units. One transaction publishes
+changed rows, compact index references, readiness, admission fences, and the current
+revision together. SQLite's rollback journal preserves the previous complete
+transaction until commit; it replaces the full-generation manifest switch for this
+format. DELETE journal mode avoids an accumulating WAL or replay chain. This is an
+in-process persistence implementation, not another service or a provider worker.
+
+A small suffix contribution reads and writes only its supplied normalized identities,
+their correlation/number records, and constant-size metadata. It does not deserialize
+or rewrite the retained history, even with `maxResident: 0`. Unchanged rows remain in
+the same indexed pages. Full explicitly requested history replay still performs a
+complete validated replacement. The first background contribution to legacy v3
+history migrates its committed snapshot once; GETs continue to read legacy committed
+indexes and never perform that migration. Existing v3 generations are retained as
+legacy evidence, not refreshed compatibility copies on each new contribution.
+
+Contribution admission retains at most 24 pending domain/session keys, 16 MiB in
+aggregate, 8 MiB per contribution, and 16,384 supplied rows. Same-epoch queued updates
+merge by normalized row identity with newer values winning; source epoch changes
+replace the pending contribution. These bounds constrain admission, not the lifetime
+of already committed normalized evidence. Overflow or write failure preserves the
+last committed history. Runtime retries retain at most 32 keys/16 MiB with three
+attempts; state/catalog polls never add to this demand.
+
+History GETs use read-only transactions. They read compact normalized indexes and
+only the requested detail rows, preserving stable numbering, grouped Activity,
+request overviews, and existing browser revision semantics. They never open a writable
+database, recover a journal, publish, compact, or replay provider evidence. Following
+an interrupted writer, a hot rollback journal can temporarily make read-only history
+unavailable until background publication or scheduled maintenance opens it for recovery.
+The previous complete transaction survives; ordinary GETs do not repair it.
+
+Free database pages are reused. Explicit low-priority maintenance reclaims at most one
+free page per visited database, within the shared maintenance batch budget. Legacy
+generation cleanup keeps the current and preceding generation and deletes only
+recognized files incrementally; leases protect readers. Maintenance and compaction
+never run from a contribution or a GET. Persistent records contain only the same
+allowlisted normalized history metadata; raw content, native IDs, source paths,
+credentials, and diagnostic payloads remain excluded.
+
 Provider-owned `readSessionHistory` replays available session sources in the
 background. Complete normalized history has no 100-request or 200-event lifetime
 cutoff. Ordinary context, cache-event, report, and state-feed budgets remain
@@ -271,21 +324,21 @@ only normalized request snapshots, sanitized activity metadata, stable request
 numbers, and indexes. It excludes raw content, native identities, transcript
 paths, and private correlation keys. Generation files and a committed manifest
 allow bounded page reads without reparsing complete histories in GETs.
-Complete replay uses two bounded ownership lanes: one foreground slot for the
-selected session and one maintenance slot for live refreshes and restored sessions.
-A selected state request may promote or enqueue asynchronous replay when the
-committed history does not match its current private observation-source key; it
-still returns the current committed state immediately. Repeated state polls do not
-replay history whose source key already committed, and `/api/session-history`
-never queues replay. Projection-only session revisions, including resource refreshes,
-do not schedule provider history acquisition. A fresh provider observation does.
+Complete replay uses two bounded ownership lanes: one foreground slot for selected
+history demand and one background slot within the separate history scheduler.
+Only an Activity or Requests `/api/session-history` request may enqueue or promote
+asynchronous replay when committed history does not match its current private
+observation-source key; it still returns committed or loading history immediately.
+Startup, selection through state or domain APIs, state polling, and fresh provider
+observations do not automatically schedule complete replay. Observations update
+the private source proof so the next history demand can detect stale history.
 Same-session replay remains serialized and coalesces one follow-up when its source
 changes during an active read.
 The runtime retains at most 128 private attempted and completed source keys. A
 complete replay rejected by a newer contribution fence queues one follow-up; an
 incomplete stable source waits for a later source observation instead of spinning.
 A missing or invalid committed history manifest clears the matching proof so a
-later selected-state refresh can schedule repair. None of these keys enter history
+later history request can schedule repair. None of these keys enter history
 persistence, diagnostics, revision events, or browser state.
 Source-complete Activity may commit first with null request links and durations.
 Provider-private history ownership annotations stay in a separate history projection;
@@ -933,6 +986,59 @@ the scheduler must not silently fall back to wall-clock time when the adapter su
 This clock wiring does not change cache-only GETs, committed evidence retention,
 revision or checkpoint semantics, or the browser privacy boundary.
 
+### Source ledger
+
+A provider-neutral source ledger (`monitor/providers/source-ledger.mjs`) indexes
+session-to-file topology (root, child, fork, shared group) and one filesystem generation
+per known file, so a selected session's family can be resolved without walking an entire
+transcript tree on every read. It parses no provider record itself: an adapter translates
+its own bounded header read into the ledger's neutral shape before ingesting it. The
+adapter feeds it from its periodic header enumeration (each pass starts 60 seconds after
+the previous one finishes), from discovery loads, and from the files it lists and parses
+while resolving a family. The index can lag the disk and is bounded (the oldest non-live
+entries are evicted first), so it is a header cache and a root locator, never proof that a
+family is complete.
+
+Family completeness comes from the disk. A family is closed over the headers of the files
+the adapter lists, breadth first, so the result does not depend on listing order, and is
+bounded to 500 identities; exceeding the bound rejects acquisition and the last committed
+evidence stays. A listed file's header is taken from the ledger only while the file keeps
+the filesystem identity it had when indexed and has only grown since; otherwise it is
+parsed again. When two files carry one identity, the adapter-defined preferred copy is
+used. Remembered cold misses expire after 60 seconds or when the identity is indexed. File
+paths and headers held by the ledger are monitor-private working state: they never enter
+evidence, checkpoints, diagnostics, logs, or browser responses, and the ledger's diagnostic
+surface reports bounded counts only.
+
+Every map key the ledger derives from a file path (for cached-header and file-ownership
+lookups) goes through one path-canonicalization step first, memoized per literal input
+string. This is what lets a configured-root path (from a directory listing) and a
+realpath-resolved path (from a notification filter) for the same physical file converge on
+one ledger identity instead of shadowing each other, which matters for a junction- or
+symlink-aliased provider home. The memoization keeps the cost to one resolution per distinct
+path string, not per event; it holds twice the ledger's entry bound (at least 8,192 strings),
+so a warm pass over a full ledger never re-resolves every file. A resolution that fails (a
+path not yet created, a transient error) keys on the literal string (lowercased on Windows) for that call only and is
+not memoized, so the path converges on its canonical key once it resolves. `cachedHeader()` performs exactly one `statSync` per call and,
+on a hit, also refreshes the owning identity's growth observation, so `recency()` stays
+current for any caller that only ever reaches a file through `cachedHeader()` (such as
+Codex's family-member re-read), not only through `noticeSource()`.
+
+Both Claude and Codex resolve their selected session through this same ledger contract, each
+with its own instance. Codex resolves a selected session's rollout family with `resolveCodexRolloutFamily`
+(`monitor/providers/codex-session-metadata.mjs`). The ledger locates the root's file.
+Descendants are always created after their root, so the adapter lists the dated
+`YYYY/MM/DD` rollout directories from one day before the root file's own directory on,
+every undated directory, and the whole archive root; an archived or undated root, or one
+that joins another thread's shared group (and so can have older siblings), lists the whole
+active tree. It reads each listed file's header, yielding to the event loop between
+batches, closes the family over those headers, and re-reads each member's full header from
+its file. A root the ledger does not know, a failed or oversized listing, or a member whose
+file is gone or now carries another identity falls back to the bounded whole-tree walk,
+whose result is ingested. An empty walk result is remembered as a miss unless the root's
+indexed file still exists. File modification time is not used to detect
+change: Codex does not advance a rollout's modification time while appending to it.
+
 ### Event-driven acquisition pipeline
 
 Provider notifications are the primary acquisition trigger. The ten-second poll is a
@@ -970,18 +1076,38 @@ discovering transcript changes.
                   10-second safety reconciliation -----^ (low priority)
 ```
 
-Each provider owns an independent observer and bounded worker concurrency, so a busy or
-failed Claude adapter cannot occupy Codex workers, and vice versa. Within one observer,
-duplicate events for a queued session coalesce. If a source changes while that session is
-already being acquired, one dirty-again pass is retained so the newest complete records
-are not lost. Sessions may acquire in parallel, but one session is never acquired by two
-workers concurrently. Each provider defaults to two interactive hydration slots plus
-one background slot. First publication for a live or needs-input session and explicit
-selection use urgent priority; ordinary source updates can occupy only one of the two
-interactive slots. Urgent work may use both. With a custom single interactive slot,
-urgent work leads queued updates but cannot preempt an acquisition already running.
+Each provider owns an independent observer and its own bounded worker-concurrency
+bookkeeping, so a busy or failed Claude adapter's queued work does not consume Codex's own
+concurrency slots, and vice versa. All providers still share one Node.js event loop:
+synchronous work inside one adapter's acquisition path (a blocking filesystem call, a
+spawned process) delays every other provider's async work too, independent-slot bookkeeping
+notwithstanding, which is why acquisition code is expected to prefer cheap, non-blocking
+checks and to yield cooperatively (see the source-ledger note above and the Claude index
+and owner-validation note under "Complete-record ingestion").
+Within one observer, duplicate events for a queued session coalesce. If a source changes
+while that session is already being acquired, one dirty-again pass is retained so the
+newest complete records are not lost. Sessions may acquire in parallel, but one session is
+never acquired by two workers concurrently. Claude and Codex both default to three
+interactive hydration slots plus one background slot, so one slot never has to serve every
+live session's source updates by itself. Two unrelated live source updates can normalize
+concurrently while one interactive slot remains reserved. First publication for a live or
+needs-input session and explicit selection use urgent priority; ordinary source updates can
+occupy every interactive slot except the reserved one. With a custom single interactive
+slot, urgent work leads queued updates but cannot preempt an acquisition already running.
 Promoting a queued session immediately rechecks capacity without concurrent acquisition
-of the same session.
+of the same session. A session that was absent from the observer's first catalog and is
+still within ten minutes of its own recorded creation is also treated as
+first-publication/urgent priority on each catalog refresh until it is hydrated, even when it
+has already finished, so a short-lived session is never queued behind the whole historical
+background working set; a session already present in the very first catalog an observer
+reads at startup is exempt from this rule, so a restart with many recently created sessions
+already on disk cannot flood the interactive lanes. Per-provider diagnostics record queue
+wait as one aggregate series (source-driven hydrations only, unchanged) plus one series per
+priority tier (urgent, source-update, background), with urgent work a viewer explicitly
+selected recorded separately as `queueWaitSelected` (its trace lane is `selected`; scheduling
+is unchanged, selections share urgent priority); the per-priority series sample every
+dequeued item from its own enqueue time, including urgent selections and background
+hydrations that never carried a source event, so a starved lane is visible on its own.
 
 Initial live hydration enters the queue directly with session-local preparation, ahead
 of bulk working-set preparation. It retains urgent eligibility across catalog refreshes
@@ -1010,6 +1136,38 @@ provider discovery caches; bounded provider-header inspection may identify the o
 session sooner. The router emits only provider-local session IDs and a catalog-dirty bit
 to the shared scheduler. Native paths, filenames, headers, and schemas never enter the
 normalized candidate, checkpoint, diagnostics, or browser response.
+
+A notification that marks the catalog dirty does not start its own discovery pass. The
+shared observer (every provider) keeps one catalog-dirty bit: an idle observer whose last
+catalog pass began at least one second earlier starts a fresh pass at once; otherwise a
+single trailing pass starts when that second has elapsed, or when the in-flight pass
+finishes if that is later. Any catalog pass that begins after the notification, including
+the ten-second reconciliation, answers it and is upgraded to a cache-bypassing pass. A
+burst of notifications therefore costs at most one discovery pass per second, and the last
+notification is always followed by a pass that starts after it, so a new session appears
+within about one second plus its discovery time. Known-session hydration is not delayed by
+this spacing; it still enters the queue in the same event-loop turn. Catalog-dirty session
+IDs are retained for the pass that answers them, and a failed pass keeps them for retry.
+
+Claude catalog discovery walks the projects tree through `fs.promises`, so the event loop
+is free between directory reads and file-stat batches. Each directory's listing is reused
+while its identity and modification time are unchanged and it had been unmodified for at
+least two seconds when it was read, since adding, removing, or renaming an entry advances
+the parent directory's modification time; every transcript is still stat-ed on every pass
+because appends do not change the directory. The result equals a full synchronous walk for
+the same tree: traversal order, the six-level depth limit, entry classification, missing
+roots, and read errors. Listings live only in memory, are replaced by each completed pass,
+and are never persisted, logged, or exposed. The rare synchronous resolver fallback walk
+shares the same listings.
+
+For Codex, a new rollout notification is filtered to a rollout-*.jsonl name with realpath
+containment in a configured root — the same check `notice`/`trustedRootFor` already apply —
+and, only then, noticed in the shared source ledger directly, so the owning session is
+located without a directory walk. Codex header recency comes from the newest complete
+record's own time, not the rollout file's modification time, which Codex does not advance
+reliably. The tail answer is cached by file size and mtime. A newest record larger than the
+64 KiB tail gets one 1 MiB read; only past that does recency fall back to the later of the
+creation time and the file mtime.
 
 Committed catalog revisions wake the browser through a same-origin server-sent event.
 The event contains only the fixed `sessions` domain and a non-negative revision; it is an
@@ -1115,6 +1273,25 @@ re-publishing it. All ownership stays in bounded adapter-private memory, never a
 checkpoint, browser response, diagnostic log, or transcript. This health bound is not
 an idle-session retention heuristic and cannot end an unresolved recorded turn.
 
+As approved by the product owner on 2026-09-28, work abandoned by a killed or crashed
+Codex process is never presented as live, so it does not enter Live at all, not even
+briefly after a restart. Codex takes a thread's writer lock before it creates the rollout
+(observed: lock 0.7 seconds before the file) and holds it while the thread is loaded. On
+Windows, when the provider lock directory exists, the liveness observation therefore reads
+the lock of each thread whose recorded work is unresolved. Each lock is read once per
+observation, synchronously, and the result is never retained, persisted, or exposed. A
+missing lock, or one readable without contention, is a release only when the
+cold-discovery contention probe agrees; a held lock at either read wins. Unresolved
+recorded work, meaning an open turn or an unmatched input wait, counts as live only when
+a writer could still resolve it: the thread has owning-runtime status or a confirmed
+owner, or its own lock or its root's lock is not released. Otherwise the thread reports
+status `unknown`, evidence `unavailable`, freshness `stale`, and reason `writer_released`,
+with its original observation timestamp. An unreadable lock, a missing lock directory,
+or a non-Windows platform gives no release evidence and keeps the recorded state. Release
+never establishes completion, idle, stopped, or success, and it never changes checkpoints
+or recorded lifecycle state. A Codex surface that wrote rollouts without taking writer
+locks would be misread as released. Every surface observed so far takes the lock.
+
 The lifecycle hook bridge, detached owner watcher, snapshot/lease persistence, and
 plugin build wiring are removed. Existing installed-plugin files and old user data
 are not deleted by the monitor and are not consumed. The plugin remains optional for
@@ -1138,15 +1315,35 @@ until a complete replacement validates and commits atomically.
 
 Codex recorded execution state is independent of runtime confirmation. A validated
 start remains in progress, and a structured unmatched input remains needs-input,
-until matching provider evidence resolves it; transcript silence is not a heartbeat
-failure or a completion event. Recognized terminal records retain idle/stopped even
+until matching provider evidence resolves it, while a writer could still resolve it (see
+the writer-lock rule above); transcript silence is not a heartbeat failure or a
+completion event. Recognized terminal records retain idle/stopped even
 when old. Their timestamps never advance just because the monitor polls. Structured
 lifecycle freshness means the retained evidence matches a complete acquired source
 generation, not that the provider process is currently computing. An ordinary append
 pending U1 acquisition or ending in an unfinished record does not replace that accepted
 lifecycle. U2 retains its original observation timestamp while matching file identity,
-monotonic growth, and the prior bounded suffix confirm append continuity. The full
-observer owns the successor once it has acquired the source; a bounded tail cannot
+monotonic growth, and the prior bounded suffix confirm append continuity. A bounded
+lifecycle tail may close retained work before full hydration when every intervening
+record fits the read window, all records are complete and parseable, the source
+generation stays stable across the read, and the existing lifecycle reducer accepts
+a terminal boundary newer than the retained turn and activity. Partial, malformed,
+gapped, unstable, older, or mismatched candidates retain the accepted lifecycle.
+This terminal-only path retains normalized evidence in bounded private memory; it
+does not acquire detail or history, change checkpoints, or run from a GET. Writer
+ownership can retain presence but cannot turn the terminal into working execution.
+Before a full live-body hydration finishes, ordinary Codex catalog candidates inspect
+at most a 128 KiB/256-record lifecycle tail. A session with a confirmed native writer
+owner may inspect at most a 4 MiB/2,048-record lifecycle tail so an explicit current-turn
+boundary can populate the header promptly after restart. This owner-scoped allowance
+does not treat ownership as execution, does not parse detail metrics, and does not widen
+history acquisition; absent explicit structured lifecycle evidence the row remains Open
+or Unknown until normal acquisition completes. When that complete stable tail contains
+fresh recognized provider activity but its turn boundary is still outside the bounded
+window, current owner confirmation may admit the existing short-window activity inference.
+The result remains labeled inferred; a structured terminal boundary still wins, and
+neither owner presence nor file recency alone can produce working state.
+The full observer otherwise owns the successor once it has acquired the source; a bounded tail cannot
 discard an accepted turn or unmatched input just because its source record is outside
 that tail. Before full observation, a complete tail may survive an unfinished append
 only when every intervening record remains within the continuous read window and no
@@ -1166,6 +1363,7 @@ unknown. A completed idle turn with confirmed current owner-backed presence is
 and stopped evidence retain precedence. Open never follows from a recent file alone. The grid displays In progress, Needs input, Idle, Stopped, Open, and Unknown.
 Unknown non-live entries must never be labeled Complete. A crash without a terminal
 record may leave unresolved work; no elapsed transcript-silence window guesses an end.
+On Windows, work whose thread and root writer locks are released is never live and shows as Unknown.
 Existing catalog, cold-discovery, working-set, and evidence-cache bounds remain in force.
 
 Live visibility is a shared D catalog projection, not a replacement for provider
@@ -1177,8 +1375,11 @@ rows, including states retained from recognized child/background aggregation, do
 expire under this rule. Ownership probes, monitor restarts, and viewing a session do
 not renew `updatedAt`; an expired row is shown under All while its underlying runtime
 presence is not thereby declared ended. One shared expiry timer schedules this
-projection; GETs continue to serve only committed response caches. Restart reprojects
-retained catalog rows before waiting for provider acquisition. A selected Open row
+projection. The same D commit updates the persisted session-directory lifecycle overlay,
+so Live filtering, the Live count, and the bounded catalog shell cannot disagree about an
+expired Open row. Header discovery never renews that overlay, and directory GETs remain
+read-only committed-cache/index reads. Restart reprojects retained catalog rows before
+waiting for provider acquisition. A selected Open row
 continues its normal detail polling even outside Live; this filter transition does
 not turn its current evidence into a historical snapshot.
 
@@ -1257,12 +1458,38 @@ React, persisted checkpoints, or browser API fields.
   been evicted. Other valid working-set records restore normally. This preserves
   last-known-good checkpoint evidence without allowing a delayed L2 record to
   replace newer U1/U2 evidence.
-- Catalog discovery remains lightweight and includes bounded historical rows so the
-  sidebar can show and select them without parsing their session sources.
-- Startup source preparation, transcript hydration, normalization, and checkpoint restore
-  are eager only for live or needs-input sessions and sessions updated within the last
-  seven days. Seven days is the provider-neutral maximum window required by current Home
-  correlations; missing or malformed timestamps remain catalog-only.
+- While that restoration is still running, a session requested through `/api/state`
+  or a session-domain GET that misses the L1 store, where it would otherwise queue a
+  selected hydration, restores its own checkpoint first. The bounded uncatalogued
+  probe is unchanged.
+  The GET only queues this work and answers `loading`; it never reads or parses
+  synchronously. The asynchronous load reads the one identity-keyed checkpoint file
+  (no directory scan), waits for the same private sidecar readiness, and applies the
+  same payload, legacy-upgrade, candidate-validation, lifecycle-downgrade, and
+  preserved-revision rules as the bulk pass. Fresh or already committed evidence
+  still wins. Each identity is tried at most once per restore window (at most 256),
+  and the bulk pass skips identities claimed on demand, so a record is never restored
+  twice and cannot replace a newer committed revision. A restored record publishes a
+  session revision event and is then served and revalidated exactly like a
+  bulk-restored one. A missing, invalid, or rejected checkpoint queues the ordinary
+  selected hydration. After restoration finishes, a miss hydrates directly as before.
+  This persists and exposes nothing new.
+- Header discovery inventories every eligible top-level session within the configured
+  provider roots and archive scope. Its acquisition batches and resident pages are bounded;
+  a batch limit is never a permanent limit on identities reachable in the directory.
+- Codex header enumeration reads each rollout header asynchronously through one file
+  handle, so the event loop is free between files. The same read classifies a header with
+  no valid session record (a complete window of at most 64 KiB is an explicit
+  non-candidate; anything else keeps the pass incomplete), without a second open. A
+  provider-owned in-memory cache reuses a rollout's header, or its non-candidate
+  classification, while the file's identity, size, modification and change times are
+  unchanged and it had been settled for two seconds when read; inconclusive reads are never
+  cached. Missing files leave the cache, a complete pass drops every file it did not visit,
+  and the cache holds at most 16,384 entries. Output equals an uncached pass. The cache is
+  never persisted, logged, or exposed.
+- Startup source preparation, transcript hydration and normalization are eager only for
+  live or needs-input sessions. Recent timestamps alone do not authorize detail hydration.
+  Historical identities remain selectable without acquiring their transcript bodies.
 - Selecting any known uncached historical row queues hydration for that one session. The
   API immediately returns its safe catalog identity with loading readiness, and the UI
   shows the session skeleton until a committed revision is ready.
@@ -1276,12 +1503,102 @@ React, persisted checkpoints, or browser API fields.
   from complete source records. Unchanged retained sessions and ordinary background
   reconciliation do not rebuild evicted history solely to refill the cache. Missing
   or incomplete sources remain loading; failed normalization can retry without a source append.
-- Home never schedules history work older than seven days. Shorter provider windows still
-  filter their own correlation inputs, while provider usage-limit values remain an
-  independent committed domain.
-- A reconciliation publishes the complete bounded catalog first, then prepares source
+- Home does not schedule historical detail or complete-history replay for its correlation
+  windows. Correlations use retained observations with explicit bounded coverage; provider
+  usage-limit values remain an independent committed domain.
+- A reconciliation publishes committed header batches first, then prepares source
   topology only for the eager working set. It must never prepare every old source merely
   because its catalog row exists.
+
+### Session inventory and directory coverage
+
+The monitor owns a normalized session-header inventory in an isolated table in its SQLite
+store. It is independent of detail checkpoints and the complete-history store. Discovery
+validates identities and commits lightweight rows before detail is available. Failed detail
+hydration cannot erase a valid discovered identity. Provider and top-level session identity
+form the deduplication key: active/archive generations contribute once, child agents never
+contribute, and a fork contributes only when the provider records it as a top-level session.
+
+**Available sessions** means the unique validated top-level identities in the committed
+inventory revision for the configured sources. Coverage is `discovering`, `complete`, or
+`partial`. The known count remains available while discovery proceeds. An exact total is
+present only after every configured source and provider enumerates successfully; unreadable,
+inaccessible, or inconclusive sources prevent that claim. A rescan retains the last completed
+total and its original observation timestamp separately, without calling it currently exact.
+
+`/api/sessions?mode=directory` serves a bounded page from committed normalized inventory.
+Search, lifecycle filters, and project/repository scope execute monitor-side. Rows are
+always ordered newest-created first; there is no other directory order. Pages default to
+25 rows and cannot exceed 100. SQLite performs filtering, counting, ordering, and page
+selection without materializing the complete inventory in memory. A cursor binds to the
+query and names the last row's creation position (keyset), not an offset or revision, so
+live-status updates and newly created sessions never move a later page; new sessions
+appear only on the first page. A cursor for another query or a malformed cursor restarts
+at the first page. The directory never receives a global
+session array. The default catalog response is a separate small shell feed for live,
+needs-input, pinned, and selected destinations, capped at 200 rows; its length is not
+the inventory total. Header scans use batches of at most 100 rows and repeat on a
+60-second reconciliation cadence. The bounded 256-row memory fallback reports partial
+coverage if it overflows; it cannot silently claim a complete large inventory.
+
+Inventory persistence contains only validated normalized catalog fields, a durable settled
+lifecycle status (`idle`, `closed`, `stopped`, or null), revision/coverage facts, and one monitor-private opaque source-scope fingerprint. Changed provider roots,
+archive inclusion, explicit transcript selection, or enabled identity sources invalidate
+old inventory rows and completed totals before they can be presented as
+current facts. The fingerprint is never returned to the browser. Transcript paths, raw provider records, private identifiers beyond the existing
+normalized identity contract, prompts, responses, tool content and credentials are excluded.
+Provider source locators remain adapter-private. Committed SQLite queries are cache reads;
+GETs never synchronously enumerate sources, acquire provider evidence, or normalize it.
+
+Each inventory row keeps volatile presence separate from a durable settled status.
+Presence (`is_live`, `needs_input`, and the presence `activity_status` such as working,
+needs input, or open) is reset at monitor start and when a row leaves the provider's
+bounded lifecycle set. The settled status is never reset by either. It is written only
+from a not-live, not-needs-input row whose status is `idle`, `closed`, or `stopped`,
+whether it comes from a provider-projected lifecycle row (`updateProviderLifecycle`) or
+from an adapter header row carrying that adapter's non-live fallback (Claude reports
+`idle`, the documented no-live-session fallback, not proof of completion; Codex header
+rows record no root status and stay `unknown`). Provider-confirmed `closed` or `stopped`
+is never downgraded to `idle`; `unknown`, `open`, or a missing status never overwrites a
+settled value. The column is added by an additive migration guarded by
+`PRAGMA table_info`, so older inventories keep their rows. A directory row's
+`activityStatus` is its presence status while it is live, needs input, or is an expired
+Open row; otherwise it is the settled status, but only after that provider's first
+presence pass (`updateProviderLifecycle`) has committed in the current monitor run, and
+`unknown` before it. A resumed session is therefore live at its first observation and
+never shows Idle and then Working. The Live and Needs input filters and counts read
+presence only. No new field reaches the browser.
+
+The inventory also persists one bounded row summary per row (`summary_json` plus the
+recorded `updatedAt` it is bound to, added by the same guarded additive migration): the
+visible-agent count, the latest all-agent context snapshot, the agent-reported progress,
+and the activity fallback only in its `last_observed` form (fixed label, original
+timestamp, source, actor scope). Current qualification, `currentActivity`, cache timing,
+tool names, task descriptions, IDs and paths are never persisted. The Session row module
+(`monitor/session-catalog-row.mjs`) projects the summary from the committed snapshot and
+validates it before persistence. C writes it after every accepted commit, changed or
+unchanged, so checkpoint-restored records seed summaries at startup, and only when it
+differs from the persisted one and the recorded `updatedAt` is not older. A live row's
+writes coalesce to the checkpoint cadence (5-second quiet, 60-second maximum) and flush
+when the row leaves live or the monitor stops. No write acquires, parses, or hydrates.
+
+Selecting a historical row queues only that session's detail and immediately presents its
+committed identity/loading state. A known selected or live Codex session must not await
+global metadata enumeration. Opening Activity or Requests may enqueue a coalesced complete
+history replay for that session while serving committed/loading history. `/api/state` and
+ordinary state polling never request complete replay. The dedicated history scheduler keeps
+that work separate from urgent live and selected detail hydration.
+
+When a selected Codex identity lacks a trusted retained source locator, its adapter
+locates the identity's root through the shared source ledger and closes its rollout family
+over the rollout directories that can hold descendants (see "Source ledger" above),
+independently of the global catalog. Only an unknown root, a failed listing, or a missing
+or replaced member falls back to one bounded whole-tree header walk. Selected-family
+metadata is capped at 500 identities on either path, and the whole-tree walk also at 16
+relationship closure passes. Exceeding a bound rejects acquisition and retains the last
+committed evidence; it must never commit a silently truncated family. These
+detail-acquisition bounds do not limit top-level inventory enumeration or directory
+reachability.
 
 ### Complete-record ingestion
 
@@ -1310,6 +1627,53 @@ React, persisted checkpoints, or browser API fields.
   selected foreground work and cache serving to proceed between maintenance units.
 - Stable internal identities and deterministic upserts must let later, stronger evidence
   upgrade an existing observation without duplication or downgrade.
+- A warm Claude read parses only records appended since the previous read. A per-file
+  parsed-tail cache holds the same last-2 MiB window of complete records that a cold read
+  returns, validated by file identity, size and a suffix digest. An append parses only the new
+  complete records and trims the window by bytes; a replacement, truncation, or rewrite that
+  changes the sampled 256-byte suffix drops the entry and reads cold (the same generation rule
+  as the other Claude tail readers). An unfinished trailing record is never cached. The cache is
+  bounded to 64 MiB of retained window bytes and 512 files (least recently used first),
+  drops files that no longer exist, and is never persisted or exposed. Its output must equal a
+  cold read at every record boundary.
+- Claude file-change paths go through a per-provider validated-path cache in front of the
+  repository-path validator. Entries are keyed by the recognized root's realpath and file
+  identity, the forbidden roots and the candidate path, and live for 5 s (4,096 entries). The
+  root itself is re-resolved at most once a second, so a replaced or retargeted root stops
+  serving its entries within one second; a miss is cached only when the root was unchanged
+  on both sides of its validation. Links inside the root and the forbidden roots are not
+  re-checked until an entry expires, so a link swapped within those 5 s keeps its earlier
+  answer; a newly seen path is always validated against the current filesystem. A rejection
+  is cached as a rejection; syntax rejections never reach the cache or the filesystem. Other
+  callers use the uncached validator.
+- A live Claude usage-snapshot read whose file generation has not changed serves the retained
+  snapshots without parsing the tail again. Work-kind classification memoizes its bounded
+  WorkKind result by a SHA-256 digest of the classified text (4,096 entries); the text itself
+  is not retained.
+- One Claude readSession checks each transcript file's generation once: one stat and one
+  256-byte suffix read, shared by the parsed-tail cache, usage snapshots, activity events and
+  agent lifecycle instead of each of those readers opening the file again. Removing entries for
+  deleted files uses one existence check per cached file per read, shared by every per-file
+  cache.
+- Per-file derived evidence is reused while that file's generation (identity, size, mtime and
+  suffix digest) is exactly unchanged: historical usage snapshots (also keyed by agent, session,
+  compaction times and window mode), the execution-task record pass, and the tool-call and
+  user-input scan (also keyed by agent and primary-file role). Cross-file joins, task signals,
+  historical stop times, agent labels and file-change path validation run on every read, so
+  reuse never freezes a cross-file input or a validator answer. Complete-history reads never
+  use or fill these caches. Each is in memory only, bounded to 512 files (least recently used
+  first), drops files that no longer exist, hands out fresh tool-call, user-input and task
+  objects, and its output must equal a cold read. The tool-call scan keeps each structured file
+  tool's candidate target paths, unvalidated, so they can be revalidated on every read; like the
+  parsed-tail records they are monitor-private memory, never persisted, logged or exposed, and
+  they can outlive that file's parsed-tail entry until the scan's own bound evicts them.
+- Codex folds each bounded live delta into its complete normalized story through the shared,
+  provider-neutral `session-fold.mjs`. The provider declares a per-field policy: keyed unions
+  (usage snapshots, tool calls, activity, compactions, pull-request creations) with a bound
+  and a preferred merge on collision, an OR of rule flags, a custom agent merge that depends on
+  the merged tool calls, and retain-if-absent only for the SessionStart plugin marker, which
+  cannot be legitimately cleared. Every undeclared field takes the delta's value, so cleared
+  signals, progress and status stay cleared.
 - Codex fallback discovery collapses multiple rollout generations carrying the same
   top-level session ID into one catalog entry, retaining the earliest recorded creation
   time while the newest rollout remains the private source for current observation.
@@ -1330,16 +1694,29 @@ React, persisted checkpoints, or browser API fields.
   and do not restart the historical scan. Directory or missing-filename notifications
   rely on reconciliation. Hints are acquisition candidates, never session identities
   or evidence of work on their own.
-- The Codex discovery cache retains bounded private metadata and source generations.
-  It holds at most 500 headers and 128 deduplicated hints by default.
+- The Codex detail-discovery cache retains bounded private metadata and source generations.
+  Its retained header and deduplicated hint bounds do not limit the separate complete
+  normalized inventory. Enumeration commits identities before releasing each batch.
   Unchanged retained sources reuse their headers; changed sources undergo bounded
   header validation, and transient failures retain the last valid metadata. Cache
   selection favors retained live sessions and recently updated candidates. The public
-  catalog selects live rows before filling its remaining bounded history slots and
-  retains its usual recency ordering. Discovery metadata, paths, cursors, and hints
-  remain in memory only; no new checkpoint or browser fields are introduced. Detail
+  shell feed selects live and requested destinations within its bound. Private discovery
+  metadata, paths and hints remain in memory only; normalized inventory rows use the
+  separate persistence contract above. Detail
   hydration and normalized evidence retention continue under the existing U1/C/P
   contracts, and GETs continue to serve committed response caches only.
+- Monitor shutdown coalesces the explicit close and listener-close callbacks into
+  one observation stop, allowing the persistence writer and its SQLite handle to
+  drain before a desktop runtime releases its private data root.
+- Codex U1 canonicalizes trusted rollout paths before indexing a session's root and
+  child source parts. Windows short names and directory aliases for one file share
+  a single source identity, including incremental record and generation lookups;
+  watcher hints and copied transcript paths use that same resolved file. A failed
+  resolution remains a bounded unavailable source, and no alias extends trusted
+  discovery beyond the configured provider roots. Repository mutation targets
+  resolve their existing parent before comparing with a recognized Git root, so
+  a Windows alias does not erase structured file-change attribution. None of
+  these private paths enters normalized state or a GET response cache.
 - A Codex source generation replacement revalidates the bounded header identity
   before ingesting records against an existing session. A changed identity queues
   discovery and leaves the prior committed evidence intact; ordinary appends retain
@@ -1348,6 +1725,32 @@ React, persisted checkpoints, or browser API fields.
   lookbehind for every root or child rollout. After the initial complete build, U2 receives
   only newly completed records plus that lookbehind; it does not rescan the complete
   transcript or the generic live tail for session-story normalization.
+- Claude resolves an already-known session's main file through the shared source ledger
+  (see "Source ledger" above) instead of walking its whole projects tree again. Claude
+  sessions carry no provider-native parent/fork/group relation, so the adapter only uses
+  `locate()`/`noticeSource()`, never `family()`: every discovery pass ingests each listed
+  `{file, activityMs}` as a header named from the file's own basename, with `activityMs` as
+  the ledger's preference value, so a duplicated session ID across project folders keeps
+  discovery's own newest-activity copy independent of ingestion order. Each pass is ingested
+  oldest first, so over the ledger's 4,096-entry bound the least recent sessions are evicted,
+  never the newest. A located file is re-verified with one file stat before being trusted
+  (a same-path replacement carries the same session ID and is read afresh); a missing file
+  falls back to one full walk. Session detail, paged history keys, and transcript-path copy
+  all resolve through this lookup. An identity the ledger cannot serve (unknown, or its file
+  is gone) falls back to a full walk; if that walk still finds nothing, the miss is
+  remembered for the ledger's own miss TTL, so a repeated read for the same ID does not walk
+  again until the TTL expires or a notification ingests the ID first. A filtered
+  new-transcript notification (a `.jsonl` name outside any session's `subagents` tree — the
+  same files discovery lists as main transcripts — plus realpath containment in the projects
+  root, the same shape as Codex's `trustedRolloutPath` filter) is noticed directly under its
+  configured-root path, clearing any remembered miss without waiting for the next full
+  discovery pass. Native and Remote Control owner validation
+  reuses a validated owner identity for 1.5 seconds. A
+  non-spawning liveness check retires a positive identity as soon as its process is gone.
+  After 1.5 seconds, on Windows, the last answer is served while one asynchronous process
+  enumeration re-confirms the start identity, so a read inside that five-second bound never
+  blocks the event loop on a process spawn. A first check, a changed start identity, and an
+  answer older than five seconds still use a synchronous probe.
 - Codex U2 seeds model and reasoning effort from the same agent's prior normalized
   evidence across continuous incremental updates, including empty lifecycle updates
   and live-to-history transitions. A missing field retains its recorded value; an
@@ -1397,19 +1800,19 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Work | Owner / phase | Cache relationship | Cadence |
 | --- | --- | --- | --- |
 | Source-change routing | Backend adapter / U1 | Maps a provider-native notification privately to catalog-dirty and/or session-dirty work | Wake immediately on a provider event or filesystem notification; known sessions enter the worker queue in the same event-loop turn |
-| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in a reserved provider lane: two interactive slots for notification/selection work and one background slot for reconciliation, with same-session serialization and event coalescing |
+| Source-change ingestion | Backend adapter / U1 | Feeds normalization; does not write a committed cache | Start in bounded provider lanes: Claude has two interactive slots, Codex has three, and each keeps one interactive slot reserved from routine updates plus one background reconciliation slot; same-session serialization and event coalescing still apply |
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
-| Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | One selected-session foreground slot and one shared maintenance slot; source-key matches and projection-only revisions do not replay |
+| Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | Activity/Requests demand only, with one foreground and one background slot in its separate scheduler; matching source keys do not replay, and state polling never enqueues work |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
 | Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions only, and asynchronously after a known evicted session is requested |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
-| Routine checkpoint | Backend writer / P | Reads L1 evidence and atomically replaces L2 JSON | Five seconds after quiet; at least once per 60 seconds during continuous activity |
+| Routine checkpoint | Backend bounded owner / P | Coalesces committed L1 evidence and atomically replaces L2 JSON | Eligible five seconds after quiet or after 60 seconds of continuous activity; queue service and failures can delay durability |
 | Resource history | Monitor store contributor / P | Aggregates the private sampler's in-memory raw samples (30-minute window) into `resource_minutes`, bounded peaks, and peak sample windows in one transaction per session; never read or written by a GET | On the coalesced post-checkpoint store cycle, which the resource observation also schedules at most once per 60 seconds while sessions are sampled |
-| Graceful shutdown | Backend writer / P | Flushes the latest committed L1 revision for every pending checkpoint | After uncommitted scheduled candidates are cancelled and before the observer lifecycle is released |
+| Graceful shutdown | Backend writer / P | Drains the newest accepted checkpoint revisions with bounded attempts, then closes history and contributor storage | Cancel maintenance and scheduled candidates, stop producers, drain accepted persistence, then close storage |
 | Usage observation coordinator | Backend / U1 through D | Refreshes the centralized usage response cache | Check for due work every 60 seconds; each provider's authenticated request cache permits at most one request per five minutes and honors longer `Retry-After` cooldowns |
 
 Checkpoint files use temporary-file creation followed by atomic replacement. A missing,
@@ -1417,11 +1820,61 @@ corrupt, oversized, unknown-version, invalid, or source-incompatible checkpoint 
 and rebuilt in the background. Checkpoints are an optimization; provider-owned sources
 remain the source of truth.
 
+### Bounded persistence ownership
+
+`observation-persistence-queue.mjs` is the in-process C-to-P boundary. It admits at
+most 128 normalized session keys and 32 MiB of conservatively estimated pending
+payloads, with one active write of at most 32 MiB separately retained while a newer
+revision replaces its pending value. Only persistence fields are retained; public
+state and serialized browser responses are excluded. Estimates count strings, keys,
+and structure, reject unsupported depth/cycles, and do not truncate evidence.
+
+Each key has one ready position and one optional debounce timer. Replacements retain
+the first dirty deadline; ready keys use FIFO order. A revision arriving during an
+active write remains pending until it commits separately. A hot key cannot fill the
+ready queue with duplicate work. Overflow rejects a new admission or an oversized
+replacement, retaining its prior accepted candidate and durable checkpoint. Later
+normal observation may submit it again; a GET never retries persistence.
+
+Writes retry at the ready tail at most three times, separated by 100 ms during
+normal operation. Exhaustion releases the failed work and preserves the prior
+checkpoint. Shutdown closes admissions, cancels debounce delays, and drains accepted
+work through the same finite attempt limit without backoff. It waits for active
+filesystem operations; there is no promised wall-time bound on an operating-system
+write. The monitor store closes after these writes and their contributor cycle.
+History replay results carry a lifecycle fence so a provider read that finishes
+after shutdown cannot publish into the next lifetime.
+
+A checkpoint commit validates and serializes only its own evidence, writes an
+exclusively created temp, then renames it atomically. It never awaits pruning,
+directory enumeration, orphan cleanup, or a full reconciliation. Failed operations
+remove their own temp when possible. Checkpoint schema version 1 and repository
+sidecar schema remain compatible; no browser fields or private evidence permissions
+change.
+
+`persistence-maintenance.mjs` schedules one batch per second, alternating checkpoint
+and history owners. Each batch has a 32-unit budget and yields when stopped or when
+observation, persistence, or selected/history work is pending. Checkpoint maintenance
+retains a directory cursor, updates an inventory, and validates changed files rather
+than reparsing every checkpoint after every write. Startup restores valid checkpoints
+without pruning or deleting temps. Exact owned temp names become cleanup candidates
+only after a one-hour age grace; active writes are protected. Deferred deletions recheck
+recorded file metadata and generation under the same per-identity ownership as atomic
+publication. A sidecar is deleted only if its checkpoint is actually absent, so a skipped
+eviction cannot erase recorded repository state. Unrecognized files are left
+alone. Capacity can temporarily exceed retention targets until a maintenance pass
+finishes; continuously busy higher-priority work can defer that pass.
+
+These are logical asynchronous owners in one monitor process, not dedicated threads.
+They protect ordering and bound pending work; synchronous serialization and database
+transactions can still occupy the event loop. No production latency claim follows
+from fixture operation-count tests.
+
 ## Endpoint ownership and revision semantics
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | Provider-neutral presentation-ready catalog rows with bounded committed summaries, per-row summary readiness, and the primary agent's bounded `cacheTiming` (newest cache-touch timestamp plus allowlisted lifetime, or `null`) derived in D from committed request snapshots for live and retained historical rows alike; the browser evaluates nearing/elapsed against its own clock | Application shell, Sessions directory, sidebar, Home destination labels |
+| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |
@@ -1495,8 +1948,9 @@ evidence commits or a 30-second retry window passes. It receives no unavailable
 placeholder. Only a row whose catalog readiness is `unavailable` projects the unavailable
 placeholder, and that placeholder never replaces a retained evidence projection.
 
-Absence from the catalog is never proof that a session is absent, because provider catalogs are
-bounded windows. During monitor startup, before every provider catalog has published, a request
+Absence from the shell feed is never proof that a session is absent. The complete inventory is
+the header lookup authority, and incomplete enumeration cannot prove absence. During monitor
+startup, before every provider catalog has published, a request
 for a session with neither committed L1 evidence nor a catalog row serves `loading` and queues
 the same deduplicated selection hydration. Its commit publishes the domain revision event that a
 browser entry recovers from. After every provider catalog has published, a request for such a
@@ -1859,6 +2313,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | Consumer | Refresh and recovery |
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
+| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; Pause stops refresh; query changes reset the bounded cursor trail |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
 | Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
@@ -1967,6 +2422,11 @@ reports omit all four fields. Legacy and Codex evidence defaults to empty arrays
 This additive evidence follows the existing complete-replacement, atomic-commit,
 last-known-good retention, revision and checkpoint rules. GETs still serve committed
 responses only; action correlation never runs in S Serving or changes UI polling.
+Directory rows and non-resident shell rows read the persisted row summary described under
+inventory persistence. It is last-known-good: it survives restart and L1 eviction, shows
+`summaryReadiness: "ready"`, reports zero active agents and no `currentActivity` for a
+non-live row, and never carries a `current` fallback. Rows without a summary stay `loading`.
+A resident committed snapshot still supplies the live values for shell rows.
 Caches and `/api/sessions` directory rows may carry only catalog identity and lifecycle
 fields, per-row summary readiness, bounded visible-agent counts, the latest all-agent
 context snapshot, bounded agent-reported progress, the activity fallback described below,
@@ -2063,8 +2523,10 @@ their browser serving described below ship. Provider mutation targets still neve
 browser responses.
 
 Shipped evidence shape: a normalized tool call may carry `fileChanges`, at most 64 entries
-of `{ path, kind, previousPath }`. `path` and `previousPath` are slash-separated, at most
-512 characters, and relative to the session's recorded working directory; `previousPath`
+of `{ path, kind, previousPath }`, with a normalized `repositoryId` on bound Codex entries.
+`path` and `previousPath` are slash-separated and at most 512 characters. Codex paths
+are relative to their independently recognized repository root; legacy Claude paths
+are relative to the recorded working directory and rebased during indexing. `previousPath`
 is present only for `moved`. Only a call with recorded success evidence carries it (Claude:
 a non-error tool result, with `Write` classified `created` from the structured result type;
 Codex: a completed patch or file-change item). Only structured file tools with an explicit
@@ -2101,11 +2563,94 @@ is not a path validator. Invalid or over-bound candidates are dropped rather tha
 truncated into a different path. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
+Codex binds successful structured mutations during U2 through the inventory's private
+repository resolver, before strict normalized evidence is committed. Each accepted target
+has its own recognized root and normalized repository identity, including targets outside
+the launch cwd. Relative targets require a recorded tool/turn working directory; shell
+command text cannot establish that directory or a file write. A move must validate both
+paths within the same recognized repository. The launch/recorded cwd names the session's
+project unless a proven mutation repository points elsewhere (approved by the product
+owner on 2026-09-27; see `monitor/session-identity.mjs`); the cwd itself remains private
+provider evidence. The public compatibility
+`session.cwd` field is empty; roots and raw target inputs never enter browser state.
+
+Private root bindings accumulate across bounded live updates. The recognized launch
+repository supplies the project association unless a proven mutation repository refines
+it to a single other repository (approved by the product owner on 2026-09-27); two or
+more distinct proven repositories still clear the single-repository association and
+leave its Git and touched-file summary unavailable. Per-repository file
+listings retain their separately bound records. Catalog projections use the committed
+project and clear obsolete repository IDs instead of falling back to earlier catalog rows.
+Delayed association results are accepted only for the binding that requested them.
+
+Live Git enrichment validates the recognized root and its provider-recorded branch before
+publishing branch, working-tree files, comparison, pull requests, or commit counts. Missing
+branch evidence or a root/branch mismatch preserves the last verified session snapshot or
+leaves the existing unavailable state. It never commits the unrelated checkout state to a
+historical sidecar. Historical fallback without a sidecar does not query current GitHub
+state through the checkout. All resolution and Git work remains outside S Serving.
+Concurrent live Git inspections of the same working tree (for example two live sessions in
+one repository) share one in-flight set of Git processes, and each caller receives its own
+copy of that answer. A finished inspection is never reused, so each session's check keeps
+its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`) run once
+per directory: concurrent callers share the lookup, and its answer is reused for the same
+300-second freshness the providers' memoized repository resolver already applies.
+A live session with no repository binding (a Codex session without one proven repository,
+or a Claude session without a recorded branch) has nothing to check: its repository
+readiness is `ready` with no repository, a factual empty result, so it cannot hold the
+session summary at `loading`. A bound session is `loading` until Git answers for its
+current binding, stays `loading` through a failed check, and becomes `unavailable` only
+when Git confirms the root or branch does not match. A changed binding, or an attribution
+that is briefly unknown after the session had a repository, returns to `loading` so clients
+keep the last committed value.
+
+Repository sidecar version 4 carries a nullable normalized repository ID. A sidecar is
+served only for the same single-repository identity in normalized session evidence, for
+every provider (`session.repositoryAttribution`/`repositoryId`; see
+`monitor/session-identity.mjs`); an older sidecar recorded before that identity was
+proven, or with a mismatched identity, remains unavailable. A new identity starts a new
+baseline and cannot inherit another repository's files, PRs, comparisons, or Git-observed
+lists.
+
+Checkpoint evidence written before the session-identity rule has no
+`session.repositoryAttribution`. A provider whose evidence was then bound to its launch
+cwd declares `legacyRepositoryAttribution: "launch"` in its adapter (Claude does; Codex
+does not). At restore only, the checkpoint store gives that provider's legacy evidence the
+generic attribution `launch` (`withLegacyRepositoryAttribution` in
+`monitor/repository-snapshot.mjs`) without rewriting the checkpoint file. `launch` keeps
+the behavior that evidence had before the rule: its recorded sidecar and recorded branch
+are served, its unbound file changes resolve through its launch cwd, and restore reads role
+configuration from that cwd. Shared modules read only the attribution value, never the
+provider. Legacy evidence of a provider without the declaration stays unbound.
+
+A provider may also record `launch` in live evidence when its cwd is, by the provider's own
+transcript schema, the fixed launch directory rather than a navigated one. Claude does:
+`readSession` records `single` with the repository ID when the shared rule proves the
+launch directory is one Git repository, and `launch` otherwise (not Git, a removed
+worktree, Git unavailable, or the 5 s bound), so those sessions keep their pre-rule
+sidecar, branch, file history, and context-inventory association. Claude catalog rows name
+the project from the nearest enclosing `.git` of the launch directory without a Git
+subprocess, the same name the rule gives a proven repository. A Claude live repository
+check records the proven repository ID on its sidecar, so a `single` session's sidecar
+satisfies the identity gate. Sidecars that such a provider recorded before the rule carry no
+repository ID; they came from the launch directory, so a `single` session of a provider that
+declares `legacyRepositoryAttribution: "launch"` adopts its unbound sidecar, both for serving
+and as the carry-forward baseline of its next live check. Codex never adopts one.
+
 The monitor-owned file-history index (`monitor/file-change-index.mjs`) is a derivative of
 committed file-change evidence plus Git state acquired asynchronously outside S Serving.
 It runs as a store contributor on the post-checkpoint cycle, receiving the snapshots
-written since the last cycle. Each snapshot's paths are rebased from the session working
-directory onto the private Git root and revalidated. Writes are additive: a change
+written since the last cycle. Bound Codex paths use their own normalized per-call
+repository ID; the index never reinterprets them through the session cwd. Every other
+entry — including every Claude entry, since Claude has no per-call binding — is attributed
+only through the session's own recorded identity (`session.repositoryAttribution`/
+`repositoryId`, the same provider-neutral rule for every provider; see
+`monitor/session-identity.mjs`): when that identity is a proven single repository, the
+path is rebased from the recorded working directory onto the private Git root and
+revalidated, and a working directory that resolves to another repository supplies no
+root; `launch` evidence (above) resolves its repository from the launch cwd as
+before the rule; when the identity is multiple, unknown, or absent, the entry is skipped
+rather than reinterpreted through a navigated cwd. Writes are additive: a change
 already recorded for the same session, agent, kind, timestamp, and path is skipped, so
 replaying a checkpoint is idempotent, and a later snapshot whose bounded evidence tail no
 longer carries earlier tool calls never removes their committed rows. Git renames come from
@@ -2114,7 +2659,15 @@ per minute and 512 renames per read; the first observation records the head only
 Git rename updates `files.current_path` and opens a `file_paths` row with source `git`,
 never a `file_changes` row. A missing, rebuilt, or unversioned index is repopulated
 once from retained checkpoints, and storage readiness stays `rebuilding` until that pass
-completes. Session 5 queries `listSessionFileChanges`, `listRepositoryFiles`, and
+completes. File-index version 2 removes file identities touched by old Codex rows whose
+repository was inferred from one session cwd, while preserving untouched Claude identities.
+Affected mixed-provider identities are also removed: deleting only the Codex event could
+leave its incorrect move or deletion attached to surviving Claude history. It replays only Codex
+checkpoint entries with normalized repository bindings. A failed checkpoint load leaves
+the migration pending and file-history serving in `rebuilding`; GETs do not repair it.
+Older unbound Codex file records are unavailable until structured source evidence is
+observed again. Records outside retained checkpoints/source coverage cannot be recovered
+by this migration. Session 5 queries `listSessionFileChanges`, `listRepositoryFiles`, and
 `fileHistory` (page size 100, maximum 200); `request_number` stays null until a
 monitor-side request mapping is threaded to the index. It must be rebuildable
 from retained checkpoints and independently committed Git evidence. Index loss or rebuild
@@ -2167,14 +2720,18 @@ attachment. Each live Git check calls `onRepositoryCheck` once observation servi
 active; until that load settles the check queues behind it, so a live write cannot replace
 an older sidecar baseline before it is restored. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
-or commit count was not observed carries the previous recorded value forward, and an
+or commit count was not observed carries the previous recorded value forward only within
+the same bound repository identity, and an
 invalid candidate never replaces the last complete valid snapshot. `prune()` removes a
 sidecar with the checkpoint that prune evicted, an invalid sidecar, and an orphan sidecar
 with no checkpoint for more than 24 hours; a sidecar recorded before its session's first
 checkpoint write is kept. Historical serving prefers the recorded snapshot and otherwise
-keeps the branch-only recorded state. GETs never inspect Git or GitHub, and a recorded
-snapshot is never refreshed from them; only the no-snapshot fallback projection may ask
-the pull-request reader asynchronously for recorded association evidence. Nothing
+keeps the branch-only recorded state, itself shown only when the session's own recorded
+identity resolved a proven single repository (`session.repositoryAttribution`/
+`repositoryId`, the same rule for every provider; see `monitor/session-identity.mjs`), or
+when the evidence carries the `launch` attribution.
+GETs never inspect Git or GitHub, and a recorded snapshot is never refreshed from them. The no-snapshot fallback leaves pull requests
+unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
 
@@ -2187,7 +2744,7 @@ and an argument array, 3
 seconds, 256 KiB), read only when the live branch equals the recorded branch and carried
 forward when a read fails. `gitObservedTruncated` is sticky. Each list holds at most 200
 paths and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap. A
-version 1 record loads as version 3 with null sentinels, meaning "never measured". A
+version 1 record loads as version 4 with null sentinels, meaning "never measured". A
 session already in progress when it first meets version 2 takes its then-current dirty
 set as the baseline, so earlier edits are not Git-observed.
 
@@ -2197,7 +2754,11 @@ name-status letters across the window's commits, newest first: `deleted` when th
 change deleted it, `added` when any commit in the window added it, otherwise `modified` (a
 type change counts as modified). It travels with `committedInWindow`: carried forward when a
 read fails, replaced on a successful read, and null when a read returned paths without
-change kinds. A version 2 record loads as version 3 with `committedChanges` null.
+change kinds. A version 2 record loads as version 4 with `committedChanges` null.
+Earlier versions load with `repositoryId` null; for every provider, they can satisfy the
+repository-identity gate again only once the same session is re-observed and its evidence
+records a matching proven single-repository identity. `launch` evidence is served
+its recorded sidecar whatever the sidecar's repository ID, as before the rule.
 
 The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
 from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in

@@ -167,6 +167,11 @@
 .commandTable tbody tr:hover { background: var(--command-panel-2); }
 .commandSessionMetadata { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; margin-top: 5px; color: var(--command-muted); font-size: var(--text-xs); }
 .commandSessionMetadata > span { min-width: 0; overflow-wrap: anywhere; }
+.commandSessionState { display: inline-flex; align-items: center; gap: var(--space-2); }
+.commandSessionSummaryLoading { width: var(--space-3); height: var(--space-3); flex: 0 0 var(--space-3); display: inline-flex; }
+.commandSessionSummarySpinner { width: 100%; height: 100%; border: 2px solid var(--command-line-strong); border-top-color: var(--command-green); border-radius: 50%; animation: commandSessionSummarySpin 800ms linear infinite; }
+@keyframes commandSessionSummarySpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .commandSessionSummarySpinner { animation: none; } }
 .commandTableUpdated { white-space: nowrap; }
 .commandTableUpdated .commandSessionCacheTiming { margin-left: 6px; vertical-align: -2px; color: var(--command-muted); opacity: .55; }
 .commandTableUpdated .commandSessionCacheTiming .commandIcon { width: 12px; height: 12px; display: block; }

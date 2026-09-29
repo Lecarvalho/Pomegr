@@ -1,6 +1,7 @@
 ---
 name: acos
 description: Size a task against the project's session limits, compose an ACOS run manifest (or a plan of manifests, one per session), show it, wait for GO, then execute it without further interruptions and record what actually ran. Use when the user invokes /acos, asks to "run this through acos", or the project has a .acos.yaml and the user asks for a non-trivial code change.
+disable-model-invocation: true
 ---
 
 # ACOS runner
@@ -393,7 +394,10 @@ say so. Parts not in `after` may still be running elsewhere; that is
 fine.
 
 If earlier parts in `plan.yaml` have `actual`, re-size this part now
-(section 2, step 4). When the scaled estimate breaks a limit, say so in
+(section 2, step 4). If `plan.yaml` records `discoveries` newer than this
+manifest, check the manifest against each one. A manifest that a discovery
+contradicts (its premise, scope, order, owned files or acceptance target) is
+re-composed before GO. When the scaled estimate breaks a limit, say so in
 two lines and propose the split before the summary: run the first half
 now, write the second half as a new part after it. The user may say GO
 as is. This is compose time; after GO nothing is re-sized.
@@ -550,6 +554,25 @@ On GO:
    keep going and let `calibrate` judge it afterwards from `estimate`
    versus `actual`. Retries and escalation within the rules are not
    drift; they are just log records.
+4. **Discovery.** A discovery is a measured finding that contradicts
+   something the plan assumed: a premise or cause in the intent or scope
+   notes, or a later part's scope, order, ownership or acceptance target.
+   Profiles, review repros and failed acceptance numbers are the usual
+   sources. Act on it as soon as it is confirmed, not when the plan ends:
+   - If it changes only how this part reaches its intent, it is drift.
+     Log it and keep going.
+   - If it invalidates this part's intent, stop and ask one question with
+     the options (re-scope, continue as planned, stop). This is the one
+     mid-run question besides `on_fail: ask` and gates.
+   - If the run is part of a plan, adjust the plan before this part
+     closes. Append the finding to `plan.yaml` `discoveries` (date, part,
+     finding, evidence path). Then show the adjusted cut for the later
+     parts in the short confirm-the-cut form (section 2). On OK, rewrite
+     their `plan.yaml` entries and every affected manifest. Parts already
+     `done` are never rewritten.
+   - A target this part cannot meet is never just carried in a note. It
+     becomes the acceptance check of a named later part, with the
+     evidence of where the time or the failure went.
 
 ## 6. Close the run
 
@@ -566,7 +589,9 @@ record.
    or `failed`, and copy `actual` next to its `estimate` there.
 3. If later parts build on this one, write `artifacts/handoff.md`, at
    most 40 lines: what later parts reuse, decisions they must not undo,
-   deferred findings with the owning part index, verify result. A run
+   deferred findings with the owning part index, verify result, and the
+   plan adjustments this part's discoveries made (section 5, step 4). A
+   part whose discoveries left the plan unadjusted does not close. A run
    outside a plan, or the last part, has no handoff.
 4. If the part changed a visible surface, it does not close on prose:
    the `evidence` stage has written `artifacts/try-it.md`, one cropped
@@ -736,7 +761,11 @@ Refuse to overwrite an existing preset without asking.
 - Every file has one owner in a plan. Cut by capability, not by layer;
   an unavoidable second reader is stated in the cut, not hidden.
 - After GO, no re-approval. Adjust, log drift, continue. Ask only on
-  `on_fail: ask` or a gate.
+  `on_fail: ask`, a gate, or a discovery that invalidates the part's
+  intent.
+- Adjust the plan as soon as a discovery contradicts it, before the part
+  that found it closes. A missed target becomes a named later part's
+  acceptance check, never a carried note.
 - Limits and estimates act at compose time only. Nothing checks them
   mid-run; `calibrate` does that afterwards.
 - Fit is per context lane. Aggregate reserved volume is never called

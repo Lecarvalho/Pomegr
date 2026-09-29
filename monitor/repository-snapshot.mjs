@@ -7,7 +7,7 @@ const COMMIT_HASH_LINE = /^[0-9a-f]{40}$/iu;
 const MAX_FILES = 200;
 const MAX_PULL_REQUESTS = 10;
 const MAX_COUNT = 100_000;
-const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_VERSION = 4;
 const WINDOW_TIMEOUT_MS = 3_000;
 const WINDOW_MAX_BUFFER = 256 * 1024;
 // Combined character budget for one git-observed path list (dirtyAtFirstCheck,
@@ -25,7 +25,9 @@ const SNAPSHOT_KEYS_V1 = new Set([
 const SNAPSHOT_KEYS_V2 = new Set([
   ...SNAPSHOT_KEYS_V1, "dirtyAtFirstCheck", "becameDirty", "committedInWindow", "gitObservedTruncated",
 ]);
-const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
+const SNAPSHOT_KEYS_V3 = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
+const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 // Net Git change per window-committed path, aligned index-for-index with committedInWindow.
 const COMMITTED_CHANGES = new Set(["added", "modified", "deleted"]);
 const NAME_STATUS_LINE = /^([AMDT])\t(.+)$/u;
@@ -219,10 +221,14 @@ export function normalizeRepositorySnapshot(value) {
       committedInWindow: null,
       committedChanges: null,
       gitObservedTruncated: false,
+      repositoryId: null,
     });
   }
   const upgradingV2 = value.version === 2;
-  if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2) : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
+  const upgradingV3 = value.version === 3;
+  if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2)
+    : upgradingV3 ? !hasExactKeys(value, SNAPSHOT_KEYS_V3)
+      : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
   const core = normalizeSnapshotCore(value);
   if (!core) return null;
   const dirtyAtFirstCheck = normalizeGitObservedPathList(value.dirtyAtFirstCheck, { nullable: true });
@@ -234,6 +240,8 @@ export function normalizeRepositorySnapshot(value) {
   const committedChanges = upgradingV2 ? null : normalizeCommittedChanges(value.committedChanges, committedInWindow);
   if (committedChanges === undefined) return null;
   if (typeof value.gitObservedTruncated !== "boolean") return null;
+  const repositoryId = upgradingV2 || upgradingV3 ? null : value.repositoryId;
+  if (repositoryId !== null && (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId))) return null;
   return Object.freeze({
     version: SNAPSHOT_VERSION,
     ...core,
@@ -242,6 +250,7 @@ export function normalizeRepositorySnapshot(value) {
     committedInWindow: committedInWindow === null ? null : Object.freeze(committedInWindow),
     committedChanges: committedChanges === null ? null : Object.freeze(committedChanges),
     gitObservedTruncated: value.gitObservedTruncated,
+    repositoryId,
   });
 }
 
@@ -341,8 +350,14 @@ export function gitObservedFilesFromSnapshot(snapshot) {
  * (never a partial record) when the candidate fails final normalization; the
  * caller must keep whatever snapshot it already had.
  */
-export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt, previous = null } = {}) {
+export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
   if (!repository || repository.available !== true || repository.historical !== false) return null;
+  // A new bound identity begins a new repository timeline. In particular, an
+  // old v3 (unbound) sidecar must not donate its carry-forward fields when a
+  // session is later proven to belong to a repository.
+  // The exception is a provider whose unbound sidecars were always launch-bound
+  // (adoptsUnboundSidecar): its session's proven repository adopts that timeline.
+  const prior = previous?.repositoryId === repositoryId || adoptsUnboundSidecar && previous?.repositoryId === null ? previous : null;
   const files = (Array.isArray(repository.files) ? repository.files : [])
     .slice(0, MAX_FILES)
     .map((file) => (typeof file?.status === "string" && FILE_STATUS.test(file.status) && isSafeRecordedRepositoryPath(file?.path)
@@ -350,13 +365,13 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
       : null))
     .filter(Boolean);
   const takeComparison = repository.remote?.status === "ready";
-  const comparison = takeComparison ? (repository.comparison ?? null) : (previous?.comparison ?? null);
-  const comparisonCheckedAt = takeComparison ? (repository.remote?.checkedAt ?? null) : (previous?.comparisonCheckedAt ?? null);
+  const comparison = takeComparison ? (repository.comparison ?? null) : (prior?.comparison ?? null);
+  const comparisonCheckedAt = takeComparison ? (repository.remote?.checkedAt ?? null) : (prior?.comparisonCheckedAt ?? null);
   const takePullRequests = pullRequests?.status === "ready";
   const nextPullRequests = takePullRequests
     ? { checkedAt: pullRequests.checkedAt || checkedAt, items: Array.isArray(pullRequests.items) ? pullRequests.items : [] }
-    : (previous?.pullRequests ?? null);
-  const nextCommitsInSession = Number.isSafeInteger(commitsInSession) ? commitsInSession : (previous?.commitsInSession ?? null);
+    : (prior?.pullRequests ?? null);
+  const nextCommitsInSession = Number.isSafeInteger(commitsInSession) ? commitsInSession : (prior?.commitsInSession ?? null);
   return normalizeRepositorySnapshot({
     version: SNAPSHOT_VERSION,
     branch: repository.branch,
@@ -367,8 +382,43 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
     pullRequests: nextPullRequests,
     commitsInSession: nextCommitsInSession,
     checkedAt,
-    ...nextGitObserved(previous, { files, committedPaths, committedChanges }),
+    repositoryId,
+    ...nextGitObserved(prior, { files, committedPaths, committedChanges }),
   });
+}
+
+/**
+ * Restore-time upgrade for checkpoint evidence written before the shared session-identity
+ * rule recorded repositoryAttribution. A provider that declares its legacy evidence was
+ * bound to its launch cwd (provider contract `legacyRepositoryAttribution: "launch"`) gets
+ * the generic "launch" attribution, which keeps that evidence's pre-rule behavior; evidence
+ * from any other provider, or evidence that already records an attribution, is unchanged.
+ */
+export function withLegacyRepositoryAttribution(evidence, legacyAttribution) {
+  const session = evidence?.session;
+  if (legacyAttribution !== "launch" || !session || typeof session !== "object"
+    || session.repositoryAttribution !== undefined) return evidence;
+  return { ...evidence, session: { ...session, repositoryAttribution: "launch" } };
+}
+
+/**
+ * Return only a sidecar whose repository identity matches its session, for
+ * every provider: a session's recorded snapshot is trusted only when the
+ * shared session-identity rule (monitor/session-identity.mjs) resolved that
+ * session to a single, validated repository matching the sidecar's own
+ * repositoryId. Legacy "launch" evidence (see withLegacyRepositoryAttribution)
+ * keeps its pre-rule trust in the sidecar recorded for it. Evidence without an
+ * attribution never reinterprets its sidecar. `adoptsUnboundSidecar` is true only
+ * for a provider that declares launch-bound legacy evidence (provider contract
+ * `legacyRepositoryAttribution`): its sidecars without a repository ID were
+ * recorded from the launch directory, so a proven single identity adopts them.
+ */
+export function sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar = false } = {}) {
+  if (!snapshot) return null;
+  if (evidence?.session?.repositoryAttribution === "launch") return snapshot;
+  const repositoryId = evidence?.session?.repositoryId;
+  if (evidence?.session?.repositoryAttribution !== "single" || !REPOSITORY_ID.test(repositoryId || "")) return null;
+  return snapshot.repositoryId === repositoryId || adoptsUnboundSidecar && snapshot.repositoryId === null ? snapshot : null;
 }
 
 const UNAVAILABLE_PULL_REQUESTS = Object.freeze({ status: "unavailable", checkedAt: null, items: Object.freeze([]) });
@@ -397,31 +447,35 @@ export function historicalRepositoryFromSnapshot(snapshot) {
   };
 }
 
-/** checkpointPublicState's historical repository resolution: recorded snapshot, else recordedGitState fallback. */
-export function resolveCheckpointRepository({ historical, evidence, snapshot, recordedGitState, unavailableGitState, unavailablePullRequests }) {
+/**
+ * checkpointPublicState's historical repository resolution: recorded snapshot,
+ * else recordedGitState fallback. The recorded branch is shown only when the
+ * shared session-identity rule resolved a single, validated repository for
+ * this session, for every provider; see sessionRepositorySnapshot above.
+ */
+function sessionRecordedBranch(evidence) {
+  const attribution = evidence.session.repositoryAttribution;
+  return attribution === "launch" || attribution === "single" && REPOSITORY_ID.test(evidence.session.repositoryId || "")
+    ? evidence.session.recordedGitBranch : "";
+}
+
+export function resolveCheckpointRepository({ historical, evidence, snapshot, adoptsUnboundSidecar = false, recordedGitState, unavailableGitState, unavailablePullRequests }) {
   if (!historical) return { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() };
-  return historicalRepositoryFromSnapshot(snapshot)
-    || { repository: recordedGitState(evidence.session.recordedGitBranch), pullRequests: unavailablePullRequests() };
+  return historicalRepositoryFromSnapshot(sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar }))
+    || { repository: recordedGitState(sessionRecordedBranch(evidence)), pullRequests: unavailablePullRequests() };
 }
 
 /**
  * projectSelection's historical repository resolution: a recorded snapshot never
- * calls Git or GitHub; only the no-snapshot fallback reads recorded state and
- * (as today) asks the pull-request reader for historical association evidence.
+ * calls Git or GitHub.  With no snapshot, the recorded branch is display-only:
+ * the live working tree may now be another session's checkout, so no current
+ * GitHub association query is safe either.
  */
-export async function resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot, recordedGitState, pullRequestReader, unavailablePullRequests }) {
-  if (snapshot) return historicalRepositoryFromSnapshot(snapshot);
-  const repository = recordedGitState(evidence.session.recordedGitBranch);
-  let pullRequests;
-  try {
-    pullRequests = await pullRequestReader([], {
-      cwd: evidence.session.cwd, branch: repository.branch, historical: true,
-      sessionCreations: evidence.pullRequestCreations,
-    });
-  } catch {
-    pullRequests = unavailablePullRequests();
-  }
-  return { repository, pullRequests };
+export async function resolveHistoricalRepositoryAndPullRequests({ evidence, snapshot, adoptsUnboundSidecar = false, recordedGitState, pullRequestReader, unavailablePullRequests }) {
+  const matchedSnapshot = sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar });
+  if (matchedSnapshot) return historicalRepositoryFromSnapshot(matchedSnapshot);
+  const repository = recordedGitState(sessionRecordedBranch(evidence));
+  return { repository, pullRequests: unavailablePullRequests() };
 }
 
 /**
@@ -511,7 +565,7 @@ const DEFAULT_RECORDER_MAX_ENTRIES = 100;
  * rejects); `recorded` is a synchronous lookup so historical serving never
  * waits on, or triggers, disk or Git activity.
  */
-export function createRepositorySnapshotRecorder({ store, now = () => Date.now(), maxEntries } = {}) {
+export function createRepositorySnapshotRecorder({ store, now = () => Date.now(), maxEntries, adoptsUnboundSidecar = () => false } = {}) {
   if (!store || typeof store.writeRepositorySnapshot !== "function" || typeof store.loadRepositorySnapshots !== "function") {
     throw new TypeError("Repository snapshot recorder requires a checkpoint store");
   }
@@ -561,7 +615,9 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
             committedPaths: live?.committedPaths,
             committedChanges: live?.committedChanges,
             checkedAt: live?.checkedAt,
+            repositoryId: live?.repositoryId,
             previous,
+            adoptsUnboundSidecar: adoptsUnboundSidecar(parsed.providerId) === true,
           });
         } catch {
           next = null;

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 export const WORK_KINDS = Object.freeze([
   "shell",
   "search",
@@ -49,6 +50,32 @@ function commandText(value, depth = 0) {
 export function executionWorkKind(command) {
   const value = commandText(command).toLowerCase();
   if (!value) return "shell";
+  return memoizedKind(executionKinds, value, classifyCommand);
+}
+
+// Classification is pure over bounded text, and warm reads classify the same records again, so
+// short inputs keep their result in a small, bounded LRU memo keyed by a SHA-256 digest of the
+// text. Only digests and WorkKind values are held; the text itself is never retained.
+const MAX_MEMOIZED_KINDS = 4_096;
+const MAX_MEMOIZED_TEXT = 2_048;
+const executionKinds = new Map();
+const toolContextKinds = new Map();
+function memoizedKind(memo, text, classify) {
+  if (text.length > MAX_MEMOIZED_TEXT) return classify(text);
+  const key = crypto.createHash("sha256").update(text).digest("base64");
+  const cached = memo.get(key);
+  if (cached !== undefined) {
+    memo.delete(key);
+    memo.set(key, cached);
+    return cached;
+  }
+  const kind = classify(text);
+  memo.set(key, kind);
+  if (memo.size > MAX_MEMOIZED_KINDS) memo.delete(memo.keys().next().value);
+  return kind;
+}
+
+function classifyCommand(value) {
 
   if (/\bgh(?:\.exe)?\s+pr\b/.test(value)) return "pull_request";
   if (/\bgit(?:\.exe)?\b[^\r\n]{0,200}\bpush\b/.test(value)) return "git_push";
@@ -68,7 +95,14 @@ export function executionWorkKind(command) {
 export function toolWorkKind(tool, { detail = "", input = null } = {}) {
   const name = String(tool || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const context = `${name} ${String(detail || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")}`;
+  const kind = memoizedKind(toolContextKinds, context, classifyToolContext);
+  return kind === SHELL_TOOL ? executionWorkKind(input) : kind;
+}
 
+/** Marks a shell tool, whose kind comes from its command rather than its name. */
+const SHELL_TOOL = Symbol("shell-tool");
+
+function classifyToolContext(context) {
   if (/reportsessionprogress|reportsessionsignal|reportagentsignal|reporttasksignal|clearsessionprogress/.test(context)) return "report";
   if (/senduserfile|filetransfer|uploadfile|downloadfile/.test(context)) return "transfer";
   if (/pullrequest|pull\s+requests?|\bpr\b/.test(context)) return "pull_request";
@@ -86,7 +120,7 @@ export function toolWorkKind(tool, { detail = "", input = null } = {}) {
   if (/\btest\b|vitest|jest|pytest/.test(context)) return "test";
   if (/\bbuild\b|compile/.test(context)) return "build";
   if (/restart|localprocess|developmentserver/.test(context)) return "process";
-  if (/shell|bash|execcommand|commandexecution/.test(context)) return executionWorkKind(input);
+  if (/shell|bash|execcommand|commandexecution/.test(context)) return SHELL_TOOL;
   if (/mcp|dynamictool|plugin|connector/.test(context)) return "integration";
   return "shell";
 }

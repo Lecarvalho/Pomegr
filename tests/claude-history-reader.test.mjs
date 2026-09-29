@@ -105,6 +105,28 @@ test("session work-start reader scans cold sources beyond the display tail and k
   assert.equal(await reader.read(file), startedAt);
 });
 
+test("session work-start reader keeps its answer when a live transcript grows during observation", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-work-start-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "session.jsonl");
+  const startedAt = "2026-08-12T14:00:00.000Z";
+  const filler = (second) => ({ type: "system", subtype: "local_command", timestamp: `2026-08-12T14:00:${String(second).padStart(2, "0")}.000Z`, content: "PRIVATE".repeat(25_000) });
+  await writeRecords(file, [{ type: "user", timestamp: startedAt, message: { content: "PRIVATE" } }, ...Array.from({ length: 12 }, (_, index) => filler(index + 1))]);
+  let mutate = null;
+  const reader = createClaudeSessionWorkStartReader({ yieldControl: async () => { const next = mutate; mutate = null; await next?.(); } });
+  mutate = () => appendFile(file, `${JSON.stringify(filler(30))}\n`);
+  assert.equal(await reader.read(file), startedAt, "an append between chunks is not a changed source");
+  assert.equal(mutate, null, "the append happened mid-observation");
+  mutate = () => appendFile(file, `${JSON.stringify(filler(31))}\n`);
+  assert.equal(await reader.read(file), startedAt, "the next read continues from the observed prefix");
+
+  const other = path.join(root, "rewritten.jsonl");
+  await writeRecords(other, [{ type: "user", timestamp: startedAt, message: { content: "PRIVATE" } }, ...Array.from({ length: 12 }, (_, index) => filler(index + 1))]);
+  const rewriting = createClaudeSessionWorkStartReader({ yieldControl: async () => { const next = mutate; mutate = null; await next?.(); } });
+  mutate = () => writeRecords(other, [{ type: "user", timestamp: "2026-08-12T15:00:00.000Z", message: { content: "PRIVATE" } }, ...Array.from({ length: 13 }, (_, index) => ({ ...filler(index + 1), content: "REWRITE".repeat(25_000) }))]);
+  await assert.rejects(rewriting.read(other), /changed during observation/, "a rewritten prefix is still rejected");
+});
+
 test("session work-start reader preserves a complete generation through an incomplete replacement", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-work-start-"));
   context.after(() => rm(root, { recursive: true, force: true }));

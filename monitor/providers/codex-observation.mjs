@@ -9,8 +9,10 @@ import {
 import { createNormalizedPollingObserver } from "./normalized-polling-observer.mjs";
 import { expandCodexSelectedMetadata } from "./codex-session-discovery.mjs";
 import { readCodexRolloutHeader } from "./codex-session-metadata.mjs";
+import { canonicalCodexSourcePath, codexSourcePathKey } from "./codex-source-path.mjs";
 import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./codex-recorded-lifecycle.mjs";
 import { mergeCodexContextSnapshot } from "./codex-context.mjs";
+import { foldSessionEvidence } from "./session-fold.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 4_096;
 const MAX_TOOL_CALLS = 4_096;
@@ -22,21 +24,6 @@ const MAX_OBSERVATION_KEY_LENGTH = 16_384;
 // Codex tool-result records can contain large encoded images. Frame them once
 // so later lifecycle markers are not separated by a silently discarded record.
 const MAX_CODEX_RECORD_BYTES = 8 * 1024 * 1024;
-
-function chronological(left, right) {
-  return Date.parse(left?.timestamp || left?.observedAt || "")
-    - Date.parse(right?.timestamp || right?.observedAt || "");
-}
-
-function mergeByKey(previous, current, keyOf, maximum, prefer = (_old, next) => next) {
-  const merged = new Map();
-  for (const item of [...(previous || []), ...(current || [])]) {
-    const key = keyOf(item);
-    if (!key) continue;
-    merged.set(key, merged.has(key) ? prefer(merged.get(key), item) : item);
-  }
-  return [...merged.values()].sort(chronological).slice(-maximum);
-}
 
 function compactionStrength(value) {
   return value?.trigger === "unknown" ? 0 : value?.inferred === true ? 1 : 2;
@@ -73,42 +60,68 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
   });
 }
 
-/** Merge a bounded live delta into the complete normalized Codex story. */
-export function mergeCodexObservationEvidence(previous, current) {
-  if (!previous) return current;
-  const usageSnapshots = mergeByKey(previous.usageSnapshots, current.usageSnapshots, (item) => item?.dedupeId, MAX_USAGE_SNAPSHOTS, mergeCodexContextSnapshot);
-  const toolCalls = mergeByKey(previous.toolCalls, current.toolCalls, (item) => item?.id, MAX_TOOL_CALLS);
-  const activity = mergeByKey(previous.activity, current.activity, (item) => item?.id, MAX_ACTIVITY);
-  const compactions = mergeByKey(
-    previous.compactions,
-    current.compactions,
-    (item) => item ? `${item.actorId}\0${item.timestamp}` : "",
-    MAX_COMPACTIONS,
-    (older, newer) => {
+/**
+ * Codex's per-field fold policy. Codex-specific preferences — context
+ * snapshot merge, compaction strength, and fileChanges retention on
+ * toolCalls — live here in the adapter, not in the shared fold engine.
+ */
+const CODEX_FOLD_POLICY = {
+  usageSnapshots: { kind: "keyed", key: (item) => item?.dedupeId, maximum: MAX_USAGE_SNAPSHOTS, prefer: mergeCodexContextSnapshot },
+  toolCalls: {
+    kind: "keyed",
+    key: (item) => item?.id,
+    maximum: MAX_TOOL_CALLS,
+    // A complete reread can momentarily lose repository resolution for a call
+    // that already succeeded; keep the last resolved fileChanges rather than
+    // clearing them.
+    prefer: (older, newer) => (
+      newer?.status !== "failed" && newer?.fileChanges === null && Array.isArray(older?.fileChanges) && older.fileChanges.length
+        ? { ...newer, fileChanges: older.fileChanges }
+        : newer
+    ),
+  },
+  activity: { kind: "keyed", key: (item) => item?.id, maximum: MAX_ACTIVITY },
+  compactions: {
+    kind: "keyed",
+    key: (item) => (item ? `${item.actorId}\0${item.timestamp}` : ""),
+    maximum: MAX_COMPACTIONS,
+    prefer: (older, newer) => {
       const olderStrength = compactionStrength(older);
       const newerStrength = compactionStrength(newer);
       if (newerStrength > olderStrength) return newer;
       if (newerStrength === olderStrength && older.preTokens === null && newer.preTokens !== null) return newer;
       return older;
     },
-  );
-  const pullRequestCreations = mergeByKey(previous.pullRequestCreations, current.pullRequestCreations, (item) => item?.id, MAX_PULL_REQUESTS);
+  },
+  pullRequestCreations: { kind: "keyed", key: (item) => item?.id, maximum: MAX_PULL_REQUESTS },
+  efficiencyRuleEvidence: { kind: "or-flags" },
+  // A SessionStart plugin marker is never legitimately cleared once observed: a
+  // delta that raced past the marker record is missing evidence, not proof the
+  // plugin was removed. Signals, progress, status, and any other clearable
+  // field must never use this kind.
+  "session.pomegrPlugin": { kind: "retain-if-absent" },
+  agents: {
+    kind: "custom",
+    dependsOn: ["toolCalls"],
+    merge: (previous, current, folded) => mergeAgents(previous, current, folded.toolCalls),
+  },
+};
+
+/** Merge a bounded live delta into the complete normalized Codex story. */
+export function mergeCodexObservationEvidence(previous, current) {
+  return foldSessionEvidence(CODEX_FOLD_POLICY, previous, current);
+}
+
+/** A complete reread may temporarily lose repository resolution while retaining the same call. */
+function retainResolvedFileChanges(previous, current) {
+  const prior = new Map((previous?.toolCalls || []).map((call) => [call?.id, call?.fileChanges]));
   return {
     ...current,
-    session: {
-      ...current.session,
-      pomegrPlugin: current.session?.pomegrPlugin || previous.session?.pomegrPlugin || null,
-    },
-    agents: mergeAgents(previous.agents, current.agents, toolCalls),
-    usageSnapshots,
-    toolCalls,
-    activity,
-    compactions,
-    pullRequestCreations,
-    efficiencyRuleEvidence: Object.fromEntries(Object.keys(current.efficiencyRuleEvidence || {}).map((key) => [
-      key,
-      Boolean(previous.efficiencyRuleEvidence?.[key] || current.efficiencyRuleEvidence?.[key]),
-    ])),
+    toolCalls: (current?.toolCalls || []).map((call) => (
+      call?.status !== "failed" && call?.fileChanges === null && Array.isArray(prior.get(call?.id)) && prior.get(call.id).length
+        ? { ...call, fileChanges: prior.get(call.id) }
+        : call
+    )),
   };
 }
 
@@ -200,6 +213,8 @@ export function createCodexIncrementalObserver(options = {}) {
     list,
     readEvidence,
     discoveredMetadata,
+    peekMetadata,
+    resolveExactMetadata,
     transcriptPathsBySessionId,
     intervalMs,
     concurrency,
@@ -228,10 +243,7 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   const sourceKey = (file) => {
-    try {
-      const resolved = path.resolve(file);
-      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
-    } catch { return ""; }
+    try { return codexSourcePathKey(file); } catch { return ""; }
   };
 
   function privateObservationKey(localSessionId, selectedMetadata, entry) {
@@ -266,7 +278,14 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   async function prepareSources(entries = []) {
-    const metadata = await discoveredMetadata();
+    const exact = await Promise.all(entries.map(async (entry) => {
+      const localId = entry?.localId;
+      return typeof localId === "string" && typeof resolveExactMetadata === "function"
+        ? resolveExactMetadata(localId) : null;
+    }));
+    const metadata = exact.every((item) => item)
+      ? [...(typeof peekMetadata === "function" ? peekMetadata() : []), ...exact]
+      : await discoveredMetadata();
     const metadataById = new Map(metadata.map((item) => [item.localId, item]));
     const sources = new Map();
     for (const entry of entries) {
@@ -280,9 +299,9 @@ export function createCodexIncrementalObserver(options = {}) {
         .filter(Boolean);
       const files = new Set([...selectedIds].flatMap((id) => {
         const rolloutFile = metadataById.get(id)?.rolloutFile;
-        return rolloutFile ? [rolloutFile] : [];
+        return rolloutFile ? [canonicalCodexSourcePath(rolloutFile)] : [];
       }));
-      for (const transcriptPath of transcriptPathsBySessionId.get(localId)?.values() || []) files.add(transcriptPath);
+      for (const transcriptPath of transcriptPathsBySessionId.get(localId)?.values() || []) files.add(canonicalCodexSourcePath(transcriptPath));
       indexSessionSources(localId, files);
       const parts = [...files]
         .map((file) => incrementalSourceDescriptor(file, entry?.isLive === false))
@@ -491,7 +510,7 @@ export function createCodexIncrementalObserver(options = {}) {
       },
     });
     if (!next) return null;
-    const evidence = completeStory ? next : mergeCodexObservationEvidence(session.evidence, next);
+    const evidence = completeStory ? retainResolvedFileChanges(session.evidence, next) : mergeCodexObservationEvidence(session.evidence, next);
     const candidate = {
       ...evidence,
       observationSource: {
@@ -512,6 +531,7 @@ export function createCodexIncrementalObserver(options = {}) {
   }
 
   const observer = createNormalizedPollingObserver({
+    providerId: "codex",
     list,
     ingest: acquire,
     prepare: prepareSources,

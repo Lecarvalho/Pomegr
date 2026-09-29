@@ -47,6 +47,49 @@ test("pipeline log analysis aggregates validated spans and bounded gap data", as
   assert.match(formatDiagnosticsLogs(report), /\| exact \|/);
 });
 
+test("pipeline log schema accepts a bounded provider and priority lane, and rejects unknown values or extra fields", () => {
+  const spanStart = { ...common, kind: "span_start", stage: "source_queue", domain: "acquisition", startMs: 1, lane: 1, provider: "codex", priorityLane: "urgent" };
+  const normalizedStart = normalizePipelineLogRecord(spanStart);
+  assert.ok(normalizedStart);
+  assert.equal(normalizedStart.provider, "codex");
+  assert.equal(normalizedStart.priorityLane, "urgent");
+
+  const span = { ...common, kind: "span", stage: "source_queue", domain: "acquisition", startMs: 1, lane: 1, durationMs: 5, outcome: "completed", provider: "codex", priorityLane: "urgent" };
+  const normalized = normalizePipelineLogRecord(span);
+  assert.equal(normalized.provider, "codex");
+  assert.equal(normalized.priorityLane, "urgent");
+
+  // A stage with no lane (catalog_discovery) may carry provider alone.
+  const noLane = { ...common, kind: "span", stage: "catalog_discovery", domain: "acquisition", startMs: 1, lane: 1, durationMs: 5, outcome: "completed", provider: "claude" };
+  assert.ok(normalizePipelineLogRecord(noLane));
+
+  assert.equal(normalizePipelineLogRecord({ ...span, provider: "openai" }), null, "an unknown provider is rejected");
+  assert.equal(normalizePipelineLogRecord({ ...span, priorityLane: "urgent-ish" }), null, "an unknown lane is rejected");
+  assert.equal(normalizePipelineLogRecord({ ...span, priorityLane: "selected" })?.priorityLane, "selected", "a selection lane is accepted");
+  assert.equal(normalizePipelineLogRecord({ ...span, region: "us" }), null, "any extra field is rejected");
+});
+
+test("pipeline log analysis groups stage timings by provider and priority lane, keeping legacy records unattributed", async () => {
+  const { directory } = await fixture([
+    { ...common, kind: "span", stage: "source_queue", domain: "acquisition", startMs: 1, lane: 1, durationMs: 10, outcome: "completed", provider: "codex", priorityLane: "urgent" },
+    { ...common, at: "2026-09-11T12:00:01.000Z", kind: "span", stage: "source_queue", domain: "acquisition", startMs: 2, lane: 1, durationMs: 10, outcome: "completed", provider: "codex", priorityLane: "urgent" },
+    { ...common, at: "2026-09-11T12:00:02.000Z", kind: "span", stage: "source_queue", domain: "acquisition", startMs: 3, lane: 1, durationMs: 5, outcome: "completed" },
+    { ...common, at: "2026-09-11T12:00:03.000Z", kind: "span", stage: "catalog_discovery", domain: "acquisition", startMs: 4, lane: 1, durationMs: 8, outcome: "completed", provider: "claude" },
+    "",
+  ]);
+  const report = await analyzePipelineLogs({ directory, maxBytes: 1024 * 1024 });
+  assert.equal(report.stages.source_queue.count, 3, "the existing aggregate stays unchanged");
+  assert.deepEqual(report.stagesByAttribution.source_queue.codex.urgent, {
+    count: 2, failed: 0, incomplete: 0, minMs: 10, maxMs: 10, averageMs: 10, p50Ms: 10, p95Ms: 10, quantiles: "exact",
+  });
+  assert.deepEqual(report.stagesByAttribution.source_queue.unattributed.unattributed, {
+    count: 1, failed: 0, incomplete: 0, minMs: 5, maxMs: 5, averageMs: 5, p50Ms: 5, p95Ms: 5, quantiles: "exact",
+  });
+  assert.deepEqual(report.stagesByAttribution.catalog_discovery.claude.unattributed, {
+    count: 1, failed: 0, incomplete: 0, minMs: 8, maxMs: 8, averageMs: 8, p50Ms: 8, p95Ms: 8, quantiles: "exact",
+  });
+});
+
 test("partial trailing and oversized lines are reported without parsing them", async () => {
   const { directory } = await fixture([
     JSON.stringify({ ...common, kind: "span", stage: "catalog_discovery", domain: "acquisition", startMs: 1, lane: 1, durationMs: 1, outcome: "completed" }),

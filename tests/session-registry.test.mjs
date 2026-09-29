@@ -62,6 +62,7 @@ test("validates registry owners by both PID and process-start identity with a bo
   const validate = createSessionRegistryOwnerValidator({
     now: () => checkedAt,
     cacheMs: 1_500,
+    processExists: () => null,
     processIdentities(pids) {
       calls += 1;
       assert.deepEqual(pids, [42]);
@@ -80,6 +81,110 @@ test("validates registry owners by both PID and process-start identity with a bo
   checkedAt += 1_501;
   validate([matching, reused]);
   assert.equal(calls, 2);
+});
+
+test("a registry procStart change for the same pid is re-probed immediately, not compared against a stale cache", () => {
+  let checkedAt = 1_786_000_000_000;
+  let calls = 0;
+  const validate = createSessionRegistryOwnerValidator({
+    now: () => checkedAt,
+    processExists: () => null,
+    processIdentities(pids) {
+      calls += 1;
+      return new Map(pids.map((pid) => [pid, `start-${pid}`]));
+    },
+  });
+  const entry = { sessionId: "session", pid: 42, procStart: "start-42" };
+  assert.equal(validate([entry]).get("session"), true);
+  assert.equal(calls, 1);
+  checkedAt += 1;
+  assert.equal(validate([entry]).get("session"), true, "an unchanged identity reuses the cache");
+  assert.equal(calls, 1);
+
+  const replaced = { sessionId: "session", pid: 42, procStart: "start-99" };
+  assert.equal(validate([replaced]).get("session"), false, "a changed procStart forces a fresh probe rather than a stale comparison");
+  assert.equal(calls, 2);
+});
+
+test("a cheap liveness check ends a cached positive owner's validity before the revalidation interval elapses", () => {
+  let checkedAt = 1_786_000_000_000;
+  let calls = 0;
+  let alive = true;
+  const validate = createSessionRegistryOwnerValidator({
+    now: () => checkedAt,
+    cacheMs: 30_000,
+    processExists: () => (alive ? null : false),
+    processIdentities(pids) {
+      calls += 1;
+      return new Map(pids.map((pid) => [pid, "owner-start"]));
+    },
+  });
+  const entry = { sessionId: "session", pid: 42, procStart: "owner-start" };
+  assert.equal(validate([entry]).get("session"), true);
+  assert.equal(calls, 1);
+
+  checkedAt += 1_000; // still well inside the revalidation interval
+  alive = false;
+  assert.equal(validate([entry]).get("session"), false, "a definite exit ends validity without waiting for the interval");
+  assert.equal(calls, 1, "the cheap liveness check never spawns a process");
+});
+
+test("stale owners refresh asynchronously: reads never spawn synchronously, and a changed identity lands within the stale bound", async () => {
+  let checkedAt = 1_786_000_000_000;
+  let syncCalls = 0;
+  let asyncCalls = 0;
+  let ownerStart = "owner-start";
+  const validate = createSessionRegistryOwnerValidator({
+    now: () => checkedAt,
+    processExists: () => null,
+    processIdentities(pids) {
+      syncCalls += 1;
+      return new Map(pids.map((pid) => [pid, ownerStart]));
+    },
+    async processIdentitiesAsync(pids) {
+      asyncCalls += 1;
+      return new Map(pids.map((pid) => [pid, ownerStart]));
+    },
+  });
+  const entries = Array.from({ length: 5 }, (_, index) => ({ sessionId: `session-${index}`, pid: 100 + index, procStart: "owner-start" }));
+  validate(entries);
+  assert.equal(syncCalls, 1);
+  for (let read = 0; read < 20; read += 1) {
+    checkedAt += 100;
+    assert.equal(validate(entries).get("session-0"), true);
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(syncCalls, 1, "no read past the fresh window spawns synchronously while an async refresh is possible");
+  assert.equal(asyncCalls, 1, "one background refresh covers every stale owner");
+
+  ownerStart = "reused-pid-start";
+  checkedAt += 2_000;
+  assert.equal(validate(entries).get("session-0"), true, "the last answer is served while the refresh runs");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(validate(entries).get("session-0"), false, "a reused pid is retired as soon as the refresh answers");
+  assert.equal(syncCalls, 1);
+});
+
+test("an owner older than the stale bound is re-probed synchronously when no refresh has answered", () => {
+  let checkedAt = 1_786_000_000_000;
+  let syncCalls = 0;
+  const validate = createSessionRegistryOwnerValidator({
+    now: () => checkedAt,
+    processExists: () => null,
+    processIdentities(pids) {
+      syncCalls += 1;
+      return new Map(pids.map((pid) => [pid, syncCalls === 1 ? "owner-start" : "other-start"]));
+    },
+    processIdentitiesAsync: () => new Promise(() => {}),
+  });
+  const entries = [{ sessionId: "session-a", pid: 100, procStart: "owner-start" }];
+  assert.equal(validate(entries).get("session-a"), true);
+  checkedAt += 3_000;
+  assert.equal(validate(entries).get("session-a"), true);
+  assert.equal(syncCalls, 1);
+  checkedAt += 3_000;
+  assert.equal(validate(entries).get("session-a"), false, "past the stale bound the answer comes from a fresh probe");
+  assert.equal(syncCalls, 2);
 });
 
 test("reads valid registry entries and ignores malformed files independently", async (context) => {

@@ -96,35 +96,28 @@ afterEach(() => {
 });
 
 describe("Command Center app shell", () => {
-  it.each(["populated", "empty"])("keeps the Sessions skeleton through loading catalog responses and 204s until %s readiness", async (result) => {
+  it.each(["populated", "empty"])("keeps the shell catalog request in loading through 204s until %s readiness", async (result) => {
     vi.useFakeTimers();
     CatalogEventSource.instances = [];
     vi.stubGlobal("EventSource", CatalogEventSource);
     let catalogRequests = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       if (!String(input).startsWith("/api/sessions")) return response({ providers: [], repositories: [] });
+      if (String(input).includes("mode=directory")) return response({ sessions: [], revision: "directory", coverage: { status: "discovering", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: null, lastCompletedAt: null }, matchedCount: 0, counts: { all: 0, live: 0, needs: 0 }, pageSize: 25, nextCursor: null });
       catalogRequests += 1;
       if (catalogRequests === 1) return response({ revision: 1, sessions: [], readiness: { catalog: "loading" } });
       if (catalogRequests === 2) return Promise.resolve(new Response(null, { status: 204 }));
       return response({ revision: 2, sessions: result === "populated" ? sessions : [], readiness: { catalog: "ready" } });
     });
-    const view = render(<AppShell><SessionsView /></AppShell>);
-    const assertLoading = () => {
-      expect(screen.getByRole("status", { name: "Loading sessions" })).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "No sessions observed" })).not.toBeInTheDocument();
-      expect(screen.queryByText("0 matches")).not.toBeInTheDocument();
-    };
-    assertLoading();
+    const view = render(<AppShell><LiveSessionConsumer /></AppShell>);
+    expect(screen.getByRole("status", { name: "Shared live sessions" })).toBeInTheDocument();
     await act(async () => { await vi.advanceTimersByTimeAsync(0); });
-    assertLoading();
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(catalogRequests).toBe(2);
-    assertLoading();
     await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
     expect(catalogRequests).toBe(3);
-    expect(screen.queryByRole("status", { name: "Loading sessions" })).not.toBeInTheDocument();
-    if (result === "populated") expect(screen.getByRole("table", { name: "Observed Pomegr sessions" })).toBeInTheDocument();
-    else expect(screen.getByRole("heading", { name: "No sessions observed" })).toBeInTheDocument();
+    if (result === "populated") expect(screen.getByRole("status", { name: "Shared live sessions" })).toHaveTextContent("Live work 42%");
+    else expect(screen.getByRole("status", { name: "Shared live sessions" })).toBeInTheDocument();
     view.unmount();
   });
 
@@ -442,8 +435,14 @@ describe("Command Center app shell", () => {
       label: "Verifying current work", observedAt: sessions[0].updatedAt, state: "current",
     } };
     let sessionRequest = 0;
+    let directoryRequest = 0;
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
-      if (String(input).startsWith("/api/sessions")) return response(sessionRequest++ ? { revision: 2, sessions: [{ ...current, activityStatus: "idle", currentActivity: null }] } : { revision: 1, sessions: [current] });
+      const url = String(input);
+      if (url.includes("/api/sessions") && url.includes("mode=directory")) {
+        const rows = directoryRequest++ ? [{ ...current, activityStatus: "idle", currentActivity: null }] : [current];
+        return response({ sessions: rows, revision: directoryRequest, coverage: { status: "complete", knownCount: 1, exactTotal: 1, observedAt: "2026-09-27T12:00:00.000Z", lastCompletedTotal: 1, lastCompletedAt: "2026-09-27T12:00:00.000Z" }, matchedCount: 1, counts: { all: 1, live: 1, needs: 0 }, pageSize: 25, nextCursor: null });
+      }
+      if (url.startsWith("/api/sessions")) return response(sessionRequest++ ? { revision: 2, sessions: [{ ...current, activityStatus: "idle", currentActivity: null }] } : { revision: 1, sessions: [current] });
       return response({ providers: [], repositories: [] });
     });
     const view = render(<AppShell><SessionsView /></AppShell>);
@@ -452,7 +451,7 @@ describe("Command Center app shell", () => {
     await waitFor(() => expect(screen.queryByLabelText(/^Current activity:/)).not.toBeInTheDocument());
     expect(screen.getAllByRole("button", { name: "Activity is unavailable" })).toHaveLength(2);
     expect(view.container.querySelector(".commandTableActivityMark")).toBeNull();
-    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions"))).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith("/api/sessions") && !String(input).includes("mode=directory"))).toHaveLength(2);
     view.unmount();
   });
 

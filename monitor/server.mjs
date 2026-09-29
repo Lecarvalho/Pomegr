@@ -5,7 +5,7 @@ import { homeSessionSummary, median, unavailableHomeSessionSummary } from "./hom
 import { readGitStateAsync } from "./git-state.mjs";
 import { createHomeLimitActivityTracker } from "./limit-activity.mjs";
 import { readPullRequests } from "./pull-requests.mjs";
-import { readCommitsInWindow } from "./repository-snapshot.mjs";
+import { createSessionRepositoryEnrichment } from "./session-repository-enrichment.mjs";
 import { publicResourceUsage, unavailableResourceUsage } from "./public-resource-usage.mjs";
 import { createResourceUsageSampler } from "./resource-usage.mjs";
 import { providerRegistry } from "./providers/index.mjs";
@@ -87,6 +87,10 @@ function safeTranscriptPath(value) {
   return value;
 }
 
+// Repository roots are monitor-private binding evidence.  A launch cwd alone
+// is not enough: a shared checkout can have moved since a session recorded it,
+// and a session with no unique structured file binding must not borrow another
+// session's current tree.
 export function createMonitorRuntime(options = {}) {
   const registry = options.providerRegistry || providerRegistry;
   const providerFolders = registry.providerFolders || EMPTY_PROVIDER_FOLDERS;
@@ -97,7 +101,10 @@ export function createMonitorRuntime(options = {}) {
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
   const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
-  const enrichmentCache = new Map();
+  const sessionRepositoryEnrichment = createSessionRepositoryEnrichment({
+    gitReader, pullRequestReader, now, cacheMs: enrichmentCacheMs, providerFolders,
+    unavailableGitState, unavailablePullRequests,
+  });
   const homeSummaryCacheMs = Math.max(0, Number(options.homeSummaryCacheMs ?? 5000));
   const homeHistorySummaryCacheMs = Math.max(0, Number(options.homeHistorySummaryCacheMs ?? 5 * 60_000));
   const homeSnapshotCacheMs = Math.max(0, Number(options.homeSnapshotCacheMs ?? 10_000));
@@ -111,131 +118,9 @@ export function createMonitorRuntime(options = {}) {
   let homeSnapshotRefreshScheduled = false;
   let homeHistoryRefreshInFlight = null;
   let homeHistoryRefreshScheduled = false;
-  // Set once the observation runtime exists (below); a live-check listener the
-  // repository-snapshot recorder installs to persist bounded historical evidence.
-  let onRepositoryCheck = null;
 
-  async function refreshLiveEnrichment(entry, input) {
-    let repository;
-    try {
-      const acquired = await gitReader(input.cwd, {
-        forbiddenRoots: Object.values(providerFolders.folders || {}).filter(Boolean),
-      });
-      const { _repositoryRoot: repositoryRoot = null, ...publicRepository } = acquired;
-      repository = { ...publicRepository, historical: false };
-      entry.repositoryRoot = repositoryRoot;
-    } catch {
-      repository = { ...unavailableGitState(), historical: false };
-      entry.repositoryRoot = null;
-    }
-    let pullRequests;
-    try {
-      pullRequests = await pullRequestReader([], {
-        cwd: input.cwd,
-        branch: repository.branch,
-        historical: false,
-        sessionCreations: input.sessionCreations,
-      });
-    } catch {
-      pullRequests = unavailablePullRequests();
-    }
-    const refreshedAt = now();
-    // The recorded branch (from provider evidence, when known) gates the count so a
-    // branch switch between checks never mixes commits from two different branches.
-    const branchKnown = typeof input.recordedGitBranch === "string" && input.recordedGitBranch.length > 0;
-    let commitsInSession = entry.commitsInSession ?? null;
-    let committedPaths = null;
-    let committedChanges = null;
-    if (repository.available && entry.repositoryRoot && (!branchKnown || repository.branch === input.recordedGitBranch)) {
-      const windowRead = await readCommitsInWindow(entry.repositoryRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
-      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; }
-    }
-    // Omitted (not just null) when never measured, so an unavailable-repository
-    // refresh keeps producing the exact same sanitized placeholder shape as before.
-    if (commitsInSession !== null) repository = { ...repository, commitsInSession };
-    if (entry.generation === input.generation) {
-      entry.value = { repository, pullRequests };
-      entry.commitsInSession = commitsInSession;
-      entry.refreshedAt = refreshedAt;
-      onRepositoryCheck?.(entry.sessionId, {
-        repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt: new Date(refreshedAt).toISOString(),
-      });
-    }
-  }
-
-  function liveEnrichment(sessionId, evidence) {
-    const sessionCreations = [...evidence.pullRequestCreations];
-    const fingerprint = JSON.stringify([evidence.session.cwd, sessionCreations]);
-    let entry = enrichmentCache.get(sessionId);
-    if (!entry) {
-      entry = {
-        sessionId,
-        fingerprint,
-        generation: 1,
-        cwd: evidence.session.cwd,
-        sessionCreations,
-        refreshedAt: null,
-        refreshing: false,
-        repositoryRoot: null,
-        commitsInSession: null,
-        value: {
-          repository: { ...unavailableGitState(), historical: false },
-          pullRequests: unavailablePullRequests(),
-        },
-      };
-      enrichmentCache.set(sessionId, entry);
-    } else if (entry.fingerprint !== fingerprint) {
-      entry.fingerprint = fingerprint;
-      entry.generation += 1;
-      entry.cwd = evidence.session.cwd;
-      entry.sessionCreations = sessionCreations;
-      entry.refreshedAt = null;
-      entry.refreshing = false;
-      entry.repositoryRoot = null;
-      entry.commitsInSession = null;
-      entry.value = {
-        repository: { ...unavailableGitState(), historical: false },
-        pullRequests: unavailablePullRequests(),
-      };
-    }
-    const expired = entry.refreshedAt === null || now() - entry.refreshedAt >= enrichmentCacheMs;
-    let enqueue = null;
-    if (expired && !entry.refreshing) {
-      entry.refreshing = true;
-      const input = {
-        generation: entry.generation,
-        cwd: entry.cwd,
-        sessionCreations: entry.sessionCreations,
-        startedAt: evidence.session.startedAt,
-        recordedGitBranch: evidence.session.recordedGitBranch,
-      };
-      enqueue = () => {
-        try {
-          scheduleEnrichment(() => {
-            const work = refreshLiveEnrichment(entry, input)
-              .catch(() => {
-                if (entry.generation === input.generation) {
-                  entry.value = {
-                    repository: { ...unavailableGitState(), historical: false },
-                    pullRequests: unavailablePullRequests(),
-                  };
-                  entry.refreshedAt = null;
-                }
-              })
-              .finally(() => {
-                if (entry.generation === input.generation) entry.refreshing = false;
-              });
-            void work.catch(() => {});
-            return work;
-          });
-        } catch {
-          if (entry.generation === input.generation) {
-            entry.refreshing = false;
-          }
-        }
-      };
-    }
-    return { value: entry.value, enqueue };
+  function liveEnrichment(sessionId, evidence, repositoryAttribution = null) {
+    return sessionRepositoryEnrichment.liveEnrichment(sessionId, evidence, repositoryAttribution, scheduleEnrichment);
   }
 
   async function sessionCatalog() {
@@ -462,7 +347,10 @@ export function createMonitorRuntime(options = {}) {
       const cached = cachedHomeSummary(entry, endMs, resourceUsageFor);
       const summary = cached.found
         ? cached.summary
-        : await loadHomeSummary(entry, endMs, entry.isLive ? resourceUsageFor(entry.id) : null);
+        // Header selection may identify an historical session for a Home
+        // correlation, but Home never hydrates its body. Only retained detail
+        // can contribute to a historical limit/model observation.
+        : entry.isLive ? await loadHomeSummary(entry, endMs, resourceUsageFor(entry.id)) : null;
       if ((!summary || summary.requestObservationsAvailable === false)
         && activityEntries.some((activityEntry) => activityEntry.id === entry.id)) {
         limitedActivityProviders.add(entry.provider);
@@ -485,15 +373,10 @@ export function createMonitorRuntime(options = {}) {
       if (cached.found) history.push({ entry, summary: cached.summary });
       else missingHistory.push(entry);
     }
-    const historyLoading = deferHomeHistory && missingHistory.length > 0;
-    if (historyLoading) {
-      queueHomeHistoryRefresh(missingHistory);
-    } else if (missingHistory.length > 0) {
-      history.push(...await Promise.all(missingHistory.map(async (entry) => ({
-        entry,
-        summary: await loadHomeSummary(entry, endMs),
-      }))));
-    }
+    // Home aggregates are derived only from already retained header/detail
+    // evidence. A seven-day directory window must never schedule historical
+    // transcript hydration merely to improve a dashboard statistic.
+    const historyLoading = false;
     const summaries = [...immediate, ...history];
     const limitActivities = homeLimitActivityTracker.build({
       providerLimits,
@@ -545,6 +428,8 @@ export function createMonitorRuntime(options = {}) {
         }),
         history: {
           status: historyLoading ? "loading" : "ready",
+          coverage: "retained",
+          observedSessionCount: projectHistory.length,
           windowDays: 7,
           completed: projectHistory.length,
           medianWallTimeMs: median(projectHistory.map((summary) => summary.wallTimeMs)),
@@ -652,7 +537,7 @@ export function createMonitorRuntime(options = {}) {
     now,
     scheduleHomeRefresh,
     buildHomeSnapshot: () => buildHomeSnapshot(),
-    repositoryRootForSession: (sessionId) => enrichmentCache.get(sessionId)?.repositoryRoot || null,
+    repositoryRootForSession: sessionRepositoryEnrichment.repositoryRootForSession,
     liveEnrichment,
     recordedGitState,
     unavailableGitState,
@@ -669,7 +554,7 @@ export function createMonitorRuntime(options = {}) {
       homeSnapshotCached = null;
     },
   });
-  onRepositoryCheck = observation.onRepositoryCheck;
+  sessionRepositoryEnrichment.setOnRepositoryCheck(observation.onRepositoryCheck);
 
   return Object.freeze({
     providerFolders: () => providerFolders,
@@ -683,6 +568,8 @@ export function createMonitorRuntime(options = {}) {
     stopObservation: observation.stopObservation,
     observationActive: observation.observationActive,
     serveCatalog: observation.serveCatalog,
+    serveCatalogShell: observation.serveCatalogShell,
+    serveSessionDirectory: observation.serveSessionDirectory,
     serveSession: observation.serveSession,
     serveSessionDomain: observation.serveSessionDomain,
     serveHome: observation.serveHome,
@@ -727,6 +614,11 @@ export async function startMonitorServer(options = {}) {
   let runtime;
   let operationsTransport;
   let startupExtension;
+  let stopObservationPromise;
+  const stopObservationOnce = () => {
+    stopObservationPromise ??= Promise.resolve().then(() => runtime?.stopObservation?.());
+    return stopObservationPromise;
+  };
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
@@ -739,7 +631,7 @@ export async function startMonitorServer(options = {}) {
       normalExitCode: "MONITOR_CLOSED",
       unexpectedExitCode: "MONITOR_EXIT_UNEXPECTED",
       onClose: () => {
-        void runtime.stopObservation?.();
+        void stopObservationOnce().catch(() => {});
         void operationsTransport?.close();
         void startupExtension?.close?.();
       },
@@ -772,7 +664,7 @@ export async function startMonitorServer(options = {}) {
     const close = () => {
       if (closePromise) return closePromise;
       closePromise = (async () => {
-        await runtime.stopObservation?.();
+        await stopObservationOnce();
         await operationsTransport?.close();
         await startupExtension?.close?.();
         await handle.close();
@@ -781,7 +673,7 @@ export async function startMonitorServer(options = {}) {
     };
     return Object.freeze({ ...handle, operationsEndpoint: operationsTransport?.endpoint || null, close });
   } catch (error) {
-    try { await runtime?.stopObservation?.(); } catch { /* preserve bounded startup failure */ }
+    try { await stopObservationOnce(); } catch { /* preserve bounded startup failure */ }
     try { await operationsTransport?.close(); } catch { /* preserve bounded startup failure */ }
     try { await startupExtension?.close?.(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();

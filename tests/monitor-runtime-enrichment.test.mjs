@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createMonitorRuntime } from "../monitor/server.mjs";
+import { createSessionRepositoryEnrichment, liveRepositoryReadiness } from "../monitor/session-repository-enrichment.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 
 const provider = Object.freeze({
@@ -10,7 +11,7 @@ const provider = Object.freeze({
 
 function sessionEvidence({
   historical = false,
-  branch = "codex/recorded",
+  branch = "codex/live",
   cwd = "C:\\synthetic\\pomegr",
   pullRequestCreations = [],
 } = {}) {
@@ -61,7 +62,7 @@ function sessionEvidence({
   };
 }
 
-function repository(branch) {
+function repository(branch, root = "C:\\synthetic\\pomegr") {
   return {
     available: true,
     branch,
@@ -70,6 +71,7 @@ function repository(branch) {
     comparison: null,
     commits: [],
     remote: { status: "ready", checkedAt: null },
+    _repositoryRoot: root,
   };
 }
 
@@ -85,7 +87,14 @@ function runtimeFixture(options = {}) {
   const selectedProvider = options.provider || provider;
   const registry = {
     defaultProvider: selectedProvider,
-    async readSession() { return { evidence: readEvidence(), provider: selectedProvider, sessionId: normalizedSessionId }; },
+    async readSession() {
+      const currentEvidence = readEvidence();
+      const repositoryAttribution = typeof options.repositoryAttributionForSession === "function"
+        ? options.repositoryAttributionForSession(currentEvidence)
+        : Object.hasOwn(options, "repositoryAttribution") ? options.repositoryAttribution
+          : { state: "single", repositoryId: "repo-0123456789abcdef01234567", root: currentEvidence.session.cwd, fingerprint: `bound:${currentEvidence.session.cwd}`, recordedBranch: currentEvidence.session.recordedGitBranch };
+      return { evidence: currentEvidence, provider: selectedProvider, sessionId: normalizedSessionId, repositoryAttribution };
+    },
     async readUsageLimits(...args) { return usageReader(...args); },
     async listSessions() { return []; },
     async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
@@ -95,6 +104,23 @@ function runtimeFixture(options = {}) {
   };
   return createMonitorRuntime({ ...options, providerRegistry: registry });
 }
+
+test("legacy Codex checkpoint labels name the project but cannot claim a repository before attribution", async () => {
+  const evidence = sessionEvidence({ historical: true, branch: "feat/clapline" });
+  evidence.session.project = "Clapline";
+  const runtime = runtimeFixture({ evidence, provider: { ...provider, id: "codex" } });
+  const state = await runtime.analyze("codex:legacy");
+  // The launch directory names the project for every provider (approved 2026-09-27);
+  // without a single-repository attribution no repository or branch is exposed.
+  assert.equal(state.session.project, "Clapline");
+  assert.equal(state.session.repository.available, false);
+  assert.equal(JSON.stringify(state).includes("feat/clapline"), false);
+  evidence.session.repositoryAttribution = "single";
+  evidence.session.repositoryId = "repo-0123456789abcdef01234567";
+  const bound = await runtime.analyze("codex:legacy");
+  assert.equal(bound.session.project, "Clapline");
+  assert.equal(bound.session.repository.branch, "feat/clapline");
+});
 
 test("state assembly uses resolved capabilities without mutating provider declarations", async () => {
   const declared = Object.freeze({
@@ -155,6 +181,119 @@ test("cold live analysis returns placeholders before scheduled Git and pull-requ
   assert.equal(enriched.session.repository.branch, "codex/live");
   assert.equal(enriched.session.pullRequests.status, "ready");
   assert.equal(scheduler.jobs.length, 0);
+});
+
+test("a live session without one proven repository binding never reads a shared checkout", async () => {
+  const scheduler = controlledScheduler();
+  let gitCalls = 0;
+  let pullRequestCalls = 0;
+  const evidence = sessionEvidence();
+  const runtime = runtimeFixture({
+    evidence,
+    repositoryAttribution: { state: "multiple" },
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState() { gitCalls += 1; return repository("codex/other"); },
+    async readPullRequests() { pullRequestCalls += 1; return pullRequests("codex/other"); },
+  });
+
+  await runtime.analyze();
+  await scheduler.runNext();
+  const state = await runtime.analyze();
+  assert.equal(gitCalls, 0);
+  assert.equal(pullRequestCalls, 0);
+  assert.equal(state.session.repository.available, false);
+  assert.equal(state.session.pullRequests.status, "unavailable");
+});
+
+test("Claude retains branch-qualified cwd enrichment when no mutation-root binding exists", async () => {
+  const scheduler = controlledScheduler();
+  const runtime = runtimeFixture({
+    normalizedSessionId: "claude:legacy-session",
+    evidence: sessionEvidence({ cwd: "C:\\work\\Pomegr\\nested", branch: "claude/pomegr" }),
+    repositoryAttribution: null,
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState(cwd) {
+      assert.equal(cwd, "C:\\work\\Pomegr\\nested");
+      return repository("claude/pomegr", "C:\\work\\Pomegr");
+    },
+    async readPullRequests() { return pullRequests("claude/pomegr"); },
+  });
+
+  await runtime.analyze();
+  await scheduler.runNext();
+  assert.equal((await runtime.analyze()).session.repository.branch, "claude/pomegr");
+});
+
+test("root or branch mismatches use a bounded retry cooldown", async () => {
+  const scheduler = controlledScheduler();
+  let clock = 0;
+  let gitCalls = 0;
+  const runtime = runtimeFixture({
+    now: () => clock,
+    enrichmentCacheMs: 0,
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState(root) { gitCalls += 1; return repository("codex/other", root); },
+    async readPullRequests() { assert.fail("mismatch must not query pull requests"); },
+  });
+  await runtime.analyze();
+  await scheduler.runNext();
+  await runtime.analyze();
+  await runtime.analyze();
+  assert.equal(gitCalls, 1);
+  assert.equal(scheduler.jobs.length, 0);
+  clock = 2_500;
+  await runtime.analyze();
+  assert.equal(scheduler.jobs.length, 1);
+});
+
+test("a bound Pomegr session rejects a Clapline root or branch and does not start pull-request enrichment", async () => {
+  const scheduler = controlledScheduler();
+  const calls = [];
+  const runtime = runtimeFixture({
+    evidence: sessionEvidence({
+      cwd: "C:\\work\\Pomegr",
+      branch: "codex/pomegr",
+    }),
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState(root) {
+      calls.push(["git", root]);
+      return repository("codex/clapline", "C:\\work\\Clapline");
+    },
+    async readPullRequests() { calls.push(["pull-requests"]); return pullRequests("codex/clapline"); },
+  });
+
+  await runtime.analyze();
+  await scheduler.runNext();
+  const state = await runtime.analyze();
+  assert.deepEqual(calls, [["git", "C:\\work\\Pomegr"]]);
+  assert.equal(state.session.repository.available, false);
+  assert.equal(state.session.pullRequests.status, "unavailable");
+});
+
+test("a shared Clapline checkout branch switch retains Pomegr's last known-good session value", async () => {
+  const scheduler = controlledScheduler();
+  let clock = 0;
+  let branch = "codex/pomegr";
+  const evidence = sessionEvidence({ cwd: "C:\\work\\shared\\Clapline", branch: "codex/pomegr" });
+  const runtime = runtimeFixture({
+    evidence,
+    now: () => clock,
+    enrichmentCacheMs: 1,
+    scheduleEnrichment: scheduler.scheduleEnrichment,
+    readGitState(root) { return repository(branch, root); },
+    async readPullRequests() { return pullRequests(branch); },
+  });
+
+  await runtime.analyze();
+  await scheduler.runNext();
+  assert.equal((await runtime.analyze()).session.repository.branch, "codex/pomegr");
+  clock = 2;
+  branch = "codex/clapline";
+  await runtime.analyze();
+  await scheduler.runNext();
+  const afterSwitch = await runtime.analyze();
+  assert.equal(afterSwitch.session.repository.branch, "codex/pomegr");
+  assert.equal(afterSwitch.session.pullRequests.items[0].headBranch, "codex/pomegr");
 });
 
 test("pending asynchronous Git does not block analysis or start pull-request enrichment early", async () => {
@@ -233,36 +372,35 @@ test("concurrent aliases coalesce enrichment by normalized session ID", async ()
 test("expired enrichment serves stale data while one refresh runs", async () => {
   const scheduler = controlledScheduler();
   let clock = 0;
-  let version = 1;
   const runtime = runtimeFixture({
     now: () => clock,
     enrichmentCacheMs: 10,
     scheduleEnrichment: scheduler.scheduleEnrichment,
-    readGitState() { return repository(`codex/live-${version}`); },
-    async readPullRequests() { return pullRequests(`codex/live-${version}`); },
+    readGitState() { return repository("codex/live"); },
+    async readPullRequests() { return pullRequests("codex/live"); },
   });
 
   await runtime.analyze();
   await scheduler.runNext();
-  assert.equal((await runtime.analyze()).session.repository.branch, "codex/live-1");
+  assert.equal((await runtime.analyze()).session.repository.branch, "codex/live");
 
   clock = 11;
-  version = 2;
   const [firstStale, secondStale] = await Promise.all([runtime.analyze(), runtime.analyze()]);
-  assert.equal(firstStale.session.repository.branch, "codex/live-1");
-  assert.equal(secondStale.session.pullRequests.items[0].headBranch, "codex/live-1");
+  assert.equal(firstStale.session.repository.branch, "codex/live");
+  assert.equal(secondStale.session.pullRequests.items[0].headBranch, "codex/live");
   assert.equal(scheduler.jobs.length, 1);
 
   await scheduler.runNext();
   const refreshed = await runtime.analyze();
-  assert.equal(refreshed.session.repository.branch, "codex/live-2");
-  assert.equal(refreshed.session.pullRequests.items[0].headBranch, "codex/live-2");
+  assert.equal(refreshed.session.repository.branch, "codex/live");
+  assert.equal(refreshed.session.pullRequests.items[0].headBranch, "codex/live");
 });
 
 test("changed enrichment inputs invalidate stale data and reject older in-flight completion", async () => {
   const scheduler = controlledScheduler();
   let currentEvidence = sessionEvidence({
     cwd: "C:\\synthetic\\old",
+    branch: "codex/old",
     pullRequestCreations: [{ url: "https://example.test/old" }],
   });
   let resolveOldPullRequests;
@@ -271,7 +409,7 @@ test("changed enrichment inputs invalidate stale data and reject older in-flight
   const runtime = runtimeFixture({
     readEvidence: () => currentEvidence,
     scheduleEnrichment: scheduler.scheduleEnrichment,
-    readGitState(cwd) { return repository(cwd.endsWith("old") ? "codex/old" : "codex/new"); },
+    readGitState(cwd) { return repository(cwd.endsWith("old") ? "codex/old" : "codex/new", cwd); },
     async readPullRequests(_records, options) {
       observedInputs.push(options);
       if (options.cwd.endsWith("old")) return oldPullRequests;
@@ -284,6 +422,7 @@ test("changed enrichment inputs invalidate stale data and reject older in-flight
   await Promise.resolve();
   currentEvidence = sessionEvidence({
     cwd: "C:\\synthetic\\new",
+    branch: "codex/new",
     pullRequestCreations: [{ url: "https://example.test/new" }],
   });
 
@@ -351,28 +490,26 @@ test("unexpected scheduled rejection is explicitly sunk and leaves a retryable p
   assert.doesNotMatch(JSON.stringify(retry), /MUST_NOT_LEAK/);
 });
 
-test("historical analysis uses recorded Git and historical pull-request semantics without scheduling", async () => {
+test("historical analysis with no snapshot shows only recorded Git and never queries the current checkout", async () => {
   const scheduler = controlledScheduler();
   const pullRequestOptions = [];
   const runtime = runtimeFixture({
-    evidence: sessionEvidence({ historical: true, branch: "codex/recorded-branch" }),
+    evidence: (() => {
+      const evidence = sessionEvidence({ historical: true, branch: "codex/recorded-branch" });
+      return { ...evidence, session: { ...evidence.session, repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } };
+    })(),
     scheduleEnrichment: scheduler.scheduleEnrichment,
     readGitState() { assert.fail("historical analysis must not inspect current Git"); },
-    async readPullRequests(_records, options) {
-      pullRequestOptions.push(options);
-      return pullRequests(options.branch);
-    },
+    async readPullRequests(_records, options) { pullRequestOptions.push(options); return pullRequests(options.branch); },
   });
 
   const state = await runtime.analyze("codex:historical");
   assert.equal(state.view, "history");
   assert.equal(state.session.repository.branch, "codex/recorded-branch");
   assert.equal(state.session.repository.historical, true);
-  assert.equal(state.session.pullRequests.status, "ready");
+  assert.equal(state.session.pullRequests.status, "unavailable");
   assert.equal(scheduler.jobs.length, 0);
-  assert.equal(pullRequestOptions.length, 1);
-  assert.equal(pullRequestOptions[0].historical, true);
-  assert.equal(pullRequestOptions[0].branch, "codex/recorded-branch");
+  assert.equal(pullRequestOptions.length, 0);
 });
 
 test("session catalog samples private live targets and returns only sanitized catalog entries", async () => {
@@ -524,4 +661,107 @@ test("historical analysis never reads or exposes cached live resources", async (
   const state = await runtime.analyze("codex:historical");
   assert.equal(state.metrics.resources, null);
   assert.equal(gets, 0);
+});
+
+test("live repository readiness separates no binding, a pending check, and a confirmed answer", () => {
+  assert.equal(liveRepositoryReadiness({ historical: true }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: true, check: "pending" }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "none" }), "ready");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "pending" }), "loading");
+  assert.equal(liveRepositoryReadiness({ available: false, check: "confirmed" }), "unavailable");
+  assert.equal(liveRepositoryReadiness(), "loading");
+});
+
+function enrichmentFixture(readGit) {
+  const jobs = [];
+  let clock = 0;
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => readGit(root),
+    pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    now: () => clock,
+    cacheMs: 2_500,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  const read = (sessionId, evidence, attribution) => {
+    const live = enrichment.liveEnrichment(sessionId, evidence, attribution, (task) => jobs.push(task));
+    live.enqueue?.();
+    return { ...live, readiness: liveRepositoryReadiness({ available: live.value.repository.available, check: live.check }) };
+  };
+  return { read, advance(ms) { clock += ms; }, async runAll() { while (jobs.length) await jobs.shift()(); } };
+}
+
+const boundTo = (cwd) => ({ state: "single", repositoryId: "repo-0123456789abcdef01234567", root: cwd, fingerprint: `bound:${cwd}`, recordedBranch: "codex/live" });
+
+test("a live session with no repository binding is a factual empty result and never reads Git", async () => {
+  let gitCalls = 0;
+  const fixture = enrichmentFixture(() => { gitCalls += 1; return repository("codex/live"); });
+  const codex = fixture.read("codex:no-edits", sessionEvidence(), { state: "unknown" });
+  assert.equal(codex.check, "none");
+  assert.equal(codex.readiness, "ready");
+  assert.equal(codex.value.repository.available, false);
+  const claude = fixture.read("claude:outside-git", sessionEvidence({ branch: "" }), null);
+  assert.equal(claude.readiness, "ready");
+  await fixture.runAll();
+  assert.equal(gitCalls, 0);
+});
+
+test("a bound live session stays loading through transient failures and rebinds, unavailable only on a confirmed answer", async () => {
+  let answer = () => repository("codex/other", "C:\synthetic\pomegr");
+  const fixture = enrichmentFixture((root) => answer(root));
+  const evidence = sessionEvidence();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "loading");
+  answer = () => { throw new Error("transient"); };
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "loading", "a failed check is not a confirmed answer");
+  answer = (root) => repository("codex/other", root);
+  fixture.advance(2_500);
+  fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "unavailable", "a branch mismatch is confirmed");
+  answer = (root) => repository("codex/live", root);
+  fixture.advance(2_500);
+  fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
+  const moved = fixture.read("codex:bound", evidence, boundTo("C:\\synthetic\\moved"));
+  assert.equal(moved.readiness, "loading", "a changed binding waits as loading so clients keep the committed value");
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:bound", evidence, boundTo("C:\\synthetic\\moved")).readiness, "ready");
+});
+
+test("a session that had a repository stays loading while its attribution is briefly unknown", async () => {
+  const fixture = enrichmentFixture((root) => repository("codex/live", root));
+  const evidence = sessionEvidence();
+  fixture.read("codex:rebinding", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.read("codex:rebinding", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
+  assert.equal(fixture.read("codex:rebinding", evidence, { state: "unknown" }).readiness, "loading");
+  assert.equal(fixture.read("codex:rebinding", evidence, { state: "multiple" }).readiness, "ready", "two proven repositories are a confirmed state");
+});
+
+test("a launch-bound live check records the evidence's proven repository ID on its sidecar, and none for launch evidence", async () => {
+  const jobs = [];
+  const checks = new Map();
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => repository("codex/live", root),
+    pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    now: () => 0,
+    cacheMs: 2_500,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  enrichment.setOnRepositoryCheck((sessionId, check) => checks.set(sessionId, check.repositoryId));
+  const evidenceWith = (repositoryAttribution) => {
+    const evidence = sessionEvidence();
+    return { ...evidence, session: { ...evidence.session, repositoryAttribution, repositoryId: repositoryAttribution === "single" ? "repo-0123456789abcdef01234567" : null } };
+  };
+  for (const [sessionId, attribution] of [["claude:proven", "single"], ["claude:launch", "launch"]]) {
+    enrichment.liveEnrichment(sessionId, evidenceWith(attribution), null, (task) => jobs.push(task)).enqueue?.();
+  }
+  while (jobs.length) await jobs.shift()();
+  assert.equal(checks.get("claude:proven"), "repo-0123456789abcdef01234567");
+  assert.equal(checks.get("claude:launch"), null);
 });

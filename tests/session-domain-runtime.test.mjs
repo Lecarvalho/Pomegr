@@ -289,6 +289,32 @@ test("a requested catalog-only historical session queues hydration and its summa
   assert.deepEqual(readSessions, [], "serving never acquires provider evidence synchronously");
 });
 
+test("a live session with no proven repository publishes a ready, empty repository section", async (context) => {
+  const live = structuredClone(evidence);
+  live.historical = false;
+  const primaryRow = {
+    localId: evidence.localId, title: evidence.session.title, project: evidence.session.project,
+    updatedAt: "2026-09-14T12:00:00.000Z", isLive: true, needsInput: false, activityStatus: "working",
+  };
+  const { runtime } = catalogRuntime(context, {
+    primaryRow,
+    hydrate: async (id, publisher) => {
+      if (id === sessionId) publisher.publishSession("codex", evidence.localId, live);
+      return true;
+    },
+  });
+  await runtime.startObservation();
+  await until(() => runtime.serveCatalog()?.snapshot?.value?.sessions?.length === 41);
+  runtime.serveSessionDomain(sessionId, "session-summary", null, null);
+  const summary = await until(() => {
+    const result = runtime.serveSessionDomain(sessionId, "session-summary", null, null);
+    return result.status === "ready" ? result.snapshot.value : null;
+  });
+  assert.ok(summary, "the live summary commits");
+  assert.equal(summary.sectionReadiness.repository, "ready", "no repository binding is a factual empty result, not loading");
+  assert.equal(summary.repository.available, false);
+});
+
 test("a historical session requested before the startup catalog commits serves loading, hydrates, and publishes its recovery revision", async (context) => {
   // Reproduces the Flow 0 stall: during monitor startup the catalog has not been
   // published, the session has no committed L1 evidence, and the domain GET

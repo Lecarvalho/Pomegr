@@ -5,6 +5,9 @@ Pomegr currently makes no model calls. Every value and recommendation comes from
 Metric evidence retention and request-independent serving follow the canonical
 [observation cache contract](OBSERVATION_CACHE.md). A provider acquisition bound is never
 a metric history bound.
+Current provider and Pomegr limitations affecting these rules are inventoried in
+[Limitations](internal/architecture/limitations.md);
+this page owns the deterministic rules and their evidence gates.
 
 ## Session closure
 
@@ -216,7 +219,7 @@ Pomegr derives usage-limit color severity from the normalized percentage with fi
 
 Claude request normalization resolves cache lifetime once from a complete provider-recorded cache-creation breakdown. A positive five-minute-only breakdown becomes `5m`, a positive one-hour-only breakdown becomes `1h`, both become `mixed`, and missing, malformed, zero, or total-mismatched evidence becomes `null`. Raw breakdown fields remain adapter-private. Each bounded request snapshot exposes only that resolved enum.
 
-Codex request normalization resolves `30m+` from a recorded GPT-5.6-family model (`gpt-5.6`, its `sol`, `terra`, `luna`, `pro`, and `cyber` variants), `gpt-6-astra`, and their date-suffixed snapshots. This is the documented model-policy minimum, not a TTL field or expiry timestamp recorded by Codex. OpenAI's [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime) defines 30 minutes after the latest write or reuse as the minimum; the cache may persist longer. The [GPT-6 Astra guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6-astra) explicitly specifies `prompt_cache_options.ttl = "30m"` (verified September 6, 2026). Older, missing, malformed, custom, and unrecognized future model names remain `null`. Model changes affect subsequent requests only; historical sessions use their recorded request models, never current settings.
+Codex request normalization resolves `30m+` from a recorded GPT-5.6-family model (`gpt-5.6`, its `sol`, `terra`, `luna`, `pro`, and `cyber` variants), `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, and their date-suffixed snapshots. This is the documented model-policy minimum, not a TTL field or expiry timestamp recorded by Codex. OpenAI's [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime) defines 30 minutes after the latest write or reuse as the minimum; the cache may persist longer. The [GPT-6 model guidance](https://developers.openai.com/api/docs/guides/latest-model) names Astra, Sol, and Luna and specifies `prompt_cache_options.ttl = "30m"` for this family (verified September 29, 2026). Older, missing, malformed, custom, and unrecognized future model names remain `null`. Model changes affect subsequent requests only; historical sessions use their recorded request models, never current settings.
 
 `codex-auto-review` remains `null`: official documentation does not establish its cache lifetime or underlying model family as of September 6, 2026. The [official Codex model catalog](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json) identifies it separately as Codex Auto Review; this does not authorize treating it as GPT-5.6 Terra or inheriting the main agent's policy. A future mapping requires authoritative policy or recognized provider evidence.
 
@@ -485,6 +488,8 @@ A Claude session classified as non-live displays **Idle** in the catalog. This f
 
 Codex uses only evidence whose ownership and provenance are known: an explicitly connected owning app-server, validated native Windows runtime ownership, or an explicit adapter assessment of recorded structured rollout evidence. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly only when reported by the owning connection and confirmed for that thread. Native Windows ownership requires stable writer identity, a unique file user, the exact native executable, and matching process-start identity; Unix does not make an unvalidated native lock claim. Validated structured starts and unmatched structured input requests retain their execution state through silence until matching evidence resolves them. Recognized turn completion and interruption retain idle/stopped; silence never implies completion. The observation timestamp is preserved. Structured freshness means complete, generation-matched evidence, not operating-system certainty. Runtime confirmation remains independent of transcript silence.
 
+On Windows, where the provider lock directory exists, retained unresolved work is live only while a writer could still resolve it. Codex takes a thread's writer lock before creating its rollout and holds it while the thread is loaded. A thread with no owning-runtime status and no confirmed owner, whose own writer lock and root thread's lock are both missing or uncontended when the liveness observation reads them, is therefore never live. It reports `unknown` with liveness reason `writer_released`, and its session appears as **Unknown**, never in Live, not even briefly after a restart. This is a structural rule, not a timer. It means no process holds the writer lock. It does not mean the work completed, went idle, stopped, or succeeded. A held or unreadable lock keeps the recorded state. See `docs/OBSERVATION_CACHE.md`.
+
 Codex retains its last validated lifecycle while an ordinary, continuity-checked append awaits complete acquisition. Neither a partial final record nor a turn-start or input-request record falling outside a bounded tail changes that accepted status or renews its timestamp. Complete acquired evidence supplies the successor, including completion and input resolution. Cold incomplete sources, malformed acquired evidence, and confirmed source discontinuities still degrade to unavailable; runtime ownership retains its independent rules. This is evidence retention at U1/U2, not a timer-based activity inference.
 
 A recognized provider-authored Codex activity heading is scoped to its open turn and cannot by itself clear or prove liveness. It may be retained without a start marker while no true known boundary has closed that turn; repeated headings or context do not reset completion. A recognized terminal turn record or authoritative owning status may clear it, while unknown/stale state presents it as **Last observed activity**; historical views omit it. Pomegr preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
@@ -513,6 +518,8 @@ The grid uses **In progress**, **Needs input**, **Idle**, **Stopped**, **Open**,
 **Unknown**. It never translates an unknown non-live row into Complete. A missing end
 record can leave a crashed session unresolved; Pomegr does not guess completion from
 silence or expand the existing bounded catalog and cache to retain unlimited sessions.
+On Windows, unresolved work whose writer locks are released is never live; it shows as
+**Unknown** without claiming completion.
 
 ## Session progress estimate
 
@@ -679,7 +686,35 @@ Current-window correlation considers bounded live and recently updated completed
 
 ## Git state
 
-Live branch metadata comes from read-only Git commands against the primary session's working directory. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
+Codex repository attribution follows one provider-neutral rule (approved by the product
+owner on 2026-09-27; see `monitor/session-identity.mjs`): the launch or recorded cwd
+names the project when it resolves to a recognized Git repository, and successful
+structured file mutations refine that project — unchanged when they land in the same
+repository, to a single other recognized repository when they do not. Targets outside
+the launch cwd may establish that other repository. Multiple proven repositories still
+produce **Multiple repositories** and no single-repository Git state or combined touched-file
+list. Their recorded file histories remain separated by repository identity. A read-only
+visit to another checkout is never a mutation and never changes attribution.
+
+When the repository lookup answers that the launch directory is not in a recognized Git
+repository, the project is that directory's basename, with no repository ID. The basename
+is used only when it is a safe display name: not a drive, device or UNC host/share root, a
+dot-directory, the user's home directory, over 128 characters, or text with control
+characters. A missing launch directory, an unavailable or failing lookup, or a lookup
+slower than its bound (400 ms for a catalog row, 5 s for a full read) gives **Unknown
+project**, so a nested repository subdirectory is never named. Catalog rows reuse the
+attribution a full read established and never overwrite it; rows sharing a launch
+directory share one memoized lookup per five minutes, longer than the 60 s header rescan so a
+slow cold lookup warms the next scan instead of expiring before it.
+
+Live Git enrichment requires a root-bound recorded branch. A checkout on another branch
+cannot supply the viewed session's files, branch comparison, pull requests, or commit
+counts. A mismatch retains a previously verified session snapshot, or leaves repository
+state unavailable when none exists. Missing branch evidence is unavailable; the current
+checkout is not evidence of which branch the session used. These rules do not identify
+which session made other uncommitted changes on the same branch.
+
+Accepted live branch metadata comes from read-only Git commands against the session-bound repository root. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
 
 A historical session shows the last complete snapshot recorded while it was live: recorded
 uncommitted files, branch comparison, and pull-request state at their original check
@@ -708,6 +743,9 @@ Path or timestamp proximity is not attribution.
 
 Coverage is intentionally partial. Only structured file tools with an explicit target
 (Write and Edit, and Codex patch and file-change items) contribute records. Shell
+commands and patch-looking text embedded in `functions.exec` source do not prove a
+successful file operation. Nested patches require separate structured success evidence;
+the outer wrapper's success alone cannot establish which nested calls ran. Shell
 commands never do, because the files a command writes cannot be known reliably from its
 text; those changes appear only as Git-observed files. Shell commands, scripts, builds,
 external editors, unrecognized tools, incomplete or

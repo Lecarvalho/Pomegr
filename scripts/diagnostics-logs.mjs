@@ -41,6 +41,15 @@ function keyFor(record) {
   return `${record.run}|${record.lane}|${record.startMs}`;
 }
 
+// Records written before provider/lane attribution, or emitted for a stage with no
+// known lane (e.g. catalog_discovery), group under this fixed label rather than being
+// dropped or misattributed.
+const UNATTRIBUTED = "unattributed";
+
+function attributionKey(stageName, providerValue, laneValue) {
+  return `${stageName}\u0000${providerValue || UNATTRIBUTED}\u0000${laneValue || UNATTRIBUTED}`;
+}
+
 function sampleAdd(stat, duration) {
   stat.samples += 1;
   stat.sum += duration;
@@ -180,10 +189,18 @@ async function readLog(path, consume, { createStream = createReadStream, maxByte
 export async function analyzePipelineLogs(options = {}, dependencies = {}) {
   const settings = { ...options, maxFiles: positiveInteger(options.maxFiles, MAX_FILE_COUNT, MAX_FILE_COUNT), maxBytes: positiveInteger(options.maxBytes, MAX_TOTAL_BYTES, MAX_TOTAL_BYTES) };
   const files = await findPipelineLogFiles(settings, dependencies);
-  const state = { totalRecords: 0, malformedRecords: 0, truncatedLines: 0, bytesRead: 0, filesRead: 0, skippedFiles: 0, earliest: null, latest: null, gaps: 0, droppedRecords: 0, rejectedRecords: 0, healthFailures: [], healthHistory: [], pending: new Map(), pendingTruncated: false, stages: new Map() };
+  const state = { totalRecords: 0, malformedRecords: 0, truncatedLines: 0, bytesRead: 0, filesRead: 0, skippedFiles: 0, earliest: null, latest: null, gaps: 0, droppedRecords: 0, rejectedRecords: 0, healthFailures: [], healthHistory: [], pending: new Map(), pendingTruncated: false, stages: new Map(), attribution: new Map() };
   const stage = (name) => {
     if (!state.stages.has(name)) state.stages.set(name, { count: 0, failed: 0, incomplete: 0, samples: 0, sum: 0, min: Infinity, max: 0, reservoir: [] });
     return state.stages.get(name);
+  };
+  const attribution = (name, providerValue, laneValue) => {
+    const key = attributionKey(name, providerValue, laneValue);
+    if (!state.attribution.has(key)) state.attribution.set(key, {
+      stage: name, provider: providerValue || UNATTRIBUTED, priorityLane: laneValue || UNATTRIBUTED,
+      count: 0, failed: 0, incomplete: 0, samples: 0, sum: 0, min: Infinity, max: 0, reservoir: [],
+    });
+    return state.attribution.get(key);
   };
   const consume = (line) => {
     let parsed;
@@ -207,7 +224,7 @@ export async function analyzePipelineLogs(options = {}, dependencies = {}) {
     }
     if (record.kind === "span_start") {
       if (!settings.stage || record.stage === settings.stage) {
-        if (state.pending.size < MAX_PENDING) state.pending.set(keyFor(record), { stage: record.stage }); else state.pendingTruncated = true;
+        if (state.pending.size < MAX_PENDING) state.pending.set(keyFor(record), { stage: record.stage, provider: record.provider || null, priorityLane: record.priorityLane || null }); else state.pendingTruncated = true;
       }
       return;
     }
@@ -216,6 +233,10 @@ export async function analyzePipelineLogs(options = {}, dependencies = {}) {
       if (record.outcome === "failed") target.failed += 1;
       if (Number.isFinite(record.durationMs) && record.durationMs >= 0) sampleAdd(target, record.durationMs);
       state.pending.delete(keyFor(record));
+      const attributed = attribution(record.stage, record.provider || null, record.priorityLane || null);
+      attributed.count += 1;
+      if (record.outcome === "failed") attributed.failed += 1;
+      if (Number.isFinite(record.durationMs) && record.durationMs >= 0) sampleAdd(attributed, record.durationMs);
     }
   };
   let remaining = settings.maxBytes;
@@ -231,14 +252,26 @@ export async function analyzePipelineLogs(options = {}, dependencies = {}) {
       state.skippedFiles += 1;
     }
   }
-  for (const pending of state.pending.values()) stage(pending.stage).incomplete += 1;
+  for (const pending of state.pending.values()) {
+    stage(pending.stage).incomplete += 1;
+    attribution(pending.stage, pending.provider, pending.priorityLane).incomplete += 1;
+  }
   const stages = Object.fromEntries([...state.stages.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, stat]) => [name, publicStat(stat)]));
+  // Nested { stage: { provider: { priorityLane: stat } } }; both keys are "unattributed"
+  // for a legacy record or a stage with no known lane, so every span is still counted.
+  const stagesByAttribution = {};
+  for (const stat of [...state.attribution.values()].sort((left, right) =>
+    left.stage.localeCompare(right.stage) || left.provider.localeCompare(right.provider) || left.priorityLane.localeCompare(right.priorityLane))) {
+    const stageBucket = stagesByAttribution[stat.stage] ||= {};
+    const providerBucket = stageBucket[stat.provider] ||= {};
+    providerBucket[stat.priorityLane] = publicStat(stat);
+  }
   return Object.freeze({
     observedCoverage: { earliest: state.earliest === null ? null : new Date(state.earliest).toISOString(), latest: state.latest === null ? null : new Date(state.latest).toISOString(), wholeSession: false },
     files: { read: state.filesRead, skipped: state.skippedFiles, selected: files.length, bytesRead: state.bytesRead, byteLimit: settings.maxBytes },
     records: { total: state.totalRecords, malformed: state.malformedRecords, incompleteTrailingFiles: state.truncatedLines },
     gaps: { records: state.gaps, droppedRecords: state.droppedRecords, rejectedRecords: state.rejectedRecords },
-    pending: { count: state.pending.size, truncated: state.pendingTruncated }, stages,
+    pending: { count: state.pending.size, truncated: state.pendingTruncated }, stages, stagesByAttribution,
     healthFailures: state.healthFailures, healthHistory: state.healthHistory,
   });
 }

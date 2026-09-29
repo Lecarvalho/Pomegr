@@ -5,7 +5,7 @@ import { CODEX_ACTIVE_WINDOW_MS, CODEX_ROLLOUT_LIVE_WINDOW_MS, CODEX_NEEDS_INPUT
 function timestampValue(value) { return Date.parse(value || "") || 0; }
 function safeTurnId(value) { return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/.test(value) ? value : null; }
 function normalizedToolName(value) { return typeof value === "string" ? value.split(/[.:/]/).at(-1).trim().toLowerCase() : ""; }
-export function readCodexLivenessTail(file, maximumBytes) {
+export function readCodexLivenessTail(file, maximumBytes, maximumRecords = CODEX_LIVENESS_MAX_TAIL_RECORDS) {
   let stat;
   try { stat = fs.statSync(file); } catch { return { key: null, records: [], complete: false }; }
   if (!stat.isFile() || stat.size <= 0) return { key: `${stat.size}:${stat.mtimeMs}`, records: [], complete: stat.isFile() };
@@ -36,10 +36,13 @@ export function readCodexLivenessTail(file, maximumBytes) {
   text = completeEnd >= 0 ? text.slice(0, completeEnd + 1) : "";
   const records = [];
   const lines = text.split("\n");
-  if (lines.length > CODEX_LIVENESS_MAX_TAIL_RECORDS) {
-    startOffset += Buffer.byteLength(lines.slice(0, -CODEX_LIVENESS_MAX_TAIL_RECORDS).join("\n")) + 1;
+  const recordLimit = Number.isInteger(maximumRecords) && maximumRecords > 0
+    ? maximumRecords
+    : CODEX_LIVENESS_MAX_TAIL_RECORDS;
+  if (lines.length > recordLimit) {
+    startOffset += Buffer.byteLength(lines.slice(0, -recordLimit).join("\n")) + 1;
   }
-  for (const line of lines.slice(-CODEX_LIVENESS_MAX_TAIL_RECORDS)) {
+  for (const line of lines.slice(-recordLimit)) {
     if (!line.trim()) continue;
     try {
       const record = JSON.parse(line);

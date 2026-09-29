@@ -33,7 +33,10 @@ export function createSessionDomainServing({
     return catalogIndex;
   }
   function domainCatalogEntry(sessionId) {
-    return indexedCatalog().get(sessionId) || null;
+    return indexedCatalog().get(sessionId) || (() => {
+      const identity = coordinator.catalogIdentity?.(sessionId);
+      return identity ? { ...identity, summaryReadiness: "loading" } : null;
+    })();
   }
   function domainCatalogComplete() {
     if (!isServingActive() || !coordinator.catalog()?.snapshot) return false;

@@ -131,6 +131,8 @@ test("source-complete Activity commits while the unrelated session derivation is
   }
   assert.equal((await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "activity" })).items.some((item) => item.id === "progressive-retry"), true, "a failed contribution retries without another source append");
   releaseDerivation();
+  for (let attempt = 0; attempt < 50 && runtime.serveSession(`codex:${evidence.localId}`).status !== "ready"; attempt += 1) await pause(2);
+  await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "requests" });
   for (let attempt = 0; attempt < 50 && historyReads !== 1; attempt += 1) await pause(2);
   assert.equal(historyReads, 1, "the first complete replay is now held");
   const lateActivity = { ...sourceActivity[0], id: "progressive-late" };
@@ -217,6 +219,8 @@ test("stopping cancels contribution retries and prevents a dirty replay follow-u
   });
   context.after(async () => { releaseHistory(); await runtime.stopObservation(); });
   await runtime.startObservation();
+  await waitFor(() => runtime.serveSession(`codex:${evidence.localId}`).status === "ready", "the initial session did not commit");
+  await runtime.serveSessionHistory(`codex:${evidence.localId}`, { kind: "activity" });
   await waitFor(() => historyReads === 1, "the initial replay did not start");
   assert.equal(historyReads, 1);
   assert.equal(contributionAttempts, 1);
