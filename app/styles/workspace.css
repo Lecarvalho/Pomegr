@@ -218,12 +218,19 @@
 .commandMetric > small { margin-top: 8px; color: var(--command-faint); font-size: var(--text-xs); }
 .commandSelect { position: relative; display: inline-grid; min-width: 0; max-width: 100%; color: var(--command-muted); }
 .commandSelect::after { position: absolute; inset-inline-end: 14px; top: 50%; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-70%) rotate(45deg); pointer-events: none; content: ""; }
-.commandSelect select { appearance: none; width: 100%; min-width: 0; min-height: var(--control-height); padding-block: 0; padding-inline: var(--space-3) 36px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); cursor: pointer; }
-.commandSelect select:hover:not(:disabled) { border-color: var(--command-line-strong); }
-.commandSelect select:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.commandSelect select:disabled { cursor: not-allowed; opacity: .55; }
-.commandSelect:has(select:disabled)::after { opacity: .55; }
-@media (forced-colors: active) { .commandSelect select { appearance: auto; padding-inline-end: var(--space-3); } .commandSelect::after { display: none; } }
+.commandSelectTrigger { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-width: 0; min-height: var(--control-height); padding-block: 0; padding-inline: var(--space-3) 36px; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); text-align: start; cursor: pointer; }
+.commandSelectTrigger:hover:not(:disabled), .commandSelectTrigger[aria-expanded="true"] { border-color: var(--command-line-strong); }
+.commandSelectTrigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.commandSelectTrigger:disabled { cursor: not-allowed; opacity: .55; }
+.commandSelect:has(.commandSelectTrigger:disabled)::after { opacity: .55; }
+.commandSelectValue { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commandSelectIcon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 8px; }
+.commandSelectList { position: fixed; z-index: 120; max-width: min(360px, calc(100vw - 24px)); margin: 0; padding: var(--space-1); overflow-y: auto; list-style: none; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); scrollbar-width: thin; }
+.commandSelectOption { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding-inline: var(--space-2) var(--space-3); border-radius: var(--control-radius); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); cursor: pointer; }
+.commandSelectOption[data-active] { background: var(--command-panel-2); }
+.commandSelectOption[aria-selected="true"] { color: var(--command-brand-text); font-weight: 600; }
+@media (pointer: coarse) { .commandSelectOption { min-height: 44px; } }
+@media (forced-colors: active) { .commandSelectOption[data-active] { outline: 2px solid; outline-offset: -2px; } }
 .commandEmpty { min-height: 230px; padding: 34px; display: grid; place-items: center; align-content: center; border: 1px solid var(--command-line); background: var(--command-panel); color: var(--command-muted); text-align: center; }
 .commandToolbar + .commandEmpty { margin-top: 12px; }
 .commandEmpty .commandIcon { width: 24px; height: 24px; }
@@ -304,7 +311,7 @@
 .repositoryInventoryCaptureActions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
 .repositoryInventoryCaptureActions > button { white-space: nowrap; }
 .repositoryRevisionSelect { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.repositoryRevisionSelect .commandSelect select { font-family: var(--font-data); font-size: var(--text-xs); }
+.repositoryRevisionSelect .commandSelectTrigger { font-family: var(--font-data); font-size: var(--text-xs); }
 .repositoryInventoryState { padding-block: var(--divider-content-gap); display: flex; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryInventoryLoading, .repositoryInventoryUnavailable { margin: 12px 0 0; padding-block: 16px; color: var(--command-muted); font-size: var(--text-xs); }
 .repositoryInventorySummary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--command-line); }
@@ -377,7 +384,7 @@
 @media (max-width: 760px) {
   .repositoryInventoryCaptureActions { width: 100%; flex-wrap: wrap; }
   .repositoryInventoryCaptureActions > button, .repositoryInventoryCaptureActions > .commandSelect { flex: 1; }
-  .repositoryInventoryCaptureActions button, .repositoryInventoryProvider select, .repositoryInventoryCaptureActions select { min-height: 44px; }
+  .repositoryInventoryCaptureActions button, .repositoryInventoryProvider .commandSelectTrigger { min-height: 44px; }
   .repositoryInventoryProvider .repositorySectionHead { flex-wrap: wrap; }
   .repositoryRevisionSelect { width: 100%; justify-content: space-between; }
   .repositoryInventoryHeading { flex-wrap: wrap; gap: 6px; }

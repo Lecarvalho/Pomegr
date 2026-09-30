@@ -20,6 +20,7 @@ import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 import type { RequestSelectionRoute, SessionRequestSelection } from "../../app/components/dashboard/requests-actions/useSessionRequestSelection";
 import { setPhone, selectedRequest } from "./requests-actions-test-fixtures";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const SESSION = "claude:activities";
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", executionTasks: [] };
@@ -78,12 +79,11 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Activities tab", () => {
   it("applies one agent scope to the chart, Largest requests, feed groups and kind aggregates", async () => {
-    const user = userEvent.setup();
     const { container, server } = fixture();
     let feed = await ready();
     expect(within(feed).getAllByRole("article").map((group) => group.getAttribute("aria-label"))).toEqual(["Request #36", "Request #37", "Request #38", "Request #39", "Request #40"]);
 
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
     await waitFor(() => expect(selectedRequest()).toBe("#39"));
     feed = screen.getByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
@@ -113,12 +113,11 @@ describe("Activities tab", () => {
     await user.click(within(feed).getByRole("button", { name: /Request #38/u }));
     await waitFor(() => expect(meta()).toContain("request #38 selected"));
     // The total describes the scope, so an agent selection narrows it with everything else.
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
     await waitFor(() => expect(meta()).toMatch(/^20 tool calls in this scope/u));
   });
 
   it("lists the latest retained shell tasks beside the scope count and says when a scope has none", async () => {
-    const user = userEvent.setup();
     const tasks: ExecutionTask[] = [
       { ...task, id: "task-build", label: "Build the desktop bundle", status: "running", startedAt: "2026-08-08T12:00:30.000Z", finishedAt: null, exitCode: null },
       { ...task, id: "task-verify", label: "Run verification", startedAt: "2026-08-08T12:00:20.000Z", finishedAt: "2026-08-08T12:00:26.000Z", exitCode: 0 },
@@ -144,7 +143,7 @@ describe("Activities tab", () => {
     expect(rows[2]).toHaveTextContent("exit 1");
     expect(within(section as HTMLElement).queryByText("No shell task details in this scope.")).toBeNull();
 
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
     await waitFor(() => expect(container.querySelector(".activityShellTasks")).toHaveTextContent("No shell task details in this scope."));
     expect(within(container.querySelector(".activityShellTasks") as HTMLElement).queryByRole("group", { name: "Latest shell tasks" })).toBeNull();
     expect(feed).toHaveTextContent("Failed shell runs");
@@ -440,14 +439,13 @@ describe("Activities tab", () => {
   });
 
   it("drops the previous scope's groups instead of showing them without a status when history fails", async () => {
-    const user = userEvent.setup();
     const { serverState } = fixture();
     const feed = await ready();
     expect(within(feed).getAllByRole("article")).toHaveLength(5);
     // The chart page fails for the new scope, so the feed is disabled while the chart previews.
     // The groups it last read belong to the old scope and must not stand in for the new one.
     serverState.requestsStatus = 503;
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
     const region = await screen.findByRole("region", { name: "Activity feed" });
     await waitFor(() => expect(within(region).getByRole("status")).toHaveTextContent("Activity history is unavailable; retrying…"));
     expect(within(region).queryByRole("article")).not.toBeInTheDocument();

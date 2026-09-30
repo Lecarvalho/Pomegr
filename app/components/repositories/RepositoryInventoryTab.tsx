@@ -33,7 +33,7 @@ function ProviderInventoryEvidence({ repository, provider, initialRevisionId, sc
   return <section ref={section} className="repositoryInventoryProvider" aria-label={`${provider.source} context inventory`}>
     <header className="repositorySectionHead">
       <div><ProviderBadge source={provider.source} /></div>
-      {provider.revisions.length > 1 ? <label className="repositoryRevisionSelect">Revision<CommandSelect value={selectedRevisionId} onChange={(event) => select(event.currentTarget.value)}>{provider.revisions.map((revision) => <option key={revision.id} value={revision.id}>{revision.id} · {compactNumber(inventoryDisplayTokens(revision))}</option>)}</CommandSelect></label> : capturedAt && <span className="repositoryChecked">Captured {relativeTime(capturedAt)}</span>}
+      {provider.revisions.length > 1 ? <label className="repositoryRevisionSelect">Revision<CommandSelect value={selectedRevisionId} onChange={select} options={provider.revisions.map((revision) => ({ value: revision.id, label: `${revision.id} · ${compactNumber(inventoryDisplayTokens(revision))}` }))} /></label> : capturedAt && <span className="repositoryChecked">Captured {relativeTime(capturedAt)}</span>}
     </header>
     {ready ? <RevisionEvidence repository={repository} provider={provider} selectedRevisionId={selectedRevisionId} onSelect={select} /> : <div className="repositoryInventoryState">
       <span className={`commandChip ${provider.status === "failed" ? "negative" : provider.status === "capturing" ? "warning" : ""}`}>{provider.status === "not_captured" ? "Not captured" : provider.status === "capturing" ? "Capturing" : provider.status === "failed" ? "Failed" : "Unavailable"}</span>
@@ -64,7 +64,7 @@ export function RepositoryInventoryTab({ repository, initialProvider, initialRev
     <div className="repositoryPaneHead">
       <div><h2>Context inventory</h2><p>A native provider diagnostic of what loads initially, what remains available on demand, and the context reserved for compaction. Only normalized totals are saved.</p></div>
       {selected && <div className="repositoryInventoryCaptureActions">
-        {providers.length > 1 && <CommandSelect aria-label="Capture provider" value={selected.provider} onChange={(event) => onProvider(event.currentTarget.value as ProviderId)}>{providers.map((provider) => <option key={provider.provider} value={provider.provider}>{provider.source}</option>)}</CommandSelect>}
+        {providers.length > 1 && <CommandSelect aria-label="Capture provider" value={selected.provider} onChange={onProvider} options={providers.map((provider) => ({ value: provider.provider, label: provider.source }))} />}
         <InventoryCaptureAction provider={selected} desktop={desktop} busy={Boolean(captureKey)} onConfirm={() => onConfirm(selected.provider)} />
       </div>}
     </div>

@@ -8,6 +8,7 @@ import { ClientAccessProvider, PhoneAccessExpiredNotice, useClientAccess } from 
 import { DisplayPreferencesProvider } from "../../app/hooks/DisplayPreferencesContext";
 import { SettingsPage } from "../../app/settings/SettingsPage";
 import type { PhoneAccessState } from "../../shared/lan-sharing-contract";
+import { chooseCommandOption } from "./command-select-helpers";
 
 vi.mock("qrcode", () => ({ default: { toDataURL: vi.fn() } }));
 
@@ -76,7 +77,7 @@ describe("phone access", () => {
 
     const network = await screen.findByRole("combobox", { name: "Private network" });
     expect(screen.getByRole("button", { name: "Enable phone access" })).toBeDisabled();
-    await user.selectOptions(network, "home");
+    chooseCommandOption(network, "home");
     await user.click(screen.getByRole("button", { name: "Enable phone access" }));
     await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenCalledWith(true, "home"));
     expect(await screen.findByText("Sharing started")).toBeInTheDocument();
@@ -110,7 +111,7 @@ describe("phone access", () => {
     expect(screen.getByRole("button", { name: "Refresh networks" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Refresh networks" }));
     await waitFor(() => expect(bridge.getPhoneAccessState).toHaveBeenCalledTimes(2));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Private network" }), "home");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Private network" }), "home");
     await user.click(screen.getByRole("button", { name: "Retry phone access" }));
     await waitFor(() => expect(bridge.setPhoneSharing).toHaveBeenCalledWith(true, "home"));
   });
@@ -125,7 +126,7 @@ describe("phone access", () => {
     });
     renderSettings();
     const user = await openPhoneAccess();
-    await user.selectOptions(await screen.findByRole("combobox", { name: "Private network" }), "home");
+    chooseCommandOption(await screen.findByRole("combobox", { name: "Private network" }), "home");
     await user.click(screen.getByRole("button", { name: "Enable phone access" }));
     expect(await screen.findByText("Sharing started")).toBeInTheDocument();
     await act(async () => changed?.({

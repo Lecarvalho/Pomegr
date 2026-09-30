@@ -1,6 +1,7 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
 export { CommandIcon } from "./CommandIcon";
+export { CommandSelect, type CommandSelectOption } from "./CommandSelect";
 
 /** Chevron between breadcrumb steps; decorative, so the steps read as a plain list. */
 export function CommandBreadcrumbSeparator() {
@@ -56,9 +57,6 @@ export function CommandSearch({ value, onChange, placeholder, label }: { value: 
   </label>;
 }
 
-export function CommandSelect({ className, ...props }: ComponentProps<"select">) {
-  return <span className="commandSelect"><select {...props} className={className} /></span>;
-}
 export function CommandFilter({ active, children, onClick, count, ariaLabel }: { active: boolean; children: ReactNode; onClick: () => void; count?: ReactNode; ariaLabel?: string }) {
   return <button className={`commandFilterChip${active ? " active" : ""}`} type="button" aria-label={ariaLabel} aria-pressed={active} onClick={onClick}>{children}{count === undefined ? null : <span className="commandFilterCount" aria-hidden={ariaLabel ? true : undefined}>{count}</span>}</button>;
 }

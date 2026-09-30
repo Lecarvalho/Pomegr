@@ -10,6 +10,7 @@ import { scopedRows } from "../../app/components/dashboard/requests-actions/mode
 import type { RequestOverviewPoint } from "../../shared/session-history-contract";
 import { agent } from "./dashboard-test-fixtures";
 import { claudeCacheRefillFeeds } from "../helpers/claude-cache-refill.mjs";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const childAgent: Agent = { ...agent, id: 'child', parentId: 'primary', label: 'Builder' };
 
@@ -371,10 +372,9 @@ describe("RequestsActionsPanel", () => {
   });
 
   it("changes scope to the newest row and keeps a chart click in the current window", async () => {
-    const user = userEvent.setup();
     const items = Array.from({ length: 10 }, (_, index) => snapshot(index + 1, index % 2 ? "child" : "primary"));
     const { container } = renderPanel(items, { agents: [agent, childAgent] });
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "primary");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "primary");
     expect(selectedRequest()).toBe("#5");
     expect(axisLabels(container)).toEqual(["#1", "#5"]);
 

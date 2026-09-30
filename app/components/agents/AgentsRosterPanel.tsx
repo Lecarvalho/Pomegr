@@ -4,11 +4,15 @@ import { useMemo, useState } from "react";
 import type { AgentsAnalyticsSnapshot, AgentsRun } from "../../../shared/agents-contract";
 import { relativeTime, sessionListTime } from "../../dashboard-utils";
 import { CommandTable, type CommandTableColumn } from "../command-center/CommandTable";
-import { CommandEmpty, CommandSelect } from "../command-center/CommandPage";
+import { CommandEmpty, CommandSelect, type CommandSelectOption } from "../command-center/CommandPage";
 import { agentRunRoleLabel, contextLabel, statusLabel } from "./agent-presentation";
 import styles from "./AgentsView.module.css";
 
 type RosterFilter = "all" | AgentsRun["status"];
+const STATE_OPTIONS: CommandSelectOption<RosterFilter>[] = [
+  { value: "all", label: "All states" }, { value: "active", label: "Active" }, { value: "needs_input", label: "Needs input" }, { value: "waiting", label: "Waiting" }, { value: "warm", label: "Warm" },
+  { value: "finished", label: "Finished" }, { value: "stopped", label: "Stopped" }, { value: "idle", label: "Idle" }, { value: "unknown", label: "Unknown" },
+];
 
 export function AgentsRosterPanel({ snapshot, onInspect }: { snapshot: AgentsAnalyticsSnapshot; onInspect: (title: string, runs: AgentsRun[], trigger: HTMLElement) => void }) {
   const [query, setQuery] = useState("");
@@ -27,5 +31,5 @@ export function AgentsRosterPanel({ snapshot, onInspect }: { snapshot: AgentsAna
     { id: "context", label: "Latest context", colClassName: styles.colContext, renderCell: (run) => <span className={styles.context}>{contextLabel(run.latestContextTotal)}</span> },
     { id: "activity", label: "Last activity", colClassName: styles.colActivity, renderCell: (run) => run.lastSeen ? <time dateTime={run.lastSeen} title={sessionListTime(run.lastSeen)}>{relativeTime(run.lastSeen)}</time> : "—" },
   ];
-  return <section className={`${styles.panel} ${styles.rosterPanel}`} aria-label="Live agents"><div className={styles.rosterToolbar}><label className="commandVisuallyHidden" htmlFor="agent-roster-search">Find an agent or assignment</label><input id="agent-roster-search" type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Find an agent or assignment…" aria-label="Find an agent or assignment" /><label className="commandVisuallyHidden" htmlFor="agent-roster-status">Agent state</label><CommandSelect id="agent-roster-status" value={status} onChange={(event) => setStatus(event.currentTarget.value as RosterFilter)} aria-label="Agent state"><option value="all">All states</option><option value="active">Active</option><option value="needs_input">Needs input</option><option value="waiting">Waiting</option><option value="warm">Warm</option><option value="finished">Finished</option><option value="stopped">Stopped</option><option value="idle">Idle</option><option value="unknown">Unknown</option></CommandSelect><span className={styles.rosterCount}>{visible.length} of {snapshot.roster.length} agents</span></div><CommandTable caption="Observed live agents" rows={visible} columns={columns} getRowKey={(run) => run.id} className={styles.rosterTable} emptyState={<CommandEmpty title="No agents match these filters" detail="Try another state or search term." icon="agents" />} /><p className={styles.panelNote}>Agents in live sessions · latest observed state. Context is each agent’s latest non-zero snapshot.</p></section>;
+  return <section className={`${styles.panel} ${styles.rosterPanel}`} aria-label="Live agents"><div className={styles.rosterToolbar}><label className="commandVisuallyHidden" htmlFor="agent-roster-search">Find an agent or assignment</label><input id="agent-roster-search" type="search" value={query} onChange={(event) => setQuery(event.currentTarget.value)} placeholder="Find an agent or assignment…" aria-label="Find an agent or assignment" /><label className="commandVisuallyHidden" htmlFor="agent-roster-status">Agent state</label><CommandSelect id="agent-roster-status" value={status} onChange={setStatus} aria-label="Agent state" options={STATE_OPTIONS} /><span className={styles.rosterCount}>{visible.length} of {snapshot.roster.length} agents</span></div><CommandTable caption="Observed live agents" rows={visible} columns={columns} getRowKey={(run) => run.id} className={styles.rosterTable} emptyState={<CommandEmpty title="No agents match these filters" detail="Try another state or search term." icon="agents" />} /><p className={styles.panelNote}>Agents in live sessions · latest observed state. Context is each agent’s latest non-zero snapshot.</p></section>;
 }

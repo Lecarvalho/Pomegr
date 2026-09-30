@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentsAnalyticsSnapshot, AgentsRun } from "../../shared/agents-contract";
 import { AgentsView } from "../../app/components/agents/AgentsView";
+import { chooseCommandOption } from "./command-select-helpers";
 
 type Filters = Pick<AgentsAnalyticsSnapshot["filters"], "project" | "days" | "scope">;
 const defaults: Filters = { project: "all", days: 30, scope: "all" };
@@ -41,7 +42,6 @@ describe("Agents selection transitions", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response()).mockReturnValueOnce(next.promise);
     render(<AgentsView />); await flush();
     const project = screen.getByRole("combobox", { name: "Project" });
-    const options = within(project).getAllByRole("option");
     const content = screen.getByText("Latest reported model per agent run");
     const about = screen.getByText("About this data");
     const live = screen.getByRole("tab", { name: "Live agents 1" });
@@ -50,7 +50,6 @@ describe("Agents selection transitions", () => {
     expect(screen.getByRole("button", { name: "All agents" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("combobox", { name: "Project" })).toBe(project);
-    expect(within(project).getAllByRole("option")).toEqual(options);
     expect(screen.getByText("Latest reported model per agent run")).toBe(content);
     expect(screen.getByText("About this data")).toBe(about);
     expect(screen.getByRole("tab", { name: "Live agents 1" })).toBe(live);
@@ -69,18 +68,18 @@ describe("Agents selection transitions", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(response()).mockReturnValueOnce(next.promise)
       .mockResolvedValueOnce(response({ ...defaults, project: "Pomegr" }));
     render(<AgentsView />); await flush();
-    fireEvent.change(screen.getByRole("combobox", { name: "Project" }), { target: { value: "Pomegr" } });
-    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("all");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Project" }), "Pomegr");
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveAttribute("data-value", "all");
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
     expect(screen.getByRole("status")).toHaveTextContent("Loading All agents · Pomegr · Last 30 days. Your current selection stays visible.");
     next.reject(new Error("PRIVATE_FAILURE")); await flush();
     expect(screen.getByRole("status")).toHaveTextContent("Could not load All agents · Pomegr");
     expect(screen.getByRole("status")).not.toHaveTextContent("PRIVATE_FAILURE");
-    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveAttribute("data-value", "all");
     expect(screen.getByText("Latest reported model per agent run")).toBeInTheDocument();
     fireEvent(window, new Event("focus")); await flush();
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("Pomegr");
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveAttribute("data-value", "Pomegr");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 

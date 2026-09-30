@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../shared/monitor-contract";
 import { encodeSessionRoute } from "../shared/session-route.mjs";
 import { CommandIcon, type CommandIconName } from "./components/command-center/CommandIcon";
-import { CommandPageHeader, CommandSelect } from "./components/command-center/CommandPage";
+import { CommandPageHeader, CommandSelect, type CommandSelectOption } from "./components/command-center/CommandPage";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
@@ -25,6 +25,7 @@ const VIEWS: Destination[] = [
   { kind: "view", id: "usage-limits", title: "Usage limits", detail: "Provider account windows", href: "/usage-limits", icon: "limits" },
   { kind: "view", id: "repositories", title: "Repositories", detail: "Observed projects", href: "/repositories", icon: "repositories" },
 ];
+const DESTINATION_KINDS: CommandSelectOption<HomePin["kind"]>[] = [{ value: "session", label: "Sessions" }, { value: "project", label: "Projects" }, { value: "view", label: "Views" }];
 const samePin = (left: HomePin, right: HomePin) => left.kind === right.kind && left.id === right.id;
 
 function sessionDestination(session: SessionSummary): Destination | null {
@@ -56,9 +57,7 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
   const matches = destinations.filter((destination) => destination.kind === kind && `${destination.title} ${destination.detail}`.toLowerCase().includes(query.trim().toLowerCase()));
   return <div className={styles.picker}>
     <div className={styles.pickerFilters}>
-      <label>Destination type<CommandSelect value={kind} onChange={(event) => { setKind(event.target.value as HomePin["kind"]); setQuery(""); }}>
-        <option value="session">Sessions</option><option value="project">Projects</option><option value="view">Views</option>
-      </CommandSelect></label>
+      <label>Destination type<CommandSelect value={kind} onChange={(value) => { setKind(value); setQuery(""); }} options={DESTINATION_KINDS} /></label>
       <label>Find a destination<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search names" /></label>
     </div>
     <ul className={styles.pickerResults} aria-label="Destinations to pin">

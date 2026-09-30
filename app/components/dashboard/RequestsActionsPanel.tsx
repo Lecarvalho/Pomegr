@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { Agent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshotFeed, Workflow } from "../../../shared/monitor-contract";
 import { agentDisplayName, agentTreeRows } from "../../dashboard-utils";
+import { isAgentWallTimeAdvancing } from "../../formatting.mjs";
 import { EmptyState } from "../EmptyState";
 import { DottedInfoPopover } from "../DottedInfoPopover";
 import { CommandSelect } from "../command-center/CommandPage";
@@ -32,7 +33,7 @@ function windowRange(visible: RequestRow[], total: number, scoped: boolean): str
   return scoped ? `Showing ${markers} · ${visible.length} of ${total} for this agent` : `Showing ${markers} of ${total}`;
 }
 
-export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, requestSnapshots, cacheWriteAvailable, selection }: {
+export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, requestSnapshots, cacheWriteAvailable, historical, selection }: {
   agents: Agent[]; workflows?: Workflow[]; requestSnapshots: RequestSnapshotFeed; contextBoundaries: ContextHistoryBoundary[];
   cacheWriteAvailable: boolean; historical: boolean; cacheEvents?: CacheEventFeed; cacheReadDrops?: CacheReadDropFeed;
   selection: SessionRequestSelection;
@@ -62,6 +63,11 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   const windowStart = requestHistory.enabled && !requestHistory.preview ? requestHistory.offset + start : start;
   const chartTotal = requestHistory.enabled ? requestHistory.total : rows.length;
   const chartRef = useRef<HTMLDivElement>(null);
+  // A historical session has nothing still running, whatever its last recorded status.
+  const scopeOptions = useMemo(() => [{ value: "all", label: "All agents" }, ...agentTreeRows(agents).map(({ agent }) => {
+    const running = !historical && isAgentWallTimeAdvancing(agent);
+    return { value: agent.id, label: agentDisplayName(agent), icon: running ? <i className="commandStatusDot online" /> : undefined, iconLabel: running ? "running" : undefined };
+  })], [agents, historical]);
   // The preview's markers are times, and its retention note already says what is shown.
   const range = requestHistory.preview ? null : windowRange(visibleRows, chartTotal, resolvedScope !== "all");
   // Explanations collect in one quiet footer popover so the heading and range line stay plain text.
@@ -77,7 +83,7 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
   return <section className="panel requestsActionsPanel" aria-label="Requests">
     <header className="requestsActionsHeader">
       <div className="requestsActionsHeading"><h2>Requests</h2><span className="sessionEyebrow">One bar per model request</span></div>
-      <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={(event) => setScope(event.target.value)} aria-label="Agent scope"><option value="all">All agents</option>{agentTreeRows(agents).map(({ agent }) => <option key={agent.id} value={agent.id}>{agentDisplayName(agent)}</option>)}</CommandSelect></label>
+      <label className="contextScopeControl requestsActionsScope"><span className="srOnly">Agent scope</span><CommandSelect value={resolvedScope} onChange={setScope} aria-label="Agent scope" options={scopeOptions} /></label>
       <div className="requestsActionsModes">
         <div className="commandSegmented" role="group" aria-label="Chart mode">{([['fresh', 'Fresh tokens'], ['full', 'Full breakdown']] as const).map(([value, label]) => <button type="button" aria-pressed={mode === value} key={value} onClick={() => setMode(value)}>{label}</button>)}</div>
         {!phone && <div className="commandSegmented" role="group" aria-label="Chart layout">{([['lanes', 'Lanes'], ['single', 'Single chart']] as const).map(([value, label]) => <button type="button" aria-pressed={layout === value} key={value} onClick={() => setLayout(value)}>{label}</button>)}</div>}

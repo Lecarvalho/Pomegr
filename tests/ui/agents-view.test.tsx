@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentsAnalyticsSnapshot, AgentsRun } from "../../shared/agents-contract";
 import { AgentsView } from "../../app/components/agents/AgentsView";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const { useAgents } = vi.hoisted(() => ({ useAgents: vi.fn() }));
 vi.mock("../../app/agents-client", () => ({ useAgents }));
@@ -80,15 +81,14 @@ describe("Agents view", () => {
       expect(header).not.toHaveAttribute("aria-sort");
       expect(within(header).queryByRole("button")).toBeNull();
     }
-    await user.selectOptions(screen.getByRole("combobox", { name: "Agent state" }), "needs_input");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Agent state" }), "needs_input");
     expect(within(table).getByText("Implement changes")).toBeInTheDocument();
     expect(within(table).queryByText("Coordinate work")).not.toBeInTheDocument();
   });
 
   it("requests an independent selected filter and preserves an honest unavailable state", async () => {
-    const user = userEvent.setup();
     const view = render(<AgentsView />);
-    await user.selectOptions(screen.getByRole("combobox", { name: "Project" }), "Atlas");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Project" }), "Atlas");
     expect(useAgents).toHaveBeenLastCalledWith({ project: "Atlas", days: 30, scope: "all" });
     useAgents.mockReturnValue({ data: null, loading: false, refreshing: false, connected: false, checkedAt: null });
     view.unmount();

@@ -269,7 +269,7 @@ A live reference of all six roles and their states, plus selects, chips and pill
 
 Search and filters use neutral backgrounds, one-pixel control rules, 4px corners, Inter control text, and an accessible focus ring. Inputs expand to 44px on coarse/mobile surfaces.
 
-Native single-select dropdowns use `CommandSelect` from `app/components/command-center/CommandPage.tsx`. It preserves native selection and keyboard behavior, with a muted chevron inset 14px from the edge, reserved end padding, shared hover/focus/disabled states, and a native-arrow fallback in forced-colors mode.
+Every single-select dropdown uses `CommandSelect` (`app/components/command-center/CommandSelect.tsx`, re-exported from `CommandPage.tsx`); do not add a native `<select>`. It is a select-only combobox: the trigger keeps a muted chevron inset 14px from the edge, reserved end padding, and shared hover/focus/disabled states, and the stronger line also marks it open. The listbox opens in a fixed `--command-panel` overlay (one-pixel strong line, control radius, overlay shadow, at most 320px tall, flipped above when the space below is short) portaled to the body, or into the enclosing modal `<dialog>`. Options are 32px rows (44px on coarse pointers); the active option takes the raised tone and the selected option the brand text at 600. Focus stays on the trigger with `aria-activedescendant`; arrows, Home/End, Page Up/Down, typeahead, Enter/Space, Escape, and Tab follow the native select. An option may carry a decorative glyph with a visually hidden `iconLabel`; the Activities agent scope uses the green status dot with “running” for agents whose wall time is still advancing in a live session.
 
 ### Inline Explanations
 

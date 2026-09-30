@@ -369,7 +369,7 @@ html[data-theme="dark"] body { background: var(--paper); }
   .storageSettingsPanel .commandSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .storageSettingsPanel .commandSegmented { flex-wrap: wrap; width: auto; }
   .storageSettingsPanel .commandSegmented > button { flex: 0 1 auto; }
-  .storageSettingsPanel .commandSelect, .storageSettingsPanel .commandSelect select { min-height: 44px; }
+  .storageSettingsPanel .commandSelect, .storageSettingsPanel .commandSelectTrigger { min-height: 44px; }
 }
 
 @media (max-width: 520px) {

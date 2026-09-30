@@ -6,6 +6,7 @@ import type { Agent, Workflow } from "../../shared/monitor-contract";
 import { AgentActivityPanel } from "../../app/components/dashboard/AgentActivityPanel";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { agent } from "./dashboard-test-fixtures";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const child = (id: string, overrides: Partial<Agent> = {}): Agent => ({ ...agent, id, label: id, parentId: "primary", workflowId: null, assignment: null, ...overrides });
 const workflow: Workflow = { id: "run", name: "Verification", status: "completed", agentIds: ["worker"], phases: [{ id: "check", label: "Check", agentIds: ["worker"] }], metadataStatus: "ready", startedAt: null, updatedAt: null, durationMs: 1000, summary: null };
@@ -89,10 +90,10 @@ describe("grouped agent roster", () => {
     render(panel(agents, { workflows: [workflow] }));
     await user.click(screen.getByRole("button", { name: "Expand all 6" }));
     await user.type(screen.getByRole("searchbox", { name: "Filter agents" }), "match");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Agent status" }), "active");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Agent model" }), "a");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Agent status" }), "active");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Agent model" }), "a");
     await user.click(screen.getByRole("button", { name: "Hide finished" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Sort agents" }), "calls");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Sort agents" }), "calls");
     expect(rows()).toHaveLength(3);
     expect(rows().map((row) => row.getAttribute("aria-label"))).toEqual([expect.stringContaining("high"), expect.stringContaining("low"), expect.stringContaining("worker")]);
     expect(screen.getByRole("list", { name: "Verification phase progress" })).toHaveTextContent("Check");
@@ -124,7 +125,7 @@ describe("grouped agent roster", () => {
     const agents = [agent, child("parent", { startedAt: "2026-08-01T00:00:00Z" }), child("nested", { parentId: "parent" })];
     const { container } = render(panel(agents, { onSelectAgent: selected }));
     await user.click(screen.getByRole("button", { name: "Group by workflow" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Sort agents" }), "provider");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Sort agents" }), "provider");
     expect(rows().map((row) => row.getAttribute("aria-label"))).toEqual([expect.stringContaining("Primary"), expect.stringContaining("parent"), expect.stringContaining("nested")]);
     screen.getByRole("button", { name: "Select nested" }).focus();
     await user.keyboard("{Enter}");
@@ -188,8 +189,8 @@ describe("grouped agent roster", () => {
     await user.click(screen.getByRole("button", { name: "Select direct" }));
     await user.type(screen.getByRole("searchbox", { name: "Filter agents" }), "missing");
     await user.click(screen.getByRole("button", { name: "Hide finished" }));
-    await user.selectOptions(screen.getByRole("combobox", { name: "Agent status" }), "active");
-    await user.selectOptions(screen.getByRole("combobox", { name: "Agent model" }), "test-model");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Agent status" }), "active");
+    chooseCommandOption(screen.getByRole("combobox", { name: "Agent model" }), "test-model");
     await user.click(screen.getByRole("button", { name: "Group by workflow" }));
     rerender(panel(agents, { workflows: [workflow], workflowNavigation: { id: "run", request: 1 } }));
     expect(screen.getByRole("searchbox", { name: "Filter agents" })).toHaveValue("");

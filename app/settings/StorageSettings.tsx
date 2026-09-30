@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type {
   StorageMaxMbSetting,
   StorageRetentionDaySetting,
@@ -248,9 +248,8 @@ export function StorageSettings() {
     if (controlsDisabled) return;
     void run("retention", (bridge) => bridge.setStorageSetting("retentionDays", option));
   }
-  function handleThreshold(event: ChangeEvent<HTMLSelectElement>) {
+  function handleThreshold(value: StorageMaxMbSetting) {
     if (controlsDisabled) return;
-    const value = Number(event.currentTarget.value) as StorageMaxMbSetting;
     void run("threshold", (bridge) => bridge.setStorageSetting("storeMaxMb", value));
   }
 
@@ -274,9 +273,8 @@ export function StorageSettings() {
         </div>
         <div className="commandSettingRow">
           <div><strong>Resource history cleanup threshold</strong><span>Older resource curves and detailed sample windows become eligible for cleanup above this size.</span></div>
-          <CommandSelect aria-label="Resource history cleanup threshold" value={currentThresholdMb ?? ""} disabled={controlsDisabled} onChange={handleThreshold}>
-            {STORAGE_MAX_MB_SETTINGS.map((mb) => <option key={mb} value={mb}>{formatStorageBytes(mb * 1024 * 1024)}</option>)}
-          </CommandSelect>
+          <CommandSelect aria-label="Resource history cleanup threshold" value={currentThresholdMb} disabled={controlsDisabled} onChange={handleThreshold}
+            options={STORAGE_MAX_MB_SETTINGS.map((mb) => ({ value: mb, label: formatStorageBytes(mb * 1024 * 1024) }))} />
         </div>
         <div className="commandSettingRow storageUsageRow">
           <StorageUsageBar snapshot={snapshot} />

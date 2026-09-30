@@ -12,6 +12,7 @@ import {
   storageStatusLine,
   storageUsageText,
 } from "../../app/settings/StorageSettings";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const baseSnapshot: StorageSnapshot = {
   revision: 1,
@@ -175,7 +176,7 @@ describe("Storage settings page", () => {
 
     const select = screen.getByRole("combobox", { name: "Resource history cleanup threshold" });
     expect(select).toBeDisabled();
-    await waitFor(() => expect(select).toHaveValue("1024"));
+    await waitFor(() => expect(select).toHaveAttribute("data-value", "1024"));
 
     expect(screen.queryByRole("button", { name: "Save and restart Pomegr" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Discard changes" })).not.toBeInTheDocument();
@@ -197,7 +198,7 @@ describe("Storage settings page", () => {
     expect(bridge.setStorageSetting).toHaveBeenCalledExactlyOnceWith("retentionDays", 365);
 
     const select = screen.getByRole("combobox", { name: "Resource history cleanup threshold" });
-    await user.selectOptions(select, "1 GB");
+    chooseCommandOption(select, "1 GB");
     expect(bridge.setStorageSetting).toHaveBeenCalledWith("storeMaxMb", 1024);
   });
 

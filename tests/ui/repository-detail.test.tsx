@@ -45,6 +45,7 @@ import { RepositoryDetailView } from "../../app/components/repositories/Reposito
 import RepositoryPage from "../../app/repositories/[repositoryId]/page";
 import RepositoriesPage from "../../app/repositories/page";
 import SessionsPage from "../../app/sessions/page";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const snapshot: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [{
@@ -462,7 +463,7 @@ describe("repository context inventory", () => {
     await screen.findByText("Revision", { selector: ".repositoryInventorySummary span" });
     const selects = screen.getAllByLabelText("Revision");
     expect(selects).toHaveLength(2);
-    await userEvent.selectOptions(selects[0], "ctx-001");
+    chooseCommandOption(selects[0], "ctx-001");
     expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-001`, { scroll: false });
     expect(await screen.findByText("-300 vs current")).toBeInTheDocument();
     expect(screen.getByText("-1 vs current")).toBeInTheDocument();
@@ -470,7 +471,7 @@ describe("repository context inventory", () => {
     await userEvent.click(screen.getByText("Compare revisions", { selector: "summary" }));
     const comparisonSelects = screen.getAllByLabelText("Revision");
     expect(comparisonSelects).toHaveLength(2);
-    await userEvent.selectOptions(comparisonSelects[1], "ctx-002");
+    chooseCommandOption(comparisonSelects[1], "ctx-002");
     expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=claude&revision=ctx-002`, { scroll: false });
     expect(await screen.findByText("ctx-002", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
   });
@@ -533,7 +534,7 @@ describe("repository context inventory", () => {
     await userEvent.click(screen.getByRole("button", { name: "Run diagnostic" }));
     await waitFor(() => expect(capture).toHaveBeenCalledWith(repositoryId, "claude"));
     expect(await screen.findByText("Claude Code inventory captured.")).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText("Capture provider"), "codex");
+    chooseCommandOption(screen.getByLabelText("Capture provider"), "codex");
     expect(navigation.replace).toHaveBeenLastCalledWith(`/repositories/${repositoryId}?tab=inventory&provider=codex`, { scroll: false });
     navigation.search = "tab=inventory&provider=codex";
     desktopView.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="codex" />);
@@ -559,8 +560,8 @@ describe("repository context inventory", () => {
     navigation.search = "tab=inventory&provider=claude&revision=ctx-999";
     render(<RepositoryDetailView repositoryId={repositoryId} initialTab="inventory" initialProvider="claude" initialRevisionId="ctx-999" />);
     expect(await screen.findByText("Loading saved inventory…")).toBeInTheDocument();
-    expect(screen.getAllByLabelText("Revision")[0]).toHaveValue("ctx-002");
-    await userEvent.selectOptions(screen.getAllByLabelText("Revision")[0], "ctx-001");
+    expect(screen.getAllByLabelText("Revision")[0]).toHaveAttribute("data-value", "ctx-002");
+    chooseCommandOption(screen.getAllByLabelText("Revision")[0], "ctx-001");
     expect(await screen.findByText("ctx-001", { selector: ".repositoryInventorySummary strong" })).toBeInTheDocument();
     firstResolve(new Response(JSON.stringify(inventoryDetails["ctx-002"])));
     await new Promise((resolve) => setTimeout(resolve, 0));

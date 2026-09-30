@@ -202,21 +202,28 @@ function ButtonsSection() {
   </Section>;
 }
 
+const SAMPLE_SCOPES = [{ value: "session", label: "Whole session" }, { value: "ancestors", label: "Ancestors only" }, { value: "agent", label: "Selected agent" }];
+const SAMPLE_SCOPE_AGENTS = [
+  { value: "all", label: "All agents" },
+  { value: "primary", label: "Primary agent", icon: <i className="commandStatusDot online" />, iconLabel: "running" },
+  { value: "review", label: "Contract review" },
+  { value: "trace", label: "Trace and fix", icon: <i className="commandStatusDot online" />, iconLabel: "running" },
+];
+
 function FormFieldsSection() {
   const [search, setSearch] = useState("");
-  return <Section id="form-fields" title="Form fields" lede="Native single-select dropdowns use CommandSelect: appearance none, 36px, 1px --command-line border that strengthens on hover, --command-ground fill, a muted chevron inset 14px, and the shared focus ring. Search uses CommandSearch.">
+  const [scope, setScope] = useState("session");
+  const [agent, setAgent] = useState("all");
+  return <Section id="form-fields" title="Form fields" lede="Single-select dropdowns use CommandSelect: a 36px trigger with a 1px --command-line border that strengthens on hover or while open, --command-ground fill, a muted chevron inset 14px, and the shared focus ring. Its listbox is a --command-panel overlay; the active option takes the raised tone and the selected option the brand text. Options may carry a glyph, such as the running dot. Search uses CommandSearch.">
     <div className="designSystemStates">
       <Sample label="Select">
-        <CommandSelect aria-label="Sample scope" defaultValue="session">
-          <option value="session">Whole session</option>
-          <option value="ancestors">Ancestors only</option>
-          <option value="agent">Selected agent</option>
-        </CommandSelect>
+        <CommandSelect aria-label="Sample scope" value={scope} onChange={setScope} options={SAMPLE_SCOPES} />
+      </Sample>
+      <Sample label="Select · option glyphs" note="The Activities agent scope marks agents still running with a green status dot; the option's accessible name gains “running”.">
+        <CommandSelect aria-label="Sample agent scope" value={agent} onChange={setAgent} options={SAMPLE_SCOPE_AGENTS} />
       </Sample>
       <Sample label="Select · disabled" note="Disabled selects keep the border, drop to opacity .55, and dim the chevron with :has().">
-        <CommandSelect aria-label="Sample scope, disabled" defaultValue="session" disabled>
-          <option value="session">Whole session</option>
-        </CommandSelect>
+        <CommandSelect aria-label="Sample scope, disabled" value="session" onChange={() => undefined} options={SAMPLE_SCOPES.slice(0, 1)} disabled />
       </Sample>
       <Sample label="Search" note="36px, 1px --command-line-strong border, --command-ground fill, brand caret; the icon and label live inside the field.">
         <CommandSearch value={search} onChange={setSearch} placeholder="Filter sample rows" label="Filter sample rows" />

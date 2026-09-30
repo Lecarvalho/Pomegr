@@ -20,6 +20,7 @@ import type { Agent, CacheReadDropFeed, MonitorState, RequestSnapshot, Workflow 
 import { historyCall, historyRequest, historyServer } from "./activities-test-server";
 import { agent, repositorySession } from "./dashboard-test-fixtures";
 import { renderPanel, requestFeed, RequestsActionsPanel, setPhone, snapshot, selectedRequest } from "./requests-actions-test-fixtures";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const child: Agent = { ...agent, id: "child", parentId: "primary", label: "Builder", role: "builder", model: "small-model" };
 const compactA: Agent = { ...agent, id: "compact-a", parentId: "primary", label: "Compactor A", role: "compaction" };
@@ -116,13 +117,12 @@ describe("request lanes", () => {
   });
 
   it("draws the primary lane taller, and the only lane of a scoped subagent as primary", async () => {
-    const user = userEvent.setup();
     const { container } = renderPanel(laneSnapshots(), { agents: AGENTS });
     const heights = () => lanes(container).map((lane) => Number(lane.querySelector("svg")!.getAttribute("viewBox")!.split(" ")[3]));
     expect(heights()).toEqual([118, 52, 52]);
     expect(lanes(container).map((lane) => lane.classList.contains("isPrimary"))).toEqual([true, false, false]);
 
-    await user.selectOptions(screen.getByLabelText("Agent scope"), "child");
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
     expect(lanes(container).map((lane) => lane.querySelector(".requestLaneName")?.textContent)).toEqual(["Builder"]);
     expect(heights()).toEqual([118]);
   });
@@ -335,12 +335,12 @@ describe("request lane collapse and focus", () => {
     expect(focus).toHaveAttribute("aria-pressed", "false");
     await user.click(focus);
     expect(laneNames(container)).toEqual(["Direct 2"]);
-    expect(screen.getByLabelText("Agent scope")).toHaveValue("direct-2");
+    expect(screen.getByLabelText("Agent scope")).toHaveAttribute("data-value", "direct-2");
     expect(screen.getByRole("button", { name: /^Focus Direct 2 · /u })).toHaveAttribute("aria-pressed", "true");
     expect(laneNamed(container, "Direct 2").querySelector(".requestsActionsBar.isSelected")).not.toBeNull();
 
     await user.click(screen.getByRole("button", { name: /^Focus Direct 2 · /u }));
-    expect(screen.getByLabelText("Agent scope")).toHaveValue("all");
+    expect(screen.getByLabelText("Agent scope")).toHaveAttribute("data-value", "all");
     expect(laneNames(container)).toEqual(["Primary agent", "Direct 1", "Direct 2", "Direct 3", "Research sweep", "Compactions"]);
     expect(screen.getByRole("button", { name: "Direct subagents · 3 agents", expanded: true })).toBeInTheDocument();
   });
@@ -361,7 +361,7 @@ describe("request lane collapse and focus", () => {
     const primary = screen.getByRole("button", { name: /^Focus Primary agent · /u });
     primary.focus();
     await user.keyboard(" ");
-    expect(screen.getByLabelText("Agent scope")).toHaveValue("primary");
+    expect(screen.getByLabelText("Agent scope")).toHaveAttribute("data-value", "primary");
   });
 
   it("selects and steps requests inside a collapsed group without expanding it", () => {

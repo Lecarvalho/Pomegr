@@ -5,6 +5,11 @@ import { CommandSelect } from "../../command-center/CommandPage";
 
 export type RosterFilters = { search: string; grouped: boolean; status: string; model: string; hideFinished: boolean; sort: string };
 export const DEFAULT_FILTERS: RosterFilters = { search: "", grouped: true, status: "all", model: "all", hideFinished: false, sort: "created" };
+const STATUS_OPTIONS = ["all", "active", "idle", "finished", "stopped"].map((status) => ({ value: status, label: `Status · ${status}` }));
+const SORT_OPTIONS = [
+  { value: "created", label: "Creation date desc" }, { value: "provider", label: "Provider order" }, { value: "context", label: "Final context desc" },
+  { value: "wall", label: "Wall time desc" }, { value: "calls", label: "Tool calls desc" },
+];
 
 export function RosterFilterBar({ filters, models, onChange, allowGrouping = true }: { filters: RosterFilters; models: string[]; onChange: (filters: RosterFilters) => void; allowGrouping?: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -13,10 +18,10 @@ export function RosterFilterBar({ filters, models, onChange, allowGrouping = tru
   const count = Number(allowGrouping && !filters.grouped) + Number(filters.status !== "all") + Number(filters.model !== "all") + Number(filters.hideFinished) + Number(filters.sort !== DEFAULT_FILTERS.sort);
   const controls = <>
     {allowGrouping && <button type="button" className="commandSecondaryAction" aria-pressed={filters.grouped} onClick={() => change("grouped", !filters.grouped)}>Group by workflow</button>}
-    <CommandSelect aria-label="Agent status" value={filters.status} onChange={(event) => change("status", event.target.value)}>{["all", "active", "idle", "finished", "stopped"].map((status) => <option key={status} value={status}>Status · {status}</option>)}</CommandSelect>
-    <CommandSelect aria-label="Agent model" value={filters.model} onChange={(event) => change("model", event.target.value)}><option value="all">Model · all</option>{models.map((model) => <option key={model} value={model}>{model}</option>)}</CommandSelect>
+    <CommandSelect aria-label="Agent status" value={filters.status} onChange={(value) => change("status", value)} options={STATUS_OPTIONS} />
+    <CommandSelect aria-label="Agent model" value={filters.model} onChange={(value) => change("model", value)} options={[{ value: "all", label: "Model · all" }, ...models.map((model) => ({ value: model, label: model }))]} />
     <button type="button" className="commandSecondaryAction" aria-pressed={filters.hideFinished} onClick={() => change("hideFinished", !filters.hideFinished)} title="Hide finished and stopped subagents. Ancestors of visible agents remain shown.">Hide finished</button>
-    <label className="rosterSort">Sort <CommandSelect aria-label="Sort agents" value={filters.sort} onChange={(event) => change("sort", event.target.value)}><option value="created">Creation date desc</option><option value="provider">Provider order</option><option value="context">Final context desc</option><option value="wall">Wall time desc</option><option value="calls">Tool calls desc</option></CommandSelect></label>
+    <label className="rosterSort">Sort <CommandSelect aria-label="Sort agents" value={filters.sort} onChange={(value) => change("sort", value)} options={SORT_OPTIONS} /></label>
   </>;
   return <div className="rosterFilterBar">
     <input aria-label="Filter agents" placeholder="Filter agents" type="search" value={filters.search} onChange={(event) => change("search", event.target.value)} />

@@ -574,7 +574,7 @@ html[data-theme="dark"] .activityRow { border-color: var(--line); }
 @media (max-width: 720px) {
   .themeToggle { min-height: 40px; }
   .themeToggle { width: 40px; }
-  .contextScopeControl .commandSelect select { min-height: 44px; }
+  .contextScopeControl .commandSelectTrigger { min-height: 44px; }
 }
 
 .desktopUpdateOffer {
@@ -653,7 +653,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsSwatch.compaction { height: 0; border-top: 1px dashed var(--command-amber); }
 .requestsActionsScope.contextScopeControl { width: 100%; grid-template-columns: minmax(0, 1fr); }
 .requestsActionsScope .commandSelect { min-width: 0; }
-.requestsActionsScope select { width: 100%; min-width: 0; text-overflow: ellipsis; font-size: 12px; }
+.requestsActionsScope .commandSelectTrigger { width: 100%; min-width: 0; font-size: 12px; }
 .requestsActionsPlot { padding: 0 20px 8px; scroll-margin-top: 80px; }
 .requestsActionsGuide { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding-bottom: 6px; }
 .requestsActionsRange { margin: 0; color: var(--command-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
@@ -727,7 +727,7 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
   .requestsActionsModes { grid-column: 1 / -1; grid-row: 2; }
   .requestsActionsGuide { align-items: flex-start; }
   .requestsActionsGuide .requestsActionsLegend { width: 100%; justify-content: flex-start; margin-left: 0; gap: 5px 10px; }
-  .requestsActionsScope .commandSelect select { min-height: 44px; }
+  .requestsActionsScope .commandSelectTrigger { min-height: 44px; }
   .requestsActionsPlot { padding: 10px 14px 12px; }
   .requestsActionsChart { height: 196px; touch-action: pan-y pinch-zoom; user-select: none; }
   .requestsActionsAxis text { font-size: var(--text-caption); }

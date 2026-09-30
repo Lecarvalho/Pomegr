@@ -8,6 +8,7 @@ import { SessionsView } from "../../app/components/command-center/CommandViews";
 import SessionsPage from "../../app/sessions/page";
 import type { SessionSummary } from "../../shared/monitor-contract";
 import { installDirectoryFixture } from "./session-directory-test-fixture";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const sessions: SessionSummary[] = [
   { id: "codex:build-home", provider: "codex", source: "Codex", title: "Build Home", project: "Pomegr", updatedAt: "2026-08-30T12:00:00Z", isLive: true, needsInput: false, activityStatus: "working", summaryReadiness: "ready", agentCount: 2, activeAgentCount: 1, latestContextTotal: 12345, progress: null, currentActivity: null },
@@ -94,7 +95,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     home();
     await user.click(screen.getByText("Add pins"));
-    await user.selectOptions(screen.getByLabelText("Destination type"), "project");
+    chooseCommandOption(screen.getByLabelText("Destination type"), "project");
     await user.click(screen.getByRole("button", { name: "Pin Other project" }));
     expect(screen.getByRole("link", { name: "Other project · Project sessions" })).toHaveAttribute("href", "/sessions?project=Other%20project");
   });
@@ -105,7 +106,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("heading", { name: "Session coach" })).toBeInTheDocument();
     await user.click(screen.getByText("Add pins"));
     expect(screen.getByText("Loading destinations from the local monitor…")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Destination type"), "view");
+    chooseCommandOption(screen.getByLabelText("Destination type"), "view");
     await user.click(screen.getByRole("button", { name: "Pin Usage limits" }));
     expect(screen.getByRole("link", { name: "Usage limits · Provider account windows" })).toHaveAttribute("href", "/usage-limits");
     expect(screen.queryByText("No open sessions yet.")).not.toBeInTheDocument();
