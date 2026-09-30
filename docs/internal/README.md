@@ -12,13 +12,13 @@ readable in the repository and must not contain secrets or private session data.
 
 | Subject | Owner and authority |
 | --- | --- |
-| Repository-wide boundaries and change routing | [AGENTS.md](../../AGENTS.md) governs repository changes; [agent workflow](../AGENT-WORKFLOW.md) locates behavior owners and checks. [CLAUDE.md](../../CLAUDE.md) is a thin provider entrypoint. |
+| Repository-wide boundaries and change routing | [AGENTS.md](../../AGENTS.md) governs repository changes; [agent workflow](development/agent-workflow.md) locates behavior owners and checks. [CLAUDE.md](../../CLAUDE.md) is a thin provider entrypoint. |
 | Product purpose and contribution | [PRODUCT.md](../../PRODUCT.md) records product purpose and constraints; [CONTRIBUTING.md](../../CONTRIBUTING.md) governs contribution expectations. Consult the precise runtime contracts for implemented behavior. |
-| Runtime structure | [Architecture](../ARCHITECTURE.md) maps the system; the focused contracts below define their respective behavior. |
-| Observation phases, cache ownership, serving, readiness, and polling | [Observation cache](../OBSERVATION_CACHE.md) is the canonical operational contract. It and AGENTS.md take precedence over conflicting plans. |
+| Runtime structure | [Architecture](architecture/overview.md) maps the system; the focused contracts below define their respective behavior. |
+| Observation phases, cache ownership, serving, readiness, and polling | [Observation cache](architecture/observation-cache.md) is the canonical operational contract. It and AGENTS.md take precedence over conflicting plans. |
 | Provider conformance | [Executable provider contract](../../server/providers/provider-contract.mjs) defines catalog, manifest, readiness, evidence, and conformance requirements. Transcript schemas stay in adapters. |
 | Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
-| Metrics and evidence | [Metrics](../METRICS.md) owns deterministic rules; [signal dictionary](../SIGNAL_DICTIONARY.md) defines stable evidence codes and limits. |
+| Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](../SIGNAL_DICTIONARY.md) defines stable evidence codes and limits. |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; [license history](../LICENSE_HISTORY.md) explains the transition. |
 
@@ -33,10 +33,10 @@ paths relative to `docs/internal/`, not additional authoritative copies.
 
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
-| [Architecture](../ARCHITECTURE.md) | Runtime map and data flow | `architecture/overview.md` |
+| [Architecture](architecture/overview.md) | Runtime map and data flow | Maintained at this path |
 | [Limitations](architecture/limitations.md) | Provider-related and Pomegr-specific gaps; capability availability | Maintained at this path |
-| [Observation cache](../OBSERVATION_CACHE.md) | Operational boundaries and committed evidence | `architecture/observation-cache.md` |
-| [Metrics](../METRICS.md) | Deterministic rules and evidence limits | `architecture/metrics.md` |
+| [Observation cache](architecture/observation-cache.md) | Operational boundaries and committed evidence; the canonical operational contract, with a contents list at its top | Maintained at this path |
+| [Metrics](architecture/metrics.md) | Deterministic rules and evidence limits | Maintained at this path |
 | [Claude Code session status](../CLAUDE_SESSION_STATUS.md) | Provider lifecycle sources and privacy | `architecture/claude-session-status.md` |
 | [Global session statuses](../SESSION_STATUS.md) | Current comparison and known gaps | `architecture/session-status.md` |
 | [Provider service status](../PROVIDER_STATUS.md) | Public status sources and interpretation | `architecture/provider-status.md` |
@@ -46,13 +46,13 @@ paths relative to `docs/internal/`, not additional authoritative copies.
 
 ## Development
 
-Start changes with the [agent workflow](../AGENT-WORKFLOW.md) to find the behavior
+Start changes with the [agent workflow](development/agent-workflow.md) to find the behavior
 owner, forbidden dependency direction, and focused verification command. Follow
 its canonical verification requirements before handing off a change.
 
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
-| [Agent workflow](../AGENT-WORKFLOW.md) | Change routing and verification | `development/agent-workflow.md` |
+| [Agent workflow](development/agent-workflow.md) | Change routing and verification | Maintained at this path |
 | [Configuration and troubleshooting](../CONFIGURATION.md) | Configuration and troubleshooting; links the provider capability reference | `development/configuration.md`, after public guidance is extracted |
 | [Pomegr plugins](../PLUGINS.md) | Canonical sources, generation, versioning, and release | `development/plugins.md`, after public guidance is extracted |
 | [Command table](../COMMAND_TABLE.md) | Component integration; visual authority remains the design system | `development/command-table.md` |
@@ -85,7 +85,7 @@ publication and validation tooling remain pending.
 ## Migration and temporary work
 
 The progressive Activity/Request publication contract is maintained in
-[Observation cache](../OBSERVATION_CACHE.md). Continuous JSONL diagnostics and passive
+[Observation cache](architecture/observation-cache.md). Continuous JSONL diagnostics and passive
 analysis are maintained in [Pipeline operations](../PIPELINE_OPERATIONS.md).
 
 The [documentation migration checklist](plans/documentation-migration.md) owns
@@ -97,15 +97,15 @@ their existing homes.
 The [session Activity panel plan](plans/session-activity-panel.md) is under
 implementation review after a reported request/activity highlighting failure.
 Keep the plan until the user explicitly approves deletion. Runtime rules are
-recorded in [Activity events](../METRICS.md#activity-events) and the
-[Activity feed contract](../OBSERVATION_CACHE.md#activity-feed).
+recorded in [Activity events](architecture/metrics.md#activity-events) and the
+[Activity feed contract](architecture/observation-cache.md#activity-feed).
 
 The [information architecture redesign plan](plans/ia-redesign.md) holds the
 approved navigation, session tab, agent detail, file history, and transport
 redesign with its prototype artboards. Implementation is active: Sessions 1–3 are
 complete, and Session 4 (persistence and storage) is next. The plan remains a
 working checklist, not runtime authority; [DESIGN.md](../../DESIGN.md),
-[Observation cache](../OBSERVATION_CACHE.md), and [Metrics](../METRICS.md) own
+[Observation cache](architecture/observation-cache.md), and [Metrics](architecture/metrics.md) own
 shipped behavior.
 
 The [overview sparse state and link rule plan](plans/overview-sparse-and-links.md)

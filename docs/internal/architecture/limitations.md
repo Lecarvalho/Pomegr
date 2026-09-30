@@ -4,8 +4,8 @@
 > and presentation limits.
 > Authority: maintained limitations inventory. The executable
 > [provider contract](../../../server/providers/provider-contract.mjs) and adapter
-> manifests own capability declarations; [Observation cache](../../OBSERVATION_CACHE.md)
-> owns acquisition and serving; [Metrics](../../METRICS.md) and
+> manifests own capability declarations; [Observation cache](observation-cache.md)
+> owns acquisition and serving; [Metrics](metrics.md) and
 > [Global session statuses](../../SESSION_STATUS.md) own exact rules.
 > Related code and checks: [Claude adapter](../../../server/providers/claude/index.mjs),
 > [Codex adapter](../../../server/providers/codex/index.mjs),
@@ -66,8 +66,8 @@ The detailed precedence rules and integration gaps remain in
   recorded cache reads, but omits Cache write and write-backed refill, miss, and
   reuse classifications. It does not reconstruct writes from later reads. This
   upstream gap is tracked at [openai/codex#35300](https://github.com/openai/codex/issues/35300).
-  See [context usage](../../METRICS.md#context-usage) and
-  [cache events](../../METRICS.md#cache-events).
+  See [context usage](metrics.md#context-usage) and
+  [cache events](metrics.md#cache-events).
 - **Cache timing for either provider:** A reply, summary, or lifecycle event
   without valid request usage cannot supply a request or cache-touch timestamp.
   Missing or malformed cache evidence leaves lifetime and classification
@@ -79,7 +79,7 @@ The detailed precedence rules and integration gaps remain in
   provider's client-side estimate; it is not billing. Both providers' usage-limit
   views need a working authenticated source, and Codex additionally needs a
   supported native CLI. A supported capability can therefore be unavailable on
-  one installation or during a provider failure. See [estimated cost](../../METRICS.md#estimated-api-cost)
+  one installation or during a provider failure. See [API list-rate estimate](metrics.md#api-list-rate-estimate)
   and [configuration](../../CONFIGURATION.md#capability-availability).
 
 Provider service status is public component-level reporting. It cannot establish
@@ -110,7 +110,7 @@ view uses its recorded snapshot. **Changed elsewhere** excludes paths
 already placed in **Touched here**, so a path changed by another actor can also make
 that segment understate unrelated work. These are Pomegr scoping and presentation
 limits, not proof that the provider attributed those files to the session. See
-[Git-observed files](../../METRICS.md#git-observed-files) and the
+[Git-observed files](metrics.md#git-observed-files) and the
 [Repository tab grouping](../../../app/components/dashboard/repository-files-view.ts).
 
 Provider records do not prove every filesystem write. Pomegr records file-change
@@ -120,7 +120,7 @@ can change files without a reliable session, agent, or request association. Git
 observations can add separately labeled paths, but cannot manufacture that
 attribution. Consequently, recorded session-attributed history can omit files the
 session actually changed, even while the broader Git-observed list can include
-unrelated work. See [File-change history](../../METRICS.md#file-change-history).
+unrelated work. See [File-change history](metrics.md#file-change-history).
 
 ### Session status coverage
 
@@ -150,17 +150,17 @@ unrelated work. See [File-change history](../../METRICS.md#file-change-history).
 - **Repository associations:** Commits counted in a session window can include
   commits by anyone on its branch. A pull request found for the live branch need
   not have been created by the selected session. Neither is per-session
-  authorship. See [Git state](../../METRICS.md#git-state) and
-  [pull-request associations](../../METRICS.md#pull-request-associations).
+  authorship. See [Git state](metrics.md#git-state) and
+  [pull-request associations](metrics.md#pull-request-associations).
 - **Usage-limit movement:** Pomegr's retained usage feed can correlate a
   provider-reported percentage change with local request activity in the same
   interval. It cannot assign that
   change, a bill, or a proportional share of usage to a session. See
-  [plan usage](../../METRICS.md#plan-usage).
+  [plan usage](metrics.md#plan-usage).
 - **Cache timing and efficiency signals:** Pomegr's deterministic rules operate
   on bounded observations. They do not establish why a cache entry became
   unavailable, when it expired, or what money was saved. See
-  [cache events](../../METRICS.md#cache-events) and
+  [cache events](metrics.md#cache-events) and
   [Cache timing](../../CACHE_TIMING.md#lifetime-indication).
 
 ### Keeping this inventory current

@@ -15,7 +15,7 @@ Open `agents-preview.html` directly in a browser. It embeds its font and existin
 
 The existing Pomegr visual system is retained. Compact counts lead into a model ranking and role matrix; recorded work and evidence-linked observations follow. Main and delegated agents remain distinguishable. The live roster preserves project/session provenance and latest context snapshots.
 
-The counting proposal is one agent instance per parent session, filtered by its start date. Multiple-model runs and unavailable identities remain separate groups. Model percentages use all selected runs as their denominator; rounded percentages may not sum to 100. Counts describe observed retained evidence, not model performance, spend, or time worked. Production uses the latest reported model per agent because retained snapshots do not establish complete model history. It therefore does not infer multiple-model runs. Observed work counts recorded execution tasks rather than all tool calls. See `docs/METRICS.md` for the implemented counting rules.
+The counting proposal is one agent instance per parent session, filtered by its start date. Multiple-model runs and unavailable identities remain separate groups. Model percentages use all selected runs as their denominator; rounded percentages may not sum to 100. Counts describe observed retained evidence, not model performance, spend, or time worked. Production uses the latest reported model per agent because retained snapshots do not establish complete model history. It therefore does not infer multiple-model runs. Observed work counts recorded execution tasks rather than all tool calls. See `docs/internal/architecture/metrics.md` for the implemented counting rules.
 
 ## Production boundary
 

@@ -4,10 +4,10 @@
 > Scope: let a user see whether new sessions in a repository moved forward or backward after they added or changed a skill, `AGENTS.md`, `CLAUDE.md`, hooks, or the Pomegr reporting policy, and let them run an opt-in randomized experiment between instruction variants. Monitor, store, plugin hook, API, desktop, and UI work; no content reading. Pomegr already injects context through the plugin hooks (policy rows, usage guard, progress reminder); the new boundary is user-authored text chosen at random per session, approved by the user on 2026-09-22.
 > Design canvas: https://claude.ai/artifact/S6AjnMM87n6zbQrwtqvrfa (artboards 1 Guidance tab, 2 Session Overview, 3 New experiment, 3b Blank template). The drawings are the approved reference for tasks 5 to 7; the rules below win where a drawing differs.
 > Continuation owner: the agent that picks up this plan in a fresh session.
-> Authority: working proposal. `AGENTS.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md` stay authoritative and gain the enduring rules as tasks complete.
+> Authority: working proposal. `AGENTS.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md` stay authoritative and gain the enduring rules as tasks complete.
 > Next task or decision: task 1, guidance revision fingerprinting.
 > Completion criteria: every task ticked with its verification recorded, contracts updated, `npm run build` and `npm test` pass, and the feature is documented in `docs/public/`.
-> Permanent destinations: `docs/OBSERVATION_CACHE.md` (guidance revision domain, cohort serving), `docs/METRICS.md` (friction, outcome, compliance signals and comparison rules), `docs/SIGNAL_DICTIONARY.md` (new evidence codes), `docs/public/using-pomegr/` (user guide).
+> Permanent destinations: `docs/internal/architecture/observation-cache.md` (guidance revision domain, cohort serving), `docs/internal/architecture/metrics.md` (friction, outcome, compliance signals and comparison rules), `docs/SIGNAL_DICTIONARY.md` (new evidence codes), `docs/public/using-pomegr/` (user guide).
 > Lifetime: temporary; delete this file in the change that completes the last task.
 
 ## The problem
@@ -88,7 +88,7 @@ Friction:
 | Interruptions | Execution tasks with lifecycle status `stopped` and cancelled tool calls | Already recognized by the execution-task normalizer |
 | Execution-task failures | Failed tasks by bounded failure category | From execution-task metadata |
 | Retry loops | Same work kind failing then rerun within a bounded window | Test-fail-then-rerun, build-fail-then-rerun |
-| Repeated calls | Existing `repeatedCalls` count from the repetition rule | Already committed; see [Repetition](../../METRICS.md#repetition) |
+| Repeated calls | Existing `repeatedCalls` count from the repetition rule | Already committed; see [Repetition](../architecture/metrics.md#repetition) |
 | Edit churn | Files edited three or more times in one session | Needs the file-change history contract |
 | Compactions per session and requests to first compaction | Context boundaries | Already committed |
 | Requests per turn, wall time per turn | Request numbers and activity timestamps | Wall time includes idle gaps |
@@ -121,7 +121,7 @@ policy:
 The monitor reads this table directly from the repository root at session start,
 so checks work without the plugin; `pomegr:doctor` only validates it. The monitor
 evaluates each check from recognized work kinds, the existing
-[skill usage](../../METRICS.md#skill-usage) evidence (validated canonical skill
+[skill usage](../architecture/metrics.md#skill-usage) evidence (validated canonical skill
 name, count, latest timestamp), and file-change paths. A check reports `met`,
 `unmet`, or `not applicable`. `.pomegr/signals.md` stays Markdown for now and
 migrates to YAML in its own later change, so both policy files share one format. Compliance answers a different question from
@@ -290,11 +290,11 @@ text arrive as hook context rather than as a file.
       decisions at the end.
 - [ ] Task 1 — Guidance revision fingerprinting and session binding in the
       monitor, with checkpoint persistence and privacy tests. Update
-      `docs/OBSERVATION_CACHE.md`. Verify: `npm run test:node`.
+      `docs/internal/architecture/observation-cache.md`. Verify: `npm run test:node`.
 - [ ] Task 2 — Compliance-check table in `.pomegr/signals.md` (policy version
       bump, `pomegr:init` and `pomegr:doctor` awareness) and its evaluator over
       existing skill-usage, work-kind, and file-change evidence. Update
-      `docs/METRICS.md` and the signal dictionary.
+      `docs/internal/architecture/metrics.md` and the signal dictionary.
       Verify: `npm run test:node`, `/api/state` privacy serialization check.
 - [ ] Task 2b — Experiments: `.pomegr/experiments.yaml` schema and validator in
       the plugin policy script, SessionStart arm selection and verbatim injection

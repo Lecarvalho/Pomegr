@@ -3,7 +3,7 @@
 > Proposed high-level plan, recorded September 7, 2026. No mobile transport,
 > infrastructure, or security-policy change is implemented by this document.
 > Runtime authority remains [AGENTS.md](../../AGENTS.md) and
-> [OBSERVATION_CACHE.md](../OBSERVATION_CACHE.md).
+> [Observation cache](../internal/architecture/observation-cache.md).
 
 ## Objective
 
@@ -175,7 +175,7 @@ Use meaningful integration tests and real-device checks in addition to unit test
 - Start desktop changes from `desktop/runtime/lan-sharing.mjs`, `desktop/runtime/lan-gateway.mjs`,
   and the desktop lifecycle owner; keep provider acquisition out of the transport.
 - Define bounded shared mobile contracts separately from private provider schemas.
-- Follow [AGENT-WORKFLOW.md](../AGENT-WORKFLOW.md) and `DESIGN.md` for implementation
+- Follow [Agent workflow](../internal/development/agent-workflow.md) and `DESIGN.md` for implementation
   routing, verification, and any desktop controls.
 - Give the cloud service an independently deployable package and boundary checks.
   Preserve `landing/` isolation; do not import monitor or desktop modules into it.

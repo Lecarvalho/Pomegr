@@ -1,6 +1,6 @@
 // Deterministic, pure matching of a persisted resource peak sample to the execution
 // tasks and session-history request that temporally overlap it. No I/O, no clocks:
-// every input is supplied by the caller. See docs/METRICS.md ("Resource history") for
+// every input is supplied by the caller. See docs/internal/architecture/metrics.md ("Resource history") for
 // the association rule in plain words and its stated limits.
 
 export const MAX_MATCHED_TASK_IDS = 20;

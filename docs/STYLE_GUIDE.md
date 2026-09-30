@@ -38,7 +38,7 @@ or validation command.
 - Distinguish recorded evidence, provider estimates, agent reports, and
   deterministic inferences. Missing evidence is not proof of inactivity or
   success. Do not describe heuristics as AI judgments, billing, or confirmed
-  causes. Link to [Metrics](METRICS.md) for precise definitions.
+  causes. Link to [Metrics](internal/architecture/metrics.md) for precise definitions.
 - Keep “context” tied to latest snapshots; label elapsed duration as wall time.
   A worked example must not turn independent requests into cumulative token
   spend. Mark invented example values as illustrative.
@@ -306,5 +306,5 @@ Close temporary work in the same change that fulfills or retires it:
 
 Paused work must state its next decision and continuation owner. It is not an
 indefinite artifact store. Verify changed links, anchors, images, and affected
-consumers, and follow the [agent workflow](AGENT-WORKFLOW.md#focused-verification)
+consumers, and follow the [agent workflow](internal/development/agent-workflow.md#focused-verification)
 for the applicable canonical checks.

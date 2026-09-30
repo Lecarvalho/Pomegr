@@ -3,12 +3,12 @@
 > Status: active; Sessions 1–5 are complete. Session 6 (T10, T11 and T12) is the next unchecked implementation session.
 > Created: 2026-09-13.
 > Audience and owner: Pomegr maintainers; each executing agent owns the task it selects.
-> Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and `docs/METRICS.md`.
+> Lifetime: ephemeral. Delete this plan and `docs/internal/plans/ia-redesign/` in the change that completes the last task, after moving enduring rules into `DESIGN.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md`.
 > Scope: web dashboard sitemap, session tabs and agent inspector, repository file history, app bar and page header, sidebar limits, correlated request chart and activity feed, transport and per-domain caching, resource history with retention and a storage usage bar.
-> Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/OBSERVATION_CACHE.md` remain authoritative and must be updated by the tasks that change behavior.
+> Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/observation-cache.md` remain authoritative and must be updated by the tasks that change behavior.
 > Next task or decision: Start Session 6 (T10, T11 and T12) in a fresh user-requested session, from the Session 5 checkpoint handoff below.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
-> Permanent destinations: `DESIGN.md` with `/design-system`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, `docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
+> Permanent destinations: `DESIGN.md` with `/design-system`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, `docs/internal/architecture/overview.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
 
 ## Outcome
 
@@ -55,7 +55,7 @@ running app and the matching artboard, recorded in the task checkpoint.
 | Minimap hint "Drag the window · arrow keys step · Home / End" | Do not render inline. Keep it as the minimap `aria-valuetext` and popover text. |
 | Footer lines that explain a rule ("Edited by comes from…", "Peaks are matched…", "Estimates from the provider's…") | Keep the short honesty caveats that exist today ("File history covers recorded operations…", "Not a quality assessment", "Estimate, not a bill"). Move longer explanations into info popovers. |
 | Placeholder counts in tab labels | Real counts from the domain responses; hide the count when a domain is not ready. |
-| Sidebar limits at 70 and 90 percent | Use the METRICS.md thresholds (75 and 85 percent) and severity colors. |
+| Sidebar limits at 70 and 90 percent | Use the architecture/metrics.md thresholds (75 and 85 percent) and severity colors. |
 
 ## Agreed decisions
 
@@ -72,7 +72,7 @@ App bar and page header (artboard `HeaderStandard`):
 - The app bar never changes shape by route: brand, spacer, search trigger, monitor dot, alerts, profile. Search trigger is 280px on desktop, 200px on tablet, icon only on phone. It opens a Ctrl K palette. The app bar never contains a breadcrumb.
 - The palette is a new overlay component. Today the "palette" is a single search input with a Ctrl K focus shortcut (`CommandCenterShell.tsx`). The overlay keeps the current regex routing to the destinations (minus Dashboards) and adds recent sessions and repositories as results.
 - One page header component on every page: breadcrumb eyebrow (absent on Home and Settings), title, optional meta line, actions slot on the right bottom-aligned with the last line of the title block, optional tab bar below. Sessions list puts its filter segment in the actions slot. Session detail breadcrumb ends at the project; the title is the session title.
-- Sidebar bottom holds a limits widget: one line per provider with sessions in the last seven days, showing that provider's tightest window percentage and window label, and a link to the Usage limits page. Fill colors follow the existing usage-limit rule in `docs/METRICS.md` ("Usage-limit colors"): normal from 0 through 74 percent, warning from 75 through 84, critical from 85 through 100. The prototype's 70 and 90 percent thresholds are superseded; every usage-limit surface keeps one rule. It is shell chrome, never session data, and never renders inside historical session state. Cursor appears the same way once its adapter reports windows.
+- Sidebar bottom holds a limits widget: one line per provider with sessions in the last seven days, showing that provider's tightest window percentage and window label, and a link to the Usage limits page. Fill colors follow the existing usage-limit rule in `docs/internal/architecture/metrics.md` ("Usage-limit colors"): normal from 0 through 74 percent, warning from 75 through 84, critical from 85 through 100. The prototype's 70 and 90 percent thresholds are superseded; every usage-limit surface keeps one rule. It is shell chrome, never session data, and never renders inside historical session state. Cursor appears the same way once its adapter reports windows.
 
 Session page (artboards `Main`, `SessionAgents`, `ActivityTab`, `SignalsTab`, `RepositoryTab`, `ResourcesTab`, `DetailsTab`, `Mobile`; Settings › Storage on `SettingsStorage`):
 
@@ -140,7 +140,7 @@ Measured on 2026-09-13 with one live session tab, sixty seconds, steady state:
 
 Causes: fixed-interval polling continues although SSE exists (`app/components/dashboard/useActivityHistory.ts`, `app/components/AppShell.tsx`); two separate `EventSource` connections (`AppShell.tsx` and `app/history-publications.ts`); activity keeps polling every 10s on historical sessions; `/api/state` serializes every section on every 2s poll regardless of what is on screen; vinext logs one line per request.
 
-Structure: `app/Dashboard.tsx` stacks twelve panels with disclosures and no tabs. Agent status, context, and cache lifetime render in four places; cache badges in three; workflow progress twice. The session page never links to an agent page; `AgentEvidencePanel.tsx` links to a session but drops the agent id although `(sessionId, agentId)` exists on every `AgentsRun`. Insights link to an agent, never to the cache event or compaction they trace to. Usage limits is a dead end although `HomeSnapshot.limitActivities` exists in the contract and no component renders it (not addressed by this plan; T12 records it as a follow-up). `docs/METRICS.md` and `docs/SIGNAL_DICTIONARY.md` have no audience tiers; the tiers must be invented in the UI, not surfaced from metadata.
+Structure: `app/Dashboard.tsx` stacks twelve panels with disclosures and no tabs. Agent status, context, and cache lifetime render in four places; cache badges in three; workflow progress twice. The session page never links to an agent page; `AgentEvidencePanel.tsx` links to a session but drops the agent id although `(sessionId, agentId)` exists on every `AgentsRun`. Insights link to an agent, never to the cache event or compaction they trace to. Usage limits is a dead end although `HomeSnapshot.limitActivities` exists in the contract and no component renders it (not addressed by this plan; T12 records it as a follow-up). `docs/internal/architecture/metrics.md` and `docs/SIGNAL_DICTIONARY.md` have no audience tiers; the tiers must be invented in the UI, not surfaced from metadata.
 
 ## Session execution queue
 
@@ -320,7 +320,7 @@ owned task rather than expanding the scope or repeating finished investigations.
 
 ## Tasks
 
-Each task lists its owner area from `docs/AGENT-WORKFLOW.md`, the artboards it must match, the verification commands, and the privacy checks. Run `npm run verify:fast` before handing off any task and `npm test` for rendering, metric, parser, or structure changes. Record a checkpoint under the task when done.
+Each task lists its owner area from `docs/internal/development/agent-workflow.md`, the artboards it must match, the verification commands, and the privacy checks. Run `npm run verify:fast` before handing off any task and `npm test` for rendering, metric, parser, or structure changes. Record a checkpoint under the task when done.
 
 Execution order and dependencies:
 
@@ -338,7 +338,7 @@ Common rules for every task:
 
 ### T00 Privacy decisions for file history and repository persistence
 
-Owner: `AGENTS.md`, `docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`. Artboards: none. Documentation only.
+Owner: `AGENTS.md`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`. Artboards: none. Documentation only.
 
 Approved prerequisite contracts are recorded in their owners; runtime support remains pending. T02, T07 and T08 must enforce them before the new evidence can be committed or exposed.
 
@@ -360,7 +360,7 @@ Depends on T02 (204 path for session-history, domain events).
 - Create one `EventSource` module (`app/live-events.ts` or extend `app/history-publications.ts`) with reference counting; `AppShell.tsx` and the history hooks subscribe to it. Delete the second connection.
 - Replace every fixed timer with revision-gated fetches triggered by events plus the fallback cadence (30s connected, 5s reconnecting, 30s hidden). Timers to remove: catalog poll 5s ready and 1s loading in `AppShell.tsx`; activity 3s live and 10s historical in `useActivityHistory.ts`; the 3s stay-at-latest timer in `useSessionRequestSelection.ts`; the 5s preloader in `useRequestPageCache.ts` (keep the preloader, drive it by readiness instead of a timer). Live loading states may keep a 1s poll until the domain reports ready; historical hydration uses events and reconnect revalidation without a periodic timer.
 - Historical sessions: load each mounted domain until ready using its events, including revalidation after SSE reconnect so a missed readiness event cannot strand it. Once ready, no periodic timers. Explicit navigation to a new range or filter still fetches that committed query once.
-- Update the "Frontend API cadence" table in `docs/OBSERVATION_CACHE.md`.
+- Update the "Frontend API cadence" table in `docs/internal/architecture/observation-cache.md`.
 - Verify: `npx vitest run tests/ui/` suites touching Activity and Requests; a manual sixty-second count with one live tab must be under fifteen requests on a quiet session.
 
 ### T02 Per-domain session responses with independent revisions
@@ -376,7 +376,7 @@ Owner: monitor indexing and projection (`monitor/`), serving handlers, `shared/`
 - SSE events carry domain, session id, revision, and for history the total count. Today `/api/events` emits only `catalog`, `repositories`, and `history` with `{domain, revision}` and no session id.
 - Keep `/api/state` as a composed view until every consumer has migrated, including Signals, Repository, Resources and Details; audit remaining consumers and delete it in T12.
 - Privacy: add serialization coverage per domain for forbidden content and for the narrow T00 repository-relative path exception. Prove rejected paths cannot enter committed evidence, checkpoints, history or responses; retain the explicit one-shot transcript-path and provider-folder exceptions.
-- Update `docs/OBSERVATION_CACHE.md` (phases D and S, revision semantics, readiness per domain) and `docs/ARCHITECTURE.md`.
+- Update `docs/internal/architecture/observation-cache.md` (phases D and S, revision semantics, readiness per domain) and `docs/internal/architecture/overview.md`.
 
 ### T03 App bar, palette, page header, sidebar limits
 
@@ -388,7 +388,7 @@ Owner: UI (`app/components/command-center/`, `app/styles/shell.css`, `DESIGN.md`
 - App bar: remove the breadcrumb and the `hasBreadcrumb` grid variants from `CommandCenterShell.tsx` and `shell.css`. Search becomes a fixed-width trigger that opens the palette; phone shows an icon.
 - Palette: reuse the current regex routing; add recent sessions and repositories from the catalog store. Keyboard: Ctrl K opens, Esc closes, arrows move, Enter navigates.
 - Page header component with breadcrumb eyebrow, title, meta line, actions slot, optional tabs. Adopt it on Home, Sessions, session detail, Repositories index and detail, Models & delegation, Usage limits, Settings.
-- Sidebar limits widget from the existing usage-limits store: one line per provider with sessions in the last seven days (computed from `SessionSummary.provider` and `createdAt` in the catalog context), tightest window only, colors from the METRICS.md usage-limit rule (75 and 85 percent). Never rendered as part of session state; historical views unaffected.
+- Sidebar limits widget from the existing usage-limits store: one line per provider with sessions in the last seven days (computed from `SessionSummary.provider` and `createdAt` in the catalog context), tightest window only, colors from the architecture/metrics.md usage-limit rule (75 and 85 percent). Never rendered as part of session state; historical views unaffected.
 - Rename the Agents navigation label to "Models & delegation". Remove the Dashboards page and its navigation entry; redirect `/dashboards`. Keep `/dashboards` allowed in `desktop/runtime/lan-gateway.mjs` so the redirect works in paired LAN browsers. Remove the old Home pin in `app/HomeDashboard.tsx`, the palette regex row, the `DashboardsView` component in `CommandViews.tsx`, and `tests/ui/dashboards-view.test.tsx`.
 - Chip base change: remove the panel-2 fill from `.commandChip` and `.agentChip`, keep the border, keep tone on text and dot only. Update the chip assertions in `tests/ui/pomegr-design-contract.test.tsx` and correct the DESIGN.md chip sentence.
 - Add page header, tab bar, and sidebar limits samples to `/design-system`; update `DESIGN.md` and `tests/ui/pomegr-design-contract.test.tsx`.
@@ -431,22 +431,22 @@ Depends on T04, T02 request-range history, and T01 transport.
 - Phone follows the single-chart and quiet grouped-feed rules above, including the 32px call line and the in-place call expansion (artboard `Mobile`, frame "Activities · tapped call line expands in place"). The expanded block exposes only already-bounded activity and execution-task metadata (work kind, Bash description or file basename, wall duration, call and result timestamps, lifecycle status, exit code, failure category, background flag, normalized agent and request number); never command text, output, per-call tokens or cost. Expansion is a disclosure on the line (aria-expanded), one open at a time, Escape collapses, no sheet or scroll lock, and no URL parameter. Add the scoped selected-request left-rule exception and the 32px phone call-line height to DESIGN.md and its contract tests before styling them.
 - Keep traceable observed metadata in Activities; full cache evidence and rule-generated views live in Signals. Request details retain four counts and the shared association caveat explaining that recorded links do not allocate task token cost.
 - Tests: growing totals with anchored selection; drag, page, keyboard and filter selection; synchronized loading and cancellation; request groups at range edges, empty/unresolved associations and bounded continuation; lane assignment/focus/collapse; scope consistency; no provider identifiers in DOM.
-- Update `docs/OBSERVATION_CACHE.md` for range paging, selection and event totals, and `docs/METRICS.md` for request-local and association wording. Compare desktop and phone artboards.
+- Update `docs/internal/architecture/observation-cache.md` for range paging, selection and event totals, and `docs/internal/architecture/metrics.md` for request-local and association wording. Compare desktop and phone artboards.
 
 ### T06b Signals tab
 
-Owner: UI (`app/components/dashboard/`), monitor signal projection, `docs/METRICS.md`. Artboard: `SignalsTab`; phone access through `Mobile` More sheet.
+Owner: UI (`app/components/dashboard/`), monitor signal projection, `docs/internal/architecture/metrics.md`. Artboard: `SignalsTab`; phone access through `Mobile` More sheet.
 
 Depends on T04, T02 signals domain, and T06 request navigation.
 
 - Render efficiency signals, cache evidence, flow score with its two inputs, cache lifetime by agent, and agent-reported MCP signals from the committed signals domain.
 - Put the deterministic-rules and "Not a quality assessment" caveat at the tab introduction. Preserve evidence-specific observed/inference/attributed labels and identify MCP content as agent-reported; a shared tab does not make agent reports deterministic measurements.
 - Link supported evidence to Activities with its request and agent selected. Evidence without a supported request link remains informative without a fabricated target. Remove flow score from Details and the old standalone cache disclosure.
-- Test caveats, readiness/unavailable states, request navigation, historical isolation and domain serialization. Update METRICS.md and compare the artboard.
+- Test caveats, readiness/unavailable states, request navigation, historical isolation and domain serialization. Update architecture/metrics.md and compare the artboard.
 
 ### T07 Monitor SQLite store: file-change index and resource history
 
-Owner: monitor persistence (`monitor/`), `docs/OBSERVATION_CACHE.md`.
+Owner: monitor persistence (`monitor/`), `docs/internal/architecture/observation-cache.md`.
 
 Depends on T00.
 
@@ -456,7 +456,7 @@ Depends on T00.
   - `resource_minutes` (session id, minute start, and for each of CPU cores, CPU machine percent, memory bytes, read bytes per second, write bytes per second: min, avg, max, and the exact sample timestamp of the max). One row per minute per session; a peak keeps its magnitude and its second-level time after downsampling.
   - `resource_peak_samples` (session id, peak id, timestamp, the five fields): raw samples for the two minutes before and after each of the top ten peaks per field. Bounded to ten peaks per field per session. Older peaks that fall out of the top ten lose their window.
   - `resource_peaks` (session id, field, timestamp, value, matched task ids, matched request number): the bounded peaks table itself, a few hundred bytes per session.
-- Peak matching uses normalized execution-task start/end intervals for overlap only; unfinished tasks extend only through the latest observation. Link a request only when its normalized temporal association is unambiguous, otherwise omit the link. Usage observation timestamps alone do not establish a request execution interval. Request-local counts describe that request, never task cost; document the deterministic association rule in METRICS.md before shipping.
+- Peak matching uses normalized execution-task start/end intervals for overlap only; unfinished tasks extend only through the latest observation. Link a request only when its normalized temporal association is unambiguous, otherwise omit the link. Usage observation timestamps alone do not establish a request execution interval. Request-local counts describe that request, never task cost; document the deterministic association rule in architecture/metrics.md before shipping.
 - Retention, monitor-side, run after checkpoint writes and never in a GET:
   - Age: retention setting with fixed choices 30, 90, 180, 365 days, or keep all. Default 90 days. Past the age, drop `resource_minutes` and `resource_peak_samples` for that session. Keep `resource_peaks` and `file_changes` for as long as the session remains in the catalog.
   - Size: a soft resource-history cleanup threshold, default 500 MB. At or above it, the next prune cycle removes the oldest sessions' `resource_minutes`, then their `resource_peak_samples`, and runs incremental vacuum. Preserve peaks and file changes while their session remains in the catalog. If protected records alone exceed the threshold, allow the database to exceed it; do not delete protected history or stop new records merely to enforce a hard cap. Age retention applies independently.
@@ -466,7 +466,7 @@ Depends on T00.
 - Repository-relative paths only. Never absolute paths, command text, PIDs, or transcript paths. Add serialization tests.
 - Rebuild on missing or corrupt index; serve "history rebuilding" readiness meanwhile.
 - Confirm `node:sqlite` is available in the Electron runtime used by `desktop/`; if not, record the fallback decision here before proceeding. Verified on 2026-09-13: the module loads on the installed Node 24 with an `ExperimentalWarning`, and the `engines` floor of 22.13 is the first unflagged release. The monitor runs inside an Electron 43 `worker_threads` worker (`desktop/runtime/monitor-worker.mjs`), so the check must run there, not in the system Node. Silence or accept the experimental warning in development output.
-- Document the store, bounds, and rebuild rule in `docs/OBSERVATION_CACHE.md`.
+- Document the store, bounds, and rebuild rule in `docs/internal/architecture/observation-cache.md`.
 
 ### T08 Repository tab and repository Files tab
 
@@ -522,17 +522,17 @@ Depends on T07.
 - Settings → Storage section: retention age as a segmented control with the fixed choices from T07; **Resource history cleanup threshold** select (250 MB, 500 MB, 1 GB, 2 GB); a usage bar beside the selector; and the readiness line (size, oldest retained day, last prune). Show used/threshold and percentage, for example "380 MB / 500 MB · 76%" (illustrative). Desktop users can increase the threshold; browser/LAN clients see read-only values. Changes require fixed-key enum IPC and native confirmation.
 - The monitor applies changes on the next prune cycle. Never prune in IPC or GET handlers and never delete peaks or file changes for cataloged sessions because of age or size cleanup.
 - Bar copy: "At 100%, older resource curves and detailed sample windows become eligible for automatic cleanup. File history and recorded peaks are preserved." Explain that age retention applies independently. Cap visual fill at 100% but print the actual percentage above it; for example "550 MB / 500 MB · 110%". Use "Cleanup pending" until the monitor confirms protected records cause the excess, then "Preserved history exceeds the cleanup threshold." Use existing accessible meter/progress styling, numeric text and status wording; missing readiness is unavailable, never 0%. The bar is informational, not an interactive slider.
-- Document the two development environment variables and the defaults in `docs/CONFIGURATION.md`; document the bounded IPC in `docs/OBSERVATION_CACHE.md` next to the provider-folder settings.
+- Document the two development environment variables and the defaults in `docs/CONFIGURATION.md`; document the bounded IPC in `docs/internal/architecture/observation-cache.md` next to the provider-folder settings.
 - Reuse existing segmented controls and selects. Add a static storage usage sample covering ordinary, 100%, over-threshold and unavailable states to `/design-system`; update DESIGN.md and contract tests for any new shared meter pattern. Test units, actual over-100 text with clamped fill, cleanup status, read-only browser/LAN behavior and native enum validation.
 - Compare against `SettingsStorage.html`, recording the approved usage-bar addition and soft-threshold wording as intentional differences from the existing export.
 
 ### T12 Closure
 
-- Confirm each task has moved its enduring rules into `DESIGN.md` (page header, tab bar, correlated Activities, agent inspector, lanes, file tree, history panel, sidebar limits, role tints, storage bar and phone selection exception), `docs/OBSERVATION_CACHE.md` (domains, cadence, anchored selection, file-change index), and `docs/METRICS.md` (Signals caveats, recorded associations, lane presentation and role tints as presentation, never measurement). Do not wait until closure to update a contract changed by an earlier task.
-- Delete `/api/state` and its proxy once all domain consumers, including Signals, have migrated; update `docs/ARCHITECTURE.md` and `AGENTS.md` (Architecture section lists the route).
+- Confirm each task has moved its enduring rules into `DESIGN.md` (page header, tab bar, correlated Activities, agent inspector, lanes, file tree, history panel, sidebar limits, role tints, storage bar and phone selection exception), `docs/internal/architecture/observation-cache.md` (domains, cadence, anchored selection, file-change index), and `docs/internal/architecture/metrics.md` (Signals caveats, recorded associations, lane presentation and role tints as presentation, never measurement). Do not wait until closure to update a contract changed by an earlier task.
+- Delete `/api/state` and its proxy once all domain consumers, including Signals, have migrated; update `docs/internal/architecture/overview.md` and `AGENTS.md` (Architecture section lists the route).
 - Record the final sixty-second request count and the before/after screenshot pairs in the last checkpoint.
 - Record follow-ups that leave this plan: the Resources process table with a monitor-private per-task sampler, and a consumer for `HomeSnapshot.limitActivities` or its removal from the contract.
-- Move the SQLite store schema, retention tiers, and storage readiness into `docs/OBSERVATION_CACHE.md`, and the peak-matching rule (time overlap, adjacency wording) into `docs/METRICS.md`.
+- Move the SQLite store schema, retention tiers, and storage readiness into `docs/internal/architecture/observation-cache.md`, and the peak-matching rule (time overlap, adjacency wording) into `docs/internal/architecture/metrics.md`.
 - Delete this plan and the prototype folder in the same change.
 
 ## Readiness and implementation handoff
@@ -592,8 +592,8 @@ evidence verdict was PASS against the Resources artboard.
 `app/components/dashboard/RepositoryTab.tsx`, `app/components/dashboard/ResourcesTab.tsx`,
 `app/styles/file-history.css`, `package.json`, `tests/server/repository/file-history-domain.test.mjs`,
 `tests/server/sessions/checkpoints/session-observation-checkpoints.test.mjs`, `tests/ui/file-tree.test.tsx`,
-`tests/ui/repository-files-store.test.tsx` (new), `AGENTS.md`, `docs/OBSERVATION_CACHE.md`,
-`docs/METRICS.md`, and this plan.
+`tests/ui/repository-files-store.test.tsx` (new), `AGENTS.md`, `docs/internal/architecture/observation-cache.md`,
+`docs/internal/architecture/metrics.md`, and this plan.
 
 **Verification.** `npm run verify:fast` exited 0 after the fixes. `npm test` exited 0:
 node 1,333 tests, 1,332 passed, 1 skipped, 0 failed; UI 91 files and 962 tests passed.
@@ -607,9 +607,9 @@ the checkpoint schema unchanged; `RepositoryDomain` gains `recordedAt`,
 `commitsInSession`, `gitTasks` and a served `fileHistory`. File history:
 `GET /api/repository-files` (listing, or one file's history by `fileId` or `path`),
 `no-store` with the revision in the body, LAN-allowlisted. Repository tab order is
-Overview, Files, Git, Plugin, Context inventory, Reporting. Docs: OBSERVATION_CACHE.md
+Overview, Files, Git, Plugin, Context inventory, Reporting. Docs: architecture/observation-cache.md
 (session response domains, file-history serving, endpoint, snapshot sidecar, client
-cadence), METRICS.md (historical snapshot, commits during the session, Git tasks, peak
+cadence), architecture/metrics.md (historical snapshot, commits during the session, Git tasks, peak
 link wording) and AGENTS.md (file-change serving, historical snapshot fields).
 
 **Accepted visual differences.** G14's interim uncommitted list is superseded by part 3's
@@ -661,14 +661,14 @@ between prunes; a rebuilt store schedules its own first cycle, so an idle start 
 unused `options.storageSettings` monitor path is removed (the desktop maps saved values to
 `POMEGR_RETENTION_DAYS`/`POMEGR_STORE_MAX_MB`). Each fix has a regression test that fails
 on the old code. Docs changed in the same pass: the storage IPC subsection in
-`docs/OBSERVATION_CACHE.md` next to provider-folder settings, the additive-index rule,
+`docs/internal/architecture/observation-cache.md` next to provider-folder settings, the additive-index rule,
 AGENTS.md (file-change history now ships monitor-side; the two desktop storage enums),
-and the METRICS.md peak-to-request wording.
+and the architecture/metrics.md peak-to-request wording.
 
 **Part 5 changed files.** `server/repository/file-change-index.mjs`, `server/persistence/monitor-store-runtime.mjs`,
 `server/persistence/store-retention.mjs`, `tests/server/repository/file-change-index.test.mjs`,
 `tests/server/persistence/monitor-store.test.mjs`, `tests/server/persistence/store-retention.test.mjs`, `AGENTS.md`,
-`docs/OBSERVATION_CACHE.md`, `docs/METRICS.md`, and this plan.
+`docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, and this plan.
 
 **Verification.** Focused suites passed 91/91 at review. After the fixes,
 `npm run verify:fast` exited 0, and `npm test` exited 0: node 1,283 passed, 0 failed,
@@ -746,8 +746,8 @@ Activities now keeps the request chart, five-group feed, selected details, range
 agent scope, and phone call disclosures correlated over committed request windows.
 Signals owns the ordered Efficiency, Cache evidence, Cache lifetime, and Reported
 signals sections, with deterministic evidence kept distinct from potentially stale
-agent-reported updates. `DESIGN.md`, `docs/OBSERVATION_CACHE.md`, and
-`docs/METRICS.md` now own the enduring presentation, cache, and evidence rules.
+agent-reported updates. `DESIGN.md`, `docs/internal/architecture/observation-cache.md`, and
+`docs/internal/architecture/metrics.md` now own the enduring presentation, cache, and evidence rules.
 
 The independent review passed on its second iteration after repairing one 390px
 sticky-chrome collision. The scoped phone offset and design-contract regression keep
@@ -879,8 +879,8 @@ regression to fix. Docs must stop describing the deleted eight-row panel.
 **Deferred findings and owners.**
 
 - Part 5 (T06 docs):
-  - Rewrite `docs/METRICS.md` (activity section around lines 555-600),
-    `docs/OBSERVATION_CACHE.md` (around lines 278-295) and `DESIGN.md` "Session Evidence"
+  - Rewrite `docs/internal/architecture/metrics.md` (activity section around lines 555-600),
+    `docs/internal/architecture/observation-cache.md` (around lines 278-295) and `DESIGN.md` "Session Evidence"
     (around lines 287-331), which still describe the deleted panel.
   - Record the design consequence above.
   - This adds to the existing cadence entry for the grouped feed.
@@ -1017,7 +1017,7 @@ after the fix stage, passed.
 
 **Deferred findings and owners.**
 
-- Part 5 (T06 docs): add an `docs/OBSERVATION_CACHE.md` cadence entry for the grouped feed
+- Part 5 (T06 docs): add an `docs/internal/architecture/observation-cache.md` cadence entry for the grouped feed
   (revalidation on page revision, 204, manual retry, 300 ms write settle).
 - Part 2: `targetBasename` shortens prose that ends in a path ("Run tests for app/foo.test.ts"
   becomes "foo.test.ts"). Settle the target copy with the feed design.
@@ -1095,7 +1095,7 @@ M  tests/ui/session-tabs.test.tsx
 | Finding | Resolution (round 4) |
 | --- | --- |
 | B1 detached pending entry after a multi-consumer keyed navigation | `app/session-domain-store.ts`: cleanup-time prune (`detachSubscriber`) no longer ages or consumes pending protection; only a subscribe-time pass (`touchSession`) sets `survivedPrune`; `attachSubscriber` re-registers a detached entry. The new multi-consumer test fails against the round-3 logic and passes with either half of the fix alone. |
-| B2 restart/epoch semantics undocumented | Added to `docs/OBSERVATION_CACHE.md`: a loading response never replaces a resolved body; a lower revision is rejected within one epoch; the first resolved body after an epoch change is accepted and re-arms the guard; a pending rebuild keeps its fast cadence; revision clocks restart at 0 per monitor process; a 404 for a proven-absent session is definitive. Wording nits recorded as n-a below. |
+| B2 restart/epoch semantics undocumented | Added to `docs/internal/architecture/observation-cache.md`: a loading response never replaces a resolved body; a lower revision is rejected within one epoch; the first resolved body after an epoch change is accepted and re-arms the guard; a pending rebuild keeps its fast cadence; revision clocks restart at 0 per monitor process; a 404 for a proven-absent session is definitive. Wording nits recorded as n-a below. |
 | S-a sessions outside the 50-per-provider catalog window dead-ended on a retrying 503 | Bounded asynchronous hydration for uncatalogued IDs (4 concurrent probes, 128 records, 30 s recheck); only the session-domain route passes a genuine 404 through; the store stops retrying on 404 and recovers on a revision event, focus, reconnect, or revalidate. |
 | S-b two lint errors | Fixed: store mutations moved into module functions; `LegacySessionTab.tsx` keys its inner panel on `sessionId`. `npm run lint`: 0 errors. |
 | n1 domain GETs never prioritized restored-live re-hydration | Coordinator now triggers it, deduplicated via `restoredHydrations`. |
@@ -1130,12 +1130,12 @@ empty).
 
 **acceptance-r4 open nits (n-a to n-e), owners assigned in this entry:**
 
-- n-a. `docs/OBSERVATION_CACHE.md` wording: a blocked SSE stream does advance the epoch
+- n-a. `docs/internal/architecture/observation-cache.md` wording: a blocked SSE stream does advance the epoch
   (`app/live-events.ts:75,90-95` fires `error` and reconnects); the "1-second cadence"
-  statement (`OBSERVATION_CACHE.md:1769-1771`) applies to live entries only, historical
+  statement (`architecture/observation-cache.md:1769-1771`) applies to live entries only, historical
   retries stay 5 s/30 s hidden; remove the review-finding IDs "(n4)"/"(n5)" from
-  `OBSERVATION_CACHE.md:1359,1364`. Owner: Session 6 T12 closure documentation pass (or any
-  earlier session that next edits `OBSERVATION_CACHE.md`).
+  `architecture/observation-cache.md:1359,1364`. Owner: Session 6 T12 closure documentation pass (or any
+  earlier session that next edits `architecture/observation-cache.md`).
 - n-b. `app/session-domain-store.ts:120-123`, `app/api/monitor-proxy.ts:26-30`,
   `app/api/session-domain/route.ts:32-33`: "404 only after hydration proved absence" is
   overstated; an `agent` query for an agent missing from a committed record, and malformed
@@ -1375,7 +1375,7 @@ if source has moved):
      (a focus-restoration race fix around lines 270-276, made during T04 integration, verified
      correct — `agent-tree-focus` tests pass) and `app/components/dashboard/AgentsTab.tsx`
      (step 3 above, once fixed).
-   - `docs/OBSERVATION_CACHE.md:1722-1727` (the "session-domain browser store" paragraph)
+   - `docs/internal/architecture/observation-cache.md:1722-1727` (the "session-domain browser store" paragraph)
      still does not describe the step-2 regression guard or restart revision semantics; update
      it together with step 2's fix.
    - `app/session-domain-store.ts` — an entry created by a render that React later abandons
@@ -1445,7 +1445,7 @@ Changed T04 ownership:
   `shared/session-domain-contract.ts`: summary-native agent status counts and
   resource availability. No navigation-driven eager domain acquisition.
 - New `app/role-family.ts`, role tokens, session styles, design-system samples,
-  `DESIGN.md` and `docs/OBSERVATION_CACHE.md`. The nested role helper used
+  `DESIGN.md` and `docs/internal/architecture/observation-cache.md`. The nested role helper used
   explicit Luna; T04 and independent review used Sol, T05 used Terra.
 - New browser store/Dashboard/route/role tests and summary fixture; obsolete
   `SessionCommandBar.tsx` removed. Dashboard test migration is unfinished.
@@ -1632,7 +1632,7 @@ Changed ownership areas:
 - Transport: `app/live-events.ts`, history publications, AppShell, Dashboard,
   Activity/Requests hooks, request preload, shared repository inventory, JSON proxies
   and paired-LAN forwarding, with matching UI and HTTP regressions.
-- Authorities and verification: `docs/OBSERVATION_CACHE.md`, `docs/ARCHITECTURE.md`,
+- Authorities and verification: `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/overview.md`,
   canonical test wiring in `package.json`, and generated-prototype exclusions in
   `eslint.config.mjs` and `scripts/check-architecture.mjs`. The reproduced baseline
   had 36 errors and 6,628 warnings in exported vendor/support scripts; only that

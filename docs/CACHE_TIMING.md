@@ -50,7 +50,7 @@ when it has cache timing that needs attention.
 
 Mixed, minimum-only (`30m+`), missing, malformed, or otherwise unavailable lifetime
 evidence does not produce a warning. Codex's `cache TTL ≥30m` label is a documented
-model-policy minimum, not an expiry deadline; see [cache lifetime resolution](METRICS.md#cache-events).
+model-policy minimum, not an expiry deadline; see [cache lifetime resolution](internal/architecture/metrics.md#cache-events).
 Historical sessions show recorded request and cache-touch
 times without a live warning state.
 

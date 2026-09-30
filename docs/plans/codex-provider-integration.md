@@ -136,7 +136,7 @@ Choose and document a reliable, read-only method for classifying Codex threads a
   4. bounded transcript-activity fallback when no reliable live source exists.
 - Test whether a newly spawned app-server reports the status of threads owned by another Codex process; do not assume it does.
 - Determine how unresolved user-input and approval requests can be detected without exposing their question, choices, command, or answer.
-- Record the selected design and fallback in `docs/ARCHITECTURE.md` or a focused ADR under `docs/plans/`.
+- Record the selected design and fallback in `docs/internal/architecture/overview.md` or a focused ADR under `docs/plans/`.
 - Add no private SQLite dependency unless the user explicitly approves a separately documented compatibility fallback.
 
 ### Acceptance criteria
@@ -352,7 +352,7 @@ Build the normalized primary-agent and subagent tree for Codex sessions.
 - Normalize model, reasoning effort, approval policy, sandbox presentation label, start/update times, duration, and terminal status.
 - Do not expose collaboration prompt text or developer instructions.
 - Handle missing child rollouts, resumed agents, forks, stopped agents, and unknown future source kinds.
-- Keep wall-time semantics consistent with `docs/METRICS.md`.
+- Keep wall-time semantics consistent with `docs/internal/architecture/metrics.md`.
 
 ### Acceptance criteria
 
@@ -478,7 +478,7 @@ Map Codex token-count events to Pomegr's latest-context metric without introduci
 - Feed chronological latest snapshots into the existing context-growth timeline algorithm.
 - Treat zero/synthetic snapshots as unavailable.
 - Parse compaction records only as bounded events. Do not emit the automatic-compaction warning unless Codex records an explicit automatic trigger.
-- Update `docs/METRICS.md` for any Codex-specific mapping or limitation.
+- Update `docs/internal/architecture/metrics.md` for any Codex-specific mapping or limitation.
 
 ### Acceptance criteria
 
@@ -733,7 +733,7 @@ npm run lint
   once and bounded live parsing to a cached 512 KiB tail. This was superseded by the
   provider-neutral observation lifecycle: production selected-state GETs now serve only
   committed revisions, and raw acquisition chunks no longer define normalized evidence
-  retention. See `docs/OBSERVATION_CACHE.md`.
+  retention. See `docs/internal/architecture/observation-cache.md`.
 - Updated provider support/setup, architecture and liveness flow, Codex metric mappings and unavailable evidence, complete environment-variable reference, and troubleshooting guidance.
 - Full build, 171 Node tests, 28 UI tests, focused privacy/performance QA, lint, and diff checks pass; lint reports only pre-existing warnings under `.agents/skills/impeccable`.
 
@@ -754,8 +754,8 @@ Prove that Codex support satisfies Pomegr's privacy, metric, compatibility, and 
 - Run performance checks with multiple large rollouts and confirm polling uses tail reads/caches rather than repeated full scans.
 - Update:
   - `README.md` provider support and setup;
-  - `docs/ARCHITECTURE.md` provider flow and liveness;
-  - `docs/METRICS.md` Codex mappings and unsupported signals;
+  - `docs/internal/architecture/overview.md` provider flow and liveness;
+  - `docs/internal/architecture/metrics.md` Codex mappings and unsupported signals;
   - environment-variable reference and troubleshooting guidance.
 - Remove any temporary diagnostics or generated schema files.
 
@@ -818,7 +818,7 @@ Reference the current official OpenAI prompt-caching and data-retention document
 - Keep cautious cache-miss wording at every elapsed interval for GPT-5.6-family evidence. Current documentation defines 30 minutes as a minimum lifetime and no longer documents a 24-hour maximum for that family; do not infer expiration from elapsed time alone.
 - Suppress the signal when known evidence makes the observations incomparable, including automatic or manual compaction, agent forks, model changes, unavailable intermediate usage, or a changed provider/session identity. A normal resume of the same thread is not by itself a suppression condition.
 - Keep prompt content, cache keys, request bodies, response content, provider routing data, and pricing assumptions monitor-side or entirely unread. None may enter the normalized browser API.
-- Document the final rule, thresholds, evidence gaps, and false-positive boundary in `docs/METRICS.md`.
+- Document the final rule, thresholds, evidence gaps, and false-positive boundary in `docs/internal/architecture/metrics.md`.
 
 ### Acceptance criteria
 
@@ -873,7 +873,7 @@ Show the latest bounded Codex activity summary for each agent in the existing ex
 - Keep the popover available when current activity exists even if the agent has no execution tasks. Preserve existing running/finished execution counts without including the current-activity row.
 - Keep current activity out of execution-task arrays, task signals, plan tasks, tool-call totals, elapsed execution timing, efficiency metrics, generated reports, and recommendation rules.
 - Preserve provider capability and failure isolation: Claude behavior remains unchanged, and missing or malformed Codex activity evidence yields no current-activity row.
-- Document the source, lifecycle, privacy boundary, and non-task semantics in `docs/METRICS.md` and update the normalized API documentation where the optional agent field is introduced.
+- Document the source, lifecycle, privacy boundary, and non-task semantics in `docs/internal/architecture/metrics.md` and update the normalized API documentation where the optional agent field is introduced.
 
 ### Acceptance criteria
 
@@ -904,7 +904,7 @@ Codex support is complete when:
 - Windows live-state behavior is documented and tested.
 - The browser and generated reports contain no raw private session content.
 - Claude behavior remains regression-tested.
-- `README.md`, `docs/ARCHITECTURE.md`, and `docs/METRICS.md` describe the shipped behavior.
+- `README.md`, `docs/internal/architecture/overview.md`, and `docs/internal/architecture/metrics.md` describe the shipped behavior.
 
 ## Progress log
 

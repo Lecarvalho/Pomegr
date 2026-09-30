@@ -150,7 +150,7 @@ implementation task.
     configuration, provenance, or policy content reaches the browser. Plugin and capture
     actions still require the desktop bridge and native confirmation; browser and LAN
     clients see setup instructions instead. Nothing here changes
-    `docs/OBSERVATION_CACHE.md` behavior.
+    `docs/internal/architecture/observation-cache.md` behavior.
 
 ## Mockup-to-token mapping
 
@@ -538,7 +538,7 @@ Finish per `mockup-mobile-index.html`, `mockup-mobile-detail.html`, and `DESIGN.
 5. Docs: update the "Repositories place current Pomegr plugin setup inside each expanded
    repository's provider section…" paragraph in `DESIGN.md` (Session Evidence) to describe
    the index and the detail tabs; update `docs/PLUGINS.md` and `README.md` wherever they
-   describe expanding a repository row; note the route in `docs/AGENT-WORKFLOW.md` if it
+   describe expanding a repository row; note the route in `docs/internal/development/agent-workflow.md` if it
    lists page routes.
 6. Final verification: `npm run verify:fast`, `npm test`, then a browser pass at 1440,
    1100, 900, 760, 390 and 360 px in both themes on the index, each tab, and the legacy
@@ -563,7 +563,7 @@ npm test
 ## Non-goals (do not do these inside any task)
 
 - New monitor endpoints, new fields on `RepositorySummary`, or any change to
-  `docs/OBSERVATION_CACHE.md` semantics.
+  `docs/internal/architecture/observation-cache.md` semantics.
 - Git, branch, working-tree, or pull-request aggregation. The Git tab stays coming-soon.
 - Repository pinning, renaming, hiding, or any write to repository state.
 - Bulk plugin actions across repositories.

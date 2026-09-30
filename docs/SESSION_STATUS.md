@@ -4,7 +4,7 @@ Reviewed: 2026-09-01.
 
 This is the editable comparison of Pomegr's session-level status rules. Keep each table row on one physical line so later corrections can target that row. Describe what Pomegr can observe through its connected sources; parser support alone is not evidence of an available integration.
 
-Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [OBSERVATION_CACHE.md](OBSERVATION_CACHE.md) remains the operational contract.
+Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [Observation cache](internal/architecture/observation-cache.md) remains the operational contract.
 
 The inventory of evidence and integration gaps is
 [Limitations](internal/architecture/limitations.md#session-status-coverage).

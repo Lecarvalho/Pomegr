@@ -4,7 +4,7 @@
 > Authority: maintained workflow; the [style guide](../../STYLE_GUIDE.md) owns
 > writing and artifact lifecycle, and [current contracts](../README.md#choose-the-authority)
 > own runtime behavior.
-> Related code and checks: [agent workflow](../../AGENT-WORKFLOW.md#focused-verification),
+> Related code and checks: [agent workflow](agent-workflow.md#focused-verification),
 > [verification scripts](../../../package.json), and [website operations](../../../landing/OPERATIONS.md).
 
 Keep one maintained owner for each subject. Use the [documentation index](../../README.md)
@@ -244,7 +244,7 @@ Record the actual coverage and any unavailable checks in the handoff.
 
 For generated documentation, update its source and generator and run the relevant
 check, such as `npm run check:provider-docs`. For implementation changes, also
-follow the [agent workflow](../../AGENT-WORKFLOW.md#focused-verification) and
+follow the [agent workflow](agent-workflow.md#focused-verification) and
 [change checklist](../../../AGENTS.md#change-checklist); documentation checks do
 not replace build, test, privacy, or affected landing verification.
 

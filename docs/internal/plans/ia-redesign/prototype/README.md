@@ -62,7 +62,7 @@ Decision 2026-09-20. A panel whose content continues on a tab uses its heading a
 
 ### Limits
 
-Sidebar limits: one line per provider that has sessions this week, showing only its tightest window. Colors follow the METRICS.md usage-limit rule: normal to 74%, warning 75 to 84%, critical 85% and up. Cursor appears the same way once its adapter reports windows. Full windows live on the Usage limits page. Historical sessions never render this widget as session data; it is shell chrome.
+Sidebar limits: one line per provider that has sessions this week, showing only its tightest window. Colors follow the architecture/metrics.md usage-limit rule: normal to 74%, warning 75 to 84%, critical 85% and up. Cursor appears the same way once its adapter reports windows. Full windows live on the Usage limits page. Historical sessions never render this widget as session data; it is shell chrome.
 
 ### Repository
 

@@ -3,7 +3,7 @@
 Pomegr discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`. Development exposes the web dashboard on the LAN; the Windows desktop app offers separate, opt-in phone access.
 
 Operational cache tiers, checkpoint rules, readiness states, and frontend refresh cadence
-are defined canonically in [Observation cache and progressive readiness](OBSERVATION_CACHE.md).
+are defined canonically in [Observation cache and progressive readiness](internal/architecture/observation-cache.md).
 
 ## Supported desktop modes
 
@@ -237,7 +237,7 @@ Pomegr exposes a bounded display `role` for each agent. The primary agent is alw
 
 Unmapped agents with a valid recorded type display `custom: <type>` in their
 individual details. The label uses the recorded terminal type name, normalized
-and validated under the [agent role rules](METRICS.md#agent-roles). Missing or
+and validated under the [agent role rules](internal/architecture/metrics.md#agent-roles). Missing or
 invalid types still display `unknown`. No mapping file is needed for this label;
 add a mapping only to assign one of Pomegr's built-in roles.
 

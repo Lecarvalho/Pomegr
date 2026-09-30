@@ -52,7 +52,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 ## Evidence on Hand
 
 - The working dashboard, monitor, provider adapter, normalized contract, MCP signal server, deterministic report generator, and automated test suite are present in this repository.
-- Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/METRICS.md`.
+- Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/internal/architecture/overview.md`, and `docs/internal/architecture/metrics.md`.
 - The current interface is implemented under `app/`.
 - No testimonials, customer logos, external benchmarks, pricing claims, or deployment claims are established in the repository and future work must not fabricate them.
 

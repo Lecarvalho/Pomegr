@@ -1,7 +1,7 @@
 // Per-session resource history: minute aggregates with exact max timestamps, the
 // top-ten peaks per field, raw sample windows around each peak, and deterministic
-// peak-to-task/request matching. See docs/METRICS.md ("Resource history") and
-// docs/OBSERVATION_CACHE.md for the persisted contract and checkpoint cadence.
+// peak-to-task/request matching. See docs/internal/architecture/metrics.md ("Resource history") and
+// docs/internal/architecture/observation-cache.md for the persisted contract and checkpoint cadence.
 //
 // Privacy: rows persisted here carry only a normalized session ID, execution-task
 // IDs, request numbers, timestamps, and numeric measurements. No PIDs, process

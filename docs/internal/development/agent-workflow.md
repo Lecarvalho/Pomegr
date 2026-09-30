@@ -5,9 +5,9 @@ behavior owner so a coding agent can discover the contract before editing it.
 
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
-| Documentation, migration, and temporary artifacts | [Maintenance workflow](internal/development/documentation.md), [style guide](STYLE_GUIDE.md), and [maintainer index](internal/README.md); use the workflow's documentation checks and `npm run verify:fast` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
+| Documentation, migration, and temporary artifacts | [Maintenance workflow](documentation.md), [style guide](../../STYLE_GUIDE.md), and [maintainer index](../README.md); use the workflow's documentation checks and `npm run verify:fast` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
 | Provider discovery, parsing, normalization | `server/providers/claude/` or `server/providers/codex/`, the shared `server/providers/kernel/`, the `server/normalize/` kernel, and `server/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
-| Observation cache, checkpoints, readiness, API cadence | `docs/OBSERVATION_CACHE.md`, `server/runtime/observation-runtime.mjs`, `server/sessions/domain/session-domain-serving.mjs`, and `server/sessions/checkpoints/` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
+| Observation cache, checkpoints, readiness, API cadence | `docs/internal/architecture/observation-cache.md`, `server/runtime/observation-runtime.mjs`, `server/sessions/domain/session-domain-serving.mjs`, and `server/sessions/checkpoints/` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Server indexing, projection, enrichment | `server/server.mjs`, then the owning folder in the server layout below | Browser credentials, prompts, responses, and provider-native payloads |
 | Internal pipeline operations and timing | `docs/PIPELINE_OPERATIONS.md`, `server/diagnostics/`, and diagnostic scripts; run `npm run test:diagnostics`, `npm run check:boundaries`, and focused production/desktop exclusion checks | Browser API fields, session/transcript/source identity, prompts/content/errors in diagnostics, diagnostic reads that trigger pipeline work, a second development JSONL writer, or any capture/export/viewer path |
 | Agents model and work analytics | `server/analytics/agents-analytics.mjs`, `server/runtime/agents-observation.mjs`, `shared/agents-contract.ts`, and `app/agents/` | Provider acquisition or aggregation in GETs; browser-owned analytics caches |
@@ -76,7 +76,7 @@ exactly before bundling services; it never regenerates legal files after the web
 
 `npm run verify:desktop` runs the full Windows desktop smoke with a hidden production
 `BrowserWindow`. Pull requests targeting `main` and pushes to `main` run
-[Windows verification](../.github/workflows/verify.yml) on `windows-2022` with Node
+[Windows verification](../../../.github/workflows/verify.yml) on `windows-2022` with Node
 22.13.0. It installs the locked root and landing dependencies plus Electron's on-demand
 runtime, then runs the canonical `npm run verify` followed by
 `npm run desktop:smoke:ci`. The CI-safe smoke exercises the packaged Electron main

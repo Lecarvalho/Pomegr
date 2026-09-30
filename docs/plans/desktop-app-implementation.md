@@ -193,7 +193,7 @@ Verify that Pomegr's production monitor and web server can run under Electron's 
 - Record any files that must be unpacked from ASAR and why.
 - Do not build the full desktop UI, tray, updater, or installer in this task.
 - Add a focused compatibility test or smoke script that fails if system `node` is required.
-- Document the accepted runtime structure in `docs/ARCHITECTURE.md`.
+- Document the accepted runtime structure in `docs/internal/architecture/overview.md`.
 
 ### Acceptance criteria
 
@@ -528,7 +528,7 @@ Validate the complete first-run experience and document the supported desktop be
   8. update to a newer signed version;
   9. uninstall without touching provider data.
 - Update `README.md` with desktop installation as the primary user path and source development as a separate path.
-- Update `docs/ARCHITECTURE.md` with desktop process ownership and security boundaries.
+- Update `docs/internal/architecture/overview.md` with desktop process ownership and security boundaries.
 - Update `docs/CONFIGURATION.md` with desktop paths, settings, startup, notifications, updates, portable mode, and troubleshooting.
 - Document that LAN sharing is unavailable or explicitly opt-in, depending on shipped behavior.
 - Document Windows-only support without implying macOS/Linux compatibility.

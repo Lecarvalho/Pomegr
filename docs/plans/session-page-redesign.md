@@ -524,7 +524,7 @@ semantics.
    snapshots through `reportEvidence`. Either pass the new fields through the same
    allowlist or strip them; pick **strip** (reports stay unchanged) and add an assertion in
    `tests/server/sessions/domain/session-report-evidence.test.mjs` that report items have no `precedingWork`.
-4. `docs/METRICS.md` → section `## Request snapshots`: add a paragraph:
+4. `docs/internal/architecture/metrics.md` → section `## Request snapshots`: add a paragraph:
 
    > Each request may carry two bounded work-kind tallies. `issuedWork` counts the
    > tool calls contained in the same assistant record (`recorded_link`). `precedingWork`
@@ -540,7 +540,7 @@ semantics.
    read) per request and that this outline replaces the former Context history panel as
    the visible context level, while `contextHistory` stays in the API for reports and
    the Home view.
-5. `docs/OBSERVATION_CACHE.md` → `## Presentation rules`: add one bullet: "Requests &
+5. `docs/internal/architecture/observation-cache.md` → `## Presentation rules`: add one bullet: "Requests &
    actions renders only committed request snapshots; window, selection, and sort are
    frontend view state and never trigger acquisition."
 6. `AGENTS.md` → the request-snapshot bullet under Security and privacy invariants: append
@@ -796,7 +796,7 @@ Delete the two superseded panels and the "Context history" settings toggle.
    `.cacheEvidence*`.
 5. The Home page (`app/HomeDashboard.tsx`) uses `HomeContextHistory`; leave it untouched.
    The API keeps `metrics.tokens.contextHistory` (reports and Home depend on it).
-6. `docs/METRICS.md` `## Context history`: add a first line "Presented on the Home page
+6. `docs/internal/architecture/metrics.md` `## Context history`: add a first line "Presented on the Home page
    and in focused reports; on the session page the context level is the prompt-size
    outline of Requests & actions."
 
@@ -1215,12 +1215,12 @@ Ship-ready page across widths and themes, with nothing left over.
    Run `grep -rn "className=\"" app | grep -o 'class[A-Za-z]*' | sort -u` against
    `evidence.css` selectors to find orphans; delete orphans only when no test references
    them.
-4. Docs: `docs/METRICS.md` entries touched by SP-04/SP-06 re-read for consistency;
+4. Docs: `docs/internal/architecture/metrics.md` entries touched by SP-04/SP-06 re-read for consistency;
    `README.md` screenshots or feature bullets that mention "Context history" or "Request
    snapshots" updated to "Requests & actions".
-5. Mark this plan's header with the status blockquote used by
-   `docs/plans/provider-neutral-session-observation-cache.md` once every task including
-   SP-12 is done.
+5. Mark this plan's header with a status blockquote (`> Status: implemented and
+   repository-verified on <date>.`, followed by a note that the plan is a historical record
+   only) once every task including SP-12 is done.
 
 ### Acceptance criteria
 

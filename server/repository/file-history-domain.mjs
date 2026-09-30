@@ -4,7 +4,7 @@
 // listing, and a per-file grouped session history. Every public lookup below is a pure
 // in-memory map read; all SQLite reads happen inside the `file-history-domain` monitor-store
 // contributor's `onCheckpoint`, registered after the file-change-index contributor so it
-// always groups already-committed rows. See docs/OBSERVATION_CACHE.md ("Approved
+// always groups already-committed rows. See docs/internal/architecture/observation-cache.md ("Approved
 // file-history persistence contract" and "Monitor SQLite store") for the runtime contract
 // this follows, and AGENTS.md's "File-change history" privacy bullet for the served shape.
 //

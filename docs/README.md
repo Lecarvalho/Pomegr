@@ -39,10 +39,13 @@ operations, and decisions to their current owners. It also identifies which
 documents govern behavior and which record proposals or historical evidence.
 The [Limitations reference](internal/architecture/limitations.md) owns the
 provider-related and Pomegr-specific inventory and generated capability matrix.
+The [architecture overview](internal/architecture/overview.md),
+[observation cache](internal/architecture/observation-cache.md), and
+[metrics](internal/architecture/metrics.md) contracts live beside it.
 
 Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Coding
 agents follow [AGENTS.md](../AGENTS.md) and the
-[agent workflow](AGENT-WORKFLOW.md) for change routing and verification.
+[agent workflow](internal/development/agent-workflow.md) for change routing and verification.
 
 For documentation changes, follow the shared [style guide](STYLE_GUIDE.md) for
 writing, page templates, visuals, and artifact lifecycle, and the

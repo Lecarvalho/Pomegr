@@ -1,12 +1,49 @@
 # Observation cache and progressive readiness contract
 
 This document is the canonical operational contract for Pomegr's provider-neutral
-session observation cache, API serving model, and progressive UI readiness. Design plans
-under `docs/plans/` are historical records; when a plan and this document differ, this
+session observation cache, API serving model, and progressive UI readiness. Plans under
+`docs/internal/plans/` and legacy plans still under `docs/plans/` describe work or
+historical reasoning, not runtime authority; when a plan and this document differ, this
 document and `AGENTS.md` govern repository changes.
-The [Limitations reference](internal/architecture/limitations.md)
+The [Limitations reference](limitations.md)
 owns the provider-related and Pomegr-specific inventory and capability matrix;
 this document retains authority over acquisition, committed evidence, and serving.
+
+**Contents**
+
+- [Non-negotiable invariants](#non-negotiable-invariants)
+- [Pipeline terminology and ownership](#pipeline-terminology-and-ownership), including the
+  [activity feed](#activity-feed), [session response domains](#session-response-domains),
+  and [paged session evidence history](#paged-session-evidence-history)
+- [Agents analytics](#agents-analytics), [public provider service status](#public-provider-service-status),
+  [MCP agent-query projections](#mcp-agent-query-projections), and
+  [focused report evidence](#focused-report-evidence)
+- Cache evidence: [synthetic records and cache comparison](#synthetic-records-and-cache-comparison),
+  [cache-lifetime policy normalization](#cache-lifetime-policy-normalization), and
+  [cache-read drop evidence](#cache-read-drop-evidence)
+- [Cache tiers and bounds](#cache-tiers-and-bounds), including
+  [desktop phone access](#desktop-phone-access),
+  [provider-folder settings](#desktop-provider-folder-settings), and
+  [storage settings](#desktop-storage-settings)
+- [Provider observer contract](#provider-observer-contract): the [source ledger](#source-ledger),
+  [event-driven acquisition](#event-driven-acquisition-pipeline),
+  [startup working set](#startup-working-set-and-lazy-history),
+  [session inventory](#session-inventory-and-directory-coverage),
+  [complete-record ingestion](#complete-record-ingestion), and
+  [replacement and discontinuity](#replacement-and-discontinuity)
+- [Publication and persistence cadence](#publication-and-persistence-cadence) and
+  [bounded persistence ownership](#bounded-persistence-ownership)
+- [Endpoint ownership and revision semantics](#endpoint-ownership-and-revision-semantics),
+  including [local Claude usage recovery](#local-claude-usage-observations-and-desktop-recovery)
+  and [Claude Remote Control lifecycle](#claude-remote-control-lifecycle-acquisition)
+- [Readiness contract](#readiness-contract), [presentation rules](#presentation-rules),
+  [frontend API cadence](#frontend-api-cadence), and
+  [Home navigation preferences](#home-navigation-preferences)
+- [Checkpoint and browser privacy](#checkpoint-and-browser-privacy), including the
+  [approved file-history persistence contract](#approved-file-history-persistence-contract)
+- [Monitor SQLite store](#monitor-sqlite-store), [repository context inventory](#repository-context-inventory),
+  and [current repository plugin setup](#current-repository-plugin-setup)
+- [Diagnostics and acceptance](#diagnostics-and-acceptance)
 
 ## Non-negotiable invariants
 
@@ -27,7 +64,7 @@ this document retains authority over acquisition, committed evidence, and servin
   state, checkpoints, APIs, and React components remain provider-neutral.
 - Claude session work-start classification belongs to U2. Only its normalized nullable
   `session.startedAt` crosses the evidence boundary; local command text and classification
-  evidence remain private. The [session duration rules](METRICS.md#session-duration)
+  evidence remain private. The [session duration rules](metrics.md#session-duration)
   exclude setup-only records. D derives wall time from committed timestamps, and F renders
   a missing work start as **Not started**. An acquisition tail limit must not advance an
   established start: the adapter reads complete records in yielding bounded chunks and
@@ -43,7 +80,7 @@ this document retains authority over acquisition, committed evidence, and servin
   changing their schema or exposing private command linkage.
 - Session projection may derive the bounded `Agent.customType` display label from
   already-committed type evidence when the resolved role is `unknown`, under the
-  [agent role rules](METRICS.md#agent-roles). Individual agent-query and analytics
+  [agent role rules](metrics.md#agent-roles). Individual agent-query and analytics
   rows may carry the same validated label; aggregation remains keyed by role.
   Checkpoints retain the existing evidence schema and rederive the label after
   restore. This adds no acquisition to GETs and does not alter revision, readiness,
@@ -124,7 +161,7 @@ Unmatched or unavailable durations and links stay null. Provider call IDs and
 request-mapping keys never cross the browser or persistence boundary. C/P retain
 only validated normalized evidence. These fields round-trip through observation
 checkpoints; aggregate feeds are derived from retained evidence after restore.
-Readiness stays `activityEvidence`; Requests & actions retains its separate
+Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
 Claude's `conversation-activity-v6` and Codex's `codex-activity-v2` source
@@ -707,7 +744,7 @@ rendering every historical report on the live publication path.
 
 Clients use these queries only when an observation can change the next decision. They do
 not poll or call every query at session start. The tool-specific triggers and caveats are
-documented in [MCP observation queries](MCP_QUERIES.md).
+documented in [MCP observation queries](../../MCP_QUERIES.md).
 
 The Codex stdio MCP process resolves a default qualified session reference only from
 one valid host-supplied thread identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID`).
@@ -768,7 +805,7 @@ Claude U2 distinguishes recognized synthetic assistant records from requests wit
 invalid usage. Synthetic records create no usage snapshot and preserve the previous
 comparable request; real missing or malformed usage remains a comparison boundary.
 Compactions and model changes still prevent attribution. The exact recognition and
-metric semantics are defined in [Metrics](METRICS.md#context-usage).
+metric semantics are defined in [Metrics](metrics.md#context-usage).
 
 The Claude source fingerprint includes normalization revision `conversation-activity-v6`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
@@ -780,7 +817,7 @@ Synthetic markers and raw usage never enter browser state or checkpoint fields.
 
 ## Cache-lifetime policy normalization
 
-U2 resolves Codex's documented `30m+` minimum only from each request's recognized recorded model, using the adapter-owned family allowlist documented in [Metrics](METRICS.md#cache-events). This includes GPT-5.6 variants, GPT-6 Astra, Sol, and Luna, and GPT-6.1 Sol, with date-suffixed snapshots; `codex-auto-review` remains unavailable until its policy is established. Missing or unsupported models stay unavailable; neither current settings nor a parent agent supplies a missing request model. D aggregates retained resolved lifetimes independently per normalized agent before the presentation feed is capped. F formats `30m+` as `cache TTL ≥30m` in the existing List and Tree metadata, without provider-schema logic or inline policy documentation. Minimum-only values never establish an expiry threshold.
+U2 resolves Codex's documented `30m+` minimum only from each request's recognized recorded model, using the adapter-owned family allowlist documented in [Metrics](metrics.md#cache-events). This includes GPT-5.6 variants, GPT-6 Astra, Sol, and Luna, and GPT-6.1 Sol, with date-suffixed snapshots; `codex-auto-review` remains unavailable until its policy is established. Missing or unsupported models stay unavailable; neither current settings nor a parent agent supplies a missing request model. D aggregates retained resolved lifetimes independently per normalized agent before the presentation feed is capped. F formats `30m+` as `cache TTL ≥30m` in the existing List and Tree metadata, without provider-schema logic or inline policy documentation. Minimum-only values never establish an expiry threshold.
 
 The enum extension remains compatible with checkpoint version 1. Privacy-valid normalized evidence may preserve `30m+`; legacy `null` values remain unknown until ordinary background acquisition and normalization produce a complete replacement. Startup hydration, last-known-good retention, atomic commits, original observation timestamps, revision semantics, checkpoint privacy filters, endpoint cache-only serving, readiness, and UI polling are unchanged. No cache TTL network requests, credentials, raw provider fields, or extra browser fields are introduced.
 
@@ -797,7 +834,7 @@ predecessor for new data. Source replacement still requires a complete validated
 candidate; temporary read bounds do not erase retained evidence.
 
 D derives `metrics.tokens.cacheReadDrops` only from committed normalized evidence,
-before presentation caps, using the thresholds and boundaries in [Metrics](METRICS.md#cache-read-drops).
+before presentation caps, using the thresholds and boundaries in [Metrics](metrics.md#cache-read-drops).
 The read-share transition is at least 80% to at most 20%, with an independent
 requirement that actual cached tokens fall by at least 80%. The broader
 current-share ceiling changes only D derivation; evidence and response shapes
@@ -811,8 +848,8 @@ across a model change** and makes no refill, expiry, or causation inference; mod
 identifiers remain monitor-private.
 This feed is separate from write-backed cache events and report counts. F reuses
 the existing agent indicator and popover, labels the same-model conclusion as an inference,
-and links the [same-model signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped)
-or [model-change signal definition](SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
+and links the [same-model signal definition](../../SIGNAL_DICTIONARY.md#cache-read-reuse-dropped)
+or [model-change signal definition](../../SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
 It never reconstructs comparisons from request
 rows or provider schemas. S continues to serve committed responses only: no new
 endpoint, source read, subscription, polling lane, or provider request is added.
@@ -1610,6 +1647,8 @@ reachability.
   8 MiB for one encoded record (while still yielding 64 KiB reads) because image-tool
   result records can exceed 256 KiB; larger or malformed Codex records degrade to
   unknown without exposing raw content or blocking later complete records.
+- A malformed or oversized record degrades only its provider-specific evidence and never
+  publishes private exception data.
 - Compatible checkpoints resume at the last complete-record offset. After restart, any
   unfinished record is reread from that offset.
 - Multi-session reconciliation prepares provider-private source topology once per catalog
@@ -2191,7 +2230,7 @@ projection publishes it through the existing committed revision and notification
 path; GETs remain cache-only, last-known-good evidence and checkpoints are retained,
 and no new public or persisted fields are introduced.
 
-The request and schema compatibility contract is in [Claude session status](CLAUDE_SESSION_STATUS.md).
+The request and schema compatibility contract is in [Claude session status](../../CLAUDE_SESSION_STATUS.md).
 
 ## Readiness contract
 
@@ -2218,13 +2257,13 @@ valid committed repository files or current live resource samples.
 
 ## Presentation rules
 
-- Requests & actions renders only committed request snapshots; window, selection, and
+- The Requests chart renders only committed request snapshots; window, selection, and
   sort are frontend view state and never trigger acquisition.
   Desktop retains a 60-request visible window and phone a 20-request window. Selection
   and window anchors follow normalized snapshot identity as the bounded feed rolls
   over; live updates follow the newest request only while selection and window are
-  already at the end. Scope, mode, and selection reset on session change. The session
-  orders Requests & actions before Activity. Desktop request Prev/Next crosses
+  already at the end. Agent scope, chart mode, and selection reset on session change. The
+  Activities tab orders the Requests chart before the Activity feed. Desktop request Prev/Next crosses
   committed history pages. Phone omits Prev/Next and retains a slim tappable minimap; horizontal dragging
   on the chart moves its 20-request window, with rightward drags revealing older
   requests and leftward drags revealing newer requests. Taps select bars; vertical
@@ -2238,7 +2277,7 @@ valid committed repository files or current live resource samples.
   synthetic token history is added. The overview's bar geometry is reused while
   the window moves, rather than rebuilding every miniature bar per pointer event.
   The detail chart recalculates its scale from the committed visible window during
-  navigation so off-window requests cannot compress its bars. Scope, mode,
+  navigation so off-window requests cannot compress its bars. Agent scope, chart mode,
   capability, window, or revision changes may change that scale.
   The thumb previews the requested position while the chart keeps its last
   committed page; aborted or stale responses cannot replace a newer navigation.
@@ -2246,7 +2285,7 @@ valid committed repository files or current live resource samples.
   for the selected mode, independent of the detail page. Page and overview replace
   together, retaining the last committed revision during loading or failure.
   Older monitors without an overview show only loaded positions, which do not
-  imply zero usage elsewhere. Scope/session changes discard the prior overview.
+  imply zero usage elsewhere. Agent scope or session changes discard the prior overview.
   A committed window move publishes its resulting chart selection to Activity once,
   for both chart swipes and minimap navigation. Pending windows retain the prior
   chart and activity target; background refreshes do not repeat that navigation or
@@ -2313,7 +2352,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | Consumer | Refresh and recovery |
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
-| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; Pause stops refresh; query changes reset the bounded cursor trail |
+| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; **Pause live refresh** stops refresh; query changes reset the bounded cursor trail |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
 | Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |
@@ -2331,7 +2370,7 @@ their existing bounded polling remains independent of session evidence. Usage fa
 retain their established 2/5/10/30-second backoff. All frontend refreshes retain
 last-known-good values. Focus or foreground return revalidates mounted consumers;
 hidden session consumers suppress immediate event bursts and use their 30-second
-fallback. Desktop **Pause updates** pauses F subscriptions and polling, including
+fallback. Desktop **Pause live refresh** pauses F subscriptions and polling, including
 repository views, and never controls backend observation.
 
 The session-domain browser store never sends a revision without the exact retained
@@ -2400,7 +2439,9 @@ An L2 checkpoint may contain only:
 It must never contain raw records, incomplete fragments, prompts, responses, reasoning,
 commands, patches, stdout, stderr, tool-result content, credentials, OAuth/account data,
 raw diagnostics, provider message/event IDs, or transcript paths. Cache filenames use a
-safe hash of normalized identity and never contain a source path.
+safe hash of normalized identity and never contain a source path. Pomegr-owned cache and
+checkpoint writes never mutate provider sources and stay compatible with read-only
+observation.
 
 Browser responses remain subject to every allowlist and privacy invariant in `AGENTS.md`.
 The optional cache message-change sequence is derived during complete-history provider
@@ -3013,7 +3054,8 @@ documented in `docs/PIPELINE_OPERATIONS.md`.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint
-restart/corruption/privacy, cache-only concurrent GETs, endpoint revision handling,
+restart/corruption/privacy (persisted cache files are scanned with the same hostile
+sentinels as browser serialization tests), cache-only concurrent GETs, endpoint revision handling,
 independent readiness, last-known-good rendering, accessibility, and retry cadence.
 
 The structural performance acceptance criterion is: once a committed response exists,

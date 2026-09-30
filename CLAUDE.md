@@ -16,5 +16,5 @@ Claude, Codex, and future harnesses stay in sync.
   by hand: `.codex/hooks.json` for Codex, the gitignored `.claude/settings.local.json` for
   Claude Code. Run the Impeccable skill's `hooks on` action to wire it on a new machine.
 
-See [docs/AGENT-WORKFLOW.md](docs/AGENT-WORKFLOW.md) for the path-routing table and
+See [docs/internal/development/agent-workflow.md](docs/internal/development/agent-workflow.md) for the path-routing table and
 single-file verification commands.

@@ -198,7 +198,7 @@ The private association cache is memory-only. The response is discarded immediat
 after bounded normalization. No new browser fields or endpoints are introduced.
 
 The operational phase, cache, revision, and persistence rules are canonical in
-[Observation cache](OBSERVATION_CACHE.md). Regression coverage lives in
+[Observation cache](internal/architecture/observation-cache.md). Regression coverage lives in
 `tests/server/providers/claude/session-status.test.mjs` and `tests/server/providers/claude/background-lifecycle.test.mjs`; existing provider-observation and serving
 tests enforce atomic replacement and cache-only GETs. Run the focused file while
 iterating, then `npm run verify:fast` and `npm test` before handoff.
