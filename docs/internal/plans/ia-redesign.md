@@ -1518,9 +1518,10 @@ used a model above Sol. At that earlier checkpoint T04 and T05 had no changes;
 the active checkpoint above supersedes that implementation status.
 
 Starting branch: `main`; HEAD: `3b116ada46ca91667e7b7378ce974bd0337770b0`.
-Pre-existing edits in `docs/COMMERCIAL_STRATEGY.md`,
-`docs/plans/mobile-pairing-cloudflare.md`, and
-`docs/plans/remote-platform-and-orgs.md` are unrelated and must be preserved.
+Pre-existing edits in the commercial strategy, mobile pairing, and remote platform
+documents (now `docs/internal/plans/commercial-strategy.md`,
+`docs/internal/plans/mobile-pairing-cloudflare.md`, and
+`docs/internal/plans/remote-platform-and-orgs.md`) are unrelated and must be preserved.
 All changes remain uncommitted. The session checkbox stays unchecked until T04,
 T05 and final integrated acceptance also pass. No commit or push was performed.
 

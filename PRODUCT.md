@@ -20,6 +20,8 @@ Success means making active work and attention needs legible while keeping the o
 
 Pomegr is a local, read-only observer that normalizes existing session records into a live dashboard and explainable signals.
 
+Pomegr is not an authoritative evaluator of developer or agent quality: its metrics and recommendations are deterministic signals tied to concrete execution evidence. The local observer is open source under `AGPL-3.0-only`; earlier MIT revisions remain MIT, and the Pomegr name and visual identity are governed separately by the [trademark policy](TRADEMARKS.md). The [license history](docs/internal/decisions/license-history.md) and [product positioning decision](docs/internal/decisions/product-positioning.md) record the rationale.
+
 ## Operating Context
 
 - Pomegr runs locally alongside a coding-agent harness and reads the provider's existing session records.
@@ -55,6 +57,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 - Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/internal/architecture/overview.md`, and `docs/internal/architecture/metrics.md`.
 - The current interface is implemented under `app/`.
 - No testimonials, customer logos, external benchmarks, pricing claims, or deployment claims are established in the repository and future work must not fabricate them.
+- Commercial editions, pricing, hosted coordination, and remote or organization features are unvalidated hypotheses in the [commercial strategy plan](docs/internal/plans/commercial-strategy.md) and its platform plans. None is shipped, and product copy must not present them as capabilities.
 
 ## Product Principles
 

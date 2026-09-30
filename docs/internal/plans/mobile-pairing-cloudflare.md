@@ -1,9 +1,32 @@
 # Pomegr Android and iOS pairing through Cloudflare
 
-> Proposed high-level plan, recorded September 7, 2026. No mobile transport,
-> infrastructure, or security-policy change is implemented by this document.
-> Runtime authority remains [AGENTS.md](../../AGENTS.md) and
-> [Observation cache](../internal/architecture/observation-cache.md).
+> Status: proposed, not implemented. No mobile transport, infrastructure, or
+> security-policy change exists; Phase 1 has not started.
+> Created: 2026-09-07.
+> Scope: personal Android and iOS pairing through a Cloudflare relay, its
+> operating cost, and its delivery phases. Organizations, billing, fleet history,
+> and cross-machine usage-limit coordination belong to the
+> [remote platform plan](remote-platform-and-orgs.md).
+> Continuation owner: Pomegr maintainers.
+> Authority: proposal only. Runtime authority remains [AGENTS.md](../../../AGENTS.md)
+> and the [Observation cache](../architecture/observation-cache.md).
+> Next decision: whether to fund Phase 1 (the device-authenticated protocol and
+> secure identity proof) and whether launch requires personal accounts. Nothing
+> else starts before that decision.
+> Completion criteria: the phase exit criteria in
+> [Delivery phases and exit criteria](#delivery-phases-and-exit-criteria) are met
+> through Phase 5, or the work is cancelled or superseded by another transport
+> decision.
+> Permanent destinations: the desktop and mobile security contract in the
+> [Observation cache](../architecture/observation-cache.md) and
+> [Architecture](../architecture/overview.md), the
+> [Phone access guide](../../public/using-pomegr/phone-access.md) and its
+> [configuration contract](../development/configuration.md#another-device-cannot-open-the-dashboard)
+> for pairing behavior, a decision record for the chosen transport and relay, a
+> new operations page for the relay's deployment and rollback, and `DESIGN.md`
+> for any desktop control.
+> Lifetime: temporary; delete on completion, cancellation, or supersession after
+> applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
 
 ## Objective
 
@@ -175,7 +198,7 @@ Use meaningful integration tests and real-device checks in addition to unit test
 - Start desktop changes from `desktop/runtime/lan-sharing.mjs`, `desktop/runtime/lan-gateway.mjs`,
   and the desktop lifecycle owner; keep provider acquisition out of the transport.
 - Define bounded shared mobile contracts separately from private provider schemas.
-- Follow [Agent workflow](../internal/development/agent-workflow.md) and `DESIGN.md` for implementation
+- Follow [Agent workflow](../development/agent-workflow.md) and `DESIGN.md` for implementation
   routing, verification, and any desktop controls.
 - Give the cloud service an independently deployable package and boundary checks.
   Preserve `landing/` isolation; do not import monitor or desktop modules into it.
@@ -186,6 +209,14 @@ The next implementation task is Phase 1: prove the device-authenticated protocol
 secure identity persistence on Android, iOS, and Windows, then validate the Cloudflare
 relay in staging. This document does not authorize production provisioning or claim
 that the current HTTP mobile disconnection issue has been fixed.
+
+## Continuation checkpoint
+
+Moved to `docs/internal/plans/` on 2026-09-30 with its lifecycle header; the proposal
+itself is unchanged and still unshipped. No phase has started. The only shipped phone
+feature is the same-network HTTP phone access described in the
+[Phone access guide](../../public/using-pomegr/phone-access.md). The next action is the
+decision named in the header.
 
 ## References
 

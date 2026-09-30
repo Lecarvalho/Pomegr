@@ -1,9 +1,40 @@
 # Pomegr remote platform, mobile clients, and organizations plan
 
-> Working document: this records the agreed direction for making Pomegr a self-contained,
-> multi-device product. It consolidates the platform vision referenced by
-> `docs/COMMERCIAL_STRATEGY.md`. Nothing here is shipped; milestones are ordered
+> Status: proposed, not implemented. No backend, relay, mobile app, organization
+> feature, or poll lease exists, and no milestone has started. Milestones are ordered
 > hypotheses, not commitments.
+> Created: 2026-08-18.
+> Scope: the agreed direction for making Pomegr a self-contained, multi-device product
+> (remote access, native mobile clients, cross-machine usage-limit coordination, and
+> organization visibility). The [mobile pairing plan](mobile-pairing-cloudflare.md)
+> details the personal pairing and relay slice.
+> Continuation owner: Pomegr maintainers.
+> Authority: proposal only. AGENTS.md and the
+> [Observation cache](../architecture/observation-cache.md) govern runtime behavior and
+> every privacy boundary this plan must preserve.
+> Next decision: whether to start any milestone. R1 needs no backend and can ship
+> alone; R3 onward depends on the hosting question under Open questions and on the
+> validation outcome in the [commercial strategy plan](commercial-strategy.md).
+> Completion criteria: R1 through R5 are shipped and documented in their permanent
+> contracts (R6 is optional), or the direction is cancelled or superseded by a decision
+> record.
+> Permanent destinations: the transport, pairing, and security contracts in the
+> [Observation cache](../architecture/observation-cache.md) and
+> [Architecture](../architecture/overview.md); the usage-limit polling rules in
+> [Metrics](../architecture/metrics.md) and the Observation cache; a decision record for
+> the relay-backend transport choice; the public guides for remote access and
+> organization consent; and `DESIGN.md` for any new control.
+> Lifetime: temporary; delete on completion, cancellation, or supersession after
+> applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact).
+
+## Current status
+
+Checked against the code on 2026-09-30. `server/normalize/usage-limits.mjs` retries at a
+fixed interval once `Retry-After` expires, so R1 is not implemented. The desktop
+[Phone access guide](../../public/using-pomegr/phone-access.md) describes a shipped
+same-network precursor to R2's pairing: a single-use, five-minute QR code, up to four
+browser authorizations that are not persisted, HTTP only, and no account. It has no
+per-device persisted tokens, backend enrollment, or relay, so R2 is not implemented.
 
 ## Objective
 
@@ -43,7 +74,8 @@ Everything in this plan preserves the non-negotiable boundaries in `AGENTS.md`:
    cannot provide.
 4. **Organization visibility is part of the product vision.** Organizations should be
    able to observe their developers' coding-agent sessions (the Teams and Enterprise
-   editions in `docs/COMMERCIAL_STRATEGY.md`). A purely local, peer-to-peer design
+   editions hypothesized in the [commercial strategy plan](commercial-strategy.md)). A
+   purely local, peer-to-peer design
    cannot deliver fleet views, role-based access, or retention controls.
 
 ## Transport options evaluated
@@ -147,7 +179,9 @@ never dilute it.
 
 ## Milestones
 
-Numbered `R` (remote platform) to stay distinct from the desktop `POMEGR-DT` tasks.
+Numbered `R` (remote platform) to stay distinct from the desktop `POMEGR-DT` tasks,
+which the [desktop milestone table](../operations/desktop-beta-acceptance.md#desktop-milestone-ids)
+lists.
 
 - **R1 — Cross-machine 429 mitigation (no backend).** Add exponential backoff,
   jitter, and machine-derived phase offset to `server/normalize/usage-limits.mjs`. Small,
@@ -168,7 +202,8 @@ Numbered `R` (remote platform) to stay distinct from the desktop `POMEGR-DT` tas
 ## Open questions
 
 - Backend hosting: managed multi-tenant first, or self-hosted from day one for
-  Enterprise prospects (`docs/COMMERCIAL_STRATEGY.md` raises the same question)?
+  Enterprise prospects (the [commercial strategy plan](commercial-strategy.md) raises
+  the same question)?
 - Account-hash salting scheme for poll leases that prevents cross-user correlation
   while still deduplicating within one subscription.
 - Whether R2 pairing should also gate the LAN dashboard by default or remain opt-in

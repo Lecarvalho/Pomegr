@@ -21,6 +21,8 @@ readable in the repository and must not contain secrets or private session data.
 | Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](architecture/signal-dictionary.md) defines stable evidence codes and limits. |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; the [license history](decisions/license-history.md) decision explains the transition. |
+| Accepted decisions | The [`decisions/`](decisions/) pages record why a choice was made: [license history](decisions/license-history.md), [product positioning](decisions/product-positioning.md), and [Codex Windows presence](decisions/codex-windows-presence.md). They are rationale only; the contracts above own current behavior, and a decision page names any replacement. |
+| Unshipped proposals and temporary work | The [`plans/`](plans/) pages are working checklists with an owner, next decision, and deletion rule. The [commercial strategy](plans/commercial-strategy.md), [remote platform](plans/remote-platform-and-orgs.md), and [mobile pairing](plans/mobile-pairing-cloudflare.md) plans are unvalidated or unimplemented; none is a shipped feature or a roadmap commitment. |
 
 Plans describe work or historical reasoning, not runtime authority. The session
 status comparison records known gaps alongside implemented rules, and the desktop beta
@@ -80,7 +82,8 @@ publication and validation tooling remain pending.
 | [Desktop clean-VM checklist](operations/desktop-clean-vm.md) | Reusable clean-VM checks, with the recorded alpha run and the pending 0.2.4 candidate under Recorded acceptance runs | Maintained at this path |
 | [Website operations](operations/website.md) | Landing development, provisioning, manual deployment, and rollback; [package entrypoint](../../landing/README.md) | Maintained at this path |
 | [License history](decisions/license-history.md) | Accepted licensing decision and rationale | Maintained at this path |
-| [Commercial strategy](../COMMERCIAL_STRATEGY.md) | Working hypotheses, not shipped features or roadmap commitments | Accepted positioning in root `PRODUCT.md`, useful rationale in `decisions/product-positioning.md`, unresolved hypotheses in `plans/commercial-strategy.md` |
+| [Product positioning](decisions/product-positioning.md) | Accepted open-source-core, bounded-visibility, and non-evaluator positioning; current wording lives in root [PRODUCT.md](../../PRODUCT.md) | Maintained at this path |
+| [Codex Windows presence](decisions/codex-windows-presence.md) | Why Codex liveness evidence is ranked and labeled as it is, and which earlier proposals shipped, were superseded, or were rejected; the contract is in the [observation cache](architecture/observation-cache.md) | Maintained at this path |
 
 ## Migration and temporary work
 
@@ -118,6 +121,16 @@ no code yet) to tag sessions with the repository guidance revision they ran unde
 (skills, `AGENTS.md`, hooks, reporting policy), compare friction, outcome, and
 compliance signals across cohorts, and run opt-in randomized experiments. Nothing
 in it is shipped or authoritative.
+
+The [commercial strategy plan](plans/commercial-strategy.md) holds the unvalidated
+editions, pricing, buyer, and validation-path hypotheses; its accepted statements
+are in [PRODUCT.md](../../PRODUCT.md) and the
+[product positioning decision](decisions/product-positioning.md). The
+[remote platform plan](plans/remote-platform-and-orgs.md) and the
+[mobile pairing plan](plans/mobile-pairing-cloudflare.md) are proposals with no
+backend, relay, or mobile app implemented; the only shipped phone feature is the
+same-network [phone access](../public/using-pomegr/phone-access.md). Each plan
+declares its owner, next decision, exit criteria, and deletion rule.
 
 Older [plans](../plans/) and artifacts in [design](../design/) and
 [mockups](../mockups/) await review under that checklist. Their location does not
