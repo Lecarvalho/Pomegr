@@ -802,6 +802,10 @@ to an observed final model. Missing model evidence is shown as unreported. The r
 matrix uses the same monitor-normalized Agent.role categories as session views.
 Displayed patterns describe model/role associations; they make no quality, productivity,
 cost, or model-recommendation claims.
+Model percentages use every run in the selection as their denominator, including runs
+with no reported model, and each is rounded on its own, so the displayed values need not
+sum to 100. Counts describe retained evidence, not model performance, time worked, or
+spending.
 
 The work distribution counts retained normalized execution tasks by their attributable
 workKind. It is labeled recorded execution tasks and does not claim to capture every

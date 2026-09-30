@@ -54,7 +54,7 @@ THESIS: Pomegr makes recorded agent work legible through a calm, consistent evid
 OWN-WORLD: Charcoal and neutral light surfaces, pomegranate action accents, Inter UI, data-only Geist Mono, 4px controls and 6px panels.
 STORY: Return to a session, inspect agent activity, follow actual context levels, then open supporting evidence without exposing the conversation.
 FIRST VIEWPORT: A 60px global header, 220px route rail, compact sans page title, aligned actions, and primary evidence at a readable scale.
-FORM: User-approved standalone HTML preview in docs/design/pomegr-ui-preview.html; production retains every real route and capability.
+FORM: The /design-system page (app/design-system/page.tsx, app/components/design-system/) and DESIGN.md; production retains every real route and capability.
 MOTION: Preserve the current activityPulse icon animation and its reduced-motion behavior.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 -->` }} />

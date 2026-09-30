@@ -100,7 +100,7 @@ maps the remaining work:
 | Current location | Planned home |
 | --- | --- |
 | User guidance in mixed-audience pages | `docs/public/`, grouped into `get-started/`, `using-pomegr/`, `concepts/`, and `help/` |
-| Existing plans and temporary design artifacts | Active work in `docs/internal/plans/`; completed artifacts retired after their findings are accounted for |
+| Existing plans | Active work in `docs/internal/plans/`; completed plans retired after their findings are accounted for |
 
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean

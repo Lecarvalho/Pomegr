@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Agent, AgentRole, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, Workflow } from "../../../shared/monitor-contract";
 import type { StorageSnapshot } from "../../../shared/storage-contract";
 import type { FileHistoryResponse } from "../../../shared/repository-files-contract";
 import { AgentChip } from "../AgentChip";
@@ -34,6 +34,9 @@ import {
   CommandToolbar,
 } from "../command-center/CommandPage";
 import { useClientAccess } from "../../hooks/ClientAccessContext";
+import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
+import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
+import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
 // Layer 1 of the web-only gate: the desktop preload exposes `window.pomegrDesktop`
 // whenever the page runs inside the Electron renderer. Presence alone is the signal.
@@ -59,6 +62,8 @@ export function DesignSystemView() {
     <StorageUsageSection />
     <RoleFamilySection />
     <RequestChartsSection />
+    <AgentRosterSection />
+    <AgentInspectorSection />
     <ChipsSection />
     <FileTreeSection />
     <FileHistoryPanelSection />
@@ -66,25 +71,10 @@ export function DesignSystemView() {
       <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
     </Section>
     <PanelsSection />
+    <CommandTableSection />
+    <SettingsRailSection />
     <TypographySection />
   </CommandPage>;
-}
-
-function Section({ id, title, lede, children }: { id: string; title: string; lede?: string; children: ReactNode }) {
-  const headingId = `design-system-${id}`;
-  return <section className="designSystemSection" aria-labelledby={headingId}>
-    <h2 id={headingId}>{title}</h2>
-    {lede && <p className="designSystemLede">{lede}</p>}
-    {children}
-  </section>;
-}
-
-function Sample({ label, note, children }: { label: string; note?: string; children: ReactNode }) {
-  return <div className="designSystemSample">
-    <span>{label}</span>
-    <div className="designSystemSampleBody">{children}</div>
-    {note && <small>{note}</small>}
-  </div>;
 }
 
 function DownloadIcon({ size = 14 }: { size?: number }) {
@@ -452,18 +442,8 @@ function RoleFamilySection() {
 
 // Static request-chart sample: nine roster agents plus a compaction agent, so the lane chart
 // crosses the eight-lane threshold and shows one expanded and one collapsed group.
-const SAMPLE_TIME = Date.parse("2026-08-09T12:00:00.000Z");
 const SAMPLE_WINDOW = 32;
 const SAMPLE_WORKFLOW_ID = "sample-test-sweep";
-
-function sampleAgent(id: string, label: string, role: AgentRole, workflowId: string | null = null): Agent {
-  const seen = new Date(SAMPLE_TIME).toISOString();
-  return {
-    id, parentId: id === "primary" ? null : "primary", workflowId, workflowPhaseId: null, workflowOrder: null, workflowState: workflowId ? "done" : null,
-    label, role, model: id === "primary" ? "large-model" : "small-model", effort: "medium", status: "finished", signal: null, toolCalls: 0, skills: [],
-    lastSeen: seen, startedAt: seen, updatedAt: seen, durationMs: 0, cacheLifetime: "1h", tokens: { total: 0, input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
-  };
-}
 
 const SAMPLE_AGENTS: Agent[] = [
   sampleAgent("primary", "Primary agent", "orchestrator"),

@@ -19,7 +19,7 @@ readable in the repository and must not contain secrets or private session data.
 | Provider conformance | [Executable provider contract](../../server/providers/provider-contract.mjs) defines catalog, manifest, readiness, evidence, and conformance requirements. Transcript schemas stay in adapters. |
 | Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
 | Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](architecture/signal-dictionary.md) defines stable evidence codes and limits. |
-| Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
+| Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. No HTML preview or mockup is an authority; [design system gaps](plans/design-system-gaps.md) lists the accepted patterns the page still lacks. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; the [license history](decisions/license-history.md) decision explains the transition. |
 | Accepted decisions | The [`decisions/`](decisions/) pages record why a choice was made: [license history](decisions/license-history.md), [product positioning](decisions/product-positioning.md), and [Codex Windows presence](decisions/codex-windows-presence.md). They are rationale only; the contracts above own current behavior, and a decision page names any replacement. |
 | Unshipped proposals and temporary work | The [`plans/`](plans/) pages are working checklists with an owner, next decision, and deletion rule. The [commercial strategy](plans/commercial-strategy.md), [remote platform](plans/remote-platform-and-orgs.md), and [mobile pairing](plans/mobile-pairing-cloudflare.md) plans are unvalidated or unimplemented; none is a shipped feature or a roadmap commitment. |
@@ -132,10 +132,13 @@ backend, relay, or mobile app implemented; the only shipped phone feature is the
 same-network [phone access](../public/using-pomegr/phone-access.md). Each plan
 declares its owner, next decision, exit criteria, and deletion rule.
 
-Older artifacts in [design](../design/) and [mockups](../mockups/) await review
-under that checklist. Their location does not
-make them current authority or evidence of shipped features. Active plans will
-live in `docs/internal/plans/`; completed or superseded plans and unneeded
-attachments are deleted after enduring findings and open work have owners. There
-is no archive directory. Needed reusable visual examples belong in the existing
-design system.
+The [design system gaps plan](plans/design-system-gaps.md) lists the accepted
+reusable patterns that still have no static sample on `/design-system`, and two
+critique findings carried over from the retired Impeccable reports. The HTML
+previews and mockups that once lived in `docs/design/` and `docs/mockups/` were
+reviewed against the design promotion gate and deleted.
+
+Active plans live in `docs/internal/plans/`; completed or superseded plans and
+unneeded attachments are deleted after enduring findings and open work have
+owners. There is no archive directory. Needed reusable visual examples belong in
+the existing design system.
