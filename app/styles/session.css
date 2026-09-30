@@ -154,7 +154,7 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionRepositoryLineMeta { min-width: 0; color: var(--command-muted); font-size: var(--text-sm); }
 
 /* Session Repository tab top bar (G1-G14 in the repository-snapshot design contract). */
-.repositoryTab { display: grid; gap: var(--space-4); }
+.repositoryTab { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
 .repositoryTabBar { padding: 10px var(--space-4); display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .repositoryTabBarLeft { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .repositoryTabBarLine1 { min-width: 0; display: flex; align-items: center; gap: var(--space-2); white-space: nowrap; }

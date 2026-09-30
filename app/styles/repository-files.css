@@ -2,7 +2,7 @@
 
 /* Session Repository tab body (F17/F18): search + Touched here / Uncommitted / Changed elsewhere,
    then a 340px tree beside the shared history panel. */
-.repositoryTabFiles { display: grid; gap: var(--space-3); }
+.repositoryTabFiles { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 .repositoryTabFilesToolbar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .repositoryTabFilesSearch { width: 320px; max-width: 100%; height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .repositoryTabFilesSearch::placeholder { color: var(--command-muted); }
@@ -39,7 +39,7 @@
   .repositoryFilesTabToggles { flex-wrap: wrap; }
   .repositoryFilesTabToggles .commandSecondaryAction { flex: 1 1 0; }
   .repositoryFilesTabCaption { margin-left: 0; }
-  .repositoryTabFilesBody, .repositoryFilesTabBody { grid-template-columns: 1fr; }
+  .repositoryTabFilesBody, .repositoryFilesTabBody { grid-template-columns: minmax(0, 1fr); }
   .repositoryTabFilesBody > .panel:first-child, .repositoryFilesTabBody > .panel:first-child { border-right: 0; border-bottom: 1px solid var(--command-line); }
   .repositoryTabFilesTree, .repositoryFilesTabTree { max-height: 50vh; overflow: auto; }
 }

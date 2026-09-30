@@ -405,7 +405,8 @@ html[data-theme="dark"] body { background: var(--paper); }
 @media (max-width: 760px), (pointer: coarse) {
   .commandPrimaryAction, .commandSecondaryAction, .commandQuietAction, .commandSegmented > button { min-height: 44px; }
   .commandPrimaryAction, .commandSegmented { width: 100%; }
-  .commandSegmented > button { flex: 1 1 0; }
+  /* Equal-width segments may wrap their label rather than widen the control past its column. */
+  .commandSegmented > button { flex: 1 1 0; min-width: 0; padding: var(--space-1) var(--space-2); white-space: normal; line-height: 1.2; text-align: center; }
   .commandQuietAction { width: 100%; justify-content: flex-start; }
   .commandNotificationActions .commandQuietAction, .panelHeader .commandQuietAction { width: auto; }
   .commandQuietAction.panelHeadingLink { width: auto; min-height: 44px; }
