@@ -219,9 +219,10 @@ in active plans; add ready public pages as their migrations finish.
 starting with the [introduction to Pomegr](../../public/get-started/introduction.md).
 The [build-time content loader](documentation-manifest.md#generate-the-website-content)
 is implemented (the landing `docs:prepare` script validates the selection before every
-landing test, typecheck, and build); the `/docs` renderer, search, and `check:docs`
-command are not implemented yet. Adding a Markdown file or manifest entry does not
-deploy it. Validate selected links, routes, and images before publication. Repair repository
+landing test, typecheck, and build), as are the `/docs` renderer, search, and
+[`npm run check:docs`](#verify-the-change); publishing the site remains a separate,
+manual step. Adding a Markdown file or manifest entry does not deploy it. Validate
+selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when
 their routes change. The 2026-09 migration did not preserve GitHub blob links to
 the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.md`,
@@ -237,20 +238,39 @@ automatic deployment. Update this section when the publication tooling lands.
 
 ## Verify the change
 
-With repository dependencies installed, run from the repository root:
+With the root and landing dependencies installed (`npm ci` and `npm ci --prefix landing`),
+run from the repository root:
 
 ```powershell
 git diff --check
+npm run check:docs
 npm run verify:fast
 ```
 
 Run Git in the host environment as required by [AGENTS.md](../../../AGENTS.md#git-and-github-from-codex).
-Expect no whitespace errors and a passing verifier. These checks do not validate
-all Markdown links or render documentation. Until `npm run check:docs` exists,
-inspect changed pages for the supported syntax, heading hierarchy, local links
-and anchors, image existence and alt text, and stale inbound references. Preview
-their Markdown and verify that the page reads coherently for its intended audience.
-Record the actual coverage and any unavailable checks in the handoff.
+`npm run check:docs` validates the documentation in one pass, builds and writes nothing,
+and exits non-zero on any failure (`--json` prints the same result for tools). It stops
+with a setup error, not a crash, when `npm ci --prefix landing` has not been run.
+
+- **Public documentation:** the landing loader's own rules, so the website build and this
+  check share one implementation: manifest, front matter, routes, headings, links, anchors,
+  images and alt text, and the supported Markdown syntax of every selected page, plus a
+  search index within its size bound.
+- **Public tree and boundary:** every file under `docs/public/` is a selected page or an
+  image a selected page references, and no public page links outside `docs/public/`
+  (internal documentation included). Internal pages may link public pages.
+- **Maintained Markdown:** relative links (exact case), heading anchors, images, and
+  non-empty alt text in `docs/**`, root `*.md`, `landing/*.md`, and `.agents/skills/**`.
+  Code samples, the exported `docs/internal/plans/ia-redesign/prototype/` and the
+  gitignored `.agents/skills/acos/runs/` are skipped, and external URLs are never fetched.
+
+The [manifest contract](documentation-manifest.md#check-the-documentation) lists the rule
+names and the dependency direction. The check is not yet part of `npm run verify:fast`, so
+run it explicitly for any documentation change. Neither it nor the verifier judges content:
+inspect changed internal pages for heading hierarchy and supported syntax, and search for
+stale inbound references to a moved page (`git grep` its old path, hidden tool directories
+included). Preview the Markdown and verify that the page reads coherently for its intended
+audience. Record the actual coverage and any unavailable checks in the handoff.
 
 For generated documentation, update its source and generator and run the relevant
 check, such as `npm run check:provider-docs`. For implementation changes, also

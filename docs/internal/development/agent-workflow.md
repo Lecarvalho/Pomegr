@@ -5,7 +5,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
-| Documentation, migration, and temporary artifacts | [Maintenance workflow](documentation.md), [style guide](../../STYLE_GUIDE.md), and [maintainer index](../README.md); use the workflow's documentation checks and `npm run verify:fast` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
+| Documentation, migration, and temporary artifacts | [Maintenance workflow](documentation.md), [style guide](../../STYLE_GUIDE.md), and [maintainer index](../README.md); run `npm run check:docs` (links, anchors, images, public pages and boundary; needs `npm ci --prefix landing`) and `npm run verify:fast`; checker tests: `node --test tests/docs-check.test.mjs` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
 | Provider discovery, parsing, normalization | `server/providers/claude/` or `server/providers/codex/`, the shared `server/providers/kernel/`, the `server/normalize/` kernel, and `server/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
 | Observation cache, checkpoints, readiness, API cadence | `docs/internal/architecture/observation-cache.md`, `server/runtime/observation-runtime.mjs`, `server/sessions/domain/session-domain-serving.mjs`, and `server/sessions/checkpoints/` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Server indexing, projection, enrichment | `server/server.mjs`, then the owning folder in the server layout below | Browser credentials, prompts, responses, and provider-native payloads |
@@ -63,6 +63,7 @@ npx vitest run tests/ui/<one-file>.test.tsx
 npm --prefix landing run test -- tests/<one-file>.test.tsx
 npm run check:architecture
 npm run check:boundaries
+npm run check:docs
 ```
 
 Before handing off a change, run `npm run verify:fast`. The full `npm run verify`

@@ -5,7 +5,8 @@
 > consumers. The [style guide](../../STYLE_GUIDE.md) owns Markdown authoring.
 > Related code and checks: [maintenance workflow](documentation.md#verify-the-change),
 > the [content loader](../../../landing/scripts/docs-content.mjs), its
-> [boundary audit](../../../landing/scripts/assert-artifact-boundary.mjs), and the
+> [boundary audit](../../../landing/scripts/assert-artifact-boundary.mjs), the
+> [documentation checker](../../../scripts/check-docs.mjs), and the
 > [landing package](../../../landing/package.json).
 
 Only explicitly selected public pages and their referenced images may enter the
@@ -16,7 +17,8 @@ content loader, the page renderer, and the `/docs` routes are implemented (see
 [Generate the website content](#generate-the-website-content) and
 [Serve the pages](#serve-the-pages)); the search index, sitemap, and robots.txt
 are implemented too (see [Search, sitemap, and robots](#search-sitemap-and-robots)),
-and the `check:docs` command remains unimplemented and must follow this contract.
+and `npm run check:docs` validates this contract together with the maintained
+internal links (see [Check the documentation](#check-the-documentation)).
 
 ## Select pages and order navigation
 
@@ -96,8 +98,9 @@ and sitemap must use the same validated selection and content revision.
 Build and docs checks must reject invalid input before emitting an artifact.
 The content loader below covers duplicate routes, missing targets, unlisted
 links, path escapes, invalid metadata, and accidental internal references,
-including through a mistaken manifest entry. `check:docs` (WEB-04) will add the
-maintained internal links; until then follow the
+including through a mistaken manifest entry. [`npm run check:docs`](#check-the-documentation)
+runs the same rules from the repository root and adds the public-tree, public-boundary,
+and maintained internal-link checks; follow the
 [maintenance checks](documentation.md#verify-the-change). Deployment remains
 governed by [website operations](../operations/website.md#5-release-the-exact-audited-artifact).
 
@@ -250,3 +253,44 @@ The [index tests](../../../landing/tests/ui/docs-search-index.test.ts),
 [sitemap and robots tests](../../../landing/tests/ui/docs-sitemap-robots.test.ts)
 cover the generator, the matching and the keyboard behavior, and the exact route
 list, and the boundary tests cover the audit of the generated index.
+
+## Check the documentation
+
+`npm run check:docs` ([check-docs.mjs](../../../scripts/check-docs.mjs), with
+[docs-check-links.mjs](../../../scripts/docs-check-links.mjs)) validates the public
+pages and the maintained Markdown in one pass. It builds and writes nothing, prints a
+summary, and exits 0 when everything passes, 1 on documentation failures, and 2 when it
+cannot run. `--json` prints `{ ok, summary, failures }` for tools, and each failure
+names its file, line, rule, and message. [Tests](../../../tests/docs-check.test.mjs)
+cover a good repository and each rule below.
+
+**One implementation.** The script imports `inspectDocsContent` and `buildSearchIndex`
+from `landing/scripts/`, so the website build and the check cannot disagree about the
+manifest, front matter, routes, headings, links, anchors, images, alt text, or syntax.
+The same loader's `createSlugger` computes the anchors of every maintained page. The
+dependency points from the root script into landing and never back:
+[.dependency-cruiser.cjs](../../../.dependency-cruiser.cjs) forbids landing from importing
+outside `landing/` (`landing-cannot-import-outside-landing`) and lets only
+`scripts/check-docs.mjs` import landing (`only-docs-checker-imports-landing`), which
+`npm run check:boundaries` enforces. The loader needs landing's own dependencies, so a
+missing `npm ci --prefix landing` ends the run with a setup error that names the fix.
+
+| Rule | Fails when |
+| --- | --- |
+| `public-content` | The loader rejects the manifest or a selected page or image; the message is the loader's, with its `file:line`. |
+| `search-index` | The index built from the content exceeds 128 KiB, or does not carry the content revision or list the published pages in order. |
+| `unselected-page` | A Markdown file under `docs/public/` is not selected by the manifest (navigation membership). |
+| `unreferenced-asset` | A non-Markdown file under `docs/public/` is not an image a selected page references. |
+| `public-boundary` | A public page, selected or not, links a path outside `docs/public/` or an internal documentation page on GitHub. Internal pages may link public pages. |
+| `missing-file`, `missing-image` | A relative link or image target does not exist, with exact case as on GitHub. |
+| `missing-anchor` | A `#fragment` matches no heading slug or HTML `id` in its target Markdown file. |
+| `empty-alt` | An image, Markdown or raw HTML, has no alt text. |
+
+The link, anchor, image, and alt-text rules run over `docs/**/*.md`, root `*.md`,
+`landing/*.md`, and `.agents/skills/**/*.md`, so public pages are covered twice and a
+failure there can appear under two rules. Links inside fenced or inline code, front
+matter, and HTML comments are not links; external URLs are never fetched. Two locations
+are skipped: the exported `docs/internal/plans/ia-redesign/prototype/`, and the gitignored
+`.agents/skills/acos/runs/`, whose content exists on one machine only. Add a skipped
+prefix to `SKIP_PREFIXES` in the helper only for content that is not maintained
+documentation.

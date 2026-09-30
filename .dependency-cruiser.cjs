@@ -31,6 +31,20 @@ module.exports = {
       to: { path: "^(?:app|desktop|landing|mcp|server)[/\\\\]" },
     },
     {
+      name: "landing-cannot-import-outside-landing",
+      comment: "The independently deployed website bundles only its own sources. It reads the documentation inputs as files through its build-time loader, never as modules.",
+      severity: "error",
+      from: { path: "^landing[/\\\\]" },
+      to: { path: "^(?:app|desktop|mcp|scripts|server|shared|tests)[/\\\\]|^vite[.]config[.]ts$" },
+    },
+    {
+      name: "only-docs-checker-imports-landing",
+      comment: "The repository documentation checker is the one root consumer of landing's documentation loader, so the public-page rules have a single implementation. The dependency points from the root script into landing, never the reverse.",
+      severity: "error",
+      from: { path: "^(?!landing[/\\\\])", pathNot: ["^scripts[/\\\\]check-docs[.]mjs$"] },
+      to: { path: "^landing[/\\\\]" },
+    },
+    {
       name: "app-cannot-import-server",
       comment: "The browser must consume same-origin normalized API routes only.",
       severity: "error",

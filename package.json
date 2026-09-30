@@ -52,6 +52,7 @@
     "test:contracts": "node --test tests/server/normalize/work-kind.test.mjs tests/server/providers/provider-contract.test.mjs tests/server/providers/provider-registry.test.mjs tests/server/providers/provider-conformance.test.mjs tests/server/providers/provider-fixtures.test.mjs",
     "docs:providers": "node scripts/provider-capability-docs.mjs --write",
     "check:provider-docs": "node scripts/provider-capability-docs.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:boundaries": "depcruise vite.config.ts server app shared desktop mcp scripts landing/app landing/worker landing/scripts --config .dependency-cruiser.cjs --output-type err",
     "check:generated": "node scripts/check-generated-artifacts.mjs",
