@@ -225,7 +225,7 @@ Options for the owner, in order of preference:
 2. **Release-coupled.** Add "publish pending public documentation" to the desktop [release checklist](desktop-releases.md#release-checklist) as a separate manual dispatch after the release is available.
 3. **Approval-gated push.** Add a `push` trigger on `main` filtered to `docs/public/**`, `docs/site.json`, and `landing/**`, with required reviewers on the `landing-production` environment so the job waits for a person before it deploys.
 
-Do not enable option 3 before the environment approval exists, the smoke checks above are either automated after deployment or accepted as a manual gate, the first publication (WEB-07) has been deployed by hand, and a rollback has been rehearsed. Changing a trigger is a separate, reviewed change that updates this section and the workflow together.
+Do not enable option 3 before the environment approval exists, the smoke checks above are either automated after deployment or accepted as a manual gate, the first publication has been deployed by hand and has passed the smoke checks above, and a rollback has been rehearsed. Changing a trigger is a separate, reviewed change that updates this section and the workflow together.
 
 ## 7. Rollback
 

@@ -1,5 +1,11 @@
 # Session Activity panel redesign
 
+> Status: implemented and verified; awaiting user review before plan retirement.
+> Continuation owner: session dashboard (monitor projection + `app/components/dashboard`).
+> Next decision: review the restored plan and behavior with the user; delete the plan and mockups only after explicit approval.
+> Permanent destinations: `docs/internal/architecture/metrics.md`, `docs/internal/architecture/observation-cache.md`, and `DESIGN.md`, which already hold the runtime contracts.
+> Lifetime: temporary. Keep this plan until the user explicitly approves deletion (review hold restored 2026-09-09); then delete it and `session-activity-panel/` in one change after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact). The dated checkpoints below are history.
+
 > Layout follow-up (2026-09-09): the approved compact composition now keeps the
 > desktop request title inline, removes request-count/navigation clutter, uses
 > five simple ranking rows with exact values, and omits the ranking on phone.

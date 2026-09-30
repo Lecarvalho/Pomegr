@@ -16,7 +16,7 @@ readable in the repository and must not contain secrets or private session data.
 | [`development/`](development/agent-workflow.md) | Contributor workflow, configuration, tooling, and verification: see [Development](#development) |
 | [`operations/`](operations/desktop-releases.md) | Release, acceptance, diagnostics, and website runbooks: see [Operations and decisions](#operations-and-decisions) |
 | [`decisions/`](decisions/license-history.md) | Accepted rationale with continuing relevance; it never overrides a contract |
-| [`plans/`](plans/documentation-migration.md) | Temporary checklists and proposals, each with an owner and a deletion rule: see [Plans and temporary work](#plans-and-temporary-work) |
+| [`plans/`](plans/migration-follow-ups.md) | Temporary checklists and proposals, each with an owner and a deletion rule: see [Plans and temporary work](#plans-and-temporary-work) |
 
 Public user guides live in [`docs/public/`](../public/get-started/introduction.md) and are
 indexed in the [documentation index](../README.md).
@@ -75,8 +75,7 @@ its canonical verification requirements before handing off a change.
 The shared [style guide](../STYLE_GUIDE.md) owns writing rules, audience profiles,
 templates, supported formatting, visual ownership, and artifact lifecycle. The
 [documentation maintenance workflow](development/documentation.md) owns placement,
-migration, publication, checks, and closure. Both are maintained authorities;
-the migration checklist records only the remaining task sequence and progress.
+migration, publication, checks, and closure. Both are maintained authorities.
 
 The [publication manifest contract](development/documentation-manifest.md) defines
 the format of [docs/site.json](../site.json), page membership, navigation order,
@@ -105,9 +104,12 @@ The progressive Activity/Request publication contract is maintained in
 [Observation cache](architecture/observation-cache.md). Continuous JSONL diagnostics and passive
 analysis are maintained in [Pipeline operations](operations/pipeline-diagnostics.md).
 
-The [documentation migration checklist](plans/documentation-migration.md) owns
-the remaining migration tasks and completion record. Root entrypoints, legal files,
-package entrypoints, and tool-required files retain their existing homes.
+The [migration follow-ups plan](plans/migration-follow-ups.md) owns what the
+completed documentation migration left open: publishing the documentation site,
+the owner decisions found during the migration (app defects, missing settings
+controls, release-evidence ownership, and accepted link breakage), and website
+hardening. Root entrypoints, legal files, package entrypoints, and tool-required
+files retain their existing homes.
 
 The [session Activity panel plan](plans/session-activity-panel.md) is implemented and
 verified and awaits the user's review. Keep the plan until the user explicitly approves

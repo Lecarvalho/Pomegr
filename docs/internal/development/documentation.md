@@ -26,7 +26,13 @@ Create directories when their first page needs them; use lowercase kebab-case
 topic names. Keep root entrypoints, legal files, package-local entrypoints, and
 tool-required files in place. Preserve application, test, skill, plugin, and
 package layouts. Link those entrypoints to canonical detail instead of duplicating
-it. Follow the [style guide's asset and lifecycle rules](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact)
+it. Files that stay where they are include the root `README.md`, `AGENTS.md`,
+`CLAUDE.md`, `CONTRIBUTING.md`, `PRODUCT.md`, `DESIGN.md`, and legal notices;
+`landing/README.md`; repository skills and provider wrappers; the `.impeccable/`
+configuration and surface briefs, maintained through the Impeccable workflow; and
+`.pomegr/`, `plugin-src/`, and `plugins/`, whose reporting configuration and
+shipped or generated plugin content keep their existing owners. Do not relocate a
+tool-required template just because it is Markdown. Follow the [style guide's asset and lifecycle rules](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact)
 for images, scratch work, reports, and retained release evidence. Internal means
 excluded from website publication, not confidential in Git.
 
@@ -232,7 +238,9 @@ the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.
 released builds and already-exported reports carry; they return 404 by owner decision,
 and current links were repointed instead.
 
-Public content updates require the normal website build and deployment,
+The website build reads the approved public Markdown from the repository. No
+separate content service or per-request GitHub fetch is planned, so public edits
+reach pomegr.com only through the normal website build and deployment,
 independently of desktop packaging. Internal-only edits require documentation
 validation, not website deployment. [Publish documentation](../operations/website.md#6-publish-documentation)
 owns the validation order, what each kind of change needs, the smoke checks, and the

@@ -7,9 +7,10 @@
 > [current technical contracts](internal/README.md#choose-the-authority).
 
 Write each page to help a reader complete one task or understand one subject.
-Apply these rules to new pages and to every page you revise. This
-guide defines authoring conventions, not an already-implemented website renderer
-or validation command.
+Apply these rules to new pages and to every page you revise. This guide owns
+authoring conventions; the [maintenance workflow](internal/development/documentation.md)
+owns publication and the `npm run check:docs` checks that enforce the structural
+rules.
 
 ## Write for a clear purpose
 
@@ -259,8 +260,10 @@ not become a second visual authority or component gallery.
 Before retiring a design exploration, compare it with the live examples. Promote
 missing accepted reusable patterns through the shared implementation and page,
 updating DESIGN.md and its contract tests together where required. Already
-represented or rejected alternatives need no duplicate promotion. Record
-unresolved feature work in an active plan. Preserve the design-system page's
+represented or rejected alternatives need no duplicate promotion. Do not promote
+whole speculative screens, fake supported features, or screenshots of HTML in
+place of working examples. Record unresolved feature work in an active plan; it
+does not justify keeping an obsolete mockup. Preserve the design-system page's
 static-data-only, web-development-only access contract; do not add it to public,
 desktop, or phone navigation.
 

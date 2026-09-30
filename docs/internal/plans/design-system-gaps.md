@@ -12,7 +12,7 @@
 
 ## Background
 
-The design promotion gate of the [documentation migration](documentation-migration.md) replaced every HTML preview and mockup with `/design-system`. Part 14 of that migration compared the retired artifacts with the page and promoted four missing samples: the agent roster (which also draws the tile grid through its List / Grid switch), the agent inspector column, the command table (sortable header, pagination footer, empty states), and the Settings tab rail. The list below is what remained. The page stays static-data-only and web-development-only, so a sample must render a shipped component with synthetic props and read no store, route, or network.
+The design promotion gate of the documentation migration (closed 2026-09-30) replaced every HTML preview and mockup with `/design-system`. Part 14 of that migration compared the retired artifacts with the page and promoted four missing samples: the agent roster (which also draws the tile grid through its List / Grid switch), the agent inspector column, the command table (sortable header, pagination footer, empty states), and the Settings tab rail. The list below is what remained. The page stays static-data-only and web-development-only, so a sample must render a shipped component with synthetic props and read no store, route, or network.
 
 ## How to promote a pattern
 
