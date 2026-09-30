@@ -171,6 +171,22 @@ shows local absolute folder paths. Desktop-only controls (Phone access, editable
 Storage, About updates) cannot be captured from the web development server. Recapture
 both when the Settings tabs change and keep the caption's version accurate.
 
+### Reporting plugins screenshot ownership
+
+The [reporting plugins](../../public/using-pomegr/reporting-plugins.md) page owns the two
+JPEGs in `docs/public/images/reporting-plugins/`, captured on 2026-09-30 from the
+Pomegr 0.5.3 interface in a browser (dark theme, 1100 px viewport, 2x scale), cropped to
+the repository detail frame (tab list and panel). `plugin-tab.jpg` shows the Pomegr
+repository's Plugin tab at `?tab=plugin`: the Claude Code row Enabled at v0.7.1 with
+v0.7.4 available and the Codex row Enabled at v0.7.4, Up to date. `reporting-tab.jpg`
+shows its Reporting tab at `?tab=reporting`: Configured, Shared repository policy,
+Version 7. Both are real views of the project's own development machine, so they carry the
+real-view caption. A browser has no desktop controls, so the **Recheck**, **Install
+plugin**, and **Update plugin** buttons cannot be captured from the web development server;
+the captions say so. Reviewed for absolute paths, credentials, and private configuration:
+none appear. Recapture both when the Plugin or Reporting tab changes, or when plugin
+versions in the images stop matching the current release.
+
 ## Migrate one page at a time
 
 1. Read the source and its governing contract. Identify consumers, inbound

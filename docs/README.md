@@ -13,6 +13,9 @@ source.
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
 | Read session states and inspect a session's agents | [Sessions and agents](public/using-pomegr/sessions-and-agents.md) |
 | Browse repositories and the files their sessions changed | [Repositories](public/using-pomegr/repositories.md) |
+| Install the reporting plugin and set up a repository's reporting policy | [Reporting plugins](public/using-pomegr/reporting-plugins.md) |
+| Share Pomegr read-only with a paired phone on your private network | [Phone access](public/using-pomegr/phone-access.md) |
+| Let a coding agent query provider health, usage limits, and context | [MCP queries](public/using-pomegr/mcp-queries.md) |
 | Choose appearance, provider folders, storage, and display preferences | [Settings](public/using-pomegr/settings.md) |
 | Read context, input, output, and cache numbers | [Context and tokens](public/concepts/context-and-tokens.md) |
 | Understand cache reuse, possible refills, and cache lifetimes | [Cache reuse](public/concepts/cache-reuse.md) |
@@ -20,13 +23,12 @@ source.
 | Tell recorded values, agent reports, estimates, and signals apart | [Signals and estimates](public/concepts/signals-and-estimates.md) |
 | Compare cached and uncached token prices, and API prices with subscriptions | [Token pricing](public/concepts/token-pricing.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
-| Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
-| Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
-| Query already-observed state through MCP | [MCP observation queries](MCP_QUERIES.md) |
+| Configure provider sources or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 
-Configuration, plugins, and MCP queries currently combine user guidance with
-maintainer detail. Their user-facing sections will move into focused public pages
-during the documentation migration.
+Configuration and troubleshooting still combines user guidance with maintainer
+detail; its remaining user-facing sections will move into focused public pages
+during the documentation migration. [Pomegr plugins](PLUGINS.md) and
+[MCP observation queries](MCP_QUERIES.md) keep the contracts behind their guides.
 
 ## Maintain and contribute
 
@@ -51,7 +53,10 @@ The [introduction](public/get-started/introduction.md),
 [installation guide](public/get-started/install.md),
 [first-session guide](public/get-started/first-session.md), the
 [sessions and agents](public/using-pomegr/sessions-and-agents.md),
-[repositories](public/using-pomegr/repositories.md), and
+[repositories](public/using-pomegr/repositories.md),
+[reporting plugins](public/using-pomegr/reporting-plugins.md),
+[phone access](public/using-pomegr/phone-access.md),
+[MCP queries](public/using-pomegr/mcp-queries.md), and
 [settings](public/using-pomegr/settings.md) guides, and the
 [context and tokens](public/concepts/context-and-tokens.md),
 [cache reuse](public/concepts/cache-reuse.md),

@@ -18,10 +18,11 @@ locally and read-only, and its file history is partial by design.
 2. Type in **Filter repositories**, or choose **Needs attention** or **Live now**.
 3. Select a row to open the repository.
 
-The setup chip summarizes the optional Pomegr plugin and reporting policy. It is
-a local observation, and sessions appear without either. **Ready** means nothing
-needs attention. A warning chip, such as **Plugin update available**, **Plugin not
-installed**, **Plugin disabled**, or **Reporting invalid**, also appears under
+The setup chip summarizes the optional Pomegr plugin and reporting policy (see
+[Reporting plugins](reporting-plugins.md)). It is a local observation, and
+sessions appear without either. **Ready** means nothing needs attention. A
+warning chip, such as **Plugin update available**, **Plugin not installed**,
+**Plugin disabled**, or **Reporting invalid**, also appears under
 **Needs attention**. **Checking setup**, **Reporting not configured**, and
 **Setup unverified** are neutral: Pomegr is still checking, has no policy to
 read, or could not verify the setup.
@@ -36,7 +37,7 @@ The header shows live and history counts and the coding tools observed.
 | **Overview** | Counts, last activity, setup cards, and the five most recent sessions. |
 | **Files** | Files that recorded sessions changed, with each file's history. |
 | **Git** | Recent commits from the newest live session's working tree. |
-| **Plugin** | Plugin installation state for each coding tool. |
+| **Plugin** | Plugin installation state for each coding tool; see [Reporting plugins](reporting-plugins.md#check-the-setup-in-pomegr). |
 | **Context inventory** | A saved diagnostic of what a coding tool loads first, what stays on demand, and what it reserves for compaction. |
 | **Reporting** | The repository's reporting policy. |
 

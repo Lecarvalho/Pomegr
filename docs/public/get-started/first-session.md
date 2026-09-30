@@ -14,7 +14,7 @@ questions in Claude Code or Codex.
 [Install Pomegr](install.md) on the computer where you use your coding tool.
 Use the same Windows account that runs that tool so Pomegr can find its locally
 saved history. With the default session storage, no extra discovery setup or
-reporting plugin is required. You can explore existing history without starting
+[reporting plugin](../using-pomegr/reporting-plugins.md) is required. You can explore existing history without starting
 new work. If you use a different local profile, see
 [If you use a different profile](#if-you-use-a-different-profile).
 

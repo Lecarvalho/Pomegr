@@ -31,7 +31,7 @@ first columns. One session was In progress at that moment.*
 | **Last activity** | The latest recorded activity. A dashed marker means it is current; a solid marker means it is the last one recorded. |
 | **Agents** | Active agents over total agents, such as `2/10`. |
 | **Context** | The sum of each agent's latest [context](../concepts/context-and-tokens.md) snapshot, in thousands of tokens. It is not spend. |
-| **Progress** | The percentage the agent reported through the optional Pomegr plugin. |
+| **Progress** | The percentage the agent reported through the optional [Pomegr plugin](reporting-plugins.md). |
 | **Updated** | When Pomegr last recorded activity. A small clock beside it opens the cache timer; see [Cache reuse](../concepts/cache-reuse.md). |
 
 A dash means the value is unavailable, not zero.

@@ -11,7 +11,7 @@ See [Install Pomegr](public/get-started/install.md) for supported downloads,
 prerequisites, installed and portable modes, and launch instructions. Optional
 phone access shares the dashboard with paired
 browsers on a trusted local network; see the
-[phone-access instructions](#another-device-cannot-open-the-dashboard).
+[Phone access guide](public/using-pomegr/phone-access.md).
 
 ## Desktop settings and behavior
 
@@ -286,39 +286,13 @@ The selected close behavior may hide Pomegr to the system tray. Reopen it from t
 
 ### Another device cannot open the dashboard
 
-In the desktop app, open **Settings → Phone access** on the computer and enable sharing.
-Choose a private Wi-Fi or Ethernet connection if more than one is available, then generate
-a pairing QR code and scan it with the phone's camera. Both devices must be on the same
-local subnet. Each code expires after five minutes and can pair one browser; generate a
-new code for another browser. Up to four browser authorizations can exist per running
-gateway. The displayed count is paired browsers, not proof of currently connected devices.
+The [Phone access guide](public/using-pomegr/phone-access.md) explains pairing, the sharing settings, and recovery from the desktop **Settings → Phone access** panel. This section keeps the contract behind them:
 
-Phone access is an HTTP MVP for trusted local networks. Pairing restricts access but does
-not encrypt traffic. The phone can view the existing normalized dashboard; it cannot
-retrieve transcript paths, invoke desktop controls, sign in to providers, or change the
-computer's sharing settings. No cloud account or phone installation is required.
-
-**Start sharing when Pomegr starts** remembers only the startup preference. Addresses and
-phone authorizations are not saved, so restarting Pomegr requires a fresh pairing code.
-Keeping Pomegr in the tray keeps sharing available while the computer remains awake.
-Stopping sharing or quitting Pomegr revokes access and closes open connections. Changing
-the selected interface, address, or private-network eligibility stops sharing; enable it
-again after checking the new connection. With several eligible connections, automatic
-startup waits for a selection on the computer.
-
-If the phone cannot connect:
-
-- Check that Windows classifies the chosen connection as **Private**. Public, domain,
-  VPN, virtual, IPv6-only, and unrecognized connections are not supported by this MVP.
-- Allow Pomegr through Windows Firewall for **Private** networks only; limit a manually
-  configured inbound rule to the local subnet. Pomegr does not modify firewall rules.
-- Check whether guest Wi-Fi or access-point isolation prevents devices from communicating.
-- Keep the computer awake and Pomegr running; **Sharing started** confirms the local
-  listener, not end-to-end reachability from the phone.
-- If the code expired or Pomegr restarted, generate and scan a new code.
-
-The desktop's original dashboard and monitor stay on dynamic `127.0.0.1` ports. The
-`0.0.0.0:3003` binding remains specific to the source-development workflow.
+- Phone access is an HTTP MVP for trusted local networks. Pairing restricts access but does not encrypt traffic. A paired phone can view the existing normalized dashboard; it cannot retrieve transcript paths, invoke desktop controls, sign in to providers, or change the computer's sharing settings. No cloud account or phone installation is required.
+- Each pairing code expires after five minutes and pairs one browser. Up to four browser authorizations can exist per running gateway. The displayed count is paired browsers, not proof of currently connected devices. Both devices must be on the same local subnet, and only a connection Windows classifies as **Private** is eligible: public, domain, VPN, virtual, IPv6-only, and unrecognized connections are not supported by this MVP.
+- **Start on a private network** remembers only the startup preference. Addresses, network discovery results, and phone authorizations are not saved, so restarting Pomegr requires a fresh pairing code. Keeping Pomegr in the tray keeps sharing available while the computer remains awake. Stopping sharing or quitting Pomegr revokes access and closes open connections. Changing the selected interface, address, or private-network eligibility stops sharing, and it must be enabled again after checking the new connection. With several eligible connections, automatic startup waits for a selection on the computer.
+- Pomegr does not modify firewall rules. Windows Firewall should allow Pomegr for **Private** networks only, and a manually configured inbound rule should be limited to the local subnet. **Sharing started** confirms the local listener, not end-to-end reachability from the phone; guest Wi-Fi and access-point isolation can still block it.
+- The desktop's original dashboard and monitor stay on dynamic `127.0.0.1` ports. The `0.0.0.0:3003` binding remains specific to the source-development workflow.
 
 ### No sessions appear
 

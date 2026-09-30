@@ -5,18 +5,12 @@ already-observed operational state. These tools are passive clients of Pomegr's
 committed monitor caches. They never start the monitor, acquire provider data,
 hydrate a session, parse a transcript, or control a coding-agent process.
 
-Use a query only when its result can change the next decision. Do not poll the
-tools or call all of them at session start.
-
-| Tool | Use when |
-| --- | --- |
-| `get_provider_health` | Reported provider health would change whether to begin, retry, defer, or parallelize provider-sensitive work. |
-| `get_usage_limits` | Current account capacity would change the scope, timing, or concurrency of planned work. |
-| `list_sessions` | An exact Pomegr session reference is needed for another query. |
-| `list_session_agents` | Main or delegated agent identity is needed for context or failure inspection; no argument uses the current host session. |
-| `get_agent_context` | The latest context level would change whether to continue, compact, split, or stop work; no argument uses the current host session's primary agent. |
-| `get_recent_failures` | Retained normalized failures can help diagnose a problem already observed; no session argument uses the current host session. |
-| `get_session_report` | A session's bounded Markdown observation report can improve a harness decision, handoff, or diagnosis. |
+The server registers seven tools: `get_provider_health`, `get_usage_limits`,
+`list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`,
+and `get_session_report`. The [MCP queries guide](public/using-pomegr/mcp-queries.md)
+explains when to use each one and what its result contains. A query is
+decision-triggered: use it only when its result can change the next decision, and
+do not poll the tools or call all of them at session start.
 
 Session-specific MCP tools automatically select the calling session. Codex supplies
 its validated thread/session ID to the MCP subprocess. Claude's `PreToolUse` hook

@@ -22,8 +22,9 @@ None of them is an AI judgment, a bill, or proof that work was good or bad.
 ## Agent-reported progress and signals
 
 Both depend on optional setup. An agent reports progress and signals through the
-Pomegr plugin, under a repository policy that chooses what to report, and
-progress reporting is off unless the policy enables it. Without a report, the
+[Pomegr plugin](../using-pomegr/reporting-plugins.md), under a repository policy
+that chooses what to report, and progress reporting is off unless the policy
+enables it. Without a report, the
 **Agent estimate** in the summary strip shows "—" with "No estimate recorded", and
 **Reported signals** shows "No reported signals yet." (or "No reported signals
 were recorded for this session." for a past session).

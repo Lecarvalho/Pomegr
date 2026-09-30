@@ -34,8 +34,8 @@ Read the strip from left to right:
 - **Calls** shows recorded tool use, such as running a test or searching the
   project.
 - **Agent estimate** is the progress the agent reported through the optional
-  Pomegr reporting plugin, not a Pomegr measurement. Without a report the strip
-  shows **No estimate recorded**.
+  Pomegr [reporting plugin](../using-pomegr/reporting-plugins.md), not a Pomegr
+  measurement. Without a report the strip shows **No estimate recorded**.
 
 The **Overview** tab summarizes the session; **Agents**, **Activities**,
 **Repository**, and **Signals** go deeper. **Resources** appears when Pomegr has
