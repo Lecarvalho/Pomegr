@@ -22,6 +22,17 @@ const ALLOWED_PROVIDER_STATUS_ORIGINS = Object.freeze([
   "https://status.openai.com",
 ]);
 const POMEGR_GITHUB_PATH_PREFIX = "/Lecarvalho/pomegr";
+// The public documentation website. Only the exact apex origin and its /docs routes may
+// open externally; the landing, download, and API paths of the same origin stay denied.
+const POMEGR_DOCS_ORIGIN = "https://pomegr.com";
+const POMEGR_DOCS_PATH = "/docs";
+const POMEGR_DOCS_SEGMENT = "[a-z0-9]+(?:-[a-z0-9]+)*";
+// /docs, /docs/, and /docs/<kebab-case segments>[/]. No dots, percent escapes, backslashes,
+// empty segments, or uppercase, so traversal and encoded-separator tricks cannot match.
+const POMEGR_DOCS_PATHNAME = new RegExp(`^${POMEGR_DOCS_PATH}(?:/(?:${POMEGR_DOCS_SEGMENT}(?:/${POMEGR_DOCS_SEGMENT})*/?)?)?$`);
+// Heading anchors are lowercase GitHub-style slugs; the fragment never leaves the browser.
+const POMEGR_DOCS_FRAGMENT = /^#[a-z0-9_-]{1,128}$/;
+const MAX_EXTERNAL_URL_LENGTH = 512;
 const CODEX_CACHE_ISSUE_PATH = "/openai/codex/issues/35300";
 const GITHUB_PULL_REQUEST_PATH = /^\/[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}\/pull\/[1-9]\d{0,9}$/;
 const PROVIDER_STATUS_PATH = /^\/(?:incidents\/[A-Za-z0-9_-]{1,128}\/?)?$/;
@@ -40,10 +51,21 @@ export function isDesktopHiddenPath(pathname) {
     || normalized.startsWith(`${hidden}/`));
 }
 
+function isPomegrDocsUrl(url, value) {
+  if (typeof value !== "string" || value.length > MAX_EXTERNAL_URL_LENGTH) return false;
+  // The opener receives the original string, not the parsed URL. Requiring the string to
+  // equal its canonical form (no query, port, userinfo, case, whitespace, or backslash
+  // differences) means the browser opens exactly what was validated here.
+  if (value !== `${POMEGR_DOCS_ORIGIN}${url.pathname}${url.hash}`) return false;
+  if (!POMEGR_DOCS_PATHNAME.test(url.pathname)) return false;
+  return url.hash === "" || POMEGR_DOCS_FRAGMENT.test(url.hash);
+}
+
 export function isAllowedExternalUrl(value) {
   let url;
   try { url = new URL(value); } catch { return false; }
   if (url.protocol !== "https:" || url.username || url.password) return false;
+  if (url.origin === POMEGR_DOCS_ORIGIN) return isPomegrDocsUrl(url, value);
   if (ALLOWED_PROVIDER_STATUS_ORIGINS.includes(url.origin)) {
     return !url.search && !url.hash && PROVIDER_STATUS_PATH.test(url.pathname);
   }

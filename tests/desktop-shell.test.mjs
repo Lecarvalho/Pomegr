@@ -203,6 +203,8 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
     "https://status.claude.com/incidents/code",
     "https://status.openai.com/",
     "https://status.openai.com/incidents/native-issue-42",
+    "https://pomegr.com/docs",
+    "https://pomegr.com/docs/concepts/cache-reuse#cache-lifetime-and-elapsed-time",
   ];
   for (const url of approvedExternalUrls) {
     assert.deepEqual(openHandler({ url }), { action: "deny" });
@@ -218,6 +220,9 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
     "https://status.claude.com/incidents/code?private=value",
     "http://github.com/Lecarvalho/pomegr",
     "https://user@github.com/Lecarvalho/pomegr",
+    "https://pomegr.com/about",
+    "https://pomegr.com/docs/../api/state",
+    "https://www.pomegr.com/docs",
     "javascript:alert(1)",
   ]) {
     assert.deepEqual(openHandler({ url }), { action: "deny" });
@@ -229,6 +234,81 @@ test("desktop navigation denies webviews and unexpected origins while opening ap
   assert.equal(isAllowedExternalUrl("https://status.openai.com/incidents/native-issue-42"), true);
   assert.equal(isAllowedExternalUrl("https://github.com.evil.invalid/Lecarvalho/pomegr"), false);
   assert.equal(isAllowedExternalUrl("http://github.com/Lecarvalho/pomegr"), false);
+});
+
+test("external URL policy admits only the documentation website's /docs routes on the exact apex origin", () => {
+  for (const url of [
+    "https://pomegr.com/docs",
+    "https://pomegr.com/docs/",
+    "https://pomegr.com/docs/concepts",
+    "https://pomegr.com/docs/concepts/",
+    "https://pomegr.com/docs/concepts/cache-reuse",
+    "https://pomegr.com/docs/concepts/cache-reuse#x",
+    "https://pomegr.com/docs/concepts/usage-limits#if-a-window-is-missing",
+    "https://pomegr.com/docs/using-pomegr/reporting-plugins#install-the-plugin",
+    "https://pomegr.com/docs/using-pomegr/reporting-plugins#set-up-a-repository",
+    "https://pomegr.com/docs#intro",
+  ]) {
+    assert.equal(isAllowedExternalUrl(url), true, `documentation URL is allowed: ${url}`);
+  }
+  for (const url of [
+    // Scheme, host, userinfo, and port.
+    "http://pomegr.com/docs",
+    "https://www.pomegr.com/docs",
+    "https://docs.pomegr.com/docs",
+    "https://pomegr.com.evil.invalid/docs",
+    "https://pomegr.com./docs",
+    "https://user@pomegr.com/docs",
+    "https://user:secret@pomegr.com/docs",
+    "https://pomegr.com:8443/docs",
+    "https://pomegr.com:443/docs",
+    "https://POMEGR.com/docs",
+    "https://pomegr.com@evil.invalid/docs",
+    // Other paths on the same origin.
+    "https://pomegr.com",
+    "https://pomegr.com/",
+    "https://pomegr.com/about",
+    "https://pomegr.com/download",
+    "https://pomegr.com/api/state",
+    "https://pomegr.com/api/waitlist",
+    "https://pomegr.com//docs",
+    // Prefix and case tricks.
+    "https://pomegr.com/docsx",
+    "https://pomegr.com/docs-private",
+    "https://pomegr.com/Docs",
+    "https://pomegr.com/docs/Concepts",
+    "https://pomegr.com/x/docs/concepts",
+    // Query strings, including empty ones, and unbounded or malformed fragments.
+    "https://pomegr.com/docs?x=1",
+    "https://pomegr.com/docs?",
+    "https://pomegr.com/docs/concepts?x=1#y",
+    "https://pomegr.com/docs#",
+    "https://pomegr.com/docs#a%20b",
+    `https://pomegr.com/docs#${"a".repeat(129)}`,
+    // Traversal, encoded separators, backslashes, and empty segments.
+    "https://pomegr.com/docs/../api/state",
+    "https://pomegr.com/docs/%2e%2e/api",
+    "https://pomegr.com/docs/%2E%2E/api",
+    "https://pomegr.com/docs/..%2fapi",
+    "https://pomegr.com/docs/%2e%2e%2fapi",
+    "https://pomegr.com/docs/%5c..%5capi",
+    "https://pomegr.com/docs/a%2fb",
+    "https://pomegr.com/docs\\..\\api",
+    "https://pomegr.com/docs\\concepts",
+    "https://pomegr.com/docs//concepts",
+    "https://pomegr.com/docs/./concepts",
+    "https://pomegr.com/docs/images/introduction/screenshot.png",
+    // The opener receives the original string, so anything the URL parser would rewrite is refused.
+    " https://pomegr.com/docs",
+    "https://pomegr.com/docs ",
+    "https://pomegr.com/do\tcs",
+    "https://pomegr.com/docs/" + "a/".repeat(400),
+  ]) {
+    assert.equal(isAllowedExternalUrl(url), false, `documentation URL is denied: ${url.slice(0, 80)}`);
+  }
+  for (const value of [null, undefined, 42, {}, new URL("https://pomegr.com/docs")]) {
+    assert.equal(isAllowedExternalUrl(value), false);
+  }
 });
 
 test("desktop web gate requires the dynamic host, same origin, read-only method, and launch token", async () => {

@@ -238,6 +238,13 @@ the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.
 released builds and already-exported reports carry; they return 404 by owner decision,
 and current links were repointed instead.
 
+The application's in-app help links to public guides (the Documentation link and the Codex
+usage, cache timing, and reporting-plugin setup links under `app/components/`) carry
+published routes and heading anchors, and an installed build keeps the link it shipped with.
+When a public page route or a linked heading changes, repoint those links in the same change
+and keep the old route redirecting. The desktop shell opens only the `https://pomegr.com`
+`/docs` routes from the website (see the [architecture overview](../architecture/overview.md)).
+
 The website build reads the approved public Markdown from the repository. No
 separate content service or per-request GitHub fetch is planned, so public edits
 reach pomegr.com only through the normal website build and deployment,
