@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- electron-builder v26 loads release config through CommonJS. */
-const packageJson = require("../package.json");
+const packageJson = require("../../package.json");
 
 function requiredEnvironment(name) {
   const value = process.env[name];

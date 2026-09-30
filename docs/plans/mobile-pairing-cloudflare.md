@@ -172,7 +172,7 @@ Use meaningful integration tests and real-device checks in addition to unit test
 
 ## Repository ownership and next step
 
-- Start desktop changes from `desktop/lan-sharing.mjs`, `desktop/lan-gateway.mjs`,
+- Start desktop changes from `desktop/runtime/lan-sharing.mjs`, `desktop/runtime/lan-gateway.mjs`,
   and the desktop lifecycle owner; keep provider acquisition out of the transport.
 - Define bounded shared mobile contracts separately from private provider schemas.
 - Follow [AGENT-WORKFLOW.md](../AGENT-WORKFLOW.md) and `DESIGN.md` for implementation

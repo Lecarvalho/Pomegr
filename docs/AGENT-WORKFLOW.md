@@ -14,8 +14,10 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Browser/API state | `app/`, `shared/`, `app/api/` | `server/` imports from React |
 | Repository index and detail (`/repositories`, `/repositories/<repositoryId>`) | `app/components/repositories/`, `app/repositories/`, shared Settings geometry in `app/styles/shell.css`, and repository styles in `app/styles/workspace.css`; run `npx vitest run tests/ui/repository-inventory.test.tsx tests/ui/repository-detail.test.tsx` | New acquisition in browser GETs, raw repository paths/configuration, or bypassing native action confirmation |
 | Any UI control, chip, token, or style | `DESIGN.md` first, then `app/styles/tokens.css` and the button roles in `app/styles/shell.css`; verify on `/design-system` and in `tests/ui/pomegr-design-contract.test.tsx` | Literal colors, radii, or font sizes; a seventh button style; bespoke chip formats |
-| Design-system reference (web only, `/design-system`) | `app/design-system/page.tsx`, `app/components/design-system/`, `app/styles/design-system.css`, hidden paths in `desktop/security-policy.mjs`, `DESIGN.md` | Navigation entries, LAN gateway `APP_PATHS`, desktop `loadURL` triggers, monitor fetches, session data, edits to shared shell/session/evidence styles |
-| Desktop lifecycle and packaging | `desktop/`, `desktop/workers/` | Renderer access to credentials or raw server files |
+| Design-system reference (web only, `/design-system`) | `app/design-system/page.tsx`, `app/components/design-system/`, `app/styles/design-system.css`, hidden paths in `desktop/runtime/security-policy.mjs`, `DESIGN.md` | Navigation entries, LAN gateway `APP_PATHS`, desktop `loadURL` triggers, monitor fetches, session data, edits to shared shell/session/evidence styles |
+| Desktop lifecycle | `desktop/runtime/` (packaged app code); generated service bundles land in `desktop/workers/` | Renderer access to credentials or raw server files; packaging or release tooling |
+| Desktop packaging and release | `desktop/packaging/` (build, electron-builder hooks, artifact and release policy, acceptance tools) | Imports from `desktop/runtime/` into packaging tooling are fine; the reverse is not, and none of these files ship in the app |
+| Web host (Node server for the built dashboard) | `server/web/` (`server.mjs`, `cli.mjs`; `entry.ts` is the Vite server entry) | Imports of monitor modules under `server/`; the monitor importing `server/web/` |
 | Landing site | `landing/` and its own `package.json` | Main application scripts and monitor state |
 | Generated plugins | `plugin-src/`, then `npm run build:plugin` | Direct edits to `plugins/**` generated artifacts |
 
@@ -44,6 +46,7 @@ dependency-cruiser rule per folder. A post-edit agent hook
 | `persistence/` | SQLite store, retention, committed response caches | C, P | `normalize/` |
 | `serving/` | HTTP request handling | S | `normalize/`, `persistence/`, `repository/`, `sessions/domain/`, provider contract |
 | `diagnostics/` | Pipeline operations, logs, dev tracing | — | `normalize/`, provider contract |
+| `web/` | Node host for the built dashboard (LAN-reachable, not the monitor); `entry.ts` is the Vite server entry | — | `web/` only; reaches the monitor over HTTP. No monitor folder may import it |
 
 Tests mirror this tree under `tests/server/<same path>.test.mjs`; cross-cutting server
 tests sit at the `tests/server/` root.

@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { assertCleanTaggedCheckout, prepareRelease } from "../desktop/prepare-release.mjs";
+import { assertCleanTaggedCheckout, prepareRelease } from "../desktop/packaging/prepare-release.mjs";
 import {
   parseAcceptanceArguments,
   verifyUpdateSignatureAcceptance,
-} from "../desktop/update-signature-acceptance.mjs";
+} from "../desktop/packaging/update-signature-acceptance.mjs";
 import {
   RELEASE_LEGAL_FILES,
   assertExpectedReleaseCommit,
@@ -20,7 +20,7 @@ import {
   releaseArtifactNames,
   renderChecksumManifest,
   updateMetadataName,
-} from "../desktop/release-policy.mjs";
+} from "../desktop/packaging/release-policy.mjs";
 
 const ACCEPTANCE_PUBLISHER_SUBJECT = "CN=DSNK Technologie Inc, O=DSNK Technologie Inc, C=CA";
 

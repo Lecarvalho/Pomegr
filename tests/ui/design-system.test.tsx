@@ -138,8 +138,8 @@ describe("Design-system reference page", () => {
 
   it("stays out of navigation, the LAN allowlist, and monitor clients", () => {
     expect(source("app/components/command-center/CommandCenterShell.tsx")).not.toMatch(/design-system/);
-    expect(source("desktop/lan-gateway.mjs")).not.toMatch(/design-system/);
-    expect(source("desktop/shell-main.mjs")).not.toMatch(/design-system/);
+    expect(source("desktop/runtime/lan-gateway.mjs")).not.toMatch(/design-system/);
+    expect(source("desktop/runtime/shell-main.mjs")).not.toMatch(/design-system/);
     const view = source("app/components/design-system/DesignSystemView.tsx");
     expect(view).not.toMatch(/fetch\(|EventSource|\/api\//);
     expect(view).not.toMatch(/agents-client|usage-limits-client|provider-status-client|SessionCatalogContext|next\/link|next\/navigation/);

@@ -1,4 +1,4 @@
-import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
+import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import path from "node:path";
 
 export const REPOSITORY_PLUGIN_ACTION_CHANNEL = "pomegr:repository-plugin-action";

@@ -30,6 +30,7 @@ const GRANDFATHERED_LINE_LIMITS = new Map([
   ["tests/server/providers/claude/provider.test.mjs", 861],
   ["tests/server/providers/codex/liveness.test.mjs", 985],
   ["tests/pomegr-plugin.test.mjs", 900],
+  ["tests/ui/requests-actions.test.tsx", 805],
 ]);
 
 const LEGACY_FILENAME = /(?:^|[-_.])(?:backup|copy|legacy|old|orig|tmp|v\d+)(?:[-_.]|$)/i;

@@ -10,8 +10,8 @@ import {
   storageSettingsEnvironment,
   STORAGE_SETTINGS_CHANNELS,
   validStorageSetting,
-} from "../desktop/storage-settings.mjs";
-import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/settings.mjs";
+} from "../desktop/runtime/storage-settings.mjs";
+import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
 
 function harness(overrides = {}) {
   const writes = [];

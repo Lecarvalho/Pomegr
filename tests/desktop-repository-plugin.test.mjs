@@ -3,8 +3,8 @@ import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import test from "node:test";
 
-import { createRepositoryPluginAction, installRepositoryPluginActionIpc, REPOSITORY_PLUGIN_ACTION_CHANNEL } from "../desktop/repository-plugin-action.mjs";
-import { createRepositoryPluginCli, pluginCommands, resolveCodexExecutable } from "../desktop/plugin-cli.mjs";
+import { createRepositoryPluginAction, installRepositoryPluginActionIpc, REPOSITORY_PLUGIN_ACTION_CHANNEL } from "../desktop/runtime/repository-plugin-action.mjs";
+import { createRepositoryPluginCli, pluginCommands, resolveCodexExecutable } from "../desktop/runtime/plugin-cli.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const plan = Object.freeze({ root: "C:\\private\\Pomegr", repositoryName: "Pomegr", provider: "codex", scope: "user", currentVersion: "0.5.0", targetVersion: "0.6.0", marketplaceRegistered: true, ref: "main", operation: "update" });

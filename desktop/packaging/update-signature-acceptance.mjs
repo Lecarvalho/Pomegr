@@ -6,8 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { minimalRuntimeEnvironment } from "./environment-policy.mjs";
-import { createWindowsUpdateSignatureVerifier, isFullPublisherSubject } from "./updater.mjs";
+import { minimalRuntimeEnvironment } from "../runtime/environment-policy.mjs";
+import { createWindowsUpdateSignatureVerifier, isFullPublisherSubject } from "../runtime/updater.mjs";
 
 const MAX_FIXTURE_BYTES = 512 * 1024 * 1024;
 const INSPECTION_TIMEOUT_MS = 20_000;

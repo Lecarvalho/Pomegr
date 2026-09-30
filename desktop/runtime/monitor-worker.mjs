@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { Worker } from "node:worker_threads";
 
-import { removeAgentQueryDescriptorIfTokenMatches } from "../shared/agent-query-transport.mjs";
+import { removeAgentQueryDescriptorIfTokenMatches } from "../../shared/agent-query-transport.mjs";
 import { stopChild } from "./utility-lifecycle.mjs";
 
 /** The parent owns descriptor cleanup even when the worker cannot run shutdown. */

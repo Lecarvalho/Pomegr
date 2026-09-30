@@ -38,7 +38,7 @@ if (payload && !paths.some((file) => CHECKED.test(file))) process.exit(0);
 
 const failures = [];
 for (const [label, args] of [
-  ["check:boundaries", [path.join("node_modules", "dependency-cruiser", "bin", "dependency-cruise.mjs"), "vite.config.ts", "server", "app", "shared", "desktop", "web", "mcp", "scripts", "--config", ".dependency-cruiser.cjs", "--output-type", "err"]],
+  ["check:boundaries", [path.join("node_modules", "dependency-cruiser", "bin", "dependency-cruise.mjs"), "vite.config.ts", "server", "app", "shared", "desktop", "mcp", "scripts", "--config", ".dependency-cruiser.cjs", "--output-type", "err"]],
   ["check:architecture", [path.join("scripts", "check-architecture.mjs")]],
 ]) {
   const result = spawnSync(process.execPath, args, { cwd: repositoryRoot, encoding: "utf8" });

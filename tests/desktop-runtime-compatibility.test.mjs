@@ -13,18 +13,18 @@ import {
   SHARP_UNPACKED_FILES,
   WORKER_BUNDLE_FILES,
   unpackedFilesFromHeader,
-} from "../desktop/asar-policy.mjs";
-import { buildDesktopServiceBundles } from "../desktop/service-bundles.mjs";
-import { startMonitorAfterEnvironment } from "../desktop/monitor-startup-policy.mjs";
+} from "../desktop/packaging/asar-policy.mjs";
+import { buildDesktopServiceBundles } from "../desktop/packaging/service-bundles.mjs";
+import { startMonitorAfterEnvironment } from "../desktop/runtime/monitor-startup-policy.mjs";
 import {
   assertNoSystemNodeInPath,
   executableOnPath,
   keepOnlyRuntimeEnvironment,
   minimalRuntimeEnvironment,
   monitorPrivateEnvironment,
-} from "../desktop/environment-policy.mjs";
-import { stopChild } from "../desktop/utility-lifecycle.mjs";
-import { containsShellStageTrace } from "../desktop/runtime-proof.mjs";
+} from "../desktop/runtime/environment-policy.mjs";
+import { stopChild } from "../desktop/runtime/utility-lifecycle.mjs";
+import { containsShellStageTrace } from "../desktop/runtime/runtime-proof.mjs";
 
 test("production monitor readiness does not require Git while smoke readiness proves Git execution", async () => {
   const productionStages = [];

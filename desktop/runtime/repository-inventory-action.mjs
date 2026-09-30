@@ -1,4 +1,4 @@
-import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
+import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 
 export const REPOSITORY_INVENTORY_CAPTURE_CHANNEL = "pomegr:capture-repository-context-inventory";
 export const REPOSITORY_INVENTORY_CAPTURE_STATUSES = Object.freeze([

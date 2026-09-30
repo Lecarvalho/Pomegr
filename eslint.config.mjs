@@ -21,7 +21,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
-    files: ["desktop/preload.cjs"],
+    files: ["desktop/runtime/preload.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
 ]);

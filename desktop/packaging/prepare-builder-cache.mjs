@@ -2,7 +2,7 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const cacheRoot = path.join(repositoryRoot, ".electron-builder-cache");
 const cachePackagePath = path.join(cacheRoot, "package.json");
 const cachePackage = Object.freeze({ private: true, type: "commonjs" });

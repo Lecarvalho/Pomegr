@@ -5,7 +5,7 @@ import {
   createLanNetworkReader,
   isPrivateIPv4,
   resolveWindowsPowerShellExecutable,
-} from "../desktop/lan-network.mjs";
+} from "../desktop/runtime/lan-network.mjs";
 
 function probe({ profiles = [], adapters = [], addresses = [] } = {}) {
   return JSON.stringify({ Profiles: profiles, Adapters: adapters, Addresses: addresses });

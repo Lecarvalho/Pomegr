@@ -111,7 +111,7 @@ export async function verifyWindowsReleaseLocally({
       path.join(cwd, "node_modules", "electron-builder", "cli.js"),
       "--win", "nsis", "portable", "--x64", "--publish", "never",
     ], packagingEnvironment],
-    ["Finalize desktop artifacts", nodeExecutable, [path.join(cwd, "desktop", "finalize-package.mjs")], environment],
+    ["Finalize desktop artifacts", nodeExecutable, [path.join(cwd, "desktop", "packaging", "finalize-package.mjs")], environment],
     ["Inspect desktop artifacts", ...npmRun("desktop:inspect"), environment],
   ];
   const total = commandSteps.length + 1;

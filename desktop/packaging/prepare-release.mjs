@@ -12,10 +12,10 @@ import {
   renderChecksumManifest,
   updateMetadataName,
 } from "./release-policy.mjs";
-import { assertReleasePublishPrivacy } from "./artifact-privacy.mjs";
+import { assertReleasePublishPrivacy } from "../runtime/artifact-privacy.mjs";
 
 const moduleRoot = path.dirname(fileURLToPath(import.meta.url));
-const defaultRepositoryRoot = path.resolve(moduleRoot, "..");
+const defaultRepositoryRoot = path.resolve(moduleRoot, "..", "..");
 
 function git(repositoryRoot, args) {
   return execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();

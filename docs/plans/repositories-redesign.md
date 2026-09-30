@@ -300,10 +300,10 @@ Create `/repositories/<repositoryId>` with the header, tab rail, and empty tab p
    `app/repositories/page.tsx` with `redirect()` after validation. Update
    `MachineryPanel.tsx` to link to the new URL directly.
 7. **Routing allowlists.**
-   - `desktop/lan-gateway.mjs`: extend `pageRouteIsAllowed` with
+   - `desktop/runtime/lan-gateway.mjs`: extend `pageRouteIsAllowed` with
      `/^\/repositories\/repo-[a-f0-9]{24}$/`. Add a test in `tests/lan-gateway.test.mjs`
      for allowed and rejected shapes (`/repositories/../settings`, `/repositories/x`).
-   - `desktop/security-policy.mjs`: no change expected (hidden paths only); add a test in
+   - `desktop/runtime/security-policy.mjs`: no change expected (hidden paths only); add a test in
      `tests/desktop-security.test.mjs` asserting `/repositories/repo-…` navigates.
    - Search routing in `CommandCenterShell.tsx` (`[/repo|git|branch/i, "/repositories"]`)
      stays.

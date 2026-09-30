@@ -3,8 +3,8 @@ import path from "node:path";
 import { build } from "vite";
 
 const serviceEntries = Object.freeze([
-  ["monitor-host.mjs", "monitor-host.cjs"],
-  ["../scripts/claude-statusline-bridge.mjs", "claude-statusline-bridge.cjs"],
+  ["desktop/runtime/monitor-host.mjs", "monitor-host.cjs"],
+  ["scripts/claude-statusline-bridge.mjs", "claude-statusline-bridge.cjs"],
 ]);
 
 export async function buildDesktopServiceBundles(repositoryRoot, stagingRoot) {
@@ -19,7 +19,7 @@ export async function buildDesktopServiceBundles(repositoryRoot, stagingRoot) {
       ssr: { noExternal: true },
       build: {
         target: "node22",
-        ssr: path.join(repositoryRoot, "desktop", sourceName),
+        ssr: path.join(repositoryRoot, sourceName),
         outDir,
         codeSplitting: false,
         // Vite clears its output directory by default.  Keep the previously generated

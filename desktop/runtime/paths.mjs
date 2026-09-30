@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
+import { resolvePomegrDataRoot } from "../../shared/pomegr-paths.mjs";
 import { environmentValue } from "./environment-policy.mjs";
 
 function absolute(value, code) {

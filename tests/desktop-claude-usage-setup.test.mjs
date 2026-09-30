@@ -9,7 +9,7 @@ import {
   createClaudeUsageIntegration,
   installClaudeUsageIntegrationIpc,
   resolveClaudeUsageShells,
-} from "../desktop/claude-usage-setup.mjs";
+} from "../desktop/runtime/claude-usage-setup.mjs";
 
 const POWERSHELL_PREFIX = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ";
 

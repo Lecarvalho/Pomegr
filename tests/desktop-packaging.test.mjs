@@ -15,10 +15,10 @@ import {
   forbiddenArtifactPath,
   isAllowedApplicationPath,
   isDependencyPackageManifest,
-} from "../desktop/artifact-policy.mjs";
-import { assertBuiltLegalNotices, generateLegalNotices, productionDependencyNotices, renderThirdPartyNotices } from "../desktop/legal-notices.mjs";
-import { WORKER_BUNDLE_FILES } from "../desktop/asar-policy.mjs";
-import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "../desktop/pomegr-dt-08-scope.mjs";
+} from "../desktop/packaging/artifact-policy.mjs";
+import { assertBuiltLegalNotices, generateLegalNotices, productionDependencyNotices, renderThirdPartyNotices } from "../desktop/packaging/legal-notices.mjs";
+import { WORKER_BUNDLE_FILES } from "../desktop/packaging/asar-policy.mjs";
+import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "../desktop/packaging/pomegr-dt-08-scope.mjs";
 
 const REQUIRED_FILES = [
   ...PUBLIC_LEGAL_FILES,
@@ -53,7 +53,7 @@ test("desktop preparation rejects legal files regenerated after a Windows web bu
 
 test("packaged desktop runtime allowlist is closed over local module imports", async () => {
   const runtimeFiles = new Set(DESKTOP_RUNTIME_FILES);
-  const testOnlyImport = "desktop/main.mjs=>desktop/smoke-main.mjs";
+  const testOnlyImport = "desktop/runtime/main.mjs=>desktop/runtime/smoke-main.mjs";
   for (const filename of runtimeFiles) {
     if (!/\.(?:cjs|mjs)$/.test(filename) || WORKER_BUNDLE_FILES.includes(filename)) continue;
     const source = await readFile(new URL(`../${filename}`, import.meta.url), "utf8");
@@ -76,7 +76,7 @@ test("artifact policy accepts only required runtime roots and rejects private or
   for (const filename of [
     ".env.production",
     ".wrangler/state.json",
-    "desktop/smoke-main.mjs",
+    "desktop/runtime/smoke-main.mjs",
     "tests/fixtures/providers/private.jsonl",
     "desktop/credentials.json",
     "dist/.cache/state.bin",

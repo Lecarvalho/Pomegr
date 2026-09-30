@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertDirectoryHasNoPrivacySentinel, assertFileHasNoPrivacySentinel } from "../desktop/artifact-privacy.mjs";
-import { assertReleaseTag } from "../desktop/release-policy.mjs";
+import { assertDirectoryHasNoPrivacySentinel, assertFileHasNoPrivacySentinel } from "../desktop/runtime/artifact-privacy.mjs";
+import { assertReleaseTag } from "../desktop/packaging/release-policy.mjs";
 
 const defaultRepositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const tarExecutable = process.platform === "win32"

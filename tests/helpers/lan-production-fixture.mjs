@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 import { closeServer } from "../../shared/local-service.mjs";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import { createEmptyProviderStatusSnapshot } from "../../shared/provider-status.mjs";
-import { startLanGateway } from "../../desktop/lan-gateway.mjs";
-import { createLanSharingController } from "../../desktop/lan-sharing.mjs";
-import { startWebServer } from "../../web/server.mjs";
+import { startLanGateway } from "../../desktop/runtime/lan-gateway.mjs";
+import { createLanSharingController } from "../../desktop/runtime/lan-sharing.mjs";
+import { startWebServer } from "../../server/web/server.mjs";
 import { createProductionBuildFixture } from "./production-build.mjs";
 
 const TOKEN = "fixture_production_web_authorization_0123456789";
