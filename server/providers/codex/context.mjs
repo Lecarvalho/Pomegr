@@ -46,7 +46,7 @@ function cacheLifetimeForModel(model) {
   // setting. Keep the family allowlist explicit; unknown future models fail closed.
   // https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime
   // https://developers.openai.com/api/docs/guides/latest-model
-  return /^(?:gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?|gpt-6-(?:astra|sol|luna))(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
+  return /^(?:gpt-5\.6(?:-(?:sol|terra|luna|pro|cyber))?|gpt-6-(?:astra|sol|luna)|gpt-6\.1-sol)(?:-\d{4}-\d{2}-\d{2})?$/.test(model)
     ? "30m+"
     : null;
 }

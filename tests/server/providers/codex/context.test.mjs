@@ -72,8 +72,8 @@ test("maps only last_token_usage and keeps cached and reasoning tokens from bein
 });
 
 test("resolves the documented cache minimum only for recognized recorded model families", () => {
-  const supportedModels = ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-pro", "gpt-5.6-cyber", "gpt-5.6-2026-08-25", "gpt-5.6-sol-2026-08-25", "gpt-6-astra", "gpt-6-astra-2026-09-03", "gpt-6-sol", "gpt-6-sol-2026-09-03", "gpt-6-luna", "gpt-6-luna-2026-09-03"];
-  const unsupportedModels = ["gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.7", "gpt-5.6-custom", "custom/gpt-5.6", "gpt-6", "gpt-6-astra-custom", "gpt-6-astra-2026-09", "custom/gpt-6-astra", "gpt-6-sol-custom", "gpt-6-luna-2026-09", "custom/gpt-6-sol", "custom/gpt-6-luna", "gpt-7-astra", "codex-auto-review", "", null];
+  const supportedModels = ["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-pro", "gpt-5.6-cyber", "gpt-5.6-2026-08-25", "gpt-5.6-sol-2026-08-25", "gpt-6-astra", "gpt-6-astra-2026-09-03", "gpt-6-sol", "gpt-6-sol-2026-09-03", "gpt-6-luna", "gpt-6-luna-2026-09-03", "gpt-6.1-sol", "gpt-6.1-sol-2026-09-29"];
+  const unsupportedModels = ["gpt-5.5", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.7", "gpt-5.6-custom", "custom/gpt-5.6", "gpt-6", "gpt-6-astra-custom", "gpt-6-astra-2026-09", "custom/gpt-6-astra", "gpt-6-sol-custom", "gpt-6-luna-2026-09", "custom/gpt-6-sol", "custom/gpt-6-luna", "gpt-6.1-sol-custom", "gpt-6.1-sol-2026-09", "custom/gpt-6.1-sol", "gpt-7-astra", "codex-auto-review", "", null];
   for (const model of [...supportedModels, ...unsupportedModels]) {
     const { usageSnapshots } = parseCodexContextRecords([
       { type: "turn_context", payload: { model } },
