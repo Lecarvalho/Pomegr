@@ -1,6 +1,6 @@
 # Documentation migration
 
-> Status: in progress; DOC-00 through DOC-04 and PUB-01 through PUB-03 complete; Get started guides and screenshots revised 2026-09-30 for v0.5.x. Next: part 2, PUB-08 pilot.
+> Status: in progress; DOC-00 through DOC-04, PUB-01 through PUB-03, and PUB-08 complete; Get started guides and screenshots revised 2026-09-30 for v0.5.x. Pilot review of the four pages applied 2026-09-30. Next: part 3.
 > Created: 2026-09-07.
 > Audience and owner: Pomegr maintainers; each executing maintainer owns their selected task.
 > Lifetime: ephemeral. Delete this plan in the change that completes the migration.
@@ -195,7 +195,7 @@ Every path in this section is relative to `docs/public/`.
 - [ ] **PUB-05** `using-pomegr/repositories.md` — current index/detail experience; distinguish working features from placeholders.
 - [ ] **PUB-06** `using-pomegr/reporting-plugins.md` — extract user installation, setup, reporting, and troubleshooting from PLUGINS.
 - [ ] **PUB-07** `using-pomegr/phone-access.md` — extract pairing, scope, settings, and recovery from CONFIGURATION/current behavior.
-- [ ] **PUB-08** `concepts/context-and-tokens.md` — extract focused definitions and worked examples from the existing tokens/cache guide.
+- [x] **PUB-08** `concepts/context-and-tokens.md` — extract focused definitions and worked examples from the existing tokens/cache guide. 2026-09-30; about 730 words including tables and formulas, with one screenshot. Definitions (four labels, prompt input, request total, context, all-agent context), the two-request example, Requests chart modes, compaction, and limits were checked against app source (`RequestsActionsPanel.tsx`, `requests-actions/model.ts`, `Dashboard.tsx`, `AgentInspector.tsx`, `AgentHistoryIndicators.tsx`) and `docs/METRICS.md`. Migrated sections of `docs/user-guide/tokens-and-cache.md` now hold one-line links and its remaining stale chart colors, Scope, and cost labels were corrected. The page is in `docs/site.json` and both indexes. Verified with the temporary link checker (575 links, 0 failures), `git diff --check`, and `npm run verify:fast` (passed; 37 existing lint warnings, none from this change). The independent pilot review of the four pilot pages (introduction, install, first-session, context-and-tokens) was applied the same day: troubleshooting and update procedures rewritten, Agent estimate and Cost limitations stated beside their claims, concept-page links added, four Get started screenshots recaptured and cropped for the documentation column width (`agent-activity.jpg` renamed `agents-tab.jpg`), captions added, and five style-guide rules added.
 - [ ] **PUB-09** `concepts/cache-reuse.md` — extract cache behavior and inference limits from that guide, CACHE_TIMING, and METRICS.
 - [ ] **PUB-10** `concepts/usage-limits.md` — windows, freshness, missing evidence, and provider differences.
 - [ ] **PUB-11** `concepts/signals-and-estimates.md` — recorded values, agent reports, provider estimates, and deterministic inferences.
@@ -205,7 +205,7 @@ Every path in this section is relative to `docs/public/`.
 - [ ] **PUB-15** `help/missing-sessions.md` — extract relevant CONFIGURATION symptoms and recovery steps.
 - [ ] **PUB-16** `help/unavailable-data.md` — missing/stale evidence and service-status interpretation without unsupported cause claims.
 - [ ] **PUB-17** `help/connection-problems.md` — startup/connection symptoms; link phone-specific instructions to PUB-07.
-- [ ] **PUB-18** Move `docs/user-guide/images/cache-reuse-drop.png` to `images/cache-reuse/` and `context-compaction-drop.png` to `images/context-and-tokens/`; repair links and alt text.
+- [ ] **PUB-18** Move `docs/user-guide/images/cache-reuse-drop.png` to `images/cache-reuse/` and `context-compaction-drop.png` to `images/context-and-tokens/`; repair links and alt text. Compaction half done 2026-09-30 in the PUB-08 change: the old crop was replaced by a fresh capture, `images/context-and-tokens/compaction-drop.jpg`, and the PNG deleted. The `cache-reuse-drop.png` half remains for PUB-09.
 - [ ] **PUB-19** After every useful section has a new owner, delete the old `docs/user-guide/README.md`, `tokens-and-cache.md`, and obsolete image directory; update all inbound references.
 
 ## Phase 3 — Internal pages
@@ -300,11 +300,13 @@ permanent mockup home in the final structure.
 
 ## Continuation checkpoint
 
-DOC-00 through DOC-04 and PUB-01 through PUB-03 are complete. On 2026-09-30 the
-three Get started guides and the four introduction screenshots were revised for
-the v0.5.x interface (migration part 1). Next: part 2, the PUB-08 explanation
-pilot, followed by review of the three pilots before continuing the remaining
-public pages. Every part also runs the temporary link checker
+DOC-00 through DOC-04, PUB-01 through PUB-03, and PUB-08 are complete. On
+2026-09-30 the three Get started guides and the four introduction screenshots were
+revised for the v0.5.x interface (migration part 1), and the explanation pilot
+`concepts/context-and-tokens.md` was written with a fresh compaction capture
+(migration part 2). The independent review of the four pilot pages was applied on
+the same day (screenshots recaptured for the column width, captions, five style
+rules). Next: part 3. Every part also runs the temporary link checker
 `work/docs-migration/check-links.mjs` (gitignored; it validates relative links,
 anchors, images, and alt text against `work/docs-migration/link-baseline.txt`,
 which recorded zero pre-existing failures). WEB-04's `npm run check:docs`

@@ -40,13 +40,16 @@ session in the Pomegr repository, titled “Agent-readiness audit of repo
 structure” (one primary agent and eight subagents). The project owner authorized
 any recorded session of the Pomegr, Pokrr, or Catalogus repositories on
 2026-09-30. Dark mode leads the session overview (`session-overview.jpg`), the
-Agents tab in List view with the subagent group expanded (`agent-activity.jpg`),
-and the Activities tab with the Requests chart in Lanes and Full breakdown, request
-#300 selected, cropped to include the top of the Activity feed
-(`requests-chart.jpg`); the light overview (`light-mode.jpg`) demonstrates the
-alternative theme. Captures came directly from the running local dashboard's
-recorded session view at 2x scale, without changing its data, and were converted
-to JPEG. Only displayed dashboard content was captured; no raw session files were
+Agents panel in List view with the subagent group expanded and the primary agent
+selected (`agents-tab.jpg`, cropped above the empty roster area), and the
+Activities tab's Requests panel in Lanes and Full breakdown with request #300
+selected, cropped to the lanes and axis (`requests-chart.jpg`); the light
+overview (`light-mode.jpg`), cropped to the header, summary strip, and tab bar,
+demonstrates the alternative theme. Captures came directly from the running local
+dashboard's recorded session view at 2x scale, without changing its data, at a
+1200 px viewport (1000 px for the Requests panel) so their smallest labels stay
+readable at the documentation column width, and were cropped and converted to
+JPEG. Only displayed dashboard content was captured; no raw session files were
 read or copied.
 
 When the pictured UI changes, recapture the actual session dashboard using
@@ -54,6 +57,25 @@ owner-authorized project data or synthetic data, check legibility and privacy,
 and update the guide and images together. Keep the caption accurate about which
 kind of data is shown. These are maintained explanatory screenshots;
 they do not replace the design-system page or preserve a temporary mockup.
+
+### Context and tokens screenshot ownership
+
+The [context and tokens](../../public/concepts/context-and-tokens.md) page owns the
+JPEG in `docs/public/images/context-and-tokens/`. `compaction-drop.jpg` was
+captured on 2026-09-30 from the Pomegr 0.5.3 interface in dark theme. It shows the
+Activities tab's Requests panel in Lanes and Full breakdown, at a 1000 px viewport
+and cropped to the lanes and axis, for the recorded Codex session titled “Fix PR 30
+Windows CI” in the Pomegr repository. Request #290 is selected so the chart's
+`compaction` label stays visible beside the recorded automatic compaction that
+precedes request #271.
+The project owner authorized any recorded session of the Pomegr, Pokrr, or
+Catalogus repositories on 2026-09-30. None of the recorded Claude Code sessions in
+the catalog’s newest 100 rows had a recorded compaction, so the image comes from a
+Codex session and its legend has no Cache write series. The capture came from the
+running local dashboard at 2x scale, was converted to JPEG, and shows only displayed
+dashboard content (agent labels, roles, models, and token bars); no raw session
+files were read or copied. When the chart changes, recapture a recorded compaction
+and update the page, alt text, and image together.
 
 ## Migrate one page at a time
 
@@ -79,11 +101,9 @@ navigation order. Follow its [format and content contract](documentation-manifes
 for source membership, unique routes, and local link/image handling. Keep drafts
 in active plans; add ready public pages as their migrations finish.
 
-**Migration status:** the manifest selects the
-[introduction to Pomegr](../../public/get-started/introduction.md),
-[installation guide](../../public/get-started/install.md), and
-[first-session guide](../../public/get-started/first-session.md). The build-time
-content loader, `/docs` renderer, search, and `check:docs` command are not
+**Migration status:** the manifest selects ready public pages in reading order,
+starting with the [introduction to Pomegr](../../public/get-started/introduction.md).
+The build-time content loader, `/docs` renderer, search, and `check:docs` command are not
 implemented yet. Adding a Markdown file or manifest entry does not deploy it.
 Validate selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when

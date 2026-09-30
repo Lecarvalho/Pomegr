@@ -7,12 +7,11 @@
 > and [landing package](../../../landing/package.json).
 
 Only explicitly selected public pages and their referenced images may enter the
-documentation website. The manifest selects the
-[introduction to Pomegr](../../public/get-started/introduction.md), followed by
-[Install Pomegr](../../public/get-started/install.md) and
-[Follow your first session](../../public/get-started/first-session.md). The build-time content loader,
-renderer, search, and `check:docs` command remain unimplemented; this contract
-defines their required behavior.
+documentation website. The manifest selects ready public pages in reading order,
+starting with the
+[introduction to Pomegr](../../public/get-started/introduction.md). The build-time
+content loader, renderer, search, and `check:docs` command remain unimplemented;
+this contract defines their required behavior.
 
 ## Select pages and order navigation
 
@@ -44,7 +43,7 @@ Unlisted pages are excluded even when another page links to them.
 
 Derive each page route by prefixing `/docs/` to its source path without `.md`.
 There are no route overrides or aliases in version 1. For example, the following
-future entry belongs in the `concepts` group's `pages` array, once the file exists:
+entry belongs in the `concepts` group's `pages` array:
 
 ```json
 "concepts/context-and-tokens.md"

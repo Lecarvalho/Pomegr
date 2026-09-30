@@ -51,7 +51,7 @@ Then [follow your first session](docs/public/get-started/first-session.md) to fi
 local work and open its dashboard.
 Use the [documentation index](docs/README.md) for user guides,
 configuration, and troubleshooting, including
-[input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
+[context, input, output, and cache tokens](docs/public/concepts/context-and-tokens.md).
 The [maintainer index](docs/internal/README.md) maps technical contracts,
 development workflows, and release procedures.
 

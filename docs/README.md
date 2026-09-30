@@ -11,7 +11,8 @@ source.
 | Understand what the dashboard observes | [Introduction to Pomegr](public/get-started/introduction.md) |
 | Download and launch the Windows app | [Install Pomegr](public/get-started/install.md) |
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
-| Read context, input, output, and cache numbers | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
+| Read context, input, output, and cache numbers | [Context and tokens](public/concepts/context-and-tokens.md) |
+| Understand cache reuse and token prices | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
@@ -41,8 +42,10 @@ migration, publication, checks, and closure.
 ## Find pages during the migration
 
 The [introduction](public/get-started/introduction.md),
-[installation guide](public/get-started/install.md), and
-[first-session guide](public/get-started/first-session.md) are migrated public pages.
+[installation guide](public/get-started/install.md),
+[first-session guide](public/get-started/first-session.md), and
+[context and tokens](public/concepts/context-and-tokens.md) concept page are migrated
+public pages.
 Remaining sources keep their current paths and authority until their
 individual migration tasks complete. Follow the working links above; this table
 maps the remaining work:
@@ -56,7 +59,7 @@ maps the remaining work:
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean
 confidential in Git. The [publication manifest](site.json) defines ordered public
-navigation groups and selects the three get-started guides. Its
+navigation groups and selects the ready pages. Its
 [contract](internal/development/documentation-manifest.md) defines page membership,
 routes, and local links/images; website publication tooling is still pending.
 This index does not publish content.

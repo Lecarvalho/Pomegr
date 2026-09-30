@@ -15,25 +15,18 @@ questions in Claude Code or Codex.
 Use the same Windows account that runs that tool so Pomegr can find its locally
 saved history. With the default session storage, no extra discovery setup or
 reporting plugin is required. You can explore existing history without starting
-new work.
-
-If you use a different local profile, open **Settings → Providers** in the desktop
-app. Choose the Claude Code **Configuration folder** or Codex **Home folder**, then select **Save
-and restart Pomegr** and review the native confirmation. Under Claude Code,
-**Advanced** lets you override the session folder separately. This changes what
-Pomegr observes; it does not switch the account of an already-running coding tool.
-In a browser on the same computer or through paired LAN access, this section shows the effective folders as
-read-only paths. Folder changes require the desktop app.
+new work. If you use a different local profile, see
+[If you use a different profile](#if-you-use-a-different-profile).
 
 ## Find and open a session
 
-1. Open **Pomegr** from the Start menu, or open your portable executable. Allow
-   the dashboard to load while Pomegr discovers local sessions.
+1. Open **Pomegr** from the Start menu, or open your portable executable. The
+   dashboard opens on **Home** while Pomegr discovers local sessions.
 2. Select **Sessions** in the sidebar. It starts on **Live** when live sessions
    are available, otherwise **All**. Choose **All** to include older work, or
    **Needs input** to see sessions where Pomegr observed an agent waiting for you.
 3. Use **Filter sessions** to search by session title, project, or coding tool.
-   Select the session title to open its dashboard.
+   Select the session title to open its dashboard, which starts on **Overview**.
 4. For new work, start or continue a session in your coding tool as usual, then
    return to Pomegr. The dashboard updates automatically as supported activity
    is recorded.
@@ -45,32 +38,48 @@ a session as missing.
 
 ## Read the first results
 
-A session opens on a summary of its agents, context, and calls, with tabs beneath
-it. The **Overview** tab shows what is happening now; open the **Agents** tab, or
-select **Right now**, and choose an agent to inspect its details. A new session
-may have only its primary agent and little activity; more appears when the coding
-tool records it.
+A session opens on a summary of its agents,
+[context](../concepts/context-and-tokens.md), and calls, with tabs beneath it.
+The **Overview** tab summarizes the session; open the **Agents** tab, or select
+**Right now**, and choose an agent to inspect its details. A new session may have
+only its primary agent and little activity; more appears when the coding tool
+records it.
 
 Loading placeholders mean a section is still preparing its first results.
-Sections can become ready at different times, and existing results remain visible
-while they refresh. **No recorded activity yet** means Pomegr detected the session
-but has no recorded activity to display. This can happen when you open Claude
-Code before sending its first prompt.
-
-A missing value or an unavailable feature does not mean zero activity or
-successful completion. Claude Code and Codex supply different evidence. See the
-[introduction](introduction.md) for examples of the overview, the Agents tab, and
-the Requests chart.
+**No recorded activity yet** means Pomegr detected the session but has no
+recorded activity to display, for example before you send Claude Code its first
+prompt. A missing value or an unavailable feature does not mean zero activity or
+successful completion. See the [introduction](introduction.md) for examples of
+the overview, the Agents tab, and the Requests chart.
 
 ## If something is missing
 
 | What you see | What to do |
 | --- | --- |
-| **No sessions match** | Clear **Filter sessions**, select **All**, and clear any project filter. |
-| **No sessions observed** | Allow discovery to finish. Confirm your coding tool saves local history under the same Windows account. Use **Configure session sources** to check **Settings → Providers** if you use a different folder or profile. |
-| **No recorded activity yet** | Continue in your coding tool; activity and context appear when it records supported evidence. |
-| **Session catalog unavailable** or **Monitor offline** | Allow Pomegr to reconnect automatically. If it persists in the desktop app, use **Quit Pomegr** in the tray menu, then reopen Pomegr. Closing the window may only hide it to the tray. |
-| Missing account usage | Open **Usage limits** and follow **Usage connection help** if shown. Account usage has separate requirements; missing limits do not prevent local session history from appearing. |
+| **No sessions observed** with a search or filter active | Clear **Filter sessions** and select **All**. |
+| **No sessions observed** with no filter | Wait for discovery to finish. |
+| **No sessions observed** after discovery finishes | Select **Configure session sources** to check your provider folders. |
+| **Session catalog unavailable** or **Monitor offline** | Wait; Pomegr reconnects automatically. |
+| **Session catalog unavailable**, saying Pomegr is paused | Select **Resume live refresh** in the tray menu. |
+| **No recorded activity yet** | Continue in your coding tool. |
+| Missing account usage | Open **Usage limits** and follow **Usage connection help** if shown. |
+
+If an unavailable message persists in the desktop app, select **Quit Pomegr** in
+the tray menu, then reopen Pomegr; closing the window may only hide it to the
+tray. Account usage has separate requirements, and missing limits do not prevent
+local session history from appearing.
+
+## If you use a different profile
+
+1. In the desktop app, open **Settings → Providers**.
+2. Choose the Claude Code **Configuration folder** or the Codex **Home folder**.
+   For Claude Code, **Advanced** sets the session folder separately.
+3. Select **Save and restart Pomegr** and review the native confirmation. Pomegr
+   restarts and observes the new folders.
+
+This changes what Pomegr observes; it does not switch the account of an
+already-running coding tool. A browser on the same computer, or paired over your
+network, shows these folders read-only. Changing them requires the desktop app.
 
 Keep prompts, replies, and approvals in your coding tool. Pomegr observes the
 session; it does not start work or answer an agent for you.

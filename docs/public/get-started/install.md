@@ -13,8 +13,8 @@ installing. Both include the runtime they need.
 
 Use a Windows x64 computer. Desktop builds for macOS, Linux, Windows ARM64, and
 app stores are not supported. You do not need administrator credentials, Node.js,
-Git, or a copy of Pomegr's source code to install and open the app. Optional Git and GitHub
-information depends on their command-line tools being available.
+Git, or a copy of Pomegr's source code to install and open the app. Optional Git
+and GitHub information depends on their command-line tools being available.
 
 Pomegr observes locally saved Claude Code and Codex sessions. Install it on the
 computer where you use those coding tools; downloading Pomegr does not install
@@ -27,7 +27,7 @@ the two options:
 
 | Download | Choose it when… | Updates and login |
 | --- | --- | --- |
-| **Installer** | You want an app installed for your Windows user. | Automatic update checks and downloads; optional launch at login. |
+| **Installer** | You want an app installed for your Windows user. | Automatic update checks and downloads; **Launch at login** in the tray menu. |
 | **Portable** | You want to run from a writable folder without installing. | Manual updates; no launch at login. |
 
 ## Install and open the app
@@ -43,7 +43,8 @@ the two options:
 ### Portable app
 
 1. Select **Download portable** on the download page.
-2. Put it in a folder where your Windows user can write files, then open it.
+2. Put it in a folder where your Windows user can write files, then open it. The
+   dashboard opens and begins discovering locally saved sessions.
 3. Keep the `PomegrData` folder created beside the executable. It holds Pomegr's
    settings and saved observation state. Move it with the executable if you move
    the app to another folder.
@@ -56,13 +57,19 @@ its dashboard.
 
 ## Keep Pomegr up to date
 
-Installed signed builds check for updates after startup and every four hours by
-default. They download newer releases from the same stable or beta channel.
-Open **Settings → About** to check manually. When a verified update is ready,
-select **Restart and install**, or **Restart to update** at the bottom left, when
-you are ready to restart. A failed check or download leaves the current app usable.
+The installed app checks for updates after startup and every four hours by
+default, and downloads newer releases from the channel you installed. To check
+manually, open **Settings → About** and select **Check for updates**. When a
+verified update is ready, select **Restart and install** there, or **Restart to
+update** at the bottom of the sidebar, when you are ready to restart. A failed
+check or download leaves the current app usable.
 
-For portable mode, quit Pomegr and select **Download portable** on the
-[download page](https://pomegr.com/download). Open the downloaded app from the
-folder containing your existing `PomegrData` to retain Pomegr state.
-Portable mode never checks for updates automatically.
+Portable mode never checks for updates automatically. To update it:
+
+1. Quit Pomegr with **Quit Pomegr** in the tray menu.
+2. Select **Download portable** on the
+   [download page](https://pomegr.com/download).
+3. Replace your old executable with the new one, in the folder that contains
+   `PomegrData`.
+4. Open the new executable. Pomegr starts with your existing settings and
+   observation state.

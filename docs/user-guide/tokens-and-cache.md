@@ -6,45 +6,21 @@ Jump to [costs and percentages](#how-token-costs-are-calculated) or
 [when caching is worth it](#when-caching-is-worth-it).
 
 Pomegr shows how much information an agent used for a model request and how much
-of that input came from cache. Start with the four labels below, then use the
-example to read your own session.
+of that input came from cache. Start with [Context and tokens](../public/concepts/context-and-tokens.md) for the
+labels, formulas, and a worked example.
 
 ## What is a token?
 
-A token is a small unit of information a model processes. In text, it can be a
-word, part of a word, or punctuation. Token counts vary with the model and
-language, so they are not word counts.
-
-**Input** is what the model receives for a request. **Output** is what it
-generates. Output can include internal reasoning as well as the visible answer,
-depending on what the provider reports. See
-[OpenAI's token explanation](https://help.openai.com/en/articles/4936856-what-are-tokens-and-how-to-count-them).
+Moved to [Context and tokens](../public/concepts/context-and-tokens.md#the-four-token-labels).
 
 ## The four labels in Pomegr
 
-| Label | What it means |
-| --- | --- |
-| **Uncached input** | Input counted outside cache reads and cache writes. This can include new material or older material that is being processed again. |
-| **Cache write** | Input the provider processes and stores in its prompt cache for possible reuse. A write does not guarantee a later read. |
-| **Cache read** | Input the provider reuses from an existing prompt cache. It is still part of the request's input. |
-| **Output** | Tokens generated for that request. The count can be larger than the visible reply. |
-
-Cache read and cache write are two ways of handling **input**, not extra
-responses. In Pomegr's breakdown, each input token belongs to one category:
-
-**Prompt input = Uncached input + Cache write + Cache read**
-
-**Request total = Prompt input + Output**
-
-Providers report these counts differently. Pomegr uses the labels above to avoid
-counting cached input twice. Where a provider does not supply reliable
-cache-write evidence, Pomegr omits that category.
+The four labels and the prompt-input and request-total formulas are in [Context and tokens](../public/concepts/context-and-tokens.md#the-four-token-labels).
 
 ## How caching works
 
-A coding agent can send instructions, conversation history, tool definitions,
-and file or tool content with a request. That is why a short message from you can
-accompany a large input count.
+A request carries more than your last message; see
+[Context and tokens](../public/concepts/context-and-tokens.md#the-four-token-labels).
 
 Prompt caching lets the provider reuse processing for a matching beginning of
 the input, often called a **prefix**. A later request can read an existing prefix
@@ -57,28 +33,7 @@ provider's cache.
 
 ## A worked example
 
-Imagine two requests from one agent, with cache-write evidence available. These
-numbers are illustrative:
-
-| Component | First request | Later request |
-| --- | ---: | ---: |
-| Uncached input | 2,000 | 1,000 |
-| Cache write | 18,000 | 2,000 |
-| Cache read | 0 | 18,000 |
-| **Prompt input** | **20,000** | **21,000** |
-| Output | 1,000 | 500 |
-| **Request total** | **21,000** | **21,500** |
-
-On the first request, the provider writes 18,000 input tokens to cache. On the
-later request, it reads 18,000 tokens from cache and writes another 2,000.
-
-The later request's **cache-read share** is 18,000 ÷ 21,000, or about **86%**.
-Output is excluded from that percentage.
-
-The later request still has 21,000 input tokens. Cache reuse changes how those
-tokens are processed; the cached content remains part of its context. Read each
-column as an independent request. Pomegr does not add the columns into a session
-token-spend total.
+Moved to [Read two requests](../public/concepts/context-and-tokens.md#read-two-requests).
 
 ## How token costs are calculated
 
@@ -162,7 +117,7 @@ row also excludes the earlier charge for creating that cache, so it is not an
 overall saving across the cache's lifetime.
 
 Pomegr does not calculate these hypothetical charges from session snapshots.
-Its **Estimated API cost**, when available, remains the estimate supplied by
+Its **API list-rate estimate**, when available, remains the estimate supplied by
 Claude Code.
 
 ## When caching is worth it
@@ -220,23 +175,7 @@ cache entry has expired.
 
 ## Reading context and request snapshots
 
-**Agent context** shows that agent's latest non-zero usage snapshot, including
-the input categories and output. For a historical session, it shows the final
-recorded snapshot.
-
-**All-agent context** adds the latest snapshots of the visible agents. If the
-main agent has 30,000 tokens and a helper has 10,000, the displayed total is
-40,000. It does not mean that either agent can access the other's context or that
-the session contains 40,000 unique tokens.
-
-**Context history** shows how those snapshot levels change over time. An
-unchanged level stays flat. A recorded compaction or a smaller later snapshot
-can make the line fall; a fall alone does not establish that compaction occurred.
-
-**Request snapshots** lets you inspect individual recorded requests and their
-token breakdowns. Its **All agents** selection shows requests from multiple
-agents, keeping each request separate. The view holds a limited recent history;
-it is not a complete ledger of every request.
+Moved to [Context and all-agent context](../public/concepts/context-and-tokens.md#context-and-all-agent-context).
 
 ## Spotting a possible cache refill
 
@@ -250,9 +189,9 @@ it does not show exact token counts, timestamps, or the selected agent.*
 
 ### Read the pattern from left to right
 
-In Pomegr's current chart colors, **coral is Cache read**, **lavender is Uncached
-input**, and **amber is Output**. Cache write has its own green series. Use the
-legend labels when inspecting your session.
+In Pomegr's current chart colors, **grey is Cache read**, **lavender is Uncached
+input**, **green is Cache write**, and **amber is Output**. Use the legend labels
+when inspecting your session.
 
 1. **Before the dip:** cache reads are high and uncached input is low. Much of
    the request's input is being reused from cache.
@@ -268,14 +207,15 @@ Pomegr does not have the cache-write evidence needed to classify a refill.
 
 ### Check the requests behind the shape
 
-In **Request snapshots**, select one agent in **Scope**. Hover over or select
-the request at the dip and the request immediately before it to inspect their
-counts. You can also focus the chart and use the Left and Right arrow keys.
+On the **Activities** tab, read one agent's lane in the **Requests** chart, or
+choose that agent in **Agent scope**. In **Full breakdown**, compare the request at
+the dip with the request immediately before it. You can also focus the chart and use
+the Left and Right arrow keys.
 
-Compare requests from the same agent: neighboring points in **All agents** can
-belong to different agents. Each point represents a recorded request, and the
-points are equally spaced. The connecting curves do not show measurements
-between requests, and their horizontal distance does not tell you the time gap.
+Compare requests from the same agent: neighboring bars in **Single chart** with
+**All agents** can belong to different agents. Each bar represents a recorded
+request, and the bars are equally spaced, so their horizontal distance does not
+tell you the time gap.
 
 Pomegr labels a **possible full refill** only when the preceding and affected
 requests are comparable and meet all of these conditions:
@@ -304,70 +244,13 @@ and any separately labeled explanations.
 
 ## Spotting context compaction
 
-**Compaction** shortens the conversation carried into later requests, usually by
-summarizing earlier detail. This lets the agent continue with a smaller context.
-Pomegr observes the recorded event; it does not compact the conversation.
-
-### Read the drop in the chart
-
-<img src="images/context-compaction-drop.png" alt="Request-chart crop: cache reads are high at the first two points, then fall sharply to a low level near the other visible token categories." />
-
-*This crop shows a sharp drop to a lower level. It has no exact counts,
-timestamps, or compaction marker, so the shape is a clue to check in the full
-session.*
-
-Using the same chart colors as above, the coral line represents **Cache read**.
-
-1. **Before the drop:** the first two visible requests have high cache-read
-   counts.
-2. **At the next request:** cache reads fall sharply. The other visible
-   categories remain low; there is no large uncached-input spike like the one
-   in the previous screenshot.
-3. **At the right edge:** the visible lines remain near the bottom. This is the
-   shape you might see when the next request carries much less context. The
-   crop ends here, so it does not show how later requests develop.
-
-Check the full token breakdown before concluding that context shrank. A lower
-cache-read count alone can also mean input moved into another category.
-
-### Confirm it in Pomegr
-
-Select the same agent in **Request snapshots** and **Context history**. Inspect
-the requests around the drop and compare their input breakdowns and total
-context levels. Then look for the corresponding marker in Context history:
-
-| Marker | What Pomegr has observed |
-| --- | --- |
-| **Automatic compaction** | A recognized compaction classified as automatic from provider evidence. |
-| **Manual compaction** | A recognized compaction classified as manual from provider evidence. |
-| **Snapshot decrease** | A smaller later context snapshot without a recognized automatic or manual compaction explaining it. The cause remains unconfirmed. |
-
-Pomegr uses recorded compaction evidence to label automatic or manual
-compaction. It does not decide that compaction happened from the size or shape
-of the drop alone. Some provider lifecycles require a specific classification
-rule; that attribution remains explicit.
-
-### How this differs from the refill pattern
-
-In the [refill example](#spotting-a-possible-cache-refill), cache reads drop while
-uncached input rises, then reads recover. A similarly sized prompt can still be
-present while its cache treatment changes.
-
-For compaction, the key evidence is a **smaller context level together with a
-recognized compaction event**. Work can continue from that smaller context, and
-the level may grow again as the session progresses. Pomegr does not compare
-requests across a recorded compaction to count a possible full refill.
-
-The [context history reference](../METRICS.md#context-history) explains how
-Pomegr records compactions and snapshot decreases.
+Moved to [Spot a compaction](../public/concepts/context-and-tokens.md#spot-a-compaction).
 
 ## Common questions
 
 ### Why is input much larger than my message?
 
-The request can also contain the conversation so far, instructions, and tool or
-file content. The input count covers the material sent with that request, not
-just what you last typed.
+Answered in [Context and tokens](../public/concepts/context-and-tokens.md#the-four-token-labels).
 
 ### Does a large cache write mean something went wrong?
 
@@ -394,10 +277,7 @@ cache-read or cache-write count. See the
 
 ### Why is Cache write missing for Codex?
 
-Pomegr currently omits Cache write and classifications that require it for Codex
-because the session records do not provide reliable cache-write counts. Cache
-reads remain available. The missing category means **unavailable**, not that
-Pomegr has confirmed no cache writing occurred.
+Answered in [Context and tokens](../public/concepts/context-and-tokens.md#limits).
 
 ### Do these numbers tell me my bill or remaining subscription allowance?
 
@@ -409,8 +289,8 @@ Pomegr does not calculate a bill, savings, or subscription consumption from
 request token counts. **Usage limits** shows separate provider-reported account
 information.
 
-When the optional Claude Code status-line bridge is connected, **Estimated API
-cost** shows Claude Code's own session estimate. It may differ from an actual
+When the optional Claude Code status-line bridge is connected, the
+**API list-rate estimate** shows Claude Code's own session estimate. It may differ from an actual
 bill and does not represent the marginal cost of subscription usage.
 
 ## More detail

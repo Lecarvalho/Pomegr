@@ -14,7 +14,7 @@
     {
       "id": "concepts",
       "title": "Concepts",
-      "pages": []
+      "pages": ["concepts/context-and-tokens.md"]
     },
     {
       "id": "help",
