@@ -1,16 +1,14 @@
 # Global session statuses
 
-Reviewed: 2026-09-01.
+Reviewed: 2026-09-01. Reconciled with the shipped Closed state on 2026-09-30.
 
 This is the editable comparison of Pomegr's session-level status rules. Keep each table row on one physical line so later corrections can target that row. Describe what Pomegr can observe through its connected sources; parser support alone is not evidence of an available integration.
 
-Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [Observation cache](internal/architecture/observation-cache.md) remains the operational contract.
+Scope: the Sessions list `activityStatus`, not individual agent/task status, agent-reported progress, or provider service health. This reference describes current implementation and known gaps; [Observation cache](observation-cache.md) remains the operational contract.
 
 The inventory of evidence and integration gaps is
-[Limitations](internal/architecture/limitations.md#session-status-coverage).
+[Limitations](limitations.md#session-status-coverage).
 This page owns the precise status rules and precedence.
-
-Implementation note: the Claude non-live -> Idle rule below is implemented in the working tree. This review did not restart the monitor, so an already-running process can still use the previous Unknown fallback.
 
 ## Global scope requirement
 
@@ -31,18 +29,19 @@ probes, restarts, and viewing do not renew catalog activity. A single shared
 coordinator timer drives the projection, while cache-only GETs and provider evidence
 lifecycles remain unchanged.
 
-Claude first maps non-live sessions to Idle. For live Claude sessions, priority is Needs input, In progress, Open, Idle, then Unknown. Codex checks Needs input, In progress, the inactive-root rules (Idle or Stopped), Open, then Unknown. Related Codex agents include discovered descendants and forks belonging to the session.
+Claude first maps non-live sessions to Closed (confirmed runtime departure) or otherwise Idle. For live Claude sessions, priority is Needs input, In progress, Open, Idle, then Unknown. Codex checks Needs input, In progress, the inactive-root rules (Idle or Stopped), Open, then Unknown. Related Codex agents include discovered descendants and forks belonging to the session.
 
 | Global status | Provider | Exact classification condition | Evidence Pomegr uses | Discrepancies and detection gaps |
 | --- | --- | --- | --- | --- |
 | **Needs input** (`needs_input`) | **Both** | **Claude:** live session and primary registry/native `needsInput` is true. **Codex:** at least one live agent has an observed/accepted `needs_input` lifecycle. | **Claude:** registry `waiting` with a wait category containing input, approval, permission, or question; Remote Control `requires_action`. **Codex:** recognized structured `request_user_input` or waiting flags from an explicitly connected owning runtime. | **Codex mobile permission waits are not reliably detected by the current integration.** Its default monitor has no owning-runtime approval feed. Claude child input waits and transcript-only `AskUserQuestion` do not set global Needs input; recognized Codex child waits do. **Mixed-state gap (Both):** Needs input takes precedence even while another agent works. For Claude this can make the primary input wait determine the global label despite confirmed background work. This is attention precedence, not proof that the whole session is blocked. |
 | **In progress** (`working`) | **Both** | **Claude:** live session, no primary input wait, and primary status is `active`/`waiting` or recorded background work is confirmed open. **Codex:** no live agent has Needs input and at least one live agent has accepted `active` lifecycle. | **Claude:** primary registry/native state plus exact recorded background workflow, shell, and agent launches/closures. **Codex:** recorded structured execution starts or an explicitly connected runtime's active state. | **Aggregation gap (Claude):** the catalog does not aggregate child agent statuses; it counts only recognized background launches in the primary transcript. Missing launch/owner evidence or independently continuing nested work can therefore be missed (see aggregation gaps below). Recognized background Agent/workflow launches are already covered while open. **Codex:** recognized linked live children are aggregated, but running shell tasks are not independently consulted. An unobserved mobile approval can also leave an open Codex turn labeled In progress. |
-| **Idle** (`idle`) | **Both** | **Claude:** session is non-live; otherwise primary status is `idle`, no validated owner, no primary input wait, and background work is not confirmed open. **Codex:** primary status is `idle` or `finished`, and every related live agent is `idle`, `finished`, or `stopped`. | **Claude:** native/registry idle, or the non-live fallback. **Codex:** recorded structured successful turn completion or direct native idle from an explicitly connected owning runtime. | **Aggregation gap (Claude):** primary Idle plus unavailable/unrecognized background evidence can yield global Idle without checking working children. The non-live fallback also returns Idle before background evaluation and requires no completion evidence. **Codex:** a recognized active live child prevents Idle; an unknown live child also blocks it. Undiscovered, unlinked, or classified-non-live children are outside that check. Neither label proves overall task success. |
+| **Idle** (`idle`) | **Both** | **Claude:** session is non-live without confirmed closure; otherwise primary status is `idle`, no validated owner, no primary input wait, and background work is not confirmed open. **Codex:** primary status is `idle` or `finished`, and every related live agent is `idle`, `finished`, or `stopped`. | **Claude:** native/registry idle, or the non-live fallback. **Codex:** recorded structured successful turn completion or direct native idle from an explicitly connected owning runtime. | **Aggregation gap (Claude):** primary Idle plus unavailable/unrecognized background evidence can yield global Idle without checking working children. The non-live fallback also returns Idle before background evaluation and requires no completion evidence. **Codex:** a recognized active live child prevents Idle; an unknown live child also blocks it. Undiscovered, unlinked, or classified-non-live children are outside that check. Neither label proves overall task success. |
 | **Stopped** (`stopped`) | **Codex** | Primary is `stopped` and every related live agent is inactive (`idle`, `finished`, or `stopped`). A recognized live input wait or active agent takes precedence. | Structured failed/interrupted/aborted turn end, or accepted stopped lifecycle such as an owning runtime's `systemError`. | Claude never emits global Stopped, although individual agents and tasks can be stopped. **Codex does not let a stopped primary override a recognized active live child.** Once all related live agents are inactive, the primary alone chooses Stopped versus Idle; a stopped child with an idle primary does not make the session Stopped. Codex also combines interruption and failure under this label. |
+| **Closed** (`closed`) | **Claude** | Session is non-live because the private native registry observer confirmed that its registered runtime owner ended or no longer matches the recorded process identity, and no newer registration exists. Without that confirmation a non-live row is Idle. | The registry ownership and closure observation described in [Claude Code session status](claude-session-status.md#deterministic-normalization). A new validated registration replaces it. | Closed reports runtime closure only, never successful work, an exit reason, or task completion. Registry removal alone and failed process inspection do not establish it, and the bounded closure evidence is memory-only: after a monitor restart, sessions without fresh closure evidence use the Idle fallback. Codex never emits Closed. The app labels the status "Closed" (`app/dashboard-utils.ts`). The Sessions catalog may show a durable settled status for a non-live row, where provider-confirmed Closed or Stopped is never downgraded to the Idle fallback (see [Observation cache](observation-cache.md)). |
 | **Open** (`open`) | **Both** | **Claude:** live session whose primary status is `idle` and whose validated registry/native owner remains present. **Codex:** no Needs input, In progress, Idle, or Stopped rule applies, and at least one live agent has confirmed runtime/owner presence. | **Claude:** validated owner-backed registry/native presence with idle primary state. **Codex:** explicit owning-runtime observation or validated native Windows runtime ownership. | Presence is known while execution state is unresolved; Open does not imply work is executing. |
 | **Unknown** (`unknown`) | **Both** | **Claude:** live session, no primary input wait, primary status is not `active`, `waiting`, or `idle`, and no recorded background work is confirmed open. **Codex:** no preceding status rule applies, including insufficient confirmed presence for Open. | Missing, unsupported, incomplete, ambiguous, invalidated, or otherwise unusable lifecycle evidence, after applying source precedence and retention. | **Aggregation gap (Claude):** primary uncertainty can leave the session Unknown despite working children when their work is outside the background-launch tracker. With the non-live fallback, such a row instead becomes Idle. **Codex:** a recognized active live child yields In progress even with an unknown primary, unless a recognized input wait takes precedence. Missing/unlinked child evidence can still prevent that result. Retained observations or alternate sources can continue determining status after another source becomes unavailable. |
 
-The implementation owners are [Claude status](../server/providers/claude/session-status.mjs), [Codex aggregation](../server/providers/codex/session-lifecycle.mjs), and [UI labels](../app/dashboard-utils.ts). Documentation sometimes calls `working` "Working"; the actual UI label is "In progress".
+The implementation owners are [Claude status](../../../server/providers/claude/session-status.mjs), [Claude runtime closure](../../../server/providers/claude/registry-observation.mjs), [Codex aggregation](../../../server/providers/codex/session-lifecycle.mjs), and [UI labels](../../../app/dashboard-utils.ts). Documentation sometimes calls `working` "Working"; the actual UI label is "In progress".
 
 ## Whole-session aggregation gaps
 
@@ -54,7 +53,7 @@ The implementation owners are [Claude status](../server/providers/claude/session
 - **Both providers can show Needs input while work continues.** Claude considers the primary wait; Codex considers any observed live-agent wait. Both prioritize that attention label over working agents. We still need to decide how a single global display represents simultaneous work and required input.
 - **Codex terminal labels remain primary-led after work stops.** With an idle primary and stopped child, the session is Idle; with a stopped primary and idle children, it is Stopped. This does not hide recognized active children, but the label is not an aggregate outcome for all agents.
 
-Evidence owners: [Claude catalog](../server/providers/claude/index.mjs), [Claude background reader](../server/providers/claude/background-lifecycle.mjs), [Claude status precedence](../server/providers/claude/session-status.mjs), [Codex child discovery/liveness](../server/providers/codex/liveness.mjs), [Codex aggregation](../server/providers/codex/session-lifecycle.mjs).
+Evidence owners: [Claude catalog](../../../server/providers/claude/index.mjs), [Claude background reader](../../../server/providers/claude/background-lifecycle.mjs), [Claude status precedence](../../../server/providers/claude/session-status.mjs), [Codex child discovery/liveness](../../../server/providers/codex/liveness.mjs), [Codex aggregation](../../../server/providers/codex/session-lifecycle.mjs).
 
 ## What establishes live status
 
@@ -63,7 +62,7 @@ Evidence owners: [Claude catalog](../server/providers/claude/index.mjs), [Claude
 | Claude | An explicit source-file override is live. Otherwise, when the registry directory exists, a retained registration or primary/subagent file activity within 15 seconds establishes live status. Without that directory, file activity within five minutes establishes live status. | Registry entries are removed on a positive process-owner mismatch. Missing owner fields or process-inspection failure can leave registration usable without proving ownership. Recency is a compatibility heuristic, not proof that a process is executing. |
 | Codex | At least one root/related agent is live under its selected lifecycle evidence: owning-runtime presence, validated native Windows runtime ownership, or unresolved structured execution/input evidence. | Recorded starts can remain active through silence. On Windows, unresolved work whose thread and root writer locks are missing or uncontended when observed is never live; it shows as Unknown without claiming completion. A recorded completed turn alone is non-live; validated runtime ownership can keep an idle agent live. Native lock semantics are not inferred on Unix without validation. |
 
-Sources: [Claude discovery](../server/normalize/session-discovery.mjs), [registry ownership](../server/normalize/session-registry.mjs), [Codex observation](../server/providers/codex/liveness.mjs).
+Sources: [Claude discovery](../../../server/normalize/session-discovery.mjs), [registry ownership](../../../server/normalize/session-registry.mjs), [Codex observation](../../../server/providers/codex/liveness.mjs).
 
 ## Available evidence versus implemented support
 
@@ -76,7 +75,7 @@ Sources: [Claude discovery](../server/normalize/session-discovery.mjs), [registr
 | Owning-runtime status and approval flags | Codex | The adapter can consume an explicitly supplied owning connection. Its separate app-server reader is account-rate-limits-only and cannot supply session status or approval waits. Runtime observations are discarded on read failure or after more than 120 seconds without confirmation. |
 | Legacy activity/approval/plan inference | Codex | General inference requires every deterministic channel (owning runtime, native writer presence, structured rollout) to be explicitly declared unsupported. The default configuration does not enable that gate. The heuristic code's existence does not establish production coverage for mobile approvals, CLI pending edits, or plan-confirmation waits. Recognized structured `request_user_input` has a separate accepted-evidence path. |
 
-Sources: [default integrations](../server/providers/index.mjs), [Claude lifecycle reader](../server/providers/claude/session-status.mjs), [Codex owning runtime](../server/providers/codex/owning-runtime.mjs), [Codex inference gate](../server/providers/codex/source-routing.mjs).
+Sources: [default integrations](../../../server/providers/index.mjs), [Claude lifecycle reader](../../../server/providers/claude/session-status.mjs), [Codex owning runtime](../../../server/providers/codex/owning-runtime.mjs), [Codex inference gate](../../../server/providers/codex/source-routing.mjs).
 
 ## Completion and permission evidence
 
@@ -91,16 +90,18 @@ Both providers expose comparable native categories for working, user attention, 
 
 Codex's documented approval protocol uses server-initiated requests such as `item/commandExecution/requestApproval` and `item/fileChange/requestApproval`, followed by a client decision and resolution. See [official approval protocol](https://learn.chatgpt.com/docs/app-server#approvals). A request existing in that protocol does not mean Pomegr receives it.
 
-Sources: [Claude agent interpretation](../server/providers/claude/index.mjs), [Claude background lifecycle contract](CLAUDE_SESSION_STATUS.md), [Codex turn boundaries](../server/providers/codex/turn-lifecycle.mjs).
+Sources: [Claude agent interpretation](../../../server/providers/claude/index.mjs), [Claude background lifecycle contract](claude-session-status.md), [Codex turn boundaries](../../../server/providers/codex/turn-lifecycle.mjs).
 
 ## Labels outside this table
 
 - **Live / History**: discovery/view classification, separate from activity status.
 - **Historical snapshot / Monitor offline / Connecting to monitor**: session-header view or connection states.
 - **Complete**: can appear in agent-reported progress or individual task/workflow status; it is not a global session lifecycle status.
-- **Provider service health**: an independent domain described in [PROVIDER_STATUS.md](PROVIDER_STATUS.md).
+- **Provider service health**: an independent domain described in [Public provider service status](provider-status.md).
 
-## Decisions still open
+## Unresolved proposals
+
+Everything above describes current behavior. This final section lists product decisions that are still open; none of them is implemented.
 
 - Whether Idle should require observed inactive execution or also cover "no live session detected" consistently across providers.
 - Whether child input waits should always affect global Needs input.

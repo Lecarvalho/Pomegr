@@ -7,7 +7,7 @@
 > Authority: working proposal. `AGENTS.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md` stay authoritative and gain the enduring rules as tasks complete.
 > Next task or decision: task 1, guidance revision fingerprinting.
 > Completion criteria: every task ticked with its verification recorded, contracts updated, `npm run build` and `npm test` pass, and the feature is documented in `docs/public/`.
-> Permanent destinations: `docs/internal/architecture/observation-cache.md` (guidance revision domain, cohort serving), `docs/internal/architecture/metrics.md` (friction, outcome, compliance signals and comparison rules), `docs/SIGNAL_DICTIONARY.md` (new evidence codes), `docs/public/using-pomegr/` (user guide).
+> Permanent destinations: `docs/internal/architecture/observation-cache.md` (guidance revision domain, cohort serving), `docs/internal/architecture/metrics.md` (friction, outcome, compliance signals and comparison rules), `docs/internal/architecture/signal-dictionary.md` (new evidence codes), `docs/public/using-pomegr/` (user guide).
 > Lifetime: temporary; delete this file in the change that completes the last task.
 
 ## The problem

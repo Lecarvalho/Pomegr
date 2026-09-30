@@ -30,7 +30,7 @@ source.
 
 Configuration and troubleshooting keeps the environment variables, provider setup,
 and technical contracts behind the guides above. [Pomegr plugins](PLUGINS.md) and
-[MCP observation queries](MCP_QUERIES.md) keep the contracts behind their guides.
+[MCP observation queries](internal/architecture/mcp-queries.md) keep the contracts behind their guides.
 
 ## Maintain and contribute
 
@@ -40,8 +40,13 @@ documents govern behavior and which record proposals or historical evidence.
 The [Limitations reference](internal/architecture/limitations.md) owns the
 provider-related and Pomegr-specific inventory and generated capability matrix.
 The [architecture overview](internal/architecture/overview.md),
-[observation cache](internal/architecture/observation-cache.md), and
-[metrics](internal/architecture/metrics.md) contracts live beside it.
+[observation cache](internal/architecture/observation-cache.md),
+[metrics](internal/architecture/metrics.md),
+[session status](internal/architecture/session-status.md),
+[Claude session status](internal/architecture/claude-session-status.md),
+[provider status](internal/architecture/provider-status.md),
+[cache timing](internal/architecture/cache-timing.md), and
+[signal dictionary](internal/architecture/signal-dictionary.md) contracts live beside it.
 
 Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Coding
 agents follow [AGENTS.md](../AGENTS.md) and the

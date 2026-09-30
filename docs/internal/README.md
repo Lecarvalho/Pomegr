@@ -18,7 +18,7 @@ readable in the repository and must not contain secrets or private session data.
 | Observation phases, cache ownership, serving, readiness, and polling | [Observation cache](architecture/observation-cache.md) is the canonical operational contract. It and AGENTS.md take precedence over conflicting plans. |
 | Provider conformance | [Executable provider contract](../../server/providers/provider-contract.mjs) defines catalog, manifest, readiness, evidence, and conformance requirements. Transcript schemas stay in adapters. |
 | Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
-| Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](../SIGNAL_DICTIONARY.md) defines stable evidence codes and limits. |
+| Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](architecture/signal-dictionary.md) defines stable evidence codes and limits. |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; [license history](../LICENSE_HISTORY.md) explains the transition. |
 
@@ -37,12 +37,12 @@ paths relative to `docs/internal/`, not additional authoritative copies.
 | [Limitations](architecture/limitations.md) | Provider-related and Pomegr-specific gaps; capability availability | Maintained at this path |
 | [Observation cache](architecture/observation-cache.md) | Operational boundaries and committed evidence; the canonical operational contract, with a contents list at its top | Maintained at this path |
 | [Metrics](architecture/metrics.md) | Deterministic rules and evidence limits | Maintained at this path |
-| [Claude Code session status](../CLAUDE_SESSION_STATUS.md) | Provider lifecycle sources and privacy | `architecture/claude-session-status.md` |
-| [Global session statuses](../SESSION_STATUS.md) | Current comparison and known gaps | `architecture/session-status.md` |
-| [Provider service status](../PROVIDER_STATUS.md) | Public status sources and interpretation | `architecture/provider-status.md` |
-| [Cache timing](../CACHE_TIMING.md) | Cache timestamps, lifetime, and inference limits | `architecture/cache-timing.md` |
-| [Signal dictionary](../SIGNAL_DICTIONARY.md) | Stable evidence identifiers | `architecture/signal-dictionary.md` |
-| [MCP observation queries](../MCP_QUERIES.md) | Query usage, transport, and privacy | `architecture/mcp-queries.md`, after public guidance is extracted |
+| [Claude Code session status](architecture/claude-session-status.md) | Provider lifecycle sources, request boundary, and privacy | Maintained at this path |
+| [Global session statuses](architecture/session-status.md) | Current status rules and known gaps, with unresolved proposals in a labeled final section | Maintained at this path |
+| [Provider service status](architecture/provider-status.md) | Public status sources and interpretation | Maintained at this path |
+| [Cache timing](architecture/cache-timing.md) | Cache timestamps, lifetime indication, and inference limits; the public explanation is [Cache reuse](../public/concepts/cache-reuse.md) | Maintained at this path |
+| [Signal dictionary](architecture/signal-dictionary.md) | Stable evidence identifiers | Maintained at this path |
+| [MCP observation queries](architecture/mcp-queries.md) | Session resolution, evidence semantics, transport, and privacy; usage guidance is the public [MCP queries guide](../public/using-pomegr/mcp-queries.md) | Maintained at this path |
 
 ## Development
 

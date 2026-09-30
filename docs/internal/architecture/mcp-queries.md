@@ -7,10 +7,8 @@ hydrate a session, parse a transcript, or control a coding-agent process.
 
 The server registers seven tools: `get_provider_health`, `get_usage_limits`,
 `list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`,
-and `get_session_report`. The [MCP queries guide](public/using-pomegr/mcp-queries.md)
-explains when to use each one and what its result contains. A query is
-decision-triggered: use it only when its result can change the next decision, and
-do not poll the tools or call all of them at session start.
+and `get_session_report`. The [MCP queries guide](../../public/using-pomegr/mcp-queries.md)
+explains when to use each one, what its result contains, and how to read it.
 
 Session-specific MCP tools automatically select the calling session. Codex supplies
 its validated thread/session ID to the MCP subprocess. Claude's `PreToolUse` hook

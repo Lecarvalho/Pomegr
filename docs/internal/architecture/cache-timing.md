@@ -3,10 +3,10 @@
 Pomegr keeps agent execution state separate from cache timing. Agent labels such
 as **active**, **warm**, **idle**, and **finished** describe observed execution or
 liveness evidence; they do not describe prompt-cache availability.
-The [Limitations reference](internal/architecture/limitations.md#usage-cache-and-estimates)
+The [Limitations reference](limitations.md#usage-cache-and-estimates)
 lists source and interpretation gaps; this page owns the timing presentation rules.
 For the public explanation of reuse, refills, and lifetimes, see
-[Cache reuse](public/concepts/cache-reuse.md).
+[Cache reuse](../../public/concepts/cache-reuse.md).
 
 ## Times shown for an agent
 
@@ -50,7 +50,7 @@ when it has cache timing that needs attention.
 
 Mixed, minimum-only (`30m+`), missing, malformed, or otherwise unavailable lifetime
 evidence does not produce a warning. Codex's `cache TTL ≥30m` label is a documented
-model-policy minimum, not an expiry deadline; see [cache lifetime resolution](internal/architecture/metrics.md#cache-events).
+model-policy minimum, not an expiry deadline; see [cache lifetime resolution](metrics.md#cache-events).
 Historical sessions show recorded request and cache-touch
 times without a live warning state.
 

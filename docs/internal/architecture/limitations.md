@@ -6,7 +6,7 @@
 > [provider contract](../../../server/providers/provider-contract.mjs) and adapter
 > manifests own capability declarations; [Observation cache](observation-cache.md)
 > owns acquisition and serving; [Metrics](metrics.md) and
-> [Global session statuses](../../SESSION_STATUS.md) own exact rules.
+> [Global session statuses](session-status.md) own exact rules.
 > Related code and checks: [Claude adapter](../../../server/providers/claude/index.mjs),
 > [Codex adapter](../../../server/providers/codex/index.mjs),
 > `npm run check:provider-docs`.
@@ -52,12 +52,12 @@ omitted rather than shown as zero.
 
 | Provider | Limitation | Effect and evidence boundary |
 | --- | --- | --- |
-| Claude Code | A Remote Control `sdk-cli` session's local registry can omit its worker lifecycle; that state may also be absent from the transcript. | Pomegr uses the bounded native session metadata response only for a locally registered session with a validated owner and bridge identity. Missing access or an unrecognized response leaves new status **Unknown**; a temporary failure may retain a previously valid observation for that same owner without renewing its time. See the [Claude lifecycle contract](../../CLAUDE_SESSION_STATUS.md#source-and-evidence). |
-| Claude Code | Ordinary session metadata does not include the worker's background-task list. | A primary **idle** state cannot prove all background work ended. Pomegr recognizes only structured launches and closures in the primary transcript; unrecorded tasks and some child-only work can be missed. The worker metadata route is unavailable to ordinary OAuth, and Pomegr does not attach to the worker. See [background execution](../../CLAUDE_SESSION_STATUS.md#background-execution-is-independent-of-primary-idle) and [whole-session aggregation gaps](../../SESSION_STATUS.md#whole-session-aggregation-gaps). |
-| Both | A provider's recorded lifecycle can be incomplete or unavailable for an individual session. | **Open** confirms presence without establishing that work is executing; **Unknown** preserves uncertainty. A recorded turn end does not prove overall task success or inactivity of related agents. See [global status](../../SESSION_STATUS.md#global-status-table). |
+| Claude Code | A Remote Control `sdk-cli` session's local registry can omit its worker lifecycle; that state may also be absent from the transcript. | Pomegr uses the bounded native session metadata response only for a locally registered session with a validated owner and bridge identity. Missing access or an unrecognized response leaves new status **Unknown**; a temporary failure may retain a previously valid observation for that same owner without renewing its time. See the [Claude lifecycle contract](claude-session-status.md#source-and-evidence). |
+| Claude Code | Ordinary session metadata does not include the worker's background-task list. | A primary **idle** state cannot prove all background work ended. Pomegr recognizes only structured launches and closures in the primary transcript; unrecorded tasks and some child-only work can be missed. The worker metadata route is unavailable to ordinary OAuth, and Pomegr does not attach to the worker. See [background execution](claude-session-status.md#background-execution-is-independent-of-primary-idle) and [whole-session aggregation gaps](session-status.md#whole-session-aggregation-gaps). |
+| Both | A provider's recorded lifecycle can be incomplete or unavailable for an individual session. | **Open** confirms presence without establishing that work is executing; **Unknown** preserves uncertainty. A recorded turn end does not prove overall task success or inactivity of related agents. See [global status](session-status.md#global-status-table). |
 
 The detailed precedence rules and integration gaps remain in
-[Global session statuses](../../SESSION_STATUS.md).
+[Global session statuses](session-status.md).
 
 ### Usage, cache, and estimates
 
@@ -73,7 +73,7 @@ The detailed precedence rules and integration gaps remain in
   Missing or malformed cache evidence leaves lifetime and classification
   unavailable. Codex's `30m+` indication is a documented model-policy minimum,
   not a recorded expiry time; elapsed time never proves an entry was dropped.
-  See [Cache timing](../../CACHE_TIMING.md#lifetime-indication).
+  See [Cache timing](cache-timing.md#lifetime-indication).
 - **Cost and account usage:** Codex has no supported session-cost source. Claude
   Code cost is available only when its optional status-line bridge captures the
   provider's client-side estimate; it is not billing. Both providers' usage-limit
@@ -84,7 +84,7 @@ The detailed precedence rules and integration gaps remain in
 
 Provider service status is public component-level reporting. It cannot establish
 whether an incident affected one account, model, or session. See
-[Provider service status](../../PROVIDER_STATUS.md).
+[Provider service status](provider-status.md).
 
 ## Pomegr-specific limitations
 
@@ -129,19 +129,19 @@ unrelated work. See [File-change history](metrics.md#file-change-history).
   child input waits or work recorded only in child transcripts. **Idle** or
   **Unknown** can therefore miss active children; **Needs input** may reflect the
   primary even while another agent works. See
-  [whole-session aggregation gaps](../../SESSION_STATUS.md#whole-session-aggregation-gaps).
+  [whole-session aggregation gaps](session-status.md#whole-session-aggregation-gaps).
 - **Claude Code stopped label:** The current global mapping never emits
   **Stopped** for Claude sessions, although individual agents and tasks can stop.
-  See [global status](../../SESSION_STATUS.md#global-status-table).
+  See [global status](session-status.md#global-status-table).
 - **Codex approvals and related work:** The default monitor has no owning-runtime
   approval feed. Mobile permission waits can be missed; no specific mobile event
   has been inspected to prove it is absent from a transcript. Recognized linked
   live children are aggregated, but missing or unlinked children and shell tasks
   are not independently established as active by the global reducer. See
-  [completion and permission evidence](../../SESSION_STATUS.md#completion-and-permission-evidence).
+  [completion and permission evidence](session-status.md#completion-and-permission-evidence).
 - **Codex presence outside Windows:** Pomegr validates native writer ownership on
   Windows. It does not infer presence from locks on platforms without separately
-  validated native semantics. See [live status](../../SESSION_STATUS.md#what-establishes-live-status).
+  validated native semantics. See [live status](session-status.md#what-establishes-live-status).
 
 ### Other product and interpretation limits
 
@@ -161,7 +161,7 @@ unrelated work. See [File-change history](metrics.md#file-change-history).
   on bounded observations. They do not establish why a cache entry became
   unavailable, when it expired, or what money was saved. See
   [cache events](metrics.md#cache-events) and
-  [Cache timing](../../CACHE_TIMING.md#lifetime-indication).
+  [Cache timing](cache-timing.md#lifetime-indication).
 
 ### Keeping this inventory current
 

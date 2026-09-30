@@ -97,6 +97,12 @@ minute of a five-minute lifetime or the last five minutes of a one-hour lifetime
 then turns faint once it has elapsed. It follows the primary agent only, and older
 sessions keep their recorded evidence. Hover or focus it for the times and state.
 
+In the **Agents** tab, **Last request** is the time of an agent's newest request
+that carries valid usage data; a provider summary or lifecycle update does not
+change it. In the agent tree, that time gets the same dotted disclosure while the
+agent's last cache touch is nearing or past a `5m` or `1h` lifetime. Finished and
+stopped agents and historical sessions show the recorded time only.
+
 ## Limits
 
 - **A pattern, not a cause.** A drop shows that recorded counts changed. It does

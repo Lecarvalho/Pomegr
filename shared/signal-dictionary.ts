@@ -1,6 +1,6 @@
 import type { CacheLifetimeInference, CacheMessageChangeSequence, CacheRefillOccurrence, CacheRefillProviderStatus, CacheRefillReason } from "./monitor-contract";
 
-export const SIGNAL_DICTIONARY_DOCUMENT_URL = "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md";
+export const SIGNAL_DICTIONARY_DOCUMENT_URL = "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md";
 
 export type CacheSignalDefinition = {
   code: string;

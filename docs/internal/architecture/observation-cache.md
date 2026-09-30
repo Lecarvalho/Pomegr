@@ -688,7 +688,7 @@ provider-native IDs outside public incident URLs, arbitrary URLs, fetch errors, 
 or transcript metadata cross this boundary. Public status reports can lag actual failures;
 the normal UI label is **Reported healthy**, never a guarantee of availability.
 
-The official source and component-filter details are documented in `docs/PROVIDER_STATUS.md`.
+The official source and component-filter details are documented in [provider status](provider-status.md).
 
 ## MCP agent-query projections
 
@@ -744,7 +744,7 @@ rendering every historical report on the live publication path.
 
 Clients use these queries only when an observation can change the next decision. They do
 not poll or call every query at session start. The tool-specific triggers and caveats are
-documented in [MCP observation queries](../../MCP_QUERIES.md).
+documented in [MCP observation queries](mcp-queries.md).
 
 The Codex stdio MCP process resolves a default qualified session reference only from
 one valid host-supplied thread identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID`).
@@ -848,8 +848,8 @@ across a model change** and makes no refill, expiry, or causation inference; mod
 identifiers remain monitor-private.
 This feed is separate from write-backed cache events and report counts. F reuses
 the existing agent indicator and popover, labels the same-model conclusion as an inference,
-and links the [same-model signal definition](../../SIGNAL_DICTIONARY.md#cache-read-reuse-dropped)
-or [model-change signal definition](../../SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change).
+and links the [same-model signal definition](signal-dictionary.md#cache-read-reuse-dropped)
+or [model-change signal definition](signal-dictionary.md#cache-read-reuse-dropped-model-change).
 It never reconstructs comparisons from request
 rows or provider schemas. S continues to serve committed responses only: no new
 endpoint, source read, subscription, polling lane, or provider request is added.
@@ -2230,7 +2230,7 @@ projection publishes it through the existing committed revision and notification
 path; GETs remain cache-only, last-known-good evidence and checkpoints are retained,
 and no new public or persisted fields are introduced.
 
-The request and schema compatibility contract is in [Claude session status](../../CLAUDE_SESSION_STATUS.md).
+The request and schema compatibility contract is in [Claude session status](claude-session-status.md).
 
 ## Readiness contract
 

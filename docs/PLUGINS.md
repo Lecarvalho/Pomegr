@@ -215,7 +215,7 @@ host identity is unavailable, queries return unavailable without launching it or
 the existing reporting tools.
 
 When to use each query is in the [MCP queries guide](public/using-pomegr/mcp-queries.md). The complete contracts, evidence qualifications, and local transport boundary are
-documented in [MCP observation queries](MCP_QUERIES.md).
+documented in [MCP observation queries](internal/architecture/mcp-queries.md).
 
 ### Claude Code native naming
 
