@@ -13,17 +13,17 @@ import {
   isAllowedExternalUrl,
   isDesktopHiddenPath,
   secureBrowserWindowOptions,
-} from "../desktop/security-policy.mjs";
-import { installLocalRequestGate, installStaticAssetFallback } from "../web/server.mjs";
-import { focusShellWindow, startShellRuntime } from "../desktop/shell-orchestrator.mjs";
-import { DESKTOP_STARTUP_ERROR_CODE, startupErrorDocument } from "../desktop/startup-error.mjs";
+} from "../desktop/runtime/security-policy.mjs";
+import { installLocalRequestGate, installStaticAssetFallback } from "../server/web/server.mjs";
+import { focusShellWindow, startShellRuntime } from "../desktop/runtime/shell-orchestrator.mjs";
+import { DESKTOP_STARTUP_ERROR_CODE, startupErrorDocument } from "../desktop/runtime/startup-error.mjs";
 import {
   SHELL_LIFECYCLE_STAGES,
   SHELL_STARTUP_STAGES,
   isAllowedShellStage,
   recordShellStage,
-} from "../desktop/shell-stage.mjs";
-import { installQuietConsole } from "../desktop/quiet-console.mjs";
+} from "../desktop/runtime/shell-stage.mjs";
+import { installQuietConsole } from "../desktop/runtime/quiet-console.mjs";
 
 import { createProductionBuildFixture } from "./helpers/production-build.mjs";
 
@@ -62,11 +62,11 @@ function request(port, { method = "GET", host = `127.0.0.1:${port}`, origin, pat
 test("secure BrowserWindow preferences deny renderer privileges", () => {
   const browserSession = {};
   const options = secureBrowserWindowOptions({
-    preloadPath: path.resolve("desktop/preload.cjs"),
+    preloadPath: path.resolve("desktop/runtime/preload.cjs"),
     browserSession,
   });
   assert.deepEqual(options.webPreferences, {
-    preload: path.resolve("desktop/preload.cjs"),
+    preload: path.resolve("desktop/runtime/preload.cjs"),
     session: browserSession,
     sandbox: true,
     contextIsolation: true,

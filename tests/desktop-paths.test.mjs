@@ -8,10 +8,10 @@ import {
   MONITOR_PRIVATE_ENVIRONMENT_NAMES,
   monitorPrivateEnvironment,
   nativeCodexEnvironment,
-} from "../desktop/environment-policy.mjs";
-import { desktopUserDataOverride, resolveDesktopPaths } from "../desktop/paths.mjs";
-import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/report-save.mjs";
-import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings, settingsForWindowClose } from "../desktop/settings.mjs";
+} from "../desktop/runtime/environment-policy.mjs";
+import { desktopUserDataOverride, resolveDesktopPaths } from "../desktop/runtime/paths.mjs";
+import { createReportSaveHandler, normalizeReportSaveRequest } from "../desktop/runtime/report-save.mjs";
+import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings, settingsForWindowClose } from "../desktop/runtime/settings.mjs";
 import { createClaudeProvider } from "../server/providers/claude/index.mjs";
 import { createCodexProvider, resolveCodexHome } from "../server/providers/codex/index.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
@@ -247,6 +247,6 @@ test("desktop report save is explicit, bounded, and rejects untrusted IPC", asyn
 });
 
 test("packaged monitor restores private environment before creating its provider registry", async () => {
-  const source = await readFile(new URL("../desktop/monitor-host.mjs", import.meta.url), "utf8");
+  const source = await readFile(new URL("../desktop/runtime/monitor-host.mjs", import.meta.url), "utf8");
   assert.ok(source.indexOf("installMonitorPrivateEnvironment()") < source.indexOf("createDefaultProviderRegistry()"));
 });

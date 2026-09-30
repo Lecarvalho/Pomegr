@@ -16,34 +16,33 @@ import {
   executableOnPath,
   minimalRuntimeEnvironment,
   monitorPrivateEnvironment,
-} from "./environment-policy.mjs";
+} from "../runtime/environment-policy.mjs";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const runtimeDirectories = ["dist", "server", "shared", "web"];
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const runtimeDirectories = ["dist", "server", "shared"];
 const desktopFiles = [
-  "asar-policy.mjs",
-  "artifact-privacy.mjs",
-  "bounded-lifecycle.mjs",
-  "claude-auth.mjs",
-  "claude-usage-setup.mjs",
-  "desktop-behavior.mjs",
-  "environment-policy.mjs",
-  "main.mjs",
-  "monitor-host.mjs",
-  "native-security.mjs",
-  "paths.mjs",
-  "preload.cjs",
-  "report-save.mjs",
-  "runtime-proof.mjs",
-  "security-policy.mjs",
-  "settings.mjs",
-  "provider-settings.mjs",
-  "shell-orchestrator.mjs",
-  "shell-main.mjs",
-  "smoke-main.mjs",
-  "startup-error.mjs",
-  "updater.mjs",
-  "utility-lifecycle.mjs",
+  "runtime/artifact-privacy.mjs",
+  "runtime/bounded-lifecycle.mjs",
+  "runtime/claude-auth.mjs",
+  "runtime/claude-usage-setup.mjs",
+  "runtime/desktop-behavior.mjs",
+  "runtime/environment-policy.mjs",
+  "runtime/main.mjs",
+  "runtime/monitor-host.mjs",
+  "runtime/native-security.mjs",
+  "runtime/paths.mjs",
+  "runtime/preload.cjs",
+  "runtime/report-save.mjs",
+  "runtime/runtime-proof.mjs",
+  "runtime/security-policy.mjs",
+  "runtime/settings.mjs",
+  "runtime/provider-settings.mjs",
+  "runtime/shell-orchestrator.mjs",
+  "runtime/shell-main.mjs",
+  "runtime/smoke-main.mjs",
+  "runtime/startup-error.mjs",
+  "runtime/updater.mjs",
+  "runtime/utility-lifecycle.mjs",
 ];
 const runtimePackages = [
   "@img/colour",
@@ -93,7 +92,7 @@ async function copyRuntime(stagingRoot) {
   for (const directory of runtimeDirectories) {
     await cp(path.join(repositoryRoot, directory), path.join(stagingRoot, directory), { recursive: true });
   }
-  await mkdir(path.join(stagingRoot, "desktop"), { recursive: true });
+  await mkdir(path.join(stagingRoot, "desktop", "runtime"), { recursive: true });
   for (const filename of desktopFiles) {
     await cp(path.join(repositoryRoot, "desktop", filename), path.join(stagingRoot, "desktop", filename));
   }
@@ -109,7 +108,7 @@ async function copyRuntime(stagingRoot) {
     version: "0.0.0",
     private: true,
     type: "module",
-    main: "desktop/main.mjs",
+    main: "desktop/runtime/main.mjs",
   }), "utf8");
   await buildDesktopServiceBundles(repositoryRoot, stagingRoot);
 }

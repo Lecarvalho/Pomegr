@@ -26,7 +26,7 @@ import {
   createAgentQueryCapability,
   fetchAgentQuery,
   resolveAgentQueryDescriptorPath,
-} from "../shared/agent-query-transport.mjs";
+} from "../../shared/agent-query-transport.mjs";
 
 app.disableHardwareAcceleration();
 for (const commandLineSwitch of [
@@ -247,7 +247,7 @@ async function executeSmoke() {
     assertNoSystemNodeInPath(process.env);
     recordStage("WEB_ENVIRONMENT_STRIPPED");
     recordStage("WEB_IMPORTING");
-    const { startWebServer } = await import("../web/server.mjs");
+    const { startWebServer } = await import("../../server/web/server.mjs");
     recordStage("WEB_IMPORTED");
     recordStage("WEB_SERVER_STARTING");
     webHandle = await startWebServer({
@@ -286,7 +286,7 @@ async function executeSmoke() {
       authorizationToken,
     });
     smokeWindow = new BrowserWindow(secureBrowserWindowOptions({
-      preloadPath: path.join(runtimePaths.applicationRoot, "desktop", "preload.cjs"),
+      preloadPath: path.join(runtimePaths.applicationRoot, "desktop", "runtime", "preload.cjs"),
       browserSession,
     }));
     installWebContentsSecurity(smokeWindow.webContents, {

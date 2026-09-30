@@ -4,10 +4,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createProviderSettingsController, installProviderSettingsIpc, normalizeProviderFolders, providerSettingsEnvironment, PROVIDER_SETTINGS_CHANNELS, resolveProviderFolders, restartProviderSettingsApp } from "../desktop/provider-settings.mjs";
-import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/settings.mjs";
-import { createDesktopBehaviorController } from "../desktop/desktop-behavior.mjs";
-import { minimalRuntimeEnvironment, monitorPrivateEnvironment, nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/environment-policy.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, normalizeProviderFolders, providerSettingsEnvironment, PROVIDER_SETTINGS_CHANNELS, resolveProviderFolders, restartProviderSettingsApp } from "../desktop/runtime/provider-settings.mjs";
+import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
+import { createDesktopBehaviorController } from "../desktop/runtime/desktop-behavior.mjs";
+import { minimalRuntimeEnvironment, monitorPrivateEnvironment, nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/runtime/environment-policy.mjs";
 
 const homeDir = path.resolve("synthetic-provider-home");
 const profile = path.join(homeDir, "private-profile");

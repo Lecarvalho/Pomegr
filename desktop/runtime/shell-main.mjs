@@ -4,12 +4,12 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
-import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
+import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import {
   createAgentQueryCapability,
   resolveAgentQueryDescriptorPath,
-} from "../shared/agent-query-transport.mjs";
-import { encodeSessionRoute } from "../shared/session-route.mjs";
+} from "../../shared/agent-query-transport.mjs";
+import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import {
   assertNoSystemNodeInPath,
   environmentValue,
@@ -145,7 +145,7 @@ function createSecureWindow(browserSession, windowState) {
   const window = new BrowserWindow({
     icon: shellIconPath(),
     ...secureBrowserWindowOptions({
-      preloadPath: path.join(desktopPaths.applicationRoot, "desktop", "preload.cjs"),
+      preloadPath: path.join(desktopPaths.applicationRoot, "desktop", "runtime", "preload.cjs"),
       browserSession,
       windowState,
     }),
@@ -583,7 +583,7 @@ async function startDesktop() {
         assertNoSystemNodeInPath(process.env);
         recordStage("SHELL_WEB_IMPORTING");
         const { startWebServer } = await withDeadline(
-          import("../web/server.mjs"),
+          import("../../server/web/server.mjs"),
           START_TIMEOUT_MS,
           "DESKTOP_WEB_IMPORT_TIMEOUT",
         );

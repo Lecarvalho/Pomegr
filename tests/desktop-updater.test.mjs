@@ -11,7 +11,7 @@ import {
   desktopReleaseChannel,
   isFullPublisherSubject,
   isUpdateVersionAllowed,
-} from "../desktop/updater.mjs";
+} from "../desktop/runtime/updater.mjs";
 
 class FakeUpdater extends EventEmitter {
   async checkForUpdates() { this.calls.push("check"); return null; }

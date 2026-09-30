@@ -47,8 +47,8 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          node desktop/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
-          node desktop/release-policy.mjs verify-commit --sha $env:RELEASE_SHA
+          node desktop/packaging/release-policy.mjs verify-tag --tag $env:RELEASE_TAG
+          node desktop/packaging/release-policy.mjs verify-commit --sha $env:RELEASE_SHA
           if (git status --porcelain=v1 --untracked-files=all) { throw 'DESKTOP_RELEASE_CHECKOUT_DIRTY' }
           node scripts/check-release-source.mjs --tag $env:RELEASE_TAG
 
@@ -109,8 +109,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           npm run desktop:prepare:from-build
-          npx electron-builder --config desktop/electron-builder.release.cjs --win nsis portable --x64 --publish never
-          node desktop/finalize-package.mjs
+          npx electron-builder --config desktop/packaging/electron-builder.release.cjs --win nsis portable --x64 --publish never
+          node desktop/packaging/finalize-package.mjs
 
       - name: Inspect packaged privacy and legal boundaries
         run: npm run desktop:inspect
@@ -121,7 +121,7 @@ jobs:
           WINDOWS_PUBLISHER_SUBJECT: ${{ vars.WINDOWS_PUBLISHER_SUBJECT }}
         run: |
           $ErrorActionPreference = 'Stop'
-          ./desktop/verify-signature.ps1 -Path @(
+          ./desktop/packaging/verify-signature.ps1 -Path @(
             "release/win-unpacked/Pomegr.exe",
             "release/Pomegr-Setup-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe",
             "release/Pomegr-Portable-$((Get-Content package.json | ConvertFrom-Json).version)-x64.exe"
@@ -142,7 +142,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           git restore --worktree -- .
-          node desktop/prepare-release.mjs --tag $env:RELEASE_TAG
+          node desktop/packaging/prepare-release.mjs --tag $env:RELEASE_TAG
 
       - name: Create draft release
         id: create
@@ -163,6 +163,6 @@ jobs:
           $ErrorActionPreference = 'Stop'
           gh release view $env:RELEASE_TAG --json assets | Out-File -LiteralPath release/remote-assets.json -Encoding utf8NoBOM
           $Version = (Get-Content package.json | ConvertFrom-Json).version
-          node desktop/release-policy.mjs verify-assets --version $Version --assets-file release/remote-assets.json
+          node desktop/packaging/release-policy.mjs verify-assets --version $Version --assets-file release/remote-assets.json
           $Prerelease = if ($Version -match '-beta\.') { '--prerelease' } else { '--prerelease=false' }
           gh release edit $env:RELEASE_TAG --draft=false $Prerelease

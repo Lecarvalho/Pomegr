@@ -5,8 +5,8 @@ import net from "node:net";
 import test from "node:test";
 import { gzipSync } from "node:zlib";
 
-import { startLanGateway } from "../desktop/lan-gateway.mjs";
-import { createLanSharingController } from "../desktop/lan-sharing.mjs";
+import { startLanGateway } from "../desktop/runtime/lan-gateway.mjs";
+import { createLanSharingController } from "../desktop/runtime/lan-sharing.mjs";
 
 const AUTHORIZATION = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 const loopbackTestNetwork = Object.freeze({

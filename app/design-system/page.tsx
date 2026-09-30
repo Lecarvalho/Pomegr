@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 // Web-only reference. It is deliberately absent from navigation, the LAN gateway
-// allowlist, and the desktop shell (see desktop/security-policy.mjs hidden paths).
+// allowlist, and the desktop shell (see desktop/runtime/security-policy.mjs hidden paths).
 export default function DesignSystemPage() { return <DesignSystemView />; }

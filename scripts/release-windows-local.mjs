@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { assertReleaseTag } from "../desktop/release-policy.mjs";
+import { assertReleaseTag } from "../desktop/packaging/release-policy.mjs";
 
 const REPOSITORY = "Lecarvalho/Pomegr";
 const REPOSITORY_URL = "https://github.com/Lecarvalho/Pomegr";

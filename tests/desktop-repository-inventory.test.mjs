@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import test from "node:test";
 
-import { createRepositoryInventoryCaptureHandler } from "../desktop/repository-inventory-action.mjs";
+import { createRepositoryInventoryCaptureHandler } from "../desktop/runtime/repository-inventory-action.mjs";
 import { createCommittedResponseCache } from "../server/persistence/committed-response-cache.mjs";
 import { createRequestHandler } from "../server/serving/request-handler.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "../desktop/lan-sharing.mjs";
-import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings } from "../desktop/settings.mjs";
+import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "../desktop/runtime/lan-sharing.mjs";
+import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
 
 const home = { id: "lan-home", address: "192.168.1.20", subnetMask: "255.255.255.0", label: "Wi-Fi" };
 const other = { id: "lan-other", address: "192.168.2.20", subnetMask: "255.255.255.0", label: "Ethernet" };

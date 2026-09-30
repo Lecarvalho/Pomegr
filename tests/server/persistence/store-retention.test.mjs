@@ -15,7 +15,7 @@ import {
 } from "../../../server/persistence/store-retention.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { createCommittedResponseCache } from "../../../server/persistence/committed-response-cache.mjs";
-import { startLanGateway } from "../../../desktop/lan-gateway.mjs";
+import { startLanGateway } from "../../../desktop/runtime/lan-gateway.mjs";
 
 const MS_PER_DAY = 86_400_000;
 const RESOURCE_FIELDS = ["cpu_cores", "cpu_machine_percent", "memory_bytes", "read_bps", "write_bps"];

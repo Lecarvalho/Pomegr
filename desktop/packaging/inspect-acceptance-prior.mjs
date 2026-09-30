@@ -21,7 +21,7 @@ import {
 import { SHARP_UNPACKED_FILES, WORKER_BUNDLE_FILES } from "./asar-policy.mjs";
 import { POMEGR_DT_08_PACKAGING_SCOPE } from "./pomegr-dt-08-scope.mjs";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const outputRoot = path.join(repositoryRoot, ACCEPTANCE_PRIOR_OUTPUT);
 const unpackedRoot = path.join(outputRoot, "win-unpacked");
 const resourcesRoot = path.join(unpackedRoot, "resources");

@@ -9,7 +9,7 @@ import {
 } from "./acceptance-prior.mjs";
 import { POMEGR_DT_08_PACKAGING_SCOPE, assertPomegrDt08PackagingScope } from "./pomegr-dt-08-scope.mjs";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
 assertPomegrDt08PackagingScope(packageJson);
 if (packageJson.version !== "0.2.4" || ACCEPTANCE_PRIOR_VERSION !== "0.0.9") {

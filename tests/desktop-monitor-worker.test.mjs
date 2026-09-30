@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createMonitorWorker } from "../desktop/monitor-worker.mjs";
-import { startShellRuntime } from "../desktop/shell-orchestrator.mjs";
-import { waitForMessage } from "../desktop/utility-lifecycle.mjs";
+import { createMonitorWorker } from "../desktop/runtime/monitor-worker.mjs";
+import { startShellRuntime } from "../desktop/runtime/shell-orchestrator.mjs";
+import { waitForMessage } from "../desktop/runtime/utility-lifecycle.mjs";
 import {
   publishAgentQueryDescriptor,
   readAgentQueryDescriptor,

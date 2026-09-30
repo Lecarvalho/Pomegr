@@ -102,14 +102,14 @@ async function runCli() {
     return index === -1 ? null : args[index + 1];
   };
   if (command === "verify-tag") {
-    const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+    const packageJson = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
     const release = assertReleaseTag({ tag: option("--tag"), version: packageJson.version });
     process.stdout.write(`${release.channel}\n`);
     return;
   }
   if (command === "verify-commit") {
     const commit = execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: new URL("../", import.meta.url), encoding: "utf8", windowsHide: true,
+      cwd: new URL("../../", import.meta.url), encoding: "utf8", windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
     assertExpectedReleaseCommit({ releaseSha: option("--sha"), commit });

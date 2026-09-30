@@ -7,7 +7,7 @@ import { providerFoldersLocalGatePlugin } from "./scripts/provider-folders-local
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
-  main: "./worker/index.ts",
+  main: "./server/web/entry.ts",
   compatibility_flags: ["nodejs_compat"],
 };
 

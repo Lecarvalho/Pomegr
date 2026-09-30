@@ -10,19 +10,19 @@ import {
   assertDirectoryHasNoPrivacySentinel,
   assertReleasePublishPrivacy,
   inspectAsarPrivacyEntry,
-} from "../desktop/artifact-privacy.mjs";
-import { createNeedsInputNotificationController, createSessionNotificationPoller } from "../desktop/notifications.mjs";
-import { installWebContentsSecurity, secureBrowserWindowOptions } from "../desktop/security-policy.mjs";
-import { DESKTOP_BEHAVIOR_CHANNELS } from "../desktop/desktop-behavior.mjs";
+} from "../desktop/runtime/artifact-privacy.mjs";
+import { createNeedsInputNotificationController, createSessionNotificationPoller } from "../desktop/runtime/notifications.mjs";
+import { installWebContentsSecurity, secureBrowserWindowOptions } from "../desktop/runtime/security-policy.mjs";
+import { DESKTOP_BEHAVIOR_CHANNELS } from "../desktop/runtime/desktop-behavior.mjs";
 import {
   installDesktopBehaviorIpcHandlers,
   installRendererFailureHandler,
   startOptionalDesktopIntegration,
-} from "../desktop/native-security.mjs";
+} from "../desktop/runtime/native-security.mjs";
 import { createDefaultProviderRegistry } from "../server/providers/index.mjs";
 import { PROVIDER_OBSERVATION_API_KEYS } from "../server/providers/provider-contract.mjs";
 import { DESKTOP_AUTH_HEADER } from "../shared/local-auth.mjs";
-import { installLocalRequestGate, startWebServer } from "../web/server.mjs";
+import { installLocalRequestGate, startWebServer } from "../server/web/server.mjs";
 import { PRIVATE_FIXTURE_SENTINELS } from "./helpers/provider-fixtures.mjs";
 
 import { createProductionBuildFixture } from "./helpers/production-build.mjs";
@@ -103,7 +103,7 @@ test("production web authorization is wired to launch-lifetime revocation", asyn
 });
 
 test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API surfaces stay bounded", async () => {
-  const preloadPath = new URL("../desktop/preload.cjs", import.meta.url);
+  const preloadPath = new URL("../desktop/runtime/preload.cjs", import.meta.url);
   const options = secureBrowserWindowOptions({ preloadPath: preloadPath.pathname.slice(1).replaceAll("/", "\\") });
   assert.equal(options.webPreferences.sandbox, true);
   assert.equal(options.webPreferences.contextIsolation, true);
@@ -113,16 +113,16 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
   assert.equal(options.webPreferences.webviewTag, false);
 
   const files = [
-    "../desktop/preload.cjs",
-    "../desktop/shell-main.mjs",
-    "../desktop/notifications.mjs",
-    "../desktop/quiet-console.mjs",
-    "../desktop/shell-stage.mjs",
-    "../desktop/startup-error.mjs",
-    "../desktop/updater.mjs",
-    "../desktop/smoke-main.mjs",
-    "../desktop/inspect-artifacts.mjs",
-    "../desktop/artifact-privacy.mjs",
+    "../desktop/runtime/preload.cjs",
+    "../desktop/runtime/shell-main.mjs",
+    "../desktop/runtime/notifications.mjs",
+    "../desktop/runtime/quiet-console.mjs",
+    "../desktop/runtime/shell-stage.mjs",
+    "../desktop/runtime/startup-error.mjs",
+    "../desktop/runtime/updater.mjs",
+    "../desktop/runtime/smoke-main.mjs",
+    "../desktop/packaging/inspect-artifacts.mjs",
+    "../desktop/runtime/artifact-privacy.mjs",
   ];
   const source = (await Promise.all(files.map((file) => readFile(new URL(file, import.meta.url), "utf8")))).join("\n");
   for (const sentinel of PRIVATE_FIXTURE_SENTINELS) assert.equal(source.includes(`\"${sentinel}\"`), false);
@@ -297,10 +297,10 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
 test("desktop bridge and runtime reject the removed legacy namespace", async () => {
   const legacy = ["thread", "light"].join("");
   const [preload, behavior, environment, shell] = await Promise.all([
-    readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/desktop-behavior.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/environment-policy.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../desktop/shell-main.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/runtime/preload.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/runtime/desktop-behavior.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/runtime/environment-policy.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/runtime/shell-main.mjs", import.meta.url), "utf8"),
   ]);
   const sources = `${preload}\n${behavior}\n${environment}\n${shell}`.toLowerCase();
   assert.equal(sources.includes(legacy), false);

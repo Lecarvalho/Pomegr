@@ -13,7 +13,7 @@ import {
   installDesktopAppLifecycle,
   installDesktopWindowLifecycle,
   installWindowBoundsGuard,
-} from "../desktop/desktop-behavior.mjs";
+} from "../desktop/runtime/desktop-behavior.mjs";
 
 test("native theme synchronization accepts only bounded values from trusted renderer events", () => {
   const nativeTheme = { themeSource: "system" };

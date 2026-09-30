@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { expectedArtifactNames, expectedUpdateArtifactNames } from "./artifact-policy.mjs";
 import { assertPomegrDt08PackagingScope } from "./pomegr-dt-08-scope.mjs";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
 assertPomegrDt08PackagingScope(packageJson);
 const releaseRoot = path.resolve(repositoryRoot, packageJson.build.directories.output);

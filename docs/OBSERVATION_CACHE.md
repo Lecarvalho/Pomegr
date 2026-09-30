@@ -883,7 +883,7 @@ state only, not normalized session APIs, cache ownership, revisions, or checkpoi
 
 ### Desktop provider-folder settings
 
-`desktop/provider-settings.mjs` owns the native **Settings → Providers** action.
+`desktop/runtime/provider-settings.mjs` owns the native **Settings → Providers** action.
 Version 5 desktop settings may persist only three additional bounded absolute
 directory overrides: `claudeConfigDir`, `claudeProjectsDir`, and `codexHome`.
 Versions 1–4 migrate in memory with null overrides; invalid/future settings remain
@@ -951,7 +951,7 @@ exposes only the three configured provider roots described above.
 
 ### Desktop storage settings
 
-`desktop/storage-settings.mjs` owns the native **Settings → Storage** action.
+`desktop/runtime/storage-settings.mjs` owns the native **Settings → Storage** action.
 Version 6 desktop settings may persist only two bounded enum overrides:
 `retentionDays` (30, 90, 180, 365, or keep all) and `storeMaxMb` (250, 500, 1024,
 or 2048), each null or a fixed choice. Versions 1–5 migrate with null storage.

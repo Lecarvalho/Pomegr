@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { DESKTOP_AUTH_HEADER, requireDesktopToken } from "../shared/local-auth.mjs";
+import { DESKTOP_AUTH_HEADER, requireDesktopToken } from "../../shared/local-auth.mjs";
 
 export const DESKTOP_CSP = [
   "default-src 'self'",

@@ -26,9 +26,9 @@ import {
   MAX_PRIVACY_SCAN_FILES,
   MAX_PRIVACY_SCAN_TOTAL_BYTES,
   resolveArtifactExtractor,
-} from "./artifact-privacy.mjs";
+} from "../runtime/artifact-privacy.mjs";
 
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
 const releaseRoot = path.join(repositoryRoot, packageJson.build.directories.output);
 const unpackedRoot = path.join(releaseRoot, "win-unpacked");

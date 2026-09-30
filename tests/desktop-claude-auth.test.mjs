@@ -9,8 +9,8 @@ import {
   installConfirmedTrustedActionIpcHandler,
   isSafeClaudeExecutable,
   resolveClaudeExecutable,
-} from "../desktop/claude-auth.mjs";
-import { nativeClaudeEnvironment } from "../desktop/environment-policy.mjs";
+} from "../desktop/runtime/claude-auth.mjs";
+import { nativeClaudeEnvironment } from "../desktop/runtime/environment-policy.mjs";
 
 function nativeClaude(file = "C:\\Users\\Ada\\.local\\bin\\claude.exe") {
   return new Set([path.normalize(file)]);

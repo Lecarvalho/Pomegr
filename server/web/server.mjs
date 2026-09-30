@@ -1,7 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { requestHasDesktopAuthorization, requireDesktopToken } from "../shared/local-auth.mjs";
+import { requestHasDesktopAuthorization, requireDesktopToken } from "../../shared/local-auth.mjs";
 import {
   closeServer,
   createLocalServiceHandle,
@@ -9,9 +9,9 @@ import {
   requireLoopbackHost,
   requirePort,
   safeServiceError,
-} from "../shared/local-service.mjs";
+} from "../../shared/local-service.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_OUT_DIR = path.join(ROOT, "dist");
 
 function recordStartupStage(options, stage) {

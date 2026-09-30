@@ -6,7 +6,7 @@ import {
   createNeedsInputNotificationController,
   isSafeNotificationSessionId,
   NEEDS_INPUT_NOTIFICATION_COPY,
-} from "../desktop/notifications.mjs";
+} from "../desktop/runtime/notifications.mjs";
 
 function session(id, options = {}) {
   return {

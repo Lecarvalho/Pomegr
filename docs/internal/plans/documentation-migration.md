@@ -267,10 +267,10 @@ Internal prose can explain implementation; it must not become a competing galler
 - [ ] **TMP-10** `docs/design/pomegr-ui-preview.html`: replace DESIGN.md's explicit HTML-authority reference with the existing design-system page and its implementation, promote gaps, repair tool references, then delete.
 - [ ] **TMP-11** `docs/design/agents-preview.html` and `agents-preview-notes.md`: promote missing accepted examples, account for open work, update the matching Impeccable surface brief through supported tooling, then delete.
 - [ ] **TMP-12** `docs/design/context-inventory-options.html`: promote accepted reusable patterns or record an outstanding decision in an active plan, then delete the HTML.
-- [ ] **TMP-13** Both HTML files in `docs/mockups/`: apply promotion gate, repair references, then delete.
-- [ ] **TMP-14** `mockups/pomegr/{aril,index,kernel,orchard}.html`: apply promotion gate, repair references, then delete all four.
+- [ ] **TMP-13** Both top-level HTML files in `docs/mockups/`: apply promotion gate, repair references, then delete.
+- [ ] **TMP-14** `docs/mockups/pomegr/{aril,index,kernel,orchard}.html` (moved from the retired root `mockups/`): apply promotion gate, repair references, then delete all four.
 - [ ] **TMP-15** Review completed reports under `.impeccable/critique/`; transfer open findings to active work and delete closed reports. Keep required current tool configuration/briefs, correcting any stale authority links.
-- [ ] **TMP-16** Retire empty legacy `docs/plans/`, `docs/design/`, `docs/mockups/`, and `mockups/` roots. Account for any new artifacts created during migration before declaring completion.
+- [ ] **TMP-16** Retire empty legacy `docs/plans/`, `docs/design/`, and `docs/mockups/` roots (the root `mockups/` was folded into `docs/mockups/`). Account for any new artifacts created during migration before declaring completion.
 
 Future temporary explorations may accompany an active plan only while they help
 resolve that work. They follow the same promotion-and-deletion gate; there is no

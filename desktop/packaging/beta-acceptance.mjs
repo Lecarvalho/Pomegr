@@ -274,9 +274,9 @@ async function runCli() {
     const index = args.indexOf(name);
     return index === -1 ? null : args[index + 1];
   };
-  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const packageJson = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
   const version = option("--version") || packageJson.version;
-  const defaultFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "release-acceptance", `desktop-beta-${version}.json`);
+  const defaultFile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "release-acceptance", `desktop-beta-${version}.json`);
   const filename = path.resolve(option("--file") || defaultFile);
   if (command === "init") {
     await mkdir(path.dirname(filename), { recursive: true });
