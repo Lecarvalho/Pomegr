@@ -34,7 +34,8 @@ new work. If you use a different local profile, see
 The **Live** filter depends on the evidence Pomegr can observe. An open coding
 tool is not a guarantee that its session appears there, and a session missing
 from **Live** is not proof that its work completed. Check **All** before treating
-a session as missing.
+a session as missing. [Sessions and agents](../using-pomegr/sessions-and-agents.md)
+explains each state label.
 
 ## Read the first results
 
@@ -80,6 +81,8 @@ local session history from appearing.
 This changes what Pomegr observes; it does not switch the account of an
 already-running coding tool. A browser on the same computer, or paired over your
 network, shows these folders read-only. Changing them requires the desktop app.
+See [Settings](../using-pomegr/settings.md#choose-provider-folders) for what each
+label means.
 
 Keep prompts, replies, and approvals in your coding tool. Pomegr observes the
 session; it does not start work or answer an agent for you.

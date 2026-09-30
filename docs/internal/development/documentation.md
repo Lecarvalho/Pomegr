@@ -127,6 +127,50 @@ shows the Overview tab's Progress and Cost panels. Only displayed dashboard cont
 was captured; the reported signal's short label and description were reviewed and show
 no paths, prompts, or credentials. Recapture both when the tab layout changes.
 
+### Sessions and agents screenshot ownership
+
+The [sessions and agents](../../public/using-pomegr/sessions-and-agents.md) page owns
+the two JPEGs in `docs/public/images/sessions-and-agents/`. Both were captured on
+2026-09-30 from the Pomegr 0.5.3 interface in dark theme at a 1200 px viewport and 2x
+scale. `sessions-list.jpg` shows `/sessions?project=Pomegr` with **All** selected, so
+only Pomegr sessions appear (the unfiltered catalog also holds other repositories),
+cropped to the toolbar and the first four rows through the **Context** column; the
+**Progress** and **Updated** columns fall outside the crop because the table is wider
+than the documentation column allows. `agents-roster.jpg` shows the Agents tab in
+List view for the recorded Claude Code session titled “Agent-readiness audit of repo
+structure” in the Pomegr repository, with the Direct subagents group expanded and the
+subagent “Trim slow and brittle node tests” selected, cropped from the roster header
+to the inspector's Signals section. Only displayed dashboard content was captured;
+the session titles, roster labels, and signal text were reviewed and show no paths,
+prompts, or credentials. Recapture both when the Sessions table or roster changes.
+
+### Repositories screenshot ownership
+
+The [repositories](../../public/using-pomegr/repositories.md) page owns the two JPEGs in
+`docs/public/images/repositories/`, captured on 2026-09-30 from the Pomegr 0.5.3
+interface in dark theme at a 1200 px viewport and 2x scale. `files-tab.jpg` shows the
+Pomegr repository's Files tab with `app/Dashboard.tsx` selected (deep link
+`?tab=files&path=app/Dashboard.tsx`), cropped to the tab bar, toolbar, file tree, and
+the first history entries. `session-repository-tab.jpg` shows the Repository tab of the
+recorded Claude Code session titled “Show recorded agents per file in session
+Repository tab” in the Pomegr repository, with the same file selected, cropped from the
+branch bar to the tree footer; it shows the Git glyph and the “Seen in Git · no
+recorded agent edit” panel. The Repositories index was not captured because it lists
+repositories outside the authorized set. Only displayed dashboard content was
+captured. Recapture both when either tab changes.
+
+### Settings screenshot ownership
+
+The [settings](../../public/using-pomegr/settings.md) page owns the two JPEGs in
+`docs/public/images/settings/`, captured on 2026-09-30 from the Pomegr 0.5.3 interface
+in a browser (dark theme, 1200 px viewport, 2x scale), cropped to the Settings frame.
+`appearance.jpg` shows the default Appearance tab; `storage.jpg` shows the Storage tab
+in its read-only browser state, with the project machine's own storage figures (43 MB
+of 500 MB, oldest retained 22 Sep 2026). The Providers tab was not captured because it
+shows local absolute folder paths. Desktop-only controls (Phone access, editable
+Storage, About updates) cannot be captured from the web development server. Recapture
+both when the Settings tabs change and keep the caption's version accurate.
+
 ## Migrate one page at a time
 
 1. Read the source and its governing contract. Identify consumers, inbound

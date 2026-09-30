@@ -9,7 +9,7 @@
     {
       "id": "using-pomegr",
       "title": "Using Pomegr",
-      "pages": []
+      "pages": ["using-pomegr/sessions-and-agents.md", "using-pomegr/repositories.md", "using-pomegr/settings.md"]
     },
     {
       "id": "concepts",

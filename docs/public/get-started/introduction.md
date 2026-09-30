@@ -46,7 +46,8 @@ resource data for the session, and **Details** lists further session facts.
 Open the **Agents** tab to see the team. Selecting an agent opens its details on
 the right: model, context, wall time, tool calls, cache lifetime, and more. Filter
 or group the roster, and switch between **List** and **Grid** to explore the same
-agents in different views.
+agents in different views. [Sessions and agents](../using-pomegr/sessions-and-agents.md)
+explains each state and label.
 
 ![The Agents tab in dark List view: a primary agent with 440.5K final context, eight subagents, and the selected primary agent's model, context, wall time, and tool calls on the right.](../images/introduction/agents-tab.jpg)
 
@@ -70,11 +71,12 @@ action.
 
 Use **Sessions** to move between live and recorded work. **Models & delegation**
 shows which models your agents use and how work is delegated, while
-**Repositories** groups work by project. Check **Usage limits** for supported
-account windows when that information is available.
+[**Repositories**](../using-pomegr/repositories.md) groups work by project. Check
+**Usage limits** for supported account windows when that information is available.
 
 Dark mode is the default. Switch to the light theme from the **Local profile**
-menu, or set **Color theme** under **Settings → Appearance**.
+menu, or set **Color theme** under **Settings → Appearance**. See
+[Settings](../using-pomegr/settings.md) for the other options.
 
 ![The same session's header, summary strip, and tabs in Pomegr's light theme.](../images/introduction/light-mode.jpg)
 

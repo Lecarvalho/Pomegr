@@ -11,6 +11,9 @@ source.
 | Understand what the dashboard observes | [Introduction to Pomegr](public/get-started/introduction.md) |
 | Download and launch the Windows app | [Install Pomegr](public/get-started/install.md) |
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
+| Read session states and inspect a session's agents | [Sessions and agents](public/using-pomegr/sessions-and-agents.md) |
+| Browse repositories and the files their sessions changed | [Repositories](public/using-pomegr/repositories.md) |
+| Choose appearance, provider folders, storage, and display preferences | [Settings](public/using-pomegr/settings.md) |
 | Read context, input, output, and cache numbers | [Context and tokens](public/concepts/context-and-tokens.md) |
 | Understand cache reuse, possible refills, and cache lifetimes | [Cache reuse](public/concepts/cache-reuse.md) |
 | Read the account usage windows and their freshness | [Usage limits](public/concepts/usage-limits.md) |
@@ -46,7 +49,10 @@ migration, publication, checks, and closure.
 
 The [introduction](public/get-started/introduction.md),
 [installation guide](public/get-started/install.md),
-[first-session guide](public/get-started/first-session.md), and the
+[first-session guide](public/get-started/first-session.md), the
+[sessions and agents](public/using-pomegr/sessions-and-agents.md),
+[repositories](public/using-pomegr/repositories.md), and
+[settings](public/using-pomegr/settings.md) guides, and the
 [context and tokens](public/concepts/context-and-tokens.md),
 [cache reuse](public/concepts/cache-reuse.md),
 [usage limits](public/concepts/usage-limits.md),

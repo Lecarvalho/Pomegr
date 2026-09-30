@@ -15,13 +15,13 @@ browsers on a trusted local network; see the
 
 ## Desktop settings and behavior
 
-Open **Desktop controls** in the dashboard or use the tray menu to manage supported behavior:
+The [Settings guide](public/using-pomegr/settings.md) explains the Settings tabs, the tray menu, and how installed and portable modes differ. This section keeps the behavior behind them:
 
-- **Pause updates** pauses dashboard polling only. It does not pause or control coding agents and is not persisted.
-- **Launch at login** is opt-in and available only for the installed app.
-- **Close behavior** can ask each time, hide to the tray, or quit. Explicit **Quit Pomegr** and the tray **Quit** command stop all Pomegr-owned services.
-- **Needs-input notifications** are enabled by default and can be disabled persistently. **Quiet for one hour** is temporary and clears when the app exits. Notifications use only the fixed generic Pomegr title and body; they never contain a session title, question, approval reason, command, response, tool output, or provider path.
-- **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours and silently downloads a higher same-channel release. Open **Settings → About** to see the installed desktop version, the last successful check time, and **Check for updates**. The same row shows checking/download progress, retry feedback, and **Restart and install** once the installer is verified and ready; a dot beside **About** also indicates readiness. The existing bottom-left **Restart to update** action remains available. Clicking either install action is the explicit restart/installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates, and ordinary browser settings expose no native update controls.
+- **Pause live refresh** in the tray menu (**Resume live refresh** while paused) pauses dashboard polling only. It does not pause or control coding agents and is not persisted.
+- **Launch at login** is an opt-in tray-menu checkbox, available only for the installed app.
+- **Close behavior** is stored as `ask` (the default), `tray`, or `quit`. With `ask`, closing the window shows **Keep running** and **Quit Pomegr** with **Remember my choice**, which stores `tray` or `quit`. This version has no Settings control to change a stored choice. **Quit Pomegr** in the tray menu stops all Pomegr-owned services.
+- **Needs-input notifications** are enabled by default and stored as a persistent boolean; a temporary one-hour quiet mode clears when the app exits. This version's **Settings → Notifications** shows the alerts as **Desktop managed** and has no switch for either. Notifications use only the fixed generic Pomegr title and body; they never contain a session title, question, approval reason, command, response, tool output, or provider path.
+- **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours and silently downloads a higher same-channel release. [Install Pomegr](public/get-started/install.md#keep-pomegr-up-to-date) explains the user steps. **Settings → About** shows the installed desktop version, the last successful check time, and **Check for updates**; the same row shows checking/download progress, retry feedback, and **Restart and install** once the installer is verified and ready, and a dot beside **About** also indicates readiness. The existing bottom-left **Restart to update** action remains available. Clicking either install action is the explicit restart/installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates, and ordinary browser settings expose no native update controls.
 
 Closing to the tray leaves local observation running. Click the tray icon, use **Open Pomegr**, or launch Pomegr again to reopen the single existing instance.
 
@@ -31,7 +31,7 @@ Installed state is stored in Electron's per-user application-data directory for 
 
 Pomegr-owned storage is limited to versioned `settings.json`, bounded Claude cost, local usage, and normalized account-usage snapshots, bounded Codex lifecycle snapshots, and bounded normalized observation checkpoints under `observation-cache-v1`. Checkpoints contain only contract-validated normalized evidence, readiness, revision metadata, and bounded source compatibility metadata; raw provider records and incomplete record fragments are never copied. Settings allowlist only window geometry, close behavior, display preferences, launch-at-login, notification, update, and phone-sharing startup booleans, plus the three private provider-folder overrides described below and the two storage retention/cleanup overrides described in [Storage settings](#storage-settings). Phone authorizations and network discovery results are never persisted. Provider transcripts, indexes, tasks, credentials, repositories, `.claude`, and `.codex` stay in provider-owned locations and are never copied. Uninstall preserves Pomegr user data and never deletes provider data.
 
-Reports are written only after the user clicks **Generate report** and selects a destination in the native save dialog. Pomegr keeps no implicit report archive.
+Reports are written only after the user clicks **Download report** and, in the desktop app, selects a destination in the native save dialog (a browser downloads the file instead). Pomegr keeps no implicit report archive.
 
 ## Storage settings
 
@@ -40,15 +40,7 @@ size threshold. Pruning only ages out or trims `resource_minutes` and
 `resource_peak_samples` rows; it never removes sessions, transcripts, checkpoints,
 file history, or recorded peaks.
 
-In the desktop app, open **Settings → Storage** to choose **Retention age** (30, 90,
-180, 365 days, or Keep all) and **Resource history cleanup threshold** (250 MB, 500 MB,
-1 GB, or 2 GB). Selecting **Save and restart Pomegr** shows the resolved values in a
-native confirmation. Saved desktop values win over the matching environment variables
-below once saved; the monitor applies either source only on its next start and prune
-cycle, never synchronously from a settings change or a browser request. Source-development
-launches and any field left unset in the desktop app continue to use the `POMEGR_RETENTION_DAYS`
-and `POMEGR_STORE_MAX_MB` environment variables below; an unset, malformed, or
-out-of-range value for either one falls back to its default.
+The [Settings guide](public/using-pomegr/settings.md#manage-storage) explains the desktop **Settings → Storage** controls (**Retention age**, **Resource history cleanup threshold**, and **Save and restart Pomegr**). Saved desktop values win over the matching environment variables below once saved; the monitor applies either source only on its next start and prune cycle, never synchronously from a settings change or a browser request. Source-development launches and any field left unset in the desktop app continue to use the `POMEGR_RETENTION_DAYS` and `POMEGR_STORE_MAX_MB` environment variables below; an unset, malformed, or out-of-range value for either one falls back to its default.
 
 ## Provider setup
 
@@ -57,21 +49,7 @@ The sections below cover provider-specific configuration and optional evidence.
 
 ### Choose provider folders in the desktop app
 
-Open **Settings → Providers** in the installed or portable app. Under **Claude
-Code**, choose a **Configuration folder** to select the existing profile Pomegr
-observes. Default session discovery, live presence, task data, account usage,
-reconnection, and plugin setup follow that profile. Open **Advanced** only when
-you need a separate **Session folder override**. Under **Codex**, choose its
-**Home folder** for session discovery and account usage.
-
-1. Select **Choose folder…** and choose an existing readable folder in the native
-   dialog. Pomegr shows whether the folder is available; an available folder may
-   contain no sessions.
-2. Use **Use default** to remove a saved override, or **Discard changes** to undo
-   pending choices. Defaults use the launch environment, then standard locations.
-3. Select **Save and restart Pomegr**, review the actual folders in the native
-   confirmation, and confirm. Changes apply after Pomegr restarts. Running coding
-   tools keep their existing profiles; no provider files are moved or modified.
+The [Settings guide](public/using-pomegr/settings.md#choose-provider-folders) and [Follow your first session](public/get-started/first-session.md#if-you-use-a-different-profile) cover the desktop **Settings → Providers** controls and steps. Default session discovery, live presence, task data, account usage, reconnection, and plugin setup follow the Claude **Configuration folder**; the optional **Session folder override** is separate, and the Codex **Home folder** covers session discovery and account usage. Changes apply after Pomegr restarts, running coding tools keep their existing profiles, and no provider files are moved or modified.
 
 Saved choices take precedence over matching environment variables. A saved Claude
 configuration or session-folder choice also disables an inherited
@@ -108,7 +86,7 @@ No extra setup is required when Claude Code persists sessions under `%USERPROFIL
 
 Claude Remote Control launches `sdk-cli` sessions whose local registry can omit execution status. For these sessions, Pomegr reads the native session metadata API using the existing Claude OAuth access token, only after validating the local process owner and registry bridge association. It maps explicit `running`, `requires_action`, and `idle` primary-loop states. The session additionally remains Working while provider-recorded background workflow or shell launches have neither a matching terminal notification nor a completed workflow manifest in the current validated process lifetime. It does not guess from transcript age or agent counts. No extra hook, worker attachment, or remote session discovery is performed. Missing credentials or an unsupported response leave status unknown until a valid observation arrives; temporary failures retain the last valid status for the same owner. Pomegr does not refresh credentials: sign in through Claude Code if account access has expired. The [Claude session-status contract](CLAUDE_SESSION_STATUS.md) documents request bounds, authentication, and privacy.
 
-Estimated API cost is optional. Wrap the Claude Code status line with `scripts/claude-statusline-bridge.mjs` to capture Claude Code's own client-side estimate. In `~/.claude/settings.json`, point `statusLine.command` at the bridge and pass the existing status-line command after `--`:
+The API list-rate estimate is optional. Wrap the Claude Code status line with `scripts/claude-statusline-bridge.mjs` to capture Claude Code's own client-side estimate. In `~/.claude/settings.json`, point `statusLine.command` at the bridge and pass the existing status-line command after `--`:
 
 ```json
 {
@@ -289,11 +267,11 @@ To share Claude cost snapshots with a portable build, set `POMEGR_DATA_DIR` to t
 
 ### The window disappeared after I closed it
 
-The selected close behavior may hide Pomegr to the system tray. Reopen it from the tray or launch Pomegr again. Change **Close behavior** under **Desktop controls** if you prefer explicit quit. Use the tray **Quit** command to stop all owned services.
+The selected close behavior may hide Pomegr to the system tray. Reopen it from the tray or launch Pomegr again. A remembered **Keep running** choice hides the window every time, and this version has no Settings control to change it. Use **Quit Pomegr** in the tray menu to stop all owned services.
 
 ### Notifications do not appear
 
-- Confirm **Needs-input notifications** is enabled and temporary quiet mode is off.
+- Needs-input notifications are enabled by default, and this version has no Settings switch for them or for temporary quiet mode. Confirm the session was live and waiting when Pomegr observed it.
 - Pomegr notifies only on a transition into a recognized live needs-input state; it deduplicates repeated observations until the state clears.
 - Windows notification settings or Focus Assist can suppress native presentation. Pomegr monitoring continues if notification delivery fails.
 - Notification clicks navigate to an observation view only. Pomegr cannot approve, answer, resume, or control an agent.
