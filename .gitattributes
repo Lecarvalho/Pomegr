@@ -4,3 +4,9 @@ plugins/**/mcp/*.bundle.mjs linguist-generated=true
 plugins/**/scripts/*.bundle.mjs linguist-generated=true
 plugins/**/skills/**/SKILL.md linguist-generated=true
 plugins/**/skills/**/policy-template.md linguist-generated=true
+
+# Generators write LF; check these out as LF so builds do not flag unchanged files.
+plugins/** text eol=lf
+plugin-src/** text eol=lf
+plugins/**/*.png binary
+plugin-src/**/*.png binary

@@ -40,6 +40,7 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /\.electron-builder-cache/
 /desktop/workers/
