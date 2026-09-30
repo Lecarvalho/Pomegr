@@ -1,6 +1,6 @@
 # Documentation migration
 
-> Status: in progress; DOC-00 through DOC-04 and PUB-01 through PUB-03 complete. Next: PUB-08 pilot.
+> Status: in progress; DOC-00 through DOC-04 and PUB-01 through PUB-03 complete; Get started guides and screenshots revised 2026-09-30 for v0.5.x. Next: part 2, PUB-08 pilot.
 > Created: 2026-09-07.
 > Audience and owner: Pomegr maintainers; each executing maintainer owns their selected task.
 > Lifetime: ephemeral. Delete this plan in the change that completes the migration.
@@ -186,8 +186,11 @@ Review their writing and reading experience before migrating the rest.
 Every path in this section is relative to `docs/public/`.
 
 - [x] **PUB-01** `get-started/introduction.md` — extract root README and `docs/user-guide/README.md`; keep root README as the entrypoint. 2026-09-08; verified 113 local links/anchors across eight Markdown pages, heading hierarchy, manifest selection/metadata/route/public boundary, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website rendering remains pending; legacy user-guide index retained for existing navigation until PUB-19.
+  Revised 2026-09-30 for the v0.5.x interface; screenshots recaptured. Session summary strip, tabs, Agents tab, Requests chart on Activities, and Models & delegation labels checked against app source; four images recaptured from Pomegr 0.5.3 (provenance in the maintenance workflow). Verified with the temporary link checker (570 links, 0 failures), `git diff --check`, and `npm run verify:fast` (passed; 37 existing lint warnings, none from this change).
 - [x] **PUB-02** `get-started/install.md` — extract supported download/desktop modes from README, CONFIGURATION, and DESKTOP_RELEASES; leave maintainer packaging internal. 2026-09-08; verified official stable-release asset names, desktop implementation facts, 131 local links/images and anchors across ten Markdown pages, public metadata/heading hierarchy/manifest routes and boundaries, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website rendering remains pending.
+  Rechecked 2026-09-30 against the v0.5.x interface and download page (download button labels, Settings → About, update labels, four-hour interval); no text change was needed.
 - [x] **PUB-03** `get-started/first-session.md` — first launch, discovery, session selection, expected empty/unavailable states. 2026-09-08; verified current UI/discovery behavior, 141 local links/images and anchors across eleven Markdown pages, heading hierarchy, public metadata/manifest routes and boundaries, independent review, `git diff --check`, and `npm run verify:fast` (passed; 15 existing lint warnings). Website rendering remains pending.
+  Revised 2026-09-30 for the v0.5.x interface. Sessions filters (All, Live, Needs input; the History filter is gone), the Agents tab and Right now heading, and the Monitor offline label were corrected against app source.
 - [ ] **PUB-04** `using-pomegr/sessions-and-agents.md` — shipped UI, lifecycle labels, and bounded evidence; use SESSION_STATUS/METRICS as inputs.
 - [ ] **PUB-05** `using-pomegr/repositories.md` — current index/detail experience; distinguish working features from placeholders.
 - [ ] **PUB-06** `using-pomegr/reporting-plugins.md` — extract user installation, setup, reporting, and troubleshooting from PLUGINS.
@@ -297,9 +300,15 @@ permanent mockup home in the final structure.
 
 ## Continuation checkpoint
 
-DOC-00 through DOC-04 and PUB-01 through PUB-03 are complete. Next: the PUB-08
-explanation pilot, followed by review of the three pilots before continuing the
-remaining public pages.
+DOC-00 through DOC-04 and PUB-01 through PUB-03 are complete. On 2026-09-30 the
+three Get started guides and the four introduction screenshots were revised for
+the v0.5.x interface (migration part 1). Next: part 2, the PUB-08 explanation
+pilot, followed by review of the three pilots before continuing the remaining
+public pages. Every part also runs the temporary link checker
+`work/docs-migration/check-links.mjs` (gitignored; it validates relative links,
+anchors, images, and alt text against `work/docs-migration/link-baseline.txt`,
+which recorded zero pre-existing failures). WEB-04's `npm run check:docs`
+replaces it.
 DOC-01 is committed
 as `031d51c`. The documentation and maintainer indexes link current authorities,
 planned homes, and the maintained style guide and maintenance workflow. Root
@@ -327,16 +336,18 @@ recovery. Installation and introduction now lead to it; CONFIGURATION links to
 the walkthrough while retaining advanced provider setup and troubleshooting for
 their remaining tasks. PUB-03 was completed at the user's request before PUB-08;
 the explanation pilot and three-pilot review remain the next migration work.
-PUB-01's visual revision adds four maintained screenshots of real Catalogus
-development work, authorized by the project owner. Dark mode leads the overview,
-agent grid, and requests chart; a light-mode overview shows the alternative.
-These replace the synthetic example and its captions.
+PUB-01's visual revision adds four maintained screenshots of real development
+work, authorized by the project owner: originally Catalogus (2026-09-08), recaptured
+on 2026-09-30 from a recorded Pomegr session in the v0.5.3 interface. Dark mode
+leads the overview, Agents tab, and Requests chart; a light-mode overview shows
+the alternative. These replace the synthetic example and its captions.
 Capture provenance and refresh ownership live in the documentation maintenance
 workflow; assets live in `docs/public/images/introduction/`.
 The visual revision was checked on 2026-09-08: all four screenshot crops reviewed,
 image paths/alt text/public boundaries and JPEG dimensions validated, and
-`npm run verify:fast` passed with the same 15 existing lint warnings. Website
-rendering remains a WEB task.
+`npm run verify:fast` passed with the same 15 existing lint warnings. The
+2026-09-30 recapture repeated that review (crops legible, no prompts, responses,
+paths, or credentials visible). Website rendering remains a WEB task.
 The maintained manifest contract defines
 membership, derived unique routes, and local link/image handling. Build-time
 content loading, the website renderer, search, and the documentation checker

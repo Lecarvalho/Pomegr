@@ -34,14 +34,20 @@ excluded from website publication, not confidential in Git.
 ### Introduction screenshot ownership
 
 The [introduction](../../public/get-started/introduction.md) owns the four JPEGs in
-`docs/public/images/introduction/`. Captured on 2026-09-08 from the Pomegr 0.3.6
-interface, they show real Catalogus development work with the project owner's
-explicit permission. The session is titled “Phase 4 backend: Supabase schema,
-RLS, views, seed on local Postgres.” Dark mode leads the overview, agent grid,
-and requests chart; the light overview demonstrates the alternative theme.
-Captures came directly from the running local dashboard's recorded session view,
-without changing its data. Only displayed dashboard content was captured; no raw
-session files were read or copied. These images replace the earlier synthetic set.
+`docs/public/images/introduction/`. Recaptured on 2026-09-30 from the Pomegr 0.5.3
+interface (the 2026-09-08 set showed 0.3.6), they show one recorded Claude Code
+session in the Pomegr repository, titled “Agent-readiness audit of repo
+structure” (one primary agent and eight subagents). The project owner authorized
+any recorded session of the Pomegr, Pokrr, or Catalogus repositories on
+2026-09-30. Dark mode leads the session overview (`session-overview.jpg`), the
+Agents tab in List view with the subagent group expanded (`agent-activity.jpg`),
+and the Activities tab with the Requests chart in Lanes and Full breakdown, request
+#300 selected, cropped to include the top of the Activity feed
+(`requests-chart.jpg`); the light overview (`light-mode.jpg`) demonstrates the
+alternative theme. Captures came directly from the running local dashboard's
+recorded session view at 2x scale, without changing its data, and were converted
+to JPEG. Only displayed dashboard content was captured; no raw session files were
+read or copied.
 
 When the pictured UI changes, recapture the actual session dashboard using
 owner-authorized project data or synthetic data, check legibility and privacy,

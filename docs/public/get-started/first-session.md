@@ -30,8 +30,8 @@ read-only paths. Folder changes require the desktop app.
 1. Open **Pomegr** from the Start menu, or open your portable executable. Allow
    the dashboard to load while Pomegr discovers local sessions.
 2. Select **Sessions** in the sidebar. It starts on **Live** when live sessions
-   are available, otherwise **All**. Choose **All** to include older work;
-   **History** shows sessions outside the current live selection.
+   are available, otherwise **All**. Choose **All** to include older work, or
+   **Needs input** to see sessions where Pomegr observed an agent waiting for you.
 3. Use **Filter sessions** to search by session title, project, or coding tool.
    Select the session title to open its dashboard.
 4. For new work, start or continue a session in your coding tool as usual, then
@@ -39,16 +39,17 @@ read-only paths. Folder changes require the desktop app.
    is recorded.
 
 The **Live** filter depends on the evidence Pomegr can observe. An open coding
-tool is not a guarantee that its session appears there, and a session in
-**History** is not proof that its work completed. Check **All** before treating
+tool is not a guarantee that its session appears there, and a session missing
+from **Live** is not proof that its work completed. Check **All** before treating
 a session as missing.
 
 ## Read the first results
 
-The session overview shows observed agents, context, and tool calls. Select an
-agent under **Agent activity** to inspect its details. A new session may have
-only its primary agent and little activity; more appears when the coding tool
-records it.
+A session opens on a summary of its agents, context, and calls, with tabs beneath
+it. The **Overview** tab shows what is happening now; open the **Agents** tab, or
+select **Right now**, and choose an agent to inspect its details. A new session
+may have only its primary agent and little activity; more appears when the coding
+tool records it.
 
 Loading placeholders mean a section is still preparing its first results.
 Sections can become ready at different times, and existing results remain visible
@@ -58,8 +59,8 @@ Code before sending its first prompt.
 
 A missing value or an unavailable feature does not mean zero activity or
 successful completion. Claude Code and Codex supply different evidence. See the
-[introduction](introduction.md) for examples of the overview, agent details, and
-request chart.
+[introduction](introduction.md) for examples of the overview, the Agents tab, and
+the Requests chart.
 
 ## If something is missing
 
@@ -68,7 +69,7 @@ request chart.
 | **No sessions match** | Clear **Filter sessions**, select **All**, and clear any project filter. |
 | **No sessions observed** | Allow discovery to finish. Confirm your coding tool saves local history under the same Windows account. Use **Configure session sources** to check **Settings → Providers** if you use a different folder or profile. |
 | **No recorded activity yet** | Continue in your coding tool; activity and context appear when it records supported evidence. |
-| **Session catalog unavailable** or **Local monitor offline** | Allow Pomegr to reconnect automatically. If it persists in the desktop app, use **Quit Pomegr** in the tray menu, then reopen Pomegr. Closing the window may only hide it to the tray. |
+| **Session catalog unavailable** or **Monitor offline** | Allow Pomegr to reconnect automatically. If it persists in the desktop app, use **Quit Pomegr** in the tray menu, then reopen Pomegr. Closing the window may only hide it to the tray. |
 | Missing account usage | Open **Usage limits** and follow **Usage connection help** if shown. Account usage has separate requirements; missing limits do not prevent local session history from appearing. |
 
 Keep prompts, replies, and approvals in your coding tool. Pomegr observes the
