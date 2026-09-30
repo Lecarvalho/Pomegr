@@ -35,11 +35,26 @@ Spawn one agent with the Agent tool.
   no effort line: the agent runs at the harness default.
 - The prompt must be self-contained: the agent has no conversation
   context. Include intent, scope notes, inputs, and the block prompt.
-- Ask the agent to end with a clear final report; that report is the stage
-  output.
+- An output another context reads (`execute.md`, Each stage, step 4) is
+  written by the agent itself to `runs/<id>/artifacts/<output>.md`. Its
+  final message stays short: status or verdict first, the artifact path,
+  the decisive numbers. That message is the stage output; open the
+  artifact only when the next step needs it, so its contents never pass
+  through your context twice.
 - Tokens: log the total the Agent tool result reports, if any. Never an
   estimate.
 - Each spawn counts against `limits.agents`. A retry is a new spawn.
+
+Artifact names: Claude Code's Write tool refuses a subagent's file whose
+name reads as a report, in any folder, with "Subagents should return
+findings as text, not write report files." Names containing `report`,
+`summary`, `findings` or `analysis` are refused; names such as
+`review`, `plan`, `notes`, `result`, `handoff`, `try-it` and
+`design-contract` are accepted. Name outputs and artifacts after what
+they hold (`result`, `notes`, `review`, `handoff`); a refused word is a
+compose error (`manifest.md`). A product file in the stage's `owns`
+that must keep such a name is written with a shell heredoc; nothing
+else is.
 
 Parallel stages: consecutive `subagent` stages that share no
 inputs/outputs dependency and whose `owns` are disjoint are spawned in

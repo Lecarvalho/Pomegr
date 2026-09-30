@@ -38,6 +38,10 @@
   on a stage or an escalation entry;
 - a lane over its limit (re-cut per `sizing.md`);
 - parallel stages without `owns`, or a path in two of them;
+- an output or artifact name containing `report`, `summary`,
+  `findings` or `analysis`, or a delegated prompt asking a worker to
+  write such a file (Claude Code refuses it; `adapters.md`, Artifact
+  names);
 - deferred evidence without: every claim, URL and capture target in
   `part.evidence.deferred_to`, a deterministic command check on the
   last non-evidence stage, and a final part that lists `covers_parts`,

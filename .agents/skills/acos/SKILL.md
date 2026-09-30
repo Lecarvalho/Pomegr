@@ -151,6 +151,10 @@ Running
 - **Visible changes close on evidence**, not prose: cropped captures a
   worker has looked at, verdict `PASS`. Evidence may be deferred to a
   named final part, never dropped.
+- **Workers write their artifacts; you read verdicts.** A delegated
+  stage saves its output under `runs/<id>/artifacts/` and ends with a
+  short status and the path. No output is named report, summary,
+  findings or analysis. `references/adapters.md`.
 - **Manifests stand alone.** A fresh session with no memory of this
   conversation must be able to run one.
 - **Scope is advisory.** Warn once if a worker writes outside it.
