@@ -529,7 +529,7 @@ Validate the complete first-run experience and document the supported desktop be
   9. uninstall without touching provider data.
 - Update `README.md` with desktop installation as the primary user path and source development as a separate path.
 - Update `docs/internal/architecture/overview.md` with desktop process ownership and security boundaries.
-- Update `docs/CONFIGURATION.md` with desktop paths, settings, startup, notifications, updates, portable mode, and troubleshooting.
+- Update `docs/internal/development/configuration.md` with desktop paths, settings, startup, notifications, updates, portable mode, and troubleshooting.
 - Document that LAN sharing is unavailable or explicitly opt-in, depending on shipped behavior.
 - Document Windows-only support without implying macOS/Linux compatibility.
 - Add a release checklist covering source availability, AGPL notices, trademark policy, signatures, checksums, artifacts, and clean-VM results.

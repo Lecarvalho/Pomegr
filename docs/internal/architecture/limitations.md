@@ -80,7 +80,7 @@ The detailed precedence rules and integration gaps remain in
   views need a working authenticated source, and Codex additionally needs a
   supported native CLI. A supported capability can therefore be unavailable on
   one installation or during a provider failure. See [API list-rate estimate](metrics.md#api-list-rate-estimate)
-  and [configuration](../../CONFIGURATION.md#capability-availability).
+  and [configuration](../development/configuration.md#capability-availability).
 
 Provider service status is public component-level reporting. It cannot establish
 whether an incident affected one account, model, or session. See

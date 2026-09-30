@@ -8,7 +8,7 @@
 > Authority: work plan only. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/observation-cache.md` remain authoritative and must be updated by the tasks that change behavior.
 > Next task or decision: Start Session 6 (T10, T11 and T12) in a fresh user-requested session, from the Session 5 checkpoint handoff below.
 > Completion criteria: T00 and every current implementation task (T01–T13, including T06b and excluding merged T04b) have a dated checkpoint, T12 has moved the enduring rules to their owners, and this plan and its prototype folder are deleted.
-> Permanent destinations: `DESIGN.md` with `/design-system`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, `docs/internal/architecture/overview.md`, `docs/CONFIGURATION.md`, and `AGENTS.md`.
+> Permanent destinations: `DESIGN.md` with `/design-system`, `docs/internal/architecture/observation-cache.md`, `docs/internal/architecture/metrics.md`, `docs/internal/architecture/overview.md`, `docs/internal/development/configuration.md`, and `AGENTS.md`.
 
 ## Outcome
 
@@ -511,18 +511,18 @@ Owner: UI (`SessionDetailsPanel.tsx`, `MachineryPanel.tsx` successors). Artboard
 Owner: `scripts/dev.mjs`, `scripts/run-vinext.mjs`.
 
 - The per-request lines come from vinext's development server (`node_modules/vinext/dist/server/request-log.js`), not from Pomegr scripts; both scripts spawn children with inherited stdio and log nothing per request. First check whether the installed vinext version exposes a request-log option. If not, `scripts/run-vinext.mjs` pipes the child's stdout, drops lines whose status is 204, and writes the rest through unchanged. Keep TTY color detection working by forwarding `FORCE_COLOR` when the parent is a TTY.
-- `POMEGR_DEV_REQUEST_LOG=all` restores every line. Document the flag in `docs/CONFIGURATION.md` with the other development-only variables.
+- `POMEGR_DEV_REQUEST_LOG=all` restores every line. Document the flag in `docs/internal/development/configuration.md` with the other development-only variables.
 
 ### T13 Storage retention setting
 
-Owner: desktop lifecycle (`desktop/`), Settings UI (`app/settings/`), `docs/CONFIGURATION.md`. Artboard: `SettingsStorage.html`; it follows the existing Settings → Providers layout.
+Owner: desktop lifecycle (`desktop/`), Settings UI (`app/settings/`), `docs/internal/development/configuration.md`. Artboard: `SettingsStorage.html`; it follows the existing Settings → Providers layout.
 
 Depends on T07.
 
 - Settings → Storage section: retention age as a segmented control with the fixed choices from T07; **Resource history cleanup threshold** select (250 MB, 500 MB, 1 GB, 2 GB); a usage bar beside the selector; and the readiness line (size, oldest retained day, last prune). Show used/threshold and percentage, for example "380 MB / 500 MB · 76%" (illustrative). Desktop users can increase the threshold; browser/LAN clients see read-only values. Changes require fixed-key enum IPC and native confirmation.
 - The monitor applies changes on the next prune cycle. Never prune in IPC or GET handlers and never delete peaks or file changes for cataloged sessions because of age or size cleanup.
 - Bar copy: "At 100%, older resource curves and detailed sample windows become eligible for automatic cleanup. File history and recorded peaks are preserved." Explain that age retention applies independently. Cap visual fill at 100% but print the actual percentage above it; for example "550 MB / 500 MB · 110%". Use "Cleanup pending" until the monitor confirms protected records cause the excess, then "Preserved history exceeds the cleanup threshold." Use existing accessible meter/progress styling, numeric text and status wording; missing readiness is unavailable, never 0%. The bar is informational, not an interactive slider.
-- Document the two development environment variables and the defaults in `docs/CONFIGURATION.md`; document the bounded IPC in `docs/internal/architecture/observation-cache.md` next to the provider-folder settings.
+- Document the two development environment variables and the defaults in `docs/internal/development/configuration.md`; document the bounded IPC in `docs/internal/architecture/observation-cache.md` next to the provider-folder settings.
 - Reuse existing segmented controls and selects. Add a static storage usage sample covering ordinary, 100%, over-threshold and unavailable states to `/design-system`; update DESIGN.md and contract tests for any new shared meter pattern. Test units, actual over-100 text with clamped fill, cleanup status, read-only browser/LAN behavior and native enum validation.
 - Compare against `SettingsStorage.html`, recording the approved usage-bar addition and soft-threshold wording as intentional differences from the existing export.
 

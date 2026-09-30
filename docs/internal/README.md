@@ -53,9 +53,9 @@ its canonical verification requirements before handing off a change.
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
 | [Agent workflow](development/agent-workflow.md) | Change routing and verification | Maintained at this path |
-| [Configuration and troubleshooting](../CONFIGURATION.md) | Configuration and troubleshooting; links the provider capability reference | `development/configuration.md`, after public guidance is extracted |
-| [Pomegr plugins](../PLUGINS.md) | Canonical sources, generation, versioning, and release | `development/plugins.md`, after public guidance is extracted |
-| [Command table](../COMMAND_TABLE.md) | Component integration; visual authority remains the design system | `development/command-table.md` |
+| [Configuration and troubleshooting](development/configuration.md) | Environment variables, provider setup, and the technical contracts behind the public help pages; links the provider capability reference | Maintained at this path |
+| [Pomegr plugins](development/plugins.md) | Canonical sources, generation, versioning, and release; usage guidance is the public [Reporting plugins guide](../public/using-pomegr/reporting-plugins.md) | Maintained at this path |
+| [Command table](development/command-table.md) | Component integration; visual authority remains the design system | Maintained at this path |
 
 The shared [style guide](../STYLE_GUIDE.md) owns writing rules, audience profiles,
 templates, supported formatting, visual ownership, and artifact lifecycle. The
@@ -74,7 +74,7 @@ publication and validation tooling remain pending.
 
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
-| [Pipeline operations](../PIPELINE_OPERATIONS.md) | Passive diagnostics and separately identified future milestones | `operations/pipeline-diagnostics.md` |
+| [Pipeline operations](operations/pipeline-diagnostics.md) | Continuous development JSONL diagnostics, passive analysis, and the auxiliary snapshot | Maintained at this path |
 | [Desktop releases](../DESKTOP_RELEASES.md) | Packaging, publication, and rollback | `operations/desktop-releases.md` |
 | [Desktop beta acceptance](../DESKTOP_BETA_ACCEPTANCE.md) | Candidate acceptance procedure and evidence gates | `operations/desktop-beta-acceptance.md` |
 | [Desktop clean-VM checklist](../DESKTOP_CLEAN_VM_CHECKLIST.md) | Historical 0.2.4 acceptance record, still pending | `operations/desktop-clean-vm.md`, after separating procedure from candidate evidence |
@@ -86,7 +86,7 @@ publication and validation tooling remain pending.
 
 The progressive Activity/Request publication contract is maintained in
 [Observation cache](architecture/observation-cache.md). Continuous JSONL diagnostics and passive
-analysis are maintained in [Pipeline operations](../PIPELINE_OPERATIONS.md).
+analysis are maintained in [Pipeline operations](operations/pipeline-diagnostics.md).
 
 The [documentation migration checklist](plans/documentation-migration.md) owns
 the migration sequence and completion record. Existing documents remain at their

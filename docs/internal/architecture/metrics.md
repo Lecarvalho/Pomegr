@@ -75,7 +75,7 @@ Account usage may also come from Claude Code's local status-line usage windows. 
 are provider-reported account percentages, not inferred token spend or session usage.
 The adapter accepts the complete five-hour/seven-day pair, retains its observation time,
 and marks it stale after five minutes or when a window reset has passed. Identical repeated
-status-line emissions do not renew freshness. See [local usage setup](../../CONFIGURATION.md#claude-local-usage-feed)
+status-line emissions do not renew freshness. See [local usage setup](../development/configuration.md#claude-local-usage-feed)
 and the [observation contract](observation-cache.md#local-claude-usage-observations-and-desktop-recovery).
 
 Fable is not included in the local usage pair. A separately retained API value keeps its

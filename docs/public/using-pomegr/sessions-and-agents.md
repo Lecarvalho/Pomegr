@@ -42,9 +42,10 @@ A dash means the value is unavailable, not zero.
 | --- | --- |
 | **In progress** | An agent is working, or recorded background work is still open. |
 | **Needs input** | An agent is waiting for you. This label wins even while other agents work. |
-| **Idle** | The primary agent is idle, or Pomegr detects no live session. It does not mean the work finished or succeeded. |
+| **Idle** | The primary agent is idle, or Pomegr detects no live session and has no confirmed closure. It does not mean the work finished or succeeded. |
 | **Open** | Pomegr confirmed the coding tool's process is present, but no work is confirmed running. |
 | **Stopped** | Codex only: the latest recorded turn failed or was interrupted. |
+| **Closed** | Claude Code only: Pomegr confirmed that the session's Claude Code process ended. It reports the closure, not that the work succeeded. After Pomegr restarts, the session can show **Idle** again until Pomegr sees new closure evidence. |
 | **Unknown** | Pomegr lacks usable evidence. It never turns silence into completion. |
 
 An **Open** session moves from **Live** to **All** five minutes after its last

@@ -3,25 +3,25 @@
 Pomegr discovers Claude Code and Codex independently. One provider can be absent or fail without removing sessions from the other provider. The monitor remains read-only and binds to `127.0.0.1`. Development exposes the web dashboard on the LAN; the Windows desktop app offers separate, opt-in phone access.
 
 Operational cache tiers, checkpoint rules, readiness states, and frontend refresh cadence
-are defined canonically in [Observation cache and progressive readiness](internal/architecture/observation-cache.md).
+are defined canonically in [Observation cache and progressive readiness](../architecture/observation-cache.md).
 
 ## Supported desktop modes
 
-See [Install Pomegr](public/get-started/install.md) for supported downloads,
+See [Install Pomegr](../../public/get-started/install.md) for supported downloads,
 prerequisites, installed and portable modes, and launch instructions. Optional
 phone access shares the dashboard with paired
 browsers on a trusted local network; see the
-[Phone access guide](public/using-pomegr/phone-access.md).
+[Phone access guide](../../public/using-pomegr/phone-access.md).
 
 ## Desktop settings and behavior
 
-The [Settings guide](public/using-pomegr/settings.md) explains the Settings tabs, the tray menu, and how installed and portable modes differ. This section keeps the behavior behind them:
+The [Settings guide](../../public/using-pomegr/settings.md) explains the Settings tabs, the tray menu, and how installed and portable modes differ. This section keeps the behavior behind them:
 
 - **Pause live refresh** in the tray menu (**Resume live refresh** while paused) pauses dashboard polling only. It does not pause or control coding agents and is not persisted.
 - **Launch at login** is an opt-in tray-menu checkbox, available only for the installed app.
 - **Close behavior** is stored as `ask` (the default), `tray`, or `quit`. With `ask`, closing the window shows **Keep running** and **Quit Pomegr** with **Remember my choice**, which stores `tray` or `quit`. This version has no Settings control to change a stored choice. **Quit Pomegr** in the tray menu stops all Pomegr-owned services.
 - **Needs-input notifications** are enabled by default and stored as a persistent boolean; a temporary one-hour quiet mode clears when the app exits. This version's **Settings → Notifications** shows the alerts as **Desktop managed** and has no switch for either. Notifications use only the fixed generic Pomegr title and body; they never contain a session title, question, approval reason, command, response, tool output, or provider path.
-- **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours and silently downloads a higher same-channel release. [Install Pomegr](public/get-started/install.md#keep-pomegr-up-to-date) explains the user steps. **Settings → About** shows the installed desktop version, the last successful check time, and **Check for updates**; the same row shows checking/download progress, retry feedback, and **Restart and install** once the installer is verified and ready, and a dot beside **About** also indicates readiness. The existing bottom-left **Restart to update** action remains available. Clicking either install action is the explicit restart/installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates, and ordinary browser settings expose no native update controls.
+- **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours and silently downloads a higher same-channel release. [Install Pomegr](../../public/get-started/install.md#keep-pomegr-up-to-date) explains the user steps. **Settings → About** shows the installed desktop version, the last successful check time, and **Check for updates**; the same row shows checking/download progress, retry feedback, and **Restart and install** once the installer is verified and ready, and a dot beside **About** also indicates readiness. The existing bottom-left **Restart to update** action remains available. Clicking either install action is the explicit restart/installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates, and ordinary browser settings expose no native update controls.
 
 Closing to the tray leaves local observation running. Click the tray icon, use **Open Pomegr**, or launch Pomegr again to reopen the single existing instance.
 
@@ -40,16 +40,16 @@ size threshold. Pruning only ages out or trims `resource_minutes` and
 `resource_peak_samples` rows; it never removes sessions, transcripts, checkpoints,
 file history, or recorded peaks.
 
-The [Settings guide](public/using-pomegr/settings.md#manage-storage) explains the desktop **Settings → Storage** controls (**Retention age**, **Resource history cleanup threshold**, and **Save and restart Pomegr**). Saved desktop values win over the matching environment variables below once saved; the monitor applies either source only on its next start and prune cycle, never synchronously from a settings change or a browser request. Source-development launches and any field left unset in the desktop app continue to use the `POMEGR_RETENTION_DAYS` and `POMEGR_STORE_MAX_MB` environment variables below; an unset, malformed, or out-of-range value for either one falls back to its default.
+The [Settings guide](../../public/using-pomegr/settings.md#manage-storage) explains the desktop **Settings → Storage** controls (**Retention age**, **Resource history cleanup threshold**, and **Save and restart Pomegr**). Saved desktop values win over the matching environment variables below once saved; the monitor applies either source only on its next start and prune cycle, never synchronously from a settings change or a browser request. Source-development launches and any field left unset in the desktop app continue to use the `POMEGR_RETENTION_DAYS` and `POMEGR_STORE_MAX_MB` environment variables below; an unset, malformed, or out-of-range value for either one falls back to its default.
 
 ## Provider setup
 
-For the first-use walkthrough, see [Follow your first session](public/get-started/first-session.md).
+For the first-use walkthrough, see [Follow your first session](../../public/get-started/first-session.md).
 The sections below cover provider-specific configuration and optional evidence.
 
 ### Choose provider folders in the desktop app
 
-The [Settings guide](public/using-pomegr/settings.md#choose-provider-folders) and [Follow your first session](public/get-started/first-session.md#if-you-use-a-different-profile) cover the desktop **Settings → Providers** controls and steps. Default session discovery, live presence, task data, account usage, reconnection, and plugin setup follow the Claude **Configuration folder**; the optional **Session folder override** is separate, and the Codex **Home folder** covers session discovery and account usage. Changes apply after Pomegr restarts, running coding tools keep their existing profiles, and no provider files are moved or modified.
+The [Settings guide](../../public/using-pomegr/settings.md#choose-provider-folders) and [Follow your first session](../../public/get-started/first-session.md#if-you-use-a-different-profile) cover the desktop **Settings → Providers** controls and steps. Default session discovery, live presence, task data, account usage, reconnection, and plugin setup follow the Claude **Configuration folder**; the optional **Session folder override** is separate, and the Codex **Home folder** covers session discovery and account usage. Changes apply after Pomegr restarts, running coding tools keep their existing profiles, and no provider files are moved or modified.
 
 Saved choices take precedence over matching environment variables. A saved Claude
 configuration or session-folder choice also disables an inherited
@@ -84,7 +84,7 @@ to the matching destinations after confirmation.
 
 No extra setup is required when Claude Code persists sessions under `%USERPROFILE%\.claude\projects`. The local session registry supplies the strongest live and needs-input evidence. When the registry provides an owner PID and process-start identity, Pomegr validates both monitor-side so orphaned registry files cannot keep exited sessions live; those owner fields are never exposed to the browser. `CLAUDE_PROJECTS_DIR` can select a different session root, and `CLAUDE_SESSION_FILE` can pin one synthetic or explicitly selected primary rollout.
 
-Claude Remote Control launches `sdk-cli` sessions whose local registry can omit execution status. For these sessions, Pomegr reads the native session metadata API using the existing Claude OAuth access token, only after validating the local process owner and registry bridge association. It maps explicit `running`, `requires_action`, and `idle` primary-loop states. The session additionally remains Working while provider-recorded background workflow or shell launches have neither a matching terminal notification nor a completed workflow manifest in the current validated process lifetime. It does not guess from transcript age or agent counts. No extra hook, worker attachment, or remote session discovery is performed. Missing credentials or an unsupported response leave status unknown until a valid observation arrives; temporary failures retain the last valid status for the same owner. Pomegr does not refresh credentials: sign in through Claude Code if account access has expired. The [Claude session-status contract](internal/architecture/claude-session-status.md) documents request bounds, authentication, and privacy.
+Claude Remote Control launches `sdk-cli` sessions whose local registry can omit execution status. For these sessions, Pomegr reads the native session metadata API using the existing Claude OAuth access token, only after validating the local process owner and registry bridge association. It maps explicit `running`, `requires_action`, and `idle` primary-loop states. The session additionally remains Working while provider-recorded background workflow or shell launches have neither a matching terminal notification nor a completed workflow manifest in the current validated process lifetime. It does not guess from transcript age or agent counts. No extra hook, worker attachment, or remote session discovery is performed. Missing credentials or an unsupported response leave status unknown until a valid observation arrives; temporary failures retain the last valid status for the same owner. Pomegr does not refresh credentials: sign in through Claude Code if account access has expired. The [Claude session-status contract](../architecture/claude-session-status.md) documents request bounds, authentication, and privacy.
 
 The API list-rate estimate is optional. Wrap the Claude Code status line with `scripts/claude-statusline-bridge.mjs` to capture Claude Code's own client-side estimate. In `~/.claude/settings.json`, point `statusLine.command` at the bridge and pass the existing status-line command after `--`:
 
@@ -102,7 +102,7 @@ The bridge forwards bounded stdin to the delegated command unchanged, so the vis
 #### Claude local usage feed
 
 For what the windows mean and how fresh they are, see the public
-[Usage limits](public/concepts/usage-limits.md) guide.
+[Usage limits](../../public/concepts/usage-limits.md) guide.
 
 A failed usage check automatically expands **Usage connection help** under
 **Usage limits → Claude Code**, even when retained usage figures remain available.
@@ -183,7 +183,7 @@ prompts on the monitor computer. No credentials or auth URLs are copied into Pom
 
 No extra setup is required for persisted history under `%USERPROFILE%\.codex`. `CODEX_HOME` can select a different Codex root. Pomegr reads bounded rollout metadata and `session_index.jsonl`; it does not read Codex private SQLite tables.
 
-To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables session-level usage capability, while the Usage limits page shows **Codex CLI required for usage limits** with expanded **Usage connection help**. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability and shows troubleshooting beside a sanitized failure. Retained readings do not hide help. The public [Usage limits](public/concepts/usage-limits.md) guide explains how the windows are presented.
+To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables session-level usage capability, while the Usage limits page shows **Codex CLI required for usage limits** with expanded **Usage connection help**. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability and shows troubleshooting beside a sanitized failure. Retained readings do not hide help. The public [Usage limits](../../public/concepts/usage-limits.md) guide explains how the windows are presented.
 
 #### Codex usage troubleshooting
 
@@ -209,7 +209,7 @@ browser GETs remain cache-only.
 ## Capability availability
 
 The generated capability matrix and current provider-related gaps are in
-[Limitations](internal/architecture/limitations.md#provider-related-limitations).
+[Limitations](../architecture/limitations.md#provider-related-limitations).
 The same reference lists Pomegr-specific limitations separately.
 
 ## Environment variables
@@ -237,7 +237,7 @@ Pomegr exposes a bounded display `role` for each agent. The primary agent is alw
 
 Unmapped agents with a valid recorded type display `custom: <type>` in their
 individual details. The label uses the recorded terminal type name, normalized
-and validated under the [agent role rules](internal/architecture/metrics.md#agent-roles). Missing or
+and validated under the [agent role rules](../architecture/metrics.md#agent-roles). Missing or
 invalid types still display `unknown`. No mapping file is needed for this label;
 add a mapping only to assign one of Pomegr's built-in roles.
 
@@ -258,11 +258,11 @@ To share Claude cost snapshots with a portable build, set `POMEGR_DATA_DIR` to t
 
 ## Troubleshooting
 
-The public help pages give the recovery steps: [Missing sessions](public/help/missing-sessions.md), [Unavailable data](public/help/unavailable-data.md), and [Connection problems](public/help/connection-problems.md). The sections below keep the technical contracts behind them.
+The public help pages give the recovery steps: [Missing sessions](../../public/help/missing-sessions.md), [Unavailable data](../../public/help/unavailable-data.md), and [Connection problems](../../public/help/connection-problems.md). The sections below keep the technical contracts behind them.
 
 ### The desktop app does not open
 
-The [Connection problems guide](public/help/connection-problems.md#pomegr-does-not-open) explains the recovery steps. This section keeps the release and startup contract:
+The [Connection problems guide](../../public/help/connection-problems.md#pomegr-does-not-open) explains the recovery steps. This section keeps the release and startup contract:
 
 - The release must be the Windows x64 build, its SHA-256 must match `SHA256SUMS.txt`, and its Authenticode signature must be valid and timestamped for the expected complete publisher Subject.
 - A second launch focuses the existing window instead of starting another service set.
@@ -271,9 +271,11 @@ The [Connection problems guide](public/help/connection-problems.md#pomegr-does-n
 
 ### The window disappeared after I closed it
 
-Closing the window may hide Pomegr to the tray; see [Connection problems](public/help/connection-problems.md#pomegr-does-not-open). The close-behavior contract is under [Desktop settings and behavior](#desktop-settings-and-behavior).
+Closing the window may hide Pomegr to the tray; see [Connection problems](../../public/help/connection-problems.md#pomegr-does-not-open). The close-behavior contract is under [Desktop settings and behavior](#desktop-settings-and-behavior).
 
 ### Notifications do not appear
+
+The [Settings guide](../../public/using-pomegr/settings.md#use-the-desktop-controls) tells users when the alerts appear and what they show. This section keeps the delivery contract:
 
 - Needs-input notifications are enabled by default, and this version has no Settings switch for them or for temporary quiet mode. Confirm the session was live and waiting when Pomegr observed it.
 - Pomegr notifies only on a transition into a recognized live needs-input state; it deduplicates repeated observations until the state clears.
@@ -281,6 +283,8 @@ Closing the window may hide Pomegr to the tray; see [Connection problems](public
 - Notification clicks navigate to an observation view only. Pomegr cannot approve, answer, resume, or control an agent.
 
 ### Updates are unavailable
+
+The [installation guide](../../public/get-started/install.md#keep-pomegr-up-to-date) explains the user steps for installed and portable builds. This section keeps the update contract:
 
 - Automatic updates require an installed, signed release with updates enabled and network access to the official release endpoint. Portable builds intentionally disable them.
 - The update action appears only after the signed installer finishes downloading and verification succeeds; checking and downloading do not interrupt the dashboard.
@@ -290,7 +294,7 @@ Closing the window may hide Pomegr to the tray; see [Connection problems](public
 
 ### Another device cannot open the dashboard
 
-The [Phone access guide](public/using-pomegr/phone-access.md) explains pairing, the sharing settings, and recovery from the desktop **Settings → Phone access** panel. This section keeps the contract behind them:
+The [Phone access guide](../../public/using-pomegr/phone-access.md) explains pairing, the sharing settings, and recovery from the desktop **Settings → Phone access** panel. This section keeps the contract behind them:
 
 - Phone access is an HTTP MVP for trusted local networks. Pairing restricts access but does not encrypt traffic. A paired phone can view the existing normalized dashboard; it cannot retrieve transcript paths, invoke desktop controls, sign in to providers, or change the computer's sharing settings. No cloud account or phone installation is required.
 - Each pairing code expires after five minutes and pairs one browser. Up to four browser authorizations can exist per running gateway. The displayed count is paired browsers, not proof of currently connected devices. Both devices must be on the same local subnet, and only a connection Windows classifies as **Private** is eligible: public, domain, VPN, virtual, IPv6-only, and unrecognized connections are not supported by this MVP.
@@ -300,7 +304,7 @@ The [Phone access guide](public/using-pomegr/phone-access.md) explains pairing, 
 
 ### No sessions appear
 
-The [Missing sessions guide](public/help/missing-sessions.md) explains the recovery steps. This section keeps the source-development and identifier checks:
+The [Missing sessions guide](../../public/help/missing-sessions.md) explains the recovery steps. This section keeps the source-development and identifier checks:
 
 - Confirm the provider has created persisted JSONL history under its default root, or set the matching root override before `npm run dev`.
 - Remove `CLAUDE_SESSION_FILE` if it points to a deleted file.
@@ -311,7 +315,7 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 ### Codex appears historical while it is open
 
-The [Missing sessions guide](public/help/missing-sessions.md#a-session-is-missing-from-live) gives the reader-facing summary. The liveness rules:
+The [Missing sessions guide](../../public/help/missing-sessions.md#a-session-is-missing-from-live) gives the reader-facing summary. The liveness rules:
 
 - An owning app-server reports only threads loaded by that same process. A newly spawned app-server is not global live-state truth on Windows.
 - On Windows, confirm the native Codex CLI writer is the selected executable and that its validated process ownership is present. A missing or ambiguous writer is unknown/stale, not proof of idle or completion.
@@ -319,14 +323,14 @@ The [Missing sessions guide](public/help/missing-sessions.md#a-session-is-missin
 
 ### Needs-input is stale or missing
 
-The [Unavailable data guide](public/help/unavailable-data.md#needs-input-looks-stale-or-is-missing) explains what to check. The evidence rules:
+The [Unavailable data guide](../../public/help/unavailable-data.md#needs-input-looks-stale-or-is-missing) explains what to check. The evidence rules:
 
 - Recorded input requests clear on matching provider evidence or a subsequent turn; accepted unresolved lifecycle evidence persists until that evidence arrives. Missing, invalid, or incomplete evidence remains unavailable rather than expiring into a guessed state.
 - Questions, choices, answers, approval reasons, and commands are intentionally unavailable in diagnostics and browser state.
 
 ### Usage limits are unavailable
 
-- The public [Usage limits](public/concepts/usage-limits.md) guide explains the windows, freshness, and recovery steps.
+- The public [Usage limits](../../public/concepts/usage-limits.md) guide explains the windows, freshness, and recovery steps.
 - Historical views always omit current usage limits.
 - Claude failures can indicate missing/expired provider authentication or provider cooldown; the browser receives only a sanitized error.
 - Codex limits require a supported native Codex CLI authenticated with ChatGPT. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native executable if automatic discovery cannot find it; Pomegr does not attach to an existing desktop or CLI stdio transport. If no valid CLI is found, the Usage limits page shows **Codex CLI required for usage limits** with installation, sign-in, and restart instructions. Session-level usage capability remains disabled. Account-read failures show expanded troubleshooting even when previous values remain available.
@@ -334,7 +338,7 @@ The [Unavailable data guide](public/help/unavailable-data.md#needs-input-looks-s
 
 ### Git or GitHub metadata is unavailable
 
-The [Unavailable data guide](public/help/unavailable-data.md#repository-details-are-missing) explains what to check. The contract behind it:
+The [Unavailable data guide](../../public/help/unavailable-data.md#repository-details-are-missing) explains what to check. The contract behind it:
 
 - Git must be on `PATH`, and the selected live session's recorded working directory must still exist.
 - Historical views intentionally show only the recorded branch and never the current working tree.
@@ -342,4 +346,4 @@ The [Unavailable data guide](public/help/unavailable-data.md#repository-details-
 
 ### A session was deleted
 
-The [Missing sessions guide](public/help/missing-sessions.md#session-unavailable) shows what the reader sees. Deleted provider history returns a safe historical missing-session state and disappears from the next catalog refresh. Pomegr does not retain a transcript copy or substitute current Git and usage-limit data.
+The [Missing sessions guide](../../public/help/missing-sessions.md#session-unavailable) shows what the reader sees. Deleted provider history returns a safe historical missing-session state and disappears from the next catalog refresh. Pomegr does not retain a transcript copy or substitute current Git and usage-limit data.

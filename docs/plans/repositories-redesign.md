@@ -493,7 +493,7 @@ Give the shared reporting policy its own tab and park the Git placeholder.
    Claude Code and Codex, that chooses what agents report about this repository."; the
    status row from RP-03 (same component, `context="reporting"` so it hides the
    "How reporting works" toggle); then the `/pomegr:init` help content always visible
-   under the row, and a link to `docs/PLUGINS.md` as today.
+   under the row, and a link to `docs/internal/development/plugins.md` as today.
 2. Git tab: `CommandComingSoon` with the existing title and detail, icon `git`.
 3. Setup tab keeps its reporting row; the two rows share one component and one state.
 
@@ -537,7 +537,7 @@ Finish per `mockup-mobile-index.html`, `mockup-mobile-detail.html`, and `DESIGN.
    introduced; otherwise none.
 5. Docs: update the "Repositories place current Pomegr plugin setup inside each expanded
    repository's provider section…" paragraph in `DESIGN.md` (Session Evidence) to describe
-   the index and the detail tabs; update `docs/PLUGINS.md` and `README.md` wherever they
+   the index and the detail tabs; update `docs/internal/development/plugins.md` and `README.md` wherever they
    describe expanding a repository row; note the route in `docs/internal/development/agent-workflow.md` if it
    lists page routes.
 6. Final verification: `npm run verify:fast`, `npm test`, then a browser pass at 1440,

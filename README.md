@@ -36,7 +36,7 @@ npm run diagnostics:snapshot
 ```
 
 Add `--json` for machine-readable output or `--provider codex` to filter one provider.
-See [Pipeline operations](docs/PIPELINE_OPERATIONS.md) for the bounded diagnostic
+See [Pipeline operations](docs/internal/operations/pipeline-diagnostics.md) for the bounded diagnostic
 contract, continuous local JSONL logs, and live/historical analysis.
 
 <p align="center">
@@ -70,8 +70,8 @@ guidance.
 
 ## Publish procedures
 
-- **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/PLUGINS.md#skill-changes).
-- **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/PLUGINS.md#plugin-upgrade).
+- **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/internal/development/plugins.md#skill-changes).
+- **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/internal/development/plugins.md#plugin-upgrade).
 - **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/DESKTOP_RELEASES.md#publish-signed-artifacts).
 - **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](landing/OPERATIONS.md#5-release-the-exact-audited-artifact).
 

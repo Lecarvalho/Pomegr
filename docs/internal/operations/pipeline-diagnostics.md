@@ -2,6 +2,7 @@
 
 > Scope: development-only, anonymous pipeline diagnostics.
 > Authority: operational contract for the continuous JSONL diagnostics path.
+> Related code and checks: `server/diagnostics/`, the diagnostic scripts under `scripts/`, and the [Verification](#verification) commands below; [Observation cache](../architecture/observation-cache.md) owns the operational contract this subsystem observes.
 
 Pomegr continuously writes bounded local JSONL diagnostics during normal development. This is an engineering diagnostic, not product evidence, a dashboard metric, or an efficiency judgment. Perfetto has been removed; there is no setup, capture, export, viewer, SQL query, comparison, or benchmark mode.
 

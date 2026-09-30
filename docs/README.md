@@ -26,10 +26,10 @@ source.
 | Read a dash, an "unavailable" message, or a provider status without assuming a cause | [Unavailable data](public/help/unavailable-data.md) |
 | Recover from Monitor offline, a paused dashboard, or an app that does not open | [Connection problems](public/help/connection-problems.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
-| Look up environment variables, provider setup, and the technical contracts behind troubleshooting | [Configuration and troubleshooting](CONFIGURATION.md) |
+| Look up environment variables, provider setup, and the technical contracts behind troubleshooting | [Configuration and troubleshooting](internal/development/configuration.md) |
 
 Configuration and troubleshooting keeps the environment variables, provider setup,
-and technical contracts behind the guides above. [Pomegr plugins](PLUGINS.md) and
+and technical contracts behind the guides above. [Pomegr plugins](internal/development/plugins.md) and
 [MCP observation queries](internal/architecture/mcp-queries.md) keep the contracts behind their guides.
 
 ## Maintain and contribute
@@ -47,6 +47,10 @@ The [architecture overview](internal/architecture/overview.md),
 [provider status](internal/architecture/provider-status.md),
 [cache timing](internal/architecture/cache-timing.md), and
 [signal dictionary](internal/architecture/signal-dictionary.md) contracts live beside it.
+The [configuration](internal/development/configuration.md), [plugins](internal/development/plugins.md),
+and [command table](internal/development/command-table.md) references, and the
+[pipeline diagnostics](internal/operations/pipeline-diagnostics.md) runbook, serve
+maintainers changing those areas.
 
 Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Coding
 agents follow [AGENTS.md](../AGENTS.md) and the

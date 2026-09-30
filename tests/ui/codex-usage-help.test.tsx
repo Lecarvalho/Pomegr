@@ -39,7 +39,7 @@ describe("Codex usage troubleshooting", () => {
     expect(codex.getByText(/install or update the native Codex CLI/)).toBeVisible();
     expect(codex.getByText("codex login")).toBeVisible();
     expect(codex.getByText(/Fully quit and reopen Pomegr/)).toBeVisible();
-    expect(codex.getByRole("link", { name: "Setup guide (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#codex");
+    expect(codex.getByRole("link", { name: "Setup guide (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/public/concepts/usage-limits.md#if-a-window-is-missing");
     expect(codex.queryByRole("button")).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Claude Code" })).getByText("42%")).toBeVisible();
   });

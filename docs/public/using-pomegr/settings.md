@@ -93,7 +93,9 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   notification titled "Pomegr" that says "A coding-agent session needs input".
   It never includes a session title, question, or command, and selecting it
   opens that session. The alerts are on by default; Settings has no switch for
-  them yet, and Windows notification settings can silence them.
+  them yet, and Windows notification settings or Focus Assist can silence them.
+  Pomegr alerts once for each wait, and only for a live session it saw start
+  needing input.
 - **Settings → About** shows the installed version, **Check for updates**, and
   **Restart and install**. A portable build never checks for updates. See
   [Keep Pomegr up to date](../get-started/install.md#keep-pomegr-up-to-date).

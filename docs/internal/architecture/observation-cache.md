@@ -3044,13 +3044,13 @@ not start capture IPC. Continuous JSONL is the sole diagnostics path; no rolling
 capture/export transport, viewer, or renderer instrumentation remains. Continuous logging is
 excluded from production and desktop artifacts, not merely disabled.
 Browser/LAN routes cannot start or stop any diagnostic facility. Schema, retention, coverage,
-local setup and offline analysis belong to `docs/PIPELINE_OPERATIONS.md`.
+local setup and offline analysis belong to `docs/internal/operations/pipeline-diagnostics.md`.
 
 The manually launched `npm run diagnostics:snapshot` reader consumes a fixed versioned snapshot
 over a Windows named pipe or per-user Unix socket. That IPC feed is read-only, bounded,
 in-memory, and not an HTTP/browser API. Connecting cannot cause acquisition, normalization,
 derivation, persistence, or revision publication. The complete operational contract is
-documented in `docs/PIPELINE_OPERATIONS.md`.
+documented in `docs/internal/operations/pipeline-diagnostics.md`.
 
 Changes to this subsystem must keep focused coverage for complete-record framing, partial
 writes, multi-chunk acquisition, append continuity, staged replacement, checkpoint

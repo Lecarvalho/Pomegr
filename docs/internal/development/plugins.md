@@ -2,7 +2,7 @@
 
 Pomegr ships self-contained plugins for Codex and Claude Code. Both adapters configure and report the same bounded, repository-specific signals and can query committed Pomegr observations through a local MCP server. Pomegr remains provider-neutral: provider names and lifecycle details belong only to the distribution adapter.
 
-For installation, repository setup, and troubleshooting, read the [Reporting plugins guide](public/using-pomegr/reporting-plugins.md); this reference keeps the contracts behind it.
+For installation, repository setup, and troubleshooting, read the [Reporting plugins guide](../../public/using-pomegr/reporting-plugins.md); this reference keeps the contracts behind it.
 
 | Capability | Codex | Claude Code |
 | --- | --- | --- |
@@ -28,13 +28,13 @@ OpenAI publishes approved plugins once to the universal directory shared by Chat
 
 ## Install
 
-The [Reporting plugins guide](public/using-pomegr/reporting-plugins.md#install-the-plugin) owns the installation and update steps for Codex and Claude Code. The subsections below keep the behavior behind them.
+The [Reporting plugins guide](../../public/using-pomegr/reporting-plugins.md#install-the-plugin) owns the installation and update steps for Codex and Claude Code. The subsections below keep the behavior behind them.
 
 ### From Pomegr desktop
 
 Open **Repositories**, select a repository, then open its **Plugin** tab to find
 **Pomegr plugin** under each provider; the
-[guide](public/using-pomegr/reporting-plugins.md#check-the-setup-in-pomegr) explains
+[guide](../../public/using-pomegr/reporting-plugins.md#check-the-setup-in-pomegr) explains
 the rows. The repository index summarizes setup and offers **Needs attention** and
 **Live now** filters. Pomegr automatically checks local installation records and
 configuration. The row shows the installed version, enablement, scope, and update status. **Recheck**
@@ -75,7 +75,7 @@ claude --plugin-dir .\plugins\claude-code
 
 ## Initialize a repository
 
-The [guide](public/using-pomegr/reporting-plugins.md#set-up-a-repository) explains how to run `$pomegr:init` in Codex or `/pomegr:init` in Claude Code. The skill inspects safe project structure and any existing policy, then asks which project-specific session, agent, and execution-task outcomes an observer needs to notice and when each state should be replaced or cleared.
+The [guide](../../public/using-pomegr/reporting-plugins.md#set-up-a-repository) explains how to run `$pomegr:init` in Codex or `/pomegr:init` in Claude Code. The skill inspects safe project structure and any existing policy, then asks which project-specific session, agent, and execution-task outcomes an observer needs to notice and when each state should be replaced or cleared.
 
 The init skill is the authoring workflow: it inspects, proposes, confirms, writes, and validates. Its policy template is the runtime artifact copied into `.pomegr/signals.md` and loaded into later sessions. MCP tool descriptions remain the argument contract; the policy maps configured repository states to provider-neutral tool suffixes.
 
@@ -174,7 +174,7 @@ The Claude `SubagentStop` detector checks recognized Pomegr report or clear call
 
 ## Tools and signal lifetime
 
-The [guide](public/using-pomegr/reporting-plugins.md#what-agents-report) shows where each report appears. Both plugins provide:
+The [guide](../../public/using-pomegr/reporting-plugins.md#what-agents-report) shows where each report appears. Both plugins provide:
 
 | Tool | Effect |
 | --- | --- |
@@ -214,8 +214,8 @@ current session from the working directory or recency. If Pomegr is not running 
 host identity is unavailable, queries return unavailable without launching it or affecting
 the existing reporting tools.
 
-When to use each query is in the [MCP queries guide](public/using-pomegr/mcp-queries.md). The complete contracts, evidence qualifications, and local transport boundary are
-documented in [MCP observation queries](internal/architecture/mcp-queries.md).
+When to use each query is in the [MCP queries guide](../../public/using-pomegr/mcp-queries.md). The complete contracts, evidence qualifications, and local transport boundary are
+documented in [MCP observation queries](../architecture/mcp-queries.md).
 
 ### Claude Code native naming
 
@@ -225,7 +225,7 @@ Codex does not receive this Claude-specific control bridge. Its provider-native 
 
 ## Troubleshooting
 
-Start with the provider's doctor command. The symptom-by-symptom recovery steps are in the [Reporting plugins guide](public/using-pomegr/reporting-plugins.md#if-reporting-is-missing).
+Start with the provider's doctor command. The symptom-by-symptom recovery steps are in the [Reporting plugins guide](../../public/using-pomegr/reporting-plugins.md#if-reporting-is-missing).
 
 For unsupported standalone MCP registrations, use the exact server name `pomegr` and add policy guidance through the host's supported instruction mechanism. The plugin packages are the supported path for automatic policy loading.
 
