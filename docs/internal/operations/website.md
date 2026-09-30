@@ -21,7 +21,7 @@ Start the development server in PowerShell:
 npm --prefix landing run dev
 ```
 
-Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), or [Downloads](http://127.0.0.1:8788/download). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
+Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), [Downloads](http://127.0.0.1:8788/download), or [Docs](http://127.0.0.1:8788/docs). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
 
 `landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `landing/wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and the waitlist widget uses Turnstile. Downloads still target real GitHub release files.
 
@@ -84,7 +84,9 @@ Cloudflare Universal SSL supplies and renews the public TLS certificate without 
 
 `landing/wrangler.jsonc` attaches the Worker to both `pomegr.com` and `www.pomegr.com`. The Worker redirects `www` to the HTTPS apex with status 308. Its final configuration has `workers_dev` and preview URLs disabled.
 
-For local validation, use the development instructions above; use a temporary reviewed staging configuration for deployment validation. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, `/download`, the two waitlist endpoints, and the landing's explicit static asset paths. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
+For local validation, use the development instructions above; use a temporary reviewed staging configuration for deployment validation. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, `/download`, `/docs`, the two waitlist endpoints, and the landing's explicit static asset paths and prefixes. The `/docs/` prefix covers every documentation page and the copied page images under `/docs/images/`. It is exact: `/docs` and paths that begin `/docs/` pass; `/docsx`, `/docs..`, `/Docs`, `/docs%2F...`, and `/x/docs/...` do not, and a path such as `/docs/../dashboard` is normalized to `/dashboard` and rejected. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
+
+The documentation routes are the application's, not the Worker's. `/docs` redirects (307) to the manifest's first page, and the catch-all `/docs/<group>/<topic>` route serves only pages the [publication manifest](../development/documentation-manifest.md#serve-the-pages) selects. An unknown `/docs/...` path passes the allowlist on purpose and receives the application's 404 page, which keeps the documentation navigation; only paths outside the allowlist get the Worker's plain `Not found`. Adding a page therefore never needs an allowlist change.
 
 ## 4. Edge and application rate limits
 
@@ -156,6 +158,7 @@ Do not edit `landing/dist` between the audit and deployment. `npm run deploy` re
 After deployment, smoke-test:
 
 - HTTPS `/`, `/about`, and `/download` return 200 and `www` redirects to the apex.
+- `/docs` redirects to the first documentation page, a published page such as `/docs/get-started/introduction` returns 200 with its navigation, outline, and images, and `/docs/not-a-page` returns the documentation 404.
 - The download page shows version and file sizes, and its installer/portable buttons point directly to the corresponding official GitHub `.exe` assets.
 - `/dashboard`, `/api/state`, `/api/sessions`, and random paths return 404.
 - Signup, a duplicate signup, the signed status cookie, Turnstile failure, and throttling behave as expected.

@@ -15,6 +15,7 @@ const PUBLIC_PATHS = new Set([
   "/",
   "/about",
   "/download",
+  "/docs",
   "/api/waitlist",
   "/api/waitlist/status",
   "/pomegr-logo.png",
@@ -26,7 +27,9 @@ const PUBLIC_PATHS = new Set([
   "/manifest.webmanifest",
 ]);
 
-const PUBLIC_PREFIXES = ["/_next/", "/_vinext/", "/assets/", "/fonts/", "/landing/"];
+// "/docs/" admits every documentation route and "/docs/images/" assets. Unknown documentation paths
+// are rejected by the application, which returns its own 404, not by this allowlist.
+const PUBLIC_PREFIXES = ["/_next/", "/_vinext/", "/assets/", "/fonts/", "/landing/", "/docs/"];
 
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));

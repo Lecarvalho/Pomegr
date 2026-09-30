@@ -12,9 +12,10 @@ Only explicitly selected public pages and their referenced images may enter the
 documentation website. The manifest selects ready public pages in reading order,
 starting with the
 [introduction to Pomegr](../../public/get-started/introduction.md). The build-time
-content loader is implemented (see [Generate the website content](#generate-the-website-content));
-the renderer, search, and `check:docs` command remain unimplemented and must follow
-this contract.
+content loader, the page renderer, and the `/docs` routes are implemented (see
+[Generate the website content](#generate-the-website-content) and
+[Serve the pages](#serve-the-pages)); search and the `check:docs` command remain
+unimplemented and must follow this contract.
 
 ## Select pages and order navigation
 
@@ -152,3 +153,35 @@ The [loader tests](../../../landing/tests/ui/docs-content.test.ts) and
 manifest, metadata, routes, anchors, links, images, raw HTML, determinism, the
 real documentation, hostile paths (including a mistaken manifest entry and
 links into internal documentation), junctions, and the audit itself.
+
+## Serve the pages
+
+One catch-all route, `landing/app/docs/[...slug]/page.tsx`, renders every
+selected page from the generated content, so no page has a hand-written route.
+Its `generateStaticParams` lists exactly the manifest's routes and dynamic
+params are off. The [docs layout](../../../landing/app/docs/layout.tsx) draws the
+skip link, the grouped sidebar in manifest order with `aria-current` on the
+current page, and the reading column; the route adds an outline of the page's
+`##` and `###` headings and the previous and next links from the generated
+data. Its front-matter title and description become the page title and meta
+description, and the route is its canonical URL.
+
+- `/docs` has no content of its own. It redirects (307) to `entry`, and is a
+  404 when the manifest selects nothing.
+- `/docs/<group>/<topic>` serves a selected page. Only exact manifest topics
+  match: a group path, a different case, an extra segment, or an encoded slash is
+  not a page.
+- Every other `/docs/...` path returns status 404 with the documentation 404
+  page, which keeps the sidebar.
+- `/docs/images/...` files are the static images the loader copied.
+- At 760 px and narrower the sidebar opens from a "Documentation menu" button
+  with `aria-expanded` and `aria-controls`; Escape closes it and returns focus
+  to the button, and choosing a page closes it and moves focus to the content.
+  The outline becomes a collapsed "On this page" disclosure below 1100 px.
+- Layout ids start with `docs-` and the route tests assert that no published
+  heading slug equals one.
+
+The Worker admits the whole family through `/docs` and the `/docs/` prefix; see
+[Domain routes and public boundary](../operations/website.md#3-domain-routes-and-public-boundary).
+[Route tests](../../../landing/tests/ui/docs-routes.test.tsx) cover the params,
+404s, sidebar, outline, pager, phone menu, and the Worker allowlist.
