@@ -360,7 +360,17 @@ describe("repository detail plugin", () => {
     render(<RepositoryDetailView repositoryId={repositoryId} initialTab="plugin" />);
     await screen.findByRole("heading", { name: "Plugin" });
     expect(screen.getAllByText("View setup instructions")).toHaveLength(2);
+    const instructionLinks = screen.getAllByRole("link", { name: "Read the plugin instructions" });
+    expect(instructionLinks).toHaveLength(2);
+    instructionLinks.forEach((link) => expect(link).toHaveAttribute("href", "https://pomegr.com/docs/using-pomegr/reporting-plugins#install-the-plugin"));
     expect(screen.queryByRole("button", { name: /Install plugin|Update plugin|Capture inventory|Capture again|Retry diagnostic/i })).not.toBeInTheDocument();
+  });
+
+  it("links the reporting setup instructions to the documentation website", async () => {
+    serve(setupSnapshot);
+    render(<RepositoryDetailView repositoryId={repositoryId} initialTab="reporting" />);
+    await screen.findByRole("heading", { name: "Repository reporting" });
+    expect(screen.getByRole("link", { name: "Read the plugin instructions" })).toHaveAttribute("href", "https://pomegr.com/docs/using-pomegr/reporting-plugins#set-up-a-repository");
   });
 
   it("opens a provider inventory without retaining a stale revision and keeps feedback across tab switches", async () => {

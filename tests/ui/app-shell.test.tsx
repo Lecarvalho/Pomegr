@@ -187,7 +187,7 @@ describe("Command Center app shell", () => {
     await user.click(await screen.findByRole("button", { name: /Local profile/ }));
     expect(screen.getByText("Workspace identity and preferences are coming soon.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open settings" })).toHaveAttribute("href", "/settings");
-    expect(screen.getByRole("link", { name: "Documentation (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/README.md");
+    expect(screen.getByRole("link", { name: "Documentation (opens in a new tab)" })).toHaveAttribute("href", "https://pomegr.com/docs");
 
     await user.click(screen.getByRole("button", { name: "Search Pomegr" }));
     const search = screen.getByRole("combobox", { name: "Search Pomegr" });

@@ -40,7 +40,7 @@ describe("DottedInfoPopover", () => {
   });
 
   it("keeps the cache-timing link aligned with its help page", () => {
-    expect(CACHE_TIMING_DOCUMENTATION_URL).toBe("https://github.com/Lecarvalho/pomegr/blob/main/docs/public/concepts/cache-reuse.md#cache-lifetime-and-elapsed-time");
+    expect(CACHE_TIMING_DOCUMENTATION_URL).toBe("https://pomegr.com/docs/concepts/cache-reuse#cache-lifetime-and-elapsed-time");
     expect(fs.readFileSync(path.join(process.cwd(), "docs", "public", "concepts", "cache-reuse.md"), "utf8")).toContain("## Cache lifetime and elapsed time");
   });
 });
