@@ -49,7 +49,9 @@ export type FileHistorySession = {
   kind: FileChangeKind; // "created" when the session created the file, otherwise its newest kind
   editCount: number; // number of recorded "edited" changes in this session
   newestAt: string; // ISO time of the session's newest change to this file
-  agents: Array<{ id: string; label: string | null }>; // normalized agent IDs; label only when committed evidence names it
+  /** Normalized agent IDs with the identity recorded when they changed the file (label,
+   *  optional assignment, latest reported model); each field null when not recorded. */
+  agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null }>;
   pathAtTime: string | null; // path during the session's newest change when it differs from the current path
 };
 

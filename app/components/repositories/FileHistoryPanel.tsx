@@ -49,7 +49,11 @@ function agentsSummary(session: FileHistorySession): string | null {
   if (session.agents.length === 0) return null;
   const knownCount = session.agents.filter((agent) => agent.label).length;
   if (knownCount === session.agents.length) return session.agents.map((agent) => agent.label).join(" · ");
-  return `${session.agents.length} agent${session.agents.length === 1 ? "" : "s"}`;
+  if (knownCount === 0) return `${session.agents.length} agent${session.agents.length === 1 ? "" : "s"}`;
+  // Labels resolve only for sessions the monitor currently holds; name the known ones, count the rest.
+  const unknownCount = session.agents.length - knownCount;
+  const known = session.agents.flatMap((agent) => agent.label ? [agent.label] : []);
+  return [...known, `${unknownCount} other agent${unknownCount === 1 ? "" : "s"}`].join(" · ");
 }
 
 function sessionHrefFor(sessionId: string, linkPath: string): string | null {

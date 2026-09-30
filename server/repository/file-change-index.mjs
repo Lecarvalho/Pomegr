@@ -2,6 +2,7 @@ import path from "node:path";
 import { repositoryRelativePath } from "../normalize/repository-path.mjs";
 import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 import { readGitRenamesAsync } from "./git-state.mjs";
+import { recordFileChangeAgents } from "./file-change-agents.mjs";
 
 const CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -13,6 +14,9 @@ const MAX_LIMIT = 200;
 // v2 stops replaying unbound Codex paths through session.cwd. Old rows can be
 // attributed to the wrong checkout, so rebuilds discard this derived index.
 const FILE_INDEX_VERSION = "2";
+// v1 backfills `file_change_agents` by replaying retained checkpoints once. The replay is
+// additive: already-recorded changes are skipped, so it only adds agent identities.
+const FILE_AGENTS_VERSION = "1";
 
 function readMeta(store, key) {
   const row = store.database.prepare("SELECT value FROM meta WHERE key = ?").get(key);
@@ -218,8 +222,11 @@ async function applySnapshot(store, snapshot, resolveRepository) {
   // Additive: live evidence is a bounded tail (Claude transcript tail, Codex tool-call cap),
   // so a snapshot that no longer carries early tool calls must never delete their committed
   // rows. Already-recorded changes are skipped, which keeps replaying a checkpoint idempotent.
+  const agentIds = new Set(changes.map(({ change }) => change.agentId));
+  const observedAt = Math.max(0, ...changes.map(({ change }) => change.observedAt));
   store.transaction(() => {
     for (const { repositoryId, change } of changes) applyChange(store, repositoryId, change);
+    recordFileChangeAgents(store, sessionId, agentIds, snapshot?.publicState?.agents, observedAt);
   });
 }
 
@@ -268,7 +275,8 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
     rebuildStarted = true;
     const priorVersion = readMeta(store, "file_index_version");
     const needsRebuild = store.rebuilt === true || priorVersion !== FILE_INDEX_VERSION;
-    if (needsRebuild) {
+    const needsAgentBackfill = readMeta(store, "file_agents_version") !== FILE_AGENTS_VERSION;
+    if (needsRebuild || needsAgentBackfill) {
       let loaded;
       if (checkpointStore) {
         try { loaded = await checkpointStore.load(); } catch {
@@ -279,7 +287,7 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
       // v1 Codex rows were assigned through session.cwd and cannot be trusted.
       // Keep Claude's longer-lived additive history; only a database-declared
       // full rebuild clears every provider.
-      store.transaction(() => {
+      if (needsRebuild) store.transaction(() => {
         if (store.rebuilt === true) {
           store.database.prepare("DELETE FROM file_changes").run();
         } else if (priorVersion !== FILE_INDEX_VERSION) {
@@ -297,12 +305,22 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
         }
         store.database.prepare("DELETE FROM file_paths WHERE file_id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
         store.database.prepare("DELETE FROM files WHERE id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
+        store.database.prepare(`
+          DELETE FROM file_change_agents
+          WHERE NOT EXISTS (
+            SELECT 1 FROM file_changes fc
+            WHERE fc.session_id = file_change_agents.session_id AND fc.agent_id = file_change_agents.agent_id
+          )
+        `).run();
       });
       for (const record of loaded?.records || []) {
         try { await applySnapshot(store, record, resolveRepository); } catch { /* one bad retained checkpoint cannot block the rest */ }
       }
     }
-    store.transaction(() => writeMeta(store, "file_index_version", FILE_INDEX_VERSION));
+    store.transaction(() => {
+      writeMeta(store, "file_index_version", FILE_INDEX_VERSION);
+      writeMeta(store, "file_agents_version", FILE_AGENTS_VERSION);
+    });
     rebuildDone = true;
   }
 

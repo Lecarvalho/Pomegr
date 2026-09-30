@@ -142,6 +142,7 @@ test("sessionFiles groups file_changes by file: newest kind, change count, newes
   assert.equal(a.changeCount, 3);
   assert.match(a.fileId, /^f\d+$/);
   assert.equal(a.lastObservedAt, "2026-09-22T10:02:00.000Z");
+  assert.deepEqual(a.agents, [{ agentId: "agent-1", changeCount: 3, label: null, assignment: null, model: null }], "recorded actor carries the attribution");
   const b = block.files.find((file) => file.path === "b.txt");
   assert.equal(b.kind, "created");
   assert.equal(b.changeCount, 1);
@@ -498,4 +499,47 @@ test("GET /api/repository-files: serves loading then ready after a cycle, and 50
   const failedBody = await failedResponse.json();
   assert.equal(failedBody.readiness, "unavailable");
   assert.equal(failedBody.kind, "files");
+});
+
+test("sessionFiles lists each recorded agent per file, newest-touching first, skipping unattributed rows", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(7);
+  insertFile(store, { id: 1, repositoryId, path: "docs/METRICS.md" });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "primary", kind: "edited", observedAt: 1000 });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "agent-2", kind: "edited", observedAt: 2000 });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "primary", kind: "edited", observedAt: 1500 });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: null, kind: "edited", observedAt: 3000 });
+  insertChange(store, { fileId: 1, sessionId: "claude:other", agentId: "agent-3", kind: "edited", observedAt: 4000 });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "../bad path", kind: "edited", observedAt: 500 });
+
+  const { stub, source } = await buildSource(store, { demandedSessionIds: () => ["claude:s"] });
+  await stub.runCycle();
+  const [file] = source.sessionFiles("claude:s").files;
+  assert.equal(file.changeCount, 5);
+  assert.deepEqual(file.agents.map(({ agentId, changeCount }) => ({ agentId, changeCount })), [{ agentId: "agent-2", changeCount: 1 }, { agentId: "primary", changeCount: 2 }]);
+});
+
+test("fileHistory names each session's agents through the agentLabel hook, null when unknown", async (t) => {
+  const store = await openStore(t);
+  const repositoryId = repoId(8);
+  insertFile(store, { id: 1, repositoryId, path: "docs/METRICS.md" });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "primary", kind: "edited", observedAt: 1000 });
+  insertChange(store, { fileId: 1, sessionId: "claude:s", agentId: "agent-2", kind: "edited", observedAt: 2000 });
+  const labels = new Map([["claude:s primary", "Main"]]);
+  const { stub, source } = await buildSource(store, {
+    catalog: () => [{ id: "claude:s", title: "Session", updatedAt: "2026-09-22T10:00:00.000Z" }],
+    agentLabel: (sessionId, agentId) => labels.get(`${sessionId} ${agentId}`) ?? null,
+  });
+  source.fileHistory(repositoryId, { path: "docs/METRICS.md" });
+  await stub.runCycle();
+  const [session] = source.fileHistory(repositoryId, { path: "docs/METRICS.md" }).sessions;
+  assert.deepEqual([...session.agents].sort((a, b) => a.id.localeCompare(b.id)), [
+    { id: "agent-2", label: null, assignment: null, model: null },
+    { id: "primary", label: "Main", assignment: null, model: null },
+  ]);
+
+  labels.set("claude:s agent-2", "Explore");
+  await stub.runCycle();
+  const [relabeled] = source.fileHistory(repositoryId, { path: "docs/METRICS.md" }).sessions;
+  assert.equal(relabeled.agents.find((agent) => agent.id === "agent-2").label, "Explore", "a later cycle picks up a label once the session is resident");
 });

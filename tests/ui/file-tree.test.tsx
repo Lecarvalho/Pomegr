@@ -14,7 +14,7 @@ function sessionFixture(overrides: Partial<FileHistorySession> = {}): FileHistor
     kind: "edited",
     editCount: 2,
     newestAt: "2026-09-20T09:31:00.000Z",
-    agents: [{ id: "primary", label: "Primary" }],
+    agents: [{ id: "primary", label: "Primary", assignment: null, model: null }],
     pathAtTime: null,
     ...overrides,
   };
@@ -247,7 +247,7 @@ describe("FileHistoryPanel", () => {
         sessionFixture({ sessionId: "claude:current", title: "Current work", kind: "edited", editCount: 2 }),
         sessionFixture({ sessionId: "claude:other-live", title: "Other live session", live: true, kind: "created", editCount: 0 }),
         sessionFixture({ sessionId: "claude:moved", title: "Moved the file", kind: "moved", editCount: 1, pathAtTime: "app/OldDashboard.tsx" }),
-        sessionFixture({ sessionId: "claude:unknown-agents", title: "Unknown agents", kind: "deleted", editCount: 0, agents: [{ id: "a1", label: null }, { id: "a2", label: null }] }),
+        sessionFixture({ sessionId: "claude:unknown-agents", title: "Unknown agents", kind: "deleted", editCount: 0, agents: [{ id: "a1", label: null, assignment: null, model: null }, { id: "a2", label: null, assignment: null, model: null }] }),
       ],
     });
     render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={history} />);
@@ -262,6 +262,14 @@ describe("FileHistoryPanel", () => {
     expect(screen.getByText(/^1 edit( · |$)/)).toBeInTheDocument();
     expect(screen.getByText("as app/OldDashboard.tsx")).toBeInTheDocument();
     expect(screen.getByText("2 agents")).toBeInTheDocument();
+  });
+
+  it("names the known agents and counts the rest when only some labels resolve", () => {
+    const partial: FileHistoryResponse = historyFixture({
+      sessions: [sessionFixture({ sessionId: "claude:partial", title: "Partial", editCount: 3, agents: [{ id: "primary", label: "Main", assignment: null, model: null }, { id: "a2", label: null, assignment: null, model: null }] })],
+    });
+    render(<FileHistoryPanel repositoryLabel="Pomegr" path="app/Dashboard.tsx" workingTreeStatus={null} history={partial} />);
+    expect(screen.getByText(/Main · 1 other agent/)).toBeInTheDocument();
   });
 
   it("shows a provider filter only when more than one provider is present, and narrows the entries", () => {
@@ -316,13 +324,37 @@ describe("SessionFilePanel", () => {
   it("shows this session's recorded change and links the full history to the repository page", () => {
     const path = "app/components/Dashboard.tsx";
     render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
-      recorded={{ fileId: "f7", path, kind: "created", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z" }} />);
+      recorded={{ fileId: "f7", path, kind: "created", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [] }} />);
     expect(screen.getByText("Recorded in this session")).toBeInTheDocument();
     expect(screen.getByText("Created")).toHaveClass("commandChip", "info");
     expect(screen.getByText("3 changes")).toBeInTheDocument();
     expect(screen.getByText("Modified in working tree")).toHaveClass("commandChip", "warning");
     expect(screen.getByRole("link", { name: /All history on repository page/ }))
       .toHaveAttribute("href", "/repositories/repo-0123456789abcdef01234567?tab=files&path=app%2Fcomponents%2FDashboard.tsx");
+  });
+
+  it("names the recorded agents and opens a visible one in the Agents inspector", () => {
+    const path = "docs/METRICS.md";
+    const onOpenAgent = vi.fn();
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null} onOpenAgent={onOpenAgent}
+      recorded={{ fileId: "f8", path, kind: "edited", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z",
+        agents: [{ id: "agent-2", label: "Explore", assignment: "Map the metrics docs", model: "claude-sonnet-5-5", changeCount: 2 }, { id: "agent-9", label: null, assignment: null, model: null, changeCount: 1 }] }} />);
+    expect(screen.getByRole("list", { name: "Agents that changed this file" })).toBeInTheDocument();
+    expect(screen.getByText("claude-sonnet-5-5")).toHaveAttribute("title", "Latest model this agent reported");
+    expect(screen.getByText("Map the metrics docs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Explore in the Agents inspector" }));
+    expect(onOpenAgent).toHaveBeenCalledWith("agent-2");
+    expect(screen.getByText("Unlisted agent")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Unlisted agent/ })).not.toBeInTheDocument();
+    expect(screen.getByText("2 changes")).toBeInTheDocument();
+  });
+
+  it("omits per-agent counts when one agent made every change", () => {
+    const path = "docs/METRICS.md";
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus={null} recordedReadiness="ready" gitObserved={null} onOpenAgent={() => {}}
+      recorded={{ fileId: "f8", path, kind: "edited", changeCount: 4, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: null, changeCount: 4 }] }} />);
+    expect(screen.getByRole("button", { name: "Open Main in the Agents inspector" })).toHaveTextContent("Main");
+    expect(within(screen.getByRole("list", { name: "Agents that changed this file" })).queryByText("4 changes")).not.toBeInTheDocument();
   });
 
   it("labels a Git-observed file with its Git change and never attributes it", () => {

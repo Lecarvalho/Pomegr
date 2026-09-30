@@ -31,6 +31,8 @@ export type RepositoryTabProps = {
   /** Deep-linked or previously selected repository-relative path (F21); null selects nothing. */
   selectedPath?: string | null;
   onSelectPath?: (path: string | null) => void;
+  /** Opens a recorded agent in the session's Agents tab. */
+  onOpenAgent?: (agentId: string) => void;
 };
 
 type Repository = NonNullable<RepositoryDomain["repository"]>;
@@ -110,7 +112,7 @@ function FilesTreeSkeleton() {
 
 /** The session Repository tab's body (F17/F18): a search field, a Touched here / Uncommitted /
  * Changed elsewhere segment, and the shared FileTree plus the fetch-free SessionFilePanel. */
-function RepositoryTabFiles({ domain, repository, repositoryId, historical, sessionId, selectedPath, onSelectPath }: {
+function RepositoryTabFiles({ domain, repository, repositoryId, historical, sessionId, selectedPath, onSelectPath, onOpenAgent }: {
   domain: RepositoryDomain;
   repository: Repository;
   repositoryId: string;
@@ -118,6 +120,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
   sessionId: string;
   selectedPath: string | null;
   onSelectPath: (path: string | null) => void;
+  onOpenAgent?: (agentId: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
@@ -175,6 +178,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
         recorded={recorded}
         recordedReadiness={domain.fileHistory.readiness}
         gitObserved={gitObserved}
+        onOpenAgent={onOpenAgent}
         className="repositoryTabFilesPanel"
       />
     </div>
@@ -184,7 +188,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, sess
 /** The session Repository tab: a top bar (branch, comparison, PR, git-task summary) plus the
  * file tree / file history body (F17/F18). The commit list moved to the repository page Git tab
  * (RepositoryGitTab.tsx); see docs/internal/plans/ia-redesign for the design contract. */
-export function RepositoryTab({ sessionId, historical, paused = false, selectedPath: selectedPathInput = null, onSelectPath = () => {} }: RepositoryTabProps) {
+export function RepositoryTab({ sessionId, historical, paused = false, selectedPath: selectedPathInput = null, onSelectPath = () => {}, onOpenAgent }: RepositoryTabProps) {
   const result = useSessionDomain({ sessionId, domain: "repository" }, { historical, enabled: !paused });
   const domain = result.data;
   const selectedPath = repositoryFilePath(selectedPathInput) ?? null;
@@ -248,7 +252,7 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
       </Link>}
     </section>
     {domain.repositoryId
-      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} />
+      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} onOpenAgent={onOpenAgent} />
       : <p className="repositoryTabFilesUnavailable">File history requires a linked repository.</p>}
   </div>;
 }

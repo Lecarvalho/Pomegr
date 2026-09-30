@@ -86,7 +86,7 @@ function domain(overrides: Record<string, unknown> = {}): RepositoryDomain {
 }
 
 function touchedFile(overrides: Partial<FileHistoryFiles[number]> = {}): FileHistoryFiles[number] {
-  return { fileId: "f1", path: "app/Dashboard.tsx", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-22T12:00:00.000Z", ...overrides };
+  return { fileId: "f1", path: "app/Dashboard.tsx", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-22T12:00:00.000Z", agents: [], ...overrides };
 }
 
 function result(data: RepositoryDomain | null, error: string | null = null, unavailable = false) {

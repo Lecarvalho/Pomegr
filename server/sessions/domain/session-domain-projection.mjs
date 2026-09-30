@@ -1,5 +1,6 @@
 import { repositoryRelativePath } from "../../normalize/repository-path.mjs";
 import { isSafeRecordedRepositoryPath } from "../../repository/repository-snapshot.mjs";
+import { fileChangeAgentIdentity, SAFE_FILE_CHANGE_AGENT_ID } from "../../repository/file-change-agents.mjs";
 import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
@@ -181,20 +182,49 @@ const FILE_HISTORY_READINESS = new Set(["loading", "ready", "unavailable", "rebu
 const FILE_CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
 const MAX_SESSION_FILE_HISTORY_FILES = 200;
-function publicSessionFileHistoryEntry(value) {
+const MAX_SESSION_FILE_HISTORY_AGENTS = 12;
+// Recorded agents for one file: the normalized agent ID from the index, its change count, and
+// its label, assignment, and latest reported model. The matching visible agent in this same
+// session supplies each field when it has one; otherwise the index's recorded identity does.
+function publicSessionFileAgents(value, agentById) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const agents = [];
+  for (const agent of value) {
+    if (agents.length >= MAX_SESSION_FILE_HISTORY_AGENTS) break;
+    if (!agent || typeof agent.agentId !== "string" || !SAFE_FILE_CHANGE_AGENT_ID.test(agent.agentId) || seen.has(agent.agentId)) continue;
+    if (!Number.isSafeInteger(agent.changeCount) || agent.changeCount < 1) continue;
+    seen.add(agent.agentId);
+    const visible = fileChangeAgentIdentity(agentById.get(agent.agentId));
+    const recorded = fileChangeAgentIdentity(agent);
+    agents.push({
+      id: agent.agentId,
+      label: visible.label ?? recorded.label,
+      assignment: visible.assignment ?? recorded.assignment,
+      model: visible.model ?? recorded.model,
+      changeCount: agent.changeCount,
+    });
+  }
+  return agents;
+}
+function publicSessionFileHistoryEntry(value, agentById) {
   if (!value || typeof value.fileId !== "string" || !FILE_ID_PATTERN.test(value.fileId)) return null;
   if (!isSafeRecordedRepositoryPath(value.path) || !FILE_CHANGE_KINDS.has(value.kind)) return null;
   if (!Number.isSafeInteger(value.changeCount) || value.changeCount < 0) return null;
   if (typeof value.lastObservedAt !== "string" || !Number.isFinite(Date.parse(value.lastObservedAt))) return null;
-  return { fileId: value.fileId, path: value.path, kind: value.kind, changeCount: value.changeCount, lastObservedAt: value.lastObservedAt };
+  return {
+    fileId: value.fileId, path: value.path, kind: value.kind, changeCount: value.changeCount, lastObservedAt: value.lastObservedAt,
+    agents: publicSessionFileAgents(value.agents, agentById),
+  };
 }
 // Re-validates the committed file-history-domain block: an invalid or missing block degrades
 // to unavailable rather than ever letting an unvalidated path or count reach the browser.
-function publicFileHistory(value) {
+function publicFileHistory(value, agents = []) {
   const readiness = FILE_HISTORY_READINESS.has(value?.readiness) ? value.readiness : "unavailable";
+  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   return {
     readiness,
-    files: list(value?.files, publicSessionFileHistoryEntry).slice(0, MAX_SESSION_FILE_HISTORY_FILES),
+    files: list(value?.files, (entry) => publicSessionFileHistoryEntry(entry, agentById)).slice(0, MAX_SESSION_FILE_HISTORY_FILES),
     truncated: Boolean(value?.truncated),
   };
 }
@@ -480,7 +510,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const insights = list(state.insights, publicInsight);
   const loops = list(state.loops, publicLoop);
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
-  const fileHistory = publicFileHistory(options.fileHistory);
+  const fileHistory = publicFileHistory(options.fileHistory, agents);
   const gitObservedFiles = publicGitObservedFiles(options.gitObserved);
   const domains = new Map();
   domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(fileHistory, gitObservedFiles)));

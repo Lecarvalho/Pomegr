@@ -237,6 +237,14 @@ export function createSessionDomainStore(options = {}) {
       return () => subscribers.delete(subscriber);
     },
     evictIdle,
+    /** Pure peek at a committed agent label for another cache's display (file history);
+     * never records demand, queues hydration, or reports a missing agent as anything but null. */
+    agentLabel(sessionId, agentId) {
+      if (typeof agentId !== "string" || !SAFE_AGENT_ID.test(agentId)) return null;
+      const agents = records.get(key(sessionId, "agents"))?.snapshot?.value?.agents;
+      const label = Array.isArray(agents) ? agents.find((agent) => agent?.id === agentId)?.label : null;
+      return typeof label === "string" && label ? label : null;
+    },
     has(sessionId) { return sessions.has(sessionId); },
     sessionIds() { return Object.freeze([...sessions.keys()]); },
     size() { return sessions.size; },

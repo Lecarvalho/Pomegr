@@ -3,7 +3,7 @@ import { parseableTimestamp } from "../normalize/primitives.mjs";
 // Monitor SQLite store retention: settings resolution, the age/size prune cycle, and the
 // read-only facts and readiness projection. Runs only after checkpoint writes; never inside
 // a GET, IPC, or HTTP handler. The only tables this module deletes from are resource_minutes
-// and resource_peak_samples; resource_peaks, file_changes, files, file_paths, and meta are
+// and resource_peak_samples; resource_peaks, file_changes, file_change_agents, files, file_paths, and meta are
 // never touched here.
 
 export const RETENTION_DAY_CHOICES = Object.freeze([30, 90, 180, 365, null]);

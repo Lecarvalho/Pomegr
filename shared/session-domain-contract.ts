@@ -174,6 +174,12 @@ export type SessionFileHistory = {
     kind: "created" | "edited" | "deleted" | "moved"; // newest kind in this session
     changeCount: number;
     lastObservedAt: string; // ISO
+    /** Agents a recorded tool call proves changed this file in this session, newest first, at
+     *  most 12. `label`, `assignment`, and `model` come from the visible agent when listed,
+     *  else from the identity recorded with the file index; `model` is the agent's latest
+     *  reported model, never the model of the request that made a change. Shell-command and
+     *  Git-only changes never appear here. */
+    agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null; changeCount: number }>;
   }>; // newest change first, bounded
   truncated: boolean;
 };

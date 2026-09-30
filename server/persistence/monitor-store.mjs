@@ -84,6 +84,15 @@ function createSchema(database) {
     );
     CREATE INDEX IF NOT EXISTS file_changes_session_time ON file_changes (session_id, observed_at);
     CREATE INDEX IF NOT EXISTS file_changes_file_time ON file_changes (file_id, observed_at);
+    CREATE TABLE IF NOT EXISTS file_change_agents (
+      session_id TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      label TEXT,
+      assignment TEXT,
+      model TEXT,
+      observed_at INTEGER NOT NULL,
+      PRIMARY KEY (session_id, agent_id)
+    ) WITHOUT ROWID;
     CREATE TABLE IF NOT EXISTS resource_minutes (
       session_id TEXT NOT NULL,
       minute_start INTEGER NOT NULL,

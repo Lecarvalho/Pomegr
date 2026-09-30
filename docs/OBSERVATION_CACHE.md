@@ -2697,7 +2697,30 @@ readiness is `unavailable` without a store and `rebuilding` while it rebuilds. P
 re-validated with `isSafeRecordedRepositoryPath`; a stored path that fails is served as no
 match, never exposed. Session and agent attribution come only from recorded
 `file_changes` rows; a Git-only `file_paths` move yields "as <old path>" continuity,
-never attribution. Agent labels in history entries are null today.
+never attribution.
+
+The index also keeps `file_change_agents`, one row per (session, agent) with a recorded
+`file_changes` row (`server/repository/file-change-agents.mjs`): the agent's bounded
+one-line label (at most 200 characters), optional recorded assignment (at most 512), and
+latest reported model identifier (validated like the request model; `unknown` is dropped).
+The file-change contributor upserts it from the same committed snapshot's normalized
+`publicState.agents` in the transaction that records the changes. A field or agent the
+snapshot no longer reports keeps its last recorded value; agents without a recorded change
+are never stored. The model is the agent's latest value, not the model of the request that
+made a change. A missing `file_agents_version` meta key replays retained checkpoints once;
+the replay is additive and never duplicates changes. A full index rebuild deletes identity
+rows whose session and agent no longer have a recorded change. Store retention never prunes
+this table, matching `file_changes`.
+
+Per-file history entries carry each session agent's recorded label, assignment, and model;
+a label from a peek at the session-domain store's committed `agents` snapshot (no demand,
+no hydration) takes precedence while the monitor holds that session. Each session
+touched-file summary lists the normalized agent IDs whose recorded `file_changes` rows
+changed that file in that session (at most 12, newest-touching first, with a per-agent
+change count and the recorded identity); rows without an agent never contribute. The
+session-domain projection re-validates each ID and field, prefers the same session's visible
+agent fields, and falls back to the recorded identity, so the Repository tab can name who
+edited a file, show its assignment and latest model, and open that agent in the Agents tab.
 
 `GET /api/repository-files?repositoryId=<repo-…>` returns the repository listing;
 adding exactly one of `fileId=<f…>` or `path=<repository-relative path>` returns that
@@ -2777,8 +2800,8 @@ only its recorded lists, never the current tree.
 The monitor owns one `node:sqlite` database, `monitor-store-v1/monitor.sqlite` under the
 Pomegr data root (`resolvePomegrDataRoot` in `shared/pomegr-paths.mjs`), never under
 `outputs/` (development diagnostics only). It hosts the file-change index and resource
-history described in the approved persistence contract above; `files`, `file_paths`, and
-`file_changes` are populated by the file-change index, and `resource_minutes`,
+history described in the approved persistence contract above; `files`, `file_paths`,
+`file_changes`, and `file_change_agents` are populated by the file-change index, and `resource_minutes`,
 `resource_peaks`, and `resource_peak_samples` by the resource-history contributor
 (`server/resources/resource-history.mjs`). The database path and any raw SQLite error text never appear in browser state,
 logs, thrown errors, or reports; a failure to open surfaces only as `MONITOR_STORE_UNAVAILABLE`.

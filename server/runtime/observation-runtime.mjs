@@ -129,6 +129,7 @@ export function createObservationRuntime(options = {}) {
   const fileHistorySource = attachFileHistory(monitorStoreRuntime, {
     resolveRepository: repositoryInventory.resolveRepository, checkpointStore, now, demandedSessionIds: () => sessionDomains.sessionIds(),
     catalog: () => observationCoordinator.catalog()?.snapshot?.value?.sessions || [], onSessionChange: (sessionId) => sessionDomainServing.commit(sessionId),
+    agentLabel: (sessionId, agentId) => sessionDomains.agentLabel?.(sessionId, agentId) ?? null,
   });
   const historyStore = options.historyStore || new SessionHistoryStore({
     directory: path.join(resolvePomegrDataRoot(pomegrPaths), "session-history-v1"),

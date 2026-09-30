@@ -18,10 +18,33 @@ function gitObservedText(file: GitObservedFile): string {
   return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Committed on the session branch";
 }
 
+/** Recorded agents for the file, one line each: the name (a visible agent opens in the Agents
+ * inspector), its latest reported model, a per-agent count when several agents changed the
+ * file, and its recorded assignment. */
+function RecordedAgents({ agents, onOpenAgent }: { agents: RecordedFile["agents"]; onOpenAgent?: (agentId: string) => void }) {
+  if (agents.length === 0) return null;
+  const showCounts = agents.length > 1;
+  return <ul className="fileHistoryEntryAgents" aria-label="Agents that changed this file">
+    {agents.map((agent) => {
+      const name = agent.label ?? "Unlisted agent";
+      return <li key={agent.id} className="fileHistoryEntryAgent">
+        <div className="fileHistoryEntryMeta">
+          {agent.label && onOpenAgent
+            ? <button type="button" className="commandTextLink" aria-label={`Open ${name} in the Agents inspector`} onClick={() => onOpenAgent(agent.id)}>{name}</button>
+            : <span className="fileHistoryEntryMetaText">{name}</span>}
+          {agent.model && <span className="fileHistoryEntryMetaText fileHistoryEntryModel" title="Latest model this agent reported">{agent.model}</span>}
+          {showCounts && <span className="fileHistoryEntryMetaText">{agent.changeCount} change{agent.changeCount === 1 ? "" : "s"}</span>}
+        </div>
+        {agent.assignment && <p className="fileHistoryEntryNote">{agent.assignment}</p>}
+      </li>;
+    })}
+  </ul>;
+}
+
 /** The session Repository tab's right panel: what this session did to the selected file, built
  * only from the repository domain the tab already holds, so selecting a file never waits on a
  * fetch. The file's history across sessions lives on the repository page, one link away. */
-export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, recorded, recordedReadiness, gitObserved, className = "" }: {
+export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, recorded, recordedReadiness, gitObserved, onOpenAgent, className = "" }: {
   repositoryId: string;
   repositoryLabel: string;
   /** Selected repository-relative path; null renders the "no file selected" state. */
@@ -34,6 +57,8 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
   recordedReadiness: RepositoryDomain["fileHistory"]["readiness"];
   /** How Git saw the path change in the session window, when no tool recorded it. */
   gitObserved: GitObservedFile | null;
+  /** Opens a recorded agent in the session's Agents tab. */
+  onOpenAgent?: (agentId: string) => void;
   className?: string;
 }) {
   if (path === null) {
@@ -51,6 +76,7 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
             <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>
             <span className="fileHistoryEntryMetaText">{recorded.changeCount} change{recorded.changeCount === 1 ? "" : "s"}</span>
           </div>
+          <RecordedAgents agents={recorded.agents ?? []} onOpenAgent={onOpenAgent} />
         </div>
         {recorded.lastObservedAt && <time className="fileHistoryEntryTime" dateTime={recorded.lastObservedAt}>{sessionTimeLabel(recorded.lastObservedAt)}</time>}
       </article>

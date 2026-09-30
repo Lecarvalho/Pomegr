@@ -15,6 +15,7 @@
 // attribution appears only where a recorded `file_changes` row proves it; a Git-only move
 // (source: `git` in `file_paths`) contributes path continuity only, never attribution.
 
+import { readFileChangeAgents, SAFE_FILE_CHANGE_AGENT_ID as SAFE_AGENT_ID } from "./file-change-agents.mjs";
 import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
 import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
 
@@ -29,6 +30,7 @@ const MAX_HISTORIES = 256;
 const IDLE_MS = 10 * 60_000;
 
 const MAX_SESSION_FILES = 200;
+const MAX_SESSION_FILE_AGENTS = 12;
 const MAX_REPOSITORY_FILES = 5000;
 const MAX_HISTORY_SESSIONS = 100;
 // Defensive resource-exhaustion guards; the contract above only bounds files/sessions, not
@@ -55,6 +57,22 @@ function safeAgentLabel(agentLabelFn, sessionId, agentId) {
   } catch {
     return null;
   }
+}
+
+/** One session's agents for a file's history: the recorded identity, with the live label
+ * from a session the monitor currently holds taking precedence. */
+function historyAgents(store, sessionId, agentIds, agentLabelFn) {
+  const ids = [...(agentIds || [])];
+  const identities = readFileChangeAgents(store, sessionId, new Set(ids));
+  return ids.map((agentId) => {
+    const identity = identities.get(agentId);
+    return {
+      id: agentId,
+      label: safeAgentLabel(agentLabelFn, sessionId, agentId) ?? identity?.label ?? null,
+      assignment: identity?.assignment ?? null,
+      model: identity?.model ?? null,
+    };
+  });
 }
 
 const EMPTY_SESSION_FILES = Object.freeze({ files: Object.freeze([]), truncated: false });
@@ -119,12 +137,32 @@ function buildSessionFiles(store, sessionId) {
   const kindStatement = store.database.prepare(
     "SELECT kind FROM file_changes WHERE file_id = ? AND session_id = ? ORDER BY observed_at DESC, id DESC LIMIT 1",
   );
+  // Recorded agents per file: only rows whose agent_id the index stored from the tool call's
+  // own actor, newest-touching agent first, with the identity recorded beside the index. The
+  // session-domain projection prefers the same session's visible agent fields when present.
+  const agentStatement = store.database.prepare(`
+    SELECT agent_id AS agentId, COUNT(*) AS changeCount, MAX(observed_at) AS newestAt
+    FROM file_changes
+    WHERE file_id = ? AND session_id = ? AND agent_id IS NOT NULL
+    GROUP BY agent_id
+    ORDER BY newestAt DESC, agent_id
+    LIMIT ?
+  `);
+  const agentsByFile = new Map(bounded.map((row) => [row.fileId, agentStatement.all(row.fileId, sessionId, MAX_SESSION_FILE_AGENTS)
+    .filter((agent) => typeof agent.agentId === "string" && SAFE_AGENT_ID.test(agent.agentId))]));
+  const identities = readFileChangeAgents(store, sessionId, new Set([...agentsByFile.values()].flat().map((agent) => agent.agentId)));
   const files = bounded.map((row) => ({
     fileId: `f${row.fileId}`,
     path: row.path,
     kind: kindStatement.get(row.fileId, sessionId)?.kind || "edited",
     changeCount: row.changeCount,
     lastObservedAt: isoOrNull(row.newestAt),
+    agents: agentsByFile.get(row.fileId).map((agent) => ({
+      agentId: agent.agentId, changeCount: agent.changeCount,
+      label: identities.get(agent.agentId)?.label ?? null,
+      assignment: identities.get(agent.agentId)?.assignment ?? null,
+      model: identities.get(agent.agentId)?.model ?? null,
+    })),
   }));
   return Object.freeze({ readiness: "ready", files: Object.freeze(files), truncated });
 }
@@ -278,7 +316,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
       kind: entry.createdInSession ? "created" : entry.newestKind,
       editCount: entry.editCount,
       newestAt: isoOrNull(entry.newestAt),
-      agents: [...(agentIdsBySession.get(sessionId) || [])].map((agentId) => ({ id: agentId, label: safeAgentLabel(agentLabelFn, sessionId, agentId) })),
+      agents: historyAgents(store, sessionId, agentIdsBySession.get(sessionId), agentLabelFn),
       pathAtTime,
     };
   });

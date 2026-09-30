@@ -153,6 +153,18 @@ test("agents carries the roster's per-agent history marks", () => {
   assert.deepEqual(agents.cacheReadDrops.map((item) => item.agentId), ["child"]);
 });
 
+test("agentLabel peeks a committed agent label without recording demand", () => {
+  const demanded = [];
+  const store = createSessionDomainStore({ onDemand: (sessionId) => demanded.push(sessionId) });
+  assert.equal(store.agentLabel(SESSION_ID, "child"), null, "nothing committed yet");
+  store.commit(SESSION_ID, snapshot(state()));
+  assert.equal(store.agentLabel(SESSION_ID, "child"), "Child");
+  assert.equal(store.agentLabel(SESSION_ID, "missing"), null);
+  assert.equal(store.agentLabel(SESSION_ID, "../bad"), null);
+  assert.equal(store.agentLabel("claude:other", "child"), null);
+  assert.deepEqual(demanded, [], "a peek never queues hydration");
+});
+
 test("does not publish a revision or event when only observedAt changes", () => {
   const store = createSessionDomainStore();
   const events = [];

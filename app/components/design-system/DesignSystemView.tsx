@@ -358,22 +358,22 @@ const FILE_HISTORY_SAMPLE: FileHistoryResponse = {
     {
       sessionId: "claude:design-system-current", title: "IA and progressive-disclosure audit for Pomegr UI",
       provider: "claude", live: true, kind: "edited", editCount: 2, newestAt: new Date(FILE_HISTORY_SAMPLE_TIME).toISOString(),
-      agents: [{ id: "primary", label: "Primary" }, { id: "explore", label: "Inventory sitemap" }], pathAtTime: null,
+      agents: [{ id: "primary", label: "Primary", assignment: null, model: null }, { id: "explore", label: "Inventory sitemap", assignment: null, model: null }], pathAtTime: null,
     },
     {
       sessionId: "codex:design-system-readiness", title: "Clarify session readiness states",
       provider: "codex", live: false, kind: "edited", editCount: 1, newestAt: new Date(FILE_HISTORY_SAMPLE_TIME - 12_600_000).toISOString(),
-      agents: [{ id: "primary", label: null }], pathAtTime: null,
+      agents: [{ id: "primary", label: null, assignment: null, model: null }], pathAtTime: null,
     },
     {
       sessionId: "claude:design-system-activity-nav", title: "Add request activity navigation",
       provider: "claude", live: false, kind: "moved", editCount: 3, newestAt: new Date(FILE_HISTORY_SAMPLE_TIME - 84_960_000).toISOString(),
-      agents: [{ id: "primary", label: "UI builder" }], pathAtTime: "app/components/RequestLanes.tsx",
+      agents: [{ id: "primary", label: "UI builder", assignment: null, model: null }], pathAtTime: "app/components/RequestLanes.tsx",
     },
     {
       sessionId: "claude:design-system-repo-panel", title: "Introduce the repository panel",
       provider: "claude", live: false, kind: "created", editCount: 0, newestAt: new Date(FILE_HISTORY_SAMPLE_TIME - 1_359_060_000).toISOString(),
-      agents: [{ id: "primary", label: null }], pathAtTime: null,
+      agents: [{ id: "primary", label: null, assignment: null, model: null }], pathAtTime: null,
     },
   ],
   unattributedChanges: 2, truncated: false,
@@ -389,7 +389,7 @@ function FileHistoryPanelSection() {
     <div className="designSystemGrid">
       <Sample label="Session file panel" note="SessionFilePanel: this session's recorded change only, fetch-free, with the repository-page link for full history.">
         <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
-          recorded={{ fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z" }} />
+          recorded={{ fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: "claude-opus-5-5", changeCount: 2 }, { id: "agent-2", label: "Explore", assignment: "Map the dashboard components", model: "claude-sonnet-5-5", changeCount: 1 }] }} onOpenAgent={() => {}} />
       </Sample>
       <Sample label="Session file panel, Git-observed" note="No tool recorded the file; Git saw it change in the session window.">
         <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "app/committed.ts", source: "committed", change: "added" }} />
