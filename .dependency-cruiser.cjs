@@ -14,7 +14,7 @@ module.exports = {
         orphan: true,
         pathNot: [
           "(^|[/\\\\])[.][^/\\\\]+[.](?:js|cjs|mjs|ts|cts|mts|json)$",
-          "[.]d[.]ts$",
+          "[.]d[.]m?ts$",
           // Vinext discovers this fixed capability endpoint without a source import.
           "^app[/\\\\]api[/\\\\]client-access[/\\\\]route[.]ts$",
           "(^|[/\\\\])tsconfig[.]json$",

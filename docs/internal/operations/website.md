@@ -27,6 +27,8 @@ Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/a
 
 The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
 
+Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It validates `docs/site.json` and the public pages and images that manifest selects, then writes the gitignored `landing/generated/` and `landing/public/docs/` outputs the site bundles; invalid documentation stops the command with every problem listed. Restart the dev server after editing documentation. The [documentation manifest](../development/documentation-manifest.md#generate-the-website-content) defines the loader, its outputs, and the content-input audit that `build:audit` enforces.
+
 ### Local waitlist configuration
 
 Page previews do not require waitlist secrets. To configure the local widget and database, first copy the example only if a local configuration does not already exist:

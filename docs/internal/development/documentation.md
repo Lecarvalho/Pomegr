@@ -217,9 +217,11 @@ in active plans; add ready public pages as their migrations finish.
 
 **Migration status:** the manifest selects ready public pages in reading order,
 starting with the [introduction to Pomegr](../../public/get-started/introduction.md).
-The build-time content loader, `/docs` renderer, search, and `check:docs` command are not
-implemented yet. Adding a Markdown file or manifest entry does not deploy it.
-Validate selected links, routes, and images before publication. Repair repository
+The [build-time content loader](documentation-manifest.md#generate-the-website-content)
+is implemented (the landing `docs:prepare` script validates the selection before every
+landing test, typecheck, and build); the `/docs` renderer, search, and `check:docs`
+command are not implemented yet. Adding a Markdown file or manifest entry does not
+deploy it. Validate selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when
 their routes change. The 2026-09 migration did not preserve GitHub blob links to
 the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.md`,
