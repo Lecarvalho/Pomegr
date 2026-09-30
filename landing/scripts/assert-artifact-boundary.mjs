@@ -22,6 +22,7 @@ const runtimeRoots = new Set(["app", "server", "worker"]);
 const selfFile = "scripts/assert-artifact-boundary.mjs";
 const nonPublicDocsPattern = /docs[\\/](?:internal|plans|mockups|design|user-guide)[\\/]/i;
 const generatedContentFile = join(landingRoot, "generated", "docs-content.json");
+const generatedSearchFile = join(landingRoot, "generated", "docs-search.json");
 const generatedPublicDocs = join(landingRoot, "public", "docs");
 const docsRoutePattern = /^\/docs\/(?:get-started|using-pomegr|concepts|help)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const docsImageRoutePattern = /^\/docs\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif)$/;
@@ -29,6 +30,17 @@ const docsImageRoutePattern = /^\/docs\/images\/[a-z0-9]+(?:-[a-z0-9]+)*\/[A-Za-
 // matched text is exempt, and only inside the generated docs content (and, in the artifact, only in
 // files that carry the content revision), never elsewhere.
 const allowedDocsMentions = new Set(["app/Dashboard.tsx"]);
+
+// Search index, sitemap and robots (WEB-03). The bounds and shapes are restated here, independently
+// of the generator, so growing the generator alone cannot widen what ships.
+const searchIndexMaxBytes = 128 * 1024;
+const searchTextMaxCharacters = 2000;
+const searchIndexKeys = ["pages", "revision", "schema"];
+const searchPageKeys = ["description", "group", "headings", "route", "text", "title"];
+const searchHeadingKeys = ["id", "text"];
+const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const publicOrigin = "https://pomegr.com";
+const publicSitePages = ["/", "/about", "/download"];
 
 const forbiddenText = [
   { label: "local state API", pattern: /\/api\/state\b/i },
@@ -143,6 +155,17 @@ function* stringValues(value) {
   else if (value && typeof value === "object") for (const item of Object.values(value)) yield* stringValues(item);
 }
 
+/** Report every forbidden pattern in any string of a generated value, except the allowlisted example paths. */
+function scanGeneratedText(where, value) {
+  for (const text of stringValues(value)) {
+    for (const { label, pattern } of forbiddenText) {
+      for (const match of text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))) {
+        if (!allowedDocsMentions.has(match[0])) failures.push(`${where} contains ${label}: ${match[0]}`);
+      }
+    }
+  }
+}
+
 /**
  * Audit the generated docs content and the images mirrored beside the landing assets: the JSON must
  * have the expected shape, carry no local-app or non-public text, and declare exactly the images that
@@ -177,13 +200,7 @@ function auditGeneratedDocs({ artifact }) {
       failures.push(`generated docs content declares an invalid page route: ${String(page?.route)}`);
       continue;
     }
-    for (const text of stringValues(page)) {
-      for (const { label, pattern } of forbiddenText) {
-        for (const match of text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))) {
-          if (!allowedDocsMentions.has(match[0])) failures.push(`generated docs content (${page.route}) contains ${label}: ${match[0]}`);
-        }
-      }
-    }
+    scanGeneratedText(`generated docs content (${page.route})`, page);
   }
 
   for (const file of hasPublicDocs ? walk(generatedPublicDocs) : []) {
@@ -196,6 +213,102 @@ function auditGeneratedDocs({ artifact }) {
     if (!existsSync(join(landingRoot, "public", ...route.slice(1).split("/")))) failures.push(`public${route} is missing; run npm run docs:prepare`);
   }
   return content;
+}
+
+const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+const hasExactKeys = (value, keys) => isObject(value) && Object.keys(value).sort().join() === keys.join();
+
+/**
+ * Audit the generated search index against the generated content it must derive from: same
+ * revision, exactly the published pages in the same order, titles, descriptions and headings
+ * identical to the content, a bounded plain-text body, and no forbidden text anywhere. Returns the
+ * parsed index, or null when it is absent or unusable.
+ */
+function auditGeneratedSearch(content) {
+  if (!content) return null;
+  if (!existsSync(generatedSearchFile)) {
+    failures.push("missing generated/docs-search.json; run npm run docs:prepare");
+    return null;
+  }
+  const fail = (message) => failures.push(`generated/docs-search.json ${message}; run npm run docs:prepare`);
+  if (lstatSync(generatedSearchFile).size > searchIndexMaxBytes) fail(`is larger than ${searchIndexMaxBytes} bytes`);
+  let index;
+  try {
+    index = JSON.parse(readFileSync(generatedSearchFile, "utf8"));
+  } catch {
+    fail("is not valid JSON");
+    return null;
+  }
+  if (!hasExactKeys(index, searchIndexKeys) || index.schema !== 1 || !Array.isArray(index.pages)) {
+    fail("has an unexpected shape");
+    return null;
+  }
+  if (index.revision !== content.revision) fail("was not built from the generated docs content revision");
+  if (index.pages.length !== content.pages.length) {
+    fail("does not list exactly the published pages");
+    return index;
+  }
+
+  content.pages.forEach((page, position) => {
+    const entry = index.pages[position];
+    if (!hasExactKeys(entry, searchPageKeys) || !Array.isArray(entry.headings) || typeof entry.text !== "string") {
+      fail(`has an unexpected entry at position ${position}`);
+      return;
+    }
+    if (entry.route !== page.route) fail(`lists ${String(entry.route)} where the published page is ${page.route}`);
+    if (entry.title !== page.title || entry.description !== page.description) fail(`does not match the title and description of ${page.route}`);
+    if (entry.text.length > searchTextMaxCharacters || controlCharacters.test(entry.text)) fail(`has an unbounded or unsafe body for ${page.route}`);
+    const published = new Map((Array.isArray(page.headings) ? page.headings : []).map((heading) => [heading.id, heading.text]));
+    for (const heading of entry.headings) {
+      if (!hasExactKeys(heading, searchHeadingKeys) || published.get(heading.id) !== heading.text) {
+        fail(`lists a heading that ${page.route} does not publish: ${JSON.stringify(heading?.id)}`);
+      }
+    }
+  });
+  scanGeneratedText("generated docs search index", index);
+  return index;
+}
+
+/**
+ * The search index loads lazily as its own client chunk. The built client must carry a copy of it
+ * (recognized by its revision), complete and within the size bound.
+ */
+function auditDistSearchIndex(docsContent, index, files, client) {
+  if (!docsContent || !index || index.revision !== docsContent.revision) return;
+  const carriers = files.filter((file) => isInsideRoot(client, file) && extname(file) === ".js" && readFileSync(file, "utf8").includes(index.revision));
+  if (carriers.length === 0) failures.push("dist/client has no chunk carrying the docs search index; search would not load");
+  for (const file of carriers) {
+    const name = `dist/client/${relative(client, file).split(sep).join("/")}`;
+    const text = readFileSync(file, "utf8");
+    if (docsContent.pages.some((page) => !text.includes(page.route))) failures.push(`${name} carries the content revision but not every published page`);
+    if (lstatSync(file).size > searchIndexMaxBytes) failures.push(`${name} is larger than the search index bound of ${searchIndexMaxBytes} bytes`);
+  }
+}
+
+/**
+ * sitemap.xml and robots.txt are application routes today, so the artifact holds no copy. If a
+ * static copy ever ships, it may list only the public pages under the public origin and must not
+ * name any path of its own.
+ */
+function auditStaticSiteIndexes(docsContent, files, client) {
+  const allowed = new Set([...publicSitePages, ...(docsContent?.pages ?? []).map((page) => page.route)]);
+  for (const file of files) {
+    const rel = relative(client, file).split(sep).join("/");
+    if (rel === "sitemap.xml") {
+      const locations = [...readFileSync(file, "utf8").matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1].trim());
+      for (const location of locations) {
+        if (!location.startsWith(publicOrigin) || !allowed.has(location.slice(publicOrigin.length))) {
+          failures.push(`dist/client/sitemap.xml lists a page the site does not publish: ${location}`);
+        }
+      }
+    } else if (rel === "robots.txt") {
+      for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+        if (/^\s*disallow\s*:\s*\S/i.test(line)) failures.push(`dist/client/robots.txt names a path: ${line.trim()}`);
+        const sitemap = /^\s*sitemap\s*:\s*(\S*)/i.exec(line);
+        if (sitemap && sitemap[1] !== `${publicOrigin}/sitemap.xml`) failures.push(`dist/client/robots.txt points at an unexpected sitemap: ${sitemap[1]}`);
+      }
+    }
+  }
 }
 
 function canonicalJson(value) {
@@ -250,7 +363,7 @@ function isInsideRoot(root, path) {
   return rel !== "" && !rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel);
 }
 
-function auditArtifact(docsContent) {
+function auditArtifact(docsContent, searchIndex) {
   const dist = join(landingRoot, "dist");
   const client = join(dist, "client");
   const server = join(dist, "server");
@@ -280,6 +393,8 @@ function auditArtifact(docsContent) {
     }
   }
   auditDistDocsImages(docsContent, files, client);
+  auditDistSearchIndex(docsContent, searchIndex, files, client);
+  auditStaticSiteIndexes(docsContent, files, client);
 
   let wrangler;
   try {
@@ -313,7 +428,8 @@ function auditArtifact(docsContent) {
 auditSourceImports();
 auditContentInputs();
 const docsContent = auditGeneratedDocs({ artifact: !sourceOnly });
-if (!sourceOnly) auditArtifact(docsContent);
+const searchIndex = auditGeneratedSearch(docsContent);
+if (!sourceOnly) auditArtifact(docsContent, searchIndex);
 
 if (failures.length) {
   console.error("Landing deployment boundary check failed:");

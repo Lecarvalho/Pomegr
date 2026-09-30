@@ -89,6 +89,7 @@ export const CONTENT_SCHEMA_VERSION: 1;
 export const CONTENT_INPUTS: Readonly<{ manifest: string; publicRoot: string }>;
 export const GENERATED_CONTENT_FILE: string;
 export const GENERATED_IMAGES_DIR: string;
+export const GENERATED_SEARCH_FILE: string;
 export const GROUP_IDS: readonly string[];
 export const DOCS_ROUTE_PREFIX: string;
 export const IMAGE_ROUTE_PREFIX: string;
@@ -131,5 +132,7 @@ export function loadDocsContent(options?: DocsContentOptions): { content: DocsCo
 export function serializeDocsContent(content: DocsContent): string;
 export function writePreparedDocs(options: DocsContentOptions & { content: DocsContent; assets: DocsAsset[] }): {
   contentFile: string;
+  /** The search index built from the same content; see `docs-search.mjs`. */
+  searchFile: string;
   imagesRoot: string;
 };

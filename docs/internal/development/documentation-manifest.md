@@ -14,8 +14,9 @@ starting with the
 [introduction to Pomegr](../../public/get-started/introduction.md). The build-time
 content loader, the page renderer, and the `/docs` routes are implemented (see
 [Generate the website content](#generate-the-website-content) and
-[Serve the pages](#serve-the-pages)); search and the `check:docs` command remain
-unimplemented and must follow this contract.
+[Serve the pages](#serve-the-pages)); the search index, sitemap, and robots.txt
+are implemented too (see [Search, sitemap, and robots](#search-sitemap-and-robots)),
+and the `check:docs` command remains unimplemented and must follow this contract.
 
 ## Select pages and order navigation
 
@@ -106,11 +107,13 @@ The [content loader](../../../landing/scripts/docs-content.mjs) is the only
 landing module that reads outside `landing/`, and only `docs/site.json` plus the
 pages and images it selects beneath `docs/public/`. The `docs:prepare` script of
 the landing package runs it automatically before `dev`, `test`, `typecheck`, and
-`build`; `docs:check` validates without writing. It writes two gitignored
-outputs: `landing/generated/docs-content.json` and the referenced images under
-`landing/public/docs/images/`. The Worker bundles only that JSON and never reads
-files. An invalid input stops the command with every problem listed as
-`file:line`, and nothing is emitted.
+`build`; `docs:check` validates without writing. It writes three gitignored
+outputs: `landing/generated/docs-content.json`, the
+[search index](#search-sitemap-and-robots) `landing/generated/docs-search.json`
+built from that same content, and the referenced images under
+`landing/public/docs/images/`. The Worker bundles only the content JSON and
+never reads files. An invalid input stops the command with every problem listed
+as `file:line`, and nothing is emitted.
 
 - **Files:** Exact-case names; every path component a real directory or regular file (symlinks and junctions rejected); pages at most 256 KiB and images at most 8 MiB; UTF-8 without control or bidirectional-override characters; CRLF read as LF so every checkout agrees; image bytes must match their PNG, JPEG, GIF, or WebP signature.
 - **Front matter:** Only single-line `title` (at most 80 characters) and `description` (at most 300), quoted or plain, without `<` or `>`; an unknown or repeated key is an error.
@@ -129,7 +132,7 @@ blocks, and previous and next links; its shape is declared in
 `revision` is a SHA-256 over the schema version, the manifest's groups and
 order, each selected page's normalized Markdown, and each referenced image, so
 it is deterministic, carries no timestamp, and changes only when published
-content changes. Search and the sitemap must use this same revision.
+content changes. The search index and the sitemap use this same revision.
 
 The [boundary audit](../../../landing/scripts/assert-artifact-boundary.mjs)
 (`audit:source`, then `audit:artifact`) enforces the input boundary
@@ -147,6 +150,14 @@ independently of the loader:
   repository path `app/Dashboard.tsx` when it describes a screenshot. Only that
   exact text is ignored, in the generated JSON and, in the artifact, only in
   files that carry the content revision. Any other match fails the audit.
+- The generated search index must exist and derive from the generated content:
+  the same revision, exactly the published pages in the same order, titles,
+  descriptions, and headings identical to the content, a plain-text body of at
+  most 2000 characters, no extra fields, at most 128 KiB, and the same
+  forbidden-text scan. The built client must carry one complete copy of it as a
+  lazy chunk. A static `sitemap.xml` or `robots.txt` in the artifact (none is
+  emitted today) may list only the public pages under `https://pomegr.com` and
+  must not name a path of its own.
 
 The [loader tests](../../../landing/tests/ui/docs-content.test.ts) and
 [boundary tests](../../../landing/tests/ui/docs-boundary.test.ts) cover
@@ -176,7 +187,8 @@ description, and the route is its canonical URL.
 - `/docs/images/...` files are the static images the loader copied.
 - At 760 px and narrower the sidebar opens from a "Documentation menu" button
   with `aria-expanded` and `aria-controls`; Escape closes it and returns focus
-  to the button, and choosing a page closes it and moves focus to the content.
+  to the button (a first Escape only clears an active search), and choosing a
+  page or a search result closes it and moves focus to the content.
   The outline becomes a collapsed "On this page" disclosure below 1100 px.
 - Layout ids start with `docs-` and the route tests assert that no published
   heading slug equals one.
@@ -185,3 +197,56 @@ The Worker admits the whole family through `/docs` and the `/docs/` prefix; see
 [Domain routes and public boundary](../operations/website.md#3-domain-routes-and-public-boundary).
 [Route tests](../../../landing/tests/ui/docs-routes.test.tsx) cover the params,
 404s, sidebar, outline, pager, phone menu, and the Worker allowlist.
+
+## Search, sitemap, and robots
+
+Search, the sitemap, and robots.txt derive from the same generated content and
+revision as the pages, so they can list nothing the pages do not publish.
+Internal documentation, plans, and mockups are never inputs to any of them.
+
+- **Index:** [docs-search.mjs](../../../landing/scripts/docs-search.mjs) builds
+  it as a pure function of the prepared content (it reads no file and names no
+  path). Each page, in reading order, contributes its route, group title, title,
+  description, `##` to `####` headings as `{ id, text }`, and a plain-text body
+  of paragraphs, list items, table cells, callouts, and quotes. The body leaves
+  out code blocks, image alt text, and the `#` title, and is cut at a word
+  boundary after 2000 characters. The index copies the content `revision`; its
+  shape is declared in [docs-search.d.mts](../../../landing/scripts/docs-search.d.mts).
+  The 17 pages produce about 43 KiB (about 14 KiB gzipped), with a hard bound of
+  128 KiB enforced by the audit and the tests.
+- **Matching:** [search.ts](../../../landing/app/docs/search.ts) lowercases and
+  folds accents, requires every typed word to match the start of a word, and
+  ranks by where each word matches (title, then heading, description, body) with
+  a bonus for a typed phrase in a title or heading. Ties keep reading order. It
+  returns at most 8 pages with at most 3 matching headings each, and reports the
+  true total. It is deterministic and adds no dependency: prefix matching finds
+  the words a visitor reads in a title or heading across 17 short pages. Revisit
+  it if typed words stop finding their pages as the documentation grows.
+- **Interface:** [DocsSearch.tsx](../../../landing/app/docs/DocsSearch.tsx) sits
+  first in the sidebar panel, so it is also inside the phone menu. It is a
+  labelled `type="search"` field in a `role="search"` form with a polite status
+  region ("3 pages match", "No pages match", or "Showing the best 8 of 12
+  pages."). Results replace the page list while there are any: each shows the
+  group, the page title, and up to three matching headings as `route#id` links.
+  Tab walks the field and every result, ArrowDown and ArrowUp move between them,
+  Enter opens the first result, and Escape clears the query before it closes
+  anything else. Choosing a result clears the search, closes the phone menu, and
+  moves focus to the page. The index loads on first focus as its own lazy
+  chunk, never through the content module, so visitors who do not search
+  download nothing; if the load fails the page list stays and the status says
+  search is unavailable.
+- **Sitemap and robots:** `landing/app/sitemap.ts` and `landing/app/robots.ts` are
+  vinext metadata routes (a production `vinext start` probe serves
+  `/sitemap.xml` as `application/xml` and `/robots.txt` as `text/plain`, and the
+  Worker already admits both paths). The sitemap lists `/`, `/about`,
+  `/download`, and the published documentation routes, as absolute URLs on the
+  origin in `landing/app/site-origin.ts`, without `lastModified` because the
+  revision carries no timestamp. It omits `/docs` (a redirect), `/docs/images/`,
+  the API, and every unknown path. robots.txt allows everything and names only
+  the sitemap location, so it reveals no internal path.
+
+The [index tests](../../../landing/tests/ui/docs-search-index.test.ts),
+[search tests](../../../landing/tests/ui/docs-search.test.tsx), and
+[sitemap and robots tests](../../../landing/tests/ui/docs-sitemap-robots.test.ts)
+cover the generator, the matching and the keyboard behavior, and the exact route
+list, and the boundary tests cover the audit of the generated index.

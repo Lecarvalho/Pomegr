@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadDocsContent, serializeDocsContent, writePreparedDocs } from "../../scripts/docs-content.mjs";
+import { buildSearchIndex, serializeSearchIndex } from "../../scripts/docs-search.mjs";
 import {
   JPG,
   PNG,
@@ -153,13 +154,20 @@ describe("artifact boundary audit of the content inputs", () => {
   const auditScript = fileURLToPath(new URL("../../scripts/assert-artifact-boundary.mjs", import.meta.url));
   const validRevision = "a".repeat(64);
 
+  // A package with generated content gets the search index the prepare step would build from it,
+  // unless the case supplies its own.
   function landing(files: Record<string, string | Buffer> = {}): string {
     const root = temporaryDirectory("pomegr-audit-");
     mkdirSync(join(root, "scripts"), { recursive: true });
     copyFileSync(auditScript, join(root, "scripts", "assert-artifact-boundary.mjs"));
-    for (const [path, data] of Object.entries(files)) put(join(root, path), data);
+    const withIndex = { ...files };
+    const generatedContent = files["generated/docs-content.json"];
+    if (generatedContent !== undefined && withIndex["generated/docs-search.json"] === undefined) withIndex["generated/docs-search.json"] = searchFor(String(generatedContent));
+    for (const [path, data] of Object.entries(withIndex)) put(join(root, path), data);
     return root;
   }
+
+  const searchFor = (contentJson: string) => serializeSearchIndex(buildSearchIndex(JSON.parse(contentJson)));
 
   function audit(root: string, artifact = false) {
     const args = [join(root, "scripts", "assert-artifact-boundary.mjs"), ...(artifact ? [] : ["--source-only"])];
@@ -172,8 +180,22 @@ describe("artifact boundary audit of the content inputs", () => {
       schema: 1,
       revision: validRevision,
       entry: "/docs/help/alpha",
-      navigation: [],
-      pages: [{ route: "/docs/help/alpha", source: "help/alpha.md", title: "Alpha", blocks: [{ type: "paragraph", children: [{ type: "text", text: "Hello" }] }], ...page }],
+      navigation: [{ id: "help", title: "Help", pages: [{ route: "/docs/help/alpha", title: "Alpha" }] }],
+      pages: [
+        {
+          route: "/docs/help/alpha",
+          source: "help/alpha.md",
+          group: "help",
+          title: "Alpha",
+          description: "About Alpha.",
+          headings: [
+            { depth: 1, id: "alpha", text: "Alpha" },
+            { depth: 2, id: "first-steps", text: "First steps" },
+          ],
+          blocks: [{ type: "paragraph", children: [{ type: "text", text: "Hello" }] }],
+          ...page,
+        },
+      ],
       images: [],
       ...overrides,
     });
@@ -234,6 +256,61 @@ describe("artifact boundary audit of the content inputs", () => {
     expect(result.output).toContain("contains local security modules");
   });
 
+  describe("search index", () => {
+    const content = generated({}, { blocks: [{ type: "paragraph", children: [{ type: "text", text: "Hello world" }] }] });
+    const index = () => JSON.parse(searchFor(content));
+    const withIndex = (change: (value: ReturnType<typeof index>) => void) => {
+      const value = index();
+      change(value);
+      return landing({ "generated/docs-content.json": content, "generated/docs-search.json": JSON.stringify(value) });
+    };
+
+    it("accepts an index built from the generated content", () => {
+      expect(audit(landing({ "generated/docs-content.json": content })).ok).toBe(true);
+      expect(index().pages[0]).toMatchObject({ route: "/docs/help/alpha", group: "Help", title: "Alpha", headings: [{ id: "first-steps", text: "First steps" }], text: "Hello world" });
+    });
+
+    const cases: Array<[string, (value: ReturnType<typeof index>) => void, string]> = [
+      ["another content revision", (value) => { value.revision = "b".repeat(64); }, "was not built from the generated docs content revision"],
+      ["an extra page", (value) => { value.pages.push({ ...value.pages[0], route: "/docs/help/extra" }); }, "does not list exactly the published pages"],
+      ["a missing page", (value) => { value.pages.length = 0; }, "does not list exactly the published pages"],
+      ["a different route", (value) => { value.pages[0].route = "/docs/help/other"; }, "lists /docs/help/other where the published page is /docs/help/alpha"],
+      ["a changed title", (value) => { value.pages[0].title = "Changed"; }, "does not match the title and description"],
+      ["a changed description", (value) => { value.pages[0].description = "Another."; }, "does not match the title and description"],
+      ["an unpublished heading", (value) => { value.pages[0].headings.push({ id: "secret", text: "Secret" }); }, "lists a heading that /docs/help/alpha does not publish"],
+      ["an unbounded body", (value) => { value.pages[0].text = "word ".repeat(1000); }, "has an unbounded or unsafe body"],
+      ["a control character", (value) => { value.pages[0].text = "bell\u0007"; }, "has an unbounded or unsafe body"],
+      ["an extra page field", (value) => { (value.pages[0] as Record<string, unknown>).extra = "x"; }, "has an unexpected entry at position 0"],
+      ["an extra index field", (value) => { (value as Record<string, unknown>).generatedAt = "now"; }, "has an unexpected shape"],
+      ["an internal documentation path", (value) => { value.pages[0].text = "see docs/internal/architecture/x.md"; }, "contains non-public documentation path"],
+      ["a local API path", (value) => { value.pages[0].text = "GET /api/state"; }, "contains local state API"],
+    ];
+    it.each(cases)("rejects %s", (_name, change, message) => {
+      const result = audit(withIndex(change));
+      expect(result.ok, message).toBe(false);
+      expect(result.output).toContain(message);
+    });
+
+    it("rejects a missing, malformed, or oversized index", () => {
+      const missing = landing({ "generated/docs-content.json": content });
+      rmSync(join(missing, "generated", "docs-search.json"));
+      expect(audit(missing).output).toContain("missing generated/docs-search.json");
+
+      const malformed = audit(landing({ "generated/docs-content.json": content, "generated/docs-search.json": "{not json" }));
+      expect(malformed.ok).toBe(false);
+      expect(malformed.output).toContain("is not valid JSON");
+
+      const oversized = audit(landing({ "generated/docs-content.json": content, "generated/docs-search.json": JSON.stringify({ ...index(), padding: "x".repeat(130 * 1024) }) }));
+      expect(oversized.ok).toBe(false);
+      expect(oversized.output).toContain("is larger than");
+    });
+
+    it("exempts only the allowlisted example path in the index", () => {
+      expect(audit(withIndex((value) => { value.pages[0].text = "the history of app/Dashboard.tsx"; })).ok).toBe(true);
+      expect(audit(withIndex((value) => { value.pages[0].text = "the file shared/local-auth.mjs"; })).ok).toBe(false);
+    });
+  });
+
   describe("artifact mode", () => {
     const wrangler = { name: "x", compatibility_date: "2026-01-01", workers_dev: false, preview_urls: false };
     const dist = (extra: Record<string, string | Buffer> = {}, omit: string[] = []): Record<string, string | Buffer> => {
@@ -242,6 +319,7 @@ describe("artifact boundary audit of the content inputs", () => {
         "dist/server/wrangler.json": JSON.stringify({ ...wrangler, main: "index.js", no_bundle: true, assets: { directory: "../client" } }),
         "dist/server/index.js": "export default {};\n",
         "dist/client/robots.txt": "User-agent: *\n",
+        "dist/client/_next/static/chunks/docs-search-x.js": `var e=${searchFor(generated({ images: [imageEntry(PNG)] }))};export{e as default};\n`,
         "generated/docs-content.json": generated({ images: [imageEntry(PNG)] }),
         "public/docs/images/topic/a.png": PNG,
         "dist/client/docs/images/topic/a.png": PNG,
@@ -260,6 +338,39 @@ describe("artifact boundary audit of the content inputs", () => {
       ];
       for (const [extra, omit, message] of cases) {
         const result = audit(landing(dist(extra, omit)), true);
+        expect(result.ok, message).toBe(false);
+        expect(result.output).toContain(message);
+      }
+    });
+
+    it("requires the built client to carry the complete search index within its bound", () => {
+      const chunk = "dist/client/_next/static/chunks/docs-search-x.js";
+      const missing = audit(landing(dist({}, [chunk])), true);
+      expect(missing.ok).toBe(false);
+      expect(missing.output).toContain("dist/client has no chunk carrying the docs search index");
+
+      const incomplete = audit(landing(dist({ [chunk]: `var e={"revision":"${validRevision}"};\n` })), true);
+      expect(incomplete.ok).toBe(false);
+      expect(incomplete.output).toContain("carries the content revision but not every published page");
+
+      const oversized = audit(landing(dist({ [chunk]: `var e={"revision":"${validRevision}","route":"/docs/help/alpha","pad":"${"x".repeat(130 * 1024)}"};\n` })), true);
+      expect(oversized.ok).toBe(false);
+      expect(oversized.output).toContain("is larger than the search index bound");
+    });
+
+    it("accepts only public pages in a static sitemap.xml and only the sitemap line in a static robots.txt", () => {
+      const sitemap = (...paths: string[]) => `<urlset>${paths.map((path) => `<url><loc>https://pomegr.com${path}</loc></url>`).join("")}</urlset>\n`;
+      expect(audit(landing(dist({ "dist/client/sitemap.xml": sitemap("/", "/about", "/download", "/docs/help/alpha"), "dist/client/robots.txt": "User-agent: *\nAllow: /\n\nSitemap: https://pomegr.com/sitemap.xml\n" })), true).ok).toBe(true);
+
+      const cases: Array<[Record<string, string>, string]> = [
+        [{ "dist/client/sitemap.xml": sitemap("/docs/help/unpublished") }, "lists a page the site does not publish"],
+        [{ "dist/client/sitemap.xml": sitemap("/docs") }, "lists a page the site does not publish"],
+        [{ "dist/client/sitemap.xml": "<urlset><url><loc>https://example.com/about</loc></url></urlset>" }, "lists a page the site does not publish"],
+        [{ "dist/client/robots.txt": "User-agent: *\nDisallow: /internal-path\n" }, "names a path"],
+        [{ "dist/client/robots.txt": "User-agent: *\nSitemap: https://example.com/sitemap.xml\n" }, "points at an unexpected sitemap"],
+      ];
+      for (const [extra, message] of cases) {
+        const result = audit(landing(dist(extra)), true);
         expect(result.ok, message).toBe(false);
         expect(result.output).toContain(message);
       }

@@ -1,6 +1,7 @@
 // Prepares the documentation content the website bundles: validates the publication
-// manifest and the public Markdown it selects, then writes the generated content module and
-// the referenced images inside landing/ (both locations are gitignored).
+// manifest and the public Markdown it selects, then writes the generated content module, the
+// search index built from that same content, and the referenced images inside landing/ (all
+// locations are gitignored).
 //
 //   node scripts/prepare-docs.mjs          validate, then write generated output
 //   node scripts/prepare-docs.mjs --check  validate only; write nothing
@@ -19,6 +20,6 @@ if (issues.length || !content) {
   process.exitCode = 1;
 } else {
   if (!checkOnly) writePreparedDocs({ content, assets });
-  const summary = `${content.pages.length} pages, ${content.images.length} images, revision ${content.revision.slice(0, 12)}`;
+  const summary = `${content.pages.length} pages, ${content.images.length} images, search index, revision ${content.revision.slice(0, 12)}`;
   console.log(`docs content ${checkOnly ? "validated" : "prepared"}: ${summary}`);
 }

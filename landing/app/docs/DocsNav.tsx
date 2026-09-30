@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import { useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { DocsNavigationGroup } from "../../scripts/docs-content.mjs";
+import { DocsSearch } from "./DocsSearch";
 import styles from "./docs.module.css";
 
 // The documentation sidebar. It is always visible beside the page on wide screens; on a phone a
 // real button discloses it in place. It is a client component only for that disclosure and for
 // reading the current route: the page list comes from the generated navigation, never from hand
-// written links.
+// written links. Search sits at the top of the same panel, so it is also inside the phone menu.
 
 const PANEL_ID = "docs-nav-panel";
 
@@ -37,6 +38,12 @@ export function DocsNav({ navigation, contentId }: DocsNavProps) {
     document.getElementById(contentId)?.focus({ preventScroll: true });
   }
 
+  // A search result replaces the list the visitor clicked in, so focus always moves to the page.
+  function chooseResult() {
+    setOpenOn(null);
+    document.getElementById(contentId)?.focus({ preventScroll: true });
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.key !== "Escape" || !open) return;
     event.preventDefault();
@@ -58,28 +65,30 @@ export function DocsNav({ navigation, contentId }: DocsNavProps) {
         <svg className={styles.navChevron} viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
       </button>
       <div id={PANEL_ID} className={styles.navPanel} data-open={open ? "true" : "false"}>
-        {navigation.map((group) => {
-          const titleId = `docs-nav-group-${group.id}`;
-          return (
-            <div key={group.id} className={styles.navGroup}>
-              <p id={titleId} className={styles.navGroupTitle}>{group.title}</p>
-              <ul className={styles.navList} aria-labelledby={titleId}>
-                {group.pages.map((page) => (
-                  <li key={page.route}>
-                    <Link
-                      href={page.route}
-                      className={styles.navLink}
-                      aria-current={page.route === current ? "page" : undefined}
-                      onClick={choosePage}
-                    >
-                      {page.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+        <DocsSearch onNavigate={chooseResult}>
+          {navigation.map((group) => {
+            const titleId = `docs-nav-group-${group.id}`;
+            return (
+              <div key={group.id} className={styles.navGroup}>
+                <p id={titleId} className={styles.navGroupTitle}>{group.title}</p>
+                <ul className={styles.navList} aria-labelledby={titleId}>
+                  {group.pages.map((page) => (
+                    <li key={page.route}>
+                      <Link
+                        href={page.route}
+                        className={styles.navLink}
+                        aria-current={page.route === current ? "page" : undefined}
+                        onClick={choosePage}
+                      >
+                        {page.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </DocsSearch>
       </div>
     </nav>
   );

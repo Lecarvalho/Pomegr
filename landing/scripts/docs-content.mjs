@@ -33,8 +33,10 @@ import {
   quote,
   sha256,
 } from "./docs-markdown.mjs";
+import { GENERATED_SEARCH_FILE, buildSearchIndex, serializeSearchIndex } from "./docs-search.mjs";
 
 export { IMAGE_ROUTE_PREFIX, createSlugger, decodeCharacterReferences, parseFrontMatter, slugifyHeading } from "./docs-markdown.mjs";
+export { GENERATED_SEARCH_FILE } from "./docs-search.mjs";
 
 // ---------------------------------------------------------------------------
 // Contract constants
@@ -47,7 +49,7 @@ export const CONTENT_INPUTS = Object.freeze({
   publicRoot: "../docs/public",
 });
 
-/** Generated outputs, relative to the landing root (both are gitignored). */
+/** Generated outputs, relative to the landing root (all are gitignored; the search index is in docs-search.mjs). */
 export const GENERATED_CONTENT_FILE = "generated/docs-content.json";
 export const GENERATED_IMAGES_DIR = "public/docs/images";
 
@@ -406,14 +408,17 @@ function pruneImages(root, wanted, directory = root) {
 }
 
 /**
- * Write `generated/docs-content.json` and mirror exactly the referenced images into
- * `public/docs/images/`, deleting anything else there. Both locations are gitignored.
+ * Write `generated/docs-content.json`, the search index built from that same content, and mirror
+ * exactly the referenced images into `public/docs/images/`, deleting anything else there. All
+ * locations are gitignored.
  */
 export function writePreparedDocs({ landingRoot = defaultLandingRoot(), content, assets }) {
   const contentFile = resolve(landingRoot, GENERATED_CONTENT_FILE);
   const imagesRoot = resolve(landingRoot, GENERATED_IMAGES_DIR);
   ensureOwnedDirectory(landingRoot, dirname(contentFile));
   writeIfChanged(contentFile, serializeDocsContent(content));
+  const searchFile = resolve(landingRoot, GENERATED_SEARCH_FILE);
+  writeIfChanged(searchFile, serializeSearchIndex(buildSearchIndex(content)));
 
   ensureOwnedDirectory(landingRoot, imagesRoot);
   pruneImages(imagesRoot, new Set(assets.map((asset) => asset.relativePath)));
@@ -422,5 +427,5 @@ export function writePreparedDocs({ landingRoot = defaultLandingRoot(), content,
     ensureOwnedDirectory(landingRoot, dirname(destination));
     writeIfChanged(destination, asset.data);
   }
-  return { contentFile, imagesRoot };
+  return { contentFile, searchFile, imagesRoot };
 }

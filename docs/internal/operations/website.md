@@ -27,7 +27,7 @@ Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/a
 
 The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
 
-Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It validates `docs/site.json` and the public pages and images that manifest selects, then writes the gitignored `landing/generated/` and `landing/public/docs/` outputs the site bundles; invalid documentation stops the command with every problem listed. Restart the dev server after editing documentation. The [documentation manifest](../development/documentation-manifest.md#generate-the-website-content) defines the loader, its outputs, and the content-input audit that `build:audit` enforces.
+Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It validates `docs/site.json` and the public pages and images that manifest selects, then writes the gitignored `landing/generated/` (the content and its search index) and `landing/public/docs/` outputs the site bundles; invalid documentation stops the command with every problem listed. Restart the dev server after editing documentation. The [documentation manifest](../development/documentation-manifest.md#generate-the-website-content) defines the loader, its outputs, and the content-input audit that `build:audit` enforces.
 
 ### Local waitlist configuration
 
@@ -87,6 +87,8 @@ Cloudflare Universal SSL supplies and renews the public TLS certificate without 
 For local validation, use the development instructions above; use a temporary reviewed staging configuration for deployment validation. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, `/download`, `/docs`, the two waitlist endpoints, and the landing's explicit static asset paths and prefixes. The `/docs/` prefix covers every documentation page and the copied page images under `/docs/images/`. It is exact: `/docs` and paths that begin `/docs/` pass; `/docsx`, `/docs..`, `/Docs`, `/docs%2F...`, and `/x/docs/...` do not, and a path such as `/docs/../dashboard` is normalized to `/dashboard` and rejected. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
 
 The documentation routes are the application's, not the Worker's. `/docs` redirects (307) to the manifest's first page, and the catch-all `/docs/<group>/<topic>` route serves only pages the [publication manifest](../development/documentation-manifest.md#serve-the-pages) selects. An unknown `/docs/...` path passes the allowlist on purpose and receives the application's 404 page, which keeps the documentation navigation; only paths outside the allowlist get the Worker's plain `Not found`. Adding a page therefore never needs an allowlist change.
+
+`/sitemap.xml` and `/robots.txt` are application routes (`landing/app/sitemap.ts` and `landing/app/robots.ts`), not static files, and the Worker admits both paths. The sitemap is built from the same generated content revision as the pages and the docs search index: it lists `/`, `/about`, `/download`, and the published documentation pages on `https://pomegr.com`, never `/docs`, `/docs/images/`, the API, or an unpublished path. `robots.txt` allows everything and names only the sitemap location. See [Search, sitemap, and robots](../development/documentation-manifest.md#search-sitemap-and-robots).
 
 ## 4. Edge and application rate limits
 
@@ -159,6 +161,7 @@ After deployment, smoke-test:
 
 - HTTPS `/`, `/about`, and `/download` return 200 and `www` redirects to the apex.
 - `/docs` redirects to the first documentation page, a published page such as `/docs/get-started/introduction` returns 200 with its navigation, outline, and images, and `/docs/not-a-page` returns the documentation 404.
+- Documentation search: typing a known heading in the sidebar field (the phone menu on a narrow screen) lists its page with a link to that heading, and choosing it opens the page. `/sitemap.xml` returns XML listing exactly `/`, `/about`, `/download`, and the published documentation pages on `https://pomegr.com`, with no `/docs`, image, API, or internal path. `/robots.txt` returns plain text with `Allow: /` and only the `Sitemap: https://pomegr.com/sitemap.xml` line.
 - The download page shows version and file sizes, and its installer/portable buttons point directly to the corresponding official GitHub `.exe` assets.
 - `/dashboard`, `/api/state`, `/api/sessions`, and random paths return 404.
 - Signup, a duplicate signup, the signed status cookie, Turnstile failure, and throttling behave as expected.

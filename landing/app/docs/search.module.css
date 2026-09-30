@@ -1,0 +1,118 @@
+/*
+ * Documentation search (WEB-03): the labelled field, the live result count, and the result list that
+ * replaces the page list in the sidebar while a query is active. It renders inside the docs shell,
+ * so it inherits that module's paper palette variables and falls back to the same literals.
+ * Interactive targets are at least 44px tall on a phone, and the field is 16px there so a phone
+ * browser does not zoom the page on focus.
+ */
+.search {
+  margin-bottom: 28px;
+}
+
+.label,
+.group {
+  margin: 0;
+  color: var(--docs-muted, #4e4b47);
+  font: 700 11px/1.3 var(--docs-mono, ui-monospace, "Cascadia Mono", Consolas, monospace);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.field {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--docs-ink, #171715);
+  border-radius: 0;
+  background: transparent;
+  color: var(--docs-ink, #171715);
+  font: 500 14px/1.3 var(--font-inter), Arial, sans-serif;
+}
+
+.field::placeholder {
+  color: var(--docs-muted, #4e4b47);
+  opacity: 1;
+}
+
+.field:focus-visible {
+  outline: 3px solid var(--docs-red, #a63c32);
+  outline-offset: 3px;
+}
+
+/* The live region stays in the page, empty, so a change is announced; empty it takes no room. */
+.status {
+  margin: 8px 0 0;
+  color: var(--docs-muted, #4e4b47);
+  font: 500 12px/1.4 var(--font-inter), Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.status:empty {
+  margin: 0;
+}
+
+.results {
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result + .result {
+  margin-top: 18px;
+}
+
+.group {
+  margin-bottom: 2px;
+}
+
+.pageLink,
+.headingLink {
+  display: block;
+  text-decoration: none;
+}
+
+.pageLink {
+  padding: 4px 0;
+  color: var(--docs-ink, #171715);
+  font: 700 14px/1.35 var(--font-inter), Arial, sans-serif;
+}
+
+.headings {
+  margin: 2px 0 0;
+  padding: 0 0 0 12px;
+  list-style: none;
+  border-left: 1px solid var(--docs-hairline, rgba(23, 23, 21, .2));
+}
+
+.headingLink {
+  padding: 4px 0;
+  color: var(--docs-muted, #4e4b47);
+  font: 500 13px/1.35 var(--font-inter), Arial, sans-serif;
+}
+
+.pageLink:hover,
+.headingLink:hover {
+  color: var(--docs-ink, #171715);
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+@media (max-width: 760px) {
+  .field {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .pageLink,
+  .headingLink {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
