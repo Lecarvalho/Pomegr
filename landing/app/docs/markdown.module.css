@@ -1,0 +1,236 @@
+/*
+ * Reading styles for rendered public documentation (WEB-02). The landing has no shared token
+ * file: each page module mirrors the printed-paper palette and the Rokkitt/Inter/Geist Mono
+ * families on its own root class, so this module does the same on `.markdown`. Only a reading
+ * column is defined here; the page frame, navigation, and background belong to the docs layout.
+ */
+@font-face {
+  font-family: "Rokkitt Pomegr";
+  src: url("/fonts/rokkitt-variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.markdown {
+  --md-ink: #171715;
+  --md-muted: #4e4b47;
+  --md-rule: rgba(23, 23, 21, .4);
+  --md-hairline: rgba(23, 23, 21, .2);
+  --md-wash: rgba(23, 23, 21, .06);
+  --md-red: #a63c32;
+  --md-red-wash: rgba(166, 60, 50, .08);
+  --md-monitor: #111112;
+  --md-monitor-text: #f1ede4;
+  --md-monitor-line: #3a3838;
+  --md-display: "Rokkitt Pomegr", Rockwell, Georgia, serif;
+  --md-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+  max-width: 70ch;
+  min-width: 0;
+  color: var(--md-ink);
+  font: 400 16px/1.7 var(--font-inter), Arial, sans-serif;
+  overflow-wrap: break-word;
+}
+
+/* Flow spacing: reset once here, then space siblings. Keep this pair first and equal in specificity. */
+.markdown :where(p, ul, ol, pre, blockquote) { margin: 0; }
+.markdown > * + * { margin-top: 1.1em; }
+
+.markdown :is(a, [tabindex]):focus-visible {
+  outline: 3px solid var(--md-red);
+  outline-offset: 3px;
+}
+
+/* Headings. The wrapper keeps the permalink outside the heading so its text stays the heading name. */
+.heading {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.markdown > .heading { margin-top: 2.4em; }
+.markdown > .heading.depth3 { margin-top: 2em; }
+.markdown > .heading.depth4 { margin-top: 1.7em; }
+.markdown > .heading.depth1 { margin-top: 0; }
+.markdown > .heading + * { margin-top: .7em; }
+
+.heading > :is(h1, h2, h3, h4) {
+  min-width: 0;
+  margin: 0;
+  font-family: var(--md-display);
+  font-weight: 700;
+  letter-spacing: -.02em;
+  scroll-margin-top: 24px;
+  text-wrap: balance;
+}
+
+.depth1 > h1 { font-size: clamp(40px, 6vw, 60px); line-height: .98; letter-spacing: -.03em; }
+.depth2 > h2 { font-size: clamp(30px, 4vw, 38px); line-height: 1.02; }
+.depth3 > h3 { font-size: 26px; line-height: 1.1; letter-spacing: -.01em; }
+.depth4 > h4 { font-size: 20px; line-height: 1.2; letter-spacing: 0; font-weight: 650; }
+
+.anchor {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--md-red);
+  font: 650 16px/1 var(--md-mono);
+  text-decoration: none;
+  opacity: 0;
+}
+
+.heading:hover .anchor,
+.anchor:focus-visible { opacity: 1; }
+
+@media (hover: none) {
+  .anchor { opacity: 1; }
+}
+
+/* Text. */
+.markdown strong { font-weight: 650; }
+
+.link {
+  color: var(--md-red);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: .2em;
+}
+
+.link:hover { color: var(--md-ink); }
+
+.external::after {
+  content: "\00a0\2197";
+  content: "\00a0\2197" / "";
+  font-size: .85em;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Lists. */
+.list { padding-left: 1.6em; }
+
+.list > li + li { margin-top: .4em; }
+.list > li > * + * { margin-top: .5em; }
+.list > li::marker { color: var(--md-red); }
+
+/* Code. */
+.inlineCode {
+  padding: .1em .35em;
+  border-radius: 2px;
+  background: var(--md-wash);
+  font: 500 .875em/1.5 var(--md-mono);
+  overflow-wrap: anywhere;
+}
+
+.codeBlock {
+  max-width: 100%;
+  padding: 16px 18px;
+  overflow-x: auto;
+  border: 1px solid var(--md-monitor-line);
+  background: var(--md-monitor);
+  color: var(--md-monitor-text);
+  font: 500 13px/1.65 var(--md-mono);
+  tab-size: 2;
+}
+
+.codeBlock > code { font: inherit; white-space: pre; }
+
+/* Images. */
+.imageBlock { line-height: 0; }
+.imageBlock + p { margin-top: .6em; }
+
+.image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--md-rule);
+  background: var(--md-wash);
+}
+
+/* Tables scroll inside a focusable region instead of widening the page. */
+.tableScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--md-rule);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.table th,
+.table td {
+  min-width: 9ch;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--md-hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.table thead th {
+  border-bottom: 2px solid var(--md-ink);
+  font: 700 12px/1.4 var(--md-mono);
+  letter-spacing: .03em;
+}
+
+.table tbody tr:last-child td { border-bottom: 0; }
+.table .alignCenter { text-align: center; }
+.table .alignRight { text-align: right; }
+
+/* Callouts: the label text and border weight carry the difference, never color alone. */
+.callout {
+  padding: 14px 18px 16px;
+  border: 1px solid var(--md-rule);
+  border-left-width: 4px;
+  background: var(--md-wash);
+}
+
+.callout > * + * { margin-top: .7em; }
+.note { border-left-color: var(--md-ink); }
+
+.caution {
+  border-color: var(--md-red);
+  background: var(--md-red-wash);
+}
+
+.calloutLabel {
+  margin: 0 0 6px;
+  color: var(--md-muted);
+  font: 700 11px/1 var(--md-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.caution > .calloutLabel { color: var(--md-red); }
+.markdown .calloutLabel + * { margin-top: 0; }
+
+/* Quotes. */
+.quote {
+  padding: 2px 0 2px 20px;
+  border-left: 3px solid var(--md-rule);
+  color: var(--md-muted);
+}
+
+.quote > * + * { margin-top: .7em; }
+
+@media (max-width: 720px) {
+  .markdown { font-size: 16px; }
+  .codeBlock { padding: 14px; font-size: 12.5px; }
+  .callout { padding: 12px 14px 14px; }
+}
