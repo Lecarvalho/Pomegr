@@ -20,19 +20,20 @@ not whether the work succeeded.
 3. Read a row, then select its title to open the session. The list shows 25 rows
    per page; use **Previous** and **Next**.
 
-![The Sessions list in dark theme, filtered to the Pomegr project with All selected, showing four sessions with their State, Last activity, Agents, and Context columns.](../images/sessions-and-agents/sessions-list.jpg)
+![The Sessions list in dark theme, filtered to the Pomegr project and the text Claude Code with All selected, showing four Claude Code sessions with their State, Last activity, Agents, and Context columns; one is In progress with 2/25 agents.](../images/sessions-and-agents/sessions-list.jpg)
 
-*Real Pomegr development sessions, captured on 2026-09-30 and cropped to the
-first columns. One session was In progress at that moment.*
+*Real Claude Code development sessions in the Pomegr project, captured on
+2026-09-30 and cropped to the first columns. One session was In progress at that
+moment.*
 
 | Column | What it shows |
 | --- | --- |
 | **State** | The session state, as described below. |
 | **Last activity** | The latest recorded activity. A dashed marker means it is current; a solid marker means it is the last one recorded. |
-| **Agents** | Active agents over total agents, such as `2/10`. |
+| **Agents** | Active agents over total agents, such as `2/25`. |
 | **Context** | The sum of each agent's latest [context](../concepts/context-and-tokens.md) snapshot, in thousands of tokens. It is not spend. |
 | **Progress** | The percentage the agent reported through the optional [Pomegr plugin](reporting-plugins.md). |
-| **Updated** | When Pomegr last recorded activity. A small clock beside it opens the cache timer; see [Cache reuse](../concepts/cache-reuse.md). |
+| **Updated** | When Pomegr last recorded activity. A small clock appears beside it only while the primary agent's cache lifetime is nearing its threshold or has elapsed, and opens the cache timer; see [Cache reuse](../concepts/cache-reuse.md). |
 
 A dash means the value is unavailable, not zero.
 
@@ -75,13 +76,18 @@ opens its requests. **Cache lifetime** and refill markers are explained in
 
 | Agent status | What it means |
 | --- | --- |
-| **active** | Recorded activity within about 45 seconds. |
-| **warm** | Last activity within five minutes. |
-| **idle** | No recorded activity for more than five minutes. |
+| **active** | Claude Code: recorded activity within about 45 seconds. Codex: a recorded turn has started and not yet ended. |
+| **warm** | Claude Code only: last activity within five minutes. Codex has no warm state. |
+| **idle** | Claude Code: no recorded activity for more than five minutes. Codex: the latest recorded turn ended, or no turn is in progress. |
 | **waiting** | A parent waiting on a subagent that is still working. |
 | **needs input** | The agent asked for input and has no matching answer yet. |
 | **finished** | A subagent ended its turn, or its parent recorded that it completed. |
 | **stopped** | A parent stopped the subagent, or recorded that it failed or was cancelled. |
+
+The time rows apply to Claude Code, where the local session registry can also set
+the primary agent's status when it reports one. Codex derives status from recorded
+turn starts and ends and, for subagents, recorded collaboration results, not from
+elapsed time.
 
 Roles are display labels chosen by fixed rules, such as `orchestrator` or
 `general-purpose`. An agent with no known role shows `custom: <type>` when its

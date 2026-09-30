@@ -48,8 +48,8 @@ from the folder or from recent activity.
 - **Agent context.** The latest non-zero snapshot: total, uncached input, cache
   read, cache write, output, and cache lifetime. See
   [Context and tokens](../concepts/context-and-tokens.md).
-- **Recent failures.** Up to 25 failures from the last 15 minutes by default
-  (at most 24 hours), each with agent, time, work kind, tool label, and failure
+- **Recent failures.** Up to 10 failures (at most 25) from the last 15 minutes by
+  default (at most 24 hours), each with agent, time, work kind, tool label, and failure
   category, plus how much history was retained.
 - **Session report.** The same bounded Markdown as **Download report**.
 

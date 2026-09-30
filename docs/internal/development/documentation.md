@@ -9,8 +9,7 @@
 
 Keep one maintained owner for each subject. Use the [documentation index](../../README.md)
 for audience navigation and the [maintainer index](../README.md) to locate current
-authorities before editing. Existing pages keep their paths and authority until
-their individual migration is complete.
+authorities before editing.
 
 ## Place the page
 
@@ -132,9 +131,12 @@ no paths, prompts, or credentials. Recapture both when the tab layout changes.
 The [sessions and agents](../../public/using-pomegr/sessions-and-agents.md) page owns
 the two JPEGs in `docs/public/images/sessions-and-agents/`. Both were captured on
 2026-09-30 from the Pomegr 0.5.3 interface in dark theme at a 1200 px viewport and 2x
-scale. `sessions-list.jpg` shows `/sessions?project=Pomegr` with **All** selected, so
-only Pomegr sessions appear (the unfiltered catalog also holds other repositories),
-cropped to the toolbar and the first four rows through the **Context** column; the
+scale. `sessions-list.jpg` was recaptured on 2026-09-30 after review (the first set
+showed two Codex sessions whose titles read like raw prompts). It shows
+`/sessions?project=Pomegr` with **All** selected and the filter text “Claude Code”,
+so only Pomegr Claude Code sessions with descriptive titles appear (the unfiltered
+catalog also holds other repositories and providers), cropped to the toolbar and the
+first four rows through the **Context** column; the
 **Progress** and **Updated** columns fall outside the crop because the table is wider
 than the documentation column allows. `agents-roster.jpg` shows the Agents tab in
 List view for the recorded Claude Code session titled “Agent-readiness audit of repo
@@ -148,10 +150,12 @@ prompts, or credentials. Recapture both when the Sessions table or roster change
 
 The [repositories](../../public/using-pomegr/repositories.md) page owns the two JPEGs in
 `docs/public/images/repositories/`, captured on 2026-09-30 from the Pomegr 0.5.3
-interface in dark theme at a 1200 px viewport and 2x scale. `files-tab.jpg` shows the
-Pomegr repository's Files tab with `app/Dashboard.tsx` selected (deep link
-`?tab=files&path=app/Dashboard.tsx`), cropped to the tab bar, toolbar, file tree, and
-the first history entries. `session-repository-tab.jpg` shows the Repository tab of the
+interface in dark theme at a 1200 px viewport and 2x scale, except `files-tab.jpg`,
+which was recaptured on 2026-09-30 at a 1360 px viewport after review because the
+history header clips the **All providers | Claude Code | Codex** control at 1200 px.
+`files-tab.jpg` shows the Pomegr repository's Files tab with `app/Dashboard.tsx`
+selected (deep link `?tab=files&path=app/Dashboard.tsx`), cropped to the tab bar,
+toolbar, file tree, and the first history entries. `session-repository-tab.jpg` shows the Repository tab of the
 recorded Claude Code session titled “Show recorded agents per file in session
 Repository tab” in the Pomegr repository, with the same file selected, cropped from the
 branch bar to the tree footer; it shows the Git glyph and the “Seen in Git · no
@@ -217,7 +221,11 @@ The build-time content loader, `/docs` renderer, search, and `check:docs` comman
 implemented yet. Adding a Markdown file or manifest entry does not deploy it.
 Validate selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when
-their routes change.
+their routes change. The 2026-09 migration did not preserve GitHub blob links to
+the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.md`,
+`docs/PLUGINS.md`, `docs/SIGNAL_DICTIONARY.md`, and `docs/user-guide/README.md`) that
+released builds and already-exported reports carry; they return 404 by owner decision,
+and current links were repointed instead.
 
 Public content updates require the normal website build and deployment,
 independently of desktop packaging. Internal-only edits require documentation

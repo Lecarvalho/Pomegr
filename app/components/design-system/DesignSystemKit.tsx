@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import type { Agent, AgentRole } from "../../../shared/monitor-contract";
 
 // Shared building blocks for the static /design-system samples. The page stays static-data-only:
-// nothing here reads a store, a route, or the network.
+// nothing here reads a store, a route, or the network. One exception: the agent roster sample's viewer
+// choices persist in browser localStorage under the session ID "design-system-roster" (see DSG-9 in
+// docs/internal/plans/design-system-gaps.md), so a stored choice can change that sample's initial state.
 export function Section({ id, title, lede, children }: { id: string; title: string; lede?: string; children: ReactNode }) {
   const headingId = `design-system-${id}`;
   return <section className="designSystemSection" aria-labelledby={headingId}>

@@ -30,7 +30,8 @@ enables it. Without a report, the
 were recorded for this session." for a past session).
 
 With a report, the Overview **Progress** panel shows the percentage, phase, and
-confidence, labeled "Agent-maintained estimate". An estimate keeps its last
+confidence, labeled "Agent-maintained estimate", or "N/M agent-maintained plan
+tasks" when the session has a plan checklist. An estimate keeps its last
 reported value until the agent reports again, so it can be out of date. A
 session's plan checklist is also agent-maintained and may be stale.
 
@@ -58,13 +59,14 @@ sections, and the page says the evidence is not a quality assessment.*
 
 - **Efficiency** lists rule results. **Flow score** starts at 100, subtracts 4
   for each repeated call (at most 45) and 7 for each overlapping edit target (at
-  most 25), and never falls below 25. Two repeated calls give 92, as above. It is
-  an attention heuristic, not a quality score.
+  most 25), and never falls below 25. A repeated call is each identical call
+  after the first, so a call made three times, like the "3 times" signal above,
+  counts as two and gives 92. It is an attention heuristic, not a quality score.
 - **Rule list.** The rules cover an automatic compaction, the same call repeated
   three or more times, two agents changing the same edit target within 30
   seconds, a primary context of at least 150,000 tokens with at least 40 calls
   and no subagent, and, for Claude Code, a cache miss and refill after an idle
-  gap (see [cache reuse](cache-reuse.md)). With none, the section reads "No
+  gap of at least 30 minutes (see [cache reuse](cache-reuse.md)). With none, the section reads "No
   obvious loops right now". A signal invites a check; it does not say something
   went wrong.
 - **Cache lifetime** lists each agent's recorded lifetime, and marks a

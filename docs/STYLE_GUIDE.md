@@ -7,8 +7,7 @@
 > [current technical contracts](internal/README.md#choose-the-authority).
 
 Write each page to help a reader complete one task or understand one subject.
-Apply these rules to new pages and pages as they migrate; existing documents keep
-their current homes and authority until their migration task completes. This
+Apply these rules to new pages and to every page you revise. This
 guide defines authoring conventions, not an already-implemented website renderer
 or validation command.
 
@@ -253,8 +252,8 @@ the documentation publication pipeline.
 
 The existing `/design-system` page on the web development server is the
 authoritative visual reference. [DESIGN.md](../DESIGN.md) is the written contract;
-the [design-system examples](../app/components/design-system/DesignSystemView.tsx)
-use the actual shared tokens and components. Documentation and HTML previews must
+the [design-system samples](../app/components/design-system/) use the
+actual shared tokens and components. Documentation and HTML previews must
 not become a second visual authority or component gallery.
 
 Before retiring a design exploration, compare it with the live examples. Promote
@@ -288,7 +287,7 @@ such as `README.md`, `STYLE_GUIDE.md`, `AGENTS.md`, and `SKILL.md`. Preserve roo
 legal and package/tool ownership; follow the
 [maintenance workflow](internal/development/documentation.md) for placement,
 migration, publication, and checks, and the [maintainer index](internal/README.md)
-for current authorities during migration.
+for current authorities.
 
 Close temporary work in the same change that fulfills or retires it:
 

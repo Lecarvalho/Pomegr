@@ -104,6 +104,7 @@ The repository implementation and automated release gates are in place (see [des
 - [ ] Update failure leaves the current installation usable.
 - [ ] Every binary release has matching corresponding source available at no charge.
 - [ ] Signing credentials never appear in repository history or artifacts.
+- [ ] Generalize or retire the `0.2.4` pin in `desktop/packaging/build-acceptance-prior.mjs`, which throws for any other `package.json` version and so blocks the prior-fixture build for every later candidate.
 
 Verification: exercise an update from one test version to the next on a clean Windows VM; verify signature and checksum before and after installation; inspect workflow logs for secret masking and private-path leakage.
 

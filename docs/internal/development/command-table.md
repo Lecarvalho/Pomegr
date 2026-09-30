@@ -1,7 +1,7 @@
 # Reusable command table
 
 > Scope: how to integrate `CommandTable` in a new tabular view.
-> Authority: component integration guidance. Visual design belongs to [DESIGN.md](../../../DESIGN.md) and the `/design-system` page ([`DesignSystemView.tsx`](../../../app/components/design-system/DesignSystemView.tsx), served by `app/design-system/page.tsx` on the web dev server); this page does not restate colors, spacing, type sizes, or control styles.
+> Authority: component integration guidance. Visual design belongs to [DESIGN.md](../../../DESIGN.md) and the `/design-system` page ([`app/components/design-system/`](../../../app/components/design-system/), served by `app/design-system/page.tsx` on the web dev server); this page does not restate colors, spacing, type sizes, or control styles.
 > Related code and checks: `app/components/command-center/CommandTable.tsx`; `npx vitest run tests/ui/command-table.test.tsx`.
 
 Use `CommandTable` from `app/components/command-center/CommandTable.tsx` for tabular UI. The Sessions directory (`CommandViews.tsx`) and the Agents roster (`AgentsRosterPanel.tsx`) are its production callers. Both keep the caller's row order today; sorting and pagination are covered by `tests/ui/command-table.test.tsx`.
@@ -47,4 +47,4 @@ The default table scrolls horizontally when it is wider than its container. The 
 
 ## Visual authority
 
-Follow [DESIGN.md](../../../DESIGN.md) for table, row, and control styling, and use only its documented tokens and control roles when adding caller classes. `/design-system` renders a `CommandTable` sample with a sortable header (unsorted, descending, ascending), a pagination footer, and both empty-state forms. Neither production caller enables sorting or built-in pagination, so those states are also covered in `tests/ui/command-table.test.tsx`. A caller that adds a new table state adds its sample to `/design-system`, with `DESIGN.md` and its contract test, instead of documenting the styling here.
+Follow [DESIGN.md](../../../DESIGN.md) for table, row, and control styling, and use only its documented tokens and control roles when adding caller classes. `/design-system` renders a `CommandTable` sample with a sortable header, a pagination footer, and both empty-state forms. The sort states (unsorted, descending, ascending) can only be clicked through on that page, not rendered statically side by side (see DSG-7 in the [design system gaps plan](../plans/design-system-gaps.md)). Neither production caller enables sorting or built-in pagination, so those states are also covered in `tests/ui/command-table.test.tsx`. A caller that adds a new table state adds its sample to `/design-system`, with `DESIGN.md` and its contract test, instead of documenting the styling here.

@@ -18,7 +18,7 @@ The original `docs/COMMERCIAL_STRATEGY.md` was a working document. The statement
 
 ### Commercial thesis
 
-Pomegr can become the privacy-first operations console for teams using coding agents. Its commercial advantage is hypothesized to be useful execution visibility without collecting raw prompts, responses, commands, tool output, or source code, rather than generic AI tracing.
+Pomegr can become the privacy-first operations console for teams using coding agents. Its commercial advantage is hypothesized to be useful execution visibility without collecting raw prompts, responses, commands, tool output, or source code, rather than generic AI tracing. The local, single-user observer is intended to stay useful and open source, and revenue is hypothesized to come from convenience, coordination, governance, and support around that core.
 
 ### Platform direction
 

@@ -75,8 +75,9 @@ Open a session and select **Repository**. The top bar shows the recorded branch,
 its comparison with the default branch, commits in the session, and any pull
 request. For a session that is no longer live it says "Recorded at the session's
 last live check": Pomegr shows what it recorded then, never today's working tree.
-**Commits in this session** counts every commit on the branch during the session,
-including other people's, so it does not attribute them to the session.
+The commit count (for example "3 commits in this session") counts every commit on
+the branch during the session, including other people's, so it does not attribute
+them to the session.
 
 **Touched here** lists files with a recorded change, plus files Git saw change
 during the session. **Uncommitted** lists files uncommitted at the last check,

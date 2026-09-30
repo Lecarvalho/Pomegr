@@ -7,10 +7,9 @@
 
 ## Decision and context
 
-Pomegr is a local, read-only observer of coding-agent sessions. Three positioning choices were accepted:
+Pomegr is a local, read-only observer of coding-agent sessions. Two positioning choices were accepted:
 
-- **The local observer stays open source and useful on its own.** Future development uses `AGPL-3.0-only`, with the option of separate commercial terms. Earlier MIT revisions remain MIT, and the name and visual identity are governed separately by the [trademark policy](../../../TRADEMARKS.md). Any future revenue is expected to come from convenience, coordination, governance, and support around that core.
-- **The differentiator is bounded execution visibility.** Pomegr shows what agents are doing without collecting raw prompts, responses, commands, tool output, or source code. It is positioned on that boundary, not as generic AI tracing.
+- **The local observer is open source.** Future development uses `AGPL-3.0-only`, with the option of separate commercial terms. Earlier MIT revisions remain MIT, and the name and visual identity are governed separately by the [trademark policy](../../../TRADEMARKS.md).
 - **Pomegr is not an authoritative evaluator.** It does not judge developer or agent quality. Metrics and recommendations are deterministic signals tied to concrete execution evidence, and a heuristic is never presented as an AI judgment or an authoritative measurement.
 
 ## Alternatives and consequences
@@ -22,6 +21,6 @@ Two alternatives were recorded as non-goals and remain rejected because the priv
 
 Consequences for future changes:
 
-- Editions, pricing, a target buyer, hosted coordination, and remote or organization features are not decided. They are unvalidated hypotheses in the commercial strategy plan, and no product page, README, or in-app copy may present them as shipped, available, or priced.
+- Editions, pricing, a target buyer, hosted coordination, and remote or organization features are not decided, and neither is where any future revenue would come from or whether bounded execution visibility is a commercial differentiator. They are unvalidated hypotheses in the commercial strategy plan, and no product page, README, or in-app copy may present them as shipped, available, or priced.
 - Any shared or organization-level view must be built from normalized, bounded metadata and keep every invariant in AGENTS.md. A feature that needs a new category of data first needs its own documented contract, as AGENTS.md records for each exposed metadata family.
 - A change to the open-source core, its licensing, or the evaluator boundary is a new decision that supersedes this record; link it here.

@@ -2,7 +2,7 @@
 
 > Scope: the reusable clean-VM checks for a Pomegr Windows x64 candidate: installer, first launch, upgrade in place, portable build, and uninstall.
 > Authority: operating procedure. It carries no per-candidate result; the completed and pending runs it knows about are kept under [Recorded acceptance runs](#recorded-acceptance-runs).
-> Related code and checks: `desktop/packaging/` (`npm run desktop:package:acceptance-prior`, `npm run desktop:inspect:acceptance-prior`), [desktop releases](desktop-releases.md), and [desktop beta acceptance](desktop-beta-acceptance.md) for the signed-beta gates.
+> Related code and checks: `desktop/packaging/` (`npm run desktop:package:acceptance-prior`, `npm run desktop:inspect:acceptance-prior`; the build pins a candidate version, see Candidate artifacts), [desktop releases](desktop-releases.md), and [desktop beta acceptance](desktop-beta-acceptance.md) for the signed-beta gates.
 
 Pomegr desktop is [available for Windows x64](https://github.com/Lecarvalho/Pomegr/releases/latest), including installer and portable downloads. This checklist is an acceptance procedure for a candidate; an unrecorded run does not mean the desktop application is unavailable.
 
@@ -12,7 +12,7 @@ Use it for `POMEGR-DT-08` acceptance (see the [desktop milestone IDs](desktop-be
 
 Use these exact artifact names when evidence is collected:
 
-- Prior-version upgrade fixture: `release-acceptance/Pomegr-TestOnly-Prior-0.0.9-x64.exe`. This ignored artifact is test-only and must not be published as a release. Build it with `npm run desktop:package:acceptance-prior` and inspect it with `npm run desktop:inspect:acceptance-prior`.
+- Prior-version upgrade fixture: `release-acceptance/Pomegr-TestOnly-Prior-0.0.9-x64.exe`. This ignored artifact is test-only and must not be published as a release. Build it with `npm run desktop:package:acceptance-prior` and inspect it with `npm run desktop:inspect:acceptance-prior`. The build script asserts the candidate version pair and throws unless `package.json` is at the version it pins, so first update that pin as [desktop releases](desktop-releases.md#publish-signed-artifacts) step 3 describes.
 - Candidate installer: `release/Pomegr-Setup-X.Y.Z-x64.exe`.
 - Candidate portable build: `release/Pomegr-Portable-X.Y.Z-x64.exe`.
 

@@ -296,7 +296,7 @@ const FILE_TREE_SESSION_FILES: FileTreeFile[] = [
   { path: "app/components/dashboard/GitObservedSample.tsx", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
 ];
 const FILE_TREE_SESSION_ELSEWHERE: FileTreeFile[] = [
-  { path: "docs/OBSERVATION_CACHE.md", fileId: null, status: "M" },
+  { path: "docs/internal/architecture/observation-cache.md", fileId: null, status: "M" },
   { path: "tests/ui/pomegr-design-contract.test.tsx", fileId: null, status: "M" },
 ];
 const FILE_TREE_REPOSITORY_FILES: FileTreeFile[] = [

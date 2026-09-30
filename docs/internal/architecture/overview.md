@@ -47,6 +47,8 @@ authorizes only `GET /api/agent/v1/*`; it cannot authorize ordinary monitor APIs
 one-shot transcript-path endpoint. Clean shutdown removes the descriptor only when its
 token still matches, so an older process cannot delete a newer process's rendezvous.
 
+The first desktop release excludes telemetry and analytics, paid-entitlement enforcement inside the open-source desktop binary, and team aggregation or cloud accounts. Adding any of them is a new product decision, not a desktop implementation detail; the remote and organization proposals are unshipped plans.
+
 Main starts the monitor before the web listener and creates the window only after both are ready. It stops the notification poller, updater listeners, monitor worker, and web listener on explicit quit, failure, or update installation. Closing to the tray deliberately keeps observation running; pausing affects UI polling only and never controls an agent.
 
 Needs-input notifications are produced from the normalized session catalog on a false-to-true transition. Their title and body are fixed generic Pomegr copy; session titles and all other provider metadata are excluded. Clicking navigates to the exact safe provider-qualified session ID in the existing observation UI; it does not answer or approve anything. Automatic updates are installed-mode only, channel-isolated, and signature-verified against one full publisher Subject. Pomegr checks after startup and every four hours while eligible and downloads silently. Settings → About shows the installed desktop version and offers a manual check through the same deduplicated updater. The About update row and existing bottom-left update action require explicit restart/install activation; automatic checks and downloads never install an update. Portable mode disables login registration and updates.
@@ -251,7 +253,7 @@ Owned services are supervised for unexpected exit and stopped in bounded order o
 - `activity` — sanitized tool, failed shell-completion, and user-input events
 - `executionTasks` — the primary agent's bounded shell-task lifecycle metadata and optional enum-based failure category, retained for API compatibility
 - `insights` — deterministic rules
-- `usageLimits` — normalized plan windows and resets
+- `usageLimits` — normalized plan windows and resets (temporary here: only the legacy session Details tab reads it, and the [information architecture redesign](../plans/ia-redesign.md#t12-closure) drops it with the composed `/api/state`)
 
 The UI depends on normalized shapes rather than raw provider records.
 

@@ -73,34 +73,10 @@ writing, page templates, visuals, and artifact lifecycle, and the
 [maintenance workflow](internal/development/documentation.md) for placement,
 migration, publication, checks, and closure.
 
-## Find pages during the migration
+## Publication
 
-The [introduction](public/get-started/introduction.md),
-[installation guide](public/get-started/install.md),
-[first-session guide](public/get-started/first-session.md), the
-[sessions and agents](public/using-pomegr/sessions-and-agents.md),
-[repositories](public/using-pomegr/repositories.md),
-[reporting plugins](public/using-pomegr/reporting-plugins.md),
-[phone access](public/using-pomegr/phone-access.md),
-[MCP queries](public/using-pomegr/mcp-queries.md), and
-[settings](public/using-pomegr/settings.md) guides, and the
-[context and tokens](public/concepts/context-and-tokens.md),
-[cache reuse](public/concepts/cache-reuse.md),
-[usage limits](public/concepts/usage-limits.md),
-[signals and estimates](public/concepts/signals-and-estimates.md), and
-[token pricing](public/concepts/token-pricing.md) concept pages, and the
-[missing sessions](public/help/missing-sessions.md),
-[unavailable data](public/help/unavailable-data.md), and
-[connection problems](public/help/connection-problems.md) help pages are
-migrated public pages.
-Remaining sources keep their current paths and authority until their
-individual migration tasks complete. Follow the working links above; this table
-maps the remaining work:
-
-| Current location | Planned home |
-| --- | --- |
-| User guidance in mixed-audience pages | `docs/public/`, grouped into `get-started/`, `using-pomegr/`, `concepts/`, and `help/` |
-| Existing plans | Active work in `docs/internal/plans/`; completed plans retired after their findings are accounted for |
+Public guides live in `docs/public/`, grouped into `get-started/`, `using-pomegr/`,
+`concepts/`, and `help/`; the table at the top of this page links each one.
 
 Public guides are intended for website publication. Internal documentation serves
 maintainers and is excluded from that publication; “internal” does not mean
@@ -111,5 +87,5 @@ routes, and local links/images; website publication tooling is still pending.
 This index does not publish content.
 
 The [documentation migration checklist](internal/plans/documentation-migration.md)
-tracks individual tasks. The maintainer index lists current technical paths and
-their proposed replacements.
+tracks the remaining tasks. The maintainer index lists the current technical
+authorities.

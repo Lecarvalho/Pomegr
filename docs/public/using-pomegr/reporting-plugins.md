@@ -137,7 +137,8 @@ Start with `/pomegr:doctor` or `$pomegr:doctor`, then match the symptom:
 - **Tools missing.** Check `/mcp`, confirm the plugin is enabled, reload or
   reinstall it, and start a new session.
 - **Claude Code session stays untitled.** Confirm `rename_session` appears in
-  `/mcp`; otherwise the provider's automatic title stays.
+  `/mcp` and that `/hooks` lists the plugin's rename hook (a `PreToolUse` hook on
+  `rename_session`); otherwise the provider's automatic title stays.
 
 A session keeps the plugin version it loaded, so an update affects only sessions
 that start afterward.

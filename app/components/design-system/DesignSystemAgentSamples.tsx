@@ -51,7 +51,7 @@ export function AgentRosterSection() {
       <AgentActivityPanel agents={ROSTER_AGENTS} executionTasks={[]} planTasks={ROSTER_PLAN} historical={false} workflows={ROSTER_WORKFLOWS} loops={ROSTER_LOOPS}
         workflowNavigation={{ id: WORKFLOW_ID, request: 1 }} sessionId="design-system-roster" viewMode={viewMode} onViewModeChange={setViewMode} />
     </LiveClockProvider>
-    <p className="designSystemNote">Status pills and the distribution strip keep lifecycle meaning: neutral for idle and finished, amber for needs input, red for stopped. The repeat chip marks a recorded repeated-call pattern, never a judgment. The primary row and group headers stay sticky while the region scrolls; columns omit Calls and Cache TTL from 761 to 1250px, and the inspector keeps them. At 760px and narrower the inspector column is replaced by the full-screen InspectorSheet, which opens when a row is tapped.</p>
+    <p className="designSystemNote">Status pills and the distribution strip keep lifecycle meaning: neutral for idle and finished, amber for needs input, red for stopped. The repeat chip marks a recorded repeated-call pattern, never a judgment. The primary row and group headers stay sticky while the region scrolls; columns omit Calls and Cache TTL from 761 to 1250px, and the inspector keeps them. At 760px and narrower the inspector column is replaced by the full-screen InspectorSheet, which opens when a row is tapped. The roster keeps viewer choices (selected agent, open groups, Hide finished) in browser local storage under the session ID design-system-roster, so a stored choice can change the initial state shown here.</p>
   </Section>;
 }
 

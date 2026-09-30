@@ -2,9 +2,8 @@
 
 This document is the canonical operational contract for Pomegr's provider-neutral
 session observation cache, API serving model, and progressive UI readiness. Plans under
-`docs/internal/plans/` and legacy plans still under `docs/plans/` describe work or
-historical reasoning, not runtime authority; when a plan and this document differ, this
-document and `AGENTS.md` govern repository changes.
+`docs/internal/plans/` describe work or historical reasoning, not runtime authority; when
+a plan and this document differ, this document and `AGENTS.md` govern repository changes.
 The [Limitations reference](limitations.md)
 owns the provider-related and Pomegr-specific inventory and capability matrix;
 this document retains authority over acquisition, committed evidence, and serving.
@@ -744,7 +743,8 @@ rendering every historical report on the live publication path.
 
 Clients use these queries only when an observation can change the next decision. They do
 not poll or call every query at session start. The tool-specific triggers and caveats are
-documented in [MCP observation queries](mcp-queries.md).
+documented in the public [MCP queries guide](../../public/using-pomegr/mcp-queries.md);
+[MCP observation queries](mcp-queries.md) holds the resolution, evidence, and transport contract.
 
 The Codex stdio MCP process resolves a default qualified session reference only from
 one valid host-supplied thread identity (`CODEX_THREAD_ID`/`CODEX_SESSION_ID`).

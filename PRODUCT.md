@@ -32,7 +32,7 @@ Pomegr is not an authoritative evaluator of developer or agent quality: its metr
 
 ## Capabilities and Constraints
 
-- Claude Code is the current provider adapter. Codex support is planned and must produce the same provider-neutral normalized shapes.
+- Claude Code and Codex are the current provider adapters. Both must produce the same provider-neutral normalized shapes, and each exposes a different amount of session data; the [Limitations](docs/internal/architecture/limitations.md) reference lists the gaps.
 - Monitoring is read-only. Control actions require a future explicit confirmation boundary.
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
@@ -43,7 +43,7 @@ Pomegr is not an authoritative evaluator of developer or agent quality: its metr
 - Historical views must not expose current plan limits or substitute the current Git working tree for recorded state.
 - Efficiency signals and recommendations are deterministic heuristics tied to concrete events, never AI judgments or authoritative measurements.
 - Provider failures must degrade independently.
-- The current local development environment requires Windows, Node.js 22.13 or newer, Git, and locally persisted Claude Code sessions.
+- The current local development environment requires Windows, Node.js 22.13 or newer, Git, and locally persisted Claude Code or Codex sessions.
 
 ## Brand Commitments
 
