@@ -92,7 +92,8 @@ well an agent worked.
 
 Loading placeholders mean Pomegr is still preparing a section, and
 **No recorded activity yet** means the session has no recorded activity to
-show. For an empty list or an unavailable catalog, see
-[Follow your first session](../get-started/first-session.md#if-something-is-missing).
+show. For an empty list, see [Missing sessions](../help/missing-sessions.md); for
+an unavailable catalog, see [Connection problems](../help/connection-problems.md);
+for other missing values, see [Unavailable data](../help/unavailable-data.md).
 To compare models and delegation across sessions, open **Models & delegation**;
 for the files a session touched, see [Repositories](repositories.md).

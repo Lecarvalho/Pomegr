@@ -34,8 +34,9 @@ new work. If you use a different local profile, see
 The **Live** filter depends on the evidence Pomegr can observe. An open coding
 tool is not a guarantee that its session appears there, and a session missing
 from **Live** is not proof that its work completed. Check **All** before treating
-a session as missing. [Sessions and agents](../using-pomegr/sessions-and-agents.md)
-explains each state label.
+a session as missing; [Missing sessions](../help/missing-sessions.md) has the full
+recovery. [Sessions and agents](../using-pomegr/sessions-and-agents.md) explains
+each state label.
 
 ## Read the first results
 
@@ -50,10 +51,16 @@ Loading placeholders mean a section is still preparing its first results.
 **No recorded activity yet** means Pomegr detected the session but has no
 recorded activity to display, for example before you send Claude Code its first
 prompt. A missing value or an unavailable feature does not mean zero activity or
-successful completion. See the [introduction](introduction.md) for examples of
-the overview, the Agents tab, and the Requests chart.
+successful completion; see [Unavailable data](../help/unavailable-data.md). The
+[introduction](introduction.md) shows examples of the overview, the Agents tab,
+and the Requests chart.
 
 ## If something is missing
+
+These are the quick fixes. [Missing sessions](../help/missing-sessions.md),
+[Unavailable data](../help/unavailable-data.md), and
+[Connection problems](../help/connection-problems.md) explain each symptom and
+what it does not prove.
 
 | What you see | What to do |
 | --- | --- |

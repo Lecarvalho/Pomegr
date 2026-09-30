@@ -22,12 +22,14 @@ source.
 | Read the account usage windows and their freshness | [Usage limits](public/concepts/usage-limits.md) |
 | Tell recorded values, agent reports, estimates, and signals apart | [Signals and estimates](public/concepts/signals-and-estimates.md) |
 | Compare cached and uncached token prices, and API prices with subscriptions | [Token pricing](public/concepts/token-pricing.md) |
+| Recover when the session list is empty or a session is missing | [Missing sessions](public/help/missing-sessions.md) |
+| Read a dash, an "unavailable" message, or a provider status without assuming a cause | [Unavailable data](public/help/unavailable-data.md) |
+| Recover from Monitor offline, a paused dashboard, or an app that does not open | [Connection problems](public/help/connection-problems.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
-| Configure provider sources or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
+| Look up environment variables, provider setup, and the technical contracts behind troubleshooting | [Configuration and troubleshooting](CONFIGURATION.md) |
 
-Configuration and troubleshooting still combines user guidance with maintainer
-detail; its remaining user-facing sections will move into focused public pages
-during the documentation migration. [Pomegr plugins](PLUGINS.md) and
+Configuration and troubleshooting keeps the environment variables, provider setup,
+and technical contracts behind the guides above. [Pomegr plugins](PLUGINS.md) and
 [MCP observation queries](MCP_QUERIES.md) keep the contracts behind their guides.
 
 ## Maintain and contribute
@@ -62,8 +64,11 @@ The [introduction](public/get-started/introduction.md),
 [cache reuse](public/concepts/cache-reuse.md),
 [usage limits](public/concepts/usage-limits.md),
 [signals and estimates](public/concepts/signals-and-estimates.md), and
-[token pricing](public/concepts/token-pricing.md) concept pages are migrated
-public pages.
+[token pricing](public/concepts/token-pricing.md) concept pages, and the
+[missing sessions](public/help/missing-sessions.md),
+[unavailable data](public/help/unavailable-data.md), and
+[connection problems](public/help/connection-problems.md) help pages are
+migrated public pages.
 Remaining sources keep their current paths and authority until their
 individual migration tasks complete. Follow the working links above; this table
 maps the remaining work:

@@ -19,7 +19,7 @@
     {
       "id": "help",
       "title": "Help",
-      "pages": []
+      "pages": ["help/missing-sessions.md", "help/unavailable-data.md", "help/connection-problems.md"]
     }
   ]
 }

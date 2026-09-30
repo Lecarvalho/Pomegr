@@ -258,16 +258,20 @@ To share Claude cost snapshots with a portable build, set `POMEGR_DATA_DIR` to t
 
 ## Troubleshooting
 
+The public help pages give the recovery steps: [Missing sessions](public/help/missing-sessions.md), [Unavailable data](public/help/unavailable-data.md), and [Connection problems](public/help/connection-problems.md). The sections below keep the technical contracts behind them.
+
 ### The desktop app does not open
 
-- Confirm the downloaded artifact is the Windows x64 build, its SHA-256 matches `SHA256SUMS.txt`, and its Authenticode signature is valid and timestamped for the expected complete publisher Subject.
-- Quit any existing tray instance before retrying. A second launch focuses the existing window instead of starting another service set.
-- If a fixed Pomegr startup-error page appears, restart once and record only its bounded diagnostic code. Do not publish environment dumps, private paths, transcripts, credentials, or screenshots containing session data.
+The [Connection problems guide](public/help/connection-problems.md#pomegr-does-not-open) explains the recovery steps. This section keeps the release and startup contract:
+
+- The release must be the Windows x64 build, its SHA-256 must match `SHA256SUMS.txt`, and its Authenticode signature must be valid and timestamped for the expected complete publisher Subject.
+- A second launch focuses the existing window instead of starting another service set.
+- The fixed Pomegr startup-error page carries only the bounded diagnostic code `DESKTOP_START_FAILED`. Do not publish environment dumps, private paths, transcripts, credentials, or screenshots containing session data.
 - Installed and portable builds do not require system Node.js. Missing Git affects repository enrichment only and must not prevent startup.
 
 ### The window disappeared after I closed it
 
-The selected close behavior may hide Pomegr to the system tray. Reopen it from the tray or launch Pomegr again. A remembered **Keep running** choice hides the window every time, and this version has no Settings control to change it. Use **Quit Pomegr** in the tray menu to stop all owned services.
+Closing the window may hide Pomegr to the tray; see [Connection problems](public/help/connection-problems.md#pomegr-does-not-open). The close-behavior contract is under [Desktop settings and behavior](#desktop-settings-and-behavior).
 
 ### Notifications do not appear
 
@@ -296,6 +300,8 @@ The [Phone access guide](public/using-pomegr/phone-access.md) explains pairing, 
 
 ### No sessions appear
 
+The [Missing sessions guide](public/help/missing-sessions.md) explains the recovery steps. This section keeps the source-development and identifier checks:
+
 - Confirm the provider has created persisted JSONL history under its default root, or set the matching root override before `npm run dev`.
 - Remove `CLAUDE_SESSION_FILE` if it points to a deleted file.
 - Confirm the session ID contains only letters, digits, `.`, `_`, or `-`; browser parameters are opaque provider-qualified IDs such as `codex:thread-id`, never paths.
@@ -305,11 +311,15 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 ### Codex appears historical while it is open
 
+The [Missing sessions guide](public/help/missing-sessions.md#a-session-is-missing-from-live) gives the reader-facing summary. The liveness rules:
+
 - An owning app-server reports only threads loaded by that same process. A newly spawned app-server is not global live-state truth on Windows.
 - On Windows, confirm the native Codex CLI writer is the selected executable and that its validated process ownership is present. A missing or ambiguous writer is unknown/stale, not proof of idle or completion.
 - On Unix, Pomegr does not infer runtime presence from an unvalidated native lock. Use an explicitly connected owning app-server when available, or rely on recorded turns and bounded structured rollout evidence.
 
 ### Needs-input is stale or missing
+
+The [Unavailable data guide](public/help/unavailable-data.md#needs-input-looks-stale-or-is-missing) explains what to check. The evidence rules:
 
 - Recorded input requests clear on matching provider evidence or a subsequent turn; accepted unresolved lifecycle evidence persists until that evidence arrives. Missing, invalid, or incomplete evidence remains unavailable rather than expiring into a guessed state.
 - Questions, choices, answers, approval reasons, and commands are intentionally unavailable in diagnostics and browser state.
@@ -324,10 +334,12 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 ### Git or GitHub metadata is unavailable
 
-- Confirm Git is on `PATH` and the selected live session's recorded working directory still exists.
+The [Unavailable data guide](public/help/unavailable-data.md#repository-details-are-missing) explains what to check. The contract behind it:
+
+- Git must be on `PATH`, and the selected live session's recorded working directory must still exist.
 - Historical views intentionally show only the recorded branch and never the current working tree.
 - Git, GitHub CLI, and network failures degrade independently from provider session parsing. Pomegr does not fall back to stale remote-tracking data.
 
 ### A session was deleted
 
-Deleted provider history returns a safe historical missing-session state and disappears from the next catalog refresh. Pomegr does not retain a transcript copy or substitute current Git and usage-limit data.
+The [Missing sessions guide](public/help/missing-sessions.md#session-unavailable) shows what the reader sees. Deleted provider history returns a safe historical missing-session state and disappears from the next catalog refresh. Pomegr does not retain a transcript copy or substitute current Git and usage-limit data.
