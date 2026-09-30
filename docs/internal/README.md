@@ -132,8 +132,8 @@ backend, relay, or mobile app implemented; the only shipped phone feature is the
 same-network [phone access](../public/using-pomegr/phone-access.md). Each plan
 declares its owner, next decision, exit criteria, and deletion rule.
 
-Older [plans](../plans/) and artifacts in [design](../design/) and
-[mockups](../mockups/) await review under that checklist. Their location does not
+Older artifacts in [design](../design/) and [mockups](../mockups/) await review
+under that checklist. Their location does not
 make them current authority or evidence of shipped features. Active plans will
 live in `docs/internal/plans/`; completed or superseded plans and unneeded
 attachments are deleted after enduring findings and open work have owners. There
