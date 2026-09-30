@@ -120,7 +120,12 @@ function isInside(directory, path) {
   return rel === "" || (!/^\.\.(?:[\\/]|$)/.test(rel) && !isAbsolute(rel));
 }
 
-const INTERNAL_GITHUB_PATH = /\/docs\/internal(?:\/|$)/;
+// The directories under docs/ that never ship: the alternation of nonPublicDocsPattern in
+// landing/scripts/assert-artifact-boundary.mjs, so this check catches what the build would reject
+// (tests/docs-check.test.mjs keeps the two lists equal).
+const NON_PUBLIC_DOCS = "internal|plans|mockups|design|user-guide";
+const INTERNAL_GITHUB_PATH = new RegExp(`/docs/(?:${NON_PUBLIC_DOCS})(?:/|$)`);
+const INTERNAL_REPOSITORY_PATH = new RegExp(`^docs/(?:${NON_PUBLIC_DOCS})(?:/|$)`);
 
 /** No public page (selected or not) may link outside docs/public/ or to internal documentation. */
 function checkPublicBoundary(root, publicRoot) {
@@ -150,7 +155,7 @@ function checkPublicBoundary(root, publicRoot) {
       const resolved = pathPart.startsWith("/") ? join(root, pathPart) : resolve(dirname(absolute), pathPart);
       if (isInside(publicRoot, resolved)) continue;
       const repositoryPath = relativeTo(root, resolved);
-      const internal = repositoryPath.startsWith("docs/internal/") || repositoryPath === "docs/internal";
+      const internal = INTERNAL_REPOSITORY_PATH.test(repositoryPath);
       fail(
         internal
           ? `public pages may not link internal documentation (${JSON.stringify(target)} resolves to ${repositoryPath})`

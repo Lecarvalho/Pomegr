@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -16,7 +16,13 @@ const scriptPath = join(repositoryRoot, "scripts", "check-docs.mjs");
 const landingReady = existsSync(join(repositoryRoot, "landing", "node_modules", "marked", "package.json"));
 const needsLanding = { skip: landingReady ? false : "landing dependencies are not installed (npm ci --prefix landing)" };
 
-const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+// A minimal well-formed PNG (signature, IHDR, IEND): the loader walks image chunks to refuse metadata.
+const pngChunk = (type, data = Buffer.alloc(0)) => {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  return Buffer.concat([length, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
+};
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk("IHDR", Buffer.alloc(13)), pngChunk("IEND")]);
 const FENCE = "```";
 const scratch = [];
 after(() => {
@@ -162,6 +168,25 @@ describe("check:docs public documentation", needsLanding, () => {
     const link = "[guide](https://github.com/example/pomegr/blob/main/docs/internal/guide.md)";
     const result = await run({ "docs/public/concepts/cache.md": cachePage(`See the ${link}.`) });
     assert.match(find(result, "public-boundary").message, /internal documentation/);
+  });
+
+  it("fails a public page that links any non-public documentation directory, locally or through GitHub", async () => {
+    for (const directory of ["internal", "plans", "mockups", "design", "user-guide"]) {
+      const github = `[x](https://github.com/example/pomegr/blob/main/docs/${directory}/page.md)`;
+      const local = `[y](../../${directory}/page.md)`;
+      const result = await run({ "docs/public/concepts/cache.md": cachePage(`See ${github} and ${local}.`) });
+      const messages = result.failures.filter((item) => item.rule === "public-boundary").map((item) => item.message);
+      assert.equal(messages.length, 2, directory);
+      for (const message of messages) assert.match(message, /may not link internal documentation/, directory);
+    }
+  });
+
+  it("names the same non-public directories as the website build audit", () => {
+    const alternation = (source, pattern) => pattern.exec(source)?.[1];
+    const checker = alternation(readFileSync(scriptPath, "utf8"), /NON_PUBLIC_DOCS = "([a-z|-]+)"/);
+    const audit = alternation(readFileSync(join(repositoryRoot, "landing", "scripts", "assert-artifact-boundary.mjs"), "utf8"), /nonPublicDocsPattern = \/docs\[\\\\\/\]\(\?:([a-z|-]+)\)/);
+    assert.ok(checker && audit, "both alternations are found");
+    assert.equal(checker, audit);
   });
 
   it("allows external links and links between public pages", async () => {

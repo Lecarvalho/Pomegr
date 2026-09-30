@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { marked } from "marked";
+import { imageMetadataProblem } from "./docs-images.mjs";
 
 // ---------------------------------------------------------------------------
 // Shared constants and primitives
@@ -333,6 +334,12 @@ export function createConverter(state) {
       }
       if (!IMAGE_SIGNATURES[match[3]](data)) {
         fail(`image ${quote(href)} does not contain ${match[3]} data`);
+        return null;
+      }
+      // Screenshots ship byte for byte, so refuse metadata that could carry a path or user name.
+      const metadataProblem = imageMetadataProblem(match[3], data);
+      if (metadataProblem) {
+        fail(`image ${quote(href)} ${metadataProblem}`);
         return null;
       }
       imagesByRoute.set(route, { route, relativePath: target.source.slice("images/".length), bytes: data.length, sha256: sha256(data), data });

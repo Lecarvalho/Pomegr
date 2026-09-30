@@ -9,10 +9,12 @@ import {
   slugifyHeading,
   validateManifest,
 } from "../../scripts/docs-content.mjs";
+import { MAX_JPEG_APP_SEGMENT_BYTES, imageMetadataProblem } from "../../scripts/docs-images.mjs";
 import {
   FENCE,
   JPG,
   PNG,
+  PNG_SIGNATURE,
   alphaWith,
   baseManifest,
   cleanupScratch,
@@ -20,13 +22,18 @@ import {
   frontMatter,
   inlinesOf,
   inspect,
+  jpegSegment,
+  jpegWith,
   loaded,
   makeRepo,
   pageOf,
+  pngChunk,
   put,
   rejected,
+  riffChunk,
   sha256,
   standard,
+  webpWith,
 } from "./docs-fixtures";
 
 afterEach(cleanupScratch);
@@ -457,6 +464,63 @@ describe("images", () => {
       expect(node.alt.trim().length).toBeGreaterThan(0);
     }
     expect([...referenced].sort()).toEqual(content.images.map((entry) => entry.route));
+  });
+});
+
+// Screenshots ship byte for byte and the text checks never read binary data, so the loader refuses
+// metadata blocks that could carry a private path or user name (docs-images.mjs).
+describe("image metadata", () => {
+  const exif = (payloadBytes: number) => jpegSegment(0xe1, Buffer.concat([Buffer.from("Exif  ", "latin1"), Buffer.alloc(payloadBytes)]));
+  const ihdr = pngChunk("IHDR", Buffer.alloc(13));
+  const png = (...chunks: Buffer[]) => Buffer.concat([PNG_SIGNATURE, ihdr, ...chunks, pngChunk("IEND")]);
+  const text = Buffer.from("Author C:\Users\leandro\\", "latin1");
+
+  const accepted: Array<[string, string, Buffer]> = [
+    ["a JPEG with only the JFIF header", "jpg", jpegWith()],
+    ["a JPEG with the tiny resolution-only EXIF record of 58 bytes", "jpg", jpegWith(exif(50))],
+    ["a JPEG with an APP segment of exactly the bound", "jpeg", jpegWith(jpegSegment(0xe2, Buffer.alloc(MAX_JPEG_APP_SEGMENT_BYTES - 2)))],
+    ["a PNG with only structural chunks", "png", png(pngChunk("pHYs", Buffer.alloc(9)))],
+    ["a WebP with only its image chunk", "webp", webpWith()],
+    ["a GIF, which is not parsed", "gif", Buffer.from("GIF89a")],
+  ];
+  const refused: Array<[string, string, Buffer, string]> = [
+    ["JPEG XMP", "jpg", jpegWith(jpegSegment(0xe1, Buffer.from("http://ns.adobe.com/xap/1.0/ <x:xmpmeta/>", "latin1"))), "carries XMP metadata"],
+    ["a large JPEG EXIF record", "jpg", jpegWith(exif(200)), "208-byte APP1 metadata segment"],
+    ["one byte over the APP bound", "jpg", jpegWith(jpegSegment(0xe2, Buffer.alloc(MAX_JPEG_APP_SEGMENT_BYTES - 1))), `${MAX_JPEG_APP_SEGMENT_BYTES + 1}-byte APP2 metadata segment`],
+    ["a JPEG ICC profile", "jpg", jpegWith(jpegSegment(0xe2, Buffer.alloc(3000))), "APP2 metadata segment"],
+    ["a JPEG Photoshop record", "jpg", jpegWith(jpegSegment(0xed, Buffer.alloc(500))), "APP13 metadata segment"],
+    ["a JPEG comment", "jpg", jpegWith(jpegSegment(0xfe, text)), "carries a JPEG comment"],
+    ["a JPEG truncated before its scan", "jpg", jpegWith().subarray(0, 14), "not a well-formed JPEG"],
+    ["a JPEG with a damaged marker", "jpg", Buffer.concat([jpegWith().subarray(0, 20), Buffer.from([0x12, 0x34])]), "not a well-formed JPEG"],
+    ["a PNG tEXt chunk", "png", png(pngChunk("tEXt", text)), "PNG tEXt metadata chunk"],
+    ["a PNG iTXt chunk", "png", png(pngChunk("iTXt", text)), "PNG iTXt metadata chunk"],
+    ["a PNG zTXt chunk", "png", png(pngChunk("zTXt", text)), "PNG zTXt metadata chunk"],
+    ["a PNG eXIf chunk", "png", png(pngChunk("eXIf", text)), "PNG eXIf metadata chunk"],
+    ["a PNG chunk with a length past the end", "png", Buffer.concat([PNG_SIGNATURE, ihdr, Buffer.from([0x7f, 0, 0, 0]), Buffer.from("IDAT"), Buffer.alloc(8)]), "not a well-formed PNG"],
+    ["a PNG without its end chunk", "png", Buffer.concat([PNG_SIGNATURE, ihdr]), "not a well-formed PNG"],
+    ["a WebP EXIF chunk", "webp", webpWith(riffChunk("EXIF", text)), "WebP EXIF or XMP"],
+    ["a WebP XMP chunk", "webp", webpWith(riffChunk("XMP ", text)), "WebP EXIF or XMP"],
+    ["a WebP chunk with a size past the end", "webp", Buffer.concat([webpWith(), Buffer.from("ICCP"), Buffer.from([0xff, 0, 0, 0])]), "not a well-formed WebP"],
+  ];
+
+  it.each(accepted)("accepts %s", (_name, extension, bytes) => {
+    expect(imageMetadataProblem(extension, bytes)).toBeNull();
+    const name = `a.${extension}`;
+    const { issues } = inspect(standard({ ...alphaWith(`![Shot](../images/topic/${name})`), [`images/topic/${name}`]: bytes }));
+    expect(issues).toEqual([]);
+  });
+
+  it.each(refused)("refuses %s", (_name, extension, bytes, message) => {
+    expect(imageMetadataProblem(extension, bytes)).toContain(message);
+    const name = `a.${extension}`;
+    const text = rejected(standard({ ...alphaWith(`![Shot](../images/topic/${name})`), [`images/topic/${name}`]: bytes }));
+    expect(text).toContain(message);
+    expect(text).toContain(`../images/topic/${name}`);
+  });
+
+  it("never echoes the metadata itself in a message", () => {
+    const leaky = jpegWith(jpegSegment(0xfe, text));
+    expect(rejected(standard({ ...alphaWith("![Shot](../images/topic/a.jpg)"), "images/topic/a.jpg": leaky }))).not.toContain("leandro");
   });
 });
 

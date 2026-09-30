@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 import type { DocsSearchIndex } from "../../scripts/docs-search.mjs";
-import { MAX_QUERY_LENGTH, searchDocs } from "./search";
+import { MAX_QUERY_LENGTH, MIN_PREFIX_LENGTH, isSearchable, searchDocs } from "./search";
 import styles from "./search.module.css";
 
 // Documentation search (WEB-03), drawn at the top of the sidebar panel, so it is also inside the
@@ -66,7 +66,8 @@ export function DocsSearch({ children, onNavigate }: DocsSearchProps) {
   const trimmed = query.trim();
 
   let status = "";
-  if (failed && trimmed) status = "Search is unavailable right now. Use the page list instead.";
+  if (trimmed && !isSearchable(trimmed)) status = `Type at least ${MIN_PREFIX_LENGTH} letters.`;
+  else if (failed && trimmed) status = "Search is unavailable right now. Use the page list instead.";
   else if (outcome && outcome.total === 0) status = `No pages match “${trimmed}”.`;
   else if (outcome && outcome.total > outcome.results.length) status = `Showing the best ${outcome.results.length} of ${outcome.total} pages.`;
   else if (outcome) status = plural(outcome.total);

@@ -21,7 +21,7 @@ import rawIndex from "../../generated/docs-search.json";
 import { DocsNav } from "../../app/docs/DocsNav";
 import { DocsSearch } from "../../app/docs/DocsSearch";
 import { docsContent } from "../../app/docs/content";
-import { MAX_HEADINGS_PER_RESULT, MAX_RESULTS, searchDocs, words } from "../../app/docs/search";
+import { MAX_HEADINGS_PER_RESULT, MAX_RESULTS, isSearchable, searchDocs, words } from "../../app/docs/search";
 
 const index = rawIndex as unknown as DocsSearchIndex;
 const pages = index.pages;
@@ -82,10 +82,63 @@ describe("matching", () => {
   });
 
   it("bounds the results and headings per result while reporting the real total", () => {
-    const broad = find("a");
+    const broad = find("the");
     expect(broad.total).toBeGreaterThan(MAX_RESULTS);
     expect(broad.results).toHaveLength(MAX_RESULTS);
-    for (const result of find("the").results) expect(result.headings.length).toBeLessThanOrEqual(MAX_HEADINGS_PER_RESULT);
+    for (const result of broad.results) expect(result.headings.length).toBeLessThanOrEqual(MAX_HEADINGS_PER_RESULT);
+  });
+
+  describe("one-character words", () => {
+    const entry = (route: string, title: string, headings: string[], text = "") => ({
+      route,
+      group: "Concepts",
+      title,
+      description: "",
+      headings: headings.map((heading, position) => ({ id: `section-${position}`, text: heading })),
+      text,
+    });
+    const synthetic: DocsSearchIndex = {
+      schema: 1,
+      revision: "0".repeat(64),
+      pages: [
+        entry("/docs/concepts/first", "Context", ["Spot a compaction", "About caches"], "Spot the compaction marker."),
+        entry("/docs/concepts/second", "Usage", ["Limits"], "An unrelated page with spot and compaction words."),
+        entry("/docs/concepts/third", "Plans", ["Zoning"], "A page about nothing relevant."),
+      ],
+    };
+    const outcome = (query: string) => searchDocs(synthetic, query);
+    const summary = (query: string) => outcome(query).results.map((result) => [result.page.route, result.headings.map((heading) => heading.text)]);
+
+    it("does not match a lone letter as a prefix, so an article neither widens nor narrows a match", () => {
+      // Pages that hold "spot" and "compaction" but no word starting with "a" still match.
+      expect(summary("spot a compaction").map(([route]) => route)).toEqual(["/docs/concepts/first", "/docs/concepts/second"]);
+      expect(summary("spot a compaction")).toEqual(summary("spot compaction"));
+    });
+
+    it("lists only the headings that hold a real query word, never one matched by the lone letter", () => {
+      expect(summary("spot a compaction")[0]).toEqual(["/docs/concepts/first", ["Spot a compaction"]]);
+      expect(summary("spot a compaction").flatMap(([, headings]) => headings)).not.toContain("About caches");
+    });
+
+    it("keeps typing a heading word for word ranking it first", () => {
+      expect(outcome("spot a compaction").results[0].page.route).toBe("/docs/concepts/first");
+      expect(outcome("spot a compaction").results[0].score).toBeGreaterThan(outcome("spot compaction").results[0].score);
+    });
+
+    it("reports whether a query holds a word long enough to match, so the field can ask for more letters", () => {
+      for (const query of ["a", "a b", "A  i", "5", "--", "?!", "a-b-c"]) expect(isSearchable(query), JSON.stringify(query)).toBe(false);
+      for (const query of ["ab", "a ca", "spot a compaction", "5m", "v0.5"]) expect(isSearchable(query), JSON.stringify(query)).toBe(true);
+    });
+
+    it("matches nothing when every word is one character", () => {
+      for (const query of ["a", "a b", "A  i", "5", "a-b-c"]) expect(outcome(query), JSON.stringify(query)).toEqual({ total: 0, results: [] });
+      expect(find("a")).toEqual({ total: 0, results: [] });
+    });
+
+    it("still matches two-character words and ignores a lone letter beside them", () => {
+      expect(summary("ab").length + summary("ca").length).toBeGreaterThan(0);
+      expect(summary("a ca")).toEqual(summary("ca"));
+    });
   });
 
   it("only ever returns published pages, whatever the query", () => {
@@ -178,9 +231,21 @@ describe("the search box", () => {
     expect(screen.getByRole("status")).toBe(document.getElementById("docs-search-status"));
 
     await typing.clear(box());
-    await typing.type(box(), "a");
+    await typing.type(box(), "the");
     await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/^Showing the best 8 of \d+ pages\.$/));
     expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link").length).toBeGreaterThan(MAX_RESULTS - 1);
+
+    // A single letter is not matched as a prefix: the field asks for more and keeps the page list.
+    await typing.clear(box());
+    await typing.type(box(), "a");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Type at least 2 letters."));
+    expect(screen.queryByRole("list", { name: "Search results" })).toBeNull();
+    expect(screen.getByText("PAGE LIST")).toBeTruthy();
+    await typing.type(box(), "{Backspace}--");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Type at least 2 letters."));
+    await typing.clear(box());
+    await typing.type(box(), "a zzzzqqqq");
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("No pages match “a zzzzqqqq”."));
   });
 
   it("clears with Escape, restores the page list, keeps focus in the field, and does not bubble", async () => {

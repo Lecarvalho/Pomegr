@@ -215,14 +215,16 @@ navigation order. Follow its [format and content contract](documentation-manifes
 for source membership, unique routes, and local link/image handling. Keep drafts
 in active plans; add ready public pages as their migrations finish.
 
-**Migration status:** the manifest selects ready public pages in reading order,
+**Publication status:** the manifest selects ready public pages in reading order,
 starting with the [introduction to Pomegr](../../public/get-started/introduction.md).
 The [build-time content loader](documentation-manifest.md#generate-the-website-content)
-is implemented (the landing `docs:prepare` script validates the selection before every
-landing test, typecheck, and build), as are the `/docs` renderer, search, and
-[`npm run check:docs`](#verify-the-change); publishing the site remains a separate,
-manual step. Adding a Markdown file or manifest entry does not deploy it. Validate
-selected links, routes, and images before publication. Repair repository
+(the landing `docs:prepare` script validates the selection before every landing test,
+typecheck, and build), the `/docs` renderer, search, the sitemap, and
+[`npm run check:docs`](#verify-the-change) are implemented. `check:docs` is part of
+`npm run check`, so `npm run verify:fast`, `npm run verify`, and the Deploy landing
+workflow run it, and the landing build fails on invalid documentation. Publishing the
+site remains a separate, manual step: adding a Markdown file or manifest entry does not
+deploy it. Validate selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when
 their routes change. The 2026-09 migration did not preserve GitHub blob links to
 the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.md`,
@@ -232,9 +234,11 @@ and current links were repointed instead.
 
 Public content updates require the normal website build and deployment,
 independently of desktop packaging. Internal-only edits require documentation
-validation, not website deployment. Follow [website operations](../operations/website.md#5-release-the-exact-audited-artifact)
-for the existing manual deployment procedure; documentation work does not enable
-automatic deployment. Update this section when the publication tooling lands.
+validation, not website deployment. [Publish documentation](../operations/website.md#6-publish-documentation)
+owns the validation order, what each kind of change needs, the smoke checks, and the
+proposed (not enabled) automation triggers, and the
+[release procedure](../operations/website.md#5-release-the-exact-audited-artifact) owns the
+manual deployment; documentation work does not enable automatic deployment.
 
 ## Verify the change
 
@@ -265,8 +269,9 @@ with a setup error, not a crash, when `npm ci --prefix landing` has not been run
   gitignored `.agents/skills/acos/runs/` are skipped, and external URLs are never fetched.
 
 The [manifest contract](documentation-manifest.md#check-the-documentation) lists the rule
-names and the dependency direction. The check is not yet part of `npm run verify:fast`, so
-run it explicitly for any documentation change. Neither it nor the verifier judges content:
+names and the dependency direction. `npm run check` includes the check, so
+`npm run verify:fast` and `npm run verify` run it too; run it alone while iterating on
+documentation. Neither it nor the verifier judges content:
 inspect changed internal pages for heading hierarchy and supported syntax, and search for
 stale inbound references to a moved page (`git grep` its old path, hidden tool directories
 included). Preview the Markdown and verify that the page reads coherently for its intended

@@ -85,8 +85,15 @@
 .heading:hover .anchor,
 .anchor:focus-visible { opacity: 1; }
 
+/* Touch: always visible, with a 44 px hit area. The pseudo-element extends the target without
+   changing the 28 px box the layout is built on, so nothing shifts. */
 @media (hover: none) {
-  .anchor { opacity: 1; }
+  .anchor { position: relative; opacity: 1; }
+  .anchor::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
 }
 
 /* Text. */

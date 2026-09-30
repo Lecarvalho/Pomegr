@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const landingRoot = realpathSync(resolve(fileURLToPath(new URL("..", import.meta.url))));
@@ -42,17 +42,63 @@ const controlCharacters = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009fâ
 const publicOrigin = "https://pomegr.com";
 const publicSitePages = ["/", "/about", "/download"];
 
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// The checkout that contains landing/, derived from this package's location instead of one
+// machine's path, so the rule holds on every developer machine and in CI. Both separators match, and
+// this package's own directory (landing/) is allowed.
+function repositoryRootPattern() {
+  const segments = resolve(landingRoot, "..").split(/[\\/]+/);
+  const lead = segments[0] === "" ? "[\\\\/]" : "";
+  const body = segments.filter(Boolean).map(escapeRegExp).join("[\\\\/]+");
+  return new RegExp(`${lead}${body}[\\\\/]+(?![\\\\/]*${escapeRegExp(basename(landingRoot))}(?![\\w.-]))`, "i");
+}
+
+const dashboardLabel = "Dashboard component source";
 const forbiddenText = [
   { label: "local state API", pattern: /\/api\/state\b/i },
   { label: "local sessions API", pattern: /\/api\/sessions\b/i },
   { label: "monitor source", pattern: /monitor[\\/]server\.mjs/i },
   { label: "desktop source", pattern: /desktop[\\/]main\.mjs/i },
-  { label: "Dashboard component source", pattern: /app[\\/]Dashboard(?:\.[cm]?[jt]sx?)?/i },
+  { label: dashboardLabel, pattern: /app[\\/]Dashboard(?:\.[cm]?[jt]sx?)?/i },
   { label: "local security modules", pattern: /shared[\\/]local-(?:auth|service)/i },
   { label: "parent source import", pattern: /\.\.[\\/](?:app|desktop|monitor|shared|web)[\\/]/i },
-  { label: "absolute repository source path", pattern: /C:[\\/]Workspace[\\/]repos[\\/]Pomegr[\\/](?!landing[\\/])/i },
+  { label: "absolute repository source path", pattern: repositoryRootPattern() },
+  // Generic home-directory paths: a user name must never reach a public page, asset, or bundle.
+  { label: "Windows user-profile path", pattern: /[A-Za-z]:[\\/]+Users[\\/]+[^\\/\s"'`<>|*?]+[\\/]/i },
+  { label: "POSIX home directory path", pattern: /(?<![\w.:~-])\/(?:Users|home)\/[A-Za-z0-9._-]+\// },
   { label: "non-public documentation path", pattern: nonPublicDocsPattern },
 ];
+const globalForbiddenText = forbiddenText.map(({ label, pattern }) => ({ label, pattern: new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`) }));
+
+// This package's own directory as plain, forward-slash, and JSON-escaped text. Build tools record it
+// (the generated Worker configuration names landing/wrangler.jsonc), wherever the checkout lives.
+const landingRootTexts = [...new Set([landingRoot, landingRoot.split(sep).join("/"), landingRoot.split(sep).join("\\\\")])].map((text) => text.toLowerCase());
+const homePathLabels = new Set(["Windows user-profile path", "POSIX home directory path"]);
+
+/** Whether the path that starts at `index` is this package's directory or something inside it. */
+function startsInsideLanding(text, index) {
+  return landingRootTexts.some((root) => text.slice(index, index + root.length).toLowerCase() === root && /^(?:[\\/"'`\s]|$)/.test(text.slice(index + root.length, index + root.length + 1)));
+}
+
+/**
+ * Every forbidden match in `text`, except in two cases. With `allowExamples`, the Dashboard pattern
+ * may match exactly an allowlisted example path that stands alone; a preceding path character, as
+ * in ../app/Dashboard.tsx or src/app/Dashboard.tsx, is never the example. A home-directory path
+ * that is this package's own location is never reported.
+ */
+function forbiddenMatches(text, { allowExamples }) {
+  const found = [];
+  for (const { label, pattern } of globalForbiddenText) {
+    for (const match of text.matchAll(pattern)) {
+      const alone = !/[\w./\\-]/.test(text[match.index - 1] ?? "");
+      if (allowExamples && label === dashboardLabel && alone && allowedDocsMentions.has(match[0])) continue;
+      if (homePathLabels.has(label) && startsInsideLanding(text, match.index)) continue;
+      found.push({ label, text: match[0] });
+    }
+  }
+  return found;
+}
 
 function walk(directory) {
   if (!existsSync(directory)) return [];
@@ -158,12 +204,16 @@ function* stringValues(value) {
 /** Report every forbidden pattern in any string of a generated value, except the allowlisted example paths. */
 function scanGeneratedText(where, value) {
   for (const text of stringValues(value)) {
-    for (const { label, pattern } of forbiddenText) {
-      for (const match of text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))) {
-        if (!allowedDocsMentions.has(match[0])) failures.push(`${where} contains ${label}: ${match[0]}`);
-      }
-    }
+    for (const match of forbiddenMatches(text, { allowExamples: true })) failures.push(`${where} contains ${match.label}: ${match.text}`);
   }
+}
+
+/**
+ * Image bytes are scanned as Latin-1 text, so a path or user name in metadata cannot ride along unseen.
+ * The mirrored copies under public/docs are scanned; dist/client/docs/images must match them byte for byte.
+ */
+function scanImageBytes(where, path) {
+  for (const match of forbiddenMatches(readFileSync(path).toString("latin1"), { allowExamples: false })) failures.push(`${where} contains ${match.label} in its image data`);
 }
 
 /**
@@ -208,6 +258,7 @@ function auditGeneratedDocs({ artifact }) {
     const route = `/docs/${rel}`;
     if (!declared.has(route)) failures.push(`public/docs/${rel} is not an image referenced by the generated docs content; run npm run docs:prepare`);
     else if (sha256File(file) !== declared.get(route)) failures.push(`public/docs/${rel} does not match the generated docs content; run npm run docs:prepare`);
+    else scanImageBytes(`public/docs/${rel}`, file);
   }
   for (const route of declared.keys()) {
     if (!existsSync(join(landingRoot, "public", ...route.slice(1).split("/")))) failures.push(`public${route} is missing; run npm run docs:prepare`);
@@ -383,14 +434,12 @@ function auditArtifact(docsContent, searchIndex) {
     if (extname(path) === ".map") failures.push(`source map must not ship: ${rel}`);
     if (!textExtensions.has(extname(path)) && !path.endsWith(".vite/manifest.json")) continue;
 
-    let contents = readFileSync(path, "utf8");
-    // Bundled documentation content (recognized by its revision) may name the allowlisted example paths.
-    if (docsContent && contents.includes(docsContent.revision)) {
-      for (const mention of allowedDocsMentions) contents = contents.replaceAll(mention, "");
-    }
-    for (const { label, pattern } of forbiddenText) {
-      if (pattern.test(contents)) failures.push(`${rel} contains ${label}`);
-    }
+    const contents = readFileSync(path, "utf8");
+    // Bundled documentation content (recognized by its revision) may name the allowlisted example
+    // paths. The exemption covers those exact matches only and the text is never altered, so a path
+    // around an example (../app/Dashboard.tsx) is still judged by every rule.
+    const carriesRevision = Boolean(docsContent) && contents.includes(docsContent.revision);
+    for (const match of forbiddenMatches(contents, { allowExamples: carriesRevision })) failures.push(`${rel} contains ${match.label}`);
   }
   auditDistDocsImages(docsContent, files, client);
   auditDistSearchIndex(docsContent, searchIndex, files, client);

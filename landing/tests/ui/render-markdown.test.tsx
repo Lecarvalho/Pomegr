@@ -295,6 +295,15 @@ describe("the renderer source", () => {
     for (const [, , specifier] of imports) expect(specifier).not.toMatch(/generated|docs-content\.json/);
   });
 
+  it("gives heading permalinks a 44 px hit area on touch without changing their 28 px box", () => {
+    expect(css).toMatch(/\.anchor\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/);
+    const touch = /@media \(hover: none\)\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? "";
+    expect(touch).toMatch(/\.anchor\s*\{[^}]*position:\s*relative;[^}]*opacity:\s*1/);
+    // 28 px plus 8 px on every side is 44 px, and a pseudo-element cannot move the layout.
+    expect(touch).toMatch(/\.anchor::after\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*-8px/);
+    expect(touch.replace(/\.anchor::after\s*\{[^}]*\}/, "")).not.toMatch(/width|height|margin|padding/);
+  });
+
   it("only references style classes that the stylesheet defines", () => {
     const names = new Set([...source.matchAll(/styles\.([A-Za-z0-9_]+)/g)].map((match) => match[1]));
     expect(names.size).toBeGreaterThan(10);

@@ -32,10 +32,10 @@ module.exports = {
     },
     {
       name: "landing-cannot-import-outside-landing",
-      comment: "The independently deployed website bundles only its own sources. It reads the documentation inputs as files through its build-time loader, never as modules.",
+      comment: "The independently deployed website bundles only its own sources: any local import that resolves outside landing/ is an error, whatever its name. It reads the documentation inputs as files through its build-time loader, never as modules.",
       severity: "error",
       from: { path: "^landing[/\\\\]" },
-      to: { path: "^(?:app|desktop|mcp|scripts|server|shared|tests)[/\\\\]|^vite[.]config[.]ts$" },
+      to: { path: "^(?!landing[/\\\\])", dependencyTypes: ["local"] },
     },
     {
       name: "only-docs-checker-imports-landing",

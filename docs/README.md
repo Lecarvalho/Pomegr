@@ -83,8 +83,10 @@ maintainers and is excluded from that publication; “internal” does not mean
 confidential in Git. The [publication manifest](site.json) defines ordered public
 navigation groups and selects the ready pages. Its
 [contract](internal/development/documentation-manifest.md) defines page membership,
-routes, and local links/images; website publication tooling is still pending.
-This index does not publish content.
+routes, and local links/images. The build-time loader, the `/docs` site, and
+`npm run check:docs` are implemented; publishing is a manual website deployment (see
+[website operations](internal/operations/website.md#6-publish-documentation)). This
+index does not publish content.
 
 The [documentation migration checklist](internal/plans/documentation-migration.md)
 tracks the remaining tasks. The maintainer index lists the current technical

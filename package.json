@@ -56,7 +56,7 @@
     "check:architecture": "node scripts/check-architecture.mjs",
     "check:boundaries": "depcruise vite.config.ts server app shared desktop mcp scripts landing/app landing/worker landing/scripts --config .dependency-cruiser.cjs --output-type err",
     "check:generated": "node scripts/check-generated-artifacts.mjs",
-    "check": "npm run lint && npm run typecheck && npm run typecheck:provider-contract && npm run typecheck:provider-adapters && npm run typecheck:landing && npm run check:provider-docs && npm run check:architecture && npm run check:boundaries",
+    "check": "npm run lint && npm run typecheck && npm run typecheck:provider-contract && npm run typecheck:provider-adapters && npm run typecheck:landing && npm run check:provider-docs && npm run check:docs && npm run check:architecture && npm run check:boundaries",
     "verify:fast": "npm run check && npm run test:contracts && npm run test:ops",
     "verify": "npm run check && npm run build && npm run check:generated && npm test && npm --prefix landing run test && npm --prefix landing run build:audit",
     "verify:desktop": "npm run desktop:runtime && npm run desktop:smoke && npm run desktop:security",

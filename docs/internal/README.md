@@ -82,8 +82,9 @@ The [publication manifest contract](development/documentation-manifest.md) defin
 the format of [docs/site.json](../site.json), page membership, navigation order,
 unique routes, and local link/image handling. The manifest selects ready public
 pages in reading order, starting with the
-[introduction to Pomegr](../public/get-started/introduction.md); build-time
-publication and validation tooling remain pending.
+[introduction to Pomegr](../public/get-started/introduction.md). The build-time
+loader, the `/docs` site, and `npm run check:docs` are implemented; publishing is a
+manual website deployment ([website operations](operations/website.md#6-publish-documentation)).
 
 ## Operations and decisions
 

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadDocsContent, serializeDocsContent, writePreparedDocs } from "../../scripts/docs-content.mjs";
@@ -256,6 +256,18 @@ describe("artifact boundary audit of the content inputs", () => {
     expect(result.output).toContain("contains local security modules");
   });
 
+  it("does not exempt the example path when a path character precedes it", () => {
+    const mention = (text: string) => generated({}, { blocks: [{ type: "paragraph", children: [{ type: "image", src: "/docs/images/topic/a.png", alt: text }] }] });
+    const parent = audit(landing({ "generated/docs-content.json": mention("see ../app/Dashboard.tsx") }));
+    expect(parent.ok).toBe(false);
+    expect(parent.output).toContain("contains parent source import: ../app/");
+    expect(parent.output).toContain("contains Dashboard component source: app/Dashboard.tsx");
+    const nested = audit(landing({ "generated/docs-content.json": mention("the file src/app/Dashboard.tsx") }));
+    expect(nested.ok).toBe(false);
+    expect(nested.output).toContain("contains Dashboard component source: app/Dashboard.tsx");
+    expect(audit(landing({ "generated/docs-content.json": mention("the history of `app/Dashboard.tsx`, 11 sessions") })).ok).toBe(true);
+  });
+
   describe("search index", () => {
     const content = generated({}, { blocks: [{ type: "paragraph", children: [{ type: "text", text: "Hello world" }] }] });
     const index = () => JSON.parse(searchFor(content));
@@ -383,6 +395,84 @@ describe("artifact boundary audit of the content inputs", () => {
       const result = audit(root, true);
       expect(result.ok).toBe(false);
       expect(result.output).toContain("missing generated/docs-content.json");
+    });
+
+    it("never lets the example exemption hide a path around it, in a file that carries the content revision", () => {
+      const carrying = (line: string) => `export const docs = {"revision":"${validRevision}","alt":"history of app/Dashboard.tsx"};\n${line}\n`;
+      const cases: Array<[string, string, string[]]> = [
+        ["a parent import of the Dashboard", 'import "../app/Dashboard.tsx";', ["parent source import", "Dashboard component source"]],
+        ["a nested Dashboard path", 'export const x = "src/app/Dashboard.tsx";', ["Dashboard component source"]],
+        ["another Dashboard file", 'export const x = "app/Dashboard.test.tsx";', ["Dashboard component source"]],
+        ["a real leak beside an example", 'export const x = "app/Dashboard.tsx"; export const y = "shared/local-auth.mjs";', ["local security modules"]],
+      ];
+      for (const [name, line, labels] of cases) {
+        const result = audit(landing(dist({ "dist/server/docs.js": carrying(line) })), true);
+        expect(result.ok, name).toBe(false);
+        for (const label of labels) expect(result.output, name).toMatch(new RegExp(`server[\\\\/]docs\\.js contains ${label}`));
+      }
+      expect(audit(landing(dist({ "dist/server/docs.js": carrying("") })), true).ok).toBe(true);
+    });
+
+    describe("absolute and home-directory paths", () => {
+      // Paths are written into a built file as a JavaScript string literal, in the separator style named.
+      const separators = { forward: "/", backslash: "\\", escaped: "\\\\" } as const;
+      const styled = (path: string, style: keyof typeof separators) => path.split(/[\\/]/).join(separators[style]);
+      const auditWith = (text: string, root = landing(dist())) => {
+        put(join(root, "dist", "server", "paths.js"), `export const p = "${text}";\n`);
+        return audit(root, true);
+      };
+
+      it.each(["forward", "backslash", "escaped"] as const)("derives the repository root from the package location and reports paths outside landing/ (%s separators)", (style) => {
+        const root = landing(dist());
+        const outside = styled(join(dirname(root), "elsewhere", "secret.ts"), style);
+        const result = auditWith(outside, root);
+        expect(result.ok, outside).toBe(false);
+        expect(result.output).toContain("contains absolute repository source path");
+      });
+
+      it.each(["forward", "backslash", "escaped"] as const)("accepts this package's own location, as the generated Worker configuration records it (%s separators)", (style) => {
+        const root = landing(dist());
+        expect(auditWith(styled(join(root, "wrangler.jsonc"), style), root).ok).toBe(true);
+        expect(auditWith(`${styled(root, style)}`, root).ok).toBe(true);
+      });
+
+      it("does not accept a sibling directory whose name merely begins with the package directory's name", () => {
+        const root = landing(dist());
+        expect(auditWith(styled(join(`${root}-private`, "x.ts"), "forward"), root).ok).toBe(false);
+      });
+
+      const leaks: Array<[string, string, string]> = [
+        ["a Windows user profile", "C:\\Users\\someone\\AppData\\x", "Windows user-profile path"],
+        ["a JSON-escaped Windows user profile", "C:\\\\Users\\\\someone\\\\x\\\\", "Windows user-profile path"],
+        ["a forward-slash Windows user profile", "C:/Users/someone/project/x.ts", "Windows user-profile path"],
+        ["a macOS home directory", "/Users/someone/project/file.ts", "POSIX home directory path"],
+        ["a Linux home directory", "/home/runner/work/pomegr/file.ts", "POSIX home directory path"],
+        ["a file URL into a home directory", "file:///home/someone/file.ts", "POSIX home directory path"],
+      ];
+      it.each(leaks)("rejects %s", (_name, text, label) => {
+        const result = auditWith(text);
+        expect(result.ok, text).toBe(false);
+        expect(result.output).toContain(label);
+      });
+
+      it.each(["https://example.com/home/page/", "/homepage/index/", "/home", "/Users/", "the /home/ route"])("does not flag ordinary text such as %j", (text) => {
+        expect(auditWith(text).ok).toBe(true);
+      });
+    });
+
+    it("scans image bytes as text, so metadata cannot carry a path or user name", () => {
+      const leaky = Buffer.concat([PNG, Buffer.from("Artist\0C:\\Users\\leandro\\Pictures\\shot.png")]);
+      const files = {
+        "generated/docs-content.json": generated({ images: [imageEntry(leaky)] }),
+        "public/docs/images/topic/a.png": leaky,
+        "dist/client/docs/images/topic/a.png": leaky,
+      };
+      for (const artifact of [false, true]) {
+        const result = audit(landing(dist(files)), artifact);
+        expect(result.ok, String(artifact)).toBe(false);
+        expect(result.output).toContain("public/docs/images/topic/a.png contains Windows user-profile path in its image data");
+        expect(result.output).not.toContain("leandro");
+      }
     });
 
     it("exempts the allowlisted mention only in files carrying the content revision", () => {

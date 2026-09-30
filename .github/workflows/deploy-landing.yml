@@ -49,6 +49,10 @@ jobs:
       - name: Install locked landing dependencies
         run: npm ci
 
+      - name: Check documentation
+        working-directory: .
+        run: npm run check:docs
+
       - name: Test landing
         run: npm test
 

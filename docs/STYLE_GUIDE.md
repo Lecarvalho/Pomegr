@@ -87,7 +87,7 @@ existing heading when it narrows the reader's destination. Show proposed paths
 as code spans, not broken links. Public-to-public links should remain within the
 selected public content; follow the
 [publication manifest contract](internal/development/documentation-manifest.md)
-for route and asset rules. Automated publication validation is still pending.
+for route and asset rules; `npm run check:docs` validates them.
 
 Code fences name their language, such as `powershell`, `json`, or `text`. State
 the working directory and prerequisites before commands. Keep commands separate

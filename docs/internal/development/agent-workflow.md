@@ -5,7 +5,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 
 | Change area | Start here | Keep out of this area |
 | --- | --- | --- |
-| Documentation, migration, and temporary artifacts | [Maintenance workflow](documentation.md), [style guide](../../STYLE_GUIDE.md), and [maintainer index](../README.md); run `npm run check:docs` (links, anchors, images, public pages and boundary; needs `npm ci --prefix landing`) and `npm run verify:fast`; checker tests: `node --test tests/docs-check.test.mjs` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
+| Documentation, migration, and temporary artifacts | [Maintenance workflow](documentation.md), [style guide](../../STYLE_GUIDE.md), and [maintainer index](../README.md); run `npm run check:docs` (links, anchors, images, public pages and boundary; needs `npm ci --prefix landing`; `npm run check`, and so `npm run verify:fast`, includes it) and `npm run verify:fast`; checker tests: `node --test tests/docs-check.test.mjs` | Duplicate authorities, publication of internal material, or completed plans retained as archives |
 | Provider discovery, parsing, normalization | `server/providers/claude/` or `server/providers/codex/`, the shared `server/providers/kernel/`, the `server/normalize/` kernel, and `server/providers/provider-contract.mjs` | React components and raw provider schemas in shared code |
 | Observation cache, checkpoints, readiness, API cadence | `docs/internal/architecture/observation-cache.md`, `server/runtime/observation-runtime.mjs`, `server/sessions/domain/session-domain-serving.mjs`, and `server/sessions/checkpoints/` | Raw parsing in serving handlers; frontend control of acquisition or persistence |
 | Server indexing, projection, enrichment | `server/server.mjs`, then the owning folder in the server layout below | Browser credentials, prompts, responses, and provider-native payloads |
@@ -18,7 +18,7 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Desktop lifecycle | `desktop/runtime/` (packaged app code); generated service bundles land in `desktop/workers/` | Renderer access to credentials or raw server files; packaging or release tooling |
 | Desktop packaging and release | `desktop/packaging/` (build, electron-builder hooks, artifact and release policy, acceptance tools); procedures in [desktop releases](../operations/desktop-releases.md), [beta acceptance](../operations/desktop-beta-acceptance.md), and the [clean-VM checklist](../operations/desktop-clean-vm.md) | Imports from `desktop/runtime/` into packaging tooling are fine; the reverse is not, and none of these files ship in the app |
 | Web host (Node server for the built dashboard) | `server/web/` (`server.mjs`, `cli.mjs`; `entry.ts` is the Vite server entry) | Imports of monitor modules under `server/`; the monitor importing `server/web/` |
-| Landing site | `landing/` and its own `package.json`; deployment in [website operations](../operations/website.md) | Main application scripts and monitor state |
+| Landing site | `landing/` and its own `package.json`; deployment and documentation publication in [website operations](../operations/website.md); run `npm --prefix landing run test`, `typecheck`, and `build:audit` (publication-boundary tests: `landing/tests/ui/docs-exclusion.test.ts`, `docs-artifact.test.ts`) | Main application scripts and monitor state; landing code reading outside `landing/` except the documentation loader |
 | Generated plugins | `plugin-src/`, then `npm run build:plugin` | Direct edits to `plugins/**` generated artifacts |
 
 ## Server layout
@@ -66,7 +66,7 @@ npm run check:boundaries
 npm run check:docs
 ```
 
-Before handing off a change, run `npm run verify:fast`. The full `npm run verify`
+Before handing off a change, run `npm run verify:fast` (lint, type checks, `npm run check:docs`, architecture and boundary checks, contract and operations tests). The full `npm run verify`
 also rebuilds generated plugin artifacts, runs the root and landing suites, and checks
 that generated files are in sync. Desktop packaging uses
 `npm run desktop:prepare:from-build` after a verifier/build has already produced the

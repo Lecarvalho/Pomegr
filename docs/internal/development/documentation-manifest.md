@@ -83,7 +83,14 @@ root-relative local documentation links; author local links as Markdown paths.
 Images use relative Markdown paths with meaningful alt text and must resolve
 inside `docs/public/images/<topic>/`. Version 1 accepts PNG, JPEG (`.jpg` or
 `.jpeg`), WebP, and GIF files; export other diagram formats to a supported image.
-Copy only images referenced by selected pages, preserving their path beneath
+Images are copied byte for byte, so an image may carry no metadata that could name
+a path or user: the loader refuses JPEG XMP, JPEG comments, and any JPEG APPn
+segment over 64 bytes (the tiny resolution-only EXIF some tools write passes),
+PNG `tEXt`, `iTXt`, `zTXt`, and `eXIf` chunks, and WebP EXIF and XMP chunks,
+and refuses a truncated or damaged structure. The audit also scans every image's
+bytes as text for home-directory and repository paths. Convert screenshots with
+a tool that writes no metadata, as the capture procedure does. Copy only images
+referenced by selected pages, preserving their path beneath
 `/docs/images/`. Reject remote images, data URLs, missing files, and image URLs
 with queries or fragments. Do not copy the whole images directory.
 
@@ -98,11 +105,17 @@ and sitemap must use the same validated selection and content revision.
 Build and docs checks must reject invalid input before emitting an artifact.
 The content loader below covers duplicate routes, missing targets, unlisted
 links, path escapes, invalid metadata, and accidental internal references,
-including through a mistaken manifest entry. [`npm run check:docs`](#check-the-documentation)
+including through a mistaken manifest entry: [docs-exclusion tests](../../../landing/tests/ui/docs-exclusion.test.ts)
+feed the loader and the prepare step entries that name internal pages, plans, parent
+directories, absolute paths, and linked directories, and check that a valid manifest
+beside canary content publishes none of it in the pages, images, search index, or
+sitemap; [docs-artifact tests](../../../landing/tests/ui/docs-artifact.test.ts) build a
+fixture site for real and scan `dist/` for the same canaries. [`npm run check:docs`](#check-the-documentation)
 runs the same rules from the repository root and adds the public-tree, public-boundary,
-and maintained internal-link checks; follow the
+and maintained internal-link checks; it is part of `npm run check`, so `verify:fast`,
+`verify`, and the Deploy landing workflow run it. Follow the
 [maintenance checks](documentation.md#verify-the-change). Deployment remains
-governed by [website operations](../operations/website.md#5-release-the-exact-audited-artifact).
+governed by [website operations](../operations/website.md#6-publish-documentation).
 
 ## Generate the website content
 
@@ -220,7 +233,10 @@ Internal documentation, plans, and mockups are never inputs to any of them.
 - **Matching:** [search.ts](../../../landing/app/docs/search.ts) lowercases and
   folds accents, requires every typed word to match the start of a word, and
   ranks by where each word matches (title, then heading, description, body) with
-  a bonus for a typed phrase in a title or heading. Ties keep reading order. It
+  a bonus for a typed phrase in a title or heading. A one-character word, such as
+  the "a" in "Spot a compaction", is not matched (it would match nearly every
+  page) but still counts toward the phrase bonus; a query of only such words
+  finds nothing. Ties keep reading order. It
   returns at most 8 pages with at most 3 matching headings each, and reports the
   true total. It is deterministic and adds no dependency: prefix matching finds
   the words a visitor reads in a title or heading across 17 short pages. Revisit
@@ -228,8 +244,9 @@ Internal documentation, plans, and mockups are never inputs to any of them.
 - **Interface:** [DocsSearch.tsx](../../../landing/app/docs/DocsSearch.tsx) sits
   first in the sidebar panel, so it is also inside the phone menu. It is a
   labelled `type="search"` field in a `role="search"` form with a polite status
-  region ("3 pages match", "No pages match", or "Showing the best 8 of 12
-  pages."). Results replace the page list while there are any: each shows the
+  region ("3 pages match", "No pages match", "Showing the best 8 of 12
+  pages.", or "Type at least 2 letters." when no typed word is long enough to
+  match). Results replace the page list while there are any: each shows the
   group, the page title, and up to three matching headings as `route#id` links.
   Tab walks the field and every result, ArrowDown and ArrowUp move between them,
   Enter opens the first result, and Escape clears the query before it closes
@@ -281,7 +298,7 @@ missing `npm ci --prefix landing` ends the run with a setup error that names the
 | `search-index` | The index built from the content exceeds 128 KiB, or does not carry the content revision or list the published pages in order. |
 | `unselected-page` | A Markdown file under `docs/public/` is not selected by the manifest (navigation membership). |
 | `unreferenced-asset` | A non-Markdown file under `docs/public/` is not an image a selected page references. |
-| `public-boundary` | A public page, selected or not, links a path outside `docs/public/` or an internal documentation page on GitHub. Internal pages may link public pages. |
+| `public-boundary` | A public page, selected or not, links a path outside `docs/public/` or a non-public documentation page (`docs/internal`, `plans`, `mockups`, `design`, `user-guide`) on GitHub, the same directories the build audit rejects. Internal pages may link public pages. |
 | `missing-file`, `missing-image` | A relative link or image target does not exist, with exact case as on GitHub. |
 | `missing-anchor` | A `#fragment` matches no heading slug or HTML `id` in its target Markdown file. |
 | `empty-alt` | An image, Markdown or raw HTML, has no alt text. |

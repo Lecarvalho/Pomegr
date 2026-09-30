@@ -1,8 +1,8 @@
 # Website operations
 
-> Scope: local development, provisioning, manual deployment, smoke checks, and rollback of the public landing Worker in `landing/`.
+> Scope: local development, provisioning, manual deployment, documentation publication, smoke checks, and rollback of the public landing Worker in `landing/`.
 > Authority: operating procedure. [`landing/README.md`](../../../landing/README.md) stays the package entrypoint and links here.
-> Related code and checks: `landing/package.json` scripts (`test`, `typecheck`, `build:audit`, `deploy`), `landing/scripts/`, and the [Deploy landing workflow](../../../.github/workflows/deploy-landing.yml).
+> Related code and checks: `landing/package.json` scripts (`test`, `typecheck`, `build:audit`, `deploy`), `landing/scripts/`, `npm run check:docs`, and the [Deploy landing workflow](../../../.github/workflows/deploy-landing.yml).
 
 This guide covers local development and publishing the public landing Worker. Provisioning commands in sections 1-4 run from `landing/`. Local startup and the release commands in section 5 run from the repository root and explicitly select the landing package with `--prefix landing`.
 
@@ -27,7 +27,7 @@ Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/a
 
 The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
 
-Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It validates `docs/site.json` and the public pages and images that manifest selects, then writes the gitignored `landing/generated/` (the content and its search index) and `landing/public/docs/` outputs the site bundles; invalid documentation stops the command with every problem listed. Restart the dev server after editing documentation. The [documentation manifest](../development/documentation-manifest.md#generate-the-website-content) defines the loader, its outputs, and the content-input audit that `build:audit` enforces.
+Before `dev`, `test`, `typecheck`, and `build`, npm runs `docs:prepare`. It validates `docs/site.json` and the public pages and images that manifest selects, then writes the gitignored `landing/generated/` (the content and its search index) and `landing/public/docs/` outputs the site bundles; invalid documentation stops the command with every problem listed, so `build` and `build:audit` cannot produce an artifact from it. Restart the dev server after editing documentation. The [documentation manifest](../development/documentation-manifest.md#generate-the-website-content) defines the loader, its outputs, and the content-input audit that `build:audit` enforces.
 
 ### Local waitlist configuration
 
@@ -110,8 +110,9 @@ The WAF rule is a coarse outer shield. Same-origin browser headers, the honeypot
 
 The [Deploy landing workflow](../../../.github/workflows/deploy-landing.yml) runs only
 through `workflow_dispatch`; pushes, pull requests, and tags do not deploy the site.
-It installs the landing lockfile, runs landing tests and typechecking, builds and
-audits once, then deploys that exact artifact with the existing `deploy` script.
+It installs the landing lockfile, checks the documentation (`npm run check:docs` from the
+repository root), runs landing tests and typechecking, builds and audits once, then
+deploys that exact artifact with the existing `deploy` script.
 Production deployments are serialized without cancelling an active deployment.
 
 Before the first run:
@@ -147,21 +148,21 @@ Run this block from the repository root (`C:\Workspace\repos\Pomegr` for the loc
 
 ```powershell
 npm --prefix landing ci
+npm run check:docs
 npm --prefix landing test
 npm --prefix landing run typecheck
 npm --prefix landing run build:audit
 npm --prefix landing run deploy
 ```
 
-`build:audit` and `deploy` belong to `landing/package.json`. Running `npm run build:audit` from the repository root produces `Missing script: "build:audit"`. If your terminal is already inside `landing/`, omit `--prefix landing` from the commands above.
+`check:docs` belongs to the root `package.json` and needs only the landing dependencies installed above. `build:audit` and `deploy` belong to `landing/package.json`. Running `npm run build:audit` from the repository root produces `Missing script: "build:audit"`. If your terminal is already inside `landing/`, omit `--prefix landing` from the commands above.
 
 Do not edit `landing/dist` between the audit and deployment. `npm run deploy` re-runs the audit immediately before invoking `wrangler deploy --config dist/server/wrangler.json`; that generated configuration (paths relative to `landing/`) uses `dist/server/index.js` with `no_bundle: true` and serves assets only from `dist/client`.
 
 After deployment, smoke-test:
 
 - HTTPS `/`, `/about`, and `/download` return 200 and `www` redirects to the apex.
-- `/docs` redirects to the first documentation page, a published page such as `/docs/get-started/introduction` returns 200 with its navigation, outline, and images, and `/docs/not-a-page` returns the documentation 404.
-- Documentation search: typing a known heading in the sidebar field (the phone menu on a narrow screen) lists its page with a link to that heading, and choosing it opens the page. `/sitemap.xml` returns XML listing exactly `/`, `/about`, `/download`, and the published documentation pages on `https://pomegr.com`, with no `/docs`, image, API, or internal path. `/robots.txt` returns plain text with `Allow: /` and only the `Sitemap: https://pomegr.com/sitemap.xml` line.
+- The documentation pages, images, search, sitemap, `robots.txt`, and unknown-path 404 pass the [documentation smoke checks](#documentation-smoke-checks).
 - The download page shows version and file sizes, and its installer/portable buttons point directly to the corresponding official GitHub `.exe` assets.
 - `/dashboard`, `/api/state`, `/api/sessions`, and random paths return 404.
 - Signup, a duplicate signup, the signed status cookie, Turnstile failure, and throttling behave as expected.
@@ -177,8 +178,59 @@ in `landing/server/download-release.ts`. Keep that fallback's version and asset 
 sync with a verified published release when updating it. The landing test suite
 includes a workerd regression test for successful lookup and rejected redirects.
 
-## 6. Rollback
+## 6. Publish documentation
+
+The public documentation at `/docs` is built into the landing artifact from the repository, so publishing it is an ordinary website deployment ([section 5](#5-release-the-exact-audited-artifact)) and never part of desktop packaging. This section defines where the content comes from, what validates it, and what each kind of documentation change needs.
+
+### Where the content comes from
+
+- `docs/site.json` selects the public pages (`docs/public/<group>/<topic>.md`) in reading order. A file under `docs/public/` that the manifest does not select is never published; `check:docs` reports it as `unselected-page`, so a draft cannot sit there unnoticed. Keep drafts in an active plan.
+- The landing loader (`landing/scripts/docs-content.mjs`) is the only code that reads outside `landing/`, and it reads only the manifest and the pages and images the manifest selects. It writes the gitignored `landing/generated/` content and search index and the `landing/public/docs/` images. The Worker bundles the generated JSON and never reads files.
+- Internal documentation, plans, mockups, and unselected files cannot become a page, an asset, a search entry, or a sitemap entry, even through a mistaken manifest entry: the loader rejects such a path or a link to it; `audit:source` and `audit:artifact` reject non-public paths and unexpected files; and [`docs-exclusion.test.ts`](../../../landing/tests/ui/docs-exclusion.test.ts) and [`docs-artifact.test.ts`](../../../landing/tests/ui/docs-artifact.test.ts) prove it with canary content in a fixture repository, including a real build. See the [publication boundary](../development/documentation-manifest.md#enforce-the-publication-boundary).
+- The site publishes the checkout that is built. The Deploy landing workflow builds the ref you select; a local deployment builds your working tree, so commit and review documentation changes first.
+
+### Validation order
+
+1. `npm run check:docs` from the repository root applies the loader's own rules to the public pages, then the public-tree, public-boundary, and maintained-link rules. It is part of `npm run check`, so it runs in `verify:fast`, in `verify` (the Windows verification and desktop release workflows), and as the first step after dependency installation in the Deploy landing workflow. It needs only `npm ci --prefix landing`; exit code 2 means the landing dependencies are missing.
+2. `docs:prepare` in `landing/` applies the same loader before `dev`, `test`, `typecheck`, and `build`. Invalid content stops the command with every problem listed, so `build` and `build:audit` fail before the bundler runs and no artifact is produced.
+3. `audit:source` runs at the start of `build`, and `audit:artifact` runs after it and again inside `deploy`. They check the generated content and search index against each other, compare the mirrored images with the built copies byte for byte, and scan the built output, including image bytes, for non-public, repository, and home-directory paths. `deploy` does not regenerate documentation, so do not edit documentation or `landing/dist` between `build:audit` and `deploy`.
+
+### What a change needs
+
+| Change | Validate | Website deployment |
+| --- | --- | --- |
+| Internal documentation only (`docs/internal/**`, plans, root Markdown, skill packages) | `npm run check:docs`, plus the checks for any code you touched | None. Internal pages never ship, and merging them changes nothing on pomegr.com. |
+| A public page or image that `docs/site.json` selects, or an edit to `docs/site.json` | `npm run check:docs`, then the landing test, typecheck, and `build:audit` (the workflow runs them) | Required before the change appears: run the Deploy landing workflow. |
+| Landing code (`landing/app`, `worker`, `server`, `scripts`) | Landing test, typecheck, and `build:audit` | Required. |
+| A desktop release | [Desktop releases](desktop-releases.md) | Not part of it. A release does not deploy the site, and a site deployment does not package the app. If a release changes behavior that a public page describes, publish that page as its own website deployment once the release is available. |
+
+### Documentation smoke checks
+
+After a deployment that changes documentation, check `https://pomegr.com` at desktop width and at about 390 px, where the documentation menu replaces the sidebar:
+
+- **Pages:** `/docs` redirects to the first documentation page. Each changed page returns 200 with its sidebar (current page marked), outline, and previous/next links.
+- **Images:** each changed screenshot displays, and a `/docs/images/<topic>/<file>.jpg` URL returns 200 with an image type.
+- **Search:** typing a changed heading in the sidebar field lists its page with a link to that heading, and choosing it opens the page. A word found only in internal documentation finds nothing.
+- **Sitemap:** `/sitemap.xml` returns XML listing exactly `/`, `/about`, `/download`, and the published pages on `https://pomegr.com`, as many pages as the manifest selects, and no `/docs`, image, API, or internal path.
+- **Robots:** `/robots.txt` returns plain text with `Allow: /` and only the `Sitemap: https://pomegr.com/sitemap.xml` line.
+- **404:** `/docs/not-a-page` and an internal-looking path such as `/docs/internal/architecture/overview` return status 404 with the documentation navigation. `/dashboard` and `/api/state` return the Worker's plain 404.
+
+### Automation triggers (proposal, not enabled)
+
+The release policy is explicit manual dispatch: `deploy-landing.yml` and `release.yml` run only through `workflow_dispatch`, and neither a merge nor a tag push releases anything. Documentation keeps that policy. No trigger has been added, and `deploy-landing.yml` stays `workflow_dispatch`. The only automatic documentation step is validation: Windows verification runs `npm run verify`, including `check:docs`, for every pull request to `main` and every push to it, and deploys nothing.
+
+Options for the owner, in order of preference:
+
+1. **Stay manual (current).** Dispatch the workflow after a public-documentation change merges, and record the deployed ref in the pull request.
+2. **Release-coupled.** Add "publish pending public documentation" to the desktop [release checklist](desktop-releases.md#release-checklist) as a separate manual dispatch after the release is available.
+3. **Approval-gated push.** Add a `push` trigger on `main` filtered to `docs/public/**`, `docs/site.json`, and `landing/**`, with required reviewers on the `landing-production` environment so the job waits for a person before it deploys.
+
+Do not enable option 3 before the environment approval exists, the smoke checks above are either automated after deployment or accepted as a manual gate, the first publication (WEB-07) has been deployed by hand, and a rollback has been rehearsed. Changing a trigger is a separate, reviewed change that updates this section and the workflow together.
+
+## 7. Rollback
 
 Use Cloudflare Worker Versions & Deployments (or authenticated Wrangler rollback) to promote the previously known-good Worker version. D1 is independent: never delete, recreate, or reverse waitlist rows during an application rollback. Apply future schema migrations forward and separately from Worker version rollback.
 
 For data recovery, export D1 before a risky schema migration. Application rollback is not a database rollback.
+
+A documentation-only problem, such as wrong page text or a wrong screenshot, is fixed by correcting the source and deploying again. When a page must disappear immediately, promote the previous Worker version; it carries the previous documentation revision.
