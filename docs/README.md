@@ -15,7 +15,7 @@ source.
 | Understand cache reuse, possible refills, and cache lifetimes | [Cache reuse](public/concepts/cache-reuse.md) |
 | Read the account usage windows and their freshness | [Usage limits](public/concepts/usage-limits.md) |
 | Tell recorded values, agent reports, estimates, and signals apart | [Signals and estimates](public/concepts/signals-and-estimates.md) |
-| Understand token prices | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
+| Compare cached and uncached token prices, and API prices with subscriptions | [Token pricing](public/concepts/token-pricing.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
@@ -49,16 +49,17 @@ The [introduction](public/get-started/introduction.md),
 [first-session guide](public/get-started/first-session.md), and the
 [context and tokens](public/concepts/context-and-tokens.md),
 [cache reuse](public/concepts/cache-reuse.md),
-[usage limits](public/concepts/usage-limits.md), and
-[signals and estimates](public/concepts/signals-and-estimates.md) concept pages are
-migrated public pages.
+[usage limits](public/concepts/usage-limits.md),
+[signals and estimates](public/concepts/signals-and-estimates.md), and
+[token pricing](public/concepts/token-pricing.md) concept pages are migrated
+public pages.
 Remaining sources keep their current paths and authority until their
 individual migration tasks complete. Follow the working links above; this table
 maps the remaining work:
 
 | Current location | Planned home |
 | --- | --- |
-| `docs/user-guide/` and user guidance in mixed-audience pages | `docs/public/`, grouped into `get-started/`, `using-pomegr/`, `concepts/`, and `help/` |
+| User guidance in mixed-audience pages | `docs/public/`, grouped into `get-started/`, `using-pomegr/`, `concepts/`, and `help/` |
 | Technical references in `docs/*.md` and website operations | `docs/internal/architecture/`, `development/`, `operations/`, and `decisions/` |
 | Existing plans and temporary design artifacts | Active work in `docs/internal/plans/`; completed artifacts retired after their findings are accounted for |
 

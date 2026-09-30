@@ -275,7 +275,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
             {profileOpen && <div className="commandProfileMenu" id="command-profile-menu">
               <header><strong>Local profile</strong><span>Workspace identity and preferences are coming soon.</span></header>
               <Link href="/settings" onClick={closeProfile}>Open settings</Link>
-              <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/user-guide/README.md" onClick={closeProfile}>Documentation</ExternalLink>
+              <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/README.md" onClick={closeProfile}>Documentation</ExternalLink>
               <Link href="/settings?section=about" onClick={closeProfile}>About Pomegr</Link>
               <div className="commandProfileTheme"><span>Appearance</span><ThemeToggle /></div>
             </div>}

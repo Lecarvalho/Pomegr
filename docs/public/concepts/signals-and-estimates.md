@@ -33,10 +33,11 @@ confidence, labeled "Agent-maintained estimate". An estimate keeps its last
 reported value until the agent reports again, so it can be out of date. A
 session's plan checklist is also agent-maintained and may be stale.
 
-The **Cost** panel is a provider estimate. When Claude Code local usage is
-enabled, it shows "Claude Code API list-rate estimate" and "Estimate, not a bill."
-It does not appear otherwise, Codex has no estimate, and **Settings → Data
-display** can hide it.
+The **Cost** panel is a provider estimate (see
+[Token pricing](token-pricing.md)). When Claude Code local usage is enabled, it
+shows "Claude Code API list-rate estimate" and "Estimate, not a bill." It does
+not appear otherwise, Codex has no estimate, and **Settings → Data display** can
+hide it.
 
 ![The Overview Progress panel showing 100% complete, Agent-maintained estimate, high confidence, next to the Cost panel showing a Claude Code API list-rate estimate of $14.83, Estimate, not a bill.](../images/signals-and-estimates/progress-and-cost.jpg)
 

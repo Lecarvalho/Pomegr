@@ -101,7 +101,8 @@ recorded the compactions as automatic or manual.
 - **Not spend.** Pomegr never sums token counts into a spend total or rate. When
   Claude Code local usage is enabled, the Overview **Cost** panel shows Claude
   Code's own "Claude Code API list-rate estimate," labeled "Estimate, not a
-  bill." Without it, the panel does not appear.
+  bill." Without it, the panel does not appear. See
+  [Token pricing](token-pricing.md).
 - **Not proof of cause.** A smaller context without a recorded compaction gets no
   dashed line, and the drop alone does not prove one happened.
 - **Provider differences.** Providers report usage differently. A missing value
