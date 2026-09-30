@@ -7,17 +7,18 @@
 > [current technical contracts](internal/README.md#choose-the-authority).
 
 Write each page to help a reader complete one task or understand one subject.
-Apply these rules to new pages and pages as they migrate; existing documents keep
-their current homes and authority until their migration task completes. This
-guide defines authoring conventions, not an already-implemented website renderer
-or validation command.
+Apply these rules to new pages and to every page you revise. This guide owns
+authoring conventions; the [maintenance workflow](internal/development/documentation.md)
+owns publication and the `npm run check:docs` checks that enforce the structural
+rules.
 
 ## Write for a clear purpose
 
 - Lead with the answer, outcome, or responsibility. Give prerequisites before
   steps, and put limitations beside the claims they qualify.
 - Use descriptive headings, short paragraphs, active voice, and familiar words.
-  Explain necessary technical terms on first use. Address the reader as “you” in
+  Explain necessary technical terms on first use, and link a term that has a
+  selected concept page on its first mention. Address the reader as “you” in
   procedures; name the responsible component in contracts.
 - Use numbered steps for an ordered procedure, bullets for independent items,
   and tables for comparisons or mappings. Each step should state an action and
@@ -30,11 +31,14 @@ or validation command.
   or repair their references when reorganizing headings.
 - Write **Pomegr** for the product and `pomegr` for package, repository, and
   directory identifiers. Use provider names only where the distinction matters.
-  Match interface labels exactly, such as **Repositories** and **Setup**.
+  Match interface labels exactly, such as **Repositories** and **Plugin**.
+- When a label or panel depends on optional setup, such as the Pomegr plugin,
+  local usage, or the desktop app, say so beside the claim and quote the text
+  shown without it.
 - Distinguish recorded evidence, provider estimates, agent reports, and
   deterministic inferences. Missing evidence is not proof of inactivity or
   success. Do not describe heuristics as AI judgments, billing, or confirmed
-  causes. Link to [Metrics](METRICS.md) for precise definitions.
+  causes. Link to [Metrics](internal/architecture/metrics.md) for precise definitions.
 - Keep “context” tied to latest snapshots; label elapsed duration as wall time.
   A worked example must not turn independent requests into cumulative token
   spend. Mark invented example values as illustrative.
@@ -58,9 +62,11 @@ internal contract to complete the task. Internal pages may link to public usage
 instructions and focus on the implementation behind them.
 
 “Internal” means excluded from the documentation website, not confidential in
-Git. Use synthetic or sanitized examples in both profiles. Never include private
-session content, credentials, or real provider transcript paths in prose, code
-examples, screenshots, or attachments.
+Git. Use synthetic or sanitized examples in both profiles; the one exception is
+a screenshot of a real Pomegr development session, which needs the review and
+caption described under [visual ownership](#give-visuals-an-owner). Never include
+private session content, credentials, or real provider transcript paths in prose,
+code examples, screenshots, or attachments.
 
 ## Use a small Markdown vocabulary
 
@@ -70,8 +76,10 @@ checklists. Arbitrary HTML, MDX/React, embedded scripts, and custom layout synta
 are outside this vocabulary; tool-required files retain their required formats.
 
 Use one `#` page title, then `##` sections and `###` subsections without skipping
-levels. Put blank lines around headings, lists, tables, and fences. Use **bold**
-for exact UI labels and code spans for identifiers, paths, and literal values.
+levels. Put blank lines around headings, lists, tables, and fences. Reserve
+**bold** for exact interface labels and list lead-ins; write derived terms and
+formulas, such as prompt input or request total, in plain text or a `text` code
+block. Use code spans for identifiers, paths, and literal values.
 Keep table cells short; move long procedures into prose. Escape a literal pipe in
 a table cell as `\|`.
 
@@ -80,7 +88,7 @@ existing heading when it narrows the reader's destination. Show proposed paths
 as code spans, not broken links. Public-to-public links should remain within the
 selected public content; follow the
 [publication manifest contract](internal/development/documentation-manifest.md)
-for route and asset rules. Automated publication validation is still pending.
+for route and asset rules; `npm run check:docs` validates them.
 
 Code fences name their language, such as `powershell`, `json`, or `text`. State
 the working directory and prerequisites before commands. Keep commands separate
@@ -219,17 +227,24 @@ Record completed work, remaining obligations, and the next action.
 
 Add a visual only when it explains something more clearly than text. Public
 screenshots should show the relevant control or evidence with enough surrounding
-context to locate it. Diagrams should explain a flow, boundary, or state change.
+context to locate it. Crop each screenshot to the controls the nearby text
+discusses, and confirm its smallest label remains readable at the documentation
+column width. Diagrams should explain a flow, boundary, or state change.
 Keep essential meaning in nearby text, and do not rely on color alone.
 
+A screenshot may show a real Pomegr development session after review for paths,
+prompts, credentials, and personal data. Say so in an italic caption directly
+below the image, and describe only what the image shows.
+
 Use Markdown image syntax with meaningful alt text describing the information
-the image conveys. For example, in a future public concept page:
+the image conveys. For example, in a public concept page:
 
 ```markdown
-![Context drops after compaction, then stays level at later observations.](../images/context-and-tokens/context-compaction-drop.png)
+![Cache-read bars fall sharply after the dashed compaction line.](../images/context-and-tokens/compaction-drop.jpg)
 ```
 
-That path is an authoring example, not an already-migrated asset. Store maintained
+That is the maintained compaction image of the
+[context and tokens](public/concepts/context-and-tokens.md) page. Store maintained
 public images under `docs/public/images/<topic>/`; keep internal explanatory
 assets beside their owning page in a topic directory. Use a maintained image
 for diagrams that need rendering beyond ordinary Markdown; keep editable source
@@ -238,15 +253,17 @@ the documentation publication pipeline.
 
 The existing `/design-system` page on the web development server is the
 authoritative visual reference. [DESIGN.md](../DESIGN.md) is the written contract;
-the [design-system examples](../app/components/design-system/DesignSystemView.tsx)
-use the actual shared tokens and components. Documentation and HTML previews must
+the [design-system samples](../app/components/design-system/) use the
+actual shared tokens and components. Documentation and HTML previews must
 not become a second visual authority or component gallery.
 
 Before retiring a design exploration, compare it with the live examples. Promote
 missing accepted reusable patterns through the shared implementation and page,
 updating DESIGN.md and its contract tests together where required. Already
-represented or rejected alternatives need no duplicate promotion. Record
-unresolved feature work in an active plan. Preserve the design-system page's
+represented or rejected alternatives need no duplicate promotion. Do not promote
+whole speculative screens, fake supported features, or screenshots of HTML in
+place of working examples. Record unresolved feature work in an active plan; it
+does not justify keeping an obsolete mockup. Preserve the design-system page's
 static-data-only, web-development-only access contract; do not add it to public,
 desktop, or phone navigation.
 
@@ -273,7 +290,7 @@ such as `README.md`, `STYLE_GUIDE.md`, `AGENTS.md`, and `SKILL.md`. Preserve roo
 legal and package/tool ownership; follow the
 [maintenance workflow](internal/development/documentation.md) for placement,
 migration, publication, and checks, and the [maintainer index](internal/README.md)
-for current authorities during migration.
+for current authorities.
 
 Close temporary work in the same change that fulfills or retires it:
 
@@ -284,12 +301,12 @@ Close temporary work in the same change that fulfills or retires it:
 4. Repair references that treat the temporary artifact as current authority,
    including indexes, anchors, agent routes, and hidden tool references.
 5. Preserve explicitly required release evidence outside the temporary plan,
-   following the [release](DESKTOP_RELEASES.md) and
-   [acceptance](DESKTOP_BETA_ACCEPTANCE.md) procedures.
+   following the [release](internal/operations/desktop-releases.md) and
+   [acceptance](internal/operations/desktop-beta-acceptance.md) procedures.
 6. Delete the plan and unneeded attachments. Git history retains prior tracked
    versions; do not create a checked-in archive copy.
 
 Paused work must state its next decision and continuation owner. It is not an
 indefinite artifact store. Verify changed links, anchors, images, and affected
-consumers, and follow the [agent workflow](AGENT-WORKFLOW.md#focused-verification)
+consumers, and follow the [agent workflow](internal/development/agent-workflow.md#focused-verification)
 for the applicable canonical checks.

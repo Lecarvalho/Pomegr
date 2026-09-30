@@ -39,8 +39,8 @@ describe("DottedInfoPopover", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 
-  it("keeps the cache-timing link aligned with its canonical documentation page", () => {
-    expect(CACHE_TIMING_DOCUMENTATION_URL).toBe("https://github.com/Lecarvalho/pomegr/blob/main/docs/CACHE_TIMING.md");
-    expect(fs.readFileSync(path.join(process.cwd(), "docs", "CACHE_TIMING.md"), "utf8")).toContain("# Cache timing");
+  it("keeps the cache-timing link aligned with its help page", () => {
+    expect(CACHE_TIMING_DOCUMENTATION_URL).toBe("https://github.com/Lecarvalho/pomegr/blob/main/docs/public/concepts/cache-reuse.md#cache-lifetime-and-elapsed-time");
+    expect(fs.readFileSync(path.join(process.cwd(), "docs", "public", "concepts", "cache-reuse.md"), "utf8")).toContain("## Cache lifetime and elapsed time");
   });
 });

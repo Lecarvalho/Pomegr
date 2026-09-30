@@ -4,7 +4,7 @@
 > Created: 2026-09-20.
 > Scope: make the session **Overview** tab read well when a session has just started, and stop repeating brand-colored text links on panel headers and evidence rows (Overview and Signals tabs, desktop and phone). UI only: no monitor, contract, or API change.
 > Continuation owner: the agent that picks up this plan in a fresh session; the user reviews the result against the artboards.
-> Authority: working checklist. `AGENTS.md`, `DESIGN.md`, and `docs/METRICS.md` stay authoritative; this plan changes `DESIGN.md` in task 1 and task 6.
+> Authority: working checklist. `AGENTS.md`, `DESIGN.md`, and `docs/internal/architecture/metrics.md` stay authoritative; this plan changes `DESIGN.md` in task 1 and task 6.
 > Next task or decision: start task 1. Do the tasks in order; each ends with a command that must pass before the next begins.
 > Completion criteria: every checkbox below is ticked with its verification recorded under the continuation checkpoint, `npm run verify:fast` and `npm run test:ui` pass, and the running app matches the artboards listed below apart from the written differences.
 > Permanent destinations: `DESIGN.md` (link rule, heading link, sparse overview rule), `/design-system` (heading link sample), and the information architecture redesign plan's T08 (Repository tab links).

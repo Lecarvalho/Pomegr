@@ -9,7 +9,11 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "docs:prepare": "node scripts/prepare-docs.mjs",
+    "docs:check": "node scripts/prepare-docs.mjs --check",
+    "predev": "npm run docs:prepare",
     "dev": "vinext dev --hostname 127.0.0.1 --port 8788",
+    "prebuild": "npm run docs:prepare",
     "build": "npm run audit:source && vinext build",
     "build:audit": "npm run build && npm run audit:artifact",
     "audit:source": "node scripts/assert-artifact-boundary.mjs --source-only",
@@ -19,10 +23,13 @@
     "db:migrate:local": "node scripts/run-wrangler.mjs d1 migrations apply pomegr-waitlist --local",
     "db:migrate:remote": "node scripts/run-wrangler.mjs d1 migrations apply pomegr-waitlist --remote",
     "types:cloudflare": "node scripts/run-wrangler.mjs types cloudflare-env.d.ts",
+    "pretypecheck": "npm run docs:prepare",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run docs:prepare",
     "test": "vitest run --config vitest.config.mjs --configLoader runner"
   },
   "dependencies": {
+    "marked": "18.0.14",
     "next": "16.3.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",

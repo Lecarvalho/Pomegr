@@ -4,13 +4,12 @@
 > Authority: maintained workflow; the [style guide](../../STYLE_GUIDE.md) owns
 > writing and artifact lifecycle, and [current contracts](../README.md#choose-the-authority)
 > own runtime behavior.
-> Related code and checks: [agent workflow](../../AGENT-WORKFLOW.md#focused-verification),
-> [verification scripts](../../../package.json), and [website operations](../../../landing/OPERATIONS.md).
+> Related code and checks: [agent workflow](agent-workflow.md#focused-verification),
+> [verification scripts](../../../package.json), and [website operations](../operations/website.md).
 
 Keep one maintained owner for each subject. Use the [documentation index](../../README.md)
 for audience navigation and the [maintainer index](../README.md) to locate current
-authorities before editing. Existing pages keep their paths and authority until
-their individual migration is complete.
+authorities before editing.
 
 ## Place the page
 
@@ -27,27 +26,176 @@ Create directories when their first page needs them; use lowercase kebab-case
 topic names. Keep root entrypoints, legal files, package-local entrypoints, and
 tool-required files in place. Preserve application, test, skill, plugin, and
 package layouts. Link those entrypoints to canonical detail instead of duplicating
-it. Follow the [style guide's asset and lifecycle rules](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact)
+it. Files that stay where they are include the root `README.md`, `AGENTS.md`,
+`CLAUDE.md`, `CONTRIBUTING.md`, `PRODUCT.md`, `DESIGN.md`, and legal notices;
+`landing/README.md`; repository skills and provider wrappers; the `.impeccable/`
+configuration and surface briefs, maintained through the Impeccable workflow; and
+`.pomegr/`, `plugin-src/`, and `plugins/`, whose reporting configuration and
+shipped or generated plugin content keep their existing owners. Do not relocate a
+tool-required template just because it is Markdown. Follow the [style guide's asset and lifecycle rules](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact)
 for images, scratch work, reports, and retained release evidence. Internal means
 excluded from website publication, not confidential in Git.
 
 ### Introduction screenshot ownership
 
 The [introduction](../../public/get-started/introduction.md) owns the four JPEGs in
-`docs/public/images/introduction/`. Captured on 2026-09-08 from the Pomegr 0.3.6
-interface, they show real Catalogus development work with the project owner's
-explicit permission. The session is titled “Phase 4 backend: Supabase schema,
-RLS, views, seed on local Postgres.” Dark mode leads the overview, agent grid,
-and requests chart; the light overview demonstrates the alternative theme.
-Captures came directly from the running local dashboard's recorded session view,
-without changing its data. Only displayed dashboard content was captured; no raw
-session files were read or copied. These images replace the earlier synthetic set.
+`docs/public/images/introduction/`. Recaptured on 2026-09-30 from the Pomegr 0.5.3
+interface (the 2026-09-08 set showed 0.3.6), they show one recorded Claude Code
+session in the Pomegr repository, titled “Agent-readiness audit of repo
+structure” (one primary agent and eight subagents). The project owner authorized
+any recorded session of the Pomegr, Pokrr, or Catalogus repositories on
+2026-09-30. Dark mode leads the session overview (`session-overview.jpg`), the
+Agents panel in List view with the subagent group expanded and the primary agent
+selected (`agents-tab.jpg`, cropped above the empty roster area), and the
+Activities tab's Requests panel in Lanes and Full breakdown with request #300
+selected, cropped to the lanes and axis (`requests-chart.jpg`); the light
+overview (`light-mode.jpg`), cropped to the header, summary strip, and tab bar,
+demonstrates the alternative theme. Captures came directly from the running local
+dashboard's recorded session view at 2x scale, without changing its data, at a
+1200 px viewport (1000 px for the Requests panel) so their smallest labels stay
+readable at the documentation column width, and were cropped and converted to
+JPEG. Only displayed dashboard content was captured; no raw session files were
+read or copied.
 
 When the pictured UI changes, recapture the actual session dashboard using
 owner-authorized project data or synthetic data, check legibility and privacy,
 and update the guide and images together. Keep the caption accurate about which
 kind of data is shown. These are maintained explanatory screenshots;
 they do not replace the design-system page or preserve a temporary mockup.
+
+### Context and tokens screenshot ownership
+
+The [context and tokens](../../public/concepts/context-and-tokens.md) page owns the
+two JPEGs in `docs/public/images/context-and-tokens/`. `compaction-drop.jpg` was
+captured on 2026-09-30 from the Pomegr 0.5.3 interface in dark theme. It shows the
+Activities tab's Requests panel in Lanes and Full breakdown, at a 1000 px viewport
+and cropped to the lanes and axis, for the recorded Codex session titled “Fix PR 30
+Windows CI” in the Pomegr repository. Request #290 is selected so the chart's
+`compaction` label stays visible beside the recorded automatic compaction that
+precedes request #271.
+The project owner authorized any recorded session of the Pomegr, Pokrr, or
+Catalogus repositories on 2026-09-30. None of the recorded Claude Code sessions in
+the catalog’s newest 100 rows had a recorded compaction, so the image comes from a
+Codex session and its legend has no Cache write series. The capture came from the
+running local dashboard at 2x scale, was converted to JPEG, and shows only displayed
+dashboard content (agent labels, roles, models, and token bars); no raw session
+files were read or copied. When the chart changes, recapture a recorded compaction
+and update the page, alt text, and image together.
+
+`fresh-tokens.jpg` was captured the same day from the same interface and theme, at
+a 1000 px viewport and 2x scale, cropped to the header, lanes, and axis. It shows the
+Requests panel in Fresh tokens (the default mode) with the Direct subagents group
+expanded, for requests #270 to #330 of the recorded Claude Code session titled
+“Agent-readiness audit of repo structure” in the Pomegr repository, with request
+#300 selected. It shows the same window as the introduction's `requests-chart.jpg`
+in the other chart mode. Recapture it with the introduction image.
+
+### Cache reuse screenshot ownership
+
+The [cache reuse](../../public/concepts/cache-reuse.md) page owns the two JPEGs in
+`docs/public/images/cache-reuse/`. Both were captured on 2026-09-30 from the Pomegr
+0.5.3 interface in dark theme, at a 1000 px viewport and 2x scale, cropped to the
+Requests panel's header, one lane, and axis. They show one subagent's requests #63 to
+#101 (the lane “Implement part 4 shared lookup”, focused with its lane label) in the
+recorded Claude Code session titled “ACOS part 4: shared Claude/Codex source ledger
+lookup” in the Pomegr repository, with request #93 selected under its **Possible full
+refill** marker. `refill-write-spike.jpg` uses Fresh tokens and `refill-cache-reads.jpg`
+uses Full breakdown; the two captures are the same request in both modes. The project
+owner authorized any recorded session of the Pomegr, Pokrr, or Catalogus repositories
+on 2026-09-30; the session was chosen because its refill is the only one in it and is
+bracketed by high-reuse requests, and the lifetime inference appears when the marker is
+hovered. Only displayed dashboard content was captured. When the chart or marker
+changes, recapture a recorded possible full refill in both modes and update the page,
+alt text, and images together. The former `docs/user-guide/images/cache-reuse-drop.png`
+crop of the old line chart was deleted.
+
+### Usage limits screenshot ownership
+
+The [usage limits](../../public/concepts/usage-limits.md) page owns
+`docs/public/images/usage-limits/provider-windows.jpg`, captured on 2026-09-30 from
+the running Pomegr 0.5.3 dashboard in dark theme at a 1100 px viewport and 2x scale,
+cropped to the two provider cards and the caution note. It shows live account
+percentages for the project owner's Claude Code and Codex accounts at that moment (no
+account identifiers). Only displayed dashboard content was captured. Recapture it when
+the Usage limits page changes and keep the caption's date, providers, and values
+accurate.
+
+### Signals and estimates screenshot ownership
+
+The [signals and estimates](../../public/concepts/signals-and-estimates.md) page owns
+the two JPEGs in `docs/public/images/signals-and-estimates/`. Both were captured on
+2026-09-30 from the Pomegr 0.5.3 interface in dark theme at a 1100 px viewport and 2x
+scale, from the recorded Claude Code session titled “ACOS part 4: shared Claude/Codex
+source ledger lookup” in the Pomegr repository. `signals-tab.jpg` shows the Signals tab
+(Efficiency, Cache lifetime, Reported signals) cropped to its content; `progress-and-cost.jpg`
+shows the Overview tab's Progress and Cost panels. Only displayed dashboard content
+was captured; the reported signal's short label and description were reviewed and show
+no paths, prompts, or credentials. Recapture both when the tab layout changes.
+
+### Sessions and agents screenshot ownership
+
+The [sessions and agents](../../public/using-pomegr/sessions-and-agents.md) page owns
+the two JPEGs in `docs/public/images/sessions-and-agents/`. Both were captured on
+2026-09-30 from the Pomegr 0.5.3 interface in dark theme at a 1200 px viewport and 2x
+scale. `sessions-list.jpg` was recaptured on 2026-09-30 after review (the first set
+showed two Codex sessions whose titles read like raw prompts). It shows
+`/sessions?project=Pomegr` with **All** selected and the filter text “Claude Code”,
+so only Pomegr Claude Code sessions with descriptive titles appear (the unfiltered
+catalog also holds other repositories and providers), cropped to the toolbar and the
+first four rows through the **Context** column; the
+**Progress** and **Updated** columns fall outside the crop because the table is wider
+than the documentation column allows. `agents-roster.jpg` shows the Agents tab in
+List view for the recorded Claude Code session titled “Agent-readiness audit of repo
+structure” in the Pomegr repository, with the Direct subagents group expanded and the
+subagent “Trim slow and brittle node tests” selected, cropped from the roster header
+to the inspector's Signals section. Only displayed dashboard content was captured;
+the session titles, roster labels, and signal text were reviewed and show no paths,
+prompts, or credentials. Recapture both when the Sessions table or roster changes.
+
+### Repositories screenshot ownership
+
+The [repositories](../../public/using-pomegr/repositories.md) page owns the two JPEGs in
+`docs/public/images/repositories/`, captured on 2026-09-30 from the Pomegr 0.5.3
+interface in dark theme at a 1200 px viewport and 2x scale, except `files-tab.jpg`,
+which was recaptured on 2026-09-30 at a 1360 px viewport after review because the
+history header clips the **All providers | Claude Code | Codex** control at 1200 px.
+`files-tab.jpg` shows the Pomegr repository's Files tab with `app/Dashboard.tsx`
+selected (deep link `?tab=files&path=app/Dashboard.tsx`), cropped to the tab bar,
+toolbar, file tree, and the first history entries. `session-repository-tab.jpg` shows the Repository tab of the
+recorded Claude Code session titled “Show recorded agents per file in session
+Repository tab” in the Pomegr repository, with the same file selected, cropped from the
+branch bar to the tree footer; it shows the Git glyph and the “Seen in Git · no
+recorded agent edit” panel. The Repositories index was not captured because it lists
+repositories outside the authorized set. Only displayed dashboard content was
+captured. Recapture both when either tab changes.
+
+### Settings screenshot ownership
+
+The [settings](../../public/using-pomegr/settings.md) page owns the two JPEGs in
+`docs/public/images/settings/`, captured on 2026-09-30 from the Pomegr 0.5.3 interface
+in a browser (dark theme, 1200 px viewport, 2x scale), cropped to the Settings frame.
+`appearance.jpg` shows the default Appearance tab; `storage.jpg` shows the Storage tab
+in its read-only browser state, with the project machine's own storage figures (43 MB
+of 500 MB, oldest retained 22 Sep 2026). The Providers tab was not captured because it
+shows local absolute folder paths. Desktop-only controls (Phone access, editable
+Storage, About updates) cannot be captured from the web development server. Recapture
+both when the Settings tabs change and keep the caption's version accurate.
+
+### Reporting plugins screenshot ownership
+
+The [reporting plugins](../../public/using-pomegr/reporting-plugins.md) page owns the two
+JPEGs in `docs/public/images/reporting-plugins/`, captured on 2026-09-30 from the
+Pomegr 0.5.3 interface in a browser (dark theme, 1100 px viewport, 2x scale), cropped to
+the repository detail frame (tab list and panel). `plugin-tab.jpg` shows the Pomegr
+repository's Plugin tab at `?tab=plugin`: the Claude Code row Enabled at v0.7.1 with
+v0.7.4 available and the Codex row Enabled at v0.7.4, Up to date. `reporting-tab.jpg`
+shows its Reporting tab at `?tab=reporting`: Configured, Shared repository policy,
+Version 7. Both are real views of the project's own development machine, so they carry the
+real-view caption. A browser has no desktop controls, so the **Recheck**, **Install
+plugin**, and **Update plugin** buttons cannot be captured from the web development server;
+the captions say so. Reviewed for absolute paths, credentials, and private configuration:
+none appear. Recapture both when the Plugin or Reporting tab changes, or when plugin
+versions in the images stop matching the current release.
 
 ## Migrate one page at a time
 
@@ -73,42 +221,73 @@ navigation order. Follow its [format and content contract](documentation-manifes
 for source membership, unique routes, and local link/image handling. Keep drafts
 in active plans; add ready public pages as their migrations finish.
 
-**Migration status:** the manifest selects the
-[introduction to Pomegr](../../public/get-started/introduction.md),
-[installation guide](../../public/get-started/install.md), and
-[first-session guide](../../public/get-started/first-session.md). The build-time
-content loader, `/docs` renderer, search, and `check:docs` command are not
-implemented yet. Adding a Markdown file or manifest entry does not deploy it.
-Validate selected links, routes, and images before publication. Repair repository
+**Publication status:** the manifest selects ready public pages in reading order,
+starting with the [introduction to Pomegr](../../public/get-started/introduction.md).
+The [build-time content loader](documentation-manifest.md#generate-the-website-content)
+(the landing `docs:prepare` script validates the selection before every landing test,
+typecheck, and build), the `/docs` renderer, search, the sitemap, and
+[`npm run check:docs`](#verify-the-change) are implemented. `check:docs` is part of
+`npm run check`, so `npm run verify:fast`, `npm run verify`, and the Deploy landing
+workflow run it, and the landing build fails on invalid documentation. Publishing the
+site remains a separate, manual step: adding a Markdown file or manifest entry does not
+deploy it. Validate selected links, routes, and images before publication. Repair repository
 references on every move; preserve or redirect previously published URLs when
-their routes change.
+their routes change. The 2026-09 migration did not preserve GitHub blob links to
+the retired flat paths (for example `docs/CACHE_TIMING.md`, `docs/CONFIGURATION.md`,
+`docs/PLUGINS.md`, `docs/SIGNAL_DICTIONARY.md`, and `docs/user-guide/README.md`) that
+released builds and already-exported reports carry; they return 404 by owner decision,
+and current links were repointed instead.
 
-Public content updates require the normal website build and deployment,
+The website build reads the approved public Markdown from the repository. No
+separate content service or per-request GitHub fetch is planned, so public edits
+reach pomegr.com only through the normal website build and deployment,
 independently of desktop packaging. Internal-only edits require documentation
-validation, not website deployment. Follow [website operations](../../../landing/OPERATIONS.md#5-release-the-exact-audited-artifact)
-for the existing manual deployment procedure; documentation work does not enable
-automatic deployment. Update this section when the publication tooling lands.
+validation, not website deployment. [Publish documentation](../operations/website.md#6-publish-documentation)
+owns the validation order, what each kind of change needs, the smoke checks, and the
+proposed (not enabled) automation triggers, and the
+[release procedure](../operations/website.md#5-release-the-exact-audited-artifact) owns the
+manual deployment; documentation work does not enable automatic deployment.
 
 ## Verify the change
 
-With repository dependencies installed, run from the repository root:
+With the root and landing dependencies installed (`npm ci` and `npm ci --prefix landing`),
+run from the repository root:
 
 ```powershell
 git diff --check
+npm run check:docs
 npm run verify:fast
 ```
 
 Run Git in the host environment as required by [AGENTS.md](../../../AGENTS.md#git-and-github-from-codex).
-Expect no whitespace errors and a passing verifier. These checks do not validate
-all Markdown links or render documentation. Until `npm run check:docs` exists,
-inspect changed pages for the supported syntax, heading hierarchy, local links
-and anchors, image existence and alt text, and stale inbound references. Preview
-their Markdown and verify that the page reads coherently for its intended audience.
-Record the actual coverage and any unavailable checks in the handoff.
+`npm run check:docs` validates the documentation in one pass, builds and writes nothing,
+and exits non-zero on any failure (`--json` prints the same result for tools). It stops
+with a setup error, not a crash, when `npm ci --prefix landing` has not been run.
+
+- **Public documentation:** the landing loader's own rules, so the website build and this
+  check share one implementation: manifest, front matter, routes, headings, links, anchors,
+  images and alt text, and the supported Markdown syntax of every selected page, plus a
+  search index within its size bound.
+- **Public tree and boundary:** every file under `docs/public/` is a selected page or an
+  image a selected page references, and no public page links outside `docs/public/`
+  (internal documentation included). Internal pages may link public pages.
+- **Maintained Markdown:** relative links (exact case), heading anchors, images, and
+  non-empty alt text in `docs/**`, root `*.md`, `landing/*.md`, and `.agents/skills/**`.
+  Code samples, the exported `docs/internal/plans/ia-redesign/prototype/` and the
+  gitignored `.agents/skills/acos/runs/` are skipped, and external URLs are never fetched.
+
+The [manifest contract](documentation-manifest.md#check-the-documentation) lists the rule
+names and the dependency direction. `npm run check` includes the check, so
+`npm run verify:fast` and `npm run verify` run it too; run it alone while iterating on
+documentation. Neither it nor the verifier judges content:
+inspect changed internal pages for heading hierarchy and supported syntax, and search for
+stale inbound references to a moved page (`git grep` its old path, hidden tool directories
+included). Preview the Markdown and verify that the page reads coherently for its intended
+audience. Record the actual coverage and any unavailable checks in the handoff.
 
 For generated documentation, update its source and generator and run the relevant
 check, such as `npm run check:provider-docs`. For implementation changes, also
-follow the [agent workflow](../../AGENT-WORKFLOW.md#focused-verification) and
+follow the [agent workflow](agent-workflow.md#focused-verification) and
 [change checklist](../../../AGENTS.md#change-checklist); documentation checks do
 not replace build, test, privacy, or affected landing verification.
 

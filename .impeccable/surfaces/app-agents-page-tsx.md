@@ -15,7 +15,7 @@ related_targets:
 
 ## Purpose
 
-The Agents route presents cached, normalized activity evidence for a selected project, period, and scope. Its approved visual reference is [docs/design/agents-preview.html](../../docs/design/agents-preview.html).
+The Agents route presents cached, normalized activity evidence for a selected project, period, and scope. Its visual contract is the Agents route paragraph in `DESIGN.md` with the shared controls on the `/design-system` page, and its counting rules are in `docs/internal/architecture/metrics.md` (Agents model and work analytics).
 
 ## Structure
 

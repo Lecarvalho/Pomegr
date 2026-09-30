@@ -2,7 +2,7 @@
 // minute curves, curve-removal explanations, and matched peaks with their sample windows.
 // Built on the monitor-store checkpoint cycle only; `retained()` is a pure in-memory map
 // lookup so a domain GET never triggers a synchronous SQLite read. See
-// docs/OBSERVATION_CACHE.md for the committed-domain-cache contract this follows.
+// docs/internal/architecture/observation-cache.md for the committed-domain-cache contract this follows.
 //
 // Privacy: the block carries only normalized session/peak/task identity, ISO timestamps,
 // bounded numeric aggregates, and bounded retention-reason enums. No PIDs, process

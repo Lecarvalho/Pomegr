@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { act, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
@@ -16,7 +17,8 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Chips and pills", "Panels and dividers", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Typography and tokens"];
+const SAMPLE_SOURCES = ["DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples"].map((name) => `app/components/design-system/${name}.tsx`);
 
 function source(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -105,6 +107,54 @@ describe("Design-system reference page", () => {
     expect(within(sample).getByText(/Documented exceptions:/)).toBeInTheDocument();
   });
 
+  it("renders the shipped agent roster, inspector, command table, and settings rail from static data", async () => {
+    const user = userEvent.setup();
+    render(<DesignSystemView />);
+    const section = (name: string) => screen.getByRole("heading", { level: 2, name }).closest("section") as HTMLElement;
+
+    const rosterSection = section("Agent roster");
+    const roster = within(rosterSection).getByRole("region", { name: "Agent roster" });
+    const primary = within(roster).getByRole("row", { name: /^Primary agent agent/ });
+    expect(primary).toHaveClass("rosterPrimary", "rosterSelected");
+    expect(primary).toHaveAttribute("aria-selected", "true");
+    expect(await within(roster).findByRole("button", { name: /^Workflow · Test sweep/ })).toHaveAttribute("aria-expanded", "true");
+    expect(within(roster).getByRole("button", { name: /^Direct subagents/ })).toHaveAttribute("aria-expanded", "false");
+    expect(within(roster).getByRole("row", { name: /^Verify collapse at eight lanes — Collapse tests agent/ })).toBeInTheDocument();
+    expect(within(rosterSection).getByRole("region", { name: "Agent inspector for Primary agent" })).toBeInTheDocument();
+    expect(within(rosterSection).getByRole("group", { name: "Agent activity view" })).toHaveClass("commandSegmented");
+    await user.click(within(roster).getByRole("button", { name: "Select Focus tests" }));
+    expect(within(rosterSection).getByRole("region", { name: /^Agent inspector for Focus tests/ })).toBeInTheDocument();
+
+    const inspector = within(section("Agent inspector")).getByRole("region", { name: /^Agent inspector for Verify collapse at eight lanes — Collapse tests$/ });
+    expect(inspector).toHaveClass("agentInspector-inline");
+    expect(within(inspector).getByRole("list", { name: "Agent lineage" })).toHaveTextContent(/Primary agent.*Workflow Test sweep · 4 agents.*Phase Verify · 1 siblings/);
+    expect(within(inspector).getByRole("button", { name: /Activities for this agent/ })).toHaveClass("commandSecondaryAction", "inspectorActionRow");
+
+    const tableSection = section("Command table");
+    const agentsHeader = within(tableSection).getByRole("columnheader", { name: "Agents" });
+    expect(agentsHeader).not.toHaveAttribute("aria-sort");
+    expect(within(tableSection).getByRole("columnheader", { name: "Status" })).not.toHaveClass("commandTableSortable");
+    await user.click(within(agentsHeader).getByRole("button"));
+    expect(agentsHeader).toHaveAttribute("aria-sort", "descending");
+    await user.click(within(agentsHeader).getByRole("button"));
+    expect(agentsHeader).toHaveAttribute("aria-sort", "ascending");
+    const pages = within(tableSection).getByRole("navigation", { name: "Sample session pages" });
+    expect(within(pages).getByText("Showing 1–4 of 9")).toBeInTheDocument();
+    await user.click(within(pages).getByRole("button", { name: "Next" }));
+    expect(within(pages).getByText("Showing 5–8 of 9")).toBeInTheDocument();
+    expect(within(pages).getByRole("button", { name: "Go to page 2" })).toHaveAttribute("aria-current", "page");
+    expect(within(pages).getByRole("button", { name: "Next" })).toHaveClass("commandSecondaryAction");
+    expect(within(tableSection).getByText("No rows to display.")).toHaveClass("commandUnavailableNote");
+    expect(within(tableSection).getByRole("heading", { name: "No sessions match these filters" })).toBeInTheDocument();
+
+    const railSection = section("Settings tab rail");
+    expect(within(railSection).getByRole("tab", { name: "Appearance", selected: true })).toBeInTheDocument();
+    await user.click(within(railSection).getByRole("tab", { name: "Storage" }));
+    expect(within(railSection).getByRole("tab", { name: "Storage", selected: true })).toHaveClass("active");
+    expect(within(railSection).getByRole("tabpanel")).toHaveTextContent(/Retention and cleanup threshold/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("hydrates the server-rendered page, including SVG titles, without a mismatch", async () => {
     const html = renderToString(<DesignSystemPage />);
     expect(html).toContain(">Possible full refill · request #38</title>");
@@ -140,8 +190,10 @@ describe("Design-system reference page", () => {
     expect(source("app/components/command-center/CommandCenterShell.tsx")).not.toMatch(/design-system/);
     expect(source("desktop/runtime/lan-gateway.mjs")).not.toMatch(/design-system/);
     expect(source("desktop/runtime/shell-main.mjs")).not.toMatch(/design-system/);
-    const view = source("app/components/design-system/DesignSystemView.tsx");
-    expect(view).not.toMatch(/fetch\(|EventSource|\/api\//);
-    expect(view).not.toMatch(/agents-client|usage-limits-client|provider-status-client|SessionCatalogContext|next\/link|next\/navigation/);
+    for (const file of SAMPLE_SOURCES) {
+      const view = source(file);
+      expect(view).not.toMatch(/fetch\(|EventSource|\/api\//);
+      expect(view).not.toMatch(/agents-client|usage-limits-client|provider-status-client|SessionCatalogContext|next\/link|next\/navigation/);
+    }
   });
 });

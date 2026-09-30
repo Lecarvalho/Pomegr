@@ -13,7 +13,7 @@ import {
 
 describe("signal dictionary", () => {
   it("keeps the public cache sequence code and document anchor aligned", () => {
-    const document = fs.readFileSync(path.join(process.cwd(), "docs", "SIGNAL_DICTIONARY.md"), "utf8");
+    const document = fs.readFileSync(path.join(process.cwd(), "docs", "internal", "architecture", "signal-dictionary.md"), "utf8");
     const definitions = [
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.model_changed,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.system_changed,
@@ -27,7 +27,7 @@ describe("signal dictionary", () => {
     ];
 
     for (const definition of definitions) {
-      expect(definition.href).toBe(`https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#${definition.anchor}`);
+      expect(definition.href).toBe(`https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#${definition.anchor}`);
       expect(definition.href).not.toContain("?");
       expect(document).toContain(`<a id="${definition.anchor}"></a>`);
       expect(document).toContain(`### \`${definition.code}\``);

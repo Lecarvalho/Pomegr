@@ -33,7 +33,7 @@ function availableValue(value: SortValue) {
   return typeof value === "number" && !Number.isFinite(value) ? null : value;
 }
 
-/** Sorts before optional pagination; ties retain input order. See docs/COMMAND_TABLE.md. */
+/** Sorts before optional pagination; ties retain input order. See docs/internal/development/command-table.md. */
 export function CommandTable<Row>({ caption, rows, columns, getRowKey, className = "", emptyState = <p className="commandUnavailableNote">No rows to display.</p>, pagination }: CommandTableProps<Row>) {
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(null);
   const sortColumn = columns.find((column) => column.id === sort?.columnId && column.sortValue);

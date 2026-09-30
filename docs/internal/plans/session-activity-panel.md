@@ -1,12 +1,18 @@
 # Session Activity panel redesign
 
+> Status: implemented and verified; awaiting user review before plan retirement.
+> Continuation owner: session dashboard (monitor projection + `app/components/dashboard`).
+> Next decision: review the restored plan and behavior with the user; delete the plan and mockups only after explicit approval.
+> Permanent destinations: `docs/internal/architecture/metrics.md`, `docs/internal/architecture/observation-cache.md`, and `DESIGN.md`, which already hold the runtime contracts.
+> Lifetime: temporary. Keep this plan until the user explicitly approves deletion (review hold restored 2026-09-09); then delete it and `session-activity-panel/` in one change after applying the closure steps in the [style guide](../../STYLE_GUIDE.md#maintain-or-retire-the-artifact). The dated checkpoints below are history.
+
 > Layout follow-up (2026-09-09): the approved compact composition now keeps the
 > desktop request title inline, removes request-count/navigation clutter, uses
 > five simple ranking rows with exact values, and omits the ranking on phone.
 > Activity no longer shows the request-link explanation or request-only filter;
 > shared selection remains. Cache evidence now follows Activity. This supersedes
 > the filtering and placement references in earlier checkpoints below. Current
-> behavior is maintained in DESIGN.md and docs/OBSERVATION_CACHE.md. The restored
+> behavior is maintained in DESIGN.md and docs/internal/architecture/observation-cache.md. The restored
 > mockups remain available for the existing user review hold.
 >
 > Status: implemented and verified; awaiting user review before plan retirement.
@@ -25,8 +31,8 @@
 > Implementation checkpoint (2026-09-09): complete provider replay, disk-indexed
 > committed history API, durable numbering, request-window navigation, eight-row
 > Activity paging, adjacent-page prefetch, filtering, and live anchors are built.
-> Runtime contracts are updated in DESIGN.md, docs/METRICS.md, and
-> docs/OBSERVATION_CACHE.md. Full npm test passed (1,100 Node tests, 653 UI tests,
+> Runtime contracts are updated in DESIGN.md, docs/internal/architecture/metrics.md, and
+> docs/internal/architecture/observation-cache.md. Full npm test passed (1,100 Node tests, 653 UI tests,
 > one Node skip), and verify:fast passed before the final live corrections.
 > Live verification found complete Claude replay reused a warmed bounded cache;
 > the correction bypasses that cache, preserves private actor ownership until
@@ -109,7 +115,7 @@
 > Where the exports and this text disagree, this text wins; the exports use
 > literal hex values that map to the tokens named below.
 > Delete this plan in the change that ships it, after moving enduring rules into
-> `docs/METRICS.md`, `docs/OBSERVATION_CACHE.md`, and `DESIGN.md`.
+> `docs/internal/architecture/metrics.md`, `docs/internal/architecture/observation-cache.md`, and `DESIGN.md`.
 
 ## Reading the exports
 
@@ -220,7 +226,7 @@ message id. `byKind` uses only the bounded `WorkKind` enum.
    kind over resolved durations only.
 4. **Bound.** Raise the served window in `recentActivityEvents` from 30 to 200
    (10 pages of 20). The upstream retention stays as documented (Claude 256,
-   Codex 4,096 merged). Record the new bound in `docs/OBSERVATION_CACHE.md`.
+   Codex 4,096 merged). Record the new bound in `docs/internal/architecture/observation-cache.md`.
 5. **Checkpoints.** New fields are contract-valid normalized evidence and may be
    persisted; verify `tests/server/sessions/checkpoints/session-observation-checkpoints.test.mjs` round-trips
    them.
@@ -330,12 +336,12 @@ do not trigger this navigation. Keep the off-page link for manual paging away.
 
 ## Docs
 
-- `docs/METRICS.md`: Activity section gains duration (wall time, includes
+- `docs/internal/architecture/metrics.md`: Activity section gains duration (wall time, includes
   approval waits, `null` while running), by-kind counts and median durations
   (recorded tool calls only), and the request link (recorded link, never an
   estimate of cost). State explicitly that no token value is attributed per
   action.
-- `docs/OBSERVATION_CACHE.md`: served activity window 200, new persisted fields,
+- `docs/internal/architecture/observation-cache.md`: served activity window 200, new persisted fields,
   readiness unchanged (`activityEvidence`).
 - `AGENTS.md` privacy list: extend the plan-task/execution-task style bullet with
   activity duration and opaque request id as the only new exposed fields.

@@ -171,12 +171,12 @@ describe("workflow activity and agent tree view", () => {
     expect(occurrences[0].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:01:00.000Z");
     expect(occurrences[0]).toHaveTextContent("Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.");
     expect(occurrences[0]).toHaveTextContent("cache.tools_changed.remote_control_connected");
-    expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-tools-changed-remote-control-connected");
+    expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-tools-changed-remote-control-connected");
     expect(occurrences[1]).toHaveTextContent("message history changed");
     expect(occurrences[1].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:02:00.000Z");
     expect(occurrences[1]).toHaveTextContent("Tool use and its result were followed by a provider task notification and the directly resumed request.");
     expect(occurrences[1]).toHaveTextContent("cache.messages_changed.post_tool_notification_resume");
-    expect(within(occurrences[1]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-messages-changed-post-tool-notification-resume");
+    expect(within(occurrences[1]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-messages-changed-post-tool-notification-resume");
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Cache refill evidence" })).not.toBeInTheDocument();
@@ -221,7 +221,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("92% → 4% cache read");
     expect(popover).toHaveTextContent("InferencePossible cache refill.");
     expect(popover).toHaveTextContent("No positive cache-write evidence, so a refill and its cause cannot be confirmed.");
-    within(popover).getAllByRole("link", { name: "Open signal definition (opens in a new tab)" }).forEach((link) => expect(link).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-read-reuse-dropped"));
+    within(popover).getAllByRole("link", { name: "Open signal definition (opens in a new tab)" }).forEach((link) => expect(link).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-read-reuse-dropped"));
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Possible cache refill evidence" })).not.toBeInTheDocument();
   });
@@ -245,7 +245,7 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).toHaveTextContent("91% → 6% cache read");
     expect(popover).toHaveTextContent("A model change was recorded between these requests. A refill and its cause cannot be confirmed.");
     expect(popover).not.toHaveTextContent("Possible cache refill.");
-    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/SIGNAL_DICTIONARY.md#cache-read-reuse-dropped-model-change");
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-read-reuse-dropped-model-change");
   });
 
   it("keeps mixed cache-read-drop counts neutral in tree accessibility labels", () => {

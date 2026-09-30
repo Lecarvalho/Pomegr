@@ -9,7 +9,7 @@ Validate that the current workspace keeps live session evidence responsive while
 
 ## Establish the subject
 
-- Read `docs/AGENT-WORKFLOW.md` and the scheduling, paged-history, serving, and frontend-refresh sections of `docs/OBSERVATION_CACHE.md`.
+- Read `docs/internal/development/agent-workflow.md` and the scheduling, paged-history, serving, and frontend-refresh sections of `docs/internal/architecture/observation-cache.md`.
 - Inspect the current branch, commit, and working-tree status without changing them. Preserve unrelated working-tree changes; do not switch branches, reset, or edit during an audit.
 - Use a diff only when the user identifies a comparison or asks about regression. For uncommitted work, inspect the working-tree diff; for commits or a PR, inspect the stated range. Otherwise validate the current implementation without inventing a baseline.
 - When a comparison exists, separate behavior changed in that range from pre-existing safeguards. A passing baseline test is useful evidence but does not prove that the compared changes introduced the safeguard.

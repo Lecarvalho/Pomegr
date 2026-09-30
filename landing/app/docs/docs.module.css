@@ -1,0 +1,400 @@
+/*
+ * Page frame for the public documentation (WEB-02): skip link, sidebar navigation, outline,
+ * previous/next links and the 404 message. The reading column itself is `markdown.module.css`.
+ * The landing has no shared token file, so this module mirrors the printed-paper palette on its own
+ * root class like the other page modules. Every interactive target is at least 44px tall on a phone.
+ */
+@font-face {
+  font-family: "Rokkitt Pomegr";
+  src: url("/fonts/rokkitt-variable.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+.shell {
+  --docs-paper: #f0ece2;
+  --docs-ink: #171715;
+  --docs-muted: #4e4b47;
+  --docs-rule: rgba(23, 23, 21, .4);
+  --docs-hairline: rgba(23, 23, 21, .2);
+  --docs-wash: rgba(23, 23, 21, .06);
+  --docs-red: #a63c32;
+  --docs-display: "Rokkitt Pomegr", Rockwell, Georgia, serif;
+  --docs-mono: var(--font-geist-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--docs-paper);
+  background-image: linear-gradient(rgba(240, 236, 226, .7), rgba(240, 236, 226, .7)), url("/landing/paper-fiber-tile.png");
+  color: var(--docs-ink);
+  font: 400 16px/1.5 var(--font-inter), Arial, sans-serif;
+}
+
+.shell :where(a, button, summary):focus-visible {
+  outline: 3px solid var(--docs-red);
+  outline-offset: 3px;
+}
+
+/* Skip link: the first tab stop, visible only while focused. */
+.skipLink {
+  position: absolute;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  padding: 14px 18px;
+  background: var(--docs-ink);
+  color: var(--docs-paper);
+  font: 650 12px/1 var(--docs-mono);
+  text-decoration: none;
+  transform: translateY(-300%);
+}
+
+.skipLink:focus-visible {
+  transform: none;
+}
+
+.frame {
+  flex: 1 0 auto;
+  width: min(1280px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 40px 0 88px;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  column-gap: clamp(32px, 5vw, 56px);
+  align-items: start;
+}
+
+/* The main element is a programmatic focus target only (skip link, phone menu), never a control. */
+.main {
+  min-width: 0;
+}
+
+.main:focus {
+  outline: none;
+}
+
+/* Sidebar navigation. */
+.nav {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.navToggle {
+  display: none;
+}
+
+.navGroup + .navGroup {
+  margin-top: 28px;
+}
+
+.navGroupTitle,
+.outlineLabel,
+.eyebrow,
+.pagerLabel,
+.outlineCompact > summary {
+  margin: 0;
+  font: 700 11px/1.3 var(--docs-mono);
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.navGroupTitle,
+.outlineLabel,
+.pagerLabel {
+  color: var(--docs-muted);
+}
+
+.navGroupTitle {
+  margin-bottom: 8px;
+}
+
+.navList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 1px solid var(--docs-hairline);
+}
+
+.navLink {
+  display: block;
+  padding: 7px 12px 7px 14px;
+  margin-left: -1px;
+  border-left: 3px solid transparent;
+  color: var(--docs-ink);
+  font: 500 14px/1.35 var(--font-inter), Arial, sans-serif;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  background: var(--docs-wash);
+}
+
+.navLink[aria-current="page"] {
+  border-left-color: var(--docs-red);
+  font-weight: 700;
+}
+
+.navLink:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Page: reading column plus the outline rail. */
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 70ch) 208px;
+  column-gap: 48px;
+  align-items: start;
+}
+
+.column {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin-bottom: 18px;
+  color: var(--docs-red);
+}
+
+.outlineRail {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding-top: 6px;
+}
+
+.outlineLabel {
+  margin-bottom: 10px;
+}
+
+.outlineList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font: 500 13px/1.4 var(--font-inter), Arial, sans-serif;
+}
+
+.outlineList a {
+  display: block;
+  padding: 5px 0;
+  color: var(--docs-muted);
+  text-decoration: none;
+}
+
+.outlineList a:hover {
+  color: var(--docs-ink);
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+.outlineList .outlineList {
+  padding-left: 14px;
+}
+
+.outlineRail .outlineList a:focus-visible {
+  outline-offset: 0;
+}
+
+/* The compact outline replaces the rail below 1100px. */
+.outlineCompact {
+  display: none;
+  margin-bottom: 28px;
+  border: 1px solid var(--docs-hairline);
+}
+
+.outlineCompact > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  color: var(--docs-ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.outlineCompact > summary::-webkit-details-marker {
+  display: none;
+}
+
+.outlineCompact > summary::after {
+  content: "+";
+  content: "+" / "";
+  font-size: 16px;
+}
+
+.outlineCompact[open] > summary::after {
+  content: "\2212";
+  content: "\2212" / "";
+}
+
+.outlineCompact > .outlineList {
+  padding: 4px 14px 12px;
+  border-top: 1px solid var(--docs-hairline);
+}
+
+.outlineCompact .outlineList a {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+/* Previous and next. */
+.pager {
+  max-width: 70ch;
+  margin-top: 64px;
+  padding-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  border-top: 1px solid var(--docs-rule);
+}
+
+.pagerLink {
+  min-height: 44px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--docs-rule);
+  color: var(--docs-ink);
+  text-decoration: none;
+}
+
+.pagerLink:hover {
+  border-color: var(--docs-red);
+  background: var(--docs-wash);
+}
+
+.pagerLink[data-direction="next"] {
+  grid-column: 2;
+  text-align: right;
+}
+
+.pagerTitle {
+  font: 700 16px/1.3 var(--font-inter), Arial, sans-serif;
+  overflow-wrap: anywhere;
+}
+
+/* The 404 message renders inside the frame, beside the navigation. */
+.notFound {
+  max-width: 54ch;
+}
+
+.notFound h1 {
+  margin: 0 0 16px;
+  font: 700 clamp(32px, 5vw, 44px)/1.05 var(--docs-display);
+  letter-spacing: -.02em;
+  text-wrap: balance;
+}
+
+.notFound p:not(.eyebrow) {
+  margin: 0;
+  color: var(--docs-muted);
+}
+
+.notFound a {
+  color: var(--docs-red);
+  text-underline-offset: .2em;
+}
+
+@media (max-width: 1100px) {
+  .page {
+    display: block;
+  }
+
+  .outlineRail {
+    display: none;
+  }
+
+  .outlineCompact {
+    display: block;
+  }
+}
+
+@media (max-width: 760px) {
+  .frame {
+    width: calc(100% - 32px);
+    padding: 16px 0 56px;
+    display: block;
+  }
+
+  .nav {
+    position: static;
+    max-height: none;
+    margin-bottom: 28px;
+    overflow: visible;
+  }
+
+  .navToggle {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--docs-ink);
+    border-radius: 0;
+    background: transparent;
+    color: var(--docs-ink);
+    font: 700 11px/1 var(--docs-mono);
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .navChevron {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 160ms ease;
+  }
+
+  .navToggle[aria-expanded="true"] .navChevron {
+    transform: rotate(180deg);
+  }
+
+  .navPanel {
+    margin-top: 8px;
+    padding: 14px 14px 18px;
+    border: 1px solid var(--docs-rule);
+    background: rgba(240, 236, 226, .92);
+  }
+
+  .navPanel[data-open="false"] {
+    display: none;
+  }
+
+  .navLink {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .pager {
+    margin-top: 48px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pagerLink[data-direction="next"] {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .navChevron {
+    transition: none;
+  }
+}

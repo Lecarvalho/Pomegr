@@ -402,7 +402,7 @@ export type SessionActivityFallback = {
 /**
  * Primary agent's newest retained request with cache activity, live or
  * recorded. The browser derives the nearing/elapsed indication; null when
- * unavailable. See docs/CACHE_TIMING.md.
+ * unavailable. See docs/internal/architecture/cache-timing.md.
  */
 export type SessionCacheTiming = {
   lastCacheTouchAt: string;

@@ -7,7 +7,7 @@
 // Privacy: only these three bounded one-line values, all already served to the browser as
 // normalized agent fields, are persisted. Never prompts, descriptions, provider-native agent
 // kinds, paths, or raw provider records. See AGENTS.md ("File-change history") and
-// docs/OBSERVATION_CACHE.md.
+// docs/internal/architecture/observation-cache.md.
 
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
 

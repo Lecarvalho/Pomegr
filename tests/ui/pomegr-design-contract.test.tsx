@@ -27,6 +27,7 @@ const activityStyles = readFileSync(join(process.cwd(), "app", "styles", "activi
 const evidenceStyles = readFileSync(join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
 const signalsTabStyles = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SignalsTab.module.css"), "utf8");
 const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
+const designSystemStyles = readFileSync(join(process.cwd(), "app", "styles", "design-system.css"), "utf8");
 const repositoriesComponentsPath = join(process.cwd(), "app", "components", "repositories");
 const fileTreeSource = readFileSync(join(repositoriesComponentsPath, "FileTree.tsx"), "utf8");
 const fileTreeModelSource = readFileSync(join(repositoriesComponentsPath, "file-tree-model.ts"), "utf8");
@@ -346,5 +347,22 @@ describe("Pomegr visual contract", () => {
     expect(document.querySelector(".fileTreeStatusLetter")).toBeNull();
     // The footer's quiet popover trigger appears only when a Git-observed row is visible.
     expect(screen.getByText("How to read this")).toBeInTheDocument();
+  });
+
+  it("documents the promoted roster, inspector, command table, and settings rail samples with tokens only", () => {
+    expect(designContract).toMatch(/shipped `AgentActivityPanel` from static agents/);
+    expect(designContract).toMatch(/standalone inline `AgentInspector`/);
+    expect(designContract).toMatch(/`CommandTable` adds opt-in states: a sortable header/);
+    expect(designContract).toMatch(/`\.commandSettingsNav`, `role="tab"`, rendered with its pane at `\/design-system`/);
+    expect(designContract).toMatch(/the agent roster and inspector, the command table, the settings tab rail/);
+
+    // The static reference adds layout only: tokens for color, radius, and size, never literals.
+    expect(designSystemStyles).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    expect(designSystemStyles).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);
+    expect(designSystemStyles).toMatch(/\.designSystemInspectorFrame\s*\{[^}]*border-radius:\s*var\(--panel-radius\)/);
+    expect(styles).toMatch(/\.commandTableSort\s*\{[^}]*min-height:\s*40px/);
+    expect(styles).toMatch(/\.commandTable th\[aria-sort\]\s*\{\s*color:\s*var\(--command-ink\)/);
+    expect(styles).toMatch(/\.commandSettingsNav button:hover, \.commandSettingsNav button\.active\s*\{\s*background:\s*var\(--command-panel-2\)/);
+    expect(styles).toMatch(/\.rosterRow\.rosterSelected\s*\{[^}]*box-shadow:\s*inset 2px 0 0 var\(--command-brand-text\)/);
   });
 });

@@ -748,7 +748,7 @@ export function defineProvider(adapter) {
     throw new TypeError("Provider setRepositoryResolver must be a function");
   }
   if (adapter.repositoryAttributionForSession !== undefined && typeof adapter.repositoryAttributionForSession !== "function") throw new TypeError("Provider repositoryAttributionForSession must be a function");
-  // "launch": evidence checkpointed before the session-identity rule was bound to its launch cwd (docs/OBSERVATION_CACHE.md).
+  // "launch": evidence checkpointed before the session-identity rule was bound to its launch cwd (docs/internal/architecture/observation-cache.md).
   if (![undefined, "launch"].includes(adapter.legacyRepositoryAttribution)) throw new TypeError("Provider legacyRepositoryAttribution must be \"launch\" when declared");
   if (adapter.resolveReadiness !== undefined && typeof adapter.resolveReadiness !== "function") {
     throw new TypeError("Provider resolveReadiness must be a function");

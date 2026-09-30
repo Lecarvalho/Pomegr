@@ -87,7 +87,7 @@ workflow; do not turn routine release copy into a redesign.
 
 - During iteration, use `npx vitest run tests/ui/dashboard-home.test.tsx` if focused
   feedback is useful. Skip a redundant focused run when the full suite is next.
-- Follow the current checks in `docs/AGENT-WORKFLOW.md` and `AGENTS.md`.
+- Follow the current checks in `docs/internal/development/agent-workflow.md` and `AGENTS.md`.
   At creation, this workflow required `npm run verify:fast` and `npm test` for this
   UI change; `npm test` includes the production build. On managed Windows, run the
   build/full test wrapper with escalated permissions for generated plugin bundles.

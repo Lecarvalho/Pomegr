@@ -27,7 +27,7 @@ Prompt each sub-agent with a separate technical brief (file paths, coupling deta
 - Agent 3: "Optimise for the most common caller — make the default case trivial."
 - Agent 4 (if applicable): "Design around ports & adapters for cross-seam dependencies."
 
-Include both [LANGUAGE.md](LANGUAGE.md) vocabulary and Pomegr's domain vocabulary (the sources listed in [SKILL.md](SKILL.md#pomegr-sources)) in the brief so each sub-agent names things consistently with the architecture language and the project's domain language. Also give each brief the `AGENTS.md` invariants and forbidden dependency directions from `docs/AGENT-WORKFLOW.md` that the area must keep; a design that breaks one is out of bounds, not a trade-off.
+Include both [LANGUAGE.md](LANGUAGE.md) vocabulary and Pomegr's domain vocabulary (the sources listed in [SKILL.md](SKILL.md#pomegr-sources)) in the brief so each sub-agent names things consistently with the architecture language and the project's domain language. Also give each brief the `AGENTS.md` invariants and forbidden dependency directions from `docs/internal/development/agent-workflow.md` that the area must keep; a design that breaks one is out of bounds, not a trade-off.
 
 Each sub-agent outputs:
 

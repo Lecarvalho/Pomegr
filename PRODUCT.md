@@ -20,6 +20,8 @@ Success means making active work and attention needs legible while keeping the o
 
 Pomegr is a local, read-only observer that normalizes existing session records into a live dashboard and explainable signals.
 
+Pomegr is not an authoritative evaluator of developer or agent quality: its metrics and recommendations are deterministic signals tied to concrete execution evidence. The local observer is open source under `AGPL-3.0-only`; earlier MIT revisions remain MIT, and the Pomegr name and visual identity are governed separately by the [trademark policy](TRADEMARKS.md). The [license history](docs/internal/decisions/license-history.md) and [product positioning decision](docs/internal/decisions/product-positioning.md) record the rationale.
+
 ## Operating Context
 
 - Pomegr runs locally alongside a coding-agent harness and reads the provider's existing session records.
@@ -30,7 +32,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 
 ## Capabilities and Constraints
 
-- Claude Code is the current provider adapter. Codex support is planned and must produce the same provider-neutral normalized shapes.
+- Claude Code and Codex are the current provider adapters. Both must produce the same provider-neutral normalized shapes, and each exposes a different amount of session data; the [Limitations](docs/internal/architecture/limitations.md) reference lists the gaps.
 - Monitoring is read-only. Control actions require a future explicit confirmation boundary.
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
@@ -41,7 +43,7 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 - Historical views must not expose current plan limits or substitute the current Git working tree for recorded state.
 - Efficiency signals and recommendations are deterministic heuristics tied to concrete events, never AI judgments or authoritative measurements.
 - Provider failures must degrade independently.
-- The current local development environment requires Windows, Node.js 22.13 or newer, Git, and locally persisted Claude Code sessions.
+- The current local development environment requires Windows, Node.js 22.13 or newer, Git, and locally persisted Claude Code or Codex sessions.
 
 ## Brand Commitments
 
@@ -52,9 +54,10 @@ Pomegr is a local, read-only observer that normalizes existing session records i
 ## Evidence on Hand
 
 - The working dashboard, monitor, provider adapter, normalized contract, MCP signal server, deterministic report generator, and automated test suite are present in this repository.
-- Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, and `docs/METRICS.md`.
+- Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/internal/architecture/overview.md`, and `docs/internal/architecture/metrics.md`.
 - The current interface is implemented under `app/`.
 - No testimonials, customer logos, external benchmarks, pricing claims, or deployment claims are established in the repository and future work must not fabricate them.
+- Commercial editions, pricing, hosted coordination, and remote or organization features are unvalidated hypotheses in the [commercial strategy plan](docs/internal/plans/commercial-strategy.md) and its platform plans. None is shipped, and product copy must not present them as capabilities.
 
 ## Product Principles
 

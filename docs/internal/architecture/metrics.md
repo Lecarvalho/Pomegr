@@ -1,0 +1,819 @@
+# Metrics and deterministic rules
+
+Pomegr currently makes no model calls. Every value and recommendation comes from recorded data and fixed rules.
+
+Metric evidence retention and request-independent serving follow the canonical
+[observation cache contract](observation-cache.md). A provider acquisition bound is never
+a metric history bound.
+Current provider and Pomegr limitations affecting these rules are inventoried in
+[Limitations](limitations.md);
+this page owns the deterministic rules and their evidence gates.
+
+## Session closure
+
+Session **Closed** reports confirmed native runtime departure from Claude's private
+registry ownership observation. It does not imply successful completion or identify
+why the runtime ended. Registry removal alone is insufficient; sessions without
+closure evidence retain their normal Idle/Unknown fallback. This bounded catalog
+classification is separate from agent/task status and agent-reported progress.
+
+## Agent identity and assignment
+
+`Agent.label` is the stable display identity, such as a provider codename. `Agent.assignment` is an optional bounded work title from a recognized provider delegation record or explicitly named child thread. Pomegr shows the assignment first when available and keeps the label as secondary identity; it does not infer an assignment from conversation content, automatic catalog titles, session-index fallbacks, or activity.
+
+## Agent roles
+
+`Agent.role` is a bounded display enum: `orchestrator`, `explore`, `plan`, `builder`, `reviewer`, `tester`, `researcher`, `general-purpose`, `workflow-worker`, `fork`, `compaction`, or `unknown`. The monitor resolves it from primary-agent identity, a valid repository mapping, built-in exact types, ordered keyword matches, and finally verified workflow association. Keyword matches use this deterministic order: review/audit/critic/judge/lint; test/qa/spec/verify; explore/search/locate/investigate/discover/scan/map; plan/design/architect; research/docs/guide/study; then build/implement/edit/fix/migrate/refactor/apply/transform/synthesize/writer. Full provider-native kinds and mapping contents remain monitor-private; the browser and reports never reinterpret them.
+
+When the resolved role is `unknown`, the monitor may expose `Agent.customType`
+for display as `custom: <type>`. This value comes from the recorded type, never
+the assignment, prompt, or observed work. The entire source must be at most 64
+ASCII characters, with letter-led identifier segments containing only letters,
+digits, `_`, or `-`, optionally separated by `:` namespaces. The displayed value
+is the terminal segment, lowercased with underscores and repeated hyphens folded
+to `-` and trailing hyphens removed. Paths, prose, markup, controls, and oversized
+inputs are rejected rather than truncated. Empty values and the placeholders
+`unknown`, `unavailable`, `none`, and `null` remain unavailable. Known roles have
+no custom label. Role filters, aggregate statistics, glyphs, and generated reports
+continue to use the bounded role enum; a custom label is identity metadata, not a
+new role or an assessment of the agent's work.
+
+## Context usage
+
+Assistant usage is deduplicated by provider message ID. The latest context snapshot is:
+
+```text
+input_tokens
++ cache_creation_input_tokens
++ cache_read_input_tokens
++ output_tokens
+```
+
+All-zero usage does not produce a context snapshot.
+
+Claude usage is normalized by a dedicated strict parser. It accepts only non-negative safe-integer request counts, retains at most the latest 1,000 valid observations per agent for context-history coverage, and requires an explicitly valid cache-read field before an observation can classify cache behavior. Missing or malformed cache evidence breaks adjacent comparison without exposing the raw usage object or making the rest of the session unavailable.
+
+Recognized Claude synthetic assistant records (`model: "<synthetic>"` or a boolean
+`usage.synthetic: true`) are non-request records: they produce no usage snapshot
+and do not break cache comparison. Zero usage alone and lookalike markers do not
+qualify. Actual requests with unusable usage still break comparison, and intervening
+compactions and model changes still prevent refill attribution. Tool correlation
+and structural processing remain independent of this usage distinction.
+
+For Codex, Pomegr reads only each token-count event's `last_token_usage`; it never uses `total_token_usage`. Codex input includes both cache reads and cache writes, so the adapter maps uncached input as `input_tokens - cached_input_tokens - cache_write_input_tokens`, bounds the two cache categories to the recorded input, and never adds either category twice. Codex `output_tokens` already includes `reasoning_output_tokens`; reasoning is retained as bounded snapshot metadata but is not added to output a second time. The per-snapshot provider total and model context window are retained only as bounded latest-snapshot metadata. They are not accumulated, converted to spend, or used to derive a recent rate. Missing, invalid, and all-zero snapshots remain unavailable.
+
+Codex subscription-backed session records currently do not provide reliable cache-write counts. Pomegr therefore retains the normalized field internally for contract compatibility but does not present Cache write or derive cache-write classifications for Codex. Cache reads remain available. This limitation is tracked upstream at [openai/codex#35300](https://github.com/openai/codex/issues/35300).
+
+- **Agent context** — latest live snapshot, or final recorded snapshot in history, for that agent (labeled **Latest context** in the Agents tab, or **Final context** for a recorded session)
+- **All-agent context** — sum of every visible agent's latest live or final recorded snapshot (shown as **All-agent context** in the session summary, **Context** on a phone)
+
+Codex rollout parsing accepts the recognized snake_case and camelCase token-count shapes. Unknown future shapes are unavailable rather than interpreted as cumulative usage. Provider acquisition may use bounded chunks or tails, but committed normalized context, execution-task, and compaction evidence has an independent lifetime in the observation store. Pomegr retains at most the latest 1,000 normalized usage observations per agent across verified append-only movement. Truncation, replacement, or failed continuity keeps the last-known-good revision visible until a complete replacement is rebuilt and validated; a tail-only candidate cannot erase earlier compactions. Compatible privacy-filtered normalized evidence can be restored from the Pomegr checkpoint cache after restart. Pomegr never persists raw rollout records or substitutes `total_token_usage`.
+
+## API list-rate estimate
+
+Account usage may also come from Claude Code's local status-line usage windows. These
+are provider-reported account percentages, not inferred token spend or session usage.
+The adapter accepts the complete five-hour/seven-day pair, retains its observation time,
+and marks it stale after five minutes or when a window reset has passed. Identical repeated
+status-line emissions do not renew freshness. See [local usage setup](../development/configuration.md#claude-local-usage-feed)
+and the [observation contract](observation-cache.md#local-claude-usage-observations-and-desktop-recovery).
+
+Fable is not included in the local usage pair. A separately retained API value keeps its
+own observation time and is labelled **Last API value**; it is never sampled as fresh
+limit activity or combined into the local pair. Missing model usage is unavailable,
+never zero. Model windows continue updating through the existing coordinated API check;
+fresh local account usage does not wait for that request or fail when it does.
+
+Pomegr does not calculate cost from transcript tokens. When explicitly connected through the status-line bridge, it displays Claude Code's client-side `cost.total_cost_usd` session estimate. Cost capture persists only the normalized session ID, non-negative USD amount, estimate type, and local observation time under `%APPDATA%\pomegr\cost-snapshots` on Windows (`~/.pomegr/cost-snapshots` elsewhere). The separate usage feed captures only the allowlisted usage pair described above; all remaining status-line fields are discarded.
+
+The value is cumulative for the Claude Code session and is the only cumulative spend-like value Pomegr presents. It is labeled **API list-rate estimate** (for example, "Claude Code API list-rate estimate") because Claude Code calculates it at standard API list rates and it may differ from an actual bill. A historical session shows its last captured estimate; if no snapshot was captured, cost remains unavailable rather than being reconstructed from transcript throughput.
+
+The initial Codex adapter has no cost source. Cost is capability-gated and omitted rather than inferred from token snapshots or displayed as zero.
+
+All-agent context is the only aggregated context total Pomegr presents. The dashboard context totals and context composition use only the latest snapshots or sums derived from them. Focused Markdown reports may additionally include independent request-local observations around selected events. Cumulative transcript-throughput and token-spend session totals remain excluded.
+
+## Optional usage-guard recommendations
+
+When a repository explicitly enables `.pomegr/usage-guard.json`, hooks compare only
+already-committed account-usage percentages with the configured fixed thresholds. These
+are deterministic advisory heuristics: the guard may warn, suggest a handoff, or request
+a voluntary stop after a handoff following the repository's existing workflow. It never confirms account
+capacity, shares a quota across local sessions, controls a provider, blocks work, or
+automatically resumes it. Common five-hour and weekly account windows are the primary
+evidence. Model-specific pressure is separate cautionary evidence because a hook cannot
+reliably identify the active model or capacity on every event. It does not predict a
+context limit, cache lifetime, or future cache cost. Unknown, stale, rejected, or
+reset-time observations remain unknown and never create a recovery signal.
+
+## Request snapshots
+
+Each request may carry two bounded work-kind tallies. `issuedWork` counts tool calls
+contained in the same assistant record (`recorded_link`). `precedingWork` counts tool
+results recorded for the same agent since the previous usage-bearing assistant record
+(`transcript_adjacency`); a recognized compaction between assistant records clears the
+tally. Missing content arrays produce empty tallies. Each tally keeps at most 8 kinds,
+sorted by count descending then kind ascending, with counts capped at 999. Unknown tool
+result identities stay generic (`shell`). These describe what the model could see or
+asked for; they never attribute tokens to an operation, establish causation, or rank
+operation categories by accumulated tokens.
+Codex snapshots carry empty tallies until its transcript structure is validated separately.
+Focused reports omit these action fields.
+
+`metrics.tokens.requestSnapshots` is a separate bounded feed of valid provider usage observations. Every item represents exactly one request and exposes only an opaque monitor-generated ID, normalized agent ID, normalized observation timestamp, request-local uncached input, cache write, cache read, output, and `totalTokens` recomputed from those four parts. It does not use a provider-reported total. Provider capability gates determine which components are presented; Cache write is currently omitted for Codex.
+
+For live Claude Code and Codex sessions, the provider adapters retain no more than the latest 1,000 normalized observations per agent so context history remains continuous when older transcript records leave a bounded acquisition chunk. Identity, size, complete-record offsets, and bounded continuity evidence govern append compatibility. A replacement is staged separately and atomically swaps only after its complete normalized candidate validates. The independent request-snapshot feed remains capped to its newest 100 valid observations per visible agent. When a provider omits a request identity, Pomegr derives a bounded stable internal identity only from normalized timestamp, model, and token-count fields; neither that identity nor its source fields are exposed through the browser API.
+
+The monitor deduplicates observations privately, keeps at most the latest 100 valid requests per visible agent, and returns the merged items chronologically. Invalid timestamps or counts, all-zero observations, unknown agents, missing internal dedupe evidence, and cumulative-only provider records are rejected. Status is `ready` when at least one valid item remains and `unavailable` otherwise.
+
+Request snapshots are not context history or transcript throughput. Pomegr never buckets them, carries values forward, computes deltas, sums requests or agents, derives rates, or translates them into spend. Provider message/session/event IDs, models, comparison groups, dedupe keys, provider totals, raw usage, prompts, and billing fields remain monitor-private. Focused reports omit the routine feed and include only selected independent supporting requests, normalized through the same allowlist, from retained evidence before the dashboard's 100-request cap.
+
+The Activities Requests chart has no selected-request detail panel; every value it
+shows is request-local and does not carry values between requests. `contextHistory` stays in
+the API for report and Home projections. The current personal Home does not fetch this
+evidence; retaining the API does not introduce a Home request or change its cadence.
+
+The default Fresh tokens mode stacks uncached input, cache write (when available),
+and output, with no prompt-size outline. Its scale excludes cache reads so smaller
+components remain readable. Full breakdown also stacks cache read. Each mode's
+visible-window scale fits its stacked components, rounded upward to a readable step;
+moving the window recomputes that scale so off-window requests cannot compress the
+visible bars. A visible scale caption identifies the range and whether cache reads are
+excluded. The desktop minimap uses the same components as the selected mode,
+including output in Full breakdown, but retains one stable full-scope scale.
+Uncached input describes the recorded cache classification, not proof that the model
+had never seen that content. The Largest strip ranks independent requests within the
+selected agent scope, including those outside the visible window, with ordinal order
+breaking ties. It lists up to three requests with a non-zero value for the chosen
+metric (uncached input, cache write when recorded, total, or output) and prints each
+as a compact request-local count with its exact value in the hover. Ordinals are positions in the retained feed, not provider identifiers.
+Automatic and manual compaction ticks compare successive requests for the same agent;
+snapshot drops are not drawn. No request amounts are summed across observations.
+
+The Agents tab inspector derives **Last request** from the newest request snapshot for that agent and **Last cache touch** from the newest snapshot with positive cache-read or cache-write tokens. The dotted timing popover, its warning thresholds, unavailable behavior, and evidence limits are documented in [`cache-timing.md`](cache-timing.md). Neither timestamp uses `Agent.lastSeen`. The Sessions directory repeats the same nearing/elapsed evaluation for the primary agent only, from the catalog's bounded `cacheTiming` evidence, and renders nothing at rest; see [`cache-timing.md`](cache-timing.md#sessions-page-indication).
+
+## Context history
+
+Retained for normalized API and focused-report evidence; the current personal Home does not fetch context history. On the session page, the Activities Requests chart shows independent request bars instead of a carried-forward context timeline.
+
+Context history derives each interval from the same snapshots used by All-agent context. At every bucket boundary, Pomegr carries forward each agent's latest non-zero snapshot and exposes both the per-agent level and their all-agent sum. Repeated snapshots produce a flat level, while context reductions caused by compaction or agent resets remain visible. The final all-agent level equals the current or final All-agent context derived from those observations.
+
+Bucket sizes are selected from fixed, human-readable intervals to target roughly 28 points across the recorded session wall time. Cache reads and writes are not plotted as historical context categories; significant request-local cache behavior is exposed separately as bounded cache events.
+
+`contextHistory.boundaries` labels at most the newest 100 normalized context boundaries, returned in chronological order. A recognized provider compaction becomes `automatic_compaction` or `manual_compaction` with its normalized agent ID, transcript timestamp, and non-negative pre-compaction token count when supplied. When adjacent snapshots for one agent decrease without a recognized compaction between them, Pomegr emits `snapshot_drop` at the newer snapshot with the preceding context total. A recognized boundary suppresses the duplicate inferred drop. Boundary IDs are monitor-generated opaque hashes; provider event IDs, summaries, compacted content, and all other compaction metadata remain private.
+
+This is actual observed context level, not throughput, billing, token spend, or cumulative transcript usage. The normalized API names it `contextHistory`. Focused reports omit bucket series but include bounded automatic/manual compaction and snapshot-drop boundaries with explicit coverage.
+
+## Focused observation reports
+
+The default Markdown export is a **Pomegr Session Observation Report**. It contains
+coverage/counts, agents referenced by detailed evidence, qualifying cache-refill
+transitions, automatic/manual compactions and context drops, failures from retained
+per-agent task feeds, selected supporting request measurements, and definitions.
+Scores, recommendations, retrospective questions, repository/current account data,
+agent-authored free text, routine request ledgers, and causal inferences are omitted.
+
+`metrics.tokens.reportEvidence` is derived monitor-side from committed normalized
+evidence before the dashboard detail caps. It preserves aggregate event counts and
+selects at most the newest 100 refill transitions and 100 context boundaries, returned
+chronologically. Counts describe retained evidence (at most 4,096 usage observations per session), never complete original transcript
+history; omitted detail counts are explicit. The report's aggregate qualifying-transition
+count is computed before the UI's 999-per-agent occurrence cap, so it can differ from
+the sum of saturated UI counters. Large-write counts include initial cache
+creation and miss-refill events. Reuse counts include every emitted tracked first reuse,
+even when the corresponding dashboard event pair is later trimmed. Classification
+thresholds and comparability are unchanged.
+
+Each refill carries exact identity-linked preceding and affected request observations,
+plus the next valid normalized same-agent request when ordering is unambiguous.
+These are independent request-local measurements, not token deltas or throughput.
+Missing or invalid snapshots remain null. Reports preserve only recognized provider
+diagnostic/status enums and the bounded structural message-change sequence; expiry
+and tool-definition causal attributions remain outside the export.
+Snapshot-drop rows can reference an unambiguous request at their timestamp;
+compactions never invent an exact post-compaction size.
+
+The report includes at most the newest 100 failed tasks across the retained per-agent
+feeds and discloses omissions. Those feeds are bounded to 30 tasks per agent, so the
+full-session failure count is unknown. Unsupported or unresolved evidence is
+unavailable, not a zero count. Provider-unsupported cache-write columns are omitted.
+The live UI's latest-100 requests, latest-20 cache events, and latest-100 boundaries
+retain their existing semantics.
+
+## Personal Home and retained project history
+
+Home is a personal navigation surface, not a live metrics view. It groups browser-local pins and a last-viewed session shortcut, resolves their display labels from the shared revisioned session catalog owned by AppShell, and introduces existing session tools alongside explicitly unavailable Coming soon previews. Home has no activity lists, usage bars, context counters, resource cards, correlation skeletons, or Home-owned polling.
+
+The shared catalog still supplies normalized session status/progress, agent counts, latest all-agent context, summary readiness, and primary-agent activity to the Sessions directory and other monitoring surfaces. Completed rows retain their final recorded evidence. Provider/account usage remains on Usage limits. The retained cache-only /api/home endpoint and monitor-side project-history, resource, and limit-activity derivations are not consumed by the Home page; their runtime ownership and cadence remain governed by docs/internal/architecture/observation-cache.md.
+
+The shared live feed does not change request-local snapshot or actual-level context conventions: request snapshots remain independent observations, while context remains the latest non-zero level or the explicit sum of visible-agent levels.
+
+Each visible project's private history window is exactly seven days of completed sessions whose recorded session timestamps belong to that project. On a cold monitor start, the monitor produces live summaries first while recorded history is marked loading and parsed cooperatively in the background; partial aggregates are not presented as complete. Once ready, private history exposes completed count, median wall time, median final all-agent context, and at most six chronological `{ endedAt, total }` final-context points. These are recorded session levels, not sums, rates, throughput, spend, or quality judgments. Current Git state and current plan limits never enter project history.
+
+## Usage-limit colors
+
+Pomegr derives usage-limit severity from the normalized percentage with fixed inclusive boundaries: `normal` from 0% through 74%, `warning` from 75% through 84%, and `critical` from 85% through 100%. Provider severity labels and active-window state do not override these thresholds. Percentages are clamped to the displayed 0–100 range before classification, and every usage-limit surface classifies with the same rule. The color of each band is a presentation choice of the surface: the sidebar usage widget uses the established uncached-input blue for `normal`, amber for `warning`, and red for `critical`; the bars on the Usage limits page use green for `normal` and one amber for both `warning` and `critical`.
+
+## Cache events
+
+`metrics.tokens.cacheEvents` is a bounded feed derived from recognized per-request usage. Its detailed `items` report only `miss_refill`, `refill`, and `reuse` evidence for normalized agents. Prompt input is `input + cache read + cache write`; output is excluded. At most 20 newest event details enter browser state, and their IDs are monitor-generated opaque hashes that do not expose provider message or event identities. If that cap would exclude a reuse event's related refill, the reuse is omitted so normalized relations never dangle. A separate bounded `possibleFullRefills` summary counts qualifying transitions independently per normalized agent before the detail cap is applied. Each counted transition retains its normalized observation timestamp, optional recognized provider-diagnosed `model_changed`, `system_changed`, `tools_changed`, or `messages_changed` request divergence, the provider-neutral `previous_cache_entry_unavailable` status when present, and any supported cache-lifetime, fixed tool-definition, or fixed message-change sequence evidence tied to that same occurrence. Aggregate reason and attribution counts remain available for compact summaries. Missing, inconclusive, and unrecognized diagnostics remain unavailable; raw diagnostics and their token estimates never enter browser state.
+
+Claude request normalization resolves cache lifetime once from a complete provider-recorded cache-creation breakdown. A positive five-minute-only breakdown becomes `5m`, a positive one-hour-only breakdown becomes `1h`, both become `mixed`, and missing, malformed, zero, or total-mismatched evidence becomes `null`. Raw breakdown fields remain adapter-private. Each bounded request snapshot exposes only that resolved enum.
+
+Codex request normalization resolves `30m+` from a recorded GPT-5.6-family model (`gpt-5.6`, its `sol`, `terra`, `luna`, `pro`, and `cyber` variants), `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-6.1-sol`, and their date-suffixed snapshots. This is the documented model-policy minimum, not a TTL field or expiry timestamp recorded by Codex. OpenAI's [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching#cache-lifetime) defines 30 minutes after the latest write or reuse as the minimum; the cache may persist longer. The [GPT-6 model guidance](https://developers.openai.com/api/docs/guides/latest-model) names the supported GPT-6 models and specifies `prompt_cache_options.ttl = "30m"` for this family; the [GPT-6.1 Sol model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol) confirms its model ID (verified September 30, 2026). Older, missing, malformed, custom, and unrecognized future model names remain `null`. Model changes affect subsequent requests only; historical sessions use their recorded request models, never current settings.
+
+`codex-auto-review` remains `null`: official documentation does not establish its cache lifetime or underlying model family as of September 6, 2026. The [official Codex model catalog](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json) identifies it separately as Codex Auto Review; this does not authorize treating it as GPT-5.6 Terra or inheriting the main agent's policy. A future mapping requires authoritative policy or recognized provider evidence.
+
+`Agent.cacheLifetime` aggregates every retained resolved request for that agent, not just the latest value or the dashboard's newest 100 requests. A single resolved lifetime remains that value; different resolved lifetimes (or any `mixed` request) yield `mixed`; no resolved lifetime yields `null`. Unknown requests do not erase earlier resolved observations. Primary agents, subagents, and forks aggregate independently, without inheriting another agent's lifetime or sharing a cache clock. List and Tree render `30m+` as **cache TTL ≥30m** using the existing metadata label, without inline explanatory text. This minimum does not enable cache-write classification or expiry inference.
+
+A possible-full-refill occurrence receives a cache-expiry inference when it has no recognized direct divergence reason, its preceding comparable request has a resolved lifetime whose full threshold has elapsed, and either the provider reports the normalized `previous_cache_entry_unavailable` status or the affected request contains no cache-miss diagnostic. Explicitly unavailable, malformed, and unrecognized diagnostics remain inconclusive and fail closed rather than being treated as absent. The threshold is five minutes for `5m`, one hour for `1h`, and one hour for `mixed` because the longest-lived portion must expire before a full-prefix expiration is supported. Model changes, comparison-group changes, intervening compactions, missing lifetime, a minimum-only `30m+` lifetime, and shorter gaps also fail closed. The dashboard labels this derived explanation **Inference** and continues to show provider evidence separately, including **reason unavailable** when the diagnostic was absent.
+
+For Claude Remote Control, Pomegr can attach one explicitly labeled tool-change inference to a provider-diagnosed `tools_changed` refill. The rule requires a complete bounded transcript history containing a bridge-free assistant-request baseline, the first structurally valid bridge-session record, a nearby provider-owned active Remote Control status, bridge-session recurrence after that status, and `tools_changed` on the next distinct request. Skill-listing text, deferred-tool listings, pre-existing bridge presence, incomplete history, and later unrelated requests do not qualify. The normalized inference reports only the fixed cause `remote_control_connected` and the fixed likely delta: `RemoteTrigger` added, `PushNotification` added, and the `ListAgents` definition changed. It does not claim that the transcript contains a literal roster diff. Raw status text, bridge identifiers, owner metadata, tool schemas, and every unrecognized integration remain monitor-private.
+
+- **Refill** — the provider records at least 8,000 cache-write tokens on one request.
+- **Reuse** — after a tracked refill or miss-refill for the same agent, model, and comparison group, the first comparable request with at least 8,000 prompt-input tokens and at least an 80% cache-read share. Later high-read requests do not flood the feed.
+- **Miss-refill** — adjacent comparable requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, the current request has at most a 10% share after at least 30 minutes, and the provider simultaneously records at least 8,000 cache-write tokens. A low-read transition without a recorded large write is never classified as a write-backed refill; separate read-drop evidence is described below.
+
+Automatic or manual compaction, a model or comparison-group change, invalid timestamps, or missing/malformed intermediate usage makes observations incomparable. A normal resume does not. A fork starts without prior comparable evidence, then follows the same per-agent rules as every other agent. The feed status is `unavailable` when no cache-classifiable observation exists and `ready` when an observed bounded window contains valid evidence, including when no event meets the thresholds.
+
+Cache events expose only their fixed kind, normalized agent ID, observation time, prompt-input count, cache-read percentage, cache-write count, optional preceding percentage and elapsed gap, an opaque relation from reuse to its tracked refill, bounded provider status, and bounded cache-lifetime inference. They never expose prompts, cached prefixes, cache keys, raw cache-control configuration or lifetime token breakdowns, routing, service tier, provider-private fields, raw usage, cumulative usage, price, charges, or claimed savings. An event is deterministic evidence, not proof of eviction, quality, or billing impact; expiration remains an explicitly labeled inference.
+
+The `possibleFullRefills` summary uses the same comparable-adjacent-request checks as `miss_refill`: both requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, and the current request has at most a 10% share while recording at least 8,000 cache-write tokens. Unlike `miss_refill`, this summary does not require a 30-minute gap, so it also retains short-gap evidence of a possible full rewrite. Initial cache creation, compaction boundaries, and model or comparison-group changes do not qualify. Counts and their chronological occurrence details are capped at 999 per agent and are computed before the 20-event detail cap. Every agent, including a subagent or fork, is evaluated against only its own preceding observations.
+
+For Claude Code only, an occurrence diagnosed as `messages_changed` may additionally expose the fixed `post_tool_task_notification_resume` sequence. Complete transcript history must contain a structured assistant tool use, a matching structured user tool result, a provider-owned task-notification metadata record, and the directly resumed distinct assistant request; when both UUIDs are present the request must be parented to the notification. Unrelated user input, an unmatched result, an intervening request, malformed evidence, or incomplete history fails closed. The sequence is observed structure, not proof that the notification caused the change or that a specific outgoing request body was rewritten. Stable public wording and evidence limits live in the [signal dictionary](signal-dictionary.md).
+
+The Agents tab renders each agent's resolved cache lifetime or documented minimum alongside its runtime metadata in List view and as evidence in Tree view. It renders an amber stack-refill symbol from the per-agent refill summary. Tree clusters sum only the bounded counts belonging to agents represented by the cluster. The wording remains cautious because the transition alone does not prove expiration, eviction, a full-prefix rewrite, or billing impact.
+
+### Cache-read drops
+
+The Requests chart on the Activities tab overlays cache evidence on the matching request as an amber dotted
+line and stack-refill icon, distinct from dashed compaction boundaries. Only the
+monitor's `possibleFullRefills` occurrences produce **Possible full refill** lines;
+they preserve qualifying transitions beyond the detailed event cap. Detailed
+`refill`/`miss_refill` events may enrich a matched transition but never create a line
+on their own. Ordinary cache growth and initial cache creation remain visible in
+cache-write bars, request token details, and the separate event disclosure. Independent
+same-model read-drop occurrences use an open arrowhead and **Possible refill**; the agent's
+cache evidence popover marks them an **Inference** and states the limitation that there is no
+positive cache-write evidence, so a refill and its cause cannot be confirmed. A read-drop
+occurrence across a recorded model change uses the same open arrowhead and the label
+**Cache reuse dropped across a model change**; it carries no refill, expiry, or causation
+inference. Neither bar height nor an uncached-input spike creates a marker. Reuse events
+have no refill marker.
+Association requires a unique retained request with the same normalized agent and
+observation timestamp; unmatched or ambiguous evidence is omitted. Recorded-write
+evidence takes precedence if both feeds match the same request. The agent filter scopes
+markers and minimap ticks together. Labels appear on selection, focus, or hover; request
+details retain the evidence on phones and distinguish provider diagnostics from
+inferences. These are presentation associations only; classification, feed limits,
+report totals, and API contracts remain unchanged.
+
+`metrics.tokens.cacheReadDrops` is an independent, bounded read-drop feed. It does not
+enable `cacheWriteUsage` or `cacheUsageClassification`, add write-backed cache events,
+contribute to report refill totals, or create an efficiency recommendation. Codex
+normalization explicitly marks eligible observations; other adapters and legacy
+checkpoints without that metadata remain unavailable.
+
+The same-model starting rule requires two adjacent, distinct requests from the same
+normalized agent, recorded model, and comparison group. Both have at least 8,000
+prompt-input tokens; the preceding cache-read share is at least 80% and the current
+share at most 20%. The current cached-token count must also be at most 20% of its
+predecessor, so new uncached input alone cannot trigger a drop. The current request
+must have no positive recorded cache write. These thresholds describe a pattern, not
+a validated measurement of a refill or cache failure. The 20% current-share ceiling
+retains severe drops with partial reuse above 10%; the separate requirement for at
+least an 80% fall in actual cached tokens still applies.
+
+When the two recorded models differ, the same normalized agent and comparison group,
+adjacency, and numeric-provenance gates still apply, as do the prompt, read-share, cached-token-drop,
+and zero-write thresholds above. Such an occurrence is retained with the optional
+`model_change` kind and the fixed label **Cache reuse dropped across a model change**.
+It describes the observed loss of reuse across a model change; it does not infer a
+refill, expiry, or cause. Recorded model identifiers remain monitor-private. An
+omitted kind is the existing same-model possible-refill inference.
+
+The adapter must retain explicit numeric input/read/write provenance and the normalized
+timestamp of the immediately preceding eligible observation. Missing counts
+are not known zero. Coerced, conflicting, clamped, invalid, or incomplete counts,
+fallback-only timestamps, missing intermediate observations, comparison-group changes,
+and compaction or context-reduction boundaries break comparisons. A model change
+breaks the same-model path but may select the `model_change` path when all other gates
+pass. Detection checks
+all retained boundaries, not only the UI's newest 100. A smaller overlapping source
+read may recover already-proven context at an identical immutable request and
+carry it into following records. Without that exact overlap or recorded model
+context, new requests remain ineligible; no latest-session model is guessed.
+
+Only a high-to-low transition is counted; repeated low-read requests and duplicate
+observations do not add occurrences. Each agent and fork establishes its own
+baseline. Up to 999 chronological occurrences and their count are retained per
+visible agent, within the existing normalized evidence bounds. The optional kind is
+the bounded public enum `model_change`; its absence denotes the same-model path.
+`ready` means at
+least one eligible observation exists, including when no transition qualifies;
+`unavailable` means no eligible evidence. Counts describe retained evidence only.
+
+List and Tree reuse the amber icon, scoped count, and occurrence popover. Same-model
+read-drop occurrences are explicitly labeled as an **Inference**, with the limitation:
+**No positive cache-write evidence, so a refill and its cause cannot be confirmed.**
+Model-change occurrences use the fixed label **Cache reuse dropped across a model
+change** and carry no refill, expiry, or causation inference. The bottom **Open signal
+definition** link documents the complete rules and caveats in the [same-model signal
+definition](signal-dictionary.md#cache-read-reuse-dropped) and [model-change signal
+definition](signal-dictionary.md#cache-read-reuse-dropped-model-change).
+Elapsed time is supporting evidence, never proof of expiration; `30m+` never
+enables an expiry inference. No cost, charge, or savings claim is made.
+
+The public feed contains only readiness, normalized agent IDs, bounded counts,
+opaque occurrence IDs, original observation timestamps, preceding/current read
+percentages, elapsed gaps, and the optional bounded `model_change` kind. Eligibility,
+predecessor metadata, model names,
+comparison groups, dedupe keys, raw usage, prompts, and source paths stay private.
+
+## Live resource use
+
+For a live session on Windows, Pomegr can measure the verified owner process and its descendants. Provider adapters supply the monitor with a PID and process-start identity only when current ownership evidence is available. The monitor rejects reused identities, owners shared by more than one session, and process trees that overlap another session's tree rather than attributing the same work twice. Ownership identifiers, process names, commands, paths, and environment data remain monitor-side and never enter the browser API.
+
+The collector reads one operating-system process snapshot for all currently attributable sessions. Collection is background-driven and rate-limited by a fixed monitor-private cadence. Each session keeps a rolling in-memory window of timestamped samples; samples and observed peaks are discarded when the session leaves the live catalog or its verified owner changes, and they are never persisted.
+
+The normalized `metrics.resources` value exposes:
+
+- **CPU** — recent process-tree CPU-time change normalized as a percentage of the machine's total logical-processor capacity; the normalized API also retains the equivalent occupied-core value, but the dashboard presents the whole-machine percentage
+- **Memory** — current summed working set and the highest working set observed by Pomegr during the current ownership window
+- **Disk I/O** — recent process-tree read and write transfer rates in bytes per second
+
+The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`; the bounded resource-history persistence described below is a separate committed record, and resource data of both kinds remains excluded from generated reports, Flow score, efficiency signals, and recommendations.
+
+### Resource history
+
+Pomegr persists a bounded history derived from the same in-memory sampler, on its own
+checkpoint cadence, never during a GET. Per session and per field (CPU cores, CPU machine
+percent, memory bytes, read bytes per second, write bytes per second), it keeps one row
+per minute with the minimum, average, and maximum of that minute's non-null samples, plus
+the exact sample timestamp of the maximum; a minute with no non-null value in any field is
+not written. Each field's per-minute maximum is a candidate peak, and Pomegr retains the
+top ten peaks per session per field by value, with the earlier peak kept on ties. Around each
+retained peak it also keeps the raw in-memory samples from two minutes before to two
+minutes after the peak's observation, so a peak can be zoomed to full resolution. Falling
+out of the top ten removes a peak's raw sample window along with it.
+
+Retention follows the storage settings: past the configured retention age (30, 90, 180,
+365 days, or keep all; default 90), Pomegr drops a session's per-minute rows and peak
+sample windows, but keeps its retained peaks for as long as the session remains in the
+catalog. Independently, a soft size-cleanup threshold prunes the oldest sessions' per-minute
+rows and sample windows first when the store grows past it; peaks and file changes are
+never deleted to enforce that threshold. Neither rule ever runs synchronously in a GET.
+
+**Peak-to-task and peak-to-request association.** Each retained peak carries a deterministic
+match against that session's normalized execution tasks, recomputed as later evidence
+arrives: a task's interval is `[startedAtMs, finishedAtMs]`, or `[startedAtMs,
+latestObservationMs]` while the task is still unfinished (an unfinished task with no later
+observation, or one no later than its start, does not match anything). A task matches the
+peak when its interval and the peak's measurement window share any instant, including a
+touching endpoint. The peak's matched task IDs are every matching task's ID, deduplicated
+and sorted, capped at 20. The peak links a request number only when at least one task
+matches and every matching task, including any beyond that cap, resolves to the same request; any
+disagreement, or no matching task carrying a request at all, leaves the request link empty.
+Usage-observation timestamps are never part of this matching and cannot by themselves give
+a request an execution interval. The monitor does not yet resolve request numbers when it
+records peaks, so every persisted peak currently carries an empty request link. Where a
+link exists, the UI labels it "Request observed near this peak".
+
+This association is temporal coincidence between a session's process-tree aggregate measurement and
+the tasks or request that happened to be running at the same time, never a measurement of
+which task or request caused the resource use, and never per-task or per-request resource
+attribution. A request link appears only when it is unambiguous under the rule above; an
+absent link means the evidence did not resolve one, not that no work was happening.
+Persisted rows carry only the normalized session ID, the field enum, timestamps, numeric
+values, matched task IDs, and an optional matched request number — never PIDs, process
+identities, paths, command text, labels, or other raw evidence. Resource history, like live
+resource use, stays out of generated reports, Flow score, efficiency signals, and
+recommendations.
+
+## Context machinery snapshot
+
+Claude Code records the rendered result of a user-invoked `/context` command in the session JSONL. When one or more valid results exist, Pomegr shows the latest immutable in-session snapshot. When none exists, the session view never asks the user to run a command: it shows only an eligible saved repository/provider inventory reference that was available when the session started, or renders no machinery panel.
+
+The parser is output-driven rather than repository-driven. It accepts both Markdown category tables and the ANSI terminal summary emitted by current Claude Code; expanded Markdown tables with a token column become machinery groups. Category names, group names, and items come from the captured output, so arbitrary repositories, MCP servers, agents, memory files, skills, and future provider-reported groups do not require a hard-coded catalog. Table column order may vary. The provider's `Messages` and `Free space` summary rows are excluded because they are not machinery and overlap Pomegr's live context presentation.
+
+Pomegr retains the sum of the remaining provider-estimated category values as the **categorized total**, then normalizes that total into three non-overlapping allocations: **loaded initially**, **deferred until needed**, and **reserved capacity**. A category named `Autocompact buffer` is reserved capacity; a provider category explicitly marked `deferred` is deferred; all other retained categories are initial. Classification happens monitor-side so browser code never interprets provider labels. The primary UI number is the initially loaded estimate, while the categorized total remains visible for reconciliation.
+
+Pomegr sums category rows rather than detailed group items because groups are partial expansions of the category summary and would otherwise be counted twice. Listed items are therefore labeled as partial detail, not as values expected to add up to the categorized total. The allocation is present only when the session has a valid recorded `/context` snapshot or a compatible saved repository inventory; an older compact reference without retained category detail falls back to the legacy categorized total and asks for a new capture before claiming an initial/deferred/reserved split.
+
+Only bounded, validated labels, the fixed allocation enum, and the provider's formatted token estimates enter normalized state. Memory paths are reduced to their basename. The raw local-command output, repository paths, prompts, and responses never enter the browser API. These values are provider estimates from the captured `/context` rendering, not Pomegr measurements, billing totals, or cumulative token spend. Historical views use only the recorded snapshot and never substitute current machinery.
+
+Codex does not currently provide a recognized context-machinery snapshot or native repository inventory operation. Pomegr reports that provider capability as unavailable and never combines or approximates Claude Code evidence for Codex.
+
+## Execution tasks
+
+Each agent's execution-task popover is derived from Bash lifecycle records in that agent's selected-session transcript, not the provider's agent-maintained planning checklist. A Bash tool call creates an execution task from its short description. A returned background-task ID keeps it running until a trusted task notification records completion, failure, cancellation, or interruption. Foreground shell calls finish when their matching tool result arrives. In historical sessions, unmatched executions are marked stopped at the recorded session end.
+
+Current Codex desktop rollouts may wrap shell calls inside a recorded `exec` cell rather than emitting the older command lifecycle shape. Pomegr recognizes literal `tools.shell_command(...)` call evidence in that cell and pairs it with the cell's completion and exit-code markers. When that record has no provider description, a deterministic allowlist maps the command shape to a fixed category such as **Run tests**, **Inspect Git changes**, or **Read files**. Arguments, paths, arbitrary script names, and command text never enter the label. Other nested tools are not promoted to shell tasks, and the cell source is never returned to the browser. This compatibility path remains bounded to the same 30 most recent safe task rows.
+
+The normalized API exposes only tool/background IDs, the short Bash description, shell kind, lifecycle status, timestamps, background flag, exit code, and an optional bounded failure category. For failed tasks, the monitor deterministically reduces recognized result evidence to one of a fixed set of categories such as permission restriction, timeout, missing command or path, invalid path, syntax error, failed tests, or network failure. Unrecognized failures fall back to a non-zero-exit or provider-error category. The dashboard exposes that category as an accessible tooltip on the failure marker. Commands, stdout, stderr, matched source text, tool-result content, and notification output are excluded. Tasks are nested under their owning normalized agent, and the top-level `executionTasks` field retains the primary agent's list for compatibility. The dashboard groups running executions above the most recent finished executions, retaining at most 30 rows per agent, and calculates elapsed time from their lifecycle timestamps. Generated reports intentionally omit execution tasks.
+
+For a live Codex agent, the same popover may also show one **Current activity** row above the execution sections. Pomegr accepts only explicitly recognized provider UI activity-summary records, normalizes them to a bounded one-line label plus transcript-derived timestamp, deduplicates duplicate event and response-item representations, and retains only the latest valid observation for the owning agent. The observation is exposed only while its owning turn remains open and is cleared on recognized turn completion, failure, stop, or other terminal agent state. Historical sessions omit it.
+
+The normalized optional `agent.currentActivity` field is provider-reported transient metadata. It is not chain-of-thought, an execution task, a plan item, a task signal, an efficiency signal, or a completion claim. For Codex, only recognized provider reasoning-summary headings qualify. For Claude Code, only the bounded one-line description of a currently pending native Bash call qualifies; its command and every other argument remain private. Unknown reasoning shapes, encrypted reasoning, prompts, responses, commands, unrelated tool descriptions, tool results, control characters, and unsupported future fields are ignored. Current activity does not alter execution labels, running/finished counts, durations, tool-call totals, metrics, recommendation rules, or generated reports.
+
+The Sessions **Last activity** column prefers the qualified provider heading and otherwise shows a deterministic work summary from normalized execution tasks or tool observations. A recorded running task with eligible catalog and owning-agent lifecycle can show **Running tests**, **Building**, or another fixed work-category label; multiple running tasks show a bounded count. Other evidence shows the work label with a static activity icon; its accessible name identifies it as previous activity, and its original observation age is available in the popover. A recent tool call alone never establishes ongoing execution. Actor scope distinguishes primary, delegated, multiple, or unknown agents without exposing names or IDs. Primary-agent attribution appears only in the popover; delegated and multiple-agent scope remains inline. Missing evidence remains an em dash. This is observation metadata, not a model-generated narrative, progress estimate, completion claim, or new efficiency metric. The separate `activityFallback` catalog field does not change provider-authored `currentActivity` or generated reports. Lifecycle qualification, restart handling, privacy, and presentation are defined in `docs/internal/architecture/observation-cache.md`.
+
+Codex may record a dedicated guardian subagent for automatic approval review. Pomegr recognizes only that exact provider subtype, labels it **Approval reviewer**, and maps it to the normalized reviewer role. A completed guardian turn enters `agent.reviewDecisions` only when its final message is valid JSON with the exact recognized outcome `allow` or `deny`; these become the fixed browser values `allowed` and `denied` with the provider completion timestamp. Pomegr also accepts only the fixed provider-reported risk values `low`, `medium`, or `high` (otherwise `unknown`) and a non-negative provider-reported review duration capped at one hour. These fields are evidence reported by the Codex reviewer, not Pomegr judgments. The monitor separately classifies the final structured approval request into one bounded action enum: build or test, browser interaction, dependency change, file change, filesystem action, local process, network access, version-control action, shell command, or privileged action. This is a deterministic Pomegr category derived from the reviewed tool and bounded command evidence; malformed, unsupported, or ambiguous requests fall back to privileged action. The feed reports allowed and denied totals, retains at most the newest 100 decisions in chronological order, and marks truncation explicitly. Provider turn IDs, reviewed prompts and commands, working directories, paths, justifications, authorization fields, rationale, messages, reasoning, and every unrecognized outcome remain monitor-private. Review decisions appear as their own section in the agent-activity popover and never increment shell-task or tool-call counts.
+
+## Skill usage
+
+Skill usage requires concrete transcript evidence. Pomegr counts explicit provider skill-invocation records. For current Codex desktop `exec` cells, it also counts a read of the exact `SKILL.md` source path declared in that session's host-skill catalog. Merely listing, mentioning, or making a skill available does not count as use.
+
+Only the validated canonical skill name, invocation count, and latest observed timestamp enter normalized state. Skill source paths, catalog descriptions, exec-cell source, prompts, arguments, and tool output remain monitor-side and are never returned to the browser.
+
+## Plan checklist
+
+Pomegr also reads the selected provider's structured task records or structured plan updates and exposes them separately as `planTasks`. The Plan items badge and checkbox popover are intentionally distinct from Execution tasks: this checklist is an agent-maintained planning snapshot, not observed runtime state. The popover always warns that the snapshot changes only when the agent updates it and may be stale. Free-form plan prose is never parsed into checklist items.
+
+Only normalized task ID, subject, status, and dependency IDs enter the browser API. Long-form descriptions and active-form text are excluded. Claude task records with unknown statuses fall back to `pending`; malformed task files and unsafe identifiers are ignored. Malformed Codex plan updates are ignored, and Codex dependencies remain empty because the provider does not supply them. Generated reports omit the plan checklist.
+
+## Agent state
+
+- `active` — updated within 45 seconds
+- `waiting` — has an active descendant and is waiting for that work to return
+- `needs_input` — issued a user-input request that has not received its matching result
+- `stopped` — a parent agent received a successful `TaskStop` result for that subagent, or a matched native background-agent notification records failure or cancellation
+- `finished` — a subagent transcript ends with `end_turn` or `stop_sequence`, or an exact trusted completion notification matches its successful native background-agent launch
+- `warm` — updated within 5 minutes
+- `idle` — older than 5 minutes
+
+Finished subagents are detected from their final assistant record or a trusted parent completion notification matched to the successful structured native agent launch. The latter also covers final records with a null stop reason. Claude may record a nested child's notification in the root transcript rather than the launching parent's transcript. Agent detail joins complete observations across related files of the same session using the exact agent ID and launch tool-use ID; cross-file notifications without that tool-use ID do not qualify. Launch call/result pairing stays within the originating file. Ambiguous launches across parents, mismatched identities, and pre-launch notifications do not establish completion. This does not infer child completion from its parent's state or from stop-hook success, and does not change catalog background-work aggregation. Matched failure or cancellation notifications map to stopped. Completion timestamps freeze wall time and last-seen time; duplicate notification delivery does not advance them. Later conversational records or a successful new launch clear the old completion. After an agent ID is reused, notifications must also identify the matching launch; an ID-only delayed notification is ambiguous. Parent lifecycle is replayed beyond the recent transcript tail, independently of catalog process ownership. Finished agents turn gray on the next poll. If a finished subagent is resumed and receives a new record, it returns to an activity-based state. Waiting status propagates through the recorded parent-child hierarchy without overriding finished or stopped agents. Primary agents use recognized registry lifecycle when available. Claude Remote Control primary agents use the native status mapping below and never substitute modification time for a missing native status. Other older transcript formats without a terminal marker retain modification-time state as a fallback.
+
+Needs-input state is detected by matching a provider user-input tool request to its result ID. It appears only while that result is absent and clears on the next poll after the user answers. The question, choices, and answer are never returned to the browser. A needs-input agent is not counted as running, and its explicit state is preserved even if it also has an active descendant.
+
+Externally stopped subagents are detected from the parent transcript by matching a `TaskStop` request to its successful tool result. A later assistant record in that subagent transcript clears the stopped state, allowing resumed work to return to activity-based status. The stop event timestamp is shown as the agent's last-seen time.
+
+The dashboard's running-agent count includes both `active` agents and parents marked `waiting` on active descendants.
+
+Workflow workers are ordinary normalized agents for metrics. They contribute exactly once to agent counts, tool-call counts, and all-agent context. A workflow's displayed context is the sum of its linked agents' latest non-zero context snapshots; Pomegr never uses workflow-manifest token totals, tool totals, transcript throughput, or inferred spend. Workflow phase groupings are presentation metadata and do not add another metric contribution.
+
+Each agent's wall time is measured from its earliest to latest recorded transcript timestamp. Once Claude Code's primary agent has a recorded work start, it uses the [session work-start rule](#session-duration) instead of earlier setup records. Active agents, parents waiting on active descendants, and non-terminal agents with an exact still-running foreground execution task continue counting from their recorded start time. The pending-task rule prevents transcript silence during a long foreground command from freezing the live counter; detached background work does not keep the launching agent's counter advancing. Finished and stopped agents retain their recorded duration. This is elapsed wall time and may include idle gaps.
+
+## Session state
+
+A Claude session can appear before its first prompt: a native registration with a
+validated process owner and recorded start time supplies the catalog identity even
+without a transcript. Native idle is Open; other recognized states retain their usual
+meaning. The five-minute Open visibility window starts at that native opening time,
+not monitor observation time. Context, agent counts, and activity remain unavailable
+until recorded evidence exists; the detail view says “No recorded activity yet.” The
+first transcript replaces that placeholder under the same session ID. No plugin is
+required, and closing before any prompt removes the registry-only row.
+
+When Claude's local session registry is available, its entries are the primary liveness signal. For current registry records, Pomegr validates the bounded owner PID and process-start identity before accepting the entry; this prevents an orphaned JSON file or a reused PID from keeping an exited session live. The owner fields remain monitor-side and are never returned to the browser. A process-backed registered session remains live even while idle, and its session label becomes **Open** when the native worker is idle and no recorded background work remains. Individual agents retain their idle execution state. Registry formats without owner identity retain the compatibility behavior. An unregistered transcript with uncertain ownership receives a 15-second startup grace window, then moves to history. A definitively exited native owner overrides recency immediately on observation, including final exit-time writes. After a validated owner's registration disappears, bounded 250-ms process-existence rechecks cover shutdown ordering without waiting for the ten-second reconciliation poll. Missing registrations, inaccessible process information, and existing but possibly reused PIDs alone do not prove exit. Ownership retention is bounded, private, and memory-only; restart without ownership evidence retains startup grace. Catalog commits notify the browser through revision-only events, with recovery polling if notification is lost. Process ownership establishes liveness, not execution status.
+
+Claude Remote Control `sdk-cli` sessions can omit `status` from the local registry. Pomegr reads their native session metadata only for a validated local owner and exact bridge-session association. The provider reports `worker_status`: `running` maps to session `working` and primary agent `active`; `requires_action` maps to `needs_input`; `idle` remains primary-agent `idle` and maps to session `open` while local ownership is validated. These are deterministic primary-loop observations, independent of transcript age, subagent counts, hooks, and agent-reported progress percentage. Primary idle does not imply session-wide idle: successful structured background workflow/shell/native-agent launches remain open until their exact provider terminal notifications or run-matched completed workflow manifests. Native `Agent` results must match the launch call and explicitly report `async_launched`, `isAsync: true`, and a bounded `agentId`. A background parent remains open while executing nested children; another child's terminal notification cannot close it. Foreground results, launch intent, agent counts, and child file age are not substitutes. For a validated local process, recorded open background work makes the catalog `working` without changing an idle primary agent. Needs input takes priority. Lifecycle replay is scoped to the registry process start and uses complete input, never a recent-tail or silence heuristic. A missing or unrecognized response supplies no state. Temporary failures retain the last valid observation for the same owner without advancing its timestamp; owner, bridge, or credential changes invalidate that private cache. See [Claude session status](claude-session-status.md).
+
+Successful structured `TaskStop` results also end catalog background work when the
+preceding call and matching result identify the same open task. Stop intent, failed
+results, and text-only confirmations do not qualify. The result must follow its
+call and still refer to the launch targeted by that call; a delayed result cannot
+close a later reuse of the task ID. An idle primary with validated runtime ownership
+then returns to **Open** once no other background work remains. This recognition
+changes only catalog lifecycle; no raw stop-result fields enter browser state.
+
+Workflow completion manifests must also have a valid provider timestamp at or after
+the recorded launch. Claude can reuse a workflow run ID on resume while retaining
+the previous attempt's completed manifest. That older file cannot close new work or
+mark the resumed workflow completed, including after a monitor restart. Completion
+memory is scoped to each launch; a delayed notification closes only its exact task.
+This is provider-record ordering, not a recency or timeout heuristic.
+
+When the provider registry is unavailable, Pomegr falls back to the five-minute transcript/subagent activity window. This compatibility heuristic supports concurrent sessions but does not claim to detect operating-system process state.
+
+A Claude session classified as non-live displays **Idle** in the catalog. This fallback means Pomegr detects no live session; it does not establish provider-confirmed idle, completion, or success. A confirmed owner exit bypasses recency grace. Otherwise, with a registry present, a missing registration plus activity outside the fifteen-second registration grace period produces this fallback. Live Claude sessions with missing or unavailable lifecycle evidence remain **Unknown**.
+
+Codex uses only evidence whose ownership and provenance are known: an explicitly connected owning app-server, validated native Windows runtime ownership, or an explicit adapter assessment of recorded structured rollout evidence. App-server `active`, `idle`, `systemError`, and recognized waiting flags map directly only when reported by the owning connection and confirmed for that thread. Native Windows ownership requires stable writer identity, a unique file user, the exact native executable, and matching process-start identity; Unix does not make an unvalidated native lock claim. Validated structured starts and unmatched structured input requests retain their execution state through silence until matching evidence resolves them. Recognized turn completion and interruption retain idle/stopped; silence never implies completion. The observation timestamp is preserved. Structured freshness means complete, generation-matched evidence, not operating-system certainty. Runtime confirmation remains independent of transcript silence.
+
+On Windows, where the provider lock directory exists, retained unresolved work is live only while a writer could still resolve it. Codex takes a thread's writer lock before creating its rollout and holds it while the thread is loaded. A thread with no owning-runtime status and no confirmed owner, whose own writer lock and root thread's lock are both missing or uncontended when the liveness observation reads them, is therefore never live. It reports `unknown` with liveness reason `writer_released`, and its session appears as **Unknown**, never in Live, not even briefly after a restart. This is a structural rule, not a timer. It means no process holds the writer lock. It does not mean the work completed, went idle, stopped, or succeeded. A held or unreadable lock keeps the recorded state. See `docs/internal/architecture/observation-cache.md`.
+
+Codex retains its last validated lifecycle while an ordinary, continuity-checked append awaits complete acquisition. Neither a partial final record nor a turn-start or input-request record falling outside a bounded tail changes that accepted status or renews its timestamp. Complete acquired evidence supplies the successor, including completion and input resolution. Cold incomplete sources, malformed acquired evidence, and confirmed source discontinuities still degrade to unavailable; runtime ownership retains its independent rules. This is evidence retention at U1/U2, not a timer-based activity inference.
+
+A recognized provider-authored Codex activity heading is scoped to its open turn and cannot by itself clear or prove liveness. It may be retained without a start marker while no true known boundary has closed that turn; repeated headings or context do not reset completion. A recognized terminal turn record or authoritative owning status may clear it, while unknown/stale state presents it as **Last observed activity**; historical views omit it. Pomegr preserves the provider timestamp so an older heading is never presented as newly observed merely because unrelated rollout activity resumed.
+
+A recognized Claude Code activity description is scoped to its exact pending Bash tool-use ID. A matching tool result, a recognized turn terminal, a new user turn, a terminal agent state, source replacement, or historical view clears it. Parallel Bash calls remain independent and the newest still-pending description is selected deterministically. Bounded acquisition may retain an already-normalized pending description, but cannot reconstruct one that was never observed. A validated current Claude registry owner supplies the primary agent's observed lifecycle qualification; unvalidated ownership cannot promote a heading into the Sessions current-activity column.
+
+Selecting a live or owner-retained Open session keeps its state polling. Open-only visibility expiry does not make the selected detail historical or stop its polling. A genuinely non-live, non-Open historical selection stops ready-state polling until it becomes active again.
+
+Codex session activity aggregation is conservative: `needs_input` wins, then any known active
+actor yields `working`. `idle` is allowed only when the root lifecycle is known idle
+and every potentially-live related actor is explicitly inactive (`idle`, `stopped`, or
+`finished`). An unknown root or live child blocks idle; unknown non-live historical
+children do not. A stopped root with no unresolved child yields `stopped`. When execution
+is idle or unknown, `open` requires a confirmed owning runtime or validated native Windows ownership;
+recent transcript metadata alone is insufficient. Confirmed idle sessions stay in Live
+with the Open label between turns until the shared catalog projection's five-minute
+visibility age elapses. After that boundary, the row remains Open but is shown under
+All rather than Live; this is a view classification and does not claim that runtime
+presence ended. Missing, invalid, or future catalog `updatedAt` values exclude Open
+from Live. Working and Needs input, including recognized child aggregation, do not
+expire under this visibility rule. Ownership probes, restarts, and viewing do not
+renew activity. `isLive` includes unresolved recorded turns and validated runtime
+presence, subject to this Open-only catalog visibility boundary. A terminal record
+alone does not keep a session live.
+The grid uses **In progress**, **Needs input**, **Idle**, **Stopped**, **Open**, and
+**Unknown**. It never translates an unknown non-live row into Complete. A missing end
+record can leave a crashed session unresolved; Pomegr does not guess completion from
+silence or expand the existing bounded catalog and cache to retain unlimited sessions.
+On Windows, unresolved work whose writer locks are released is never live; it shows as
+**Unknown** without claiming completion.
+
+## Session progress estimate
+
+Session progress is an optional agent-reported snapshot, not a Pomegr metric. When enabled by the project policy, the dashboard shows only the latest primary-session report: its phase (`planning`, `implementing`, `verifying`, `blocked`, or `complete`), integer percentage, optional paired remaining-minute range, confidence, and transcript timestamp. A later report replaces the earlier one, including when the percentage moves backward; a clear call or no report keeps the panel hidden. The progress bar is a semantic, text-labeled instrument and does not imply that Pomegr measured work or predicted completion.
+
+Remaining minutes are displayed exactly as the bounded range reported by the agent. They are never accumulated, recalculated, decremented, or converted into a countdown. Complete progress at 100% omits the remaining estimate. Blocked, waiting, or needs-input states label the estimate as paused and retain the last reported values. A finished session without a complete report likewise keeps its last snapshot. Historical views say **Recorded agent estimate** and show the absolute report time.
+
+For a live session, “may be stale” is shown only when the monitor is connected and unpaused, the primary agent is not waiting or needs-input, at least ten minutes have elapsed since the report, and later primary-agent activity is present. Offline, paused, waiting, needs-input, blocked, and historical views freeze the snapshot without a stale warning. This age gate is a presentation rule; it never changes the underlying report or its range/confidence values.
+
+## User attention
+
+`needs_input` is an operational attention state, not an efficiency signal. The dashboard presents it through live-session navigation and the affected agent's status in the activity and tree views; the desktop app may also issue a transition notification. It does not enter the **Efficiency signals** panel.
+
+For the Claude Code adapter, Pomegr reads the provider's local session registry and treats a `waiting` session whose safe wait category indicates input, approval, permission, or a question as needing user input. The raw wait value and question content are never sent to the browser. Transcript `AskUserQuestion` calls remain a fallback for sessions without registry state, except Remote Control sessions, whose native lifecycle is authoritative and can clear an older transcript question. A registered input wait remains live and takes priority for automatic live-session selection until the provider clears it.
+
+For Codex, owning app-server waiting flags can mark needs-input. Rollout fallback recognizes a fresh unmatched structured `request_user_input` call. For sessions owned by interactive CLI, it also cautiously treats an unmatched recognized file-edit call as an approval wait after a short grace period, clears it on the matching tool output, and expires it after the bounded needs-input interval. Other Codex surfaces never infer needs-input from an ordinary pending edit without explicit input or owning app-server evidence. An idle authoritative source can also be supplemented by an assistant final answer from a structured Plan-mode turn; the structurally wrapped Codex proposed-plan form remains a fallback when the turn context has moved outside the bounded tail. The matching tool output or next user turn clears the respective wait; plan-confirmation waits expire after the same bounded needs-input interval as lifecycle observations. Questions, choices, plans, answers, approval reasons, patches, and commands are discarded.
+
+## Session approval mode
+
+The session hero shows the latest recognized approval mode recorded by the provider on the primary session transcript. Claude Code approval modes may come from legacy user records or current standalone permission-mode records. Codex approval modes may come from recognized turn-context or thread-settings records and map `untrusted`, `on-request`, granular, and `never` policies to provider-neutral labels. Pomegr keeps only the fixed policy enum and observation timestamp; granular rules, sandbox settings, writable roots, requested commands, approval reasons, and every other field are discarded. A historical view labels the value as the last approval mode because it does not imply that the configuration remains active.
+
+## Session duration
+
+Session duration is elapsed **wall time**, including idle gaps and overlapping work after the session starts. Live views advance to the current time; historical views end at the latest recorded timestamp. It is not active working time.
+
+For Claude Code, the start is the first recorded user input that initiates model work, including a model-invoking command and the wait for its response. Local-only commands such as `/clear`, initialization, command output, and bookkeeping do not establish the start. If initiating input is unavailable, recorded assistant work provides a fallback. A session containing only setup records has no work start and displays **Not started**. Later pauses and resumes do not reset an established start.
+
+## Efficiency signals
+
+`server/analytics/efficiency-signals.mjs` is the executable catalog for rules shown in the **Efficiency signals** panel. Cache evidence thresholds live in `server/analytics/cache-events.mjs`; the efficiency catalog consumes normalized miss-refill events rather than reinterpreting provider snapshots. Rule changes remain covered by focused tests and reflected here.
+
+The current catalog contains these deterministic rules. IDs containing angle-bracket placeholders are per-event patterns rather than literal browser values.
+
+| ID | Signal | Level (`Insight.level`) | Description |
+| --- | --- | --- | --- |
+| `automatic-compaction-<agent-id>` | Automatic context compaction | `warning` | Appears when the provider explicitly records an `auto` trigger or when Pomegr recognizes Codex's exact in-turn windowed-compaction lifecycle described below. It includes the pre-compaction context snapshot when valid evidence is available. At most three automatic-compaction signals are shown. |
+| `loop-<agent-id>-<index>` | Repeated tool call | `warning` | Appears when an agent makes the same scoped call with unchanged inputs at least three times. At most three repetition signals are shown. |
+| `overlap-<display>` | Concurrent mutation | `warning` | Appears when at least two agents mutate the same edit anchor, whole-file target, or notebook cell within 30 seconds. At most two overlap signals are shown. |
+| `unshared-context-pressure` | Unshared context pressure | `warning` | Appears when the primary agent's latest context snapshot is at least 150,000 tokens, the primary agent has made at least 40 observed tool calls, and no subagent transcript has been observed. Finished and stopped subagents still count as observed delegation. It describes a possible delegation opportunity; it does not claim that the work was parallelizable, that delegation would have reduced total context, or that a project instruction was violated. |
+| `prompt-cache-miss-<agent-id>` | Prompt cache miss and refill after idle gap | `warning` | Appears at most once per affected Claude agent from a normalized `miss_refill` event. It requires the cache-read transition, 30-minute gap, and simultaneous recorded refill described above. It never assigns a cause, cost, charge, or savings amount. Codex cache classification remains disabled while its session telemetry does not provide reliable cache-write counts. |
+| `healthy-flow` | Healthy fallback | `info` | Appears only when none of the warning rules emit a signal. |
+
+The compaction parser allows only the normalized agent identity, event timestamp, non-negative pre-compaction token count, bounded trigger state, and whether a recognized provider lifecycle supplied that state into the rule engine. Trigger state is `auto`, `manual`, or `unknown` only when neither the provider nor a recognized lifecycle identifies it; unrecognized or conflicting values are rejected. The compacted summary, provider event content, and all other compaction metadata remain monitor-side and never enter browser state. The provider observer normalizes recognized Claude compactions upstream and commits them with the session evidence, so an earlier compaction remains visible independently of later acquisition chunks and may be restored from a compatible privacy-filtered checkpoint. Automatic compaction is evidence that context pressure caused the provider to summarize earlier conversation detail; it is not a quality judgment or proof that the session failed.
+
+Codex compaction records follow the same bounded evidence contract. Provider-reported `auto` and `manual` triggers remain authoritative. Current windowed rollouts may omit that trigger, so Pomegr recognizes only two narrow lifecycle receipts: compaction inside an active task followed by a reset `turn_context` and continuation is classified as automatic; a newly started task containing only compaction and then completing is classified as manual. The completion receipt may be either app-server `item_completed` / `ContextCompaction` or the nested `event_msg` / `context_compacted` form; a receipt without boundary metadata confirms the preceding windowed compaction and is never emitted as a second boundary. The automatic classification produces the warning above and explicitly says that it is a Pomegr lifecycle classification. Manual compaction remains available as a context-history boundary but does not produce an efficiency signal because it may be deliberate maintenance. Triggerless records that match neither receipt remain `unknown` and do not produce an efficiency signal. A present but unrecognized or conflicting trigger invalidates the record. The Codex observer retains at most the newest 100 normalized compaction events in committed evidence. A source discontinuity keeps that last known-good revision visible while a complete replacement is staged; only the validated replacement may atomically change the retained set.
+
+Codex repetition, concurrent-mutation, unshared-context, and healthy-fallback rules run only when recognized rollout or canonical tool evidence is available. Missing app-server turns or rollout history disables the affected rule; Pomegr does not silently substitute timestamps, prose, file modification times, or cumulative token totals. Provider-generated summaries, estimated cost, and context machinery are unavailable for Codex and therefore contribute no metrics or efficiency evidence.
+
+Claude cache classification uses per-assistant-message usage with explicit cache-read and cache-write evidence. Missing, malformed, cumulative-only, duplicate-only, or unsupported usage disables comparison. Recognized synthetic assistant records contribute no usage and preserve comparison as described under [Context usage](#context-usage). Codex cache classification is disabled while subscription-backed session records do not provide reliable cache-write counts; Pomegr never fabricates the missing evidence from later reads.
+
+OpenAI's current [prompt-caching documentation](https://developers.openai.com/api/docs/guides/prompt-caching) defines `prompt_cache_options.ttl = "30m"` for GPT-5.6-family and later models as a minimum cache lifetime, not an exact expiration time or maximum retention period; a prefix may remain eligible longer. Cache misses can also follow a changed exact prefix, breakpoint or key behavior, routing, eviction, model changes, or a prefix that was never written. Pomegr therefore keeps the same cautious cache-miss wording even beyond 24 hours for GPT-5.6-family evidence. Older model families have different in-memory and extended-retention policies, so elapsed time alone never proves expiration. Codex subscription usage is not translated into API list-price billing.
+
+The unshared-context rule uses the latest context snapshot rather than cumulative transcript throughput or token spend. Tool calls provide evidence of sustained execution; elapsed wall time is deliberately excluded because it includes idle gaps. Pomegr does not parse natural-language instructions such as `AGENTS.md` to infer a delegation policy.
+
+## Repetition
+
+A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights and the flow score, but is not shown as a persistent summary card or report section.
+
+## Tool calls
+
+`toolCalls` counts every observed tool invocation in the session. The session KPI strip shows this count with the number of repeated calls and recorded workflows. Prompt text, response text, and full command contents are not exposed.
+
+The summary cards show the transcript-recorded agent estimate, workflow rollups, and
+deterministic efficiency signals. Workflow context sums each member agent's latest
+snapshot once; workflow wall time sums the recorded workflow durations and can include
+overlapping intervals. Neither value represents request throughput or spend. Agent-specific
+cache, compaction, and repetition signals and loop patterns may include a normalized
+`agentId`; overlap signals have no single agent target. Links currently navigate to
+Agent activity. Signal generation rules are unchanged.
+
+The Signals tab keeps deterministic efficiency evidence separate from agent-reported
+session, agent, and task signals. Agent-reported signals may be stale
+and are not Pomegr measurements or rule results. They may link to Activities only
+when the monitor proves the associated normalized agent and request; otherwise they
+remain informative without a navigation target.
+
+## Activity events
+
+Activities presents committed history as five request groups around the selected
+stable session request number, with recorded calls nested beneath their owning
+request. Its range/window controls navigate committed request-group windows. The
+ordinary state response still retains bounded normalized summary evidence; the
+complete paged history remains independent of that summary and of provider
+acquisition during a GET. Counts, work-kind shares, and medians use retained
+normalized evidence under the selected scope. Tool calls and per-kind counts
+exclude messages, input, system notifications, and failed-shell outcome
+duplicates; their total matches the session Tool calls KPI.
+
+Each resolved duration is wall time from a recorded call to its matching result,
+including approval waits. Running, unmatched, invalid, and reversed timestamp
+pairs and durations beyond 24 hours show no duration. Each kind's
+median uses resolved durations only. Failed-shell durations use the execution
+task's recorded start and finish.
+
+Request links are exact recorded associations, never timestamp guesses. The
+grouped presentation omits unlinked user input, provider task notifications,
+replies, and calls even when supported normalized history retains those event
+types. Stable request numbers are session-scoped labels, not provider IDs or
+filter positions; they survive paging, scope changes, and restart. The request
+chart and grouped feed use the same committed history, so a selected request can
+load its matching window without fabricating a relationship. Explicit selection
+anchors live history; historical sessions never follow. No token value or cost is
+attributed to an individual action.
+All tool-call fragments of the same Claude request contribute their distinct
+recorded tool IDs and work-kind counts, even when its final fragment is text.
+Only fragments with that proven association can appear nested in the grouped
+feed. User input and system notifications have no request link and remain
+outside it. Linked replies remain messages and never contribute to tool-call or
+by-kind action counts.
+
+Retained normalized evidence can include tool invocations, failed shell completions,
+direct user messages, structured-question answers, and provider task notifications
+under their respective privacy allowlists. That retention does not make every
+event eligible for the grouped Activities presentation. A failed shell event is
+timestamped when execution finishes and exposes only the sanitized Bash description
+plus its exit code when available; commands, stdout, stderr, and tool-result
+content remain excluded. Outcome and user-input events do not contribute to
+`toolCalls`, repetition signals, or the flow score.
+
+Claude provider-owned system task deliveries appear as `System` with `Task completed`,
+`Task failed`, or `Task stopped`, using the recorded delivery time. A matching prior
+structured background launch supplies only `Background agent`, `Background command`,
+or `Background workflow`; otherwise the detail is `Background task`. These are recorded
+notifications, not human messages or Pomegr judgments. Native `failed`/`error` maps to
+failed; `stopped`/`killed`/`cancelled`/`canceled`/`interrupted` maps to stopped. Unsupported
+or malformed notifications are omitted, never relabeled as human input. Recognition
+requires provider-owned origin metadata: pasted notification text remains user input.
+Queue operations do not create delivery activity, and replayed delivery IDs are deduplicated.
+Notification contents and native task/call identities remain private. These events also
+do not contribute to tool counts, repetition, or the flow score.
+
+## Agent overlap
+
+An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.
+
+## Flow score
+
+```text
+score = max(
+  25,
+  100
+  - min(45, repeatedCalls × 4)
+  - min(25, overlappingTargets × 7)
+)
+```
+
+The score is a heuristic attention signal, not a quality assessment. It appears only
+in the Signals tab's deterministic **Efficiency** section, alongside its two
+inputs. It does not appear in Details.
+
+## Plan usage
+
+Plan utilization is coordinated entirely by the monitor for live views. Every live-state read receives the monitor's cached value, while the monitor permits at most one provider request per service process after the previous request's five-minute cooldown. Concurrent browsers and overlapping polls share the same in-flight request and cannot multiply provider traffic. A `429` response extends the next-attempt boundary according to a valid `Retry-After` delta or HTTP date; other failures and invalid or absent `Retry-After` values use the five-minute cooldown. Failed refreshes retain the last successful values and expose only a sanitized error, safe attempt timestamp, bounded provider-neutral failure kind, and the local coordinator's earliest retry-eligibility timestamp. The UI presents `rate_limited` as the outcome of the last usage refresh, never as evidence that the provider account or selected session exhausted its plan allowance. Retrieval does not invoke a model. Plan utilization is omitted entirely from historical views and historical reports, and reports never request the provider endpoint.
+
+The retained aggregate Home cache, which the personal Home page does not consume, retains at most 64 valid observations for each eligible provider-reported limit in the current monitor process. Claude Code tracks its current-session five-hour limit, its all-models seven-day limit, and the exact recognized Fable seven-day model limit. The Fable activity lane keeps provider model identifiers monitor-private and retains only requests whose opaque request identity matches a valid private Fable model observation; the browser receives the bounded request timestamps and projects, never the model evidence. Codex counts bounded local request observations by normalized model over the preceding seven days: when GPT-5.3-Codex-Spark has a unique highest count, the cache selects its five-hour limit; otherwise, including ties or unavailable model evidence, the cache selects the general Codex seven-day limit. The model counts remain monitor-private. A reset-time change or a lower percentage begins a new observation series. For two comparable observations whose percentage increased, Pomegr reports the observed percentage-point movement and whether zero, one, or several locally discovered sessions had an independent valid request observation inside that refresh interval. One session is labeled a single-session correlation, several are labeled shared and ambiguous, and no matching request is labeled unobserved local activity. These labels are deterministic temporal correlations, not provider attribution, billing, causation, or evidence that a session consumed a proportional share.
+
+For Claude Code only, the Home API may also include the earliest locally recorded structured rejection whose bounded quota metadata identifies the current five-hour reset window. This timestamp is not the authoritative instant the provider exhausted the account. The browser receives only that normalized timestamp; rejection payloads and other quota fields remain monitor-private. Missing, malformed, out-of-window, or differently scoped rejection evidence produces no timestamp.
+
+The former Home limit-activity presentation used a sparse percentage display: session request observations followed by a fixed 0–100% range, a known window start, and one terminal mark when the series reported 100%. That presentation has been removed from the personal Home page; retaining the derivation and API does not imply a current Home usage display.
+
+When a provider reports a percentage reset but temporarily omits the next reset timestamp, Pomegr keeps the previous cycle's reset boundary as the exact start of the new window. A cold monitor may recover that same boundary from matching normalized local five-hour rejection evidence. Only when neither source exists does the timeline use a non-exact lookback matching the selected window; observations and rejection markers from before the selected boundary never carry into the new window.
+
+Current-window correlation considers bounded live and recently updated completed sessions from the same provider across repositories, while project folios remain live-project-only. The browser receives only a bounded account/model scope enum, session/project labels, live state, opaque request-observation IDs and timestamps, bounded plan percentage observations, movement intervals, correlation enums, and coverage flags. At most 24 candidate sessions per provider contribute browser-visible correlation lanes, while the monitor may inspect up to 50 recent Codex sessions for its private seven-day dominant-model selector. At most 240 individual request observations are returned across provider activities. When that cap applies, Pomegr retains the newest observation from each visible session lane before retaining the next-newest observation from each lane in deterministic rounds; a lane is omitted only when the cap cannot retain even one of its observations, and movement correlation IDs are reduced to the retained lanes. The UI discloses bounded or partial coverage. Pomegr never sums request tokens, requests, agents, or sessions through the browser surface, never derives a usage rate or spend estimate, and never substitutes context level, wall time, process resources, or the API list-rate estimate for plan consumption. Observation history is live diagnostic state only: it resets with the monitor process or provider window and remains excluded from historical session views and reports.
+
+## Git state
+
+Codex repository attribution follows one provider-neutral rule (approved by the product
+owner on 2026-09-27; see `server/normalize/session-identity.mjs`): the launch or recorded cwd
+names the project when it resolves to a recognized Git repository, and successful
+structured file mutations refine that project — unchanged when they land in the same
+repository, to a single other recognized repository when they do not. Targets outside
+the launch cwd may establish that other repository. Multiple proven repositories still
+produce **Multiple repositories** and no single-repository Git state or combined touched-file
+list. Their recorded file histories remain separated by repository identity. A read-only
+visit to another checkout is never a mutation and never changes attribution.
+
+When the repository lookup answers that the launch directory is not in a recognized Git
+repository, the project is that directory's basename, with no repository ID. The basename
+is used only when it is a safe display name: not a drive, device or UNC host/share root, a
+dot-directory, the user's home directory, over 128 characters, or text with control
+characters. A missing launch directory, an unavailable or failing lookup, or a lookup
+slower than its bound (400 ms for a catalog row, 5 s for a full read) gives **Unknown
+project**, so a nested repository subdirectory is never named. Catalog rows reuse the
+attribution a full read established and never overwrite it; rows sharing a launch
+directory share one memoized lookup per five minutes, longer than the 60 s header rescan so a
+slow cold lookup warms the next scan instead of expiring before it.
+
+Live Git enrichment requires a root-bound recorded branch. A checkout on another branch
+cannot supply the viewed session's files, branch comparison, pull requests, or commit
+counts. A mismatch retains a previously verified session snapshot, or leaves repository
+state unavailable when none exists. Missing branch evidence is unavailable; the current
+checkout is not evidence of which branch the session used. These rules do not identify
+which session made other uncommitted changes on the same branch.
+
+Accepted live branch metadata comes from read-only Git commands against the session-bound repository root. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
+
+A historical session shows the last complete snapshot recorded while it was live: recorded
+uncommitted files, branch comparison, and pull-request state at their original check
+times. A session with no recorded snapshot keeps only the transcript branch. Missing
+recorded fields remain unavailable rather than being filled from the current working tree
+or current branch.
+
+**Commits in session** counts commits on the live HEAD whose committer time falls inside
+the session's wall-time window, measured at the last live Git check. It includes merges and
+commits by anyone on that branch, so it is not attribution to the session. It is null when the
+session's recorded branch differs from HEAD or the count failed, and it is a point count,
+not a cumulative total. On an idle live session it can lag until the next re-derivation.
+**Git tasks** counts the session's execution tasks whose work kind is `git`, `git_push`, or
+`pull_request`; failed counts those with status `failed`.
+
+## File-change history
+
+File-change history is served on the session Repository tab and the repository Files tab.
+It reports bounded recorded file operations, grouped by normalized repository,
+session, file identity, and safe repository-relative path. The fixed kinds are created,
+edited, deleted, and moved. Session, agent, and request labels mean that recorded provider
+evidence proved each association. A move observed only through Git may preserve
+repository-scoped path continuity, but it does not create a session file-change record or
+identify a session, agent, or request, and it does not contribute to session edit counts.
+Path or timestamp proximity is not attribution.
+
+Coverage is intentionally partial. Only structured file tools with an explicit target
+(Write and Edit, and Codex patch and file-change items) contribute records. Shell
+commands and patch-looking text embedded in `functions.exec` source do not prove a
+successful file operation. Nested patches require separate structured success evidence;
+the outer wrapper's success alone cannot establish which nested calls ran. Shell
+commands never do, because the files a command writes cannot be known reliably from its
+text; those changes appear only as Git-observed files. Shell commands, scripts, builds,
+external editors, unrecognized tools, incomplete or
+invalid provider records, paths rejected by the repository-path policy, retention bounds,
+and observation gaps can leave changes missing. Git comparison can add repository-scoped
+path and move continuity when acquired asynchronously, but it cannot recover the
+responsible session, agent, or request. A recorded absence therefore does not prove that a
+file was unchanged, and an edit count is a count of retained recorded operations rather
+than lines changed, commits, or all filesystem writes. History must disclose these coverage
+limits wherever totals or empty states are presented.
+
+### Git-observed files
+
+A session's Touched here list also shows Git-observed files, marked with a Git glyph.
+A file is Git-observed when it was committed on the session's recorded branch during
+the session window, or when it became uncommitted after the session's first live Git
+check. Files already uncommitted at that first check form a baseline and are never
+shown. Commits are read only while the live branch matches the recorded branch. Paths
+that already have a recorded file-change row are not repeated. Git-observed files come
+from repository state, not provider evidence, so they may include changes made by
+other people, other sessions, or other tools during the window. A committed file carries
+Git's net change across the window's commits: added when any commit in the window added
+it, deleted when the newest change deleted it, otherwise modified. That describes what the
+commits did to the file, not who made the change. Git-observed files name no agent or
+request, are not recorded edits, and do not count toward edit totals or the repository
+file history. A file without a recorded edit is not evidence that someone else changed
+it: the agent may have written it through a command Pomegr cannot attribute, or a build
+or generator may have produced it.
+
+## Pull-request associations
+
+Pomegr currently associates a pull request with a session only when a successful, recognized pull-request creation tool result contains a canonical GitHub pull-request URL, or when GitHub reports a pull request for the live session's current branch. Historical sessions never infer associations from the current working tree or branch. Under the current legacy behavior, a transcript-recorded association may refresh its current GitHub status; the UI labels that refresh with its local observation time and does not present it as recorded historical state.
+
+A historical session with a recorded repository snapshot uses a different rule. The
+snapshot holds the allowlisted pull-request state and original last-check time recorded
+while the session was live, and it is served unchanged; Pomegr never rewrites it with
+current GitHub state or calls GitHub for it. Only a historical session without a recorded
+snapshot keeps the legacy refresh behavior above.
+
+The monitor parses tool results privately and returns only an allowlist: host, repository slug, pull-request number, bounded title, canonical URL, open/draft/merged/closed state, head and base branch names, non-negative additions and deletions, association source, and timestamps. Commands, raw tool output, PR bodies, authors, comments, reviews, checks, and credentials never enter the browser API. GitHub CLI and network failures degrade independently; a safely parsed transcript link can remain visible without current metadata.
+
+## Agents model and work analytics
+
+The Agents page describes model choice and delegation across retained normalized
+agent records. A run is one normalized agent within its parent session. Main agents
+and delegated agents remain distinct; provider-native agent kinds remain private.
+The 7/30/90-day selection uses the recorded agent start timestamp. Missing dates
+cannot be placed into a historical window.
+
+Model groups use each run's latest retained agent-level model report. They do not
+represent a whole-run model history, infer model switches, or attribute earlier work
+to an observed final model. Missing model evidence is shown as unreported. The role
+matrix uses the same monitor-normalized Agent.role categories as session views.
+Displayed patterns describe model/role associations; they make no quality, productivity,
+cost, or model-recommendation claims.
+Model percentages use every run in the selection as their denominator, including runs
+with no reported model, and each is rounded on its own, so the displayed values need not
+sum to 100. Counts describe retained evidence, not model performance, time worked, or
+spending.
+
+The work distribution counts retained normalized execution tasks by their attributable
+workKind. It is labeled recorded execution tasks and does not claim to capture every
+tool call or every kind of work. A missing execution-task feed is unavailable; a known
+empty feed has zero recorded tasks. The separate agent tool-call count retains its
+existing normalized meaning. No request-token totals or rates are computed.
+
+Supporting run counts, ranking totals, and matrix cells share a bounded evidence set
+so users can inspect the records behind a count. Coverage discloses missing sessions
+and truncation. The live roster preserves parent-child order without sortable columns,
+shows session provenance, and uses only each agent's latest non-zero context snapshot.

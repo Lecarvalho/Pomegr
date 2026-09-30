@@ -17,7 +17,7 @@ export function CodexUsageHelp({ usageLimits }: { usageLimits: UsageLimits }) {
         <p>On the computer running Pomegr, check <code>codex login status</code>. If signed out or using an API key, run <code>codex login</code> to sign in with ChatGPT.</p>
         <p>If already signed in with ChatGPT, check your internet connection. Pomegr retries automatically.</p>
       </>}
-      <p><ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#codex">Setup guide</ExternalLink></p>
+      <p><ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/public/concepts/usage-limits.md#if-a-window-is-missing">Setup guide</ExternalLink></p>
     </details>
   </div>;
 }

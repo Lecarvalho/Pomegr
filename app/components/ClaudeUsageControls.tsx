@@ -117,7 +117,7 @@ export function ClaudeUsageControls({ usageLimits, showObservationNote = true }:
       <div className="claudeUsageActions">
         {canSetUp && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("setup")}>{pending === "setup" ? "Enabling local usage…" : "Enable local usage"}</button>}
         {canSignIn && needsSignIn && <button className="commandSecondaryAction" type="button" disabled={pending !== null} onClick={() => void run("signin")}>{pending === "signin" ? "Waiting for sign-in…" : "Reconnect Claude Code"}</button>}
-        <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/CONFIGURATION.md#claude-local-usage-feed">Setup guide</ExternalLink>
+        <ExternalLink href="https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/development/configuration.md#claude-local-usage-feed">Setup guide</ExternalLink>
       </div>
       {message && <p role="status" aria-live="polite">{message}</p>}
     </details>

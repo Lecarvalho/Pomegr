@@ -10,7 +10,7 @@ installer or portable app and get started. Neither download needs Node.js setup.
 
 The desktop app includes opt-in phone access under **Settings → Phone access**. Pair a
 phone browser by QR code on the same trusted private network. Sharing is off by default
-and uses unencrypted HTTP; see [configuration and troubleshooting](docs/CONFIGURATION.md#another-device-cannot-open-the-dashboard).
+and uses unencrypted HTTP; see [Phone access](docs/public/using-pomegr/phone-access.md).
 
 ## Run the web version
 
@@ -36,7 +36,7 @@ npm run diagnostics:snapshot
 ```
 
 Add `--json` for machine-readable output or `--provider codex` to filter one provider.
-See [Pipeline operations](docs/PIPELINE_OPERATIONS.md) for the bounded diagnostic
+See [Pipeline operations](docs/internal/operations/pipeline-diagnostics.md) for the bounded diagnostic
 contract, continuous local JSONL logs, and live/historical analysis.
 
 <p align="center">
@@ -51,7 +51,7 @@ Then [follow your first session](docs/public/get-started/first-session.md) to fi
 local work and open its dashboard.
 Use the [documentation index](docs/README.md) for user guides,
 configuration, and troubleshooting, including
-[input, output, and cache tokens](docs/user-guide/tokens-and-cache.md).
+[context, input, output, and cache tokens](docs/public/concepts/context-and-tokens.md).
 The [maintainer index](docs/internal/README.md) maps technical contracts,
 development workflows, and release procedures.
 
@@ -61,19 +61,19 @@ Start with the [contribution guide](CONTRIBUTING.md), then open an [issue](https
 
 ## Coding-agent plugins
 
-Open **Repositories**, select a repository, and use **Setup** to check its plugins.
-The detail page also includes **Overview**, **Context inventory**, and **Reporting**;
-**Git** is a coming-soon placeholder. Plugin changes and inventory captures require
-confirmation in Pomegr desktop; browser and phone clients show setup guidance.
+Open **Repositories**, select a repository, and use its **Plugin** and **Reporting**
+tabs to check the plugin and the reporting policy. Plugin changes and inventory
+captures require confirmation in Pomegr desktop; browser and phone clients show setup
+guidance.
 
-- [Install the Pomegr reporting plugin for Codex or Claude Code](docs/PLUGINS.md)
+- [Install the Pomegr reporting plugin for Codex or Claude Code](docs/public/using-pomegr/reporting-plugins.md)
 
 ## Publish procedures
 
-- **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/PLUGINS.md#skill-changes).
-- **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/PLUGINS.md#plugin-upgrade).
-- **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/DESKTOP_RELEASES.md#publish-signed-artifacts).
-- **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](landing/OPERATIONS.md#5-release-the-exact-audited-artifact).
+- **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/internal/development/plugins.md#skill-changes).
+- **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/internal/development/plugins.md#plugin-upgrade).
+- **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/internal/operations/desktop-releases.md#publish-signed-artifacts).
+- **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](docs/internal/operations/website.md#5-release-the-exact-audited-artifact).
 
 ## Current limitations
 
@@ -85,4 +85,4 @@ confirmation in Pomegr desktop; browser and phone clients show setup guidance.
 
 ## Licence
 
-Pomegr is licensed under [AGPL-3.0-only](LICENSE). See the [license history](docs/LICENSE_HISTORY.md) and [trademark policy](TRADEMARKS.md) for details.
+Pomegr is licensed under [AGPL-3.0-only](LICENSE). See the [license history](docs/internal/decisions/license-history.md) and [trademark policy](TRADEMARKS.md) for details.

@@ -16,7 +16,7 @@ function remainingLabel(remainingMs: number) {
  * primary agent's cache lifetime is nearing its threshold, faint once it has
  * elapsed, nothing while it is neither. The glyph carries no text; its
  * accessible name and the hover/tap popover hold the reading. Historical rows
- * keep their recorded evidence. See docs/CACHE_TIMING.md.
+ * keep their recorded evidence. See docs/internal/architecture/cache-timing.md.
  */
 export function SessionCacheTiming({ session }: { session: SessionSummary }) {
   const now = useLiveNowOrFrozen();

@@ -1,6 +1,6 @@
 # Diagnose live delays from continuous logs
 
-The [pipeline contract](../../../../docs/PIPELINE_OPERATIONS.md) owns record fields,
+The [pipeline contract](../../../../docs/internal/operations/pipeline-diagnostics.md) owns record fields,
 privacy, rotation, units, and limitations. Development automatically appends JSONL
 under ignored `outputs/pipeline-logs/`; files survive restart until bounded rotation.
 

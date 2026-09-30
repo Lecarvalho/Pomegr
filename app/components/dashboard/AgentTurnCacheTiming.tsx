@@ -6,7 +6,7 @@ import { coarseRelativeTime } from "../../dashboard-utils";
 import { useLiveNow } from "../../hooks/LiveClockContext";
 import { DottedInfoPopover } from "../DottedInfoPopover";
 
-export const CACHE_TIMING_DOCUMENTATION_URL = "https://github.com/Lecarvalho/pomegr/blob/main/docs/CACHE_TIMING.md";
+export const CACHE_TIMING_DOCUMENTATION_URL = "https://github.com/Lecarvalho/pomegr/blob/main/docs/public/concepts/cache-reuse.md#cache-lifetime-and-elapsed-time";
 
 type CacheTimingState = "neutral" | "near" | "elapsed" | "unavailable";
 
