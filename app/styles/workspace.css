@@ -552,6 +552,10 @@
 }
 .cacheRefillEvidenceGrid dt { color: var(--muted); font-size: var(--text-xs); font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
 .cacheRefillEvidenceGrid dd { min-width: 0; margin: 0; font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.cacheRefillInference { margin: 9px 0 0; font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.cacheExpiryOccurrences > li { display: grid; gap: 3px; padding: 11px 15px; }
+.cacheExpiryOccurrences p { margin: 0; font-size: var(--text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.cacheExpiryOccurrences time { color: var(--muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 .cacheRefillDefinition { display: grid; gap: 7px; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--popover-line); }
 .cacheRefillDefinition code { color: var(--muted); font: 600 var(--text-xs)/1.45 var(--font-geist-mono), Consolas, monospace; overflow-wrap: anywhere; }
 .cacheRefillDefinition a { width: fit-content; color: var(--muted); font-size: var(--text-xs); font-weight: 400; text-underline-offset: 2px; }

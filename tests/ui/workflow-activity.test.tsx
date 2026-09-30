@@ -314,7 +314,10 @@ describe("workflow activity and agent tree view", () => {
 
     await user.click(screen.getByRole("button", { name: /Possible full cache refill observed 1 time/ }));
     const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
-    expect(popover).toHaveTextContent("InferenceOne-hour cache likely expired; 1h 1m elapsed since the preceding request.");
+    expect(popover).toHaveTextContent("One-hour cache likely expired; 1h 1m elapsed since the preceding request.");
+    expect(popover).not.toHaveTextContent("Observed");
+    expect(popover).not.toHaveTextContent("Impact");
+    expect(popover).not.toHaveTextContent("observed 1 time");
   });
 
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {

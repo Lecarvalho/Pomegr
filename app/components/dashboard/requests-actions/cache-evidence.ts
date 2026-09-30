@@ -1,4 +1,6 @@
-import type { CacheEvent, CacheEventFeed, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
+import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
+
+import { formatDuration } from "../../../dashboard-utils";
 
 export type RequestCacheEvidence = {
   kind: "refill" | "possible_refill" | "model_change";
@@ -10,6 +12,22 @@ export type RequestCacheEvidence = {
 export function cacheEvidenceLabel(evidence: RequestCacheEvidence, compact = false) {
   if (evidence.kind === "model_change") return compact ? "Reuse drop · model change" : "Cache reuse dropped across a model change";
   return evidence.kind === "refill" ? "Possible full refill" : "Possible refill";
+}
+
+export function cacheLifetimeInferenceLabel(inference: CacheLifetimeInference | null | undefined) {
+  if (!inference || inference.cause !== "cache_lifetime_elapsed") return "";
+  const lifetime = inference.cacheLifetime === "5m"
+    ? "Five-minute cache"
+    : inference.cacheLifetime === "1h"
+      ? "One-hour cache"
+      : "Mixed cache lifetimes";
+  return `${lifetime} likely expired; ${formatDuration(inference.elapsedMs)} elapsed since the preceding request`;
+}
+
+/** Full label plus the monitor's expiry inference when one was recorded. */
+export function cacheEvidenceDescription(evidence: RequestCacheEvidence) {
+  const inference = cacheLifetimeInferenceLabel(evidence.occurrence?.cacheLifetimeInference);
+  return inference ? `${cacheEvidenceLabel(evidence)}. ${inference}` : cacheEvidenceLabel(evidence);
 }
 
 export function snapshotEventKey(agentId: string, observedAt: string) {

@@ -637,6 +637,24 @@ describe("RequestsActionsPanel", () => {
     expect(container.querySelector(".requestsActionsBar.isSelected")).toHaveAttribute("aria-label", expect.stringContaining("Possible full refill"));
   });
 
+  it("shows the monitor's cache-expiry inference in a popover on hover and focus", () => {
+    const target = snapshot(2);
+    const [group] = fullRefill("primary", target.observedAt)!;
+    const possibleFullRefills = [{ ...group, occurrences: [{ ...group.occurrences[0], cacheLifetimeInference: { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 10 * 60_000 } }] }];
+    const { container } = render(<RequestsActionsPanel agents={[agent]} requestSnapshots={requestFeed([snapshot(1), target])} contextBoundaries={[]} cacheWriteAvailable historical={false}
+      cacheEvents={{ status: "ready", items: [], possibleFullRefills }} cacheReadDrops={{ status: "ready", items: [] }} />);
+    const marker = container.querySelector(".requestsActionsRefill")!;
+    const bar = marker.closest(".requestsActionsBar")!;
+    expect(bar).toHaveAttribute("aria-label", expect.stringContaining("Five-minute cache likely expired"));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.pointerEnter(bar);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Five-minute cache likely expired; 10m elapsed since the preceding request.");
+    fireEvent.pointerLeave(bar);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.focus(bar);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
   it("renders read-drop evidence as an inferred marker and keeps it usable on phone", async () => {
     setPhone(true);
     const user = userEvent.setup();

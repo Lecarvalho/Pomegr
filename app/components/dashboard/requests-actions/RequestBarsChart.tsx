@@ -2,10 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import type { Agent } from "../../../../shared/monitor-contract";
 import { compactNumber, shortTime } from "../../../dashboard-utils";
 import { requestMarker, type ChartMode, type RequestRow } from "./model";
-import { cacheEvidenceLabel } from "./cache-evidence";
+import { cacheEvidenceDescription, cacheEvidenceLabel } from "./cache-evidence";
 import { CacheRefillIcon } from "../CacheRefillIcon";
 import { requestAgentRole, RequestRoleTrack } from "./RequestRoleTrack";
 import { useRequestChartDrag } from "./useRequestChartDrag";
+import { RequestEvidencePopover } from "./RequestEvidencePopover";
 
 export type AxisLabel = { index: number; text: string; x: number; anchor: "middle" | "end"; left: number; right: number };
 
@@ -98,9 +99,9 @@ export function RequestBandLabels({ labels, y }: { labels: BandLabel[]; y: numbe
  * `marker` sizes that icon; without `labels` the caller places the compaction and selected text.
  * `agent` names the request's agent in the accessible name where no lane label already does.
  */
-export function RequestBar({ row, x, width, gap, top, bottom, right, band, marker = 16, labels = true, agent, maximum, mode, cacheWriteAvailable, selected, onSelect, onHover, onFocus }: {
+export function RequestBar({ row, x, width, gap, top, bottom, right, band, marker = 16, labels = true, agent, inspected = false, maximum, mode, cacheWriteAvailable, selected, onSelect, onHover, onFocus }: {
   row: RequestRow; x: number; width: number; gap: number; top: number; bottom: number; right: number; band: number;
-  marker?: number; labels?: boolean; agent?: string;
+  marker?: number; labels?: boolean; agent?: string; inspected?: boolean;
   maximum: number; mode: ChartMode; cacheWriteAvailable: boolean; selected: boolean;
   onSelect: (row: RequestRow) => void; onHover: (id: string | null) => void; onFocus: (id: string | null) => void;
 }) {
@@ -117,8 +118,8 @@ export function RequestBar({ row, x, width, gap, top, bottom, right, band, marke
     return <rect key={kind} className={`requestsActionsSegment ${kind}`} x={x} y={bottom - height(stacked)} width={width} height={height(value)} />;
   });
   const barTop = bottom - height(stacked);
-  return <g className={`requestsActionsBar${selected ? " isSelected" : ""}`} role="button" tabIndex={0}
-    aria-pressed={selected} aria-label={`Request ${requestMarker(row)}, ${agent ? `${agent}, ` : ""}${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceLabel(row.cacheEvidence)}` : ""}`}
+  return <g className={`requestsActionsBar${selected ? " isSelected" : ""}${inspected ? " isInspected" : ""}`} role="button" tabIndex={0}
+    aria-pressed={selected} aria-label={`Request ${requestMarker(row)}, ${agent ? `${agent}, ` : ""}${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceDescription(row.cacheEvidence)}` : ""}`}
     onPointerEnter={() => onHover(row.id)} onPointerLeave={() => onHover(null)}
     onFocus={() => onFocus(row.id)} onBlur={() => onFocus(null)}
     onClick={() => onSelect(row)} onKeyDown={(event) => {
@@ -173,6 +174,7 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
   const barCenter = (index: number) => left + step * index + width / 2;
   const axisLabels = placeAxisLabels(visible, barCenter, !phone, phone ? 334 : 1112);
   const labeledRow = labeledEvidenceRow(visible, [hoveredId, focusedId, selectedId]);
+  const inspectedRow = labeledEvidenceRow(visible, [hoveredId, focusedId]);
   const labelX = labeledRow ? barCenter(visible.indexOf(labeledRow)) : left;
   const labelText = labeledRow?.cacheEvidence ? cacheEvidenceLabel(labeledRow.cacheEvidence, true) : "";
   const labelStart = Math.max(left, Math.min(labelX + 12, right - labelText.length * 6));
@@ -185,19 +187,19 @@ export function RequestBarsChart({ rows, start, end, size, maximum, mode, select
     focusSelection.current = true;
     onStep(event.key === "ArrowLeft" ? -1 : 1);
   };
-  return <svg className="requestsActionsChart" viewBox={phone ? "0 0 334 196" : "0 0 1112 274"}
+  return <><svg className="requestsActionsChart" viewBox={phone ? "0 0 334 196" : "0 0 1112 274"}
     ref={chartRef} role="group" aria-label={`Model requests, positions ${windowStart} to ${Math.min(total, windowStart + size - 1)}`} onKeyDown={keyboardStep} {...drag}>
     {(phone ? [0, .5, 1] : [0, .25, .5, .75, 1]).map((fraction) => <g key={fraction} className="requestsActionsAxis">
       <line x1={left} x2={right} y1={bottom - fraction * (bottom - top)} y2={bottom - fraction * (bottom - top)} />
       <text x={left - 6} y={bottom - fraction * (bottom - top) + 4} textAnchor="end">{compactNumber(maximum * fraction)}</text>
     </g>)}
     {visible.map((row, index) => <RequestBar key={row.id} row={row} x={left + step * index} width={width} gap={gap} top={top} bottom={bottom} right={right} band={44} labels={!phone}
-      agent={agents && requestAgentRole(row, agents).name} maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={row.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
+      agent={agents && requestAgentRole(row, agents).name} inspected={row === inspectedRow} maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={row.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
     {agents && track && <RequestRoleTrack rows={visible} agents={agents} barX={(index) => left + step * index} width={width} y={bottom + track.gap} height={track.height} />}
     {bandLabels && <RequestBandLabels labels={bandLabels} y={top - 6} />}
     {!bandLabels && labeledRow?.cacheEvidence && <text aria-hidden="true" className="requestsActionsRefillLabel" x={labelStart} y={top - 43} textAnchor="start">{labelText}</text>}
     <g className="requestsActionsAxis">
       {axisLabels.map((label) => <text key={label.index} x={label.x} y={phone ? 192 : 266} textAnchor={label.anchor}>{label.text}</text>)}
     </g>
-  </svg>;
+  </svg><RequestEvidencePopover key={inspectedRow?.id} chartRef={chartRef} row={inspectedRow} /></>;
 }

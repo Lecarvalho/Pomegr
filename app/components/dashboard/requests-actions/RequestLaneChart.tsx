@@ -4,6 +4,7 @@ import { agentDisplayName, agentRoleLabel, compactNumber } from "../../../dashbo
 import { layoutRequestLanes, type RequestLane, type RequestLaneGroup } from "./lane-model";
 import type { ChartMode, RequestRow } from "./model";
 import { labeledEvidenceRow, placeAxisLabels, placeBandLabels, RequestBandLabels, RequestBar } from "./RequestBarsChart";
+import { RequestEvidencePopover } from "./RequestEvidencePopover";
 
 // Every lane and the shared axis use one horizontal geometry, so a request sits at the same x
 // in whichever lane owns it and other lanes leave a gap there. The viewBox width follows the
@@ -132,7 +133,7 @@ export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleG
         <svg className="requestLanePlot" viewBox={`0 0 ${plotWidth} ${bottom}`} width="100%" height={bottom}>
           <g className="requestsActionsAxis"><line x1={LANE_LEFT} x2={right} y1={bottom} y2={bottom} /></g>
           <text className="requestLaneMaximum" x={plotWidth} y={band + 10} textAnchor="end">max {compactNumber(maximum)}</text>
-          {entries.map(({ row: request, index }) => <RequestBar key={request.id} row={request} x={barX(index)} width={width} gap={GAP} top={band} bottom={bottom} right={right} band={band} marker={MARKER} labels={false}
+          {entries.map(({ row: request, index }) => <RequestBar key={request.id} row={request} x={barX(index)} width={width} gap={GAP} top={band} bottom={bottom} right={right} band={band} marker={MARKER} labels={false} inspected={request.id === (hoveredId ?? focusedId)}
             maximum={maximum} mode={mode} cacheWriteAvailable={cacheWriteAvailable} selected={request.id === selectedId} onSelect={onSelect} onHover={setHoveredId} onFocus={setFocusedId} />)}
           <RequestBandLabels labels={bandLabels} y={band - 5} />
         </svg>
@@ -146,5 +147,6 @@ export function RequestLaneChart({ lanes, agents, workflows, expanded, onToggleG
         </g>
       </svg>
     </div>
+    <RequestEvidencePopover key={hoveredId ?? focusedId} chartRef={chartRef} row={visible.find((row) => row.id === (hoveredId ?? focusedId))} />
   </div>;
 }
