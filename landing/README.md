@@ -15,7 +15,7 @@ npm run dev
 Use Cloudflare's published Turnstile test keys in `.dev.vars`. `WAITLIST_ALLOW_LOCAL_DEV=true` is a local-only exception and must never be added to `wrangler.jsonc` or production secrets.
 
 The dev server opens at `http://127.0.0.1:8788/`. Vite disables remote bindings,
-so local startup does not require Cloudflare login. See [local startup and troubleshooting](./OPERATIONS.md#run-the-landing-locally).
+so local startup does not require Cloudflare login. See [local startup and troubleshooting](../docs/internal/operations/website.md#run-the-landing-locally).
 
 ## Desktop downloads
 
@@ -43,4 +43,4 @@ npm run deploy
 
 `build:audit` rejects imports outside this package, source maps, local-only routes, and recognizable Dashboard, monitor, desktop, web, or shared-local modules. `deploy` first refuses placeholder production bindings, then audits again and gives Wrangler `dist/server/wrangler.json`, whose entry and static asset directory both point inside the already-built `landing/dist` artifact. It does not rebuild the root Pomegr application.
 
-Provisioning, DNS, WAF, secrets, smoke tests, and rollback are documented in [OPERATIONS.md](./OPERATIONS.md).
+Provisioning, DNS, WAF, secrets, smoke tests, and rollback are documented in [website operations](../docs/internal/operations/website.md).

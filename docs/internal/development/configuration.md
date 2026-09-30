@@ -290,7 +290,7 @@ The [installation guide](../../public/get-started/install.md#keep-pomegr-up-to-d
 - The update action appears only after the signed installer finishes downloading and verification succeeds; checking and downloading do not interrupt the dashboard.
 - Stable and beta channels never cross. Publish or install a monotonically higher version on the same channel.
 - A failed or rejected update leaves the current installation runnable. Never bypass publisher checks or replace updater metadata manually; use a newer correctly signed release.
-- See `docs/DESKTOP_RELEASES.md` for signature, publisher, checksum, and rollback policy.
+- See [desktop releases](../operations/desktop-releases.md) for signature, publisher, checksum, and rollback policy.
 
 ### Another device cannot open the dashboard
 

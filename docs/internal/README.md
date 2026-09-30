@@ -20,11 +20,11 @@ readable in the repository and must not contain secrets or private session data.
 | Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
 | Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](architecture/signal-dictionary.md) defines stable evidence codes and limits. |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [examples](../../app/components/design-system/DesignSystemView.tsx) and shared tokens/components. HTML mockups are temporary explorations. |
-| Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; [license history](../LICENSE_HISTORY.md) explains the transition. |
+| Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; the [license history](decisions/license-history.md) decision explains the transition. |
 
 Plans describe work or historical reasoning, not runtime authority. The session
-status comparison records known gaps alongside implemented rules, and the clean-VM
-record concerns a historical candidate; neither implies that pending work passed.
+status comparison records known gaps alongside implemented rules, and the desktop beta
+acceptance page lists open acceptance items; neither implies that pending work passed.
 
 ## Architecture and evidence
 
@@ -75,11 +75,11 @@ publication and validation tooling remain pending.
 | Current reference | Scope | Planned destination |
 | --- | --- | --- |
 | [Pipeline operations](operations/pipeline-diagnostics.md) | Continuous development JSONL diagnostics, passive analysis, and the auxiliary snapshot | Maintained at this path |
-| [Desktop releases](../DESKTOP_RELEASES.md) | Packaging, publication, and rollback | `operations/desktop-releases.md` |
-| [Desktop beta acceptance](../DESKTOP_BETA_ACCEPTANCE.md) | Candidate acceptance procedure and evidence gates | `operations/desktop-beta-acceptance.md` |
-| [Desktop clean-VM checklist](../DESKTOP_CLEAN_VM_CHECKLIST.md) | Historical 0.2.4 acceptance record, still pending | `operations/desktop-clean-vm.md`, after separating procedure from candidate evidence |
-| [Website operations](../../landing/OPERATIONS.md) | Landing development and manual deployment; [package entrypoint](../../landing/README.md) | `operations/website.md` |
-| [License history](../LICENSE_HISTORY.md) | Enduring licensing rationale | `decisions/license-history.md` |
+| [Desktop releases](operations/desktop-releases.md) | Packaging, signing, publication, and rollback | Maintained at this path |
+| [Desktop beta acceptance](operations/desktop-beta-acceptance.md) | Candidate acceptance procedure, evidence gates and retention, the open `POMEGR-DT-08` to `POMEGR-DT-10` items, and the desktop milestone IDs | Maintained at this path |
+| [Desktop clean-VM checklist](operations/desktop-clean-vm.md) | Reusable clean-VM checks, with the recorded alpha run and the pending 0.2.4 candidate under Recorded acceptance runs | Maintained at this path |
+| [Website operations](operations/website.md) | Landing development, provisioning, manual deployment, and rollback; [package entrypoint](../../landing/README.md) | Maintained at this path |
+| [License history](decisions/license-history.md) | Accepted licensing decision and rationale | Maintained at this path |
 | [Commercial strategy](../COMMERCIAL_STRATEGY.md) | Working hypotheses, not shipped features or roadmap commitments | Accepted positioning in root `PRODUCT.md`, useful rationale in `decisions/product-positioning.md`, unresolved hypotheses in `plans/commercial-strategy.md` |
 
 ## Migration and temporary work

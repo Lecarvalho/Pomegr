@@ -49,7 +49,12 @@ The [architecture overview](internal/architecture/overview.md),
 [signal dictionary](internal/architecture/signal-dictionary.md) contracts live beside it.
 The [configuration](internal/development/configuration.md), [plugins](internal/development/plugins.md),
 and [command table](internal/development/command-table.md) references, and the
-[pipeline diagnostics](internal/operations/pipeline-diagnostics.md) runbook, serve
+[pipeline diagnostics](internal/operations/pipeline-diagnostics.md),
+[desktop releases](internal/operations/desktop-releases.md),
+[desktop beta acceptance](internal/operations/desktop-beta-acceptance.md),
+[desktop clean-VM](internal/operations/desktop-clean-vm.md), and
+[website operations](internal/operations/website.md) runbooks, and the
+[license history](internal/decisions/license-history.md) decision, serve
 maintainers changing those areas.
 
 Read the [contribution guide](../CONTRIBUTING.md) before proposing changes. Coding
@@ -88,7 +93,7 @@ maps the remaining work:
 | Current location | Planned home |
 | --- | --- |
 | User guidance in mixed-audience pages | `docs/public/`, grouped into `get-started/`, `using-pomegr/`, `concepts/`, and `help/` |
-| Technical references in `docs/*.md` and website operations | `docs/internal/architecture/`, `development/`, `operations/`, and `decisions/` |
+| Commercial strategy in `docs/COMMERCIAL_STRATEGY.md` | Accepted positioning in root `PRODUCT.md`, `docs/internal/decisions/`, and `docs/internal/plans/` |
 | Existing plans and temporary design artifacts | Active work in `docs/internal/plans/`; completed artifacts retired after their findings are accounted for |
 
 Public guides are intended for website publication. Internal documentation serves

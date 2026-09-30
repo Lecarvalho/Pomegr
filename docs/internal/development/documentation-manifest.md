@@ -94,4 +94,4 @@ invalid metadata, and accidental internal references, including through a
 mistaken manifest entry. Until those checks exist, follow the
 [maintenance checks](documentation.md#verify-the-change) and record manual
 validation coverage. Deployment remains governed by
-[website operations](../../../landing/OPERATIONS.md#5-release-the-exact-audited-artifact).
+[website operations](../operations/website.md#5-release-the-exact-audited-artifact).

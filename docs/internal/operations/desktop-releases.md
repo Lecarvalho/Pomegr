@@ -1,8 +1,12 @@
 # Pomegr desktop releases
 
+> Scope: packaging, signing, publishing, and rolling back the Windows x64 desktop releases.
+> Authority: operating procedure for maintainers. Users follow [Install Pomegr](../../public/get-started/install.md).
+> Related code and checks: `desktop/packaging/`, `.github/workflows/release.yml`, and the [release checklist](#release-checklist) below. [Desktop beta acceptance](desktop-beta-acceptance.md) owns the beta evidence gates, and [desktop clean-VM checklist](desktop-clean-vm.md) owns the reusable VM checks.
+
 ## Download the desktop app
 
-Follow [Install Pomegr](public/get-started/install.md) to choose a download and
+Follow [Install Pomegr](../../public/get-started/install.md) to choose a download and
 launch the Windows app. The procedures below are for maintainers packaging and
 publishing releases.
 
@@ -59,7 +63,7 @@ The helper handles the usual repository-owned lock holders automatically. Use th
 
 ### Publish signed artifacts
 
-The canonical desktop application version is the root [`package.json`](../package.json) `version` field. `package-lock.json` mirrors that value and must remain synchronized. Do not edit the sidebar, installer filenames, updater metadata, or `package-lock.json` by hand to set a release version.
+The canonical desktop application version is the root [`package.json`](../../../package.json) `version` field. `package-lock.json` mirrors that value and must remain synchronized. Do not edit the sidebar, installer filenames, updater metadata, or `package-lock.json` by hand to set a release version.
 
 The manual GitHub Actions workflow packages an existing tag. It does not choose a version, commit changes, create a tag, or move a tag. Use this sequence for every stable or beta release:
 
@@ -71,7 +75,7 @@ The manual GitHub Actions workflow packages an existing tag. It does not choose 
    npm version X.Y.Z --no-git-tag-version
    ```
 
-   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Then replace the previous candidate version in `desktop/packaging/build-acceptance-prior.mjs`, `docs/DESKTOP_CLEAN_VM_CHECKLIST.md`, and the clean-VM fixture assertions in `tests/desktop-packaging.test.mjs`. These release-specific safeguards intentionally fail CI when only the package files were bumped.
+   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Then replace the previous candidate version in `desktop/packaging/build-acceptance-prior.mjs`, which asserts the candidate and prior-fixture version pair for the clean-VM upgrade test and intentionally fails when only the package files were bumped. The reusable [clean-VM checklist](desktop-clean-vm.md) is version-neutral; record each candidate's run under its "Recorded acceptance runs" section.
 4. Run the applicable pre-release quality gates from the [release checklist](#release-checklist). Commit the complete release-preparation change, open a pull request, and merge it into `main`. Do not create the release tag on the feature branch because the pull-request merge produces the commit that must be released.
 5. Update local `main` after the merge and verify the canonical version and clean release point:
 
@@ -99,7 +103,7 @@ The manual GitHub Actions workflow packages an existing tag. It does not choose 
 
    If this command returns no tag, do not run the workflow. Entering a nonexistent tag causes checkout to fail with `pathspec 'refs/tags/…' did not match any file(s) known to git`. If the tag exists but its `package.json` version differs, the release verification fails.
 8. Run the dispatch command below. It starts the workflow only after confirming that the clean local checkout, local tag, and GitHub tag identify the same commit. The manual alternative is to run the helper with `--check-only`, then open **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source, enter that tag in **tag**, and enter its full commit SHA in **release_sha**. The workflow checks out that immutable tag, validates and tests it on a clean runner, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
-9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](DESKTOP_BETA_ACCEPTANCE.md).
+9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](desktop-beta-acceptance.md).
 
 Do not publish locally built executables, rerun a published version, move a release tag, or manually replace release assets. Correct a failed or broken published release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
 
@@ -163,7 +167,7 @@ files or run a second web build. A stale build fails with
 - [ ] The exact tagged `Pomegr-X.Y.Z-source.zip` is published beside the binaries at no charge.
 - [ ] `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` are present, non-empty, and accessible from About.
 - [ ] The remote release asset set exactly matches the allowlist; no diagnostics, unsigned fixtures, private paths, secrets, certificate material, or signing configuration are present.
-- [ ] For beta, every clean-VM gate in `DESKTOP_BETA_ACCEPTANCE.md` passes and `npm run desktop:beta:verify -- --version X.Y.Z-beta.N` verifies the archived evidence record.
+- [ ] For beta, every clean-VM gate in [desktop beta acceptance](desktop-beta-acceptance.md) passes and `npm run desktop:beta:verify -- --version X.Y.Z-beta.N` verifies the archived evidence record.
 - [ ] Download, first launch, provider discovery, notification transition/clear, preference restart, signed update, clean shutdown, uninstall data preservation, and portable isolation are recorded as pass.
 
 ## Signing configuration
@@ -232,3 +236,9 @@ An update check, download, or verification failure must leave the installed vers
 Published version numbers and tags are immutable. If a beta is broken, stop promoting it and publish the fix as a higher beta such as `X.Y.Z-beta.N+1`. If a stable release is broken, publish a higher patch version such as `X.Y.(Z+1)`. If exposure is dangerous, mark the affected GitHub release unavailable and document the issue, but still use a higher fixed version; never overwrite assets or reuse the broken version number. Existing installations can then accept the higher correctly signed release through their own channel.
 
 If a draft release fails validation, leave it unpublished while investigating or delete only that draft through the GitHub release UI. Rerun the workflow from a new immutable version tag after correcting the cause.
+
+## Reference documentation
+
+- [electron-builder documentation](https://www.electron.build/)
+- [electron-builder automatic updates](https://www.electron.build/docs/features/auto-update/)
+- [electron-builder Windows signing](https://www.electron.build/docs/features/code-signing/code-signing-win/)

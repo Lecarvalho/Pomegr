@@ -16,9 +16,9 @@ behavior owner so a coding agent can discover the contract before editing it.
 | Any UI control, chip, token, or style | `DESIGN.md` first, then `app/styles/tokens.css` and the button roles in `app/styles/shell.css`; verify on `/design-system` and in `tests/ui/pomegr-design-contract.test.tsx` | Literal colors, radii, or font sizes; a seventh button style; bespoke chip formats |
 | Design-system reference (web only, `/design-system`) | `app/design-system/page.tsx`, `app/components/design-system/`, `app/styles/design-system.css`, hidden paths in `desktop/runtime/security-policy.mjs`, `DESIGN.md` | Navigation entries, LAN gateway `APP_PATHS`, desktop `loadURL` triggers, monitor fetches, session data, edits to shared shell/session/evidence styles |
 | Desktop lifecycle | `desktop/runtime/` (packaged app code); generated service bundles land in `desktop/workers/` | Renderer access to credentials or raw server files; packaging or release tooling |
-| Desktop packaging and release | `desktop/packaging/` (build, electron-builder hooks, artifact and release policy, acceptance tools) | Imports from `desktop/runtime/` into packaging tooling are fine; the reverse is not, and none of these files ship in the app |
+| Desktop packaging and release | `desktop/packaging/` (build, electron-builder hooks, artifact and release policy, acceptance tools); procedures in [desktop releases](../operations/desktop-releases.md), [beta acceptance](../operations/desktop-beta-acceptance.md), and the [clean-VM checklist](../operations/desktop-clean-vm.md) | Imports from `desktop/runtime/` into packaging tooling are fine; the reverse is not, and none of these files ship in the app |
 | Web host (Node server for the built dashboard) | `server/web/` (`server.mjs`, `cli.mjs`; `entry.ts` is the Vite server entry) | Imports of monitor modules under `server/`; the monitor importing `server/web/` |
-| Landing site | `landing/` and its own `package.json` | Main application scripts and monitor state |
+| Landing site | `landing/` and its own `package.json`; deployment in [website operations](../operations/website.md) | Main application scripts and monitor state |
 | Generated plugins | `plugin-src/`, then `npm run build:plugin` | Direct edits to `plugins/**` generated artifacts |
 
 ## Server layout
@@ -97,7 +97,7 @@ publish.
 The independent public landing deployment is also manual: dispatch
 `.github/workflows/deploy-landing.yml` with the branch to deploy. It runs the landing
 tests, typecheck, build, and artifact audit before deploying to Cloudflare. See
-`landing/OPERATIONS.md` for GitHub secrets and production setup.
+[website operations](../operations/website.md) for GitHub secrets and production setup.
 
 `npm run release:windows -- --tag vX.Y.Z` performs only release-point checks and
 dispatches the Windows workflow with the exact clean local and remote tagged commit.
@@ -106,7 +106,7 @@ canonical verifier and CI desktop smoke, then owns signing, artifact/privacy che
 and publication. The SHA
 selects the release commit; it is not proof that tests ran locally. Use `--check-only`
 to validate without dispatch. Run with Git and GitHub CLI available; see
-`docs/DESKTOP_RELEASES.md`.
+[desktop releases](../operations/desktop-releases.md).
 
 `npm run check:boundaries` also rejects unreferenced production modules.
 Treat each orphan as a diagnostic to review for stale code or a missing dynamic entry

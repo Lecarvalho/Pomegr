@@ -5,7 +5,7 @@
 > writing and artifact lifecycle, and [current contracts](../README.md#choose-the-authority)
 > own runtime behavior.
 > Related code and checks: [agent workflow](agent-workflow.md#focused-verification),
-> [verification scripts](../../../package.json), and [website operations](../../../landing/OPERATIONS.md).
+> [verification scripts](../../../package.json), and [website operations](../operations/website.md).
 
 Keep one maintained owner for each subject. Use the [documentation index](../../README.md)
 for audience navigation and the [maintainer index](../README.md) to locate current
@@ -221,7 +221,7 @@ their routes change.
 
 Public content updates require the normal website build and deployment,
 independently of desktop packaging. Internal-only edits require documentation
-validation, not website deployment. Follow [website operations](../../../landing/OPERATIONS.md#5-release-the-exact-audited-artifact)
+validation, not website deployment. Follow [website operations](../operations/website.md#5-release-the-exact-audited-artifact)
 for the existing manual deployment procedure; documentation work does not enable
 automatic deployment. Update this section when the publication tooling lands.
 

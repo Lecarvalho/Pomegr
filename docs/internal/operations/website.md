@@ -1,4 +1,8 @@
-# Landing operations
+# Website operations
+
+> Scope: local development, provisioning, manual deployment, smoke checks, and rollback of the public landing Worker in `landing/`.
+> Authority: operating procedure. [`landing/README.md`](../../../landing/README.md) stays the package entrypoint and links here.
+> Related code and checks: `landing/package.json` scripts (`test`, `typecheck`, `build:audit`, `deploy`), `landing/scripts/`, and the [Deploy landing workflow](../../../.github/workflows/deploy-landing.yml).
 
 This guide covers local development and publishing the public landing Worker. Provisioning commands in sections 1-4 run from `landing/`. Local startup and the release commands in section 5 run from the repository root and explicitly select the landing package with `--prefix landing`.
 
@@ -19,7 +23,7 @@ npm --prefix landing run dev
 
 Open [the landing page](http://127.0.0.1:8788/), [About](http://127.0.0.1:8788/about), or [Downloads](http://127.0.0.1:8788/download). The server reloads source changes automatically. Leave the terminal running; press **Ctrl+C** to stop. If already inside `landing/`, use `npm run dev`.
 
-`landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and the waitlist widget uses Turnstile. Downloads still target real GitHub release files.
+`landing/vite.config.ts` sets `remoteBindings: false`, so the Cloudflare Vite plugin simulates bindings locally, including the `pomegr_waitlist` binding marked `remote: true` in `landing/wrangler.jsonc`. No shell environment variable, Cloudflare login, or API token is needed to preview these pages. This development option does not change production bindings. The site is not fully offline: release metadata comes from GitHub, and the waitlist widget uses Turnstile. Downloads still target real GitHub release files.
 
 The landing is independent of the desktop/dashboard development server on port 3003. Running `npm run dev` at the repository root starts that application instead of the landing.
 
@@ -43,14 +47,14 @@ Current limitation: the backend checks Turnstile's hostname against `pomegr.com`
 - **Cloudflare sign-in tab / remote proxy session / missing `CLOUDFLARE_API_TOKEN`:** cancel the login and stop the old process with Ctrl+C. Confirm `remoteBindings: false` is present in `landing/vite.config.ts`, then restart with `npm --prefix landing run dev`. The local preview does not need authorization. Do not use `wrangler login`, `deploy`, or `release` to start it.
 - **Port 8788 is occupied:** stop the existing landing server with Ctrl+C before starting another copy. Keep the documented port so local waitlist origin checks agree.
 - **Missing dependencies or CLI:** run `npm --prefix landing ci`; installing only the root package is insufficient.
-- **Old compiled preview:** use the development command above for source edits. A Wrangler preview of `dist/server/wrangler.json` serves the last build and requires rebuilding after changes.
+- **Old compiled preview:** use the development command above for source edits. A Wrangler preview of `landing/dist/server/wrangler.json` serves the last build and requires rebuilding after changes.
 
 ## 1. Provision D1 and Turnstile
 
 1. Authenticate locally with `node scripts/run-wrangler.mjs login`, then run `node scripts/run-wrangler.mjs d1 create pomegr-waitlist`.
-2. Replace the all-zero placeholder `database_id` in `wrangler.jsonc` with the returned database ID.
+2. Replace the all-zero placeholder `database_id` in `landing/wrangler.jsonc` with the returned database ID.
 3. Apply the schema with `npm run db:migrate:remote`. D1 is the only waitlist data store; rejected requests do not write to it.
-4. Create a Turnstile widget for `pomegr.com`. Replace `REPLACE_WITH_TURNSTILE_SITE_KEY` in `wrangler.jsonc`; the site key is intentionally public.
+4. Create a Turnstile widget for `pomegr.com`. Replace `REPLACE_WITH_TURNSTILE_SITE_KEY` in `landing/wrangler.jsonc`; the site key is intentionally public.
 5. Store secrets interactively. They are never bundled for the browser:
 
    ```powershell
@@ -76,7 +80,7 @@ Cloudflare Universal SSL supplies and renews the public TLS certificate without 
 
 ## 3. Domain routes and public boundary
 
-`wrangler.jsonc` attaches the Worker to both `pomegr.com` and `www.pomegr.com`. The Worker redirects `www` to the HTTPS apex with status 308. Its final configuration has `workers_dev` and preview URLs disabled.
+`landing/wrangler.jsonc` attaches the Worker to both `pomegr.com` and `www.pomegr.com`. The Worker redirects `www` to the HTTPS apex with status 308. Its final configuration has `workers_dev` and preview URLs disabled.
 
 For local validation, use the development instructions above; use a temporary reviewed staging configuration for deployment validation. Do not leave a production `workers.dev` route enabled. The Worker allowlist admits only `/`, `/about`, `/download`, the two waitlist endpoints, and the landing's explicit static asset paths. Local routes such as `/dashboard`, `/api/state`, and `/api/sessions` return 404 before the application router.
 
@@ -98,7 +102,7 @@ The WAF rule is a coarse outer shield. Same-origin browser headers, the honeypot
 
 ### Manual GitHub deployment
 
-The [Deploy landing workflow](../.github/workflows/deploy-landing.yml) runs only
+The [Deploy landing workflow](../../../.github/workflows/deploy-landing.yml) runs only
 through `workflow_dispatch`; pushes, pull requests, and tags do not deploy the site.
 It installs the landing lockfile, runs landing tests and typechecking, builds and
 audits once, then deploys that exact artifact with the existing `deploy` script.
@@ -145,7 +149,7 @@ npm --prefix landing run deploy
 
 `build:audit` and `deploy` belong to `landing/package.json`. Running `npm run build:audit` from the repository root produces `Missing script: "build:audit"`. If your terminal is already inside `landing/`, omit `--prefix landing` from the commands above.
 
-Do not edit `dist` between the audit and deployment. `npm run deploy` re-runs the audit immediately before invoking `wrangler deploy --config dist/server/wrangler.json`; that generated configuration uses `dist/server/index.js` with `no_bundle: true` and serves assets only from `dist/client`.
+Do not edit `landing/dist` between the audit and deployment. `npm run deploy` re-runs the audit immediately before invoking `wrangler deploy --config dist/server/wrangler.json`; that generated configuration (paths relative to `landing/`) uses `dist/server/index.js` with `no_bundle: true` and serves assets only from `dist/client`.
 
 After deployment, smoke-test:
 
@@ -161,7 +165,7 @@ After deployment, smoke-test:
 The download page queries GitHub's latest stable release and allows a 15-minute
 Cloudflare response cache. Requests use `redirect: "manual"` because workerd
 rejects `"error"`; non-OK responses, including redirects, use the verified fallback
-in `server/download-release.ts`. Keep that fallback's version and asset sizes in
+in `landing/server/download-release.ts`. Keep that fallback's version and asset sizes in
 sync with a verified published release when updating it. The landing test suite
 includes a workerd regression test for successful lookup and rejected redirects.
 

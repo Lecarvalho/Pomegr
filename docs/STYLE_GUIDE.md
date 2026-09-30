@@ -299,8 +299,8 @@ Close temporary work in the same change that fulfills or retires it:
 4. Repair references that treat the temporary artifact as current authority,
    including indexes, anchors, agent routes, and hidden tool references.
 5. Preserve explicitly required release evidence outside the temporary plan,
-   following the [release](DESKTOP_RELEASES.md) and
-   [acceptance](DESKTOP_BETA_ACCEPTANCE.md) procedures.
+   following the [release](internal/operations/desktop-releases.md) and
+   [acceptance](internal/operations/desktop-beta-acceptance.md) procedures.
 6. Delete the plan and unneeded attachments. Git history retains prior tracked
    versions; do not create a checked-in archive copy.
 

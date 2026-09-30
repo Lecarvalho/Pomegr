@@ -72,8 +72,8 @@ guidance.
 
 - **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/internal/development/plugins.md#skill-changes).
 - **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/internal/development/plugins.md#plugin-upgrade).
-- **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/DESKTOP_RELEASES.md#publish-signed-artifacts).
-- **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](landing/OPERATIONS.md#5-release-the-exact-audited-artifact).
+- **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/internal/operations/desktop-releases.md#publish-signed-artifacts).
+- **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](docs/internal/operations/website.md#5-release-the-exact-audited-artifact).
 
 ## Current limitations
 
@@ -85,4 +85,4 @@ guidance.
 
 ## Licence
 
-Pomegr is licensed under [AGPL-3.0-only](LICENSE). See the [license history](docs/LICENSE_HISTORY.md) and [trademark policy](TRADEMARKS.md) for details.
+Pomegr is licensed under [AGPL-3.0-only](LICENSE). See the [license history](docs/internal/decisions/license-history.md) and [trademark policy](TRADEMARKS.md) for details.
