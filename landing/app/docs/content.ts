@@ -24,3 +24,13 @@ export function findDocsPage(slug: readonly string[] | undefined): DocsPage | nu
 export function findDocsGroup(page: DocsPage): DocsNavigationGroup | null {
   return docsContent.navigation.find((group) => group.id === page.group) ?? null;
 }
+
+/**
+ * The first page, in manifest order, of the group a one-segment path names, or null. Only an exact
+ * id of a non-empty navigation group matches, so a group never becomes a page of its own and any
+ * other segment (a different case, an encoded slash, an unpublished group) stays a 404.
+ */
+export function findDocsGroupEntry(slug: readonly string[] | undefined): string | null {
+  if (!slug || slug.length !== 1 || !SLUG_SEGMENT.test(slug[0])) return null;
+  return docsContent.navigation.find((group) => group.id === slug[0])?.pages[0]?.route ?? null;
+}

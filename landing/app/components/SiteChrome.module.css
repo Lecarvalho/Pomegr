@@ -139,7 +139,17 @@
     width: 92px;
   }
 
-  .header nav > a:not(.headerAction) {
+  /*
+   * Docs is the one text link that stays in the phone header; the footer keeps the rest. Its 44 px
+   * box already leaves the text about 18 px of air, so the nav gap shrinks to 8 px. Brand, Docs, and
+   * the download action then share one line with 12 px or more before Docs at 351 px, and the
+   * wordmark hides at 350 px and below.
+   */
+  .header nav {
+    gap: 8px;
+  }
+
+  .header nav > a:not(.headerAction):not(.phoneLink) {
     display: none;
   }
 
@@ -161,7 +171,7 @@
   }
 }
 
-@media (max-width: 340px) {
+@media (max-width: 350px) {
   .header :global(.brandWordmark) {
     display: none;
   }

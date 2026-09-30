@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { DocsHeading, DocsPage, DocsPageLink } from "../../../scripts/docs-content.mjs";
-import { docsContent, findDocsGroup, findDocsPage, slugOf } from "../content";
+import { docsContent, findDocsGroup, findDocsGroupEntry, findDocsPage, slugOf } from "../content";
 import { DocsMarkdown } from "../render-markdown";
 import styles from "../docs.module.css";
 
 // The one route behind every published page. Content comes from the generated manifest data; no
-// page has a hand-written route. A slug the manifest does not publish is the site's 404.
+// page has a hand-written route. A slug the manifest does not publish is the site's 404, except the
+// exact id of a group (`/docs/concepts`), which has no content of its own and redirects like `/docs`.
 export const dynamicParams = false;
 
 interface RouteProps {
   params: Promise<{ slug?: string[] }>;
 }
 
+// Pages first, then one entry per group for its redirect; with dynamic params off, a slug missing
+// here is the framework 404 before this route runs.
 export function generateStaticParams() {
-  return docsContent.pages.map((page) => ({ slug: slugOf(page.route) }));
+  return [
+    ...docsContent.pages.map((page) => ({ slug: slugOf(page.route) })),
+    ...docsContent.navigation.map((group) => ({ slug: [group.id] })),
+  ];
 }
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
@@ -29,8 +35,14 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
 }
 
 export default async function DocsPageRoute({ params }: RouteProps) {
-  const page = findDocsPage((await params).slug);
-  if (!page) notFound();
+  const { slug } = await params;
+  const page = findDocsPage(slug);
+  if (!page) {
+    // Temporary like `/docs`: the first page of a group follows the manifest order, which can change.
+    const groupEntry = findDocsGroupEntry(slug);
+    if (groupEntry) redirect(groupEntry);
+    notFound();
+  }
   const group = findDocsGroup(page);
   const outline = buildOutline(page.headings);
 

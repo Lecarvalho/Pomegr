@@ -24,7 +24,7 @@ import DocsLayout from "../../app/docs/layout";
 import DocsNotFound from "../../app/docs/not-found";
 import DocsPageRoute, { dynamicParams, generateMetadata, generateStaticParams } from "../../app/docs/[...slug]/page";
 import { DocsNav } from "../../app/docs/DocsNav";
-import { docsContent, findDocsPage, slugOf } from "../../app/docs/content";
+import { docsContent, findDocsGroupEntry, findDocsPage, slugOf } from "../../app/docs/content";
 import worker from "../../worker/index";
 
 afterEach(cleanup);
@@ -62,13 +62,15 @@ const digestOf = async (promise: Promise<unknown> | (() => unknown)) => {
 };
 
 describe("routes", () => {
-  it("publishes all 17 manifest pages through one dynamic route, with no page per Markdown file", () => {
+  it("publishes all 17 manifest pages and the 4 group redirects through one dynamic route, with no page per Markdown file", () => {
     expect(pages).toHaveLength(17);
+    expect(content.navigation).toHaveLength(4);
     expect(dynamicParams).toBe(false);
     const params = generateStaticParams();
-    expect(params).toHaveLength(17);
-    expect(params.map((entry) => `/docs/${entry.slug.join("/")}`)).toEqual(pages.map((page) => page.route));
-    expect(new Set(params.map((entry) => entry.slug.join("/"))).size).toBe(17);
+    expect(params).toHaveLength(21);
+    expect(params.slice(0, 17).map((entry) => `/docs/${entry.slug.join("/")}`)).toEqual(pages.map((page) => page.route));
+    expect(params.slice(17)).toEqual(content.navigation.map((group) => ({ slug: [group.id] })));
+    expect(new Set(params.map((entry) => entry.slug.join("/"))).size).toBe(21);
 
     const walk = (directory: string): string[] =>
       readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>
@@ -116,9 +118,54 @@ describe("routes", () => {
   });
 
   it("answers an unknown slug with the framework 404, never a page", async () => {
-    for (const slug of [["nope"], ["concepts", "nope"], ["get-started"], ["concepts/cache-reuse"], ["images", "x", "y.jpg"], undefined]) {
+    const unknown: Array<string[] | undefined> = [
+      ["nope"],
+      ["concepts", "nope"],
+      ["concepts/cache-reuse"],
+      ["images", "x", "y.jpg"],
+      ["images"],
+      ["internal"],
+      ["Get-Started"],
+      ["get-started "],
+      ["get-started/"],
+      ["get-started", ""],
+      ["get-started", "introduction", "extra"],
+      [".."],
+      undefined,
+      [],
+    ];
+    for (const slug of unknown) {
       expect(await digestOf(DocsPageRoute(routeProps(slug))), JSON.stringify(slug)).toMatch(/^NEXT_HTTP_ERROR_FALLBACK;404$/);
       expect(await generateMetadata(routeProps(slug)), JSON.stringify(slug)).toEqual({});
+    }
+  });
+
+  it("redirects each group id to that group's first page in manifest order, with the same 307 as /docs", async () => {
+    expect(content.navigation.map((group) => group.id)).toEqual(["get-started", "using-pomegr", "concepts", "help"]);
+    const firsts = content.navigation.map((group) => [group.id, pages.find((page) => page.group === group.id)!.route] as const);
+    expect(firsts.map(([, route]) => route)).toEqual([
+      "/docs/get-started/introduction",
+      "/docs/using-pomegr/sessions-and-agents",
+      "/docs/concepts/context-and-tokens",
+      "/docs/help/missing-sessions",
+    ]);
+    for (const [id, route] of firsts) {
+      const slug = [id];
+      expect(generateStaticParams().some((entry) => entry.slug.join("/") === id), id).toBe(true);
+      expect(findDocsPage(slug), id).toBeNull();
+      expect(findDocsGroupEntry(slug), id).toBe(route);
+      expect(byRoute.has(route), route).toBe(true);
+      expect(await digestOf(DocsPageRoute(routeProps(slug))), id).toBe(`NEXT_REDIRECT;replace;${route};307;`);
+      expect(await generateMetadata(routeProps(slug)), id).toEqual({});
+    }
+  });
+
+  it("resolves only the exact id of a published group, never another segment or a page", () => {
+    for (const group of content.navigation) expect(findDocsGroupEntry([group.id])).toBe(group.pages[0].route);
+    expect(findDocsGroupEntry(undefined)).toBeNull();
+    expect(findDocsGroupEntry([])).toBeNull();
+    for (const slug of [["nope"], ["images"], ["Get-Started"], ["get-started", "introduction"], ["get-started", ""], ["get-started/"], ["constructor"], ["__proto__"]]) {
+      expect(findDocsGroupEntry(slug), JSON.stringify(slug)).toBeNull();
     }
   });
 
@@ -161,7 +208,7 @@ describe("layout", () => {
   it("marks Docs as the current section in the header and omits the redundant footer link", async () => {
     const html = await layoutMarkup(pages[0]);
     const header = between(html, /<header/, "</header>");
-    expect(header).toContain('<a aria-current="page" href="/docs">Docs</a>');
+    expect(header).toMatch(/<a class="[^"]*" aria-current="page" href="\/docs">Docs<\/a>/);
     expect(count(header, 'aria-current="page"')).toBe(1);
     const footer = between(html, /<footer/, "</footer>");
     expect(footer).toContain('href="/about"');
@@ -361,6 +408,8 @@ describe("Worker allowlist", () => {
   it.each([
     "/docs",
     "/docs/",
+    "/docs/get-started",
+    "/docs/help",
     "/docs/concepts/cache-reuse",
     "/docs/concepts/x",
     "/docs/get-started/introduction",

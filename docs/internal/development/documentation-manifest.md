@@ -195,9 +195,15 @@ description, and the route is its canonical URL.
 
 - `/docs` has no content of its own. It redirects (307) to `entry`, and is a
   404 when the manifest selects nothing.
+- `/docs/<group>` has no content of its own either. The exact id of a
+  published group (`get-started`, `using-pomegr`, `concepts`, `help`) redirects
+  (307) to that group's first page in manifest order. It is temporary like
+  `/docs`, because reordering the manifest changes the target. Its static
+  params sit beside the page params, so dynamic params stay off. Any other
+  single segment, a different case, or an unpublished group is a 404. A group
+  path is never a page, a sitemap entry, or a search result.
 - `/docs/<group>/<topic>` serves a selected page. Only exact manifest topics
-  match: a group path, a different case, an extra segment, or an encoded slash is
-  not a page.
+  match: a different case, an extra segment, or an encoded slash is not a page.
 - Every other `/docs/...` path returns status 404 with the documentation 404
   page, which keeps the sidebar.
 - `/docs/images/...` files are the static images the loader copied.
