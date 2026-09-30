@@ -210,12 +210,13 @@ function linkDependencies(repo: Repo) {
   }
 }
 
-const STAGED_ENTRIES = ["app", "db", "public", "scripts", "server", "worker", "next-env.d.ts", "next.config.ts", "package.json", "tsconfig.json", "vite.config.ts", "wrangler.jsonc"];
+const STAGED_ENTRIES = ["app", "db", "public", "scripts", "server", "worker", "next.config.ts", "package.json", "tsconfig.json", "vite.config.ts", "wrangler.jsonc"];
 
 /**
  * Copy everything `npm run build:audit` needs into the fixture's landing/, and link landing's
  * dependencies. Generated and local output (`generated/`, `public/docs/`, `dist/`, secrets) is never
  * copied, so the staged package can only bundle what its own fixture documentation produces.
+ * Only tracked sources are staged: gitignored files such as next-env.d.ts are absent on a fresh CI checkout.
  */
 export function stageLanding(repo: Repo) {
   const generatedImages = join(LANDING_SOURCE, "public", "docs");
