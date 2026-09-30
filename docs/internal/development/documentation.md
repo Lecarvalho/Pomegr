@@ -61,7 +61,7 @@ they do not replace the design-system page or preserve a temporary mockup.
 ### Context and tokens screenshot ownership
 
 The [context and tokens](../../public/concepts/context-and-tokens.md) page owns the
-JPEG in `docs/public/images/context-and-tokens/`. `compaction-drop.jpg` was
+two JPEGs in `docs/public/images/context-and-tokens/`. `compaction-drop.jpg` was
 captured on 2026-09-30 from the Pomegr 0.5.3 interface in dark theme. It shows the
 Activities tab's Requests panel in Lanes and Full breakdown, at a 1000 px viewport
 and cropped to the lanes and axis, for the recorded Codex session titled “Fix PR 30
@@ -76,6 +76,56 @@ running local dashboard at 2x scale, was converted to JPEG, and shows only displ
 dashboard content (agent labels, roles, models, and token bars); no raw session
 files were read or copied. When the chart changes, recapture a recorded compaction
 and update the page, alt text, and image together.
+
+`fresh-tokens.jpg` was captured the same day from the same interface and theme, at
+a 1000 px viewport and 2x scale, cropped to the header, lanes, and axis. It shows the
+Requests panel in Fresh tokens (the default mode) with the Direct subagents group
+expanded, for requests #270 to #330 of the recorded Claude Code session titled
+“Agent-readiness audit of repo structure” in the Pomegr repository, with request
+#300 selected. It shows the same window as the introduction's `requests-chart.jpg`
+in the other chart mode. Recapture it with the introduction image.
+
+### Cache reuse screenshot ownership
+
+The [cache reuse](../../public/concepts/cache-reuse.md) page owns the two JPEGs in
+`docs/public/images/cache-reuse/`. Both were captured on 2026-09-30 from the Pomegr
+0.5.3 interface in dark theme, at a 1000 px viewport and 2x scale, cropped to the
+Requests panel's header, one lane, and axis. They show one subagent's requests #63 to
+#101 (the lane “Implement part 4 shared lookup”, focused with its lane label) in the
+recorded Claude Code session titled “ACOS part 4: shared Claude/Codex source ledger
+lookup” in the Pomegr repository, with request #93 selected under its **Possible full
+refill** marker. `refill-write-spike.jpg` uses Fresh tokens and `refill-cache-reads.jpg`
+uses Full breakdown; the two captures are the same request in both modes. The project
+owner authorized any recorded session of the Pomegr, Pokrr, or Catalogus repositories
+on 2026-09-30; the session was chosen because its refill is the only one in it and is
+bracketed by high-reuse requests, and the lifetime inference appears when the marker is
+hovered. Only displayed dashboard content was captured. When the chart or marker
+changes, recapture a recorded possible full refill in both modes and update the page,
+alt text, and images together. The former `docs/user-guide/images/cache-reuse-drop.png`
+crop of the old line chart was deleted.
+
+### Usage limits screenshot ownership
+
+The [usage limits](../../public/concepts/usage-limits.md) page owns
+`docs/public/images/usage-limits/provider-windows.jpg`, captured on 2026-09-30 from
+the running Pomegr 0.5.3 dashboard in dark theme at a 1100 px viewport and 2x scale,
+cropped to the two provider cards and the caution note. It shows live account
+percentages for the project owner's Claude Code and Codex accounts at that moment (no
+account identifiers). Only displayed dashboard content was captured. Recapture it when
+the Usage limits page changes and keep the caption's date, providers, and values
+accurate.
+
+### Signals and estimates screenshot ownership
+
+The [signals and estimates](../../public/concepts/signals-and-estimates.md) page owns
+the two JPEGs in `docs/public/images/signals-and-estimates/`. Both were captured on
+2026-09-30 from the Pomegr 0.5.3 interface in dark theme at a 1100 px viewport and 2x
+scale, from the recorded Claude Code session titled “ACOS part 4: shared Claude/Codex
+source ledger lookup” in the Pomegr repository. `signals-tab.jpg` shows the Signals tab
+(Efficiency, Cache lifetime, Reported signals) cropped to its content; `progress-and-cost.jpg`
+shows the Overview tab's Progress and Cost panels. Only displayed dashboard content
+was captured; the reported signal's short label and description were reviewed and show
+no paths, prompts, or credentials. Recapture both when the tab layout changes.
 
 ## Migrate one page at a time
 

@@ -5,6 +5,8 @@ as **active**, **warm**, **idle**, and **finished** describe observed execution 
 liveness evidence; they do not describe prompt-cache availability.
 The [Limitations reference](internal/architecture/limitations.md#usage-cache-and-estimates)
 lists source and interpretation gaps; this page owns the timing presentation rules.
+For the public explanation of reuse, refills, and lifetimes, see
+[Cache reuse](public/concepts/cache-reuse.md).
 
 ## Times shown for an agent
 

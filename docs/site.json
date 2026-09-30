@@ -14,7 +14,7 @@
     {
       "id": "concepts",
       "title": "Concepts",
-      "pages": ["concepts/context-and-tokens.md"]
+      "pages": ["concepts/context-and-tokens.md", "concepts/cache-reuse.md", "concepts/usage-limits.md", "concepts/signals-and-estimates.md"]
     },
     {
       "id": "help",

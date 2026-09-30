@@ -13,7 +13,9 @@ This page keeps the remaining user-guide material reachable during migration.
   work, open its dashboard, and understand loading or missing data.
 - [Context and tokens](../public/concepts/context-and-tokens.md) — input, output,
   cache reads and writes, context snapshots, and compaction.
-- [Understanding tokens and cache](tokens-and-cache.md) — cache reuse, token
-  prices, and common questions about the numbers.
+- [Cache reuse](../public/concepts/cache-reuse.md) — possible refills, cache
+  lifetimes, and what they do and do not show.
+- [Understanding tokens and cache](tokens-and-cache.md) — token prices and
+  common questions about the numbers.
 
 [Back to the project overview](../../README.md)

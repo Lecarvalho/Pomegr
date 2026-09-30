@@ -6,8 +6,10 @@ Jump to [costs and percentages](#how-token-costs-are-calculated) or
 [when caching is worth it](#when-caching-is-worth-it).
 
 Pomegr shows how much information an agent used for a model request and how much
-of that input came from cache. Start with [Context and tokens](../public/concepts/context-and-tokens.md) for the
-labels, formulas, and a worked example.
+of that input came from cache. Start with
+[Context and tokens](../public/concepts/context-and-tokens.md) for the labels,
+formulas, and a worked example, and [Cache reuse](../public/concepts/cache-reuse.md)
+for refills and cache lifetimes.
 
 ## What is a token?
 
@@ -19,17 +21,7 @@ The four labels and the prompt-input and request-total formulas are in [Context 
 
 ## How caching works
 
-A request carries more than your last message; see
-[Context and tokens](../public/concepts/context-and-tokens.md#the-four-token-labels).
-
-Prompt caching lets the provider reuse processing for a matching beginning of
-the input, often called a **prefix**. A later request can read an existing prefix
-from cache and write additional input. The model still generates output for the
-new request. See
-[Anthropic's explanation of prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
-
-Pomegr observes the reported counts. It does not create, refresh, or clear the
-provider's cache.
+Moved to [Cache reuse](../public/concepts/cache-reuse.md).
 
 ## A worked example
 
@@ -179,68 +171,7 @@ Moved to [Context and all-agent context](../public/concepts/context-and-tokens.m
 
 ## Spotting a possible cache refill
 
-Look for **high cache reuse, a sudden drop in cache reads, and then reuse
-returning**. Your request chart may show a shape like this:
-
-<img src="images/cache-reuse-drop.png" alt="Five request points: cache reads are high, drop at the middle request while uncached input spikes, then return to a high level." />
-
-*An enlarged crop of the request chart. It illustrates the shape to investigate;
-it does not show exact token counts, timestamps, or the selected agent.*
-
-### Read the pattern from left to right
-
-In Pomegr's current chart colors, **grey is Cache read**, **lavender is Uncached
-input**, **green is Cache write**, and **amber is Output**. Use the legend labels
-when inspecting your session.
-
-1. **Before the dip:** cache reads are high and uncached input is low. Much of
-   the request's input is being reused from cache.
-2. **At the middle request:** cache reads fall sharply while uncached input
-   rises. More input is being processed without a reported cache read.
-3. **After the dip:** cache reads rise again and uncached input falls. The later
-   requests are reusing cached input again.
-
-This is a useful clue that cache reuse was interrupted. The lavender spike
-shows **uncached input**, so it does not establish that the provider recorded a
-**cache write**. In particular, this shape can appear in Codex even though
-Pomegr does not have the cache-write evidence needed to classify a refill.
-
-### Check the requests behind the shape
-
-On the **Activities** tab, read one agent's lane in the **Requests** chart, or
-choose that agent in **Agent scope**. In **Full breakdown**, compare the request at
-the dip with the request immediately before it. You can also focus the chart and use
-the Left and Right arrow keys.
-
-Compare requests from the same agent: neighboring bars in **Single chart** with
-**All agents** can belong to different agents. Each bar represents a recorded
-request, and the bars are equally spaced, so their horizontal distance does not
-tell you the time gap.
-
-Pomegr labels a **possible full refill** only when the preceding and affected
-requests are comparable and meet all of these conditions:
-
-| What to check | Required evidence |
-| --- | --- |
-| Input size | Both requests have at least **8,000 prompt-input tokens**. |
-| Reuse before the dip | The preceding request reads at least **80%** of its prompt input from cache. |
-| Reuse at the dip | The affected request reads at most **10%** of its prompt input from cache. |
-| Writing at the dip | The affected request records at least **8,000 cache-write tokens**. |
-
-Prompt input includes uncached input, cache read, and cache write; it excludes
-output. Pomegr checks comparability within the same agent and model, with no
-intervening recorded compaction or break in comparable evidence. Missing or
-unsupported evidence prevents the classification.
-
-A return to high cache reads helps you recognize the visual sequence, but it is
-not required by this rule. Neither is a 30-minute gap. A large write on the first
-request can be initial cache creation; it has no preceding high-reuse request
-to establish this transition.
-
-The signal identifies a pattern in recorded counts. It does not prove that the
-cache expired, why reuse changed, or what the provider charged. The
-[signal reference](../SIGNAL_DICTIONARY.md#cache-signals) describes the evidence
-and any separately labeled explanations.
+Moved to [Spot a possible full refill](../public/concepts/cache-reuse.md#spot-a-possible-full-refill).
 
 ## Spotting context compaction
 
@@ -254,26 +185,11 @@ Answered in [Context and tokens](../public/concepts/context-and-tokens.md#the-fo
 
 ### Does a large cache write mean something went wrong?
 
-A write can be the initial creation of a cache or the addition of new material.
-Pomegr's **possible full refill** signal is more specific: it detects a change
-from high cache reuse to low reuse alongside a large write in comparable
-requests from the same agent.
-
-That pattern alone does not identify the cause or show that money was wasted.
-See [Spotting a possible cache refill](#spotting-a-possible-cache-refill) for the
-visual pattern and the checks behind the signal.
+Answered in [Cache reuse](../public/concepts/cache-reuse.md#limits).
 
 ### Does a cache lifetime warning mean the cache is gone?
 
-Pomegr can show that a lifetime threshold has elapsed when it has suitable
-timing evidence. It cannot directly inspect the provider's cache. An elapsed
-threshold is not proof of expiration, and an agent's execution status does not
-tell you whether its cache is available.
-
-**Last request** is the time of the latest recorded request with valid usage data.
-**Last cache touch** is the time of the latest recorded request with a positive
-cache-read or cache-write count. See the
-[cache timing reference](../CACHE_TIMING.md) for how warnings are determined.
+Answered in [Cache lifetime and elapsed time](../public/concepts/cache-reuse.md#cache-lifetime-and-elapsed-time).
 
 ### Why is Cache write missing for Codex?
 
@@ -286,12 +202,9 @@ charges with hypothetical examples. It does not predict your subscription
 allowance or reconstruct a session bill.
 
 Pomegr does not calculate a bill, savings, or subscription consumption from
-request token counts. **Usage limits** shows separate provider-reported account
-information.
-
-When the optional Claude Code status-line bridge is connected, the
-**API list-rate estimate** shows Claude Code's own session estimate. It may differ from an actual
-bill and does not represent the marginal cost of subscription usage.
+request token counts. Provider-reported account usage is in
+[Usage limits](../public/concepts/usage-limits.md), and Claude Code's own session
+estimate is in [Signals and estimates](../public/concepts/signals-and-estimates.md#agent-reported-progress-and-signals).
 
 ## More detail
 

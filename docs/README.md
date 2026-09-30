@@ -12,7 +12,10 @@ source.
 | Download and launch the Windows app | [Install Pomegr](public/get-started/install.md) |
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
 | Read context, input, output, and cache numbers | [Context and tokens](public/concepts/context-and-tokens.md) |
-| Understand cache reuse and token prices | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
+| Understand cache reuse, possible refills, and cache lifetimes | [Cache reuse](public/concepts/cache-reuse.md) |
+| Read the account usage windows and their freshness | [Usage limits](public/concepts/usage-limits.md) |
+| Tell recorded values, agent reports, estimates, and signals apart | [Signals and estimates](public/concepts/signals-and-estimates.md) |
+| Understand token prices | [Understanding tokens and cache](user-guide/tokens-and-cache.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
 | Configure the app, use phone access, or troubleshoot discovery | [Configuration and troubleshooting](CONFIGURATION.md) |
 | Set up reporting for a repository | [Pomegr plugins](PLUGINS.md) |
@@ -43,9 +46,12 @@ migration, publication, checks, and closure.
 
 The [introduction](public/get-started/introduction.md),
 [installation guide](public/get-started/install.md),
-[first-session guide](public/get-started/first-session.md), and
-[context and tokens](public/concepts/context-and-tokens.md) concept page are migrated
-public pages.
+[first-session guide](public/get-started/first-session.md), and the
+[context and tokens](public/concepts/context-and-tokens.md),
+[cache reuse](public/concepts/cache-reuse.md),
+[usage limits](public/concepts/usage-limits.md), and
+[signals and estimates](public/concepts/signals-and-estimates.md) concept pages are
+migrated public pages.
 Remaining sources keep their current paths and authority until their
 individual migration tasks complete. Follow the working links above; this table
 maps the remaining work:

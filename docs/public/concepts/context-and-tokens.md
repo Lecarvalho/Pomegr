@@ -62,11 +62,21 @@ On the later request the provider reads 18,000 tokens from cache and writes
 about 86%; output is excluded. Reuse changes how those tokens are processed, but
 the request still carries 21,000 input tokens. This agent's context is now
 21,500, the later request's total, not the sum of both requests.
+[Cache reuse](cache-reuse.md) explains what a drop in reuse can and cannot mean.
 
 The **Requests** chart on the **Activities** tab draws one bar per request.
-**Fresh tokens** stacks uncached input, cache write, and output. **Full
-breakdown** also stacks cache read, so a bar shows the whole request. In
-**Lanes**, each agent's lane has its own scale, so compare bars within a lane.
+**Fresh tokens**, the default, stacks uncached input, cache write, and output. It
+leaves out cache read, which is usually far larger, so the smaller parts stay
+readable. Choose **Full breakdown** to also stack cache read, so a bar shows the
+whole request. In **Lanes**, each agent's lane has its own scale, so compare bars
+within a lane.
+
+![The Requests chart in Fresh tokens for a Claude Code session, requests 270 to 330, with one lane per subagent: green Cache write bars dominate, and the lane scales are small, from 6,000 to 15K tokens.](../images/context-and-tokens/fresh-tokens.jpg)
+
+*A real recorded Claude Code session in the Pomegr repository. In **Fresh
+tokens**, Cache write is the largest visible part of these subagent requests.
+Uncached input and output are barely visible, and the lane scales (6,000, 15K,
+and 12K tokens) are small because cache reads are left out.*
 
 ## Spot a compaction
 
@@ -97,7 +107,7 @@ recorded the compactions as automatic or manual.
 - **Provider differences.** Providers report usage differently. A missing value
   means unavailable, not zero.
 - **No Cache write for Codex.** Pomegr omits **Cache write** and the cache-refill
-  evidence that needs it for all Codex sessions, because Codex records lack
-  reliable cache-write counts as of September 2026
-  ([upstream issue](https://github.com/openai/codex/issues/35300)). Cache reads
-  remain available.
+  evidence that needs it (see [Cache reuse](cache-reuse.md)) for all Codex
+  sessions, because Codex records lack reliable cache-write counts as of
+  September 2026 ([upstream issue](https://github.com/openai/codex/issues/35300)).
+  Cache reads remain available.

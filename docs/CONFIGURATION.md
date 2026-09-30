@@ -123,6 +123,9 @@ The bridge forwards bounded stdin to the delegated command unchanged, so the vis
 
 #### Claude local usage feed
 
+For what the windows mean and how fresh they are, see the public
+[Usage limits](public/concepts/usage-limits.md) guide.
+
 A failed usage check automatically expands **Usage connection help** under
 **Usage limits → Claude Code**, even when retained usage figures remain available.
 Authentication failures and missing credentials show browser users the manual
@@ -202,7 +205,7 @@ prompts on the monitor computer. No credentials or auth URLs are copied into Pom
 
 No extra setup is required for persisted history under `%USERPROFILE%\.codex`. `CODEX_HOME` can select a different Codex root. Pomegr reads bounded rollout metadata and `session_index.jsonl`; it does not read Codex private SQLite tables.
 
-To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables session-level usage capability, while the Usage limits page shows **Codex CLI required for usage limits** with expanded **Usage connection help**. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability and shows troubleshooting beside a sanitized failure. Retained readings do not hide help.
+To display current Codex usage limits, install a supported native Codex CLI and sign it in with the account whose limits should be shown. Pomegr starts a short-lived, account-only `codex app-server --stdio` reader at most once every five minutes; it requests only the rate-limit snapshot and exits immediately. It never uses that transient process for session discovery, cataloging, liveness, or turn data. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native CLI path when automatic discovery cannot find the CLI. A missing or unsupported CLI disables session-level usage capability, while the Usage limits page shows **Codex CLI required for usage limits** with expanded **Usage connection help**. A valid CLI with signed-out, API-key-only, or temporarily failing account access retains the capability and shows troubleshooting beside a sanitized failure. Retained readings do not hide help. The public [Usage limits](public/concepts/usage-limits.md) guide explains how the windows are presented.
 
 #### Codex usage troubleshooting
 
@@ -361,6 +364,7 @@ On startup, compatible normalized checkpoints may make prior session state visib
 
 ### Usage limits are unavailable
 
+- The public [Usage limits](public/concepts/usage-limits.md) guide explains the windows, freshness, and recovery steps.
 - Historical views always omit current usage limits.
 - Claude failures can indicate missing/expired provider authentication or provider cooldown; the browser receives only a sanitized error.
 - Codex limits require a supported native Codex CLI authenticated with ChatGPT. Set `POMEGR_CODEX_EXECUTABLE` to an absolute native executable if automatic discovery cannot find it; Pomegr does not attach to an existing desktop or CLI stdio transport. If no valid CLI is found, the Usage limits page shows **Codex CLI required for usage limits** with installation, sign-in, and restart instructions. Session-level usage capability remains disabled. Account-read failures show expanded troubleshooting even when previous values remain available.
