@@ -219,7 +219,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       process.stderr.write("A new release starts from main at the same commit as origin/main.\n");
     }
     if (error.message === "POMEGR_RELEASE_VERSION_NOT_BUMPED") {
-      process.stderr.write("package.json does not have the tag's version. Bump it, commit, and push main first, then rerun.\n");
+      process.stderr.write("package.json does not have the tag's version. Run `npm run version:bump -- X.Y.Z`, get it onto main, then rerun.\n");
     }
     process.exitCode = 1;
   });

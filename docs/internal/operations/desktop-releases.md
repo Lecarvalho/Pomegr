@@ -12,16 +12,15 @@ Before releasing a new version, test if the new version works locally
 $env:POMEGR_DATA_DIR = "C:\Temp\pomegr-test-data"; npm run desktop:start
 ```
 
-With every intended change merged, bump the version by hand on `main` and push it. The release command never changes the version:
+Bump the version from a clean checkout of whichever branch carries the release changes. The release command never changes the version:
 
 ```powershell
-npm version X.Y.Z --no-git-tag-version
-git add package.json package-lock.json
-git commit -m "chore: bump version to X.Y.Z"
-git push origin main
+npm run version:bump -- X.Y.Z
 ```
 
-Then run the release command from that clean `main`, at the same commit as `origin/main`:
+It runs `npm version X.Y.Z --no-git-tag-version`, commits `package.json` and `package-lock.json` as `chore: bump version to X.Y.Z`, and pushes the checked-out branch. It creates no tag and dispatches nothing. Merge that branch as usual so the version commit reaches `main`.
+
+With that commit on `main`, run the release command from a clean `main` at the same commit as `origin/main`:
 
 ```powershell
 npm run release:windows -- --tag vX.Y.Z
@@ -32,7 +31,7 @@ Then confirm the workflow run and the published GitHub release succeeded.
 Rules:
 
 - Stable releases use `vX.Y.Z`. Beta releases use `vX.Y.Z-beta.N`, publish as a GitHub prerelease, and use the beta updater channel.
-- The version bump is its own commit, made and pushed by hand before the release command. Use `npm version` so `package.json` and `package-lock.json` change together; the release command never edits, commits, or pushes a version.
+- The version bump is its own commit, made and pushed with `npm run version:bump` on the checked-out branch and merged to `main` before the release command, so `package.json` and `package-lock.json` change together; the release command never edits, commits, or pushes a version.
 - Pushing a tag does not start the workflow. Only the dispatch does.
 - Never move or reuse a published tag, rerun a published version, replace release assets, or publish locally built executables.
 
