@@ -31,7 +31,7 @@ const PAIR_ATTEMPT_WINDOW_MS = 60_000;
 const MAX_PAIRING_ATTEMPT_CLIENTS = 128;
 const KNOWN_PUBLIC_PATHS = new Set([
   "/favicon.ico", "/favicon.png", "/pomegr-mark-painted.png", "/pomegr-mark-brush-outline.png", "/pomegr-logo.png",
-  "/pomegr-mark-outline-dark.svg", "/pomegr-mark-outline-light.svg", "/file.svg", "/globe.svg", "/window.svg",
+  "/file.svg", "/globe.svg", "/window.svg",
   "/legal/LICENSE.txt", "/legal/NOTICE.txt", "/legal/SOURCE.txt", "/legal/THIRD_PARTY_NOTICES.txt", "/legal/TRADEMARKS.txt",
 ]);
 

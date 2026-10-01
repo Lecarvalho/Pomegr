@@ -69,7 +69,7 @@ test("packaged desktop runtime allowlist is closed over local module imports", a
 test("artifact policy accepts only required runtime roots and rejects private or development paths", () => {
   assert.deepEqual(assertPackagedApplicationFiles([
     ...REQUIRED_FILES,
-    "assets/brand/pomegr-lockup-color.svg",
+    "assets/brand/extra-brand-asset.png",
     "dist/client/assets/index.js",
     "node_modules/vinext/dist/server/prod-server.js",
   ]), { fileCount: REQUIRED_FILES.length + 3 });
