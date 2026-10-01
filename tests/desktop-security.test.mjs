@@ -260,6 +260,7 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     setNotifications() { throw new Error("CREDENTIAL_MUST_NOT_LEAK"); },
     setNotificationQuiet() { throw new Error("ENV_SECRET_MUST_NOT_LEAK"); },
     setDisplayPreference() { throw new Error("SESSION_CONTENT_MUST_NOT_LEAK"); },
+    setHomeUpdate() { throw new Error("IDENTIFIER_MUST_NOT_LEAK"); },
     quit() { throw new Error("COMMAND_MUST_NOT_LEAK"); },
   };
   const trustedEvent = {};
@@ -271,7 +272,7 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     getUpdater: () => updater,
     themeHandler: () => false,
   });
-  assert.equal(registered.length, 11);
+  assert.equal(registered.length, 12);
   for (const channel of [
     DESKTOP_BEHAVIOR_CHANNELS.setPaused,
     DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
@@ -279,6 +280,7 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     DESKTOP_BEHAVIOR_CHANNELS.setNotifications,
     DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet,
     DESKTOP_BEHAVIOR_CHANNELS.setDisplayPreference,
+    DESKTOP_BEHAVIOR_CHANNELS.setHomeUpdate,
   ]) {
     assert.deepEqual(await handlers.get(channel)(trustedEvent, true), safeState);
     assert.equal(await handlers.get(channel)({}, true), null);

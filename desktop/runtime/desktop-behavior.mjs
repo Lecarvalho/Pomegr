@@ -6,6 +6,7 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
   setNotifications: "pomegr:set-notifications",
   setNotificationQuiet: "pomegr:set-notification-quiet",
   setDisplayPreference: "pomegr:set-display-preference",
+  setHomeUpdate: "pomegr:set-home-update",
   checkForUpdates: "pomegr:check-for-updates",
   installUpdate: "pomegr:install-update",
   quit: "pomegr:quit",
@@ -16,6 +17,22 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
 export const CLOSE_BEHAVIORS = Object.freeze(["ask", "tray", "quit"]);
 export const DESKTOP_THEME_SOURCES = Object.freeze(["light", "dark", "system"]);
 export const DISPLAY_PREFERENCE_KEYS = Object.freeze(["estimatedCost"]);
+// The renderer's browser storage does not survive a desktop restart (in-memory session, per-launch
+// origin), so the Home announcement's seen and dismissed markers persist here instead.
+export const HOME_UPDATE_KEYS = Object.freeze(["seenId", "dismissedId"]);
+const HOME_UPDATE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+
+export function isHomeUpdateId(value) {
+  return typeof value === "string" && HOME_UPDATE_ID.test(value);
+}
+
+export function normalizeHomeUpdate(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    seenId: isHomeUpdateId(source.seenId) ? source.seenId : null,
+    dismissedId: isHomeUpdateId(source.dismissedId) ? source.dismissedId : null,
+  };
+}
 
 export function applyDesktopNativeTheme(nativeTheme, source) {
   if (!nativeTheme || !DESKTOP_THEME_SOURCES.includes(source)) return false;
@@ -100,6 +117,7 @@ export function createDesktopBehaviorController(options) {
     displayPreferences: Object.freeze({
       estimatedCost: settings.displayPreferences?.estimatedCost !== false,
     }),
+    homeUpdate: Object.freeze(normalizeHomeUpdate(settings.homeUpdate)),
     notificationQuietUntil: notificationQuietUntil > now() ? new Date(notificationQuietUntil).toISOString() : null,
     ...(options.snapshotExtension?.() || {}),
   });
@@ -221,6 +239,13 @@ export function createDesktopBehaviorController(options) {
             [key]: visible,
           },
         });
+        return snapshot();
+      });
+    },
+    async setHomeUpdate(key, id) {
+      if (!HOME_UPDATE_KEYS.includes(key) || !isHomeUpdateId(id)) return snapshot();
+      return enqueueMutation(async () => {
+        await persist({ homeUpdate: { ...normalizeHomeUpdate(settings.homeUpdate), [key]: id } });
         return snapshot();
       });
     },

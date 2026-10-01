@@ -13,13 +13,15 @@ content afresh each time. Paths are relative to the active Pomegr checkout.
 
 | File | Responsibility |
 | --- | --- |
-| `app/HomeDashboard.tsx` | The `HomeUpdateCard` call supplies `title`, `description`, and `details`. Edit the announcement here. |
+| `app/HomeDashboard.tsx` | The `HomeUpdateCard` call supplies `title`, `summary`, `description`, `highlights`, and `illustration`. Edit the announcement copy here. |
+| `app/components/home/HomeUpdateIllustration.tsx` | The current announcement's artwork: a static, token-based miniature of the feature. Redraw it for each new announcement. |
+| `app/components/home/HomeUpdateIllustration.module.css` | Styles for that artwork. Change with it. |
 | `app/hooks/useHomePreferences.ts` | `HOME_UPDATE_ID` identifies which announcement the user dismissed. |
-| `tests/ui/dashboard-home.test.tsx` | Existing announcement, dismissal persistence, focus restoration, and previous-announcement migration tests. |
-| `app/components/home/HomeUpdateCard.tsx` | Shared presentation: heading, About this update disclosure, and dismiss button. Usually unchanged. |
-| `app/components/home/HomeUpdateCard.module.css` | Existing card layout and responsive styles. Usually unchanged. |
+| `tests/ui/dashboard-home.test.tsx` | Existing announcement, dialog, dismissal persistence, focus restoration, and previous-announcement migration tests. |
+| `app/components/home/HomeUpdateCard.tsx` | Shared presentation: the Home teaser card (thumbnail, title, summary, See what's new, dismiss) and the modal dialog it opens (illustration, description, highlights, Close, Got it). Usually unchanged. |
+| `app/components/home/HomeUpdateCard.module.css` | Card, dialog, and phone bottom-sheet styles. Usually unchanged. |
 
-Read the first three files together. Read the presentation files only when needed
+Read the first five files together. Read the presentation files only when needed
 for layout or interaction work. If an owner moved, use a focused search for
 `HomeUpdateCard` or `HOME_UPDATE_ID` under `app` and `tests/ui`; avoid rediscovering
 the whole repository. Follow the current checkout's `AGENTS.md`.
@@ -59,29 +61,65 @@ the whole repository. Follow the current checkout's `AGENTS.md`.
 
 ## Update the announcement
 
-Write one concise title, a short description of the main benefits, and a compact
-`details` paragraph for About this update. Match actual interface terminology and
+Write the copy for both surfaces:
+
+- `title`: one concise heading, shared by the card and the dialog.
+- `summary`: one short line for the Home card, no list of details.
+- `description`: one or two sentences on the main benefit, shown in the dialog.
+- `highlights`: two or three short standalone sentences for the dialog's list:
+  a useful action first, then the limits a reader must know. Each must be unique.
+
+Match actual interface terminology and
 explain a useful action when applicable. Preserve distinctions between recorded
 facts, estimates, and inferences; avoid unmeasured speed claims, invented release
 numbers or dates, billing claims, and unsupported cache-cause explanations.
 
+## Draw the illustration
+
+Every new announcement gets its own artwork in `HomeUpdateIllustration.tsx`; never
+leave the previous feature's drawing under new copy. It shows the feature at a
+glance in the dialog, and the card scales the same node down as its thumbnail.
+
+- Draw a static miniature of the real surface the announcement is about: read that
+  component and its styles first, then mirror its actual structure, labels, glyphs,
+  and tones. A panel cropped at the bottom edge reads better than a whole screen.
+  When no single surface represents the change, draw a simple token-based graphic
+  of the idea instead.
+- Build it from JSX and CSS with design tokens only, so it follows light and dark
+  themes. No screenshots, raster images, literal colors, or new font sizes.
+- Use invented sample data that could not be mistaken for a real session: generic
+  agent labels, round clock times. Never read session state, fetch, or copy values
+  from the user's sessions, and show nothing the real surface could not show
+  (no prompts, commands, paths, or token spend).
+- Keep the root 408px wide with `max-width: 100%`; the dialog stage shows about
+  208px of its height and clips the rest. The artwork is decorative: the card
+  wraps it `aria-hidden` and `inert`, so add no controls, links, or required text.
+- If an announcement truly has nothing to draw, omit the `illustration` prop; the
+  card and dialog fall back to text only.
+
+## Set the dismissal identity and tests
+
 For a new announcement, change `HOME_UPDATE_ID` to a new bounded semantic identifier,
 such as `short-release-theme-v1`. Capture the previous ID before editing. This makes
-the new card appear for people who dismissed the previous one. Keep the existing
+the new card appear for people who dismissed the previous one, and makes its dialog
+open by itself once on their next visit to Home (the same ID is stored as the seen
+marker when it opens; afterwards the dialog opens only from the card's button). Keep the existing
 storage key and schema; preserve pins, last-viewed navigation, and dismissal focus.
 For a correction to the same announcement, retain its ID unless it should reappear.
 
-Update the existing tests' expected heading and persisted current ID. Set the
+Update the existing tests' expected heading, the dialog's accessible name and
+highlight count, and the persisted current ID. Set the
 previous-announcement test's fixture to the actual old ID so it proves the new
 announcement appears after the last one was dismissed. Preserve the tests for
 reload persistence and navigation preferences. Do not add tests that merely repeat
 all the announcement prose.
 
-Keep copy-only updates scoped to these three files. The same Home source is shipped
+Keep announcement updates scoped to the first five files above. The same Home source is shipped
 in the desktop web bundle; no separate desktop announcement copy is needed. A notes
 update does not require a version bump, installer build, release tag, or deployment.
-For actual styling or control changes, consult `DESIGN.md` and the applicable UI
-workflow; do not turn routine release copy into a redesign.
+For styling or control changes to the card or dialog themselves, consult `DESIGN.md`
+and the applicable UI workflow, and update its Home update paragraph and the
+`/design-system` sample together; do not turn routine release copy into a redesign.
 
 ## Verify and hand off
 
@@ -92,8 +130,9 @@ workflow; do not turn routine release copy into a redesign.
   UI change; `npm test` includes the production build. On managed Windows, run the
   build/full test wrapper with escalated permissions for generated plugin bundles.
   Never run `npm run build` alongside `npm test`.
-- Inspect the rendered card with actual copy on desktop and phone, including the
-  expanded disclosure. Reuse the running local app (normally port 3003); avoid
+- Inspect the rendered card and the open dialog with actual copy and artwork on
+  desktop and phone, in light and dark themes. Check that the thumbnail reads as
+  the same artwork and that the illustration is not clipped mid-row awkwardly. Reuse the running local app (normally port 3003); avoid
   restarting services or clearing the user's Home preferences merely to inspect it.
 - Review the final diff and run `git diff --check`. Complete applicable pre-push
   verification before an authorized push. Report actual coverage and any failures.

@@ -10,6 +10,7 @@ import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { useProviderStatus } from "./provider-status-client";
 import { ProviderStatusArea } from "./components/ProviderStatus";
 import { HomeUpdateCard } from "./components/home/HomeUpdateCard";
+import { HomeUpdateIllustration } from "./components/home/HomeUpdateIllustration";
 import { HOME_PIN_LIMIT, normalizeHomePin, useHomePreferences, type HomePin } from "./hooks/useHomePreferences";
 import styles from "./HomeDashboard.module.css";
 
@@ -78,7 +79,7 @@ function PinPicker({ destinations, pins, onToggle, catalogLoading }: {
 export function HomeDashboard() {
   const { sessions, loading, connected, readiness } = useSessionCatalog();
   const providerStatus = useProviderStatus();
-  const { pins, lastViewedSessionId, ready, persistent, togglePin, updateDismissed, dismissUpdate } = useHomePreferences();
+  const { pins, lastViewedSessionId, ready, persistent, togglePin, updateDismissed, dismissUpdate, updateSeen, markUpdateSeen } = useHomePreferences();
   const destinations = useMemo(() => destinationsFor(sessions), [sessions]);
   const lastViewed = destinations.find((destination) => destination.kind === "session" && destination.id === lastViewedSessionId);
   const browseRef = useRef<HTMLAnchorElement>(null);
@@ -96,8 +97,16 @@ export function HomeDashboard() {
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
           title="See what happened in a session"
+          summary="A session's Overview now lists its events, newest first."
           description="A session's Overview now lists its events, newest first: agents starting and finishing, signals, user messages, resource peaks, commits, and pull requests."
-          details="Select an event to open the tab that holds its evidence. The list covers retained evidence, not the complete session history. Commits are observed in Git and never attributed to an agent, and user messages appear for Claude Code sessions only."
+          highlights={[
+            "Select an event to open the tab that holds its evidence.",
+            "The list covers retained evidence, not the complete session history.",
+            "Commits are observed in Git and never attributed to an agent. User messages appear for Claude Code sessions only.",
+          ]}
+          illustration={<HomeUpdateIllustration />}
+          autoOpen={!updateSeen}
+          onAutoOpen={markUpdateSeen}
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>

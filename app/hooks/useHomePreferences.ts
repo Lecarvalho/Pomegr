@@ -26,10 +26,14 @@ export type HomePreferences = {
   rememberSession(id: string): void;
   updateDismissed: boolean;
   dismissUpdate(): void;
+  /** Whether the current update's dialog has already opened by itself once. */
+  updateSeen: boolean;
+  markUpdateSeen(): void;
 };
 
 type StoredHomePreferences = {
   dismissedUpdateId?: string;
+  seenUpdateId?: string;
   version: 1;
   pins: HomePin[];
   lastViewedSessionId: string | null;
@@ -61,6 +65,55 @@ let snapshot: HomeStoreSnapshot = {
 let hydrated = false;
 let inMemoryOnly = false;
 const listeners = new Set<() => void>();
+
+// The desktop renderer's browser storage is emptied on every launch, so there the announcement's
+// seen and dismissed markers also live in the desktop settings file, reached through the bridge.
+type DesktopUpdateKey = "seenId" | "dismissedId";
+type DesktopUpdateState = { homeUpdate?: { seenId?: unknown; dismissedId?: unknown } };
+type DesktopUpdateBridge = {
+  getDesktopState?(): Promise<DesktopUpdateState | null>;
+  setHomeUpdate?(key: DesktopUpdateKey, id: string): Promise<unknown>;
+  onDesktopStateChanged?(callback: (state: DesktopUpdateState | null) => void): () => void;
+};
+type DesktopUpdateSnapshot = { settled: boolean; seen: boolean; dismissed: boolean };
+
+const DESKTOP_UPDATE_PENDING: DesktopUpdateSnapshot = Object.freeze({ settled: false, seen: false, dismissed: false });
+let desktopUpdate = DESKTOP_UPDATE_PENDING;
+const desktopUpdateListeners = new Set<() => void>();
+
+function desktopUpdateBridge() {
+  if (typeof window === "undefined") return undefined;
+  const bridge = (window as Window & { pomegrDesktop?: DesktopUpdateBridge }).pomegrDesktop;
+  return bridge?.setHomeUpdate && bridge.getDesktopState ? bridge : undefined;
+}
+
+function subscribeDesktopUpdate(listener: () => void) {
+  desktopUpdateListeners.add(listener);
+  return () => { desktopUpdateListeners.delete(listener); };
+}
+
+// Markers only ever turn on for the current announcement, so a late or failed desktop answer never re-shows it.
+function applyDesktopUpdate(state: DesktopUpdateState | null) {
+  const seen = desktopUpdate.seen || state?.homeUpdate?.seenId === HOME_UPDATE_ID;
+  const dismissed = desktopUpdate.dismissed || state?.homeUpdate?.dismissedId === HOME_UPDATE_ID;
+  if (desktopUpdate.settled && seen === desktopUpdate.seen && dismissed === desktopUpdate.dismissed) return;
+  desktopUpdate = { settled: true, seen, dismissed };
+  for (const listener of desktopUpdateListeners) listener();
+}
+
+function connectDesktopUpdate() {
+  const bridge = desktopUpdateBridge();
+  if (!bridge) { applyDesktopUpdate(null); return undefined; }
+  void bridge.getDesktopState!().then(applyDesktopUpdate, () => applyDesktopUpdate(null));
+  return bridge.onDesktopStateChanged?.((state) => { if (desktopUpdate.settled) applyDesktopUpdate(state); });
+}
+
+function recordDesktopUpdate(key: DesktopUpdateKey) {
+  const bridge = desktopUpdateBridge();
+  if (!bridge) return;
+  applyDesktopUpdate({ homeUpdate: { [key]: HOME_UPDATE_ID } });
+  void bridge.setHomeUpdate!(key, HOME_UPDATE_ID).catch(() => { /* The marker still holds for this launch. */ });
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -127,6 +180,7 @@ function normalizeStored(value: unknown): StoredHomePreferences {
     pins: normalizePins(value.pins),
     lastViewedSessionId: normalizeSessionId(value.lastViewedSessionId),
     ...(value.dismissedUpdateId === HOME_UPDATE_ID ? { dismissedUpdateId: HOME_UPDATE_ID } : {}),
+    ...(value.seenUpdateId === HOME_UPDATE_ID ? { seenUpdateId: HOME_UPDATE_ID } : {}),
   };
 }
 
@@ -136,6 +190,7 @@ function serializeStored(value: StoredHomePreferences) {
     pins: value.pins,
     lastViewedSessionId: value.lastViewedSessionId,
     ...(value.dismissedUpdateId === HOME_UPDATE_ID ? { dismissedUpdateId: HOME_UPDATE_ID } : {}),
+    ...(value.seenUpdateId === HOME_UPDATE_ID ? { seenUpdateId: HOME_UPDATE_ID } : {}),
   });
 }
 
@@ -235,15 +290,17 @@ function update(updateFn: (current: StoredHomePreferences) => StoredHomePreferen
     pins: snapshot.pins,
     lastViewedSessionId: snapshot.lastViewedSessionId,
     dismissedUpdateId: snapshot.dismissedUpdateId,
+    seenUpdateId: snapshot.seenUpdateId,
   };
   const next = updateFn(current);
-  if (next.pins === current.pins && next.lastViewedSessionId === current.lastViewedSessionId && next.dismissedUpdateId === current.dismissedUpdateId) return;
+  if (next.pins === current.pins && next.lastViewedSessionId === current.lastViewedSessionId && next.dismissedUpdateId === current.dismissedUpdateId && next.seenUpdateId === current.seenUpdateId) return;
   commit(next);
 }
 
 export function useHomePreferences(): HomePreferences {
   const current = useSyncExternalStore(subscribe, () => snapshot, () => SERVER_SNAPSHOT);
-  useEffect(() => { refreshOnMount(); }, []);
+  const desktop = useSyncExternalStore(subscribeDesktopUpdate, () => desktopUpdate, () => DESKTOP_UPDATE_PENDING);
+  useEffect(() => { refreshOnMount(); return connectDesktopUpdate(); }, []);
 
   const togglePin = useCallback((value: HomePin) => {
     const pin = normalizeHomePin(value);
@@ -265,16 +322,25 @@ export function useHomePreferences(): HomePreferences {
 
   const dismissUpdate = useCallback(() => {
     update((state) => ({ ...state, dismissedUpdateId: HOME_UPDATE_ID }));
+    recordDesktopUpdate("dismissedId");
+  }, []);
+
+  const markUpdateSeen = useCallback(() => {
+    update((state) => state.seenUpdateId === HOME_UPDATE_ID ? state : { ...state, seenUpdateId: HOME_UPDATE_ID });
+    recordDesktopUpdate("seenId");
   }, []);
 
   return {
     pins: current.pins,
     lastViewedSessionId: current.lastViewedSessionId,
-    ready: current.ready,
+    // Ready waits for the desktop answer, so the announcement is never shown and then withdrawn.
+    ready: current.ready && desktop.settled,
     persistent: current.persistent,
     togglePin,
     rememberSession,
-    updateDismissed: current.dismissedUpdateId === HOME_UPDATE_ID,
+    updateDismissed: current.dismissedUpdateId === HOME_UPDATE_ID || desktop.dismissed,
     dismissUpdate,
+    updateSeen: current.seenUpdateId === HOME_UPDATE_ID || desktop.seen,
+    markUpdateSeen,
   };
 }

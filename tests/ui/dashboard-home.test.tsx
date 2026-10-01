@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HomeDashboard } from "../../app/HomeDashboard";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { HOME_PREFERENCES_STORAGE_KEY } from "../../app/hooks/useHomePreferences";
@@ -15,13 +15,19 @@ const sessions: SessionSummary[] = [
   { id: "claude:report", provider: "claude", source: "Claude Code", title: "Review report", project: "Other project", updatedAt: "2026-08-29T12:00:00Z", isLive: false, needsInput: false, activityStatus: "unknown", summaryReadiness: "ready", agentCount: 1, activeAgentCount: 0, latestContextTotal: 67890, progress: null, currentActivity: null },
 ];
 
+// Seeds the current update as already seen, so only the auto-open test starts with the dialog open.
 function seed(pins: object[] = [], lastViewedSessionId: string | null = null) {
-  window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins, lastViewedSessionId }));
+  window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({ version: 1, pins, lastViewedSessionId, seenUpdateId: "session-events-v1" }));
 }
 function home(rows = sessions, state: { loading?: boolean; connected?: boolean } = {}) {
   return render(<SessionCatalogProvider sessions={rows} {...state}><HomeDashboard /></SessionCatalogProvider>);
 }
 
+beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); this.dispatchEvent(new Event("close")); };
+  seed();
+});
 afterEach(() => { vi.restoreAllMocks(); window.localStorage.clear(); });
 
 describe("personal Home", () => {
@@ -39,7 +45,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
-      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-events-v1",
+      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-events-v1", seenUpdateId: "session-events-v1",
     });
     view.unmount();
     home();
@@ -52,6 +58,39 @@ describe("personal Home", () => {
       window.dispatchEvent(new StorageEvent("storage", { key: HOME_PREFERENCES_STORAGE_KEY }));
     });
     expect(screen.getByRole("heading", { name: "What’s new" })).toBeInTheDocument();
+  });
+
+  it("opens the update in a dialog that Close keeps and Got it dismisses", async () => {
+    const user = userEvent.setup();
+    home();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "See what’s new" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "See what happened in a session" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(3);
+    await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY) ?? "").not.toContain("dismissedUpdateId");
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("heading", { name: "What’s new" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!).dismissedUpdateId).toBe("session-events-v1");
+  });
+
+  it("opens the update dialog by itself once per announcement, even after Close or a reload", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const view = home();
+    const dialog = screen.getByRole("dialog", { name: "See what happened in a session" });
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: "session-events-v1" });
+    await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.unmount();
+    home();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "See what’s new" })).toBeInTheDocument();
   });
 
   it("offers navigation with a compact local provider-status exception", async () => {
@@ -80,7 +119,7 @@ describe("personal Home", () => {
     await user.click(screen.getByText("Add pins"));
     await user.click(screen.getByRole("button", { name: "Pin Build Home" }));
     expect(screen.getByRole("list", { name: "Pinned destinations" })).toHaveTextContent("Build Home");
-    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null });
+    expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [{ kind: "session", id: "codex:build-home" }], lastViewedSessionId: null, seenUpdateId: "session-events-v1" });
     await user.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByText("Add pins")).toHaveFocus();
     view.unmount();

@@ -120,6 +120,7 @@ test("pause changes only bounded UI state and login startup is opt-in and revers
     notifications: true,
     notificationQuietUntil: null,
     displayPreferences: { estimatedCost: true },
+    homeUpdate: { seenId: null, dismissedId: null },
   });
   assert.equal(calls.some(([name]) => /monitor|provider|session|command/i.test(name)), false);
   await controller.initializeLogin();
@@ -165,11 +166,12 @@ test("login registration rolls back when persistence fails and close still honor
 });
 
 test("desktop renderer contract is fixed, bounded, and contains no provider metadata", () => {
-  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["checkForUpdates", "getState", "installUpdate", "quit", "setCloseBehavior", "setDisplayPreference", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
+  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["checkForUpdates", "getState", "installUpdate", "quit", "setCloseBehavior", "setDisplayPreference", "setHomeUpdate", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
   const update = Object.freeze({ status: "ready", version: "1.2.3", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   const state = harness({ snapshotExtension: () => ({ update }) }).controller.snapshot();
-  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
+  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "homeUpdate", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
   assert.deepEqual(state.displayPreferences, { estimatedCost: true });
+  assert.deepEqual(state.homeUpdate, { seenId: null, dismissedId: null });
   assert.deepEqual(state.update, update);
   assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
 });
@@ -209,6 +211,22 @@ test("notification preference persists while one-hour quiet mode is temporary an
   expiry();
   assert.equal(controller.snapshot().notificationQuietUntil, null);
   assert.ok(calls.some(([name]) => name === "broadcast"));
+});
+
+test("Home update markers persist only fixed keys with a bounded identifier", async () => {
+  const { calls, controller, persisted } = harness();
+  await Promise.all([
+    controller.setHomeUpdate("seenId", "release-notes-v1"),
+    controller.setHomeUpdate("dismissedId", "release-notes-v1"),
+  ]);
+  assert.deepEqual(persisted().homeUpdate, { seenId: "release-notes-v1", dismissedId: "release-notes-v1" });
+  assert.deepEqual(controller.snapshot().homeUpdate, { seenId: "release-notes-v1", dismissedId: "release-notes-v1" });
+  const saves = calls.filter(([name]) => name === "save").length;
+  for (const [key, id] of [["openedId", "release-notes-v1"], ["seenId", "C:\\Users\\private"], ["seenId", "Has Spaces"], ["seenId", "x".repeat(65)], ["seenId", 7], ["seenId", ""]]) {
+    assert.deepEqual(await controller.setHomeUpdate(key, id), controller.snapshot());
+  }
+  assert.equal(calls.filter(([name]) => name === "save").length, saves);
+  assert.deepEqual(persisted().homeUpdate, { seenId: "release-notes-v1", dismissedId: "release-notes-v1" });
 });
 
 test("display preferences persist only recognized booleans and serialize concurrent changes", async () => {
