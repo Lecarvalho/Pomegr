@@ -527,12 +527,6 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   domains.set("signals", {
     ...base("signals", sessionId, observedAt, state, aggregateReadiness(sectionReadiness(ready, ["activityEvidence", "contextEvidence"]))),
     sectionReadiness: sectionReadiness(ready, ["activityEvidence", "contextEvidence"]),
-    score: state.score || 0,
-    flowScore: {
-      score: state.score || 0,
-      repeatedCalls: ready.activityEvidence === "ready" && Number.isSafeInteger(state.metrics?.repeatedCalls) && state.metrics.repeatedCalls >= 0 ? state.metrics.repeatedCalls : null,
-      overlappingTargets: ready.activityEvidence === "ready" && Number.isSafeInteger(state.metrics?.overlappingTargets) && state.metrics.overlappingTargets >= 0 ? state.metrics.overlappingTargets : null,
-    },
     insights,
     loops,
     toolPatterns: list(state.toolPatterns, publicToolPattern),
@@ -601,7 +595,7 @@ export function unavailableSessionDomains(sessionId, catalogEntry, source, capab
     metrics: { agents: 0, activeAgents: 0, toolCalls: 0, repeatedCalls: 0, resources: null,
       tokens: { contextHistory: { bucketMs: 0, buckets: [], boundaries: [] } } },
     activity: EMPTY_ACTIVITY,
-    agents: [], workflows: [], insights: [], loops: [], toolPatterns: [], score: 0,
+    agents: [], workflows: [], insights: [], loops: [], toolPatterns: [],
   };
   return projectSessionDomains(sessionId, {
     publicState: state,

@@ -250,7 +250,6 @@ export function projectProviderSessionEvidence({
   }
   const messageCount = evidence.activity.filter((event) => event?.tool === "Assistant replied" || event?.tool === "User input").length;
 
-  const score = Math.max(25, 100 - Math.min(45, repeatedCalls * 4) - Math.min(25, overlaps.length * 7));
   const activeAgents = agents.filter(isRunningAgent).length;
   agents.sort((a, b) => (a.id === "primary" ? -1 : b.id === "primary" ? 1 : new Date(b.lastSeen) - new Date(a.lastSeen)));
 
@@ -284,13 +283,11 @@ export function projectProviderSessionEvidence({
       progress: evidence.session.progress ?? null,
       pomegrPlugin: evidence.session.pomegrPlugin ?? null,
     },
-    score,
     metrics: {
       agents: agents.length,
       activeAgents,
       toolCalls: agents.reduce((total, agent) => total + agent.toolCalls, 0),
       repeatedCalls,
-      overlappingTargets: overlaps.length,
       resources: historical ? null : resources,
       tokens: tokenUsage,
     },

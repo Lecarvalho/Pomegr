@@ -761,14 +761,11 @@ export type MonitorState = {
     progress: SessionProgress | null;
     pomegrPlugin: PomegrPluginMetadata | null;
   } | null;
-  score: number;
   metrics: {
     agents: number;
     activeAgents: number;
     toolCalls: number;
     repeatedCalls: number;
-    /** Distinct concurrent mutation targets used as one Flow-score input. */
-    overlappingTargets?: number;
     resources: ResourceUsage | null;
     tokens: {
       allAgents: number;

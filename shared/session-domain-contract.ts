@@ -119,8 +119,6 @@ export type AgentDomain = SessionDomainBase & {
 export type SignalsDomain = SessionDomainBase & {
   domain: "signals";
   sectionReadiness: SessionDomainSectionReadiness<"activityEvidence" | "contextEvidence">;
-  score: number;
-  flowScore: { score: number; repeatedCalls: number | null; overlappingTargets: number | null };
   insights: Insight[];
   loops: LoopPattern[];
   toolPatterns: ToolPattern[];

@@ -636,7 +636,7 @@ test("resource sampler failures cannot break catalog, analysis, scoring, or enri
   assert.deepEqual(await catalogRuntime.sessionCatalog(), sessions);
 
   const state = await runtime.analyze();
-  assert.equal(state.score, 100);
+  assert.equal("score" in state, false);
   assert.deepEqual(state.metrics.resources, {
     status: "unavailable",
     reason: "collection_failed",

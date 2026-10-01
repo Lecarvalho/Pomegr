@@ -6,14 +6,7 @@
 :global(.signalsSection) { min-width: 0; }
 :global(.signalsSectionHeading) { display: flex; align-items: start; justify-content: space-between; gap: var(--space-3); }
 :global(.signalsSectionHeading h2) { margin: 0; font-size: var(--text-heading); line-height: 1.35; }
-:global(.signalsSectionHeading p), :global(.signalsFlowScore p), :global(.signalsInsight p), :global(.signalsEmpty), :global(.signalsUnavailable) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
-:global(.signalsFlowScore) { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
-:global(.signalsFlowScore > div) { display: flex; justify-content: space-between; align-items: baseline; }
-:global(.signalsFlowScore strong), :global(.signalsFlowScore dd) { font-family: var(--font-data); font-weight: 500; font-variant-numeric: tabular-nums; }
-:global(.signalsFlowScore dl) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-3) 0 0; }
-:global(.signalsFlowScore dl div) { padding: var(--space-2); background: var(--command-panel-2); }
-:global(.signalsFlowScore dt) { color: var(--command-muted); font-size: var(--text-xs); }
-:global(.signalsFlowScore dd) { margin: var(--space-1) 0 0; }
+:global(.signalsSectionHeading p), :global(.signalsInsight p), :global(.signalsEmpty), :global(.signalsUnavailable) { margin: var(--space-1) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
 :global(.signalsInsightList) { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
 :global(.signalsInsight) { display: flex; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 :global(.signalsInsight:first-child) { padding-top: 0; border-top: 0; }

@@ -218,37 +218,13 @@ test("preserves sectional and request readiness without presenting missing evide
   assert.equal(agent.requestSnapshots.status, "unavailable");
   const details = store.read(SESSION_ID, "details").snapshot.value;
   assert.deepEqual(details.sectionReadiness, { core: "ready", contextEvidence: "unavailable" });
-  const flow = store.read(SESSION_ID, "signals").snapshot.value.flowScore;
-  assert.equal(flow.repeatedCalls, null);
-  assert.equal(flow.overlappingTargets, null);
+  const signals = store.read(SESSION_ID, "signals").snapshot.value;
+  assert.equal("score" in signals, false);
+  assert.equal("flowScore" in signals, false);
 });
 
-test("Flow inputs require ready activity evidence and valid nonnegative counts", () => {
-  const store = createSessionDomainStore();
-  store.commitUnavailable(SESSION_ID, { updatedAt: OBSERVED_AT }, "Codex", {});
-  assert.deepEqual(store.read(SESSION_ID, "signals").snapshot.value.flowScore, {
-    score: 0, repeatedCalls: null, overlappingTargets: null,
-  });
-  for (const activityEvidence of ["loading", "unavailable", "ready"]) {
-    for (const count of [0, 2, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
-      const publicState = state();
-      publicState.readiness.activityEvidence = activityEvidence;
-      publicState.metrics.repeatedCalls = count;
-      publicState.metrics.overlappingTargets = count;
-      store.commit(SESSION_ID, snapshot(publicState));
-      const flow = store.read(SESSION_ID, "signals").snapshot.value.flowScore;
-      const expected = activityEvidence === "ready" && Number.isSafeInteger(count) && count >= 0 ? count : null;
-      assert.equal(flow.repeatedCalls, expected);
-      assert.equal(flow.overlappingTargets, expected);
-    }
-  }
-});
-
-test("signals carry the Flow-score inputs and agent projections carry selected inspector evidence", () => {
+test("agent projections carry selected inspector evidence", () => {
   const publicState = state();
-  publicState.score = 81;
-  publicState.metrics.repeatedCalls = 3;
-  publicState.metrics.overlappingTargets = 1;
   publicState.metrics.tokens.requestSnapshots = { status: "ready", items: [{
     id: "request-1111111111111111", agentId: "primary", observedAt: OBSERVED_AT, cacheLifetime: "1h",
     uncachedInputTokens: 1, cacheWriteTokens: 2, cacheReadTokens: 3, outputTokens: 4, totalTokens: 10,
@@ -264,8 +240,6 @@ test("signals carry the Flow-score inputs and agent projections carry selected i
   const store = createSessionDomainStore();
   store.commit(SESSION_ID, snapshot(publicState));
 
-  const signals = store.read(SESSION_ID, "signals").snapshot.value;
-  assert.deepEqual(signals.flowScore, { score: 81, repeatedCalls: 3, overlappingTargets: 1 });
   const agent = store.read(SESSION_ID, "agent", "primary").snapshot.value;
   assert.deepEqual(agent.requestSnapshots.items.map((item) => item.id), ["request-1111111111111111"]);
   assert.deepEqual(agent.insights.map((item) => item.id), ["agent-insight"]);

@@ -23,7 +23,7 @@ export function SignalsTab({ sessionId, historical, paused, onNavigateAgent }: S
     {result.error && <div className="notice" role="status"><span aria-hidden="true">!</span>Update failed. Showing the last recorded signal evidence.</div>}
     <header className={styles.intro}><div><p className="sessionEyebrow">Signals</p><h2>Session signals</h2><p>Deterministic evidence and agent-reported updates. <strong>Not a quality assessment.</strong></p></div></header>
     <div className={styles.grid}>
-      <SignalsEfficiencySection insights={signals.insights} flowScore={signals.flowScore} readiness={signals.sectionReadiness.activityEvidence} onNavigateAgent={onNavigateAgent} />
+      <SignalsEfficiencySection insights={signals.insights} readiness={signals.sectionReadiness.activityEvidence} onNavigateAgent={onNavigateAgent} />
       <SignalsLifetimeSection agents={signals.agents} readiness={signals.sectionReadiness.contextEvidence} />
       <SignalsReportedSection sessionSignal={signals.sessionSignal} agents={signals.agents} historical={historical} />
     </div>
