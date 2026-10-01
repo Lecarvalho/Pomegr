@@ -658,8 +658,14 @@ attributed to an individual action.
 All tool-call fragments of the same Claude request contribute their distinct
 recorded tool IDs and work-kind counts, even when its final fragment is text.
 Only fragments with that proven association can appear nested in the grouped
-feed. User input and system notifications have no request link and remain
-outside it. Linked replies remain messages and never contribute to tool-call or
+feed. Claude user input may link through its recorded parent chain; Codex main-thread
+`user_message` deliveries and completed `UserMessage` items may link to the first
+response through an uninterrupted source sequence and valid closing usage.
+Codex role-user response items are context
+or mirrors, not additional human deliveries; delegated and approval-review inputs
+are excluded. Input exposes only `Text`, `Image`, or `Text + Image`, never content
+or attachment paths. Unlinked input and system notifications remain outside the
+grouped feed. Linked input and replies remain messages and never contribute to tool-call or
 by-kind action counts.
 
 Retained normalized evidence can include tool invocations, failed shell completions,

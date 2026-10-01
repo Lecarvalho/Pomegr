@@ -450,6 +450,7 @@ export function createCodexProvider(options = {}) {
         actor, actorId: actor.id, fallbackTimestamp, sourceKey: thread.localId,
         unlimited: completeStory,
         stableFallbackIdentity: true,
+        userInputEnabled: actor.id === "primary" && !thread.parentThreadId && !thread.approvalReviewer,
         priorUsageSnapshots: !historical && hasLiveContextContinuity(thread.rolloutFile, generation)
           ? previousContext?.snapshots : [],
         // File-change evidence rebases onto this thread's own recorded cwd and
@@ -508,8 +509,8 @@ export function createCodexProvider(options = {}) {
         existingState: hydratedStateEvidence?.currentActivityState || cachedCurrentActivity?.state,
       });
       rolloutActivityByActor.set(actor.id, currentActivityState.currentActivity);
-      rolloutReplies.push(...context.replies);
-      historyOwnership.record(actor.id, context.replies);
+      rolloutReplies.push(...context.replies, ...context.inputs);
+      historyOwnership.record(actor.id, [...context.replies, ...context.inputs]);
       requestLinkGroups.push(context.links);
       if (!historical && generation) {
         liveCurrentActivityCache.delete(thread.rolloutFile);

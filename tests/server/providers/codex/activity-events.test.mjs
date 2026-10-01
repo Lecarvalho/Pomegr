@@ -346,9 +346,14 @@ test("provider merges rollout and canonical duplicates while agent and grouped t
   assert.equal(evidence.agents.reduce((total, agent) => total + agent.toolCalls, 0), evidence.toolCalls.length);
   assert.equal([...grouped.values()].reduce((total, count) => total + count, 0), evidence.toolCalls.length);
   assert.equal(evidence.toolCalls.filter((call) => call.tool === "Shell").length, 1);
-  assert.equal(evidence.activity.length, 1);
-  assert.deepEqual(evidence.activity[0], {
-    id: evidence.activity[0].id,
+  assert.equal(evidence.activity.length, 2);
+  const input = evidence.activity.find((row) => row.tool === "User input");
+  assert.equal(input.actor, "User");
+  assert.equal(input.detail, "Text");
+  assert.ok(input.requestId, "the input links to its first response request");
+  const reply = evidence.activity.find((row) => row.tool === "Assistant replied");
+  assert.deepEqual(reply, {
+    id: reply.id,
     timestamp: "2026-08-10T19:00:02.000Z",
     actor: "Primary agent",
     tool: "Assistant replied",

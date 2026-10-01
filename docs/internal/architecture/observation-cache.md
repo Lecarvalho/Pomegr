@@ -551,6 +551,17 @@ association. Pending output has no link until usage arrives. Canonical rows can
 inherit a link only through an identical normalized rollout event ID, after
 source merging. Snapshot fallback identity is the same for live and historical
 reads. Only opaque request IDs and normalized issued-work counts leave U2.
+Main-thread user-message deliveries, including completed `UserMessage` items,
+use a separate bounded input candidate, linked
+only to the first observed response closed by valid matching usage. A same-turn
+context record before response work may preserve the candidate; changed turns,
+compaction, another user record, completion, missing or invalid usage, and a new
+response after tool results break it. Role-user context/mirror records, delegated
+prompts and approval-review inputs never create user-input rows. Complete replay
+retains all normalized input rows; the summary retains at most the newest 256.
+Completed `FileChange` items emitted during an exec cell are execution outcomes,
+so they never invalidate that cell's already-sealed output group. Completion
+alone does not establish a request link for the nested patch itself.
 Adjacent completed-message/response-item mirrors with matching text and phase
 share one normalized reply identity when the response item omits its native ID.
 The text digest is private and never establishes a cross-request association.
