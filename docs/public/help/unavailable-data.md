@@ -52,6 +52,10 @@ unavailable", or "Repository evidence is unavailable for this session."
   must still exist.
 - A recorded session shows only what Pomegr saved at its last live check, never
   today's working tree or stale remote-tracking data.
+- "No saved Git snapshot for this session" means Pomegr holds no saved Git state
+  for a recorded session: it never checked the session while live, or it no
+  longer keeps that state. Recorded file changes still list under **Touched
+  here**.
 - A Git or GitHub failure affects only this information.
 
 See [Repositories](../using-pomegr/repositories.md#read-a-sessions-repository-tab).

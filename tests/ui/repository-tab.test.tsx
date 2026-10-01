@@ -128,16 +128,24 @@ describe("RepositoryTab", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
-  it("hides pull-request evidence and the files toolbar for a historical session with no snapshot", () => {
+  it("keeps recorded file changes for a historical session with no snapshot, without claiming Git state", () => {
     useSessionDomain.mockReturnValue(result(domain({
       repository: repository({ historical: true, comparison: null, remote: { status: "unavailable", checkedAt: null } }),
       recordedAt: null,
       pullRequests: { status: "unavailable", checkedAt: null, items: [] },
+      commitsInSession: null,
+      fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
     })));
     renderTab({ sessionId: SESSION_ID, historical: true });
 
+    expect(screen.getByText("No saved Git snapshot for this session. Branch comparison, pull requests, and uncommitted files are unavailable.")).toBeInTheDocument();
     expect(screen.queryByText(/PR #/)).not.toBeInTheDocument();
-    // No files toolbar without a recorded snapshot.
+    expect(screen.queryByText("Remote comparison unavailable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Recorded at the session's last live check")).not.toBeInTheDocument();
+    // Recorded changes come from the file-change index, so they list without a snapshot.
+    expect(screen.getByRole("searchbox", { name: "Find a file touched in this session" })).toBeInTheDocument();
+    expect(FileTreeMock.mock.calls.at(-1)![0].files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: null, recordedKind: "edited" }]);
+    // Uncommitted and Changed elsewhere need the snapshot; a zero count would read as "none".
     expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
   });
 
