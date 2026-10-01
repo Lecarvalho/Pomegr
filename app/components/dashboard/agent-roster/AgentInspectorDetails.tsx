@@ -66,10 +66,14 @@ export function AgentInspectorDetails({
   const visibleReviewDecisions = [...reviewDecisions.items].reverse();
   const currentActivity = historical ? null : agent.currentActivity;
   const currentActivityIsCurrent = currentActivity ? activityIsCurrent(agent) : false;
-  const tasks = useMemo(() => [...(agent.executionTasks || [])].sort((left, right) => {
-    const running = Number(right.status === "running") - Number(left.status === "running");
-    return running || taskTimestamp(right) - taskTimestamp(left) || left.id.localeCompare(right.id);
-  }), [agent.executionTasks]);
+  // The running task a current activity was reported for is already shown in that section.
+  const shownActivityLabel = currentActivityIsCurrent ? currentActivity?.label : null;
+  const tasks = useMemo(() => (agent.executionTasks || [])
+    .filter((task) => !(shownActivityLabel && task.status === "running" && task.label === shownActivityLabel))
+    .sort((left, right) => {
+      const running = Number(right.status === "running") - Number(left.status === "running");
+      return running || taskTimestamp(right) - taskTimestamp(left) || left.id.localeCompare(right.id);
+    }), [agent.executionTasks, shownActivityLabel]);
   const visibleTasks = tasksExpanded ? tasks : tasks.slice(0, taskLimit);
   const completedPlanTasks = planTasks.filter((task) => task.status === "completed").length;
   const activePlanTasks = planTasks.filter((task) => task.status === "in_progress").length;

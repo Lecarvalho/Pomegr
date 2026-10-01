@@ -61,6 +61,14 @@ describe("current agent activity", () => {
     expect(screen.getByRole("region", { name: "Agent inspector for Primary agent" })).not.toHaveTextContent("Current activity");
   });
 
+  it("renders a running task once when it is the current activity", () => {
+    const running = { ...task, label: activity.label };
+    render(detail({ ...baseAgent, currentActivity: activity, executionTasks: [running, { ...task, id: "shell-2", label: "Other shell work" }] }));
+    expect(screen.getAllByText(activity.label)).toHaveLength(1);
+    expect(screen.getByText("Other shell work")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Shell tasks" })).toHaveTextContent("Shell tasks · 1");
+  });
+
   it("labels retained activity as last observed when lifecycle state is uncertain", () => {
     render(detail({ ...baseAgent, status: "unknown", currentActivity: activity, liveness: {
       source: "structured_lifecycle",
