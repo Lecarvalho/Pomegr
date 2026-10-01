@@ -183,7 +183,7 @@ describe("RepositoryTab", () => {
       expect(screen.getByText("Beta")).toHaveClass("commandChip");
       const segment = screen.getByRole("group", { name: "File segment" });
       expect(within(segment).getByRole("button", { name: "Touched here 1" })).toHaveAttribute("aria-pressed", "true");
-      expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toHaveAttribute("aria-pressed", "false");
+      expect(within(segment).getByRole("button", { name: "Uncommitted 1" })).toHaveAttribute("aria-pressed", "false");
       expect(within(segment).getByRole("button", { name: "Changed elsewhere 1" })).toHaveAttribute("aria-pressed", "false");
 
       const treeProps = FileTreeMock.mock.calls.at(-1)![0];
@@ -196,18 +196,27 @@ describe("RepositoryTab", () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles()));
       renderTab({ sessionId: SESSION_ID, historical: false });
 
-      await userEvent.click(screen.getByRole("button", { name: "Uncommitted 2" }));
+      await userEvent.click(screen.getByRole("button", { name: "Uncommitted 1" }));
       let treeProps = FileTreeMock.mock.calls.at(-1)![0];
-      expect(treeProps.files).toEqual([
-        { path: "app/Dashboard.tsx", fileId: "f1", status: " M" },
-        { path: "app/new-file.ts", fileId: null, status: "??" },
-      ]);
+      const uncommittedFiles = treeProps.files;
+      expect(uncommittedFiles).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: " M" }]);
       expect(treeProps.elsewhere).toBeUndefined();
 
       await userEvent.click(screen.getByRole("button", { name: "Changed elsewhere 1" }));
       treeProps = FileTreeMock.mock.calls.at(-1)![0];
       expect(treeProps.files).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       expect(treeProps.elsewhere).toBeUndefined();
+      // A working-tree file is listed in exactly one of the two segments.
+      const elsewherePaths = new Set(treeProps.files.map((file) => file.path));
+      expect(uncommittedFiles.filter((file) => elsewherePaths.has(file.path))).toEqual([]);
+    });
+
+    it("opens a deep-linked untouched uncommitted path in Changed elsewhere", () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/new-file.ts" });
+
+      expect(screen.getByRole("button", { name: "Changed elsewhere 1" })).toHaveAttribute("aria-pressed", "true");
+      expect(FileTreeMock.mock.calls.at(-1)![0].files).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
     });
 
     it("filters the active segment by the search query and expands matches", async () => {

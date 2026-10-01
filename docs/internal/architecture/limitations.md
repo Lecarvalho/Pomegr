@@ -104,11 +104,12 @@ present at the first live check form a baseline and can be absent from the
 Git-observed portion. Pomegr cannot currently provide a complete, exclusive list
 of files changed by this session.
 
-In a live view, the adjacent **Uncommitted** segment shows the repository's
-working-tree changes, including paths outside the selected session; a historical
-view uses its recorded snapshot. **Changed elsewhere** excludes paths
-already placed in **Touched here**, so a path changed by another actor can also make
-that segment understate unrelated work. These are Pomegr scoping and presentation
+The adjacent **Uncommitted** and **Changed elsewhere** segments split the
+repository's working-tree changes so that no path appears in both. A live view
+reads the current working tree; a historical view uses its recorded snapshot.
+**Uncommitted** lists the paths also placed in **Touched here**, and **Changed
+elsewhere** lists the rest. A path changed by another actor can therefore appear
+under **Uncommitted** and make **Changed elsewhere** understate unrelated work. These are Pomegr scoping and presentation
 limits, not proof that the provider attributed those files to the session. See
 [Git-observed files](metrics.md#git-observed-files) and the
 [Repository tab grouping](../../../app/components/dashboard/repository-files-view.ts).
