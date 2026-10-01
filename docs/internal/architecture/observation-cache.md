@@ -2745,6 +2745,15 @@ when Git confirms the root or branch does not match. A changed binding, or an at
 that is briefly unknown after the session had a repository, returns to `loading` so clients
 keep the last committed value.
 
+When Git answers for the bound root on a branch other than the recorded one, the live check
+keeps the private reason `branch_changed`. The repository domain serves it as
+`unavailableReason: "branch_changed" | null`, only for a live view that shows no repository,
+through a projection side channel like `gitObserved`; it never rides on `session.repository`
+or `/api/state`, and no branch name accompanies it. Any other mismatch serves `null`.
+Recorded `fileHistory` and `gitObservedFiles` are session evidence, not live Git state: the
+session Repository tab lists Touched here for a linked repository whether or not a
+repository is available, and offers the working-tree segments only when one is.
+
 Repository sidecar version 4 carries a nullable normalized repository ID. A sidecar is
 served only for the same single-repository identity in normalized session evidence, for
 every provider (`session.repositoryAttribution`/`repositoryId`; see

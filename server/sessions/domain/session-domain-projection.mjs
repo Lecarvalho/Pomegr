@@ -556,6 +556,10 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     repositoryId: session?.repositoryId || null,
     contextInventoryRef: publicInventoryRef(session?.contextInventoryRef),
     repository,
+    // Live views only, and only while no repository is shown: the one recognized reason the
+    // live Git check found none. A side channel like options.gitObserved, never /api/state.
+    unavailableReason: repository?.available !== true && repository?.historical !== true
+      && options.repositoryUnavailableReason === "branch_changed" ? "branch_changed" : null,
     pullRequests,
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),

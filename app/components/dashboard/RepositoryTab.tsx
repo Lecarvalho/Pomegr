@@ -112,12 +112,12 @@ function FilesTreeSkeleton() {
 
 /** The session Repository tab's body (F17/F18): a search field, a Touched here / Uncommitted /
  * Changed elsewhere segment, and the shared FileTree plus the fetch-free SessionFilePanel. */
-function RepositoryTabFiles({ domain, repository, repositoryId, historical, workingTreeKnown, sessionId, selectedPath, onSelectPath, onOpenAgent }: {
+function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical, workingTreeKnown, sessionId, selectedPath, onSelectPath, onOpenAgent }: {
   domain: RepositoryDomain;
-  repository: Repository;
+  workingTreeFiles: Repository["files"];
   repositoryId: string;
   historical: boolean;
-  /** False for a historical session with no saved Git snapshot: only recorded changes can be listed. */
+  /** False without Git state (no saved snapshot, or no live repository): only recorded changes can be listed. */
   workingTreeKnown: boolean;
   sessionId: string;
   selectedPath: string | null;
@@ -128,7 +128,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, work
   const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
   const { sessions } = useSessionCatalog();
   const rootLabel = sessions.find((session) => session.id === sessionId)?.project ?? "Repository";
-  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, repository.files, domain.gitObservedFiles);
+  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, workingTreeFiles, domain.gitObservedFiles);
   // Without a snapshot the Uncommitted and Changed elsewhere segments would read as "none", so
   // only Touched here (the recorded file-change index) is offered.
   const segment = workingTreeKnown ? manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments) : "touched";
@@ -141,7 +141,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, work
   const shownPath = selectedPath && (treeLoading || [...listedFiles, ...listedElsewhere ?? []].some((file) => file.path === selectedPath)) ? selectedPath : null;
   const recorded = shownPath ? domain.fileHistory.files.find((file) => file.path === shownPath) ?? null : null;
   const gitObserved = shownPath ? domain.gitObservedFiles?.files.find((file) => file.path === shownPath) ?? null : null;
-  const workingTreeStatus = shownPath ? repository.files.find((file) => file.path === shownPath)?.status ?? null : null;
+  const workingTreeStatus = shownPath ? workingTreeFiles.find((file) => file.path === shownPath)?.status ?? null : null;
 
   const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);
   const selectFile = (path: string) => onSelectPath(path);
@@ -208,9 +208,21 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
 
   const repository = domain.repository;
   if (!repository || !repository.available) {
-    return <section className="panel repositoryTabBar repositoryTabBarEmpty">
-      <p className="repositoryTabBarEmptyText">No Git repository detected for this session.</p>
-    </section>;
+    // Recorded file changes are session evidence, not Git state: they list for a linked
+    // repository even when no live Git state can be shown for it.
+    if (!domain.repositoryId) {
+      return <section className="panel repositoryTabBar repositoryTabBarEmpty">
+        <p className="repositoryTabBarEmptyText">No Git repository detected for this session.</p>
+      </section>;
+    }
+    return <div className="repositoryTab">
+      <section className="panel repositoryTabBar repositoryTabBarEmpty" aria-label="Repository">
+        <p className="repositoryTabBarEmptyText">{domain.unavailableReason === "branch_changed"
+          ? "The working tree is no longer on this session's branch. Branch comparison, pull requests, and uncommitted files are unavailable."
+          : "Git state is unavailable for this session. Branch comparison, pull requests, and uncommitted files are unavailable."}</p>
+      </section>
+      <RepositoryTabFiles domain={domain} workingTreeFiles={[]} repositoryId={domain.repositoryId} historical={historical} workingTreeKnown={false} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} onOpenAgent={onOpenAgent} />
+    </div>;
   }
 
   // G10: a historical session with no saved live-check snapshot has no Git state to show. Its
@@ -257,7 +269,7 @@ export function RepositoryTab({ sessionId, historical, paused = false, selectedP
       </Link>}
     </section>
     {domain.repositoryId
-      ? <RepositoryTabFiles domain={domain} repository={repository} repositoryId={domain.repositoryId} historical={historical} workingTreeKnown={!snapshotMissing} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} onOpenAgent={onOpenAgent} />
+      ? <RepositoryTabFiles domain={domain} workingTreeFiles={repository.files} repositoryId={domain.repositoryId} historical={historical} workingTreeKnown={!snapshotMissing} sessionId={sessionId} selectedPath={selectedPath} onSelectPath={onSelectPath} onOpenAgent={onOpenAgent} />
       : <p className="repositoryTabFilesUnavailable">File history requires a linked repository.</p>}
   </div>;
 }

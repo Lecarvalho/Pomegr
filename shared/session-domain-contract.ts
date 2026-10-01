@@ -174,6 +174,10 @@ export type RepositoryDomain = SessionDomainBase & {
   repositoryId: string | null;
   contextInventoryRef: NonNullable<MonitorState["session"]>["contextInventoryRef"] | null;
   repository: NonNullable<MonitorState["session"]>["repository"] | null;
+  /** Why a live view shows no repository: "branch_changed" when Git answered for the session's
+   *  repository on a branch other than the recorded one. null when a repository is shown, the
+   *  view is historical, or the reason is not recognized. */
+  unavailableReason: "branch_changed" | null;
   pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] | null;
   /** ISO time of the live check a historical view is served from; null for live views and
    *  for historical sessions without a recorded snapshot. */

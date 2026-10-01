@@ -763,7 +763,9 @@ cannot supply the viewed session's files, branch comparison, pull requests, or c
 counts. A mismatch retains a previously verified session snapshot, or leaves repository
 state unavailable when none exists. Missing branch evidence is unavailable; the current
 checkout is not evidence of which branch the session used. These rules do not identify
-which session made other uncommitted changes on the same branch.
+which session made other uncommitted changes on the same branch. Files the session touched
+are independent of that state: recorded changes and already Git-observed paths stay listed
+when the working tree leaves the recorded branch, and the tab says so.
 
 Accepted live branch metadata comes from read-only Git commands against the session-bound repository root. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
 

@@ -538,6 +538,7 @@ export function createMonitorRuntime(options = {}) {
     scheduleHomeRefresh,
     buildHomeSnapshot: () => buildHomeSnapshot(),
     repositoryRootForSession: sessionRepositoryEnrichment.repositoryRootForSession,
+    repositoryUnavailableReasonForSession: sessionRepositoryEnrichment.unavailableReasonForSession,
     liveEnrichment,
     recordedGitState,
     unavailableGitState,

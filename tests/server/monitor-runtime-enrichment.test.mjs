@@ -689,7 +689,7 @@ function enrichmentFixture(readGit) {
     live.enqueue?.();
     return { ...live, readiness: liveRepositoryReadiness({ available: live.value.repository.available, check: live.check }) };
   };
-  return { read, advance(ms) { clock += ms; }, async runAll() { while (jobs.length) await jobs.shift()(); } };
+  return { read, reason: (sessionId) => enrichment.unavailableReasonForSession(sessionId), advance(ms) { clock += ms; }, async runAll() { while (jobs.length) await jobs.shift()(); } };
 }
 
 const boundTo = (cwd) => ({ state: "single", repositoryId: "repo-0123456789abcdef01234567", root: cwd, fingerprint: `bound:${cwd}`, recordedBranch: "codex/live" });
@@ -720,11 +720,18 @@ test("a bound live session stays loading through transient failures and rebinds,
   fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
   await fixture.runAll();
   assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "unavailable", "a branch mismatch is confirmed");
+  assert.equal(fixture.reason("codex:bound"), "branch_changed", "the bound root answered on another branch");
+  answer = () => repository("codex/live", "C:\\synthetic\\elsewhere");
+  fixture.advance(2_500);
+  fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
+  await fixture.runAll();
+  assert.equal(fixture.reason("codex:bound"), null, "another root is not a branch change");
   answer = (root) => repository("codex/live", root);
   fixture.advance(2_500);
   fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd));
   await fixture.runAll();
   assert.equal(fixture.read("codex:bound", evidence, boundTo(evidence.session.cwd)).readiness, "ready");
+  assert.equal(fixture.reason("codex:bound"), null);
   const moved = fixture.read("codex:bound", evidence, boundTo("C:\\synthetic\\moved"));
   assert.equal(moved.readiness, "loading", "a changed binding waits as loading so clients keep the committed value");
   await fixture.runAll();

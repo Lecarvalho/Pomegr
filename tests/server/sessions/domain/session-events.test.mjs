@@ -615,3 +615,17 @@ test("a projection that finds the repository recorder without an answer keeps th
   store.commit(SESSION_ID, snapshotOf(monitorState()));
   assert.deepEqual(commitTimes(), []);
 });
+
+test("the repository domain serves the branch-changed reason only for a live view without a repository", () => {
+  const reasonFor = (state, repositoryUnavailableReason) => projectSessionDomains(SESSION_ID, snapshotOf(state), { repositoryUnavailableReason }).domains.get("repository").unavailableReason;
+  const available = monitorState();
+  assert.equal(reasonFor(available, "branch_changed"), null, "a shown repository carries no reason");
+  const unavailable = monitorState();
+  unavailable.session.repository = { available: false, branch: "Not a Git repository", files: [], comparison: null, historical: false, commits: [], isMain: false, remote: { status: "unavailable", checkedAt: null } };
+  assert.equal(reasonFor(unavailable, "branch_changed"), "branch_changed");
+  assert.equal(reasonFor(unavailable, "C:\private\root"), null, "only the recognized enum value is served");
+  assert.equal(reasonFor(unavailable, null), null);
+  unavailable.session.repository.historical = true;
+  assert.equal(reasonFor(unavailable, "branch_changed"), null, "a historical view never reports live check state");
+  assert.ok(!JSON.stringify(unavailable.session).includes("unavailableReason"));
+});
