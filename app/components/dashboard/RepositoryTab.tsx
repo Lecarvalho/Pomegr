@@ -133,21 +133,27 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, work
   // only Touched here (the recorded file-change index) is offered.
   const segment = workingTreeKnown ? manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments) : "touched";
   const query = search.trim();
-  const recorded = selectedPath ? domain.fileHistory.files.find((file) => file.path === selectedPath) ?? null : null;
-  const gitObserved = selectedPath ? domain.gitObservedFiles?.files.find((file) => file.path === selectedPath) ?? null : null;
-  const workingTreeStatus = selectedPath ? repository.files.find((file) => file.path === selectedPath)?.status ?? null : null;
+  const treeLoading = segment === "touched" && domain.fileHistory.readiness === "loading";
+  const listedFiles = filterFilesByPath(segments[segment], query);
+  const listedElsewhere = segment === "touched" ? filterFilesByPath(segments.touchedElsewhere, query) : undefined;
+  // The panel describes only a file the tree currently lists: after a segment switch or a search
+  // that drops the selected row, its history would read as a file that is not there.
+  const shownPath = selectedPath && (treeLoading || [...listedFiles, ...listedElsewhere ?? []].some((file) => file.path === selectedPath)) ? selectedPath : null;
+  const recorded = shownPath ? domain.fileHistory.files.find((file) => file.path === shownPath) ?? null : null;
+  const gitObserved = shownPath ? domain.gitObservedFiles?.files.find((file) => file.path === shownPath) ?? null : null;
+  const workingTreeStatus = shownPath ? repository.files.find((file) => file.path === shownPath)?.status ?? null : null;
 
   const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);
   const selectFile = (path: string) => onSelectPath(path);
 
-  const treeArea = segment === "touched" && domain.fileHistory.readiness === "loading"
+  const treeArea = treeLoading
     ? <FilesTreeSkeleton />
     : <FileTree
         scope="session"
         rootLabel={rootLabel}
-        files={filterFilesByPath(segments[segment], query)}
-        elsewhere={segment === "touched" ? filterFilesByPath(segments.touchedElsewhere, query) : undefined}
-        selectedPath={selectedPath}
+        files={listedFiles}
+        elsewhere={listedElsewhere}
+        selectedPath={shownPath}
         onSelect={(file) => selectFile(file.path)}
         expandAll={query.length > 0}
         emptyText={segment === "touched"
@@ -176,7 +182,7 @@ function RepositoryTabFiles({ domain, repository, repositoryId, historical, work
       <SessionFilePanel
         repositoryId={repositoryId}
         repositoryLabel={rootLabel}
-        path={selectedPath}
+        path={shownPath}
         workingTreeStatus={workingTreeStatus}
         statusRecorded={historical}
         recorded={recorded}
