@@ -83,7 +83,8 @@ test("a completed patch inside an exec cell does not discard the sealed wrapper 
   assert.equal(wrapper.requestId, parsed.requests[0].id);
   assert.equal(parsed.activity.find((row) => row.tool === "User input").requestId, parsed.requests[0].id);
   assert.equal(parsed.activity.find((row) => row.tool === "File change").requestId, null, "completion alone cannot establish the nested patch's request attribution");
-  assert.deepEqual(parsed.requests[0].issuedWork, [{ kind: "integration", count: 1 }]);
+  assert.equal(wrapper.call, false, "a wrapper with a recorded nested item is listed but is not a tool call");
+  assert.deepEqual(parsed.requests[0].issuedWork, [], "the wrapper is a container and the nested patch is unlinked");
   assert.doesNotMatch(JSON.stringify(parsed), /PRIVATE/u);
 });
 

@@ -67,7 +67,7 @@ function sessionWorkKindCounts(evidence) {
   const add = (kind, count) => counts.set(kind, (counts.get(kind) || 0) + count);
   for (const items of whole.values()) for (const item of items) add(item.kind, item.count);
   for (const call of evidence.toolCalls) {
-    if (!whole.has(call.actor?.id)) add(normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })), 1);
+    if (!whole.has(call.actor?.id) && call.wrapper !== true) add(normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })), 1);
   }
   return counts;
 }
@@ -318,7 +318,7 @@ export function projectProviderSessionEvidence({
     loops: loopPatterns,
     activity: buildActivityFeed({
       events: allEvents,
-      toolCalls: evidence.toolCalls,
+      toolCalls: evidence.toolCalls.filter((call) => call.wrapper !== true),
       kindCounts: sessionWorkKindCounts(evidence),
       messages: messageCount,
       failed: failedShellEvents.length,

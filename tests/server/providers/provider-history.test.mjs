@@ -232,8 +232,11 @@ test("history rows mark only recorded tool calls as calls", () => {
   const history = normalizedSessionHistory("claude", "call-marker", {
     agents: [{ id: "primary", label: "Primary agent", executionTasks: [{ id: "task-1", status: "failed", label: "npm test", workKind: "test", startedAt: at, finishedAt: at, exitCode: 1 }] }],
     usageSnapshots: [],
-    toolCalls: [{ id: "tool-1", timestamp: at, actor: "Primary agent", tool: "Bash", workKind: "test", detail: "npm test", status: "failed" }],
+    toolCalls: [
+      { id: "tool-1", timestamp: at, actor: "Primary agent", tool: "Bash", workKind: "test", detail: "npm test", status: "failed" },
+      { id: "cell-1", timestamp: at, actor: "Primary agent", tool: "Dynamic tool", workKind: "integration", detail: "exec", status: "completed", wrapper: true },
+    ],
     activity: [{ id: "input-1", timestamp: at, actor: "User", tool: "User input", workKind: "input", detail: "Text", status: null }],
   });
-  assert.deepEqual(history.activity.map((row) => [row.tool, row.call]).sort(), [["Bash", true], ["Shell failed", false], ["User input", false]]);
+  assert.deepEqual(history.activity.map((row) => [row.tool, row.call]).sort(), [["Bash", true], ["Dynamic tool", false], ["Shell failed", false], ["User input", false]]);
 });

@@ -629,6 +629,31 @@ transcript grows. An agent counted this way carries the optional evidence field
 `workKindCounts` (bounded work kind and count); it is checkpointed with the
 evidence, feeds only the session aggregate, and never appears on the public agent.
 
+Work kinds are Pomegr's own provider-neutral terms: equivalent work gets the same
+kind on every provider. A tool whose own name identifies its work keeps that kind
+whatever its detail says, because a detail is often a file name or label; only a
+carrier (an MCP or dynamic tool, or a name that identifies nothing) is classified
+with its detail, which then names the real tool. A shell tool's kind still comes
+from its private command structure.
+
+Newer Codex runs its tools inside a code-mode `exec` cell: the model issues one
+wrapper call and the rollout records what ran as completed items. The Codex
+adapter therefore normalizes completed `CommandExecution`, `McpToolCall`, and
+`FileChange` items as the actions, with the kind, status (a non-zero exit code or
+an MCP error is failed), recorded start time, and bounded wall duration of each;
+commands, output, arguments, and results stay monitor-private. The wrapper call
+carries the evidence flag `wrapper` and is listed but never counted once an item
+was recorded while it was the only open response call. A wrapper still awaiting
+its output is undecided and also uncounted, so a count never includes a wrapper
+and later drops it. A wrapper that completed with no recorded item (older Codex
+recorded none for commands) is the only evidence of its work and counts as
+before, as **Integration**. A native call's own completed item shares its id and
+is the same row. A command or MCP call recorded inside one open wrapper is listed
+under the request that issued the wrapper and counts in that request's issued
+work; the wrapper itself does not. A nested file change never inherits a request,
+because file-change attribution requires recorded proof and enclosure is only
+source order.
+
 The Overview **Work by kind** panel shows the six largest kinds of
 `activity.byKind`. Its counts use `workKindCounts` for agents that carry it and
 the retained calls of every other agent, so their sum equals the Calls figure.

@@ -5,8 +5,10 @@ import { mutationScopes, repetitionSignature } from "../../normalize/tool-effici
 import { codexTimestamp } from "./session-metadata.mjs";
 import { toolWorkKind } from "../../normalize/work-kind.mjs";
 import { boundedActivityDuration, boundedFileChanges } from "../../normalize/activity-events.mjs";
-import { repositoryRelativePath } from "../../normalize/repository-path.mjs";
 import { collapsedText } from "../../normalize/primitives.mjs";
+import { isCodeModeWrapper, normalizedStatus, rolloutExecutionItemKind, rolloutExecutionStatus, rolloutExecutionTiming } from "./execution-items.mjs";
+
+export { bindCodexFileChanges } from "./file-change-binding.mjs";
 
 const MAX_IDENTIFIER_LENGTH = 80;
 const MAX_DETAIL_LENGTH = 96;
@@ -133,14 +135,6 @@ export function parseCodexCanonicalActivityEvents(turns, options = {}) {
   return boundedReplyEvents(events.values(), options.unlimited === true ? Infinity : MAX_ASSISTANT_REPLIES);
 }
 
-function normalizedStatus(value, fallback = "running") {
-  const status = String(value ?? "").toLowerCase().replace(/[_ -]/g, "");
-  if (["completed", "complete", "success", "succeeded"].includes(status)) return "completed";
-  if (["failed", "failure", "declined", "incomplete", "interrupted", "cancelled", "canceled"].includes(status)) return "failed";
-  if (["inprogress", "running", "pending", "started"].includes(status)) return "running";
-  return fallback;
-}
-
 function webActionDetail(action) {
   const type = String(action?.type || "").toLowerCase().replace(/[_ -]/g, "");
   if (type === "openpage") return "Open page";
@@ -223,10 +217,12 @@ function rolloutFileChangeList(changes) {
   return Object.entries(changes).map(([changePath, change]) => ({ path: changePath, kind: change }));
 }
 
-function isRolloutFileChangeItem(payload) {
-  const type = String(payload?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const itemType = String(payload?.item?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  return type === "itemcompleted" && itemType === "filechange";
+function rolloutExecutionDescriptor(kind, item) {
+  if (kind === "filechange") return canonicalDescriptor({ type: "fileChange", changes: rolloutFileChangeList(item.changes) });
+  if (kind === "commandexecution") return canonicalDescriptor({
+    type: "commandExecution", command: item.command, commandActions: item.parsed_cmd ?? item.commandActions, cwd: item.cwd,
+  });
+  return canonicalDescriptor({ type: "mcpToolCall", server: item.server, tool: item.tool, arguments: item.arguments });
 }
 
 function functionDescriptor(name, input, namespace = "") {
@@ -431,7 +427,8 @@ function makeCall({ actor, providerCallId, fallbackIdentity, timestamp, descript
     timestamp,
     actor: { id: actor.id, label: actor.label },
     tool: descriptor.tool,
-    workKind: toolWorkKind(descriptor.tool, { detail: descriptor.detail, input: descriptor.repetitionInput }),
+    // A file change's detail is a file name, which says nothing about the kind of work.
+    workKind: toolWorkKind(descriptor.tool, { detail: descriptor.tool === "File change" ? "" : descriptor.detail, input: descriptor.repetitionInput }),
     detail: collapsedText(descriptor.detail, MAX_DETAIL_LENGTH),
     status,
     durationMs: null,
@@ -473,6 +470,7 @@ export function mergeCodexToolCalls(callGroups) {
       timestamp: nextTimestamp,
       durationMs: call.durationMs ?? previous.durationMs ?? null,
       requestId: null,
+      ...(typeof (call.wrapper ?? previous.wrapper) === "boolean" ? { wrapper: call.wrapper ?? previous.wrapper } : {}),
       // Already-sealed sources (a sealed call never carries fileChangeCandidates)
       // may still disagree on fileChanges; prefer whichever observation has it.
       ...(Object.hasOwn(call, "fileChanges") || Object.hasOwn(previous, "fileChanges")
@@ -507,104 +505,6 @@ function sealCodexFileChanges(call, status, options = {}) {
       ? boundedFileChanges(fileChangeCandidates, fileChangeCwd || cwd, { forbiddenRoots })
       : null,
   };
-}
-
-function absoluteMutationTarget(target, cwd) {
-  if (typeof target !== "string" || !target || /[\u0000-\u001f\u007f]/u.test(target)
-    || typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
-  // `path.resolve` deliberately permits a tool cwd to point into a sibling
-  // checkout. The binding below proves the resulting target has its own Git root.
-  if (/^[A-Za-z]:(?![\\/])/u.test(target) || /^[\\/]{2}/u.test(target)) return null;
-  if (target.replace(/\\/gu, "/").split("/").includes("..")) return null;
-  return path.resolve(path.isAbsolute(target) ? target : path.resolve(cwd, target));
-}
-
-function nearestExistingDirectory(target) {
-  let candidate = target;
-  try { if (!fs.statSync(candidate).isDirectory()) candidate = path.dirname(candidate); } catch { candidate = path.dirname(candidate); }
-  while (path.dirname(candidate) !== candidate) {
-    try { if (fs.statSync(candidate).isDirectory()) return candidate; } catch { /* climb */ }
-    candidate = path.dirname(candidate);
-  }
-  return null;
-}
-
-async function bindMutationTarget(target, cwd, resolver, forbiddenRoots) {
-  const absolute = absoluteMutationTarget(target, cwd);
-  const directory = absolute && nearestExistingDirectory(absolute);
-  if (!absolute || !directory) return null;
-  // Git can return a long root while the tool target uses an 8.3 alias.
-  // Resolve the existing parent and retain the uncreated target suffix.
-  let canonicalDirectory;
-  try { canonicalDirectory = fs.realpathSync.native(directory); } catch { return null; }
-  const canonicalTarget = path.resolve(canonicalDirectory, path.relative(directory, absolute));
-  let resolved;
-  try { resolved = await resolver(canonicalDirectory, { requireGit: true }); } catch { return null; }
-  if (!resolved || typeof resolved.repositoryId !== "string" || !/^repo-[a-f0-9]{24}$/u.test(resolved.repositoryId)
-    || typeof resolved.root !== "string" || !path.isAbsolute(resolved.root)
-    || (resolved.recognized !== true && resolved.isGit !== true)) return null;
-  const relative = path.relative(resolved.root, canonicalTarget);
-  const safePath = repositoryRelativePath(relative, resolved.root, { forbiddenRoots });
-  return safePath ? { repositoryId: resolved.repositoryId, path: safePath, root: resolved.root } : null;
-}
-
-async function mapBounded(items, maximum, mapper) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  const worker = async () => {
-    for (;;) {
-      const index = cursor++;
-      if (index >= items.length) return;
-      results[index] = await mapper(items[index], index);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(Math.max(1, maximum), items.length) }, worker));
-  return results;
-}
-
-/**
- * Resolve successful structured mutation candidates before provider evidence is
- * committed. The resolver is monitor-private and returns the inventory's HMAC
- * repository ID plus its real root; roots and source targets are discarded here.
- */
-/** @param {{ resolveRepository?: (directory: string, options?: { requireGit?: boolean }) => Promise<any> | any, forbiddenRoots?: string[], onRepositoryBinding?: (binding: any) => void }} [options] */
-export async function bindCodexFileChanges(calls, options = {}) {
-  const { resolveRepository, forbiddenRoots = [], onRepositoryBinding } = options;
-  const input = Array.isArray(calls) ? calls : [];
-  const directoryResolutions = new Map();
-  const resolveDirectory = (directory, resolverOptions) => {
-    if (!directoryResolutions.has(directory)) {
-      directoryResolutions.set(directory, Promise.resolve().then(() => resolveRepository(directory, resolverOptions)));
-    }
-    return directoryResolutions.get(directory);
-  };
-  return mapBounded(input, 4, async (call) => {
-    const { fileChangeCandidates, fileChangeCwd, ...sealed } = call || {};
-    if (!fileChangeCandidates?.length || typeof resolveRepository !== "function" || call?.status !== "completed") {
-      return { ...sealed, fileChanges: call?.fileChanges || null };
-    }
-    const changes = [];
-    const seen = new Set();
-    for (const candidate of fileChangeCandidates.slice(0, 64)) {
-      if (!candidate || !["created", "edited", "deleted", "moved"].includes(candidate.kind)) continue;
-      const target = await bindMutationTarget(candidate.target, fileChangeCwd, resolveDirectory, forbiddenRoots);
-      if (!target) continue;
-      let previousPath = null;
-      if (candidate.kind === "moved") {
-        const previous = await bindMutationTarget(candidate.previousTarget, fileChangeCwd, resolveDirectory, forbiddenRoots);
-        if (!previous || previous.repositoryId !== target.repositoryId) continue;
-        previousPath = previous.path;
-      }
-      const key = `${target.repositoryId}\u0000${target.path}\u0000${candidate.kind}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (typeof onRepositoryBinding === "function") {
-        try { onRepositoryBinding({ repositoryId: target.repositoryId, root: target.root, recognized: true }); } catch { /* isolated private consumer */ }
-      }
-      changes.push({ repositoryId: target.repositoryId, path: target.path, kind: candidate.kind, previousPath });
-    }
-    return { ...sealed, fileChanges: changes.length ? changes : null };
-  });
 }
 
 export function parseCodexCanonicalTurns(turns, options = {}) {
@@ -701,6 +601,10 @@ export function parseCodexActivityRecords(records, options = {}) {
   const { cwd, forbiddenRoots = [], deferFileChanges = false } = options;
   const calls = [];
   const updates = new Map();
+  // Response calls awaiting their output, and the code-mode wrappers among them with whether a
+  // nested execution item was recorded while each was the only open call.
+  const openCalls = new Set();
+  const wrappers = new Map();
   let recordedCwd = cwd;
   for (const [order, record] of (Array.isArray(records) ? records : []).entries()) {
     const observedTimestamp = codexTimestamp(record?.timestamp ?? record?.payload?.timestamp);
@@ -713,12 +617,20 @@ export function parseCodexActivityRecords(records, options = {}) {
     if (record.type === "response_item") {
       if (["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload.type)) {
         const id = responseCallId(payload);
-        if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
+        if (id) {
+          updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
+          openCalls.delete(stableCodexCallId(actor.id, id));
+        }
         continue;
       }
       const descriptor = responseDescriptor(payload);
       if (!descriptor) continue;
       const providerCallId = responseCallId(payload);
+      if (providerCallId && ["function_call", "custom_tool_call"].includes(payload.type)) {
+        const callId = stableCodexCallId(actor.id, providerCallId);
+        openCalls.add(callId);
+        if (isCodeModeWrapper(payload)) wrappers.set(callId, wrappers.get(callId) === true);
+      }
       calls.push(makeCall({
         actor,
         providerCallId,
@@ -738,21 +650,35 @@ export function parseCodexActivityRecords(records, options = {}) {
       if (id) updates.set(stableCodexCallId(actor.id, id), { status: outputStatus(payload), timestamp: observedTimestamp });
       continue;
     }
-    // Patches applied inside a code-mode exec cell are recorded only as a
-    // completed FileChange item; the wrapping exec call carries no mutation evidence.
-    if (isRolloutFileChangeItem(payload)) {
+    // Patches, commands and MCP calls run inside a code-mode exec cell are recorded only as
+    // completed items; the wrapping exec call carries no evidence of what it ran.
+    const executionKind = rolloutExecutionItemKind(payload);
+    if (executionKind) {
       const item = payload.item;
       const providerCallId = rawCallId(item.id);
-      calls.push(makeCall({
+      const timing = rolloutExecutionTiming(payload);
+      const call = makeCall({
         actor,
         providerCallId,
         fallbackIdentity: `${sourceKey}:${order}:${payload.type}`,
-        timestamp,
-        descriptor: canonicalDescriptor({ type: "fileChange", changes: rolloutFileChangeList(item.changes) }),
-        status: normalizedStatus(item.status, "completed"),
+        timestamp: timing?.startedAt || timestamp,
+        descriptor: rolloutExecutionDescriptor(executionKind, item),
+        status: rolloutExecutionStatus(executionKind, item),
         fileChangeCwd: sourceCwd || recordedCwd,
-      }));
-      if (providerCallId && observedTimestamp) options.onCall?.(order, calls.at(-1));
+      });
+      if (!call) continue;
+      if (timing) call.durationMs = timing.durationMs;
+      calls.push(call);
+      // An item recorded while exactly one response call is open ran inside that call. A native
+      // call's own completed item shares its id and is the same row, not a nested one.
+      const enclosing = openCalls.size === 1 ? openCalls.values().next().value : null;
+      if (enclosing && enclosing !== call.id && wrappers.has(enclosing)) {
+        wrappers.set(enclosing, true);
+        // A nested file change never inherits the wrapper's request: file-change attribution
+        // requires recorded proof, and enclosure is only source order.
+        if (executionKind !== "filechange") options.onNested?.(call.id, enclosing);
+      }
+      if (providerCallId && observedTimestamp) options.onCall?.(order, call);
       continue;
     }
     const descriptor = eventDescriptor(payload);
@@ -771,7 +697,12 @@ export function parseCodexActivityRecords(records, options = {}) {
   return mergeCodexToolCalls([calls]).map((call) => {
     const update = updates.get(call.id);
     const sealed = sealCodexFileChanges(call, update ? update.status : call.status, { cwd, forbiddenRoots, deferFileChanges });
-    return update ? { ...sealed, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : sealed;
+    // A code-mode wrapper is a container, not an action, once a nested item was recorded inside
+    // it. One still awaiting its output is undecided and stays uncounted, so a count never
+    // includes a wrapper and then drops it. One that completed with no nested item (older Codex
+    // recorded none) remains the only evidence of its work and counts as before.
+    const wrapper = wrappers.has(call.id) ? { wrapper: wrappers.get(call.id) || !update } : {};
+    return update ? { ...sealed, ...wrapper, durationMs: boundedActivityDuration(call.timestamp, update.timestamp) } : { ...sealed, ...wrapper };
   });
 }
 

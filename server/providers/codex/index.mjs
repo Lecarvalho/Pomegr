@@ -567,7 +567,8 @@ export function createCodexProvider(options = {}) {
     const activity = mergeCodexActivityEvents([...canonicalEvidence.map((item) => item.activity), rolloutReplies], completeStory ? Infinity : undefined);
     stampCodexActivityRequestIds({ sessionId: metadata.localId, agents, usageSnapshots, toolCalls, activity, linkGroups: requestLinkGroups, unlimited: completeStory });
     const callsByActor = new Map();
-    for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
+    // A code-mode wrapper is a container for the items it ran, not an action of its own.
+    for (const call of toolCalls) if (call.wrapper !== true) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
     const canonicalTasksByActor = new Map(
       [...actorByThreadId.values()].map((actor, index) => [actor.id, canonicalEvidence[index]?.executionTasks || []]),
     );

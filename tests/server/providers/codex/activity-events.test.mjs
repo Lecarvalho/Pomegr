@@ -365,3 +365,50 @@ test("provider merges rollout and canonical duplicates while agent and grouped t
   assertNoPrivateFixtureSentinels(evidence, "merged Codex provider evidence");
   assertNoPrivateFixtureSentinels(monitorStateFromProviderEvidence("codex", evidence), "Codex activity MonitorState");
 });
+
+test("items run inside a code-mode exec cell are the actions, and the wrapper is listed but not counted", () => {
+  const stamp = (second) => `2026-10-01T10:00:${String(second).padStart(2, "0")}.000Z`;
+  const ms = (second) => Date.parse(stamp(second));
+  const call = (id, second) => ({ type: "response_item", timestamp: stamp(second), payload: { type: "custom_tool_call", call_id: id, name: "exec", input: "PRIVATE_PROGRAM" } });
+  const out = (id, second) => ({ type: "response_item", timestamp: stamp(second), payload: { type: "custom_tool_call_output", call_id: id, output: "PRIVATE_OUTPUT" } });
+  const item = (second, value) => ({ type: "event_msg", timestamp: stamp(second + 1), payload: { type: "item_completed", started_at_ms: ms(second), completed_at_ms: ms(second + 1), item: value } });
+  const records = [
+    call("cell-1", 1),
+    item(2, { type: "CommandExecution", id: "exec-search", command: ["pwsh", "-Command", "rg PRIVATE_PATTERN app"], cwd: "C:\PRIVATE", parsed_cmd: [{ type: "search", cmd: "rg PRIVATE_PATTERN app" }], status: "completed", exit_code: 0, stdout: "PRIVATE_STDOUT" }),
+    item(4, { type: "CommandExecution", id: "exec-test", command: ["pwsh", "-Command", "npm run test"], status: "completed", exit_code: 1, stderr: "PRIVATE_STDERR" }),
+    item(6, { type: "McpToolCall", id: "exec-report", server: "pomegr", tool: "report_session_signal", arguments: { label: "PRIVATE_LABEL" }, status: "completed", result: { isError: false } }),
+    item(8, { type: "FileChange", id: "exec-patch", status: "completed", changes: { "src/wait-helper.ts": { type: "update" } } }),
+    out("cell-1", 10),
+    // Older Codex recorded no nested items: the completed cell is the only evidence of its work.
+    call("cell-2", 11), out("cell-2", 12),
+    // A cell still awaiting its output is undecided, so it is not counted yet.
+    call("cell-3", 13),
+  ];
+  const nested = [];
+  const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "wrapper", onNested: (id, wrapperId) => nested.push([id, wrapperId]) });
+  const wrappers = calls.filter((row) => row.tool === "Dynamic tool");
+  assert.deepEqual(wrappers.map((row) => row.wrapper), [true, false, true]);
+  const actions = calls.filter((row) => row.tool !== "Dynamic tool");
+  assert.deepEqual(actions.map((row) => [row.tool, row.workKind, row.status, row.durationMs, row.timestamp]), [
+    ["Shell", "search", "completed", 1_000, stamp(2)],
+    ["Shell", "test", "failed", 1_000, stamp(4)],
+    ["MCP", "report", "completed", 1_000, stamp(6)],
+    ["File change", "write", "completed", 1_000, stamp(8)],
+  ]);
+  assert.ok(actions.every((row) => !Object.hasOwn(row, "wrapper")));
+  // Commands and MCP calls are listed under the wrapper's request; a file change never is.
+  assert.deepEqual(nested.map(([id]) => calls.find((row) => row.id === id).tool), ["Shell", "Shell", "MCP"]);
+  assert.ok(nested.every(([, wrapperId]) => wrapperId === wrappers[0].id));
+  assert.doesNotMatch(JSON.stringify(calls), /PRIVATE/u);
+});
+
+test("a native call's own completed item is the same row, not a nested action", () => {
+  const records = [
+    { type: "response_item", timestamp: "2026-10-01T10:00:01.000Z", payload: { type: "function_call", call_id: "call-js", name: "mcp__cua_repl__js", arguments: "{}" } },
+    { type: "event_msg", timestamp: "2026-10-01T10:00:02.000Z", payload: { type: "item_completed", item: { type: "McpToolCall", id: "call-js", server: "cua_repl", tool: "js", status: "completed" } } },
+    { type: "response_item", timestamp: "2026-10-01T10:00:03.000Z", payload: { type: "function_call_output", call_id: "call-js", output: "ok" } },
+  ];
+  const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "native" });
+  assert.equal(calls.length, 1);
+  assert.deepEqual([calls[0].tool, calls[0].workKind, calls[0].status, Object.hasOwn(calls[0], "wrapper")], ["MCP", "integration", "completed", false]);
+});

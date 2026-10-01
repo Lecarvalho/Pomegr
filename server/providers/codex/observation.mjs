@@ -47,7 +47,7 @@ function mergeAgents(previous = [], current = [], toolCalls = []) {
   const previousById = new Map(previous.map((agent) => [agent.id, agent]));
   const currentById = new Map(current.map((agent) => [agent.id, agent]));
   const callsByActor = new Map();
-  for (const call of toolCalls) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
+  for (const call of toolCalls) if (call.wrapper !== true) callsByActor.set(call.actor.id, (callsByActor.get(call.actor.id) || 0) + 1);
   return [...new Set([...previousById.keys(), ...currentById.keys()])].map((id) => {
     const agent = currentById.get(id) || previousById.get(id);
     const older = previousById.get(agent.id);

@@ -94,8 +94,13 @@ function classifyCommand(value) {
 /** Normalize a provider tool identity without asking React to interpret provider text. */
 export function toolWorkKind(tool, { detail = "", input = null } = {}) {
   const name = String(tool || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // A tool whose own name identifies its work keeps that kind: its detail is often a file name or
+  // a label, which must not reclassify it. Only a carrier (an MCP or dynamic tool, or a name that
+  // identifies nothing) is classified with its detail, which then names the real tool.
+  const byName = memoizedKind(toolContextKinds, name, classifyToolContext);
+  if (byName !== null && byName !== "integration") return byName === SHELL_TOOL ? executionWorkKind(input) : byName;
   const context = `${name} ${String(detail || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")}`;
-  const kind = memoizedKind(toolContextKinds, context, classifyToolContext);
+  const kind = memoizedKind(toolContextKinds, context, classifyToolContext) ?? "shell";
   return kind === SHELL_TOOL ? executionWorkKind(input) : kind;
 }
 
@@ -103,7 +108,8 @@ export function toolWorkKind(tool, { detail = "", input = null } = {}) {
 const SHELL_TOOL = Symbol("shell-tool");
 
 function classifyToolContext(context) {
-  if (/reportsessionprogress|reportsessionsignal|reportagentsignal|reporttasksignal|clearsessionprogress/.test(context)) return "report";
+  // A carrier's detail separates the words of the tool name, so reporting tools match compactly.
+  if (/reportsessionprogress|reportsessionsignal|reportagentsignal|reporttasksignal|clearsessionprogress/.test(context.replace(/\s+/g, ""))) return "report";
   if (/senduserfile|filetransfer|uploadfile|downloadfile/.test(context)) return "transfer";
   if (/pullrequest|pull\s+requests?|\bpr\b/.test(context)) return "pull_request";
   if (/gitpush/.test(context)) return "git_push";
@@ -122,5 +128,5 @@ function classifyToolContext(context) {
   if (/restart|localprocess|developmentserver/.test(context)) return "process";
   if (/shell|bash|execcommand|commandexecution/.test(context)) return SHELL_TOOL;
   if (/mcp|dynamictool|plugin|connector/.test(context)) return "integration";
-  return "shell";
+  return null;
 }

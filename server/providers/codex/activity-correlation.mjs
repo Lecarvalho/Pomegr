@@ -1,5 +1,6 @@
 import { parseCodexContextRecords } from "./context.mjs";
 import { parseCodexActivityRecords, parseCodexAssistantReplyRecords } from "./activity-events.mjs";
+import { rolloutExecutionItemKind } from "./execution-items.mjs";
 import { requestSnapshotIdsByEvidence } from "../../normalize/request-snapshots.mjs";
 import { normalizedRequestWork } from "../../normalize/request-work.mjs";
 import { parseCodexUserInputRecords } from "./user-input.mjs";
@@ -35,7 +36,8 @@ export function parseCodexRequestActivityEvidence(records, options = {}) {
   const outputs = new Map();
   const addOutput = (index, event) => { if (event) outputs.set(index, event.id); };
   const context = parseCodexContextRecords(records, { ...options, onUsageSnapshot: (index, snapshot) => usages.set(index, snapshot) });
-  const toolCalls = parseCodexActivityRecords(records, { ...options, onCall: addOutput });
+  const nested = new Map();
+  const toolCalls = parseCodexActivityRecords(records, { ...options, onCall: addOutput, onNested: (id, wrapperId) => nested.set(id, wrapperId) });
   const replies = parseCodexAssistantReplyRecords(records, { ...options, onReply: addOutput });
   const inputsByIndex = new Map();
   const inputs = parseCodexUserInputRecords(records, { ...options, onInput: (index, event) => inputsByIndex.set(index, event.id) });
@@ -95,9 +97,9 @@ export function parseCodexRequestActivityEvidence(records, options = {}) {
     }
     const result = ["functioncalloutput", "customtoolcalloutput", "toolsearchoutput"].includes(type)
       || ["execcommandend", "patchapplyend", "mcptoolcallend", "websearchend", "imagegenerationend"].includes(type)
-      // A patch completed inside an exec cell is execution evidence, not a second model
-      // response. It cannot invalidate the wrapper's already-sealed request association.
-      || (outer === "eventmsg" && type === "itemcompleted" && normalizedType(record.payload?.item?.type) === "filechange");
+      // A patch, command or MCP call completed inside an exec cell is execution evidence, not a
+      // second model response. It cannot invalidate the wrapper's already-sealed request association.
+      || (outer === "eventmsg" && Boolean(rolloutExecutionItemKind(record.payload)));
     if (result) { sawResult = true; continue; }
     const output = outputs.get(index);
     const beginsOutput = output || (outer === "responseitem" && type === "reasoning")
@@ -108,6 +110,13 @@ export function parseCodexRequestActivityEvidence(records, options = {}) {
     if (beginsOutput && sealed) invalid = true;
     if (output && !invalid) pending.add(output);
     if (pending.size > MAX_OUTPUTS_PER_REQUEST) { pending.clear(); invalid = true; }
+  }
+  // A command or MCP call recorded inside one open code-mode wrapper is listed under the request
+  // that issued the wrapper. It never gains a link the wrapper does not have, and a nested file
+  // change is never linked this way.
+  for (const [id, wrapperId] of nested) {
+    const key = links.get(wrapperId);
+    if (key && !links.has(id)) links.set(id, key);
   }
   return { ...context, toolCalls, replies, inputs, links };
 }
@@ -126,7 +135,7 @@ export function stampCodexActivityRequestIds({ sessionId, agents, usageSnapshots
     if (requestId) event.requestId = requestId;
   }
   for (const call of toolCalls) {
-    if (!call.requestId) continue;
+    if (!call.requestId || call.wrapper === true) continue;
     const counts = work.get(call.requestId) || new Map();
     counts.set(call.workKind, (counts.get(call.workKind) || 0) + 1);
     work.set(call.requestId, counts);

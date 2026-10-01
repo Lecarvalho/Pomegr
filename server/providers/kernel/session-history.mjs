@@ -39,8 +39,8 @@ export async function readCompleteSessionHistory(readSession) {
 export function normalizedSessionActivity(providerId, sessionId, evidence) {
   const labels = new Map(); for (const agent of evidence?.agents || []) labels.set(agent.label, [...(labels.get(agent.label) || []), agent.id]);
   const failures = (evidence?.agents || []).flatMap((agent) => shellFailureActivityEvents(agent.executionTasks, agent.label).map((item) => ({ ...item, _historyAgentId: agent.id })));
-  // Only rows that come from recorded tool calls are marked as calls; input, replies, task notices
-  // and failed-shell outcome rows stay listed but never enter tool-call aggregates.
+  // Only rows that come from recorded tool calls are marked as calls; input, replies, task notices,
+  // failed-shell outcome rows and wrapper calls stay listed but never enter tool-call aggregates.
   const toolCalls = new Set(evidence?.toolCalls || []);
   const rows = [...(evidence?.activity || []), ...toolCalls, ...failures].flatMap((item, index) => {
     const agentId = item.actor?.id || item._historyAgentId || (labels.get(item.actor)?.length === 1 ? labels.get(item.actor)[0] : null);
@@ -51,7 +51,7 @@ export function normalizedSessionActivity(providerId, sessionId, evidence) {
       timestamp: item.timestamp, actor, tool: item.tool, workKind: item.workKind || "generic", detail: item.detail,
       status: item.status === "failed" ? "failed" : null,
       durationMs: Number.isSafeInteger(item.durationMs) ? item.durationMs : null,
-      requestId: typeof item.requestId === "string" ? item.requestId : null, agentId, call: toolCalls.has(item),
+      requestId: typeof item.requestId === "string" ? item.requestId : null, agentId, call: toolCalls.has(item) && item.wrapper !== true,
     }];
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
