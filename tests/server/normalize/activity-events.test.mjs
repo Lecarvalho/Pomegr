@@ -304,6 +304,45 @@ test("Claude reply-only requests link by recorded identity, including fragments 
   }
 });
 
+test("Claude user input links to the request recorded as answering it, never by order or timing", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-user-input-request-link-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, ".claude", "projects", "fixture", "local.jsonl");
+  const stamp = (second) => `2026-09-07T18:47:${String(second).padStart(2, "0")}.000Z`;
+  const user = (uuid, parentUuid, second) => ({ type: "user", uuid, parentUuid, timestamp: stamp(second), message: { content: "PRIVATE_PROMPT" } });
+  const assistant = (uuid, parentUuid, second, id, usage = { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }) => ({
+    type: "assistant", uuid, parentUuid, timestamp: stamp(second), message: { id, model: "claude-test", usage, content: [{ type: "text", text: "PRIVATE_REPLY" }] },
+  });
+  const records = [
+    user("PRIVATE_INPUT_A", null, 0),
+    { type: "system", subtype: "hook", uuid: "PRIVATE_HOOK", parentUuid: "PRIVATE_INPUT_A", timestamp: stamp(1) },
+    // A provider error yields no request; the retry still answers the same input.
+    { ...assistant("PRIVATE_ERROR", "PRIVATE_HOOK", 2, "PRIVATE_ERROR_ID", undefined), isApiErrorMessage: true, message: { id: "PRIVATE_ERROR_ID", model: "<synthetic>", content: [{ type: "text", text: "PRIVATE_REPLY" }] } },
+    assistant("PRIVATE_REPLY_A", "PRIVATE_ERROR", 3, "PRIVATE_REQUEST_A"),
+    // Adjacent in order and time, but no recorded parent chain reaches it.
+    user("PRIVATE_INPUT_B", "PRIVATE_REPLY_A", 4),
+    assistant("PRIVATE_REPLY_B", "PRIVATE_ELSEWHERE", 5, "PRIVATE_REQUEST_B"),
+  ];
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`);
+  const provider = createClaudeProvider({ homeDir: root, env: {}, explicitSession: file });
+  for (const historical of [false, true]) {
+    let history = null;
+    const evidence = await provider.readSession("local", { historical, onHistoryRequests(value) { history = value; } });
+    const state = monitorStateFromProviderEvidence("claude", evidence);
+    const requests = state.metrics.tokens.requestSnapshots.items;
+    const inputs = state.activity.items.filter((event) => event.tool === "User input");
+    assert.equal(inputs.length, 2);
+    assert.equal(inputs.find((event) => event.timestamp === stamp(0)).requestId, requests.find((request) => request.observedAt === stamp(3)).id);
+    assert.equal(inputs.find((event) => event.timestamp === stamp(4)).requestId, null);
+    const row = history.activity.find((item) => item.tool === "User input" && item.timestamp === stamp(0));
+    assert.equal(row.agentId, "primary");
+    assert.equal(row.requestId, history.requests.find((request) => request.observedAt === stamp(3)).id);
+    assert.doesNotMatch(JSON.stringify(evidence), /precedingUserInputIds|userInputIdsByRequest|_historyAgentId|PRIVATE_PROMPT|PRIVATE_HOOK/);
+    assert.doesNotMatch(JSON.stringify(history), /PRIVATE/);
+  }
+});
+
 function deliveredNotification(status = "completed", overrides = {}) {
   return {
     type: "user", uuid: "PRIVATE_RECORD_ID", timestamp: "2026-09-07T18:47:42.302Z",

@@ -3,9 +3,11 @@ import { normalizedRequestWork } from "../../normalize/request-work.mjs";
 import { toolWorkKind } from "../../normalize/work-kind.mjs";
 import { safeDetail } from "./tool-detail.mjs";
 import { mergeClaudeRequestFragments } from "./activity-correlation.mjs";
-import { claudeReplyActivityId } from "./activity-events.mjs";
+import { claudeReplyActivityId, userInputContentType } from "./activity-events.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 1_000;
+const MAX_INPUT_CHAIN_RECORDS = 4_096;
+const MAX_INPUT_CHAIN_DEPTH = 256;
 
 function nonNegativeInteger(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -326,6 +328,21 @@ function inferredToolChangeCauses(records, completeHistory, expectedSessionId) {
   return causes;
 }
 
+/**
+ * The user-input records a request answers: every one on the request's recorded parent chain back
+ * to the previous assistant record. Recorded linkage only; transcript order and timing never link.
+ */
+function precedingUserInputIds(inputChain, parentUuid) {
+  const ids = [];
+  let cursor = parentUuid;
+  for (let depth = 0; depth < MAX_INPUT_CHAIN_DEPTH && typeof cursor === "string" && inputChain.has(cursor); depth += 1) {
+    const link = inputChain.get(cursor);
+    if (link.input) ids.push(cursor);
+    cursor = link.parent;
+  }
+  return ids;
+}
+
 export function parseClaudeContextRecords(records, options = {}) {
   const actorId = boundedIdentity(options.actorId) || "primary";
   const sourceKey = boundedIdentity(options.sourceKey) || actorId;
@@ -342,8 +359,19 @@ export function parseClaudeContextRecords(records, options = {}) {
     .map((timestamp) => Date.parse(timestamp)).filter(Number.isFinite).sort((left, right) => left - right);
   let previousAssistantTime = -Infinity;
   let comparisonGroup = 0;
+  // Only the main transcript records user input; a subagent's first user record is its task prompt.
+  const linksUserInput = actorId === "primary";
+  const inputChain = new Map();
+  const requestedInputIds = new Set();
+  // Normalization must not create a match: only an unaltered recorded identity joins the chain.
+  const chainRecord = (record, input) => {
+    if (!linksUserInput || typeof record?.uuid !== "string" || boundedIdentity(record.uuid) !== record.uuid) return;
+    inputChain.set(record.uuid, { parent: record.parentUuid, input });
+    if (inputChain.size > MAX_INPUT_CHAIN_RECORDS) inputChain.delete(inputChain.keys().next().value);
+  };
 
   for (const record of Array.isArray(records) ? records : []) {
+    if (!assistantRecord(record)) chainRecord(record, Boolean(userInputContentType(record, requestedInputIds)));
     if (record?.type === "user") {
       for (const block of structuredContent(record)) {
         if (!plainObject(block) || block.type !== "tool_result" || typeof block.tool_use_id !== "string" || !block.tool_use_id) continue;
@@ -362,6 +390,7 @@ export function parseClaudeContextRecords(records, options = {}) {
       issued.set(kind, Math.min(999, (issued.get(kind) || 0) + 1));
       if (typeof block.id === "string" && block.id) issuedKinds.set(block.id, kind);
       if (boundedIdentity(block.id)) issuedTools.push({ id: boundedIdentity(block.id), kind });
+      if (linksUserInput && tool === "AskUserQuestion" && typeof block.id === "string" && block.id) requestedInputIds.add(block.id);
     }
     const usage = normalizedUsage(record);
     const observedTimestamp = validTimestamp(record.timestamp ?? record.message?.timestamp);
@@ -372,8 +401,11 @@ export function parseClaudeContextRecords(records, options = {}) {
     }
     // Advance only with observed time; fallback filesystem times cannot establish adjacency.
     if (Number.isFinite(assistantTime)) previousAssistantTime = assistantTime;
-    if (usage.kind === "synthetic") continue;
+    // An assistant record that yields no request (a provider error, say) does not end the chain,
+    // so the request that retries it still answers the same input.
+    if (usage.kind === "synthetic") { chainRecord(record, false); continue; }
     if (usage.kind === "invalid" || !timestamp) {
+      chainRecord(record, false);
       comparisonGroup += 1;
       continue;
     }
@@ -408,6 +440,7 @@ export function parseClaudeContextRecords(records, options = {}) {
       // Only an exact identity can link a reply; normalization must not create a match.
       replyActivityId: providerIdentity && providerIdentity === (record.message.id ?? record.requestId ?? record.uuid)
         ? claudeReplyActivityId(actorId, providerIdentity) : null,
+      precedingUserInputIds: linksUserInput ? precedingUserInputIds(inputChain, record.parentUuid) : [],
     };
     pendingResults.clear();
     snapshots.set(dedupeId, mergeClaudeRequestFragments(snapshots.get(dedupeId), snapshot));
@@ -423,6 +456,7 @@ export function parseClaudeContextRecords(records, options = {}) {
       delete normalized.issuedToolUseIds;
       delete normalized.issuedToolUseKinds;
       delete normalized.replyActivityId;
+      delete normalized.precedingUserInputIds;
       return normalized;
     });
 }
