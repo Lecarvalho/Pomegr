@@ -668,7 +668,9 @@ successful structured file tools with an explicit target contribute; shell comma
 Git-observed files, and changes by agents outside the visible agent list never do.
 A file is identified by its bound repository and safe repository-relative path, so
 files with the same name in different directories stay distinct. A recorded move
-touches both its previous and new path.
+touches both its previous and new path. A Claude agent working in its own worktree under
+the session's `.claude/worktrees/` records the same repository-relative path as the main
+checkout, so two agents changing one file in separate worktrees still count as sharing it.
 
 - **Shared file changes** fires for each file that at least two agents changed at any
   time in the session, with no time window. It names the file's basename, the agents'

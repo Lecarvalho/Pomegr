@@ -268,6 +268,23 @@ describe("RepositoryTab", () => {
       expect(panelProps.gitObserved).toBeNull();
     });
 
+    it("empties the panel while the tree does not list the selected file", async () => {
+      useSessionDomain.mockReturnValue(result(domainWithFiles()));
+      renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
+      const shown = () => [FileTreeMock.mock.calls.at(-1)![0].selectedPath, SessionFilePanelMock.mock.calls.at(-1)![0].path, SessionFilePanelMock.mock.calls.at(-1)![0].recorded?.fileId ?? null];
+
+      // Changed elsewhere holds only files this session did not touch.
+      await userEvent.click(screen.getByRole("button", { name: "Changed elsewhere 1" }));
+      expect(shown()).toEqual([null, null, null]);
+
+      await userEvent.click(screen.getByRole("button", { name: "Uncommitted 1" }));
+      expect(shown()).toEqual(["app/Dashboard.tsx", "app/Dashboard.tsx", "f1"]);
+
+      // A search that drops the row hides it the same way.
+      await userEvent.type(screen.getByRole("searchbox", { name: "Find a file touched in this session" }), "new-file");
+      expect(shown()).toEqual([null, null, null]);
+    });
+
     it("passes the Git-observed entry when no tool recorded the selected file", () => {
       const committedOnly = { path: "app/committed-only.ts", source: "committed", change: "added" } as const;
       useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: { files: [committedOnly], truncated: false } })));
