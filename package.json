@@ -1,6 +1,6 @@
 {
   "name": "pomegr",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "private": true,
   "description": "A local-first, read-only observer for coding-agent sessions.",
   "author": "Leandro Carvalho",
@@ -63,6 +63,7 @@
     "verify:desktop": "npm run desktop:runtime && npm run desktop:smoke && npm run desktop:security",
     "verify:desktop:ci": "npm run desktop:runtime && npm run desktop:smoke:ci && npm run desktop:security",
     "verify:release:local": "node scripts/verify-windows-release-local.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
     "release:windows": "node scripts/release-windows-local.mjs",
     "check:release-source": "node scripts/check-release-source.mjs",
     "test": "npm run test:node && npm run test:ui",

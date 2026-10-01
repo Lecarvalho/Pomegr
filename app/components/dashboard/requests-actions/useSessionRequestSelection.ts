@@ -4,6 +4,7 @@ import type { RequestHistoryPage } from "../../../../shared/session-history-cont
 import { subscribeLiveEvents } from "../../../live-events";
 import { usePhoneLayout } from "../../../hooks/usePhoneLayout";
 import { parseActivityFeedPage } from "../activity-feed/feed-model";
+import { locateUserInputRequest, userMessageRouteTime, USER_INPUT_PAGE_SIZE } from "./locate-user-input";
 import { isCompleteRequestOverview, scopedRows, type RequestRow } from "./model";
 import { advanceOnGrowth, modeFor, selectionAfterCommit, stepTarget, transferOnViewportMove, type SelectedRequest, type SelectionMode } from "./selection-viewport";
 import { useRequestSelection } from "./useRequestSelection";
@@ -544,6 +545,42 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       })
       .catch(() => { if (!controller.signal.aborted) retryLater(); });
   };
+  /** A user-message link names a recorded time; history resolves it to the request that answered it. */
+  const resolveUserMessage = (next: RequestSelectionRoute, time: number, targetScope: string) => {
+    routeLookup.current?.abort();
+    const controller = new AbortController();
+    routeLookup.current = controller;
+    routeRetry.current = null;
+    setRouteResolving(true);
+    const settle = () => {
+      if (routeLookup.current === controller) routeLookup.current = null;
+      setRouteResolving(false);
+    };
+    // The input row belongs to the primary agent whatever scope the route names, so read every agent's rows.
+    const read = (offset: number | "latest") => {
+      const params = new URLSearchParams({ sessionId, kind: "activity", scope: "all", offset: String(offset), limit: String(USER_INPUT_PAGE_SIZE) });
+      return fetch(`/api/session-history?${params}`, { cache: "no-store", signal: controller.signal })
+        .then((response) => response.ok && response.status !== 204 ? response.json() : null)
+        .then((value: { status?: unknown; items?: unknown; offset?: unknown; total?: unknown } | null) => value?.status === "ready" && Array.isArray(value.items)
+          && typeof value.offset === "number" && typeof value.total === "number" ? { offset: value.offset, total: value.total, items: value.items } : null);
+    };
+    locateUserInputRequest(time, read)
+      .then((number) => {
+        if (controller.signal.aborted) return;
+        if (number === undefined) {
+          // Hydration, HTTP and network failures keep the link and retry like a numbered one.
+          settle();
+          routeRetry.current = { route: next, revision: publication.current.revision, connected: connectedCount.current };
+          return;
+        }
+        if (number === null) {
+          settle();
+          return routeActions.current.jumpToLatestIn(targetScope);
+        }
+        resolveRequestNumber(next, number, targetScope);
+      })
+      .catch(() => { if (!controller.signal.aborted) settle(); });
+  };
   const applyRoute = (next: RequestSelectionRoute) => {
     const known = next.agent === null || agents.some((agent) => agent.id === next.agent);
     const targetScope = next.agent !== null && known ? next.agent : "all";
@@ -560,6 +597,12 @@ export function useSessionRequestSelection({ agents, requestSnapshots, contextBo
       if (!historyEnabled) return;
       if (targetScope !== resolvedScope) setPreferredScope(targetScope);
       return resolveRequestNumber(next, Number(next.request), targetScope);
+    }
+    const userMessageTime = userMessageRouteTime(next.request);
+    if (userMessageTime !== null) {
+      if (!historyEnabled) return;
+      if (targetScope !== resolvedScope) setPreferredScope(targetScope);
+      return resolveUserMessage(next, userMessageTime, targetScope);
     }
     requestWrite();
     locateIn(next.request, targetScope, { pin: true, route: true });

@@ -100,7 +100,8 @@ test("desktop settings persist only the bounded allowlist", async () => {
   const file = path.join(root, "Data With Spaces", "settings.json");
   try {
     const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, displayPreferences: { contextHistory: false, estimatedCost: true, arbitraryPanel: false, sessionId: "PRIVATE" }, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
-    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences", "providerFolders", "storage"]);
+    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences", "providerFolders", "storage", "homeUpdate"]);
+    assert.deepEqual(normalizeDesktopSettings({ homeUpdate: { seenId: "release-notes-v1", dismissedId: "C:\\private\\path", prompt: "PRIVATE" } }).homeUpdate, { seenId: "release-notes-v1", dismissedId: null });
     assert.deepEqual(normalized.displayPreferences, { estimatedCost: true });
     const store = createDesktopSettingsStore(file);
     assert.deepEqual(await store.load(), { settings: normalizeDesktopSettings(), status: "missing", canPersist: true });
@@ -219,6 +220,17 @@ test("version-two settings migrate with visible display defaults", async () => {
   assert.equal(loaded.settings.closeBehavior, "tray");
   assert.deepEqual(loaded.settings.displayPreferences, { estimatedCost: true });
   assert.equal(writes, 0);
+});
+
+test("version-six settings migrate with their storage choice and no Home update markers", async () => {
+  const versionSix = { ...normalizeDesktopSettings({ storage: { retentionDays: 180, storeMaxMb: 1024 } }), version: 6 };
+  delete versionSix.homeUpdate;
+  const store = createDesktopSettingsStore("C:\\Pomegr\\settings.json", { async readFile() { return JSON.stringify(versionSix); } });
+  const loaded = await store.load();
+  assert.deepEqual({ status: loaded.status, canPersist: loaded.canPersist }, { status: "migrated", canPersist: true });
+  assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
+  assert.deepEqual(loaded.settings.storage, { retentionDays: 180, storeMaxMb: 1024 });
+  assert.deepEqual(loaded.settings.homeUpdate, { seenId: null, dismissedId: null });
 });
 
 test("desktop report save is explicit, bounded, and rejects untrusted IPC", async () => {

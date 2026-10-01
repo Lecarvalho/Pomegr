@@ -332,7 +332,7 @@ export function createClaudeProvider(options = {}) {
     const agents = [];
     const toolCalls = [];
     const usageSnapshots = [];
-    const activityRequestLinks = { toolUseIdsByRequest: new Map(), replyIdsByRequest: new Map() };
+    const activityRequestLinks = { toolUseIdsByRequest: new Map(), replyIdsByRequest: new Map(), userInputIdsByRequest: new Map() };
     const compactions = [];
     const transcriptPaths = new Map();
     let startedAt = primaryStartedAt;
@@ -358,6 +358,7 @@ export function createClaudeProvider(options = {}) {
         observedCompactions.map((compaction) => compaction.timestamp), completeHistory, completeHistory ? undefined : readGenerations.generation(file)));
       for (const [key, toolUseIds] of requestEvidence.toolUseIdsByRequest) activityRequestLinks.toolUseIdsByRequest.set(key, toolUseIds);
       for (const [key, replyId] of requestEvidence.replyIdsByRequest) activityRequestLinks.replyIdsByRequest.set(key, replyId);
+      for (const [key, userInputIds] of requestEvidence.userInputIdsByRequest) activityRequestLinks.userInputIdsByRequest.set(key, userInputIds);
       usageSnapshots.push(...requestEvidence.normalizedSnapshots);
       compactions.push(...observedCompactions.map((compaction) => ({
         actorId: actor.id,
@@ -367,7 +368,7 @@ export function createClaudeProvider(options = {}) {
       })));
       const toolEvidence = toolCallEvidence.read({ file, key: generationKeyFor(file), records, actor, isMain: file === mainFile,
         stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath });
-      activity.push(...toolEvidence.userInputActivity);
+      activity.push(...toolEvidence.userInputActivity.map((event) => ({ ...event, _historyAgentId: actor.id })));
       toolCalls.push(...toolEvidence.toolCalls);
       const calls = toolEvidence.calls;
       updatedAt = mergeUpdatedAt(updatedAt, toolEvidence.updatedAt);
@@ -659,7 +660,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v7:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v8:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 

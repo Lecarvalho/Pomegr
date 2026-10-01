@@ -17,6 +17,7 @@ export function mergeClaudeRequestFragments(previous, next) {
     issuedWork: normalizedRequestWork([...counts].map(([kind, count]) => ({ kind, count }))),
     issuedToolUseIds: retained.map(([id]) => id),
     issuedToolUseKinds: retained.map(([id, kind]) => ({ id, kind })),
+    precedingUserInputIds: [...new Set([...(previous.precedingUserInputIds || []), ...(next.precedingUserInputIds || [])])].slice(-64),
   };
 }
 
@@ -24,9 +25,11 @@ export function mergeClaudeRequestFragments(previous, next) {
 export function splitClaudeRequestCorrelationEvidence(snapshots) {
   const toolUseIdsByRequest = new Map();
   const replyIdsByRequest = new Map();
+  const userInputIdsByRequest = new Map();
   const normalizedSnapshots = [];
   for (const snapshot of snapshots) {
     if (snapshot.replyActivityId) replyIdsByRequest.set(`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot.replyActivityId);
+    if (snapshot.precedingUserInputIds?.length) userInputIdsByRequest.set(`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot.precedingUserInputIds);
     if (Array.isArray(snapshot.issuedToolUseIds)) {
       toolUseIdsByRequest.set(`${snapshot.actorId}\u0000${snapshot.dedupeId}`, snapshot.issuedToolUseIds);
     }
@@ -34,13 +37,14 @@ export function splitClaudeRequestCorrelationEvidence(snapshots) {
     delete normalized.issuedToolUseIds;
     delete normalized.issuedToolUseKinds;
     delete normalized.replyActivityId;
+    delete normalized.precedingUserInputIds;
     normalizedSnapshots.push(normalized);
   }
-  return { normalizedSnapshots, toolUseIdsByRequest, replyIdsByRequest };
+  return { normalizedSnapshots, toolUseIdsByRequest, replyIdsByRequest, userInputIdsByRequest };
 }
 
 /** Stamp only opaque served request ids after all valid request evidence is known. */
-export function stampClaudeActivityRequestIds({ sessionId, agents, usageSnapshots, toolCalls, activity, toolUseIdsByRequest, replyIdsByRequest, unlimited = false }) {
+export function stampClaudeActivityRequestIds({ sessionId, agents, usageSnapshots, toolCalls, activity, toolUseIdsByRequest, replyIdsByRequest, userInputIdsByRequest = new Map(), unlimited = false }) {
   const requestIds = requestSnapshotIdsByEvidence({ sessionId: `claude:${sessionId}`, agents, usageSnapshots, unlimited });
   const requestIdByToolUseId = new Map();
   for (const [key, toolUseIds] of toolUseIdsByRequest) {
@@ -54,8 +58,16 @@ export function stampClaudeActivityRequestIds({ sessionId, agents, usageSnapshot
     const requestId = requestIds.get(key);
     if (requestId) requestIdByReplyId.set(replyId, requestId);
   }
+  // A user input belongs to the first request recorded as answering it; a retry never moves it.
+  const requestIdByUserInputId = new Map();
+  for (const [key, userInputIds] of userInputIdsByRequest) {
+    const requestId = requestIds.get(key);
+    if (!requestId) continue;
+    for (const userInputId of userInputIds) if (!requestIdByUserInputId.has(userInputId)) requestIdByUserInputId.set(userInputId, requestId);
+  }
   for (const event of activity) {
     if (event.tool === "Assistant replied") event.requestId = requestIdByReplyId.get(event.id) || null;
+    else if (event.tool === "User input" && event.actor === "User") event.requestId = requestIdByUserInputId.get(event.id) || null;
   }
 }
 

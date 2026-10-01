@@ -4,6 +4,7 @@ import { useId, useState, type ReactNode } from "react";
 import type { ResourceField, SessionEvent, SessionEventFeed, SessionEventKind } from "../../../shared/session-domain-contract";
 import { formatDuration } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
+import { userMessageRoute } from "./requests-actions/locate-user-input";
 import { RESOURCE_FIELD_LABEL } from "./ResourceSparklineCard";
 import type { SessionRouteQuery } from "./session-route";
 import { Unavailable } from "./SessionOverviewUnavailable";
@@ -54,7 +55,8 @@ const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
   signal_reported: { label: "Signal reported", detail: signalDetail, destination: () => ({ tab: "signals" }) },
   // No tab owns the progress estimate, so this row is plain text rather than a button.
   estimate_updated: { label: "Agent estimate updated", detail: estimateDetail, destination: null },
-  user_message: { label: "User message", detail: () => null, destination: () => ({ tab: "activities" }) },
+  // Opens Activities on the request recorded as answering this message; an unparseable time opens the tab alone.
+  user_message: { label: "User message", detail: () => null, destination: (event) => { const request = userMessageRoute(event.at); return request ? { tab: "activities", request } : { tab: "activities" }; } },
   resource_peak: { label: "Resource peak", detail: resourceDetail, destination: resourceDestination },
   commit_observed: { label: "Commit observed", detail: () => "Git-observed", destination: () => ({ tab: "repository" }) },
   pull_request_opened: { label: "Pull request opened", detail: pullRequestDetail, destination: () => ({ tab: "repository" }) },

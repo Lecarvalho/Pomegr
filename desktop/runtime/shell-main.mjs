@@ -627,7 +627,8 @@ async function startDesktop() {
         mainWindow = createSecureWindow(browserSession, restoredWindow);
         removeWindowBoundsGuard = installWindowBoundsGuard(screen, mainWindow);
         recordStage("SHELL_WINDOW_CREATED");
-        if (desktopSettings.window.maximized) mainWindow.maximize();
+        // Every launch opens maximized; the saved bounds still pick the display and the restored size.
+        mainWindow.maximize();
         behaviorController = createDesktopBehaviorController({
           settings: desktopSettings,
           canPersist: settingsLoad.canPersist,

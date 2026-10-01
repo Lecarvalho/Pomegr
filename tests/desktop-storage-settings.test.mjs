@@ -11,7 +11,7 @@ import {
   STORAGE_SETTINGS_CHANNELS,
   validStorageSetting,
 } from "../desktop/runtime/storage-settings.mjs";
-import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
+import { createDesktopSettingsStore, DESKTOP_SETTINGS_VERSION, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
 
 function harness(overrides = {}) {
   const writes = [];
@@ -186,7 +186,7 @@ test("storage settings IPC rejects untrusted callers, invalid values, and extra 
   assert.equal(handlers.size, 0);
 });
 
-test("desktop settings migrate v5 to v6 with null storage and preserve provider folders", async (t) => {
+test("desktop settings migrate v5 to the current version with null storage and preserve provider folders", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-storage-settings-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "settings.json");
@@ -195,7 +195,7 @@ test("desktop settings migrate v5 to v6 with null storage and preserve provider 
   const store = createDesktopSettingsStore(file);
   const loaded = await store.load();
   assert.equal(loaded.status, "migrated");
-  assert.equal(loaded.settings.version, 6);
+  assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.deepEqual(loaded.settings.storage, { retentionDays: null, storeMaxMb: null });
   assert.deepEqual(loaded.settings.providerFolders, providerFolders);
 });

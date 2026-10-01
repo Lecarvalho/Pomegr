@@ -163,7 +163,7 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v6` and Codex's `codex-activity-v2` source
+Claude's `conversation-activity-v8` and Codex's `codex-activity-v2` source
 fingerprints trigger rehydration of checkpoints produced before duration and
 request-link normalization was added.
 Claude merges recorded tool IDs across fragments sharing one request identity,
@@ -563,6 +563,26 @@ summary text remains governed by the separate session-summary contract.
 Repeated fragments of the same assistant message collapse to one event at the
 latest recorded text timestamp; distinct message identities remain separate.
 
+Claude's existing **User input** event (actor `User`, `input` work kind, a fixed
+content-type detail, never content) is recorded before the request that answers
+it, not issued by one. U2 links it to a request only through the transcript's
+recorded parent chain: the user-input records reached from the request's parent,
+walking back until the previous assistant record that produced a request. An
+assistant record without a request, such as a provider error, does not end the
+chain, so the retry answers the same input; the first request recorded as
+answering an input keeps it. Transcript order and timing never link. An input
+with no recorded answering request stays unlinked and outside the request groups.
+The link indexes are adapter-private, and the linked row carries only the existing
+opaque request ID. In history the row is owned by the primary agent, so it follows
+the primary scope. Codex emits no user-input activity event.
+
+The session-event feed still carries no request number. An Overview **User message**
+row links to Activities with only its recorded time (`request=at:<epoch ms>`); F
+resolves it by bisecting the committed flat activity history for the **User input**
+row at that exact time and selecting its recorded request. Only an exact time
+matches. An input with no recorded request opens the latest request, and an
+unreadable history retries like a numbered link. No endpoint or query key is added.
+
 Claude retains these normalized events in the same incremental per-source reader
 as system task deliveries below, independently of raw acquisition tails, and
 bounds the merged session activity to the newest 256 entries. Complete replay
@@ -842,7 +862,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v6`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v8`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
@@ -2455,7 +2475,7 @@ progress, usage, or context counters. Loading or unavailable catalogs affect des
 labels only, and never hide the static feature previews or clear saved pins.
 
 Browser storage key `pomegr-home-v1` may retain only a schema version, up to six validated
-session/project/view identifiers, one last-viewed normalized session identifier, and an optional fixed current-update identifier for dismissing the product update. Older or unknown update identifiers are discarded, so a new update can appear again.
+session/project/view identifiers, one last-viewed normalized session identifier, and two optional copies of the fixed current-update identifier: one for dismissing the product update and one recording that its dialog already opened by itself once. Older or unknown update identifiers are discarded, so a new update can appear, and open its dialog once, again. The desktop renderer's browser storage does not survive a restart (its session is in-memory and its loopback origin changes per launch), so there the same two markers also persist in desktop `settings.json` as `homeUpdate.seenId` and `homeUpdate.dismissedId`: fixed keys, each null or one bounded identifier (lowercase letters, digits, and hyphens, at most 64 characters), written through the trusted-main-frame `pomegr:set-home-update` channel and read back in the bounded desktop state. Home waits for that state before showing the update, so it is never shown and then withdrawn. Pins and the last-viewed session stay in browser storage only and do not survive a desktop restart.
 Titles and details resolve from the committed catalog; no copied session snapshots,
 transcript paths, raw content, or credentials enter this preference. A session is remembered
 only after actual navigation to its detail route and confirmation in the catalog.

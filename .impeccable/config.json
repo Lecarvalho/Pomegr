@@ -49,6 +49,21 @@
         ],
         "createdAt": "2026-09-21T03:25:46.989Z",
         "reason": "DESIGN.md documented exception: Selected-request brand rule, the only brand-colored left border in app/styles, guarded by pomegr-design-contract test"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "#0008",
+        "createdAt": "2026-10-01T14:45:58.008Z",
+        "reason": "Modal backdrop scrim documented in DESIGN.md Home update paragraph; matches existing .rosterFilterSheet::backdrop"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/components/home/HomeUpdateCard.module.css"
+        ],
+        "createdAt": "2026-10-01T15:09:24.749Z",
+        "reason": "user confirmed: keep the 3px brand left border on the Home What's new card"
       }
     ]
   }

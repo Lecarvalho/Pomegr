@@ -1,9 +1,8 @@
 .card {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
   margin: 0;
   padding: 12px 48px 12px 16px;
   border-inline-start: 3px solid var(--command-brand);
@@ -11,22 +10,72 @@
   background: var(--command-panel);
 }
 
-.card h2 { font-size: var(--text-sm, 13px); white-space: nowrap; }
-.card h3 { font-size: var(--text-sm, 13px); font-weight: 650; }
-.card p { margin-top: 2px; font-size: var(--text-xs, 12px); }
-.card details { min-width: 0; margin-top: 4px; }
-.card summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: fit-content; min-height: 36px; color: var(--command-brand-text); cursor: pointer; list-style: none; font-size: var(--text-xs, 12px); font-weight: 650; }
-.card summary::-webkit-details-marker { display: none; }
-.card details p { max-width: 58ch; margin-top: 6px; }
-.card details[open] svg { transform: rotate(90deg); }
+.card :is(h2, h3, p),
+.dialog :is(h2, p) { margin: 0; }
 
-.dismiss { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; background: transparent; color: var(--command-muted); cursor: pointer; }
-.dismiss:hover { color: var(--command-ink); background: var(--command-panel-2); }
+.content { flex: 1; min-width: 0; }
+.card .eyebrow,
+.dialog .eyebrow { color: var(--command-brand-text); font: 500 var(--text-caption, 11px)/1.4 var(--font-ui, sans-serif); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.card h3 { margin-top: 2px; color: var(--command-ink); font-size: var(--text-base, 14px); font-weight: 650; }
+.content p { margin-top: 2px; color: var(--command-muted); font-size: var(--text-xs, 12px); }
+.open { flex-shrink: 0; }
 
-@media (max-width: 760px) {
-  .card { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 10px 48px 12px 12px; }
+/* The illustration is authored 408px wide; the card shows the same artwork scaled down. */
+.thumbnail { flex-shrink: 0; width: 132px; height: 84px; overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel-2); }
+.thumbnail > div { width: 408px; margin: 10px 0 0 9px; transform: scale(.28); transform-origin: top left; }
+
+.dismiss { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; }
+
+.dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 32px));
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--command-line-strong);
+  border-radius: var(--panel-radius);
+  background: var(--command-panel);
+  color: var(--command-ink);
+  box-shadow: var(--command-overlay-shadow);
+  font: var(--text-base, 14px)/1.5 var(--font-ui, sans-serif);
 }
 
-@media (pointer: coarse) {
-  .card summary { min-height: 44px; }
+.dialog:focus { outline: none; }
+.dialog::backdrop { background: #0008; }
+/* One unhurried entrance: the panel fades and rises on the same gentle curve as the dimming backdrop. */
+.dialog[open] { opacity: 1; transform: none; will-change: opacity, transform; transition: opacity .6s cubic-bezier(.33, 1, .68, 1), transform .6s cubic-bezier(.33, 1, .68, 1); }
+.dialog[open]::backdrop { opacity: 1; transition: opacity .6s cubic-bezier(.33, 1, .68, 1); }
+@starting-style {
+  .dialog[open] { opacity: 0; transform: translateY(12px); }
+  .dialog[open]::backdrop { opacity: 0; }
+}
+
+.close { position: absolute; inset-block-start: 8px; inset-inline-end: 8px; z-index: 1; }
+
+.stage { display: flex; justify-content: center; height: 236px; padding: 28px 16px 0; overflow: hidden; border-bottom: 1px solid var(--command-line); background: var(--command-panel-2); }
+.stage > div { min-width: 0; }
+
+.body { padding: 24px 24px 20px; }
+.dialog .title { margin-top: 8px; color: var(--command-ink); font-size: var(--text-heading, 16px); font-weight: 650; letter-spacing: -.01em; text-wrap: balance; }
+.dialog .description { margin-top: 8px; color: var(--command-ink); font-weight: 400; }
+.highlights { display: grid; gap: 6px; margin: 16px 0 0; padding: 0 0 0 18px; list-style: disc; color: var(--command-muted); font-size: var(--text-sm, 13px); line-height: 1.45; }
+
+.actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--command-line); }
+.dialog :is(button):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .card { flex-wrap: wrap; gap: 8px 12px; padding: 10px 48px 12px 12px; }
+  .thumbnail { display: none; }
+  .content { flex-basis: 100%; }
+  .dialog { position: fixed; inset: auto 0 0; width: 100%; max-width: none; max-height: 90dvh; margin: 0; border-inline: 0; border-bottom: 0; border-radius: var(--panel-radius) var(--panel-radius) 0 0; }
+  @starting-style { .dialog[open] { transform: translateY(32px); } }
+  .stage { height: 188px; padding-top: 24px; }
+  .body { padding: 20px 16px 16px; }
+  .actions { flex-direction: column-reverse; align-items: stretch; padding: 12px 16px 20px; }
+  .actions :is(button) { justify-content: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog[open], .dialog[open]::backdrop { transition: none; }
 }

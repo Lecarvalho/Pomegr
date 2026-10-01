@@ -69,6 +69,81 @@ Do not attribute Remote Control from any of these alone:
 - `tools_changed` on a later request after an intervening distinct request;
 - multiple simultaneous integration transitions.
 
+## Reconstruct deferred-tool changes
+
+Use this procedure when `tools_changed` follows tool discovery or an attachment
+with type `deferred_tools_record`. This is a forensic method, not a shipped
+Pomegr attribution rule or permission to expose arbitrary tool names in browser
+state. The existing runtime allowlist remains unchanged.
+
+### Establish the recorder semantics
+
+Verified on 2026-10-01 against the locally installed Claude Code 2.1.286 native
+client: its embedded JavaScript reconstructs a map of previously recorded
+deferred definitions by tool name. The record writer compares each candidate
+entry with the previous entry using an equality helper and emits entries whose
+definitions differ. An absent prior entry qualifies as new. It separately
+records changes to `nameOnlyAnnouncements`, `strippedReferences`, and
+`toolInputCopies`; these are not definition entries.
+
+For another version, read the selected transcript's `version` field and inspect
+the matching installed client artifact, when available. Native binaries can
+contain readable embedded JavaScript. Search locally for
+`deferred_tools_record`, then follow the reader, writer, equality helper, and
+writer call sites. Verify the producer's relationship to the outbound request;
+the presence of a string in a binary alone proves no behavior. Minified function
+names are unstable. Do not run a new provider session or alter installation
+state merely to inspect code. If version-matched code is unavailable, label the
+recorder interpretation provisional rather than assuming newer versions match.
+
+### Reconstruct the boundary
+
+1. Read the selected transcript from byte zero through a captured file size.
+   Record parse failures and incomplete lines. Deduplicate assistant fragments
+   by valid provider request identity and match the anchor to normalized history
+   request numbering; a primary-agent ordinal can differ from the session-wide
+   request number.
+2. Replay `deferred_tools_record.entries` in transcript order into a private map
+   keyed by exact tool name. Compare definitions structurally, ignoring object
+   key order while preserving array order and values. Keep descriptions and
+   schemas private. Classify an emitted entry as newly recorded when no prior
+   entry exists, changed when a prior definition differs, or unchanged when it
+   matches. For changed entries, report only bounded field-category differences,
+   such as description or input schema, never their contents.
+3. Separate `deferred_tools_delta` name advertisements from full definitions.
+   A name in `addedNames` does not prove that its full schema was already loaded.
+   An empty `entries` array can record input-copy bookkeeping; it is not a
+   definition change. Missing entries do not establish removal.
+4. Between the preceding distinct request and the affected request, identify
+   the structured discovery call, its matching result, and the ensuing
+   definition record. Inspect privately; output only relationship checks and
+   validated names from the literal definition delta. Require `tools_changed`
+   on the first distinct request after that record and scan for competing
+   integration, configuration, model, or system transitions.
+5. Check subsequent requests for repeated definition changes and restored cache
+   reuse. Recurrence strengthens the boundary interpretation; restored reuse
+   supports recovery but does not identify which individual definition caused
+   invalidation. If several definitions were added together, report the batch.
+
+### Calibrate the conclusion
+
+Recorded evidence comprises the definition entries and provider diagnostic.
+Attributing the refill to that loading boundary is a strong inference only with
+complete history, a coherent baseline, a matched request boundary, and no
+competing transition. Say "newly recorded deferred definitions" unless client
+code or a complete request snapshot proves their earlier wire absence. A
+definition record is not a complete before/after outbound tool-roster snapshot.
+Do not claim a single culprit within a batch or claim that a schema was edited
+when no prior definition is available.
+
+The verified example had eight newly recorded Claude-in-Chrome definitions:
+`computer`, `find`, `javascript_tool`, `navigate`, `resize_window`,
+`tabs_close_mcp`, `tabs_context_mcp`, and `tabs_create_mcp`. Their names had been
+advertised earlier; their definitions were recorded immediately after discovery
+and before the request diagnosed as `tools_changed`. This supports the batch
+attribution "Chrome tool definitions loaded", not an edit to one existing tool.
+This example establishes the investigation method, not a universal Chrome rule.
+
 ## Extending the rule set
 
 Add a new attribution only after observing a repeatable provider-owned lifecycle signature. Define:

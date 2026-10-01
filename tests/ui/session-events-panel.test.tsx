@@ -62,7 +62,8 @@ const KIND_CASES: KindCase[] = [
   ["agent_stopped", { agentId: "explore-3", agentLabel: "Explore: tests", durationMs: 4_980_000 }, "Agent stopped", "Explore: tests · 1h 23m wall", { tab: "agents", agent: "explore-3" }],
   ["signal_reported", { signal: { label: "Privacy verified", tone: "positive" } }, "Signal reported", "Privacy verified · agent-reported", { tab: "signals" }],
   ["estimate_updated", { progress: { percent: 45, phase: "implementing" } }, "Agent estimate updated", "45% · implementing", null],
-  ["user_message", {}, "User message", null, { tab: "activities" }],
+  // The recorded time is the link; Activities resolves it to the answering request in history.
+  ["user_message", {}, "User message", null, { tab: "activities", request: `at:${Date.parse(at(11, 29))}` }],
   ["resource_peak", { resource: "cpu_cores" }, "Resource peak", "CPU · session high", { tab: "resources", peak: "cpu_cores" }],
   ["resource_peak", { resource: "memory_bytes" }, "Resource peak", "Memory · session high", { tab: "resources", peak: "memory_bytes" }],
   ["resource_peak", { resource: "read_bps" }, "Resource peak", "Disk read · session high", { tab: "resources", peak: "read_bps" }],
