@@ -535,6 +535,22 @@ test("fileChanges never crosses into activity feeds, session projections, or /ap
   assert.doesNotMatch(serialized, /fileChanges|PRIVATE_PATH_SHOULD_NOT_LEAK/);
 });
 
+test("shared-file efficiency signals name only the basename of a file several agents changed", async () => {
+  const fixture = await readProviderJsonFixture("claude/expected-session-evidence.json");
+  const [primaryAgent] = fixture.agents;
+  fixture.agents.push({ ...structuredClone(primaryAgent), id: "agent-review", parentId: "primary", label: "Reviewer" });
+  const sharedChange = { path: "PRIVATE_DIRECTORY_SHOULD_NOT_LEAK/shared-target.ts", kind: "edited", previousPath: null };
+  fixture.toolCalls[0].fileChanges = [sharedChange];
+  fixture.toolCalls.push({ ...structuredClone(fixture.toolCalls[0]), id: "review-edit", actor: { id: "agent-review", label: "Reviewer" } });
+  const evidence = parseProviderSessionEvidence(fixture);
+
+  const state = monitorStateFromProviderEvidence("claude", evidence);
+  assert.deepEqual(state.insights.filter((insight) => insight.id.startsWith("shared-file-")).map((insight) => insight.title), [
+    "2 agents changed shared-target.ts",
+  ]);
+  assert.doesNotMatch(JSON.stringify(state), /fileChanges|PRIVATE_DIRECTORY_SHOULD_NOT_LEAK/);
+});
+
 // ---------------------------------------------------------------------------
 // Checkpoint persistence: retains valid evidence, rejects every forbidden path shape.
 // ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ function groupToolEvidence(toolCalls) {
   const repetitionMap = new Map();
   const patternMap = new Map();
   const mutationEvents = [];
+  const fileChangeEvents = [];
   for (const call of toolCalls) {
     const repetitionKey = `${call.actor.id}|${call.repetitionSignature}`;
     const repetition = repetitionMap.get(repetitionKey);
@@ -39,11 +40,18 @@ function groupToolEvidence(toolCalls) {
       display: call.mutation.display,
       scopes: call.mutation.scopes,
     });
+    for (const change of Array.isArray(call.fileChanges) ? call.fileChanges : []) fileChangeEvents.push({
+      actorId: call.actor.id,
+      repositoryId: change.repositoryId ?? null,
+      path: change.path,
+      previousPath: change.previousPath,
+    });
   }
   return {
     repetitionCandidates: [...repetitionMap.values()],
     groupedTools: [...patternMap.values()].sort((a, b) => b.count - a.count),
     mutationEvents,
+    fileChangeEvents,
   };
 }
 
@@ -176,7 +184,7 @@ export function projectProviderSessionEvidence({
     sessionId,
     compactions,
   );
-  const { groupedTools, repetitionCandidates, mutationEvents } = groupToolEvidence(evidence.toolCalls);
+  const { groupedTools, repetitionCandidates, mutationEvents, fileChangeEvents } = groupToolEvidence(evidence.toolCalls);
   const overlaps = concurrentMutationOverlaps(mutationEvents, EFFICIENCY_SIGNAL_RULES.concurrentMutation.windowMs);
   const cacheEvidence = buildCacheEvidence({
     sessionId,
@@ -195,6 +203,7 @@ export function projectProviderSessionEvidence({
     agents,
     repetitionCandidates,
     overlaps,
+    fileChanges: fileChangeEvents,
     compactions,
     cacheEvents: tokenUsage.cacheEvents.items,
     availableEvidence: evidence.efficiencyRuleEvidence,

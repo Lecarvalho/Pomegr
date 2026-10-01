@@ -63,10 +63,15 @@ sections, and the page says the evidence is not a quality assessment.*
   after the first, so a call made three times, like the "3 times" signal above,
   counts as two and gives 92. It is an attention heuristic, not a quality score.
 - **Rule list.** The rules cover an automatic compaction, the same call repeated
-  three or more times, two agents changing the same edit target within 30
-  seconds, a primary context of at least 150,000 tokens with at least 40 calls
+  three or more times (except an agent's progress, signal, and session-title
+  reports to Pomegr), two agents changing the same edit target within 30
+  seconds, two or more agents changing the same file at any point in the session,
+  one agent changing at least 20 files that no other agent changed, a primary
+  context of at least 150,000 tokens with at least 40 calls
   and no subagent, and, for Claude Code, a cache miss and refill after an idle
-  gap of at least 30 minutes (see [cache reuse](cache-reuse.md)). With none, the section reads "No
+  gap of at least 30 minutes (see [cache reuse](cache-reuse.md)). The two file
+  rules count only changes made through an agent's file-editing tools, so a file
+  written by a shell command is not included. With none, the section reads "No
   obvious loops right now". A signal invites a check; it does not say something
   went wrong.
 - **Cache lifetime** lists each agent's recorded lifetime, and marks a

@@ -188,6 +188,28 @@ test("the centralized catalog selects and caps repetition and overlap signals", 
   assert.deepEqual(insights.filter((insight) => insight.id.startsWith("overlap-")).map((insight) => insight.agentId), [null, null]);
 });
 
+test("repeated Pomegr reporting calls are not loops, but repeated Pomegr reads still are", () => {
+  const actor = { id: "primary", label: "Primary agent" };
+  const repeated = (tool, detail) => ({ actor, tool, detail, count: 5 });
+  const { insights, loops } = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 0 } })],
+    repetitionCandidates: [
+      repeated("mcp__plugin_pomegr_pomegr__report_session_progress", ""),
+      repeated("mcp__pomegr__report_session_signal", ""),
+      repeated("mcp__plugin_pomegr_pomegr__clear_agent_signal", ""),
+      repeated("mcp__plugin_pomegr_pomegr__rename_session", ""),
+      repeated("MCP", "pomegr / report_task_signal"),
+      repeated("MCP", "other / report_session_progress"),
+      repeated("mcp__plugin_pomegr_pomegr__get_session_report", ""),
+    ],
+  });
+  assert.deepEqual(loops.map((loop) => [loop.tool, loop.detail]), [
+    ["MCP", "other / report_session_progress"],
+    ["mcp__plugin_pomegr_pomegr__get_session_report", ""],
+  ]);
+  assert.equal(insights.filter((insight) => insight.id.startsWith("loop-")).length, 2);
+});
+
 test("user-input attention stays out of the efficiency signal catalog", () => {
   const { insights } = evaluateEfficiencySignals({
     agents: [primary({ status: "needs_input", toolCalls: 0, tokens: { total: 0 } })],
@@ -273,4 +295,133 @@ test("refill and reuse facts do not produce warnings and provider evidence gates
     availableEvidence: { cacheUsageClassification: false },
   });
   assert.equal(disabled.insights.some((insight) => insight.id === "prompt-cache-miss-primary"), false);
+});
+
+const reviewer = { id: "agent-review", label: "Reviewer", status: "finished", toolCalls: 4, tokens: { total: 1_000 } };
+const tester = { id: "agent-test", label: "Tester", status: "finished", toolCalls: 4, tokens: { total: 1_000 } };
+
+function change(actorId, filePath, overrides = {}) {
+  return { actorId, repositoryId: "repo-000000000000000000000001", path: filePath, previousPath: null, ...overrides };
+}
+
+function exclusiveChanges(actorId, count, prefix = "src/file") {
+  return Array.from({ length: count }, (_, index) => change(actorId, `${prefix}-${index}.ts`));
+}
+
+test("a file changed by more than one agent emits a bounded warning without its path", () => {
+  const { insights } = evaluateEfficiencySignals({
+    agents: [primary({ toolCalls: 0, tokens: { total: 0 } }), reviewer],
+    fileChanges: [
+      change("primary", "server/deep/private-dir/index.ts"),
+      change("primary", "server/deep/private-dir/index.ts"),
+      change("agent-review", "server/deep/private-dir/index.ts"),
+      change("primary", "server/only-primary.ts"),
+    ],
+  });
+
+  assert.equal(insights.length, 1);
+  const [insight] = insights;
+  assert.match(insight.id, /^shared-file-[a-f0-9]{12}$/);
+  assert.deepEqual({ ...insight, id: "opaque" }, {
+    id: "opaque",
+    agentId: null,
+    level: "warning",
+    title: "2 agents changed index.ts",
+    detail: "Primary agent and Reviewer each recorded changes to this file in this session (3 recorded changes). Check that their assignments did not overlap; a planned handoff such as a review fix also produces this pattern.",
+  });
+  assert.doesNotMatch(JSON.stringify(insights), /private-dir|server\//);
+});
+
+test("shared-file identity keeps repository and directory apart and follows recorded moves", () => {
+  const agents = [primary({ toolCalls: 0, tokens: { total: 0 } }), reviewer];
+  const distinct = evaluateEfficiencySignals({
+    agents,
+    fileChanges: [
+      change("primary", "app/index.ts"),
+      change("agent-review", "server/index.ts"),
+      change("primary", "src/shared.ts"),
+      change("agent-review", "src/shared.ts", { repositoryId: "repo-000000000000000000000002" }),
+    ],
+  });
+  assert.equal(distinct.insights.some((insight) => insight.id.startsWith("shared-file-")), false);
+
+  const moved = evaluateEfficiencySignals({
+    agents,
+    fileChanges: [
+      change("primary", "src/old-name.ts"),
+      change("agent-review", "src/new-name.ts", { previousPath: "src/old-name.ts" }),
+    ],
+  });
+  assert.deepEqual(moved.insights.map((insight) => insight.title), ["2 agents changed old-name.ts"]);
+});
+
+test("shared-file signals ignore unobserved agents, order by breadth, cap, and skip concurrent overlaps", () => {
+  const agents = [primary({ toolCalls: 0, tokens: { total: 0 } }), reviewer, tester];
+  const fileChanges = [
+    change("primary", "src/a.ts"), change("agent-review", "src/a.ts"),
+    change("primary", "src/b.ts"), change("agent-review", "src/b.ts"), change("agent-test", "src/b.ts"),
+    change("primary", "src/c.ts"), change("agent-review", "src/c.ts"), change("agent-review", "src/c.ts"),
+    change("primary", "src/d.ts"), change("agent-test", "src/d.ts"),
+    change("primary", "src/e.ts"), change("agent-unobserved", "src/e.ts"),
+  ];
+  const { insights } = evaluateEfficiencySignals({ agents, fileChanges });
+  assert.deepEqual(insights.map((insight) => insight.title), [
+    "3 agents changed b.ts",
+    "2 agents changed c.ts",
+    "2 agents changed a.ts",
+  ]);
+  assert.equal(insights[0].detail.startsWith("Primary agent, Reviewer, and Tester each recorded"), true);
+
+  const withOverlap = evaluateEfficiencySignals({
+    agents,
+    fileChanges,
+    overlaps: [{ display: "B.ts", actors: new Set(["primary", "agent-review"]), calls: 2 }],
+  });
+  assert.deepEqual(withOverlap.insights.map((insight) => insight.title), [
+    "Concurrent edits may conflict in B.ts",
+    "2 agents changed c.ts",
+    "2 agents changed a.ts",
+    "2 agents changed d.ts",
+  ]);
+});
+
+test("an agent that alone changed the documented number of files emits a breadth warning", () => {
+  const minimum = EFFICIENCY_SIGNAL_RULES.broadFileChanges.minimumExclusiveFiles;
+  const agents = [primary({ toolCalls: 0, tokens: { total: 0 } }), reviewer];
+  const { insights } = evaluateEfficiencySignals({
+    agents,
+    fileChanges: [...exclusiveChanges("primary", minimum), ...exclusiveChanges("primary", 3)],
+  });
+  assert.deepEqual(insights, [{
+    id: "broad-file-changes-primary",
+    agentId: "primary",
+    level: "warning",
+    title: `Primary agent changed ${minimum} files alone`,
+    detail: "No other agent recorded a change to any of these files in this session. Consider splitting broad work into bounded tasks that are easier to review or delegate.",
+  }]);
+
+  const belowMinimum = evaluateEfficiencySignals({ agents, fileChanges: exclusiveChanges("primary", minimum - 1) });
+  assert.deepEqual(belowMinimum.insights.map((insight) => insight.id), ["healthy-flow"]);
+});
+
+test("breadth counts only files no other agent changed and counts a move once", () => {
+  const minimum = EFFICIENCY_SIGNAL_RULES.broadFileChanges.minimumExclusiveFiles;
+  const agents = [primary({ toolCalls: 0, tokens: { total: 0 } }), reviewer];
+  const shared = evaluateEfficiencySignals({
+    agents,
+    fileChanges: [...exclusiveChanges("primary", minimum), change("agent-review", "src/file-0.ts")],
+  });
+  assert.equal(shared.insights.some((insight) => insight.id.startsWith("broad-file-changes-")), false);
+  assert.equal(shared.insights.some((insight) => insight.id.startsWith("shared-file-")), true);
+
+  const moves = Array.from({ length: minimum - 1 }, (_, index) => change("agent-review", `src/moved-${index}.ts`, {
+    previousPath: `src/original-${index}.ts`,
+  }));
+  const moved = evaluateEfficiencySignals({ agents, fileChanges: moves });
+  assert.equal(moved.insights.some((insight) => insight.id.startsWith("broad-file-changes-")), false);
+
+  const subagent = evaluateEfficiencySignals({ agents, fileChanges: exclusiveChanges("agent-review", minimum) });
+  assert.deepEqual(subagent.insights.map((insight) => [insight.id, insight.agentId, insight.title]), [
+    ["broad-file-changes-agent-review", "agent-review", `Reviewer changed ${minimum} files alone`],
+  ]);
 });

@@ -557,8 +557,10 @@ The current catalog contains these deterministic rules. IDs containing angle-bra
 | ID | Signal | Level (`Insight.level`) | Description |
 | --- | --- | --- | --- |
 | `automatic-compaction-<agent-id>` | Automatic context compaction | `warning` | Appears when the provider explicitly records an `auto` trigger or when Pomegr recognizes Codex's exact in-turn windowed-compaction lifecycle described below. It includes the pre-compaction context snapshot when valid evidence is available. At most three automatic-compaction signals are shown. |
-| `loop-<agent-id>-<index>` | Repeated tool call | `warning` | Appears when an agent makes the same scoped call with unchanged inputs at least three times. At most three repetition signals are shown. |
+| `loop-<agent-id>-<index>` | Repeated tool call | `warning` | Appears when an agent makes the same scoped call with unchanged inputs at least three times. Calls to Pomegr's own reporting tools are exempt, as described under [Repetition](#repetition). At most three repetition signals are shown. |
 | `overlap-<display>` | Concurrent mutation | `warning` | Appears when at least two agents mutate the same edit anchor, whole-file target, or notebook cell within 30 seconds. At most two overlap signals are shown. |
+| `shared-file-<digest>` | Shared file changes | `warning` | Appears when at least two visible agents recorded changes to the same file anywhere in the session, as described under [Shared and broad file changes](#shared-and-broad-file-changes). A file already named by a shown concurrent-mutation signal is skipped. At most three shared-file signals are shown, most agents first. |
+| `broad-file-changes-<agent-id>` | Broad single-agent file changes | `warning` | Appears when one agent recorded changes to at least 20 distinct files that no other agent changed in the session. At most three are shown, largest first. |
 | `unshared-context-pressure` | Unshared context pressure | `warning` | Appears when the primary agent's latest context snapshot is at least 150,000 tokens, the primary agent has made at least 40 observed tool calls, and no subagent transcript has been observed. Finished and stopped subagents still count as observed delegation. It describes a possible delegation opportunity; it does not claim that the work was parallelizable, that delegation would have reduced total context, or that a project instruction was violated. |
 | `prompt-cache-miss-<agent-id>` | Prompt cache miss and refill after idle gap | `warning` | Appears at most once per affected Claude agent from a normalized `miss_refill` event. It requires the cache-read transition, 30-minute gap, and simultaneous recorded refill described above. It never assigns a cause, cost, charge, or savings amount. Codex cache classification remains disabled while its session telemetry does not provide reliable cache-write counts. |
 | `healthy-flow` | Healthy fallback | `info` | Appears only when none of the warning rules emit a signal. |
@@ -578,6 +580,8 @@ The unshared-context rule uses the latest context snapshot rather than cumulativ
 ## Repetition
 
 A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights and the flow score, but is not shown as a persistent summary card or report section.
+
+Calls to Pomegr's own reporting tools (`report_session_progress`, `clear_session_progress`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, and `rename_session`) never form a repetition. The reporting policy asks agents to make these calls, so an identical repeated report is expected rather than a loop. They count neither as a repetition signal nor toward `repeatedCalls` or the flow score. The exemption recognizes the Claude Code MCP name (`mcp__pomegr__<tool>` or `mcp__plugin_pomegr_pomegr__<tool>`) and the Codex `MCP` call whose recorded server is `pomegr`. Pomegr's read tools, such as `get_session_report`, stay subject to the rule, because repeating an identical read is polling.
 
 ## Tool calls
 
@@ -655,6 +659,33 @@ do not contribute to tool counts, repetition, or the flow score.
 ## Agent overlap
 
 An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.
+
+### Shared and broad file changes
+
+Two session-wide rules read the retained tool calls' recorded `fileChanges`, the same
+structured evidence that feeds [file-change history](#file-change-history). Only
+successful structured file tools with an explicit target contribute; shell commands,
+Git-observed files, and changes by agents outside the visible agent list never do.
+A file is identified by its bound repository and safe repository-relative path, so
+files with the same name in different directories stay distinct. A recorded move
+touches both its previous and new path.
+
+- **Shared file changes** fires for each file that at least two agents changed at any
+  time in the session, with no time window. It names the file's basename, the agents'
+  labels, and the number of recorded changes, then suggests checking that the
+  assignments did not overlap. A planned handoff such as a review fix produces the
+  same pattern, so the signal invites a check rather than reporting a conflict. The
+  signal ID carries an opaque digest of the file identity, never its path.
+- **Broad single-agent file changes** fires when one agent changed at least 20
+  distinct files that no other agent changed. A move counts once, at its new path;
+  a file another agent also changed is not counted, because the shared-file rule
+  covers it. It suggests splitting broad work into bounded tasks that are easier to
+  review or delegate. It does not claim that the work was divisible.
+
+Both counts cover retained recorded changes only. Coverage limits of file-change
+history apply: a file written by a shell command is missing, and retention bounds
+can drop the oldest tool calls from a long session. Neither rule changes the flow
+score.
 
 ## Flow score
 
