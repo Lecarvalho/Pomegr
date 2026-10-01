@@ -83,7 +83,7 @@ describe("personal Home", () => {
     window.localStorage.clear();
     const user = userEvent.setup();
     const view = home();
-    const dialog = screen.getByRole("dialog", { name: "See what happened in a session" });
+    const dialog = await screen.findByRole("dialog", { name: "See what happened in a session" });
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({ version: 1, pins: [], lastViewedSessionId: null, seenUpdateId: "session-events-v1" });
     await user.click(within(dialog).getAllByRole("button", { name: "Close" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

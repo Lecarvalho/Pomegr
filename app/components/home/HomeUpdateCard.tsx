@@ -4,6 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import { CommandIcon } from "../command-center/CommandIcon";
 import styles from "./HomeUpdateCard.module.css";
 
+const AUTO_OPEN_DELAY_MS = 300;
+
 type HomeUpdateCardProps = {
   title: string;
   /** One short line for the Home card. */
@@ -21,7 +23,14 @@ type HomeUpdateCardProps = {
 export function HomeUpdateCard({ title, summary, description, highlights, illustration, autoOpen = false, onAutoOpen, onDismiss }: HomeUpdateCardProps) {
   const headingId = useId();
   const dialogTitleId = useId();
-  const [open, setOpen] = useState(autoOpen);
+  const [open, setOpen] = useState(false);
+  // The automatic opening waits for Home's first paint to settle, so its entrance does not drop frames.
+  const opensByItself = useRef(autoOpen);
+  useEffect(() => {
+    if (!opensByItself.current) return;
+    const timer = setTimeout(() => setOpen(true), AUTO_OPEN_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
   // Recorded when it opens, not when it closes, so a reload never shows it a second time.
   useEffect(() => { if (autoOpen) onAutoOpen?.(); }, [autoOpen, onAutoOpen]);
   const dialog = useRef<HTMLDialogElement | null>(null);
@@ -29,7 +38,10 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
   // The dialog mounts only while open, so the closed card carries one copy of the announcement.
   const showDialog = useCallback((node: HTMLDialogElement | null) => {
     dialog.current = node;
-    if (node && !node.open) node.showModal();
+    if (!node || node.open) return;
+    node.showModal();
+    // Focus rests on the dialog itself, so no control shows a focus ring until the keyboard is used.
+    node.focus();
   }, []);
   return <aside className={styles.card} aria-labelledby={headingId}>
     {illustration && <div className={styles.thumbnail} aria-hidden="true"><div inert>{illustration}</div></div>}
@@ -40,7 +52,7 @@ export function HomeUpdateCard({ title, summary, description, highlights, illust
     </div>
     <button ref={trigger} type="button" className={`commandSecondaryAction ${styles.open}`} aria-haspopup="dialog" onClick={() => setOpen(true)}>See what’s new</button>
     <button type="button" className={`commandIconAction ${styles.dismiss}`} aria-label="Dismiss this update" onClick={onDismiss}><CommandIcon name="close" /></button>
-    {open && <dialog ref={showDialog} className={styles.dialog} aria-labelledby={dialogTitleId}
+    {open && <dialog ref={showDialog} className={styles.dialog} tabIndex={-1} aria-labelledby={dialogTitleId}
       onClose={() => { setOpen(false); trigger.current?.focus(); }}
       onClick={(event) => { if (event.target === dialog.current) dialog.current.close(); }}>
       <button type="button" className={`commandIconAction ${styles.close}`} aria-label="Close" onClick={() => dialog.current?.close()}><CommandIcon name="close" /></button>
