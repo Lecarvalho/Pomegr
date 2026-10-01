@@ -98,6 +98,9 @@
 .activityRequestLine .requestsActionsNumber { color: var(--muted); }
 .activityRequestLine[aria-pressed="true"] .requestsActionsNumber { color: var(--color-text); }
 .activityRequestMeta { color: var(--muted); font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The phone line carries the desktop counts in their legend colors, tightened so the agent keeps the flexible column. */
+.activityLayout.isPhone .activityRequestMeta { display: inline-flex; align-items: baseline; gap: 10px; }
+.activityLayout.isPhone .activityRequestTokens { gap: 8px; }
 /* The one brand-colored left rule in app/styles: the selected phone request group, call lines included. */
 .activityLayout.isPhone .activityTableFrame.isSelectedRequest { border-left: 2px solid var(--brand); }
 /* The documented 32px dense-list exception: only the full-width phone call disclosure line. */

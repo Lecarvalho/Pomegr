@@ -345,7 +345,8 @@ under an unchanged agent. Each line's accessible name still states the agent, ro
 model, and exact counts. The request number is regular-weight muted data until the
 row is hovered or selected. Desktop token counts keep their chart-legend colors, print
 through `compactNumber`, and name their kind and exact value on hover; the phone line
-keeps its compact uncached input and time, and a tap opens the four exact counts. One rule separates
+prints the same counts in the same colors, tightened to an 8px gap, ahead of its muted
+request time, and a tap opens the four exact counts. One rule separates
 request groups; a request line and its calls carry no rule between them. Desktop request
 lines are 34px and their call rows 30px, so each request reads as the header of a compact group.
 

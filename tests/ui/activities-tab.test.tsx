@@ -252,15 +252,21 @@ describe("Activities tab", () => {
     for (const forbidden of ["request-", "call-", "SECRET_COMMAND", "SECRET_OUTPUT", "SECRET_ERROR", "msg_SECRET_PROVIDER"]) expect(html).not.toContain(forbidden);
   });
 
-  it("shows a phone request line with agent, role, model, uncached input and time that selects the request", async () => {
+  it("shows a phone request line with agent, role, model, the desktop token counts and time that selects the request", async () => {
     setPhone(true);
     const user = userEvent.setup();
     const { container } = fixture();
     const feed = await ready();
 
     const group = within(feed).getByRole("article", { name: "Request #38" });
-    const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, model claude-opus-5, uncached input 1,962,000, ${shortTime(historyRequest(38).observedAt)}, 2 calls` });
-    expect(line).toHaveTextContent(`#38Primary agent orchestrator claude-opus-5${compactNumber(1_962_000)} in · ${shortTime(historyRequest(38).observedAt)}`);
+    const request = historyRequest(38);
+    const line = within(group).getByRole("button", { name: `Request #38, Primary agent, orchestrator, model claude-opus-5, uncached input 1,962,000, cache write ${request.cacheWriteTokens.toLocaleString()}, output ${request.outputTokens.toLocaleString()}, ${shortTime(request.observedAt)}, 2 calls` });
+    // The same three request-local counts desktop prints, in the same legend classes, ahead of the time.
+    const counts = Array.from(line.querySelectorAll(".activityRequestMeta > .activityRequestTokens > .activityTokenValue"));
+    expect(counts.map((count) => count.className)).toEqual(["activityTokenValue uncached", "activityTokenValue write", "activityTokenValue output"]);
+    expect(counts.map((count) => count.textContent)).toEqual([compactNumber(1_962_000), compactNumber(request.cacheWriteTokens), compactNumber(request.outputTokens)]);
+    expect(counts[0]).toHaveAttribute("title", "Uncached input: 1,962,000 tokens, this request only");
+    expect(line.querySelector(".activityRequestMeta > time")).toHaveTextContent(shortTime(request.observedAt));
     // The phone line names the agent as text; the desktop inspector link is not rendered at all.
     expect(within(group).queryByRole("button", { name: "Open Primary agent in the Agents inspector" })).toBeNull();
 
@@ -484,6 +490,15 @@ describe("Activities tab", () => {
     const feed = await ready();
     expect(within(feed).getByRole("button", { name: "Request #40, Primary agent, orchestrator, model claude-opus-5, uncached input 1,960,000, output 4,000, 2 calls" })).toBeInTheDocument();
     expect(feed.querySelector(".activityTokenValue.write")).not.toBeInTheDocument();
+  });
+
+  it("leaves the cache-write count off the phone line when cache-write usage is unavailable", async () => {
+    setPhone(true);
+    fixture({ cacheWriteAvailable: false });
+    const feed = await ready();
+    const line = within(feed).getByRole("article", { name: "Request #40" }).querySelector(".activityRequestLine")!;
+    expect(line.getAttribute("aria-label")).toBe(`Request #40, Primary agent, orchestrator, model claude-opus-5, uncached input 1,960,000, output 4,000, ${shortTime(historyRequest(40).observedAt)}, 2 calls`);
+    expect(Array.from(line.querySelectorAll(".activityTokenValue"), (count) => count.className)).toEqual(["activityTokenValue uncached", "activityTokenValue output"]);
   });
   it("expands one phone call in place, selecting its request and chart bar", async () => {
     setPhone(true);
