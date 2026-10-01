@@ -21,6 +21,7 @@ export type RepositoryTabFilesSegments = {
   touched: FileTreeFile[];
   /** Uncommitted files this session did not touch; the F4 group under the "Touched here" tree. */
   touchedElsewhere: FileTreeFile[];
+  /** Uncommitted files that are also in Touched here; never overlaps `elsewhere`. */
   uncommitted: FileTreeFile[];
   /** Same untouched set as `touchedElsewhere`, shown as its own segment. */
   elsewhere: FileTreeFile[];
@@ -29,7 +30,7 @@ export type RepositoryTabFilesSegments = {
 /** Builds the three segments from the session's touched-file history, its working-tree status,
  * and (session scope only) files Git observed during the session window. A Git-observed path
  * already recorded stays a plain recorded row; only paths Git saw but no tool ever touched gain
- * the quiet glyph, and they are removed from Uncommitted/Changed elsewhere so a path shows once. */
+ * the quiet glyph, and they are removed from Changed elsewhere so a path shows once. */
 export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], workingTreeFiles: WorkingTreeFile[], gitObservedFiles: RepositoryGitObservedFiles | null = null): RepositoryTabFilesSegments {
   const workingTreeByPath = new Map(workingTreeFiles.map((file) => [file.path, file.status]));
   const touchedPaths = new Set(touchedFiles.map((file) => file.path));
@@ -53,11 +54,15 @@ export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], wor
   const untouched: FileTreeFile[] = workingTreeFiles
     .filter((file) => !touchedPaths.has(file.path) && !gitObservedPaths.has(file.path))
     .map((file) => ({ path: file.path, fileId: null, status: file.status }));
-  const uncommitted: FileTreeFile[] = workingTreeFiles.map((file) => ({
-    path: file.path,
-    fileId: touchedFiles.find((touchedFile) => touchedFile.path === file.path)?.fileId ?? null,
-    status: file.status,
-  }));
+  // Uncommitted and Changed elsewhere partition the working tree: a path in Touched here stays
+  // under Uncommitted, every other path under Changed elsewhere, so no file is in both.
+  const uncommitted: FileTreeFile[] = workingTreeFiles
+    .filter((file) => touchedPaths.has(file.path) || gitObservedPaths.has(file.path))
+    .map((file) => ({
+      path: file.path,
+      fileId: touchedFiles.find((touchedFile) => touchedFile.path === file.path)?.fileId ?? null,
+      status: file.status,
+    }));
   return { touched, touchedElsewhere: untouched, uncommitted, elsewhere: untouched };
 }
 
@@ -69,7 +74,7 @@ export function segmentCount(segments: RepositoryTabFilesSegments, segment: Repo
  * (also the reasonable default before any data has loaded). */
 export function bestRepositoryTabFilesSegment(path: string | null, segments: RepositoryTabFilesSegments): RepositoryTabFilesSegment {
   if (path && segments.touched.some((file) => file.path === path)) return "touched";
-  if (path && segments.uncommitted.some((file) => file.path === path)) return "uncommitted";
+  if (path && segments.elsewhere.some((file) => file.path === path)) return "elsewhere";
   return "touched";
 }
 
@@ -87,7 +92,7 @@ export function touchedSegmentEmptyText(readiness: RepositoryDomain["fileHistory
 }
 
 export function uncommittedSegmentEmptyText(historical: boolean): string {
-  return historical ? "No uncommitted files were recorded." : "No uncommitted files.";
+  return historical ? "No files touched here were recorded as uncommitted." : "No files touched here are uncommitted.";
 }
 
 export const ELSEWHERE_SEGMENT_EMPTY_TEXT = "No uncommitted files outside those touched in this session.";

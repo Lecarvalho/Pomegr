@@ -80,8 +80,9 @@ the branch during the session, including other people's, so it does not attribut
 them to the session.
 
 **Touched here** lists files with a recorded change, plus files Git saw change
-during the session. **Uncommitted** lists files uncommitted at the last check,
-and **Changed elsewhere** lists those the session did not touch. The **Beta**
+during the session. **Uncommitted** lists the touched files that were
+uncommitted at the last check, and **Changed elsewhere** lists the uncommitted
+files the session did not touch, so no file appears in both. The **Beta**
 chip means file coverage is still growing.
 
 ![A recorded session's Repository tab: the main branch bar, Touched here, Uncommitted, and Changed elsewhere counts, and Dashboard.tsx selected with the text Seen in Git, no recorded agent edit.](../images/repositories/session-repository-tab.jpg)
