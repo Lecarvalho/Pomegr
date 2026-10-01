@@ -57,13 +57,11 @@ export function createEmptyMonitorState(options = {}) {
     capabilities: options.capabilities ?? createEmptyProviderCapabilities(),
     view: options.view ?? "live",
     session: null,
-    score: 100,
     metrics: {
       agents: 0,
       activeAgents: 0,
       toolCalls: 0,
       repeatedCalls: 0,
-      overlappingTargets: 0,
       resources: null,
       tokens: {
         allAgents: 0,

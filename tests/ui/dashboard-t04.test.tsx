@@ -64,12 +64,6 @@ function signalsDomain(state: MonitorState): SignalsDomain {
     readiness: "ready",
     observedAt: "2026-09-14T12:00:00.000Z",
     sectionReadiness: { activityEvidence: "ready", contextEvidence: "ready" },
-    score: state.score,
-    flowScore: {
-      score: state.score,
-      repeatedCalls: state.metrics.repeatedCalls ?? null,
-      overlappingTargets: state.metrics.overlappingTargets ?? null,
-    },
     insights: state.insights,
     loops: state.loops,
     toolPatterns: state.toolPatterns,

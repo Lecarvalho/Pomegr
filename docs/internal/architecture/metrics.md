@@ -341,7 +341,7 @@ The normalized `metrics.resources` value exposes:
 - **Memory** — current summed working set and the highest working set observed by Pomegr during the current ownership window
 - **Disk I/O** — recent process-tree read and write transfer rates in bytes per second
 
-The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`; the bounded resource-history persistence described below is a separate committed record, and resource data of both kinds remains excluded from generated reports, Flow score, efficiency signals, and recommendations.
+The first valid observation is `collecting` because CPU and I/O rates require a prior counter baseline. Missing owners, vanished or identity-mismatched owners, shared trees, unsupported platforms, and collection failures produce a bounded unavailable reason; missing intervals are gaps, not zero consumption. These measurements are live operational telemetry, not judgments about task quality or agent efficiency. Historical views return `resources: null`; the bounded resource-history persistence described below is a separate committed record, and resource data of both kinds remains excluded from generated reports, efficiency signals, and recommendations.
 
 ### Resource history
 
@@ -386,7 +386,7 @@ absent link means the evidence did not resolve one, not that no work was happeni
 Persisted rows carry only the normalized session ID, the field enum, timestamps, numeric
 values, matched task IDs, and an optional matched request number — never PIDs, process
 identities, paths, command text, labels, or other raw evidence. Resource history, like live
-resource use, stays out of generated reports, Flow score, efficiency signals, and
+resource use, stays out of generated reports, efficiency signals, and
 recommendations.
 
 ## Context machinery snapshot
@@ -579,9 +579,9 @@ The unshared-context rule uses the latest context snapshot rather than cumulativ
 
 ## Repetition
 
-A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights and the flow score, but is not shown as a persistent summary card or report section.
+A repetition signature combines the agent and tool name with a monitor-side digest of the tool's complete input. Three or more identical signatures produce a repetition insight. Different edit anchors, read offsets or limits, grep patterns or windows, and review-driven replacement text therefore remain distinct. The input and digest are never returned to the browser. `repeatedCalls` counts calls beyond the first occurrence, so it is not the number of distinct loops. Repetition remains available to deterministic insights, but is not shown as a persistent summary card or report section.
 
-Calls to Pomegr's own reporting tools (`report_session_progress`, `clear_session_progress`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, and `rename_session`) never form a repetition. The reporting policy asks agents to make these calls, so an identical repeated report is expected rather than a loop. They count neither as a repetition signal nor toward `repeatedCalls` or the flow score. The exemption recognizes the Claude Code MCP name (`mcp__pomegr__<tool>` or `mcp__plugin_pomegr_pomegr__<tool>`) and the Codex `MCP` call whose recorded server is `pomegr`. Pomegr's read tools, such as `get_session_report`, stay subject to the rule, because repeating an identical read is polling.
+Calls to Pomegr's own reporting tools (`report_session_progress`, `clear_session_progress`, `report_session_signal`, `clear_session_signal`, `report_agent_signal`, `clear_agent_signal`, `report_task_signal`, and `rename_session`) never form a repetition. The reporting policy asks agents to make these calls, so an identical repeated report is expected rather than a loop. They count neither as a repetition signal nor toward `repeatedCalls`. The exemption recognizes the Claude Code MCP name (`mcp__pomegr__<tool>` or `mcp__plugin_pomegr_pomegr__<tool>`) and the Codex `MCP` call whose recorded server is `pomegr`. Pomegr's read tools, such as `get_session_report`, stay subject to the rule, because repeating an identical read is polling.
 
 ## Tool calls
 
@@ -642,7 +642,7 @@ event eligible for the grouped Activities presentation. A failed shell event is
 timestamped when execution finishes and exposes only the sanitized Bash description
 plus its exit code when available; commands, stdout, stderr, and tool-result
 content remain excluded. Outcome and user-input events do not contribute to
-`toolCalls`, repetition signals, or the flow score.
+`toolCalls` or repetition signals.
 
 Claude provider-owned system task deliveries appear as `System` with `Task completed`,
 `Task failed`, or `Task stopped`, using the recorded delivery time. A matching prior
@@ -654,7 +654,7 @@ or malformed notifications are omitted, never relabeled as human input. Recognit
 requires provider-owned origin metadata: pasted notification text remains user input.
 Queue operations do not create delivery activity, and replayed delivery IDs are deduplicated.
 Notification contents and native task/call identities remain private. These events also
-do not contribute to tool counts, repetition, or the flow score.
+do not contribute to tool counts or repetition.
 
 ## Agent overlap
 
@@ -684,23 +684,7 @@ touches both its previous and new path.
 
 Both counts cover retained recorded changes only. Coverage limits of file-change
 history apply: a file written by a shell command is missing, and retention bounds
-can drop the oldest tool calls from a long session. Neither rule changes the flow
-score.
-
-## Flow score
-
-```text
-score = max(
-  25,
-  100
-  - min(45, repeatedCalls × 4)
-  - min(25, overlappingTargets × 7)
-)
-```
-
-The score is a heuristic attention signal, not a quality assessment. It appears only
-in the Signals tab's deterministic **Efficiency** section, alongside its two
-inputs. It does not appear in Details.
+can drop the oldest tool calls from a long session.
 
 ## Plan usage
 

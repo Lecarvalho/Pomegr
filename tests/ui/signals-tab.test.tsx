@@ -10,8 +10,7 @@ vi.mock("../../app/session-domain-store", () => ({ useSessionDomain }));
 function domain(overrides: Partial<SignalsDomain> = {}): SignalsDomain {
   return {
     domain: "signals", sessionId: "claude:signals", revision: 1, readiness: "ready", observedAt: "2026-09-19T12:00:00.000Z",
-    sectionReadiness: { activityEvidence: "ready", contextEvidence: "ready" }, score: 80,
-    flowScore: { score: 80, repeatedCalls: 2, overlappingTargets: 1 },
+    sectionReadiness: { activityEvidence: "ready", contextEvidence: "ready" },
     insights: [{ id: "repeated", level: "warning", title: "Repeated reads", detail: "The same target was read repeatedly.", agentId: "primary" }], loops: [], toolPatterns: [],
     sessionSignal: { label: "Verification underway", tone: "info", reportedAt: "2026-09-19T12:00:00.000Z", description: "Agent status." },
     agents: [{ id: "primary", label: "Primary agent", cacheLifetime: "1h", signal: { label: "Testing", tone: "neutral", reportedAt: null, description: "Focused tests." } }],

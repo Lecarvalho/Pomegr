@@ -17,7 +17,7 @@ None of them is an AI judgment, a bill, or proof that work was good or bad.
 | Recorded | **Calls**, **Wall time**, [context](context-and-tokens.md), request counts | What the provider's records show. A gap in the records is unavailable, not zero. |
 | Agent-reported | **Agent estimate**, **Progress**, **Reported signals** | What the agent said. It can be stale and Pomegr does not verify it. |
 | Provider estimate | **Cost**, [usage limits](usage-limits.md) | The provider's own figure, not a bill. |
-| Deterministic inference | **Efficiency**, Flow score, refill markers | A fixed rule applied to recorded evidence: the same evidence gives the same result. |
+| Deterministic inference | **Efficiency**, refill markers | A fixed rule applied to recorded evidence: the same evidence gives the same result. |
 
 ## Agent-reported progress and signals
 
@@ -52,16 +52,14 @@ estimate, observed two days earlier.*
 
 The **Signals** tab keeps rule-based evidence apart from agent reports.
 
-![The Signals tab: Efficiency with Flow score 92 out of 100 and a repeated-call signal, Cache lifetime listing 1h for the primary agent and 5m for three subagents, and Reported signals with one agent-reported Privacy verified signal.](../images/signals-and-estimates/signals-tab.jpg)
+![The Signals tab: Efficiency with a repeated-call signal, Cache lifetime listing 1h for the primary agent and 5m for three subagents, and Reported signals with one agent-reported Privacy verified signal.](../images/signals-and-estimates/signals-tab.jpg)
 
 *The same session. Efficiency, Cache lifetime, and Reported signals are separate
 sections, and the page says the evidence is not a quality assessment.*
 
-- **Efficiency** lists rule results. **Flow score** starts at 100, subtracts 4
-  for each repeated call (at most 45) and 7 for each overlapping edit target (at
-  most 25), and never falls below 25. A repeated call is each identical call
-  after the first, so a call made three times, like the "3 times" signal above,
-  counts as two and gives 92. It is an attention heuristic, not a quality score.
+- **Efficiency** lists rule results, each with a title, detail, and severity. It
+  shows no score or percentage. A repeated call is each identical call after the
+  first.
 - **Rule list.** The rules cover an automatic compaction, the same call repeated
   three or more times (except an agent's progress, signal, and session-title
   reports to Pomegr), two agents changing the same edit target within 30
@@ -83,7 +81,7 @@ sections, and the page says the evidence is not a quality assessment.*
 
 ## Limits
 
-- **Not judgments.** A signal, tone, or score does not rate the agent or the work.
+- **Not judgments.** A signal or tone does not rate the agent or the work.
 - **Stale is possible.** Agent reports change only when the agent reports again.
 - **Missing is not success.** No signal, no estimate, and no cost mean nothing was
   recorded, not that nothing happened.
