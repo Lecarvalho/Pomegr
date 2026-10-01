@@ -6,6 +6,8 @@ export type SessionRouteQuery = {
   agent?: string;
   request?: string;
   path?: string;
+  /** Resources tab: the resource field whose session-high peak to open. */
+  peak?: string;
 };
 
 export function parseSessionTab(value: string | undefined): SessionTab {
@@ -14,7 +16,7 @@ export function parseSessionTab(value: string | undefined): SessionTab {
 
 export function sessionQueryString(query: SessionRouteQuery, changes: Partial<Record<keyof SessionRouteQuery, string | null>>) {
   const params = new URLSearchParams();
-  for (const key of ["tab", "agent", "request", "path"] as const) {
+  for (const key of ["tab", "agent", "request", "path", "peak"] as const) {
     const value = Object.prototype.hasOwnProperty.call(changes, key) ? changes[key] : query[key];
     if (value) params.set(key, value);
   }

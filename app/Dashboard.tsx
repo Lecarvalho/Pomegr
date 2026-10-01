@@ -109,6 +109,8 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     const next = { ...changes };
     if (Object.prototype.hasOwnProperty.call(changes, "agent") && changes.agent !== initialQuery.agent
       && !Object.prototype.hasOwnProperty.call(changes, "request")) next.request = null;
+    // A peak link belongs to the navigation that carried it; any other tab change drops it.
+    if (Object.prototype.hasOwnProperty.call(changes, "tab") && !Object.prototype.hasOwnProperty.call(changes, "peak")) next.peak = null;
     const query = sessionQueryString(initialQuery, next);
     router.replace(`/sessions/${encodeSessionRoute(sessionId)}${query ? `?${query}` : ""}`, { scroll: false });
   }, [initialQuery, sessionId, router]);
@@ -175,7 +177,7 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
       {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
       {activeTab === "repository" && <RepositoryTab sessionId={sessionId} historical={historical} paused={paused} selectedPath={initialQuery.path || null} onSelectPath={(path) => navigate({ path })} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, path: null })} />}
-      {activeTab === "resources" && <ResourcesTab sessionId={sessionId} historical={historical} paused={paused} />}
+      {activeTab === "resources" && <ResourcesTab sessionId={sessionId} historical={historical} paused={paused} peakField={initialQuery.peak || null} onClearPeakField={() => navigate({ peak: null })} />}
       {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>
   </section>;

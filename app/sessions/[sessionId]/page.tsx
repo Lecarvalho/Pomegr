@@ -20,6 +20,6 @@ export default async function SessionPage({
   if (!initialSessionId) notFound();
   const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   return <Dashboard key={initialSessionId} initialSessionId={initialSessionId} initialQuery={{
-    tab: first(query.tab), agent: first(query.agent), request: first(query.request), path: first(query.path),
+    tab: first(query.tab), agent: first(query.agent), request: first(query.request), path: first(query.path), peak: first(query.peak),
   }} />;
 }

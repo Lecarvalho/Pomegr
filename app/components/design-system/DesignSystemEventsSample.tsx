@@ -31,7 +31,7 @@ const UNAVAILABLE: SessionEventFeed = { readiness: "unavailable", items: [], tot
 const ignore = () => undefined;
 
 export function EventsRailSection() {
-  return <Section id="events-rail" title="Events rail" lede="The Overview Events panel lists high-level session transitions newest first. Each row is one quiet-role button: local clock time, a neutral 16px stroke glyph, a label with a muted detail, and a trailing chevron that opens the tab continuing that evidence.">
+  return <Section id="events-rail" title="Events rail" lede="The Overview Events panel lists high-level session transitions newest first under a plain eyebrow heading. Each row is one quiet-role button: local clock time, a neutral 16px stroke glyph, a label with a muted detail, and a trailing chevron that opens the tab continuing that evidence.">
     <div className="designSystemGrid">
       <Sample label="Every kind · expander" note="Desktop shows 9 rows and phone 5; the footer expander is the panel's one text link. On desktop the expanded list scrolls inside the nine-row height instead of growing the panel, and the muted total counts the events derivable from retained evidence.">
         <div className="designSystemEventsFrame"><SessionEventsPanel headingId="design-system-events-full" events={FULL} onNavigate={ignore} /></div>

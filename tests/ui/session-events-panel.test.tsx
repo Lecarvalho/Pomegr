@@ -55,18 +55,18 @@ function stubPhone() {
 }
 const rowButtons = () => within(screen.getByRole("list")).getAllByRole("button");
 
-type KindCase = [SessionEventKind, Partial<SessionEvent>, string, string | null, Record<string, string>];
+type KindCase = [SessionEventKind, Partial<SessionEvent>, string, string | null, Record<string, string> | null];
 const KIND_CASES: KindCase[] = [
   ["agent_started", { agentId: "explore-1", agentLabel: "Explore: activity feed" }, "Agent started", "Explore: activity feed", { tab: "agents", agent: "explore-1" }],
   ["agent_finished", { agentId: "explore-2", agentLabel: "Explore: summary domain", durationMs: 240_000 }, "Agent finished", "Explore: summary domain · 4m wall", { tab: "agents", agent: "explore-2" }],
   ["agent_stopped", { agentId: "explore-3", agentLabel: "Explore: tests", durationMs: 4_980_000 }, "Agent stopped", "Explore: tests · 1h 23m wall", { tab: "agents", agent: "explore-3" }],
   ["signal_reported", { signal: { label: "Privacy verified", tone: "positive" } }, "Signal reported", "Privacy verified · agent-reported", { tab: "signals" }],
-  ["estimate_updated", { progress: { percent: 45, phase: "implementing" } }, "Agent estimate updated", "45% · implementing", { tab: "details" }],
+  ["estimate_updated", { progress: { percent: 45, phase: "implementing" } }, "Agent estimate updated", "45% · implementing", null],
   ["user_message", {}, "User message", null, { tab: "activities" }],
-  ["resource_peak", { resource: "cpu_cores" }, "Resource peak", "CPU · session high", { tab: "resources" }],
-  ["resource_peak", { resource: "memory_bytes" }, "Resource peak", "Memory · session high", { tab: "resources" }],
-  ["resource_peak", { resource: "read_bps" }, "Resource peak", "Disk read · session high", { tab: "resources" }],
-  ["resource_peak", { resource: "write_bps" }, "Resource peak", "Disk write · session high", { tab: "resources" }],
+  ["resource_peak", { resource: "cpu_cores" }, "Resource peak", "CPU · session high", { tab: "resources", peak: "cpu_cores" }],
+  ["resource_peak", { resource: "memory_bytes" }, "Resource peak", "Memory · session high", { tab: "resources", peak: "memory_bytes" }],
+  ["resource_peak", { resource: "read_bps" }, "Resource peak", "Disk read · session high", { tab: "resources", peak: "read_bps" }],
+  ["resource_peak", { resource: "write_bps" }, "Resource peak", "Disk write · session high", { tab: "resources", peak: "write_bps" }],
   ["commit_observed", {}, "Commit observed", "Git-observed", { tab: "repository" }],
   ["pull_request_opened", { pullRequestNumber: 43 }, "Pull request opened", "#43", { tab: "repository" }],
 ];
@@ -77,7 +77,21 @@ describe("SessionEventsPanel", () => {
   });
 
   it.each(KIND_CASES)("renders %s with its label, detail, time, and destination", async (kind, fields, label, detail, destination) => {
-    const { onNavigate } = mount(feed([event("one", kind, fields)]));
+    const { onNavigate, container } = mount(feed([event("one", kind, fields)]));
+    if (!destination) {
+      // No tab owns this evidence: the row is plain text with no button and no chevron.
+      const row = container.querySelector(".sessionEventRow")!;
+      expect(row.tagName).toBe("DIV");
+      expect(row).toHaveClass("isStatic");
+      expect(row).not.toHaveClass("commandQuietAction");
+      expect(within(screen.getByRole("list")).queryByRole("button")).not.toBeInTheDocument();
+      expect(row.querySelector(".sessionEventChevron")).toBeNull();
+      expect(row.textContent).toBe(`11:29${label}${detail ?? ""}`);
+      expect(row.querySelector(`svg[data-event-kind="${kind}"]`)).toHaveAttribute("aria-hidden", "true");
+      await userEvent.setup().click(row);
+      expect(onNavigate).not.toHaveBeenCalled();
+      return;
+    }
     const [button] = rowButtons();
     expect(button).toHaveAccessibleName(detail ? `${label}, ${detail}, 11:29` : `${label}, 11:29`);
     // The row prints the time, the label, and the detail; nothing else.
@@ -110,12 +124,14 @@ describe("SessionEventsPanel", () => {
     expect(rowButtons()[0]).toHaveAccessibleName("Pull request opened, 11:29");
   });
 
-  it("opens Activities from the heading and labels the order", async () => {
-    const { onNavigate } = mount(feed(many(2)));
-    expect(screen.getByRole("region", { name: "Events" })).toBeInTheDocument();
-    expect(screen.getByText("newest first")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Events" }));
-    expect(onNavigate).toHaveBeenCalledWith({ tab: "activities" });
+  it("heads the panel with a plain eyebrow that states the order and is not a link", async () => {
+    const { onNavigate, container } = mount(feed(many(2)));
+    expect(screen.getByRole("region", { name: "Events · newest first" })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { level: 2, name: "Events · newest first" });
+    expect(heading).toHaveClass("sessionEyebrow");
+    expect(container.querySelector(".sessionOverviewHeading")?.querySelector("button, a")).toBeNull();
+    await userEvent.setup().click(heading);
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("renders a list of one real quiet-role button per row with neutral glyphs", () => {
@@ -183,7 +199,7 @@ describe("SessionEventsPanel", () => {
     // The cap derives from the row height the rows use and from the rendered collapsed row count.
     expect(Number(/--event-collapsed-rows:\s*(\d+)/.exec(topLevel)?.[1])).toBe(collapsedRows);
     expect(topLevel).toMatch(/\.sessionEventList\s*\{[^}]*--event-row-height:\s*40px/);
-    expect(topLevel).toMatch(/\.sessionEventRow\.commandQuietAction\s*\{[^}]*min-height:\s*var\(--event-row-height\)/);
+    expect(topLevel).toMatch(/\.sessionEventRow:is\(\.commandQuietAction, \.isStatic\)\s*\{[^}]*min-height:\s*var\(--event-row-height\)/);
     // Nothing outside the min-width query, and nothing in the phone query, caps or scrolls the list.
     expect(topLevel).not.toMatch(/\.sessionEventList\[data-expanded/);
     const phone = blocks.filter((block) => block.query === "(max-width: 760px)");
@@ -223,7 +239,7 @@ describe("SessionEventsPanel", () => {
 
   it("keeps the panel but no footer when a ready feed has no events", () => {
     const { container } = mount(feed([]));
-    expect(screen.getByRole("heading", { name: "Events" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Events · newest first" })).toBeInTheDocument();
     expect(screen.getByText("No events recorded.")).toHaveClass("sessionOverviewEmpty");
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(container.querySelector(".sessionEventsFooter")).toBeNull();
@@ -237,7 +253,7 @@ describe("SessionEventsPanel", () => {
     if (role) expect(message).toHaveAttribute("role", role); else expect(message).not.toHaveAttribute("role");
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
     expect(container.querySelector(".sessionEventsFooter")).toBeNull();
-    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Events · newest first" })).toBeInTheDocument();
   });
 
   it("skips a kind this browser does not know instead of inventing a label", () => {
@@ -261,8 +277,9 @@ describe("SessionEventsPanel", () => {
       unknown("agent_finished", { agentId: 9, agentLabel: 5, durationMs: undefined }),
     ]));
     const labels = ["Resource peak", "Resource peak", "Resource peak", "Agent estimate updated", "Agent estimate updated", "Signal reported", "Pull request opened", "Pull request opened", "Agent finished"];
-    expect(rowButtons().map((button) => button.getAttribute("aria-label"))).toEqual(labels.map((label) => `${label}, 11:29`));
-    expect(rowButtons().map((button) => button.textContent)).toEqual(labels.map((label) => `11:29${label}`));
+    const rows = [...document.querySelectorAll(".sessionEventRow")];
+    expect(rowButtons().map((button) => button.getAttribute("aria-label"))).toEqual(labels.filter((label) => label !== "Agent estimate updated").map((label) => `${label}, 11:29`));
+    expect(rows.map((row) => row.textContent)).toEqual(labels.map((label) => `11:29${label}`));
     expect(document.body.innerHTML).not.toMatch(/undefined|NaN|\[object|session high/);
   });
 
@@ -304,15 +321,15 @@ describe("SessionEventsPanel", () => {
     const eventRules = sessionStyles.split("\n").filter((line) => /\.sessionEvent/.test(line)).join("\n");
     expect(eventRules).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
     expect(eventRules).not.toMatch(/font(?:-size)?:[^;}]*\b\d+px/);
-    expect(eventRules).toMatch(/\.sessionEventRow\.commandQuietAction > svg\.sessionEventGlyph\s*\{[^}]*color:\s*var\(--command-muted\)/);
+    expect(eventRules).toMatch(/\.sessionEventRow:is\(\.commandQuietAction, \.isStatic\) > svg\.sessionEventGlyph\s*\{[^}]*color:\s*var\(--command-muted\)/);
     expect(eventRules).toMatch(/\.sessionEventTime\s*\{[^}]*var\(--font-data\)/);
-    expect(sessionStyles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.sessionEventRow\.commandQuietAction\s*\{[^}]*min-height:\s*(?:4[4-9]|[5-9]\d)px/);
+    expect(sessionStyles).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.sessionEventRow:is\(\.commandQuietAction, \.isStatic\)\s*\{[^}]*min-height:\s*(?:4[4-9]|[5-9]\d)px/);
     expect(sessionStyles).not.toMatch(/data-work="beside"|data-density/);
   });
 });
 
 describe("SessionOverview Events rail", () => {
-  const eventRows = () => within(screen.getByRole("region", { name: "Events" })).getAllByRole("button", { name: /, \d\d:\d\d$/ });
+  const eventRows = () => within(screen.getByRole("region", { name: "Events · newest first" })).getAllByRole("button", { name: /, \d\d:\d\d$/ });
   const overview = (sessionId: string) => <SessionOverview summary={sessionSummaryFixture({ sessionId, events: feed(many(12)) })} showEstimatedCost={false} onNavigate={vi.fn()} />;
 
   it("collapses the rail when the session changes and keeps it expanded across updates to the same session", async () => {
@@ -324,6 +341,6 @@ describe("SessionOverview Events rail", () => {
     rerender(overview("claude:second"));
     expect(eventRows()).toHaveLength(9);
     expect(screen.getByRole("button", { name: "Show 3 earlier" })).toHaveAttribute("aria-expanded", "false");
-    expect(within(screen.getByRole("region", { name: "Events" })).getByRole("list")).not.toHaveAttribute("data-expanded");
+    expect(within(screen.getByRole("region", { name: "Events · newest first" })).getByRole("list")).not.toHaveAttribute("data-expanded");
   });
 });

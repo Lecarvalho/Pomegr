@@ -153,9 +153,10 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionRepositoryLineMain .commandChip { flex: 0 0 auto; }
 .sessionRepositoryLineBranch { min-width: 0; overflow: hidden; color: var(--command-ink); font: var(--text-sm) var(--font-data); text-overflow: ellipsis; white-space: nowrap; }
 .sessionRepositoryLineMeta { min-width: 0; margin: 0; color: var(--command-muted); font-size: var(--text-xs); }
-@media (min-width: 761px) {
-  .sessionRepositoryOneLine .sessionOverviewHeading .panelHeadingLink { font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
-}
+/* Every Overview heading link is the eyebrow: uppercase caption in ink with the muted chevron. */
+.sessionOverview .sessionOverviewHeading .panelHeadingLink { font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+/* The h2 takes the eyebrow's own line box, so the summary beside it centers on the same line. */
+.sessionOverview .sessionOverviewHeading h2.panelHeading { display: flex; align-items: center; font: 500 var(--text-caption)/1.4 var(--font-ui); }
 
 /* Session Repository tab top bar (G1-G14 in the repository-snapshot design contract). */
 .repositoryTab { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
@@ -220,8 +221,10 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionEventsPanel > .sessionOverviewEmpty { padding: 0 16px 16px; }
 /* Row height and collapsed row count are the single source for the expanded desktop height below; the count must equal DESKTOP_VISIBLE_EVENTS. */
 .sessionEventList { --event-row-height: 40px; --event-collapsed-rows: 9; margin: 0; padding: 0; display: grid; list-style: none; }
-.sessionEventRow.commandQuietAction { width: 100%; min-height: var(--event-row-height); padding: 8px 16px; display: grid; grid-template-columns: 40px 16px minmax(0, 1fr) 12px; align-items: center; justify-content: stretch; gap: 10px; border: 0; border-top: 1px solid var(--command-line); border-radius: 0; color: var(--command-ink); font-size: var(--text-sm); font-weight: 400; text-align: left; white-space: normal; }
-.sessionEventRow.commandQuietAction > svg.sessionEventGlyph { width: 16px; height: 16px; color: var(--command-muted); }
+.sessionEventRow:is(.commandQuietAction, .isStatic) { box-sizing: border-box; width: 100%; min-height: var(--event-row-height); padding: 8px 16px; display: grid; grid-template-columns: 40px 16px minmax(0, 1fr) 12px; align-items: center; justify-content: stretch; gap: 10px; border: 0; border-top: 1px solid var(--command-line); border-radius: 0; color: var(--command-ink); font-size: var(--text-sm); font-weight: 400; text-align: left; white-space: normal; }
+.sessionEventRow:is(.commandQuietAction, .isStatic) > svg.sessionEventGlyph { width: 16px; height: 16px; color: var(--command-muted); }
+/* A row with no owning tab is plain text: same grid, no chevron, no hover or pointer. */
+.sessionEventRow.isStatic > svg { flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .sessionEventRow.commandQuietAction > svg.sessionEventChevron { width: 12px; height: 12px; color: var(--command-line-strong); }
 .sessionEventTime { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
 .sessionEventText { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
@@ -316,11 +319,9 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .sessionProgressOverview { grid-column: 1; min-height: 0; order: 5; }
   .sessionWorkOverview { grid-column: 1; min-height: 0; order: 6; }
   .sessionCostOverview { grid-column: 1; min-height: 0; order: 7; }
-  .sessionEventsPanel .sessionOverviewHeading { padding: 2px 14px; }
-  .sessionEventsPanel .sessionOverviewHeading .panelHeadingLink { margin-block: 0; }
-  .sessionEventsPanel .sessionRequestSummary { flex-basis: auto; font-size: var(--text-xs); }
+  .sessionEventsPanel .sessionOverviewHeading { padding: 12px 14px 8px; }
   .sessionEventsPanel > .sessionOverviewEmpty { padding: 0 14px 14px; }
-  .sessionEventRow.commandQuietAction { min-height: 48px; padding: 6px 14px; line-height: 1.3; }
+  .sessionEventRow:is(.commandQuietAction, .isStatic) { min-height: 48px; padding: 6px 14px; line-height: 1.3; }
   .sessionEventText { flex-direction: column; align-items: stretch; gap: 0; }
   .sessionEventDetail { flex: 0 0 auto; }
   .sessionEventsFooter { padding: 0 14px; }
