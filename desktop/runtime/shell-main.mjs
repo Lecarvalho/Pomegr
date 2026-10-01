@@ -9,7 +9,6 @@ import {
   createAgentQueryCapability,
   resolveAgentQueryDescriptorPath,
 } from "../../shared/agent-query-transport.mjs";
-import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import {
   assertNoSystemNodeInPath,
   environmentValue,
@@ -47,6 +46,7 @@ import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNEL
 import {
   createNeedsInputNotificationController,
   createSessionNotificationPoller,
+  isAllowedNotificationTarget,
 } from "./notifications.mjs";
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
 import { recordShellStage } from "./shell-stage.mjs";
@@ -189,15 +189,17 @@ function openAbout() {
   void mainWindow.loadURL(`${webHandle.origin}/settings?section=about`).then(showShellWindow, showShellWindow);
 }
 
-function openNotificationSession(sessionId) {
-  if (!mainWindow || mainWindow.isDestroyed() || !webHandle?.origin) return;
-  let target;
-  try {
-    target = `${webHandle.origin}/sessions/${encodeSessionRoute(sessionId)}`;
-  } catch {
+function openNotificationTarget(target) {
+  if (!isAllowedNotificationTarget(target) || !webHandle?.origin) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const url = `${webHandle.origin}${target}`;
+  let current = "";
+  try { current = mainWindow.webContents.getURL(); } catch { /* A crashed renderer reloads below. */ }
+  if (current === url) {
+    showShellWindow();
     return;
   }
-  void mainWindow.loadURL(target).then(showShellWindow, showShellWindow);
+  void mainWindow.loadURL(url).then(showShellWindow, showShellWindow);
 }
 
 function showNeedsInputNotification(payload, onClick) {
@@ -230,7 +232,7 @@ async function loadNotificationSessions(signal) {
 function startNotificationPolling() {
   const controller = createNeedsInputNotificationController({
     notify: showNeedsInputNotification,
-    openSession: openNotificationSession,
+    openTarget: openNotificationTarget,
   });
   notificationPoller = createSessionNotificationPoller({
     controller,

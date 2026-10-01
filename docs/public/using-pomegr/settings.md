@@ -90,9 +90,11 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   tray or quit, with **Remember my choice**. Closing to the tray keeps observing;
   **Quit Pomegr** stops it.
 - When a live session starts needing your input, Pomegr shows a Windows
-  notification titled "Pomegr" that says "A coding-agent session needs input".
-  It never includes a session title, question, or command, and selecting it
-  opens that session. The alerts are on by default; Settings has no switch for
+  notification titled with the session's title that says "This live session is
+  waiting for input." A session without a title gets the title "Pomegr" and the
+  text "A coding-agent session needs input". The notification never includes the
+  question, a command, or any conversation content. Selecting it brings the
+  Pomegr window forward and opens that session. The alerts are on by default; Settings has no switch for
   them yet, and Windows notification settings or Focus Assist can silence them.
   Pomegr alerts once for each wait, and only for a live session it saw start
   needing input.
