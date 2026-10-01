@@ -136,6 +136,15 @@ each provider account window moved while a session was sending requests, with th
 observed account tier, in the monitor SQLite store. Nothing in it is shipped or
 authoritative.
 
+The [product expansion plan](plans/product-expansion.md) records the owner's review of
+2026-09-30: the directions discussed for making Pomegr more attractive to developers,
+what each needs first, and the decisions only the owner can make. It indexes two
+proposals written that day, the [durable session store plan](plans/durable-session-store.md)
+(normalized session evidence in the monitor SQLite store, so a restart does not re-read
+transcripts) and the [session receipt plan](plans/session-receipt.md) (a picture of one
+session that a user can copy or save, made on their own computer). Nothing in the three
+is shipped or authoritative.
+
 The [guidance impact plan](plans/guidance-impact.md) is a design-approved plan (2026-09-22,
 no code yet) to tag sessions with the repository guidance revision they ran under
 (skills, `AGENTS.md`, hooks, reporting policy), compare friction, outcome, and

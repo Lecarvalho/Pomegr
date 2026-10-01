@@ -5,10 +5,31 @@
 > Design canvas: https://claude.ai/artifact/S6AjnMM87n6zbQrwtqvrfa (artboards 1 Guidance tab, 2 Session Overview, 3 New experiment, 3b Blank template). The drawings are the approved reference for tasks 5 to 7; the rules below win where a drawing differs.
 > Continuation owner: the agent that picks up this plan in a fresh session.
 > Authority: working proposal. `AGENTS.md`, `docs/internal/architecture/observation-cache.md`, and `docs/internal/architecture/metrics.md` stay authoritative and gain the enduring rules as tasks complete.
-> Next task or decision: task 1, guidance revision fingerprinting.
+> Next task or decision: the owner decides on the staging proposed in [Review of 2026-09-30](#review-of-2026-09-30). If it is rejected, task 1, guidance revision fingerprinting, is next as before.
 > Completion criteria: every task ticked with its verification recorded, contracts updated, `npm run build` and `npm test` pass, and the feature is documented in `docs/public/`.
 > Permanent destinations: `docs/internal/architecture/observation-cache.md` (guidance revision domain, cohort serving), `docs/internal/architecture/metrics.md` (friction, outcome, compliance signals and comparison rules), `docs/internal/architecture/signal-dictionary.md` (new evidence codes), `docs/public/using-pomegr/` (user guide).
 > Lifetime: temporary; delete this file in the change that completes the last task.
+
+## Review of 2026-09-30
+
+The owner said on 2026-09-30 that they are not sure this plan should go ahead as written: it looks like a long shot to build without knowing it is worth it. This section records the assessment made that day. It is a proposal; the tasks below are unchanged until the owner decides.
+
+The plan bundles parts of very different value:
+
+| Part | Assessment |
+| --- | --- |
+| Per-session friction and outcome signals (task 3) and compliance checks (task 2) | Worth building. Both are useful for one session with no statistics, and they feed the [session receipt](session-receipt.md) and a weekly digest. |
+| Guidance revision tag on each session (task 1) | Cheap and time-sensitive. It cannot be backfilled, so collecting it early keeps a later comparison possible. |
+| Cohort comparison and the regression flag (task 4) | Doubtful. One developer runs perhaps 5 to 20 sessions a week in a repository, on very different tasks. With cohorts of five, noise will usually win. |
+| Randomized experiments (tasks 2b and 2c) | The long shot. It is the largest build, needs 15 sessions per arm, and is the first time Pomegr changes what the model sees, which breaks "read-only observer". |
+
+Proposed staging:
+
+1. Before any build, run a throwaway script over the existing recorded sessions: compute the friction signals and group them by the dates `AGENTS.md` and the skills changed. Keep it under the ignored `work/guidance-impact/` and remove it afterward.
+2. If the owner's own heavy usage shows a difference they believe, continue with cohorts. If it shows none, stop after the first two parts in the table and close the rest of this plan.
+3. Leave experiments parked until cohorts have proved useful.
+
+Acceptance for step 1: the result, with the number of sessions and revisions it covered, is recorded under this heading with the owner's decision.
 
 ## The problem
 
