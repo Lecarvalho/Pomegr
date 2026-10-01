@@ -2,7 +2,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,8 @@ beforeEach(() => {
 
 const content: DocsContent = docsContent;
 const pages = content.pages;
+const manifest = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../../docs/site.json"), "utf8")) as { groups: Array<{ pages: string[] }> };
+const expectedDocsRoutes = manifest.groups.flatMap((group) => group.pages).map((source) => `/docs/${source.replace(/\.md$/, "")}`);
 const byRoute = new Map(pages.map((page) => [page.route, page]));
 
 const routeProps = (slug: string[] | undefined) => ({ params: Promise.resolve({ slug }) });
@@ -62,15 +64,15 @@ const digestOf = async (promise: Promise<unknown> | (() => unknown)) => {
 };
 
 describe("routes", () => {
-  it("publishes all 17 manifest pages and the 4 group redirects through one dynamic route, with no page per Markdown file", () => {
-    expect(pages).toHaveLength(17);
-    expect(content.navigation).toHaveLength(4);
+  it("publishes every manifest page and group redirect through one dynamic route, with no page per Markdown file", () => {
+    expect(pages.map((page) => page.route)).toEqual(expectedDocsRoutes);
+    expect(content.navigation).toHaveLength(manifest.groups.length);
     expect(dynamicParams).toBe(false);
     const params = generateStaticParams();
-    expect(params).toHaveLength(21);
-    expect(params.slice(0, 17).map((entry) => `/docs/${entry.slug.join("/")}`)).toEqual(pages.map((page) => page.route));
-    expect(params.slice(17)).toEqual(content.navigation.map((group) => ({ slug: [group.id] })));
-    expect(new Set(params.map((entry) => entry.slug.join("/"))).size).toBe(21);
+    expect(params).toHaveLength(pages.length + content.navigation.length);
+    expect(params.slice(0, pages.length).map((entry) => `/docs/${entry.slug.join("/")}`)).toEqual(expectedDocsRoutes);
+    expect(params.slice(pages.length)).toEqual(content.navigation.map((group) => ({ slug: [group.id] })));
+    expect(new Set(params.map((entry) => entry.slug.join("/"))).size).toBe(params.length);
 
     const walk = (directory: string): string[] =>
       readdirSync(directory, { withFileTypes: true }).flatMap((entry) =>

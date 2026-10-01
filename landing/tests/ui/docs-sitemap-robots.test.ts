@@ -28,9 +28,8 @@ describe("sitemap", () => {
 
   it("lists the home, about, and download pages and every published documentation page, nothing else", () => {
     expect(SITE_ORIGIN).toBe("https://pomegr.com");
-    expect(expectedDocsRoutes).toHaveLength(17);
     expect(urls).toEqual(["/", "/about", "/download", ...expectedDocsRoutes].map((route) => `https://pomegr.com${route}`));
-    expect(entries).toHaveLength(20);
+    expect(entries).toHaveLength(3 + expectedDocsRoutes.length);
   });
 
   it("uses absolute canonical URLs without duplicates, queries, fragments, or trailing slashes", () => {
