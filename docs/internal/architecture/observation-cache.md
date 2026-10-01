@@ -1539,7 +1539,10 @@ React, persisted checkpoints, or browser API fields.
   serialized follow-up if acquisition is already running. For the generic incremental
   observer used by Claude, a private cursor is not proof that the L1 snapshot still exists:
   when the scoped checkpoint lookup finds no committed source, requested hydration rebuilds
-  from complete source records. Unchanged retained sessions and ordinary background
+  from complete source records. The Codex observer applies the same rule to the complete
+  story it retains in memory: retained evidence is not proof of a committed snapshot, so
+  requested hydration with no committed source rereads the complete story instead of
+  reporting the session unchanged. Unchanged retained sessions and ordinary background
   reconciliation do not rebuild evicted history solely to refill the cache. Missing
   or incomplete sources remain loading; failed normalization can retry without a source append.
 - Home does not schedule historical detail or complete-history replay for its correlation

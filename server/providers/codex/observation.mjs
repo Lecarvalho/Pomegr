@@ -353,7 +353,7 @@ export function createCodexIncrementalObserver(options = {}) {
     };
   }
 
-  async function acquire(localSessionId, publisher, preparedSources) {
+  async function acquire(localSessionId, publisher, preparedSources, { requested = false } = {}) {
     const sourceSet = preparedSources instanceof Map
       ? preparedSources.get(localSessionId) || null
       : (await prepareSources([{ localId: localSessionId, isLive: false }])).get(localSessionId) || null;
@@ -459,7 +459,11 @@ export function createCodexIncrementalObserver(options = {}) {
     }
     if ([...session.parts.values()].some((part) => !part.ready)) return null;
     const lifecycleChanged = session.observationKey !== sourceSet.observationKey;
-    if (!session.dirty && session.evidence && !lifecycleChanged) return null;
+    // Retained evidence can outlive its committed L1 snapshot. Rebuild on demand
+    // after eviction; routine reconciliation must not churn the bounded history cache.
+    if (requested && session.evidence && typeof publisher?.checkpointFor === "function"
+      && !publisher.checkpointFor(localSessionId)) session.requiresFull = true;
+    else if (!session.dirty && session.evidence && !lifecycleChanged) return null;
     const completeStory = session.requiresFull || !session.evidence;
     const incrementalRecordsByFile = completeStory ? null : new Map(
       [...session.parts.entries()]

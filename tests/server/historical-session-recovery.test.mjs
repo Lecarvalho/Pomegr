@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createIncrementalProviderObserver, incrementalSourceDescriptor } from "../../server/providers/kernel/incremental-provider-observer.mjs";
+import { createCodexIncrementalObserver } from "../../server/providers/codex/observation.mjs";
 import { SessionObservationStore } from "../../server/sessions/checkpoints/session-observation-store.mjs";
 import { createSessionObservationCoordinator } from "../../server/runtime/session-observation-coordinator.mjs";
 import { createPipelineTraceRecorder } from "../../server/diagnostics/pipeline-trace.mjs";
@@ -100,6 +101,73 @@ test("selected historical sessions recover after eviction without rebuilding unc
   assert.equal(recovered.snapshot.observedAt, observedAt);
   assert.equal(reads, 3);
   assert.equal(coordinator.session("claude:one", recovered.snapshot.revision).status, "unchanged");
+});
+
+test("a selected Codex session recovers after eviction without rebuilding retained committed evidence", async (context) => {
+  const observedAt = "2020-01-01T00:00:00.000Z";
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-recovery-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const metadata = [];
+  for (const localId of ["one", "two"]) {
+    const rolloutFile = path.join(root, `${localId}.jsonl`);
+    await writeFile(rolloutFile, `{"id":"${localId}"}\n`);
+    metadata.push({ localId, sessionId: localId, rolloutFile });
+  }
+  const store = new SessionObservationStore({ maxEntries: 1 });
+  const reads = [];
+  const observer = createCodexIncrementalObserver({
+    list: async () => metadata.map(({ localId }) => ({ localId, title: localId, updatedAt: observedAt, isLive: false })),
+    discoveredMetadata: async () => metadata,
+    transcriptPathsBySessionId: new Map(),
+    watchTargets: [],
+    intervalMs: 60_000,
+    readEvidence: async (localId, options) => {
+      reads.push({ localId, completeStory: options.completeStory });
+      return { historical: true, session: { id: localId, updatedAt: observedAt } };
+    },
+  });
+  const coordinator = createSessionObservationCoordinator({
+    store,
+    commitDelayMs: 0,
+    registry: {
+      providers: [{ id: "codex", source: "Codex" }],
+      async startObservers(publisher, signal) {
+        await observer.start({
+          publishCatalog: (entries) => publisher.publishCatalog("codex", entries),
+          publishSession: (id, evidence) => publisher.publishSession("codex", id, evidence),
+          invalidateSession: (id, reason) => publisher.invalidateSession("codex", id, reason),
+          checkpointFor: (id) => publisher.checkpointFor("codex", id),
+        }, signal);
+        return { hydrate: (id) => observer.hydrate(id.slice("codex:".length)), stop: observer.stop };
+      },
+    },
+    deriveSession: async ({ evidence }) => ({ readiness: { core: "ready" }, publicState: evidence }),
+  });
+  context.after(() => coordinator.stop());
+  await coordinator.start();
+  await waitFor(() => coordinator.catalog().snapshot?.value.sessions.length === 2);
+  assert.equal(reads.length, 0, "old history starts as catalog-only");
+
+  assert.equal(coordinator.session("codex:one").status, "loading");
+  await waitFor(() => store.get("codex", "one"));
+  const original = coordinator.session("codex:one").snapshot;
+  await waitFor(() => observer.diagnostics().activeHydrations === 0);
+  assert.equal(await observer.hydrate("one"), false, "retained committed evidence does not reparse");
+  assert.equal(reads.length, 1);
+
+  assert.equal(coordinator.session("codex:two").status, "loading");
+  await waitFor(() => store.get("codex", "two"));
+  assert.equal(store.get("codex", "one"), null, "the previous selection can be evicted");
+  await waitFor(() => observer.diagnostics().activeHydrations === 0);
+
+  assert.equal(coordinator.session("codex:one", original.revision).status, "loading");
+  await waitFor(() => store.get("codex", "one"));
+  const recovered = coordinator.session("codex:one", original.revision);
+  assert.equal(recovered.status, "ready");
+  assert.ok(recovered.snapshot.revision > original.revision, "recovery cannot reuse the client's old revision");
+  assert.deepEqual(recovered.snapshot.publicState, original.publicState);
+  assert.deepEqual(reads.at(-1), { localId: "one", completeStory: true }, "recovery rebuilds the complete story");
+  assert.equal(reads.length, 3);
 });
 
 test("switching away from a loading selection releases its historical pin", async (context) => {
