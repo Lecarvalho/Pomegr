@@ -73,7 +73,7 @@ and other published files retain their strict raw-byte privacy scans.
 
 The workflow enforces the release gates, so a normal release needs no manual checklist beyond confirming that the run and the published release succeeded.
 
-A published release contains the signed NSIS installer and its blockmap, the signed portable build, channel updater metadata, release notes, `SHA256SUMS.txt`, `Pomegr-X.Y.Z-source.zip`, and the `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` documents. The source archive comes from `git archive` on the release tag and is the corresponding source offered with the binaries; GitHub's automatic source snapshots do not replace it.
+A published release contains the signed NSIS installer and its blockmap, the signed portable build, channel updater metadata, release notes, `SHA256SUMS.txt`, `Pomegr-X.Y.Z-source.zip`, and the `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` documents. The source archive comes from `git archive` on the release tag and is the corresponding source offered with the binaries; GitHub's automatic source snapshots do not replace it. The workflow rejects any other asset on the draft, so that set is closed at publication; the only addition is a verified beta acceptance record, attached afterward as [evidence retention](desktop-beta-acceptance.md#evidence-retention) describes.
 
 Beta candidates that need recorded evidence also follow [desktop beta acceptance](desktop-beta-acceptance.md).
 
@@ -137,7 +137,7 @@ The workflow fails if a variable is absent, the endpoint is malformed, Azure aut
 
 ## Beta update acceptance
 
-Run this clean-VM exercise for the first beta produced by a new signing or updater configuration. It needs two consecutive beta versions and is not part of a routine release.
+Run this optional clean-VM exercise for the first beta produced by a new signing or updater configuration. It needs two consecutive beta versions and is not part of a routine release.
 
 1. On a clean, fully patched Windows VM, download the older beta installer and verify its SHA-256, Authenticode signature, publisher, and timestamp. Install it without disabling SmartScreen.
 2. Confirm the older beta stays usable offline and when the update endpoint fails.
@@ -147,7 +147,7 @@ Run this clean-VM exercise for the first beta produced by a new signing or updat
 6. Repeat with an unsigned package and a package signed by a different publisher. Both must be rejected while the installation stays usable. Never publish these fixtures.
 7. Inspect the workflow log and artifacts for credentials, query-bearing signed URLs, certificate bytes, private paths, and transcript content.
 
-Record the versions, VM image, workflow run URLs, hashes, and outcomes in the [beta acceptance record](desktop-beta-acceptance.md). Before building the clean-VM upgrade fixture, update the pinned version pair in `desktop/packaging/build-acceptance-prior.mjs`.
+Record the versions, VM image, workflow run URLs, hashes, and outcomes in the machine-verifiable [beta acceptance record](desktop-beta-acceptance.md#machine-verifiable-acceptance-record), then retain the verified record as [evidence retention](desktop-beta-acceptance.md#evidence-retention) describes. The older beta in step 1 is the installer of the previous published beta release; no separate prior fixture is built.
 
 ### Real-file signature acceptance
 

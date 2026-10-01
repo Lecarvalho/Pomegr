@@ -158,7 +158,9 @@ The [repositories](../../public/using-pomegr/repositories.md) page owns the two 
 `docs/public/images/repositories/`, captured on 2026-09-30 from the Pomegr 0.5.3
 interface in dark theme at a 1200 px viewport and 2x scale, except `files-tab.jpg`,
 which was recaptured on 2026-09-30 at a 1360 px viewport after review because the
-history header clips the **All providers | Claude Code | Codex** control at 1200 px.
+history header then clipped the **All providers | Claude Code | Codex** control at
+1200 px. The control now wraps under the session count instead, so a later
+recapture can use 1200 px.
 `files-tab.jpg` shows the Pomegr repository's Files tab with `app/Dashboard.tsx`
 selected (deep link `?tab=files&path=app/Dashboard.tsx`), cropped to the tab bar,
 toolbar, file tree, and the first history entries. `session-repository-tab.jpg` shows the Repository tab of the
@@ -239,7 +241,7 @@ released builds and already-exported reports carry; they return 404 by owner dec
 and current links were repointed instead.
 
 The application's in-app help links to public guides (the Documentation link and the Codex
-usage, cache timing, and reporting-plugin setup links under `app/components/`) carry
+usage, Claude local usage, cache timing, and reporting-plugin setup links under `app/components/`) carry
 published routes and heading anchors, and an installed build keeps the link it shipped with.
 When a public page route or a linked heading changes, repoint those links in the same change
 and keep the old route redirecting. The desktop shell opens only the `https://pomegr.com`

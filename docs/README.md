@@ -25,6 +25,7 @@ source.
 | Recover when the session list is empty or a session is missing | [Missing sessions](public/help/missing-sessions.md) |
 | Read a dash, an "unavailable" message, or a provider status without assuming a cause | [Unavailable data](public/help/unavailable-data.md) |
 | Recover from Monitor offline, a paused dashboard, or an app that does not open | [Connection problems](public/help/connection-problems.md) |
+| Show Claude Code usage when account checks fail, and see what Pomegr keeps | [Claude Code local usage](public/help/claude-local-usage.md) |
 | Understand provider and Pomegr limitations | [Limitations](internal/architecture/limitations.md) |
 | Look up environment variables, provider setup, and the technical contracts behind troubleshooting | [Configuration and troubleshooting](internal/development/configuration.md) |
 

@@ -28,7 +28,7 @@ export const PROVIDER_CAPABILITY_CATALOG = Object.freeze([
   { key: "contextMachinery", label: "Context machinery", evidencePath: "session.contextMachinery", requiredOperation: "readSession" },
   { key: "repositoryContextInventory", label: "Repository context inventory", evidencePath: "repository.contextInventory", requiredOperation: "captureRepositoryContextInventory" },
   { key: "repositoryPluginSetup", label: "Repository plugin setup", evidencePath: "repository.pluginSetup", requiredOperation: "readRepositoryPluginSetup" },
-  { key: "estimatedCost", label: "Estimated cost", evidencePath: "session.cost", requiredOperation: "readSession" },
+  { key: "estimatedCost", label: "API list-rate estimate", evidencePath: "session.cost", requiredOperation: "readSession" },
   { key: "liveSessions", label: "Live sessions", evidencePath: "catalog.isLive", requiredOperation: "listSessions" },
   { key: "needsInput", label: "Needs-input state", evidencePath: "catalog.needsInput", requiredOperation: "listSessions" },
   { key: "planTasks", label: "Plan tasks", evidencePath: "planTasks", requiredOperation: "readSession" },
@@ -401,7 +401,7 @@ const evidenceAgent = z.object({
     reason: z.enum(["source_not_integrated", "source_unavailable", "source_unsupported", "observation_gap", "ambiguous_event", "legacy_snapshot", "writer_released"]).optional(),
   }).strict().nullable().optional(),
   signal: evidenceSignal.nullable(), currentActivity: z.object({ label: evidenceOneLine(256), observedAt: evidenceTimestamp }).strict().nullable().optional(),
-  toolCalls: evidenceCount, skills: z.array(z.object({ name: evidenceOneLine(128), calls: evidenceCount, lastUsed: evidenceNullableTimestamp }).strict()).max(256),
+  toolCalls: evidenceCount, workKindCounts: z.array(z.object({ kind: evidenceWorkKind, count: evidenceCount }).strict()).max(19).optional(), skills: z.array(z.object({ name: evidenceOneLine(128), calls: evidenceCount, lastUsed: evidenceNullableTimestamp }).strict()).max(256),
   executionTasks: z.array(evidenceTask).max(256), reviewDecisions: evidenceReviewDecisions.optional(),
   lastSeen: evidenceTimestamp, startedAt: evidenceTimestamp, updatedAt: evidenceTimestamp, durationMs: evidenceCount,
 }).strict();

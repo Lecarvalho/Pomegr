@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { PomegrMark } from "../components/PomegrBrand";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { DEFAULT_DISPLAY_PREFERENCES, useDisplayPreferences, type DisplayPreferences } from "../hooks/DisplayPreferencesContext";
@@ -9,39 +9,9 @@ import { DesktopUpdateSettings, useDesktopUpdates } from "./DesktopUpdateSetting
 import { AboutDetails } from "./AboutDetails";
 import { ProviderSettings, useProviderSettingsAvailable } from "./ProviderSettings";
 import { StorageSettings } from "./StorageSettings";
+import { DesktopCloseSettings, DesktopNotificationSettings } from "./DesktopBehaviorSettings";
+import { PreferenceRow, SettingRow } from "./SettingRow";
 import { CommandPageHeader } from "../components/command-center/CommandPage";
-
-function SettingRow({ label, description, children, className = "", labelFor, descriptionId }: {
-  label: string;
-  description: string;
-  children: ReactNode;
-  className?: string;
-  labelFor?: string;
-  descriptionId?: string;
-}) {
-  const copy = <><strong>{label}</strong><span id={descriptionId}>{description}</span></>;
-  return (
-    <div className={`commandSettingRow${className ? ` ${className}` : ""}`}>
-      {labelFor ? <label htmlFor={labelFor}>{copy}</label> : <div>{copy}</div>}
-      {children}
-    </div>
-  );
-}
-
-function PreferenceRow({ id, label, description, checked, onChange }: {
-  id: string;
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  const descriptionId = `${id}-description`;
-  return (
-    <SettingRow className="displayPreferenceRow" label={label} description={description} labelFor={id} descriptionId={descriptionId}>
-      <input id={id} type="checkbox" role="switch" checked={checked} aria-describedby={descriptionId} onChange={(event) => onChange(event.currentTarget.checked)} />
-    </SettingRow>
-  );
-}
 
 export function SettingsPage({ initialSection = "appearance" }: { initialSection?: "appearance" | "providers" | "storage" | "about" }) {
   const updates = useDesktopUpdates();
@@ -50,6 +20,7 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
   const sections = [
     ["appearance", "Appearance"],
     ["notifications", "Notifications"],
+    ...(updates.available ? [["desktop", "Desktop"]] as const : []),
     ...(phoneAccessAvailable ? [["phone", "Phone access"]] as const : []),
     ...(providerSettingsAvailable ? [["providers", "Providers"]] as const : []),
     ["storage", "Storage"],
@@ -84,8 +55,9 @@ export function SettingsPage({ initialSection = "appearance" }: { initialSection
           {sections.map(([id, label], index) => <button ref={(node) => { tabsRef.current[index] = node; }} id={`settings-tab-${id}`} aria-controls={`settings-panel-${id}`} tabIndex={section === id ? 0 : -1} key={id} type="button" role="tab" aria-selected={section === id} className={section === id ? "active" : ""} onClick={() => setSelectedSection(id)} onKeyDown={(event) => handleTabKey(event, index)}>{label}{id === "about" && updates.state?.update?.status === "ready" && <span className="commandUpdateDot" role="img" aria-label="Update ready to install" />}</button>)}
         </nav>
         {section === "appearance" && <section id="settings-panel-appearance" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-appearance"><h2>Workspace appearance</h2><p>These controls affect only this local Pomegr interface.</p><SettingRow label="Color theme" description="Switch between the Command Center's dark and light operating surfaces."><ThemeToggle /></SettingRow><SettingRow label="Compact density" description="A denser evidence layout will arrive in a future release."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
-        {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>Notification controls are available in the desktop runtime and will move here in a future release.</p><SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow><SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
-        {section === "phone" && <section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
+        {section === "notifications" && <section id="settings-panel-notifications" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-notifications"><h2>Notification preferences</h2><p>{updates.available ? "Windows notifications from this desktop app. They never include prompt or response content." : "Needs-input alerts are sent by the Pomegr desktop app and are changed in its Settings."}</p>{updates.available ? <DesktopNotificationSettings updates={updates} /> : <SettingRow label="Needs-input alerts" description="Generic local notifications without prompt or response content."><span className="commandComingSoonLabel">Desktop managed</span></SettingRow>}<SettingRow label="Completed session updates" description="Quiet completion notices are not available in the web interface yet."><span className="commandComingSoonLabel">Coming soon</span></SettingRow></section>}
+        {section === "desktop" && <section id="settings-panel-desktop" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-desktop"><h2>Desktop app</h2><p>How the Pomegr window behaves on this computer.</p><DesktopCloseSettings updates={updates} /></section>}
+        {section === "phone" &&<section id="settings-panel-phone" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-phone"><PhoneAccessControls /></section>}
         {section === "providers" && <section id="settings-panel-providers" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-providers"><ProviderSettings /></section>}
         {section === "storage" && <section id="settings-panel-storage" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-storage"><StorageSettings /></section>}
         {section === "data" && <section id="settings-panel-data" className="commandSettingsPane" role="tabpanel" aria-labelledby="settings-tab-data"><h2>Data display</h2><p>These preferences apply to every live and historical session.</p><div className="displayPreferenceList"><PreferenceRow id="estimated-cost-visible" label="API list-rate estimate" description="Show the provider-reported reference estimate when available. This is not a bill or subscription spend." checked={preferences.estimatedCost} onChange={(checked) => setPreference("estimatedCost", checked)} /></div></section>}

@@ -39,8 +39,8 @@ indexed in the [documentation index](../README.md).
 | Unshipped proposals and temporary work | The [`plans/`](plans/) pages are working checklists with an owner, next decision, and deletion rule. The [commercial strategy](plans/commercial-strategy.md), [remote platform](plans/remote-platform-and-orgs.md), and [mobile pairing](plans/mobile-pairing-cloudflare.md) plans are unvalidated or unimplemented; none is a shipped feature or a roadmap commitment. |
 
 Plans describe work or historical reasoning, not runtime authority. The session
-status comparison records known gaps alongside implemented rules, and the desktop beta
-acceptance page lists open acceptance items; neither implies that pending work passed.
+status comparison records known gaps alongside implemented rules and does not imply
+that pending work passed.
 
 ## Architecture and evidence
 
@@ -91,8 +91,8 @@ manual website deployment ([website operations](operations/website.md#6-publish-
 | --- | --- |
 | [Pipeline operations](operations/pipeline-diagnostics.md) | Continuous development JSONL diagnostics, passive analysis, and the auxiliary snapshot |
 | [Desktop releases](operations/desktop-releases.md) | Packaging, signing, publication, and rollback |
-| [Desktop beta acceptance](operations/desktop-beta-acceptance.md) | Candidate acceptance procedure, evidence gates and retention, the open `POMEGR-DT-08` to `POMEGR-DT-10` items, and the desktop milestone IDs |
-| [Desktop clean-VM checklist](operations/desktop-clean-vm.md) | Reusable clean-VM checks, with the recorded alpha run and the pending 0.2.4 candidate under Recorded acceptance runs |
+| [Desktop beta acceptance](operations/desktop-beta-acceptance.md) | Optional beta-candidate acceptance procedure, evidence gates and retention (owner and store), and the desktop milestone IDs, including the `POMEGR-DT-08` to `POMEGR-DT-10` items retired on 2026-10-01 |
+| [Desktop clean-VM checklist](operations/desktop-clean-vm.md) | Reusable clean-VM checks, with the recorded alpha run under Recorded acceptance runs |
 | [Website operations](operations/website.md) | Landing development, provisioning, manual deployment, and rollback; [package entrypoint](../../landing/README.md) |
 | [License history](decisions/license-history.md) | Accepted licensing decision and rationale |
 | [Product positioning](decisions/product-positioning.md) | Accepted open-source-core and non-evaluator positioning; current wording lives in root [PRODUCT.md](../../PRODUCT.md) |

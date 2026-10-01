@@ -319,6 +319,16 @@ consistently to request headers, nested calls, work-kind counts, median wall dur
 and shell-task totals. A request-linked call with no normalized actor participates only
 in `scope=all`.
 
+Request groups list every recorded row, but the work-kind counts, medians, and shell-task
+totals count tool calls only. Each committed activity row and its compact index ref carry
+a monitor-private boolean `call`, set at normalization for rows that come from recorded
+tool calls and cleared for user input, assistant replies, background-task notices, and
+failed-shell outcome rows. The marker is stripped from every served row. A row committed
+before the marker existed is classified by its monitor-authored label when it is
+normalized or, for a block-store ref, when the index is read; a GET never rewrites it. A
+legacy JSON index ref has no label, so it keeps counting as a call until the next
+publication replaces that index.
+
 Activity rows and offsets are chronological, earliest first, matching Requests.
 Page 1 contains the earliest scoped events. Activity `latest` and `last` select
 the aligned final page, which may contain fewer than eight rows. Serving reverses

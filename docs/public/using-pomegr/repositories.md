@@ -30,7 +30,8 @@ read, or could not verify the setup.
 ## Open a repository
 
 The header shows live and history counts and the coding tools observed.
-**View sessions** opens **Sessions** for this repository. The tabs are:
+**View sessions** opens **Sessions** for this repository; select the close
+button on its **Repository:** chip to list every session again. The tabs are:
 
 | Tab | What it shows |
 | --- | --- |

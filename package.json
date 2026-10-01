@@ -34,8 +34,6 @@
     "desktop:prepare": "npm run build && npm run desktop:prepare:from-build",
     "desktop:package": "npm run desktop:prepare && node desktop/packaging/prepare-builder-cache.mjs && set ELECTRON_BUILDER_CACHE=.electron-builder-cache&& electron-builder --win nsis portable --x64 && node desktop/packaging/finalize-package.mjs",
     "desktop:inspect": "node desktop/packaging/inspect-artifacts.mjs",
-    "desktop:package:acceptance-prior": "npm run desktop:prepare && node desktop/packaging/build-acceptance-prior.mjs",
-    "desktop:inspect:acceptance-prior": "node desktop/packaging/inspect-acceptance-prior.mjs",
     "desktop:beta:init": "node desktop/packaging/beta-acceptance.mjs init",
     "desktop:beta:verify": "node desktop/packaging/beta-acceptance.mjs verify",
     "desktop:update:verify-signature": "node desktop/packaging/update-signature-acceptance.mjs",

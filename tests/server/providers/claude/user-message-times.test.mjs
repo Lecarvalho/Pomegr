@@ -116,6 +116,10 @@ test("one whole-transcript pass yields the work start and the user-message times
   await writeRecords(file, [userText(at(1)), ...Array.from({ length: 8 }, (_, index) => filler(index)), userText(at(21))]);
   const reader = createClaudeSessionWorkStartReader({ yieldControl: async () => {} });
   assert.deepEqual(await reader.readSessionFacts(file), { startedAt: at(1), userMessageTimes: [at(1), at(21)] }, "the first message is 3 MiB behind the end of the file");
+  assert.equal(await reader.readToolUseCount(file), 0);
+  const toolUse = (id) => ({ type: "tool_use", id, name: "Read", input: {} });
+  await appendFile(file, `${JSON.stringify({ type: "assistant", timestamp: at(21, 30), message: { content: [{ type: "text", text: "PRIVATE" }, toolUse("a"), toolUse("b")] } })}\n`);
+  assert.equal((await reader.readTranscriptFacts(file)).toolUses, 2, "tool uses are counted across the whole transcript");
   await appendFile(file, `${JSON.stringify(userText(at(22)))}\n`);
   assert.deepEqual((await reader.readSessionFacts(file)).userMessageTimes, [at(1), at(21), at(22)]);
   // A partially written final record changes nothing, and never hides the complete ones.
@@ -208,6 +212,26 @@ test("the Claude adapter records user-message times that survive a tool-heavy se
   const grown = await provider.readSession(localId);
   assert.deepEqual(grown.userMessageTimes, [at(1), at(9)]);
   assert.equal((await provider.readSession(localId, { completeHistory: true })).userMessageTimes.length, 2, "a complete-history read agrees");
+});
+
+test("an agent's tool-call count keeps the calls that fell behind the 2 MiB display tail", async (context) => {
+  const root = await temporaryRoot(context, "pomegr-claude-call-count-");
+  const projectsRoot = path.join(root, "projects");
+  const localId = "claude-call-count";
+  const file = path.join(projectsRoot, "fixture-project", `${localId}.jsonl`);
+  const filler = (second) => ({ type: "system", subtype: "local_command", timestamp: at(3, second), content: "PRIVATE".repeat(60_000) });
+  await writeRecords(file, [
+    userText(at(1)), toolUse(at(2), "early-1"), toolResult(at(2), "early-1"), toolUse(at(2, 1), "early-2"), toolResult(at(2, 1), "early-2"),
+    ...Array.from({ length: 8 }, (_, index) => filler(index)),
+    toolUse(at(4), "late-1"), toolResult(at(4), "late-1"),
+  ]);
+  const provider = createClaudeProvider({ homeDir: root, projectsRoot, registryRoot: path.join(root, "registry"), tasksRoot: path.join(root, "tasks"), explicitSession: file });
+  const evidence = await provider.readSession(localId);
+  assert.equal(evidence.toolCalls.length, 1, "the display tail holds only the latest call");
+  assert.equal(evidence.agents.find((agent) => agent.id === "primary").toolCalls, 3, "the count covers the whole transcript");
+  assert.deepEqual(evidence.agents.find((agent) => agent.id === "primary").workKindCounts, [{ kind: "read", count: 3 }], "and so do the per-kind counts");
+  assert.deepEqual(parseProviderSessionEvidence(evidence, localId).agents[0].workKindCounts, [{ kind: "read", count: 3 }]);
+  assert.equal((await provider.readSession(localId, { completeHistory: true })).agents.find((agent) => agent.id === "primary").toolCalls, 3, "a complete-history read agrees");
 });
 
 test("the evidence schema accepts absent or valid user-message times and rejects anything else", async () => {

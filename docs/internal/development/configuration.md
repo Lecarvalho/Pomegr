@@ -19,8 +19,8 @@ The [Settings guide](../../public/using-pomegr/settings.md) explains the Setting
 
 - **Pause live refresh** in the tray menu (**Resume live refresh** while paused) pauses dashboard polling only. It does not pause or control coding agents and is not persisted.
 - **Launch at login** is an opt-in tray-menu checkbox, available only for the installed app.
-- **Close behavior** is stored as `ask` (the default), `tray`, or `quit`. With `ask`, closing the window shows **Keep running** and **Quit Pomegr** with **Remember my choice**, which stores `tray` or `quit`. This version has no Settings control to change a stored choice. **Quit Pomegr** in the tray menu stops all Pomegr-owned services.
-- **Needs-input notifications** are enabled by default and stored as a persistent boolean; a temporary one-hour quiet mode clears when the app exits. This version's **Settings → Notifications** shows the alerts as **Desktop managed** and has no switch for either. A notification shows the session's normalized catalog title (one line, at most 96 characters) and a fixed body, or the fixed generic Pomegr title and body when the session has no title; it never contains a question, approval reason, command, response, tool output, or provider path.
+- **Close behavior** is stored as `ask` (the default), `tray`, or `quit`. With `ask`, closing the window shows **Keep running** and **Quit Pomegr** with **Remember my choice**, which stores `tray` or `quit`. **Settings → Desktop** (desktop app only) changes the stored choice through the existing fixed-value close-behavior IPC. **Quit Pomegr** in the tray menu stops all Pomegr-owned services.
+- **Needs-input notifications** are enabled by default and stored as a persistent boolean; a temporary one-hour quiet mode clears when the app exits. In the desktop app, **Settings → Notifications** switches both through the existing boolean IPC; a browser shows the alerts as **Desktop managed** with no switch. A notification shows the session's normalized catalog title (one line, at most 96 characters) and a fixed body, or the fixed generic Pomegr title and body when the session has no title; it never contains a question, approval reason, command, response, tool output, or provider path.
 - **Updates** are enabled by default for installed signed builds. Pomegr checks after startup and every four hours and silently downloads a higher same-channel release. [Install Pomegr](../../public/get-started/install.md#keep-pomegr-up-to-date) explains the user steps. **Settings → About** shows the installed desktop version, the last successful check time, and **Check for updates**; the same row shows checking/download progress, retry feedback, and **Restart and install** once the installer is verified and ready, and a dot beside **About** also indicates readiness. The existing bottom-left **Restart to update** action remains available. Clicking either install action is the explicit restart/installation confirmation. A failed check, download, signature verification, or install attempt leaves the current application runnable. Portable mode never checks for updates, and ordinary browser settings expose no native update controls.
 
 Closing to the tray leaves local observation running. Click the tray icon, use **Open Pomegr**, or launch Pomegr again to reopen the single existing instance.
@@ -102,7 +102,10 @@ The bridge forwards bounded stdin to the delegated command unchanged, so the vis
 #### Claude local usage feed
 
 For what the windows mean and how fresh they are, see the public
-[Usage limits](../../public/concepts/usage-limits.md) guide.
+[Usage limits](../../public/concepts/usage-limits.md) guide. The in-app **Setup
+guide** link opens the public
+[Claude Code local usage](../../public/help/claude-local-usage.md) page, which gives
+the end-user steps; keep it in step with this section.
 
 A failed usage check automatically expands **Usage connection help** under
 **Usage limits → Claude Code**, even when retained usage figures remain available.
@@ -277,7 +280,7 @@ Closing the window may hide Pomegr to the tray; see [Connection problems](../../
 
 The [Settings guide](../../public/using-pomegr/settings.md#use-the-desktop-controls) tells users when the alerts appear and what they show. This section keeps the delivery contract:
 
-- Needs-input notifications are enabled by default, and this version has no Settings switch for them or for temporary quiet mode. Confirm the session was live and waiting when Pomegr observed it.
+- Needs-input notifications are enabled by default. Check that **Settings → Notifications** in the desktop app has **Needs-input alerts** on and **Quiet for one hour** off. Confirm the session was live and waiting when Pomegr observed it.
 - Pomegr notifies only on a transition into a recognized live needs-input state; it deduplicates repeated observations until the state clears.
 - Windows notification settings or Focus Assist can suppress native presentation. Pomegr monitoring continues if notification delivery fails.
 - Notification clicks navigate to an observation view only. Pomegr cannot approve, answer, resume, or control an agent.

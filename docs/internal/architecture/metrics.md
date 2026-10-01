@@ -611,7 +611,34 @@ complete paged history remains independent of that summary and of provider
 acquisition during a GET. Counts, work-kind shares, and medians use retained
 normalized evidence under the selected scope. Tool calls and per-kind counts
 exclude messages, input, system notifications, and failed-shell outcome
-duplicates; their total matches the session Tool calls KPI.
+duplicates; their total matches the session Tool calls KPI. The Activity feed's
+"tool calls in this scope" header is the sum of those per-kind counts, so it uses
+the same definition as the Overview **Calls** figure.
+
+The KPI sums each agent's recorded call count from the latest committed summary;
+the feed counts committed history rows. For Claude Code, an agent's call count is
+the number of recorded tool-use blocks in its whole transcript, not in the 2 MiB
+display tail: the main transcript's count comes from the same incremental
+whole-transcript pass that yields the work start and user-message times
+(`server/providers/claude/session-work-start.mjs`), and a subagent transcript
+uses that pass once it outgrows the tail. The pass keeps only one running count
+per work kind and one `{ calls, lastUsed }` per validated skill name (at most 256
+names), reads appended bytes after its first replay, and never retains a tool
+name, input, detail, or other record content, so a count never shrinks as a
+transcript grows. An agent counted this way carries the optional evidence field
+`workKindCounts` (bounded work kind and count); it is checkpointed with the
+evidence, feeds only the session aggregate, and never appears on the public agent.
+
+The Overview **Work by kind** panel shows the six largest kinds of
+`activity.byKind`. Its counts use `workKindCounts` for agents that carry it and
+the retained calls of every other agent, so their sum equals the Calls figure.
+`byKind` medians still describe retained calls only, so the panel no longer shows
+them; the Activity rail shows medians from complete committed history. The
+"repeated recently" count under Calls, the repeat and overlap signals, and the
+recent activity list remain recent-window evidence by design. Agent skill usage
+uses the same whole-transcript pass. The two figures can still differ
+briefly while one commit is newer than the other, and for a session whose
+committed history predates a complete replay.
 
 Each resolved duration is wall time from a recorded call to its matching result,
 including approval waits. Running, unmatched, invalid, and reversed timestamp

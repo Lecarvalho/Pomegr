@@ -64,8 +64,8 @@ what it does not prove.
 
 | What you see | What to do |
 | --- | --- |
-| **No sessions observed** with a search or filter active | Clear **Filter sessions** and select **All**. |
-| **No sessions observed** with no filter | Wait for discovery to finish. |
+| **No sessions match** | Clear **Filter sessions** and select **All**. |
+| **No sessions observed** | Wait for discovery to finish. |
 | **No sessions observed** after discovery finishes | Select **Configure session sources** to check your provider folders. |
 | **Session catalog unavailable** or **Monitor offline** | Wait; Pomegr reconnects automatically. |
 | **Session catalog unavailable**, saying Pomegr is paused | Select **Resume live refresh** in the tray menu. |

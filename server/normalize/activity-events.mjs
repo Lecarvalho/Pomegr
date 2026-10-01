@@ -113,8 +113,12 @@ function medianDuration(events) {
   return values.length % 2 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
 }
 
-/** Build a public activity window plus aggregates over the full retained evidence. */
-export function buildActivityFeed({ events = [], toolCalls = [], messages = 0, failed = 0 } = {}) {
+/**
+ * Build a public activity window plus aggregates over the full retained evidence. `kindCounts`
+ * (work kind to count), when a provider counted its whole source, replaces the retained-call
+ * counts so they do not shrink with a bounded read; medians still describe retained calls.
+ */
+export function buildActivityFeed({ events = [], toolCalls = [], messages = 0, failed = 0, kindCounts = null } = {}) {
   const normalizedTools = recentActivityEvents(toolCalls, 4_096);
   const byKind = new Map();
   for (const event of normalizedTools) {
@@ -122,14 +126,17 @@ export function buildActivityFeed({ events = [], toolCalls = [], messages = 0, f
     items.push(event);
     byKind.set(event.workKind, items);
   }
+  const counts = kindCounts instanceof Map
+    ? new Map([...kindCounts].filter(([, count]) => Number.isSafeInteger(count) && count > 0))
+    : new Map([...byKind].map(([kind, items]) => [kind, items.length]));
   return {
     items: recentActivityEvents(events, 200),
     total: Array.isArray(events) ? events.length : 0,
-    toolCalls: normalizedTools.length,
-    byKind: [...byKind.entries()].map(([kind, items]) => ({
+    toolCalls: [...counts.values()].reduce((total, count) => total + count, 0),
+    byKind: [...counts.entries()].map(([kind, count]) => ({
       kind,
-      count: items.length,
-      medianDurationMs: medianDuration(items),
+      count,
+      medianDurationMs: medianDuration(byKind.get(kind) || []),
     })).sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind)),
     messages: Number.isSafeInteger(messages) && messages >= 0 ? messages : 0,
     failed: Number.isSafeInteger(failed) && failed >= 0 ? failed : 0,

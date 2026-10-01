@@ -217,3 +217,14 @@ test("history requests carry each request's bounded recorded model while the sta
   const feed = buildRequestSnapshots({ sessionId: "claude:models", agents: evidence.agents, usageSnapshots: evidence.usageSnapshots });
   assert.ok(feed.items.every((item) => !Object.hasOwn(item, "model")));
 });
+
+test("history rows mark only recorded tool calls as calls", () => {
+  const at = "2026-09-12T01:00:00.000Z";
+  const history = normalizedSessionHistory("claude", "call-marker", {
+    agents: [{ id: "primary", label: "Primary agent", executionTasks: [{ id: "task-1", status: "failed", label: "npm test", workKind: "test", startedAt: at, finishedAt: at, exitCode: 1 }] }],
+    usageSnapshots: [],
+    toolCalls: [{ id: "tool-1", timestamp: at, actor: "Primary agent", tool: "Bash", workKind: "test", detail: "npm test", status: "failed" }],
+    activity: [{ id: "input-1", timestamp: at, actor: "User", tool: "User input", workKind: "input", detail: "Text", status: null }],
+  });
+  assert.deepEqual(history.activity.map((row) => [row.tool, row.call]).sort(), [["Bash", true], ["Shell failed", false], ["User input", false]]);
+});

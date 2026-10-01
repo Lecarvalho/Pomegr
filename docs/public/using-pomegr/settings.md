@@ -23,7 +23,8 @@ captured on 2026-09-30.*
 | Tab | What it does | Available in |
 | --- | --- | --- |
 | **Appearance** | Switches the **Color theme** between dark and light. **Compact density** is marked **Coming soon**. | Desktop app and browser |
-| **Notifications** | Explains needs-input alerts. **Needs-input alerts** reads **Desktop managed** and **Completed session updates** reads **Coming soon**. | Desktop app and browser |
+| **Notifications** | Turns **Needs-input alerts** on or off and pauses them with **Quiet for one hour**. **Completed session updates** reads **Coming soon**. | Change in the desktop app; a browser reads **Desktop managed** |
+| **Desktop** | Chooses what happens **When closing the window**: **Ask**, **Keep in tray**, or **Quit**. | Desktop app only |
 | **Phone access** | Shares the dashboard, read-only, with a paired phone on your private network. See [Phone access](phone-access.md). | Desktop app only |
 | **Providers** | Chooses the Claude Code and Codex folders Pomegr observes. | Change in the desktop app; view in a browser |
 | **Storage** | Limits how long and how large Pomegr's resource history grows. | Change in the desktop app; view in a browser |
@@ -88,14 +89,17 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
 - **Launch at login** is opt-in and works only in the installed app.
 - The first time you close the window, Pomegr asks whether to keep running in the
   tray or quit, with **Remember my choice**. Closing to the tray keeps observing;
-  **Quit Pomegr** stops it.
+  **Quit Pomegr** stops it. Change a remembered choice under
+  **Settings → Desktop**.
 - When a live session starts needing your input, Pomegr shows a Windows
   notification titled with the session's title that says "This live session is
   waiting for input." A session without a title gets the title "Pomegr" and the
   text "A coding-agent session needs input". The notification never includes the
   question, a command, or any conversation content. Selecting it brings the
-  Pomegr window forward and opens that session. The alerts are on by default; Settings has no switch for
-  them yet, and Windows notification settings or Focus Assist can silence them.
+  Pomegr window forward and opens that session. The alerts are on by default. Turn them off, or
+  pause them with **Quiet for one hour**, under **Settings → Notifications**;
+  the pause is not saved and ends when Pomegr restarts. Windows notification
+  settings or Focus Assist can also silence them.
   Pomegr alerts once for each wait, and only for a live session it saw start
   needing input.
 - **Settings → About** shows the installed version, **Check for updates**, and

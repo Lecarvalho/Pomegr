@@ -80,5 +80,6 @@ connection help** automatically, even when older figures remain.
   shorten a provider's cooldown.
 - **No local usage:** when usage is unavailable, the installed Windows app offers
   **Enable local usage**, which asks for confirmation before it changes Claude
-  Code's status-line setting. **Setup guide** opens the full instructions,
-  including browser-only installations.
+  Code's status-line setting. **Setup guide** opens
+  [Claude Code local usage](../help/claude-local-usage.md), which also covers
+  browser-only installations.

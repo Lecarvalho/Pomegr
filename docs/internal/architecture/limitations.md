@@ -36,7 +36,7 @@ omitted rather than shown as zero.
 | Context machinery | `session.contextMachinery` | Supported | Unsupported — Codex session evidence does not expose normalized context-machinery categories. |
 | Repository context inventory | `repository.contextInventory` | Supported | Unsupported — Codex does not expose a comparable repository context inventory diagnostic. |
 | Repository plugin setup | `repository.pluginSetup` | Supported | Supported |
-| Estimated cost | `session.cost` | Supported | Unsupported — Codex session evidence does not expose a provider cost estimate. |
+| API list-rate estimate | `session.cost` | Supported | Unsupported — Codex session evidence does not expose a provider cost estimate. |
 | Live sessions | `catalog.isLive` | Supported | Supported |
 | Needs-input state | `catalog.needsInput` | Supported | Supported |
 | Plan tasks | `planTasks` | Supported | Supported |

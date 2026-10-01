@@ -245,6 +245,7 @@ test("external URL policy admits only the documentation website's /docs routes o
     "https://pomegr.com/docs/concepts/cache-reuse",
     "https://pomegr.com/docs/concepts/cache-reuse#x",
     "https://pomegr.com/docs/concepts/usage-limits#if-a-window-is-missing",
+    "https://pomegr.com/docs/help/claude-local-usage",
     "https://pomegr.com/docs/using-pomegr/reporting-plugins#install-the-plugin",
     "https://pomegr.com/docs/using-pomegr/reporting-plugins#set-up-a-repository",
     "https://pomegr.com/docs#intro",
