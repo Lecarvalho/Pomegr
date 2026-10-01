@@ -27,7 +27,8 @@ export async function bumpVersion({
   parseReleaseVersion(next);
   if (!npmCli) throw new Error("POMEGR_VERSION_NPM_CLI_REQUIRED");
 
-  if (await captured(runCommand, ["status", "--porcelain=v1", "--untracked-files=all"], cwd)) throw new Error("POMEGR_VERSION_CHECKOUT_DIRTY");
+  // Untracked files are left alone: the commit stages only the two package files.
+  if (await captured(runCommand, ["status", "--porcelain=v1", "--untracked-files=no"], cwd)) throw new Error("POMEGR_VERSION_CHECKOUT_DIRTY");
   const branch = await captured(runCommand, ["rev-parse", "--abbrev-ref", "HEAD"], cwd);
   if (!branch || branch === "HEAD") throw new Error("POMEGR_VERSION_BRANCH_REQUIRED");
 
