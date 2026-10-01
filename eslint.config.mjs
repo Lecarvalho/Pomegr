@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     // Generated runtime shipped with the temporary design-reference exports.
     "docs/internal/plans/ia-redesign/prototype/*-html/vendor/**",
     "docs/internal/plans/ia-redesign/prototype/*-html/support.js",
+    "docs/internal/plans/session-allowance/prototype/vendor/**",
+    "docs/internal/plans/session-allowance/prototype/support.js",
     "desktop/workers/**",
     "plugins/claude-code/mcp/server.bundle.mjs",
     "next-env.d.ts",

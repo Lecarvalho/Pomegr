@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Allowance panel states</title>
+<script src="./vendor/react.js"></script>
+<script src="./vendor/react-dom.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;650&amp;family=Geist+Mono:wght@400&amp;display=swap">
+<style>
+    body { margin: 0; background: #111315; color: #edf0f3; font-family: Inter, "Segoe UI", system-ui, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+    a { color: #e58b80; text-decoration: none; } a:hover { color: #f0a59b; text-decoration: underline; }
+    .mono { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .eyebrow { font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: #a8afb9; }
+    .panel { background: #191c20; border: 1px solid #333941; border-radius: 6px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border: 1px solid #333941; border-radius: 4px; font-size: 11px; font-weight: 500; color: #a8afb9; white-space: nowrap; }
+    .chip.green { color: #91c5a4; } .chip.amber { color: #e3b575; }
+    .btnQuiet { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: #a8afb9; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .btnSecondary { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; background: transparent; color: #edf0f3; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .seg { display: inline-flex; border: 1px solid #333941; border-radius: 4px; overflow: hidden; }
+    .seg > span { min-height: 30px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 12px; font-weight: 500; color: #a8afb9; }
+    .seg > span + span { border-left: 1px solid #333941; }
+    .seg > span.on { background: #23272d; color: #edf0f3; }
+    .tabs { display: flex; border-bottom: 1px solid #333941; }
+    .tab { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; font-size: 13px; font-weight: 500; color: #a8afb9; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+    .tab.on { color: #edf0f3; border-bottom-color: #a63c32; }
+    .tab .cnt { font-size: 11px; color: #a8afb9; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .kpi { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-right: 1px solid #333941; }
+    .kpi:last-child { border-right: 0; }
+    .kpi .v { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; }
+    .kpi .s { font-size: 12px; color: #a8afb9; }
+    .row { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #91c5a4; flex: 0 0 auto; }
+    .tr { display: grid; align-items: center; gap: 12px; padding: 10px 16px; border-top: 1px solid #333941; font-size: 13px; }
+    .muted { color: #a8afb9; }
+    .h2 { font-size: 16px; font-weight: 650; line-height: 1.35; margin: 0; }
+    .h1 { font-size: 26px; font-weight: 650; letter-spacing: -.025em; line-height: 1.1; margin: 0; }
+    .sidebar { width: 176px; flex: 0 0 176px; border-right: 1px solid #333941; background: #191c20; padding: 20px 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .navItem { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: 4px; font-size: 13px; font-weight: 500; color: #a8afb9; }
+    .navItem.on { background: #23272d; color: #edf0f3; }
+    .navItem .cnt { margin-left: auto; font-size: 11px; background: #23272d; border-radius: 4px; padding: 1px 6px; }
+    .header { height: 60px; display: flex; align-items: center; gap: 20px; padding: 0 20px; border-bottom: 1px solid #333941; background: #191c20; }
+    .search { display: flex; align-items: center; gap: 8px; height: 34px; width: 280px; padding: 0 10px; border: 1px solid #333941; border-radius: 4px; color: #a8afb9; font-size: 13px; background: #111315; }
+    svg.i { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
+    .bar { height: 6px; border-radius: 3px; background: #23272d; overflow: hidden; display: flex; }
+    .bar > i { display: block; height: 100%; background: #697482; }
+    .h2link { display: inline-flex; align-items: center; gap: 4px; color: #edf0f3; }
+    .h2link svg { color: #697482; }
+    .h2link:hover { color: #edf0f3; text-decoration: none; }
+    .alone { background: #edf0f3 !important; } .shared { background: #8d97a4 !important; } .else { background: repeating-linear-gradient(135deg, #697482 0 2px, #23272d 2px 4px) !important; } .before { background: #3a414a !important; }
+    .key { display: inline-block; width: 8px; height: 8px; border-radius: 1px; flex: 0 0 auto; }
+    .num { font-family: "Geist Mono", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+</style>
+</helmet>
+<div style="width: 1440px; height: 520px; box-sizing: border-box; display: flex; flex-direction: column; background: #111315; overflow: hidden;">
+<div style="padding: 32px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px 20px;">
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Only this session</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Max 20x</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window · this session alone</span><span class="mono">9 pts</span></div><div class="bar"><i class="before" style="width: 6%;"></i><i class="alone" style="width: 9%;"></i></div><span class="muted" style="font-size: 11px;">Window at 15%. No shared or unexplained movement. Observed movement, not a provider measurement.</span></div></div>
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Account used elsewhere</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Pro</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window · this session alone</span><span class="mono">18 pts</span></div><div class="bar"><i class="before" style="width: 10%;"></i><i class="alone" style="width: 18%;"></i><i class="else" style="width: 27%;"></i></div><span style="font-size: 11px; color: #e3b575;">27 pts moved with no local request. The account was probably active on another machine, so this session's share is a lower-confidence reading.</span></div></div>
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Collecting</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Max 5x</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window</span><span class="mono muted">—</span></div><span class="muted" style="font-size: 11px;">Needs two account samples during this session. Next sample within 5 minutes.</span></div></div>
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Below one point</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Max 20x</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window · this session alone</span><span class="mono">&lt;1 pt</span></div><span class="muted" style="font-size: 11px;">The window did not move while this session ran. Provider percentages are whole points.</span></div></div>
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Finished session · window reset mid-session</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Max 20x · recorded</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window to 2:00 p.m.</span><span class="mono">14 pts</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window from 2:00 p.m.</span><span class="mono">6 pts</span></div><span class="muted" style="font-size: 11px;">Recorded while the session ran. Windows are never added together. Current limits are not shown on past sessions.</span></div></div>
+  <div style="display: flex; flex-direction: column; gap: 8px;"><span class="eyebrow">Tier unknown or changed</span><div class="panel" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 6px;"><div class="row" style="justify-content: space-between;"><span class="eyebrow" style="color: #edf0f3;">Allowance</span><span class="chip">Tier unknown</span></div><div class="row" style="justify-content: space-between; font-size: 13px;"><span>5-hour window · this session alone</span><span class="mono">7 pts</span></div><span class="muted" style="font-size: 11px;">The sampled account may differ from the one this session used, or the tier changed during the window. Comparison stops at the change.</span></div></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":520}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -130,6 +130,12 @@ is an approved, not yet implemented UI change to the session Overview and Signal
 tabs. It reuses the redesign prototype artboards and moves its rules into
 [DESIGN.md](../../DESIGN.md) as its tasks complete.
 
+The [session allowance plan](plans/session-allowance.md) is a design-approved plan
+(2026-09-21, revised 2026-09-30, no code yet) to record how many percentage points of
+each provider account window moved while a session was sending requests, with the
+observed account tier, in the monitor SQLite store. Nothing in it is shipped or
+authoritative.
+
 The [guidance impact plan](plans/guidance-impact.md) is a design-approved plan (2026-09-22,
 no code yet) to tag sessions with the repository guidance revision they ran under
 (skills, `AGENTS.md`, hooks, reporting policy), compare friction, outcome, and
