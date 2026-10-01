@@ -23,7 +23,7 @@ import { createEmptyMonitorState } from "../../../shared/monitor-state.mjs";
 
 function validSnapshot(overrides = {}) {
   return {
-    version: 4,
+    version: 5,
     branch: "feat/example",
     isMain: false,
     files: [{ status: " M", path: "app/file.ts" }],
@@ -38,6 +38,7 @@ function validSnapshot(overrides = {}) {
     committedChanges: null,
     gitObservedTruncated: false,
     repositoryId: null,
+    commitTimesInWindow: null,
     ...overrides,
   };
 }
@@ -59,6 +60,7 @@ function validSnapshotV1(overrides = {}) {
   };
 }
 
+const withoutCommitTimes = (value) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== "commitTimesInWindow"));
 function pullRequestItem(overrides = {}) {
   return {
     host: "github",
@@ -128,10 +130,10 @@ test("normalizeRepositorySnapshot rejects unsafe file paths, over-bound lists, f
   assert.equal(normalizeRepositorySnapshot("not-an-object"), null);
 });
 
-test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 4 with a never-measured Git-observed baseline", () => {
+test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 5 with a never-measured Git-observed baseline", () => {
   const upgraded = normalizeRepositorySnapshot(validSnapshotV1());
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 4);
+  assert.equal(upgraded.version, 5);
   assert.equal(upgraded.branch, "feat/example");
   assert.equal(upgraded.dirtyAtFirstCheck, null, "never measured");
   assert.deepEqual(upgraded.becameDirty, []);
@@ -146,11 +148,11 @@ test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to 
   assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), extraField: 1 }), null);
 });
 
-test("normalizeRepositorySnapshot upgrades version-2/3 records and validates version-4 repository identity", () => {
-  const { committedChanges: _omitted, repositoryId: _repositoryId, ...v2Shape } = validSnapshot({ committedInWindow: ["app/a.ts"] });
+test("normalizeRepositorySnapshot upgrades version-2/3 records and validates the repository identity", () => {
+  const { committedChanges: _omitted, repositoryId: _repositoryId, ...v2Shape } = withoutCommitTimes(validSnapshot({ committedInWindow: ["app/a.ts"] }));
   const upgraded = normalizeRepositorySnapshot({ ...v2Shape, version: 2 });
   assert.ok(upgraded);
-  assert.equal(upgraded.version, 4);
+  assert.equal(upgraded.version, 5);
   assert.deepEqual(upgraded.committedInWindow, ["app/a.ts"]);
   assert.equal(upgraded.committedChanges, null, "a v2 record never recorded change kinds");
   assert.equal(normalizeRepositorySnapshot({ ...v2Shape, version: 2, committedChanges: ["added"] }), null, "a v3-only key under version 2 is rejected");
@@ -376,7 +378,7 @@ test("historicalRepositoryFromSnapshot projects the recorded snapshot into the p
 });
 
 test("snapshotFromLiveCheck starts a fresh baseline when a newly bound repository replaces an old sidecar", () => {
-  const { repositoryId: _repositoryId, ...oldShape } = validSnapshot({
+  const { repositoryId: _repositoryId, ...oldShape } = withoutCommitTimes({ ...validSnapshot(),
     version: 3,
     dirtyAtFirstCheck: ["old/dirty.ts"],
     becameDirty: ["old/later.ts"],
@@ -502,10 +504,10 @@ async function commitFixture(context) {
 test("readCommitsInWindow reads the commit count and distinct changed paths on HEAD within [since, until], sorted, using an argument array, and resolves null on failure", async (context) => {
   const root = await commitFixture(context);
   const result = await readCommitsInWindow(root, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" });
-  assert.deepEqual(result, { count: 2, paths: ["app/inside-one.ts", "app/inside-two.ts"], changes: ["added", "added"], truncated: false });
+  assert.deepEqual(result, { count: 2, paths: ["app/inside-one.ts", "app/inside-two.ts"], changes: ["added", "added"], truncated: false, times: ["2026-09-10T00:00:00.000Z", "2026-09-15T00:00:00.000Z"] });
 
   const none = await readCommitsInWindow(root, { since: "2026-10-01T00:00:00.000Z", until: "2026-10-02T00:00:00.000Z" });
-  assert.deepEqual(none, { count: 0, paths: [], changes: [], truncated: false });
+  assert.deepEqual(none, { count: 0, paths: [], changes: [], truncated: false, times: [] });
 
   assert.equal(await readCommitsInWindow(path.join(os.tmpdir(), "pomegr-not-a-repo-xyz"), { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" }), null);
   assert.equal(await readCommitsInWindow(root, { since: "not-a-date", until: "2026-09-20T00:00:00.000Z" }), null);

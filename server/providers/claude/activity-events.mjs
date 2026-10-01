@@ -79,7 +79,8 @@ function hasLocalCommandWrapper(content) {
   return values.some((value) => /<local-command-(?:stdout|stderr|caveat)>/i.test(value));
 }
 
-function isDirectWorkInput(record) {
+/** Direct user input: not a slash-command echo and not a local-command output wrapper. */
+export function isClaudeDirectUserInput(record) {
   const content = record?.message?.content;
   return !commandName(record)
     && !hasLocalCommandWrapper(content)
@@ -112,7 +113,7 @@ export function reduceClaudeSessionWorkStart(state, record) {
     && typeof record.uuid === "string" && record.uuid.length > 0 && record.uuid.length <= 512) {
     pendingCommand = { promptId: record.promptId, uuid: record.uuid, timestamp };
   }
-  if (isDirectWorkInput(record) || isAssistantWorkEvidence(record)) {
+  if (isClaudeDirectUserInput(record) || isAssistantWorkEvidence(record)) {
     startedAt = earlierTimestamp(startedAt, timestamp);
   }
   return { startedAt, pendingCommand };

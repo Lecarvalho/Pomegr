@@ -418,12 +418,76 @@ describe("T04 session workspace", () => {
     expect(url).toMatch(/agent=primary/);
   });
 
-  it.each([["Right now", "agents"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
+  it.each([["Right now", "agents"], ["Events", "activities"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
     mount({ tab: "overview" });
     const overview = await screen.findByLabelText("Session overview");
     for (const label of ["All agents", "View signals", "View evidence", "Open repository", "Open activities"]) expect(within(overview).queryByRole("button", { name: label })).not.toBeInTheDocument();
     await userEvent.setup().click(within(overview).getByRole("button", { name }));
     expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(new RegExp(`tab=${tab}`));
+  });
+
+  it("lays Overview out as a main column, the Events rail, and one bottom row, with no sparse Work-by-kind special case", async () => {
+    // One agent in Right now used to pull Work by kind up beside it; the bottom row now owns it at every density.
+    mount({ tab: "overview" });
+    const overview = await screen.findByLabelText("Session overview");
+    expect(overview).not.toHaveAttribute("data-work");
+    expect(overview).not.toHaveAttribute("data-density");
+    const [main, events, bottom] = [...overview.children];
+    expect(overview.children).toHaveLength(3);
+    expect(main).toHaveClass("sessionOverviewMain");
+    expect(events).toHaveClass("sessionEventsPanel");
+    expect(bottom).toHaveClass("sessionOverviewBottom");
+    expect([...main!.children].map((panel) => panel.getAttribute("aria-labelledby"))).toEqual(["session-right-now", "session-requests"]);
+    expect([...bottom!.children].map((panel) => panel.getAttribute("aria-labelledby"))).toEqual(["session-repository", "session-progress", "session-work", "session-cost"]);
+  });
+
+  it("keeps Repository in the bottom row as a compact tile: branch and comparison chip, then a muted meta line", async () => {
+    const base = sessionSummaryFixture();
+    const { container } = mount({ tab: "overview" }, sessionSummaryFixture({ repository: { ...base.repository, comparison: { branch: "main", kind: "base", ahead: 2, behind: 0, integrated: false } } }));
+    const tile = (await screen.findByRole("button", { name: "Repository" })).closest("section") as HTMLElement;
+    expect(tile.parentElement).toHaveClass("sessionOverviewBottom");
+    expect(tile.querySelector(".sessionRepositoryLineMain")).toHaveTextContent("feature/session-tabs2 commits ahead relative to main");
+    expect(tile.querySelector(".sessionRepositoryLineMain .commandChip")).not.toHaveClass("positive");
+    expect(tile.querySelector(".sessionRepositoryLineMeta")).toHaveTextContent("4 changed files · 1 pull request");
+    expect(container.querySelectorAll(".sessionRepositoryOneLine")).toHaveLength(1);
+  });
+
+  it("renders the Events rail from the summary and opens the tab each row continues", async () => {
+    const at = new Date(2026, 8, 14, 11, 21).toISOString();
+    const items = [
+      { id: "e2", kind: "agent_finished" as const, at, agentId: "primary", agentLabel: "Primary agent", durationMs: 240_000, signal: null, progress: null, resource: null, pullRequestNumber: null },
+      { id: "e1", kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null },
+    ];
+    mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 2 } }));
+    const rail = await screen.findByRole("region", { name: "Events" });
+    const user = userEvent.setup();
+    await user.click(within(rail).getByRole("button", { name: "Agent finished, Primary agent · 4m wall, 11:21" }));
+    expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(/tab=agents.*agent=primary/);
+    await user.click(within(rail).getByRole("button", { name: "Commit observed, Git-observed, 11:21" }));
+    expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(/tab=repository/);
+    expect(within(rail).getByText("2 events")).toBeInTheDocument();
+  });
+
+  it("shows the Events rail as unavailable, keeping its place, when the monitor sends no events feed", async () => {
+    const summary = sessionSummaryFixture();
+    delete (summary as Partial<typeof summary>).events;
+    mount({ tab: "overview" }, summary);
+    const rail = await screen.findByRole("region", { name: "Events" });
+    expect(within(rail).getByText("Event evidence unavailable.")).toBeInTheDocument();
+  });
+
+  it("shows five Events rows on phone with an expander for the rest", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    try {
+      const at = new Date(2026, 8, 14, 11, 21).toISOString();
+      const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null }));
+      mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 8 } }));
+      const rail = await screen.findByRole("region", { name: "Events" });
+      expect(within(rail).getAllByRole("button", { name: /^Commit observed/ })).toHaveLength(5);
+      expect(within(rail).getByRole("button", { name: "Show 3 earlier" })).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("draws only the latest 24 request slots on phone", async () => {

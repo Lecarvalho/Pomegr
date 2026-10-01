@@ -114,15 +114,14 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionOverviewHeading h2:not(.sessionEyebrow) { margin: 0; color: var(--command-ink); font: 600 var(--text-heading)/1.35 var(--font-ui); }
 .sessionOverviewHeading h2.sessionEyebrow { margin: 0; }
 .sessionOverviewEmpty, .sessionOverviewNote { margin: 0; color: var(--command-muted); font-size: var(--text-sm); line-height: 1.5; }
-.sessionRightNow { grid-column: 1 / -1; align-self: stretch; }
+/* Desktop: Right now and Requests stack in a 4/6 column beside the 2/6 Events rail; one bottom row follows. */
+.sessionOverviewMain { grid-column: 1 / 5; min-width: 0; align-self: stretch; display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 761px) {
-  .sessionOverview[data-work="beside"] .sessionRightNow { grid-column: 1 / 5; }
-  .sessionOverview[data-work="beside"] > .sessionWorkOverview { grid-column: 5 / 7; align-self: stretch; }
-  .sessionOverview[data-density="sparse"] .sessionRightNow[data-empty="true"] { padding-block: 14px; }
-  .sessionOverview[data-density="sparse"] .sessionRightNow[data-empty="true"] .sessionOverviewHeading { margin-bottom: 8px; }
+  .sessionRightNow[data-empty="true"] { padding-block: 14px; }
+  .sessionRightNow[data-empty="true"] .sessionOverviewHeading { margin-bottom: 8px; }
+  .sessionRequestStrip { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .sessionRequestStrip .sessionRequestTracks { flex: 1 1 auto; height: auto; min-height: 84px; max-height: 240px; }
 }
-.sessionRepositoryOneLine { grid-column: 5 / 7; align-self: stretch; padding: 14px 16px; }
-.sessionRepositoryOneLine .sessionOverviewHeading { margin-bottom: 8px; }
 .sessionRightNow ul, .sessionTransitionalList ul { margin: 0; padding: 0; display: grid; list-style: none; }
 .sessionRightNow li { min-width: 0; min-height: 48px; display: grid; grid-template-columns: 8px minmax(0, 1.2fr) minmax(0, 1.6fr) 152px 64px; align-items: center; column-gap: 12px; border-top: 1px solid var(--command-line); }
 .sessionRightNow li > span:not(.sessionAgentStatus, .sessionRightNowTokens) { min-width: 0; color: var(--command-muted); font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -149,9 +148,14 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .roleFamily-generic { --session-role: var(--role-generic); }
 .roleFamily-system { --session-role: var(--role-system); }
 .sessionRoleLegend i[class*="roleFamily-"] { background: var(--session-role, var(--command-line-strong)); }
-.sessionRepositoryLine { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.sessionRepositoryLineBranch { color: var(--command-ink); font: var(--text-sm) var(--font-data); }
-.sessionRepositoryLineMeta { min-width: 0; color: var(--command-muted); font-size: var(--text-sm); }
+.sessionRepositoryLine { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.sessionRepositoryLineMain { min-width: 0; margin: 0; display: flex; align-items: center; gap: 8px; }
+.sessionRepositoryLineMain .commandChip { flex: 0 0 auto; }
+.sessionRepositoryLineBranch { min-width: 0; overflow: hidden; color: var(--command-ink); font: var(--text-sm) var(--font-data); text-overflow: ellipsis; white-space: nowrap; }
+.sessionRepositoryLineMeta { min-width: 0; margin: 0; color: var(--command-muted); font-size: var(--text-xs); }
+@media (min-width: 761px) {
+  .sessionRepositoryOneLine .sessionOverviewHeading .panelHeadingLink { font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; }
+}
 
 /* Session Repository tab top bar (G1-G14 in the repository-snapshot design contract). */
 .repositoryTab { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
@@ -170,7 +174,7 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .repositoryTabBarSkeletonLine { height: 12px; width: 40%; border-radius: var(--control-radius); background: var(--command-panel-2); }
 .repositoryTabBarSkeletonLine + .repositoryTabBarSkeletonLine { width: 60%; }
 
-.sessionRequestStrip { grid-column: 1 / 5; padding: 14px 16px; }
+.sessionRequestStrip { padding: 14px 16px; }
 .sessionRequestHeading { align-items: flex-start; margin-bottom: 8px; }
 .sessionRequestHeadingMain { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
 .sessionRequestSummary { color: var(--command-muted); font-size: var(--text-xs); line-height: 1.4; }
@@ -188,7 +192,7 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionRoleLegend i { width: 8px; height: 8px; border-radius: 2px; background: var(--command-line-strong); }
 .sessionOverviewNote { margin-top: 9px; font-size: var(--text-caption); }
 .sessionProgressOverview, .sessionWorkOverview, .sessionCostOverview { min-width: 0; }
-.sessionOverviewBottom { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.sessionOverviewBottom { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: stretch; }
 .sessionOverviewValue { display: inline-block; color: var(--command-ink); font: 600 var(--text-title)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
 .sessionOverviewProgressHeadline { display: flex; align-items: baseline; gap: 10px; }
 .sessionProgressOverview > span { color: var(--command-muted); font-size: var(--text-sm); }
@@ -205,10 +209,38 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
 .sessionTransitionalList li { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--command-line); }
 .sessionTransitionalList li > span { color: var(--command-muted); font-size: var(--text-sm); }
 
-.sessionOverviewBottom .sessionOverviewPanel, .sessionOverview > .sessionWorkOverview { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
-:is(.sessionOverviewBottom, .sessionOverview > .sessionWorkOverview) .sessionOverviewHeading { margin-bottom: 0; }
-:is(.sessionOverviewBottom, .sessionOverview > .sessionWorkOverview) .sessionOverviewNote { margin-top: 0; }
+.sessionOverviewBottom .sessionOverviewPanel { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+.sessionOverviewBottom .sessionOverviewHeading { margin-bottom: 0; }
+.sessionOverviewBottom .sessionOverviewNote { margin-top: 0; }
 .sessionOverviewBottom .sessionOverviewMeter { margin-top: 4px; }
+
+/* Events rail: each row is one quiet-role button (time, neutral glyph, label and detail, chevron). */
+.sessionOverviewPanel.sessionEventsPanel { grid-column: 5 / 7; align-self: stretch; padding: 0; display: flex; flex-direction: column; }
+.sessionEventsPanel .sessionOverviewHeading { margin: 0; padding: 14px 16px 10px; justify-content: flex-start; }
+.sessionEventsPanel > .sessionOverviewEmpty { padding: 0 16px 16px; }
+/* Row height and collapsed row count are the single source for the expanded desktop height below; the count must equal DESKTOP_VISIBLE_EVENTS. */
+.sessionEventList { --event-row-height: 40px; --event-collapsed-rows: 9; margin: 0; padding: 0; display: grid; list-style: none; }
+.sessionEventRow.commandQuietAction { width: 100%; min-height: var(--event-row-height); padding: 8px 16px; display: grid; grid-template-columns: 40px 16px minmax(0, 1fr) 12px; align-items: center; justify-content: stretch; gap: 10px; border: 0; border-top: 1px solid var(--command-line); border-radius: 0; color: var(--command-ink); font-size: var(--text-sm); font-weight: 400; text-align: left; white-space: normal; }
+.sessionEventRow.commandQuietAction > svg.sessionEventGlyph { width: 16px; height: 16px; color: var(--command-muted); }
+.sessionEventRow.commandQuietAction > svg.sessionEventChevron { width: 12px; height: 12px; color: var(--command-line-strong); }
+.sessionEventTime { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); font-variant-numeric: tabular-nums; }
+.sessionEventText { min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.sessionEventLabel { flex: 0 1 auto; min-width: 0; overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.sessionEventDetail { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--command-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.sessionEventsFooter { margin-top: auto; min-height: 44px; padding: 6px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); }
+.sessionEventsTotal { margin-left: auto; white-space: nowrap; }
+/* Inside the scrolling list an outside focus ring would be clipped, so it is drawn inside the row. */
+.sessionEventRow.commandQuietAction:focus-visible { outline-offset: -2px; }
+/* Desktop: expanding scrolls the list inside the collapsed nine-row height, so the Requests panel sharing this row never stretches. Phone keeps the page scroll. */
+@media (min-width: 761px) {
+  .sessionEventList[data-expanded="true"] { max-height: calc(var(--event-row-height) * var(--event-collapsed-rows)); overflow-y: auto; }
+}
+/* Below 1181px the 2/6 rail would be too narrow to read a row, so Events drops under Requests at full width. */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .sessionOverviewMain, .sessionOverviewPanel.sessionEventsPanel { grid-column: 1 / -1; }
+  .sessionOverviewPanel.sessionEventsPanel { align-self: start; }
+  .sessionOverviewBottom { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (max-width: 1100px) {
   .commandSessionView .sessionKpiStrip { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 20px; }
@@ -266,7 +298,7 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .sessionMoreMenu > button { justify-content: flex-start; }
   .sessionOverview { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .sessionOverviewPanel, .sessionRepositoryOneLine, .sessionRequestStrip,
-  .sessionOverviewBottom .sessionOverviewPanel, .sessionOverview > .sessionWorkOverview { padding: 12px 14px; }
+  .sessionOverviewBottom .sessionOverviewPanel { padding: 12px 14px; }
   .sessionOverviewHeading, .sessionRepositoryOneLine .sessionOverviewHeading { margin-bottom: 6px; }
   .sessionRightNow:has(> ul) { padding-bottom: 0; }
   .sessionRightNow .sessionRequestSummary { display: none; }
@@ -276,13 +308,22 @@ button.sessionIdChip:focus-visible { outline: 2px solid var(--focus-ring); outli
   .sessionRepositoryLineBranch { font-size: var(--text-xs); }
   .sessionRepositoryLineMeta { font-size: var(--text-xs); }
   .sessionRepositoryPullRequests, .sessionRequestSummaryLead, .sessionRoleLegend > .sessionEyebrow, .sessionWorkOverview .sessionOverviewNote { display: none; }
+  .sessionOverviewMain, .sessionOverviewBottom { display: contents; }
   .sessionRightNow { grid-column: 1; grid-row: auto; order: 1; }
-  .sessionRepositoryOneLine { grid-column: 1; order: 3; }
-  .sessionRequestStrip { grid-column: auto; order: 4; }
+  .sessionOverviewPanel.sessionEventsPanel { grid-column: 1; order: 2; }
+  .sessionRequestStrip { grid-column: auto; order: 3; }
+  .sessionRepositoryOneLine { grid-column: 1; order: 4; }
   .sessionProgressOverview { grid-column: 1; min-height: 0; order: 5; }
   .sessionWorkOverview { grid-column: 1; min-height: 0; order: 6; }
   .sessionCostOverview { grid-column: 1; min-height: 0; order: 7; }
-  .sessionOverviewBottom { display: contents; }
+  .sessionEventsPanel .sessionOverviewHeading { padding: 2px 14px; }
+  .sessionEventsPanel .sessionOverviewHeading .panelHeadingLink { margin-block: 0; }
+  .sessionEventsPanel .sessionRequestSummary { flex-basis: auto; font-size: var(--text-xs); }
+  .sessionEventsPanel > .sessionOverviewEmpty { padding: 0 14px 14px; }
+  .sessionEventRow.commandQuietAction { min-height: 48px; padding: 6px 14px; line-height: 1.3; }
+  .sessionEventText { flex-direction: column; align-items: stretch; gap: 0; }
+  .sessionEventDetail { flex: 0 0 auto; }
+  .sessionEventsFooter { padding: 0 14px; }
   .sessionRightNow li { position: relative; padding: 10px 14px; grid-template-columns: 8px minmax(0, 1fr) auto; grid-template-rows: auto auto; column-gap: 12px; row-gap: 2px; }
   .sessionRightNow li > time, .sessionAgentIdentity small, .sessionCurrentActivityMark { display: none; }
   .sessionRightNow li > .sessionAgentStatus { grid-column: 1; grid-row: 1 / span 2; }

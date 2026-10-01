@@ -7,15 +7,16 @@ import { agentRoleLabel, comparisonLabel, compactNumber, formatDuration, session
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
+import { SessionEventsPanel } from "./SessionEventsPanel";
+import { Unavailable } from "./SessionOverviewUnavailable";
 import type { SessionRouteQuery } from "./session-route";
 
 const REQUEST_STRIP_SLOTS = 48;
 // Phone draws half the window so each bar stays wide enough to read and tap.
 const PHONE_REQUEST_STRIP_SLOTS = 24;
 
-function Unavailable({ readiness, label }: { readiness: "loading" | "ready" | "unavailable"; label: string }) {
-  return <p className="sessionOverviewEmpty" role={readiness === "loading" ? "status" : undefined}>{readiness === "loading" ? `Loading ${label}…` : `${label} unavailable.`}</p>;
-}
+// A monitor that predates the events feed sends none; say so instead of failing the whole Overview.
+const EVENTS_UNAVAILABLE: SessionSummaryDomain["events"] = { readiness: "unavailable", items: [], total: 0 };
 
 export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   summary: SessionSummaryDomain;
@@ -52,9 +53,6 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const repositoryChangesLabel = repositoryChangedFiles === null ? "—" : repositoryChangedFiles === 0 ? "No local changes" : `${repositoryChangedFiles} changed file${repositoryChangedFiles === 1 ? "" : "s"}`;
   const repositoryPullRequestCount = summary.repository.pullRequestCount;
   const repositoryPullRequestsLabel = repositoryPullRequestCount === null ? "—" : `${repositoryPullRequestCount} pull request${repositoryPullRequestCount === 1 ? "" : "s"}`;
-  const sparse = summary.rightNow.length <= 2;
-  // A sparse Right now leaves most of its row empty, so Work by kind shares that row instead of the bottom one.
-  const workBeside = sparse && showWork;
 
   const workSection = <section className="sessionOverviewPanel sessionWorkOverview" aria-labelledby="session-work">
     <div className="sessionOverviewHeading"><h2 id="session-work" className="sessionEyebrow">Work by kind · session</h2></div>
@@ -66,7 +64,8 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
       </>}
   </section>;
 
-  return <div className="sessionOverview" data-density={sparse ? "sparse" : "full"} data-work={workBeside ? "beside" : undefined} aria-label="Session overview">
+  return <div className="sessionOverview" aria-label="Session overview">
+    <div className="sessionOverviewMain">
     <section className="sessionOverviewPanel sessionRightNow" data-empty={agentReady === "ready" && summary.rightNow.length === 0 ? "true" : undefined} aria-labelledby="session-right-now">
       <div className="sessionOverviewHeading"><div className="sessionRequestHeadingMain"><PanelHeadingLink id="session-right-now" onOpen={() => onNavigate({ tab: "agents" })}>Right now</PanelHeadingLink><span className="sessionRequestSummary">latest action per active agent</span></div></div>
       {agentReady !== "ready" ? <Unavailable readiness={agentReady} label="Agent evidence" /> : summary.rightNow.length === 0
@@ -84,8 +83,6 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
           </li>;
         })}</ul>}
     </section>
-
-    {workBeside && workSection}
 
     <section className="sessionOverviewPanel sessionRequestStrip" aria-labelledby="session-requests">
       <div className="sessionOverviewHeading sessionRequestHeading">
@@ -109,19 +106,24 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
           <div className="sessionRoleLegend" aria-label="Agent role legend"><span className="sessionEyebrow">Agent role</span>{[...roleCounts].map(([role, agents]) => <span key={role}><i className={roleFamilyPresentation(role).className} aria-hidden="true" />{agentRoleLabel({ role, customType: null })}{agents.size > 1 ? ` ×${agents.size}` : ""}</span>)}</div>
         </>}
     </section>
+    </div>
 
+    <SessionEventsPanel key={summary.sessionId} events={summary.events ?? EVENTS_UNAVAILABLE} onNavigate={onNavigate} />
+
+    <div className="sessionOverviewBottom">
     <section className="sessionOverviewPanel sessionRepositoryOneLine" aria-labelledby="session-repository">
       <div className="sessionOverviewHeading"><PanelHeadingLink id="session-repository" onOpen={() => onNavigate({ tab: "repository" })}>Repository</PanelHeadingLink></div>
       {repositoryReady !== "ready" ? <Unavailable readiness={repositoryReady} label="Repository evidence" /> : !summary.repository.available
         ? <p className="sessionOverviewEmpty">No repository detected.</p>
-        : <p className="sessionRepositoryLine">
-          <span className="sessionRepositoryLineBranch">{summary.repository.branch || "Branch unavailable"}</span>
-          {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`}>{repositoryComparisonText}</span>}
-          <span className="sessionRepositoryLineMeta">{repositoryChangesLabel}<span className="sessionRepositoryPullRequests"> · {repositoryPullRequestsLabel}</span></span>
-        </p>}
+        : <div className="sessionRepositoryLine">
+          <p className="sessionRepositoryLineMain">
+            <span className="sessionRepositoryLineBranch" title={summary.repository.branch || undefined}>{summary.repository.branch || "Branch unavailable"}</span>
+            {repositoryComparisonText && <span className={`commandChip${repositoryComparisonTone ? ` ${repositoryComparisonTone}` : ""}`}>{repositoryComparisonText}</span>}
+          </p>
+          <p className="sessionRepositoryLineMeta">{repositoryChangesLabel}<span className="sessionRepositoryPullRequests"> · {repositoryPullRequestsLabel}</span></p>
+        </div>}
     </section>
 
-    {(showProgress || (showWork && !workBeside) || showCost) && <div className="sessionOverviewBottom">
     {showProgress && <section className="sessionOverviewPanel sessionProgressOverview" aria-labelledby="session-progress">
       <div className="sessionOverviewHeading"><h2 id="session-progress" className="sessionEyebrow">Progress</h2></div>
       {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Progress evidence" /> : progress ? <>
@@ -131,13 +133,13 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
       </> : <><div className="sessionProgressTasksRow"><span>Plan tasks</span><span>{completedTasks} of {summary.planTasks.length} done</span></div><div className="sessionOverviewMeter"><span style={{ width: `${Math.round(completedTasks / summary.planTasks.length * 100)}%` }} /></div><small>Agent-maintained checklist, may be stale. No agent estimate recorded.</small></>}
     </section>}
 
-    {showWork && !workBeside && workSection}
+    {showWork && workSection}
 
     {showCost && <section className="sessionOverviewPanel sessionCostOverview" aria-labelledby="session-cost">
       <div className="sessionOverviewHeading"><h2 id="session-cost" className="sessionEyebrow">Cost</h2></div>
       <div className="sessionCostRow"><span>{summary.source} API list-rate estimate</span><strong className="sessionCostAmount">{new Intl.NumberFormat("en-US", { style: "currency", currency: cost!.currency }).format(cost!.amount)}</strong></div>
       <p className="sessionOverviewNote">Estimate, not a bill. Observed {sessionRelativeTime(cost!.observedAt)}.</p>
     </section>}
-    </div>}
+    </div>
   </div>;
 }

@@ -67,6 +67,7 @@ import { resolveClaudeProfileRoots } from "./profile-roots.mjs";
 import { normalizedSessionHistory, publishNormalizedHistoryActivity, publishNormalizedHistoryRequests } from "../kernel/session-history.mjs";
 import { readClaudeHistoryRecords } from "./history-reader.mjs";
 import { createClaudeSessionWorkStartReader } from "./session-work-start.mjs";
+import { claudeUserMessageTimes } from "./user-message-times.mjs";
 import { createSourceLedger } from "../kernel/source-ledger.mjs";
 import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
@@ -284,9 +285,11 @@ export function createClaudeProvider(options = {}) {
     const recordsByFile = new Map(files.map((file) => [file, completeReads.get(file)?.records || tailCache.read(file, { stat: readGenerations.stat(file), generation: readGenerations.generation(file) })]));
     const usageLimitRejections = claudeFiveHourLimitRejections([...recordsByFile.values()]);
     const mainRecords = recordsByFile.get(mainFile) || [];
-    const primaryStartedAt = completeHistory
-      ? claudeSessionWorkStartedAt(mainRecords)
-      : await sessionWorkStartReader.read(mainFile);
+    // One whole-transcript pass yields both facts. The 2 MiB record tail and the activity window
+    // below both slide, so neither can back a user-message event that must not disappear.
+    const { startedAt: primaryStartedAt, userMessageTimes } = completeHistory
+      ? { startedAt: claudeSessionWorkStartedAt(mainRecords), userMessageTimes: claudeUserMessageTimes(mainRecords) }
+      : await sessionWorkStartReader.readSessionFacts(mainFile);
     const cwd = projectCwd(mainRecords);
     const mainStat = readGenerations.stat(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
@@ -481,6 +484,7 @@ export function createClaudeProvider(options = {}) {
       usageLimitRejections,
       toolCalls,
       activity: completeHistory ? activity : recentActivityEvents(activity, 256),
+      userMessageTimes,
       planTasks,
       compactions,
       efficiencyRuleEvidence: {

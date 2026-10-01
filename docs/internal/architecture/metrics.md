@@ -805,6 +805,121 @@ snapshot keeps the legacy refresh behavior above.
 
 The monitor parses tool results privately and returns only an allowlist: host, repository slug, pull-request number, bounded title, canonical URL, open/draft/merged/closed state, head and base branch names, non-negative additions and deletions, association source, and timestamps. Commands, raw tool output, PR bodies, authors, comments, reviews, checks, and credentials never enter the browser API. GitHub CLI and network failures degrade independently; a safely parsed transcript link can remain visible without current metadata.
 
+## Session events
+
+The `session-summary` domain carries `events`: a bounded feed of high-level transitions,
+newest first. It holds at most 50 events. `total` counts the events derivable from the
+retained evidence before that cap. It is not a count of everything that happened in the
+session, because each source is itself bounded: the newest 256 user-message times, the newest
+50 commit times, the retained pull-request creations (eight for Claude), one peak per
+resource field, and only the latest signal and estimate. Each event has an opaque ID, a fixed kind, the time recorded with
+its evidence, and only the fields its kind needs; every other field is null. D derives the
+feed from committed normalized evidence, never from the observation time and never from new
+provider parsing. The feed selects recorded transitions. It is not a complete session
+history, and a missing event is not proof that nothing happened. The privacy limits are in
+`AGENTS.md`.
+
+An event is never shown and then withdrawn while its evidence is retained. User-message and
+commit events come from recorded lists that only grow until their bound; an older time then
+leaves the list, and by then it is already outside the 50 events the feed shows. Signal,
+estimate, and resource-peak events are latest-only by definition and move rather than
+accumulate.
+
+| Kind | Source | Event time | Fields |
+| --- | --- | --- | --- |
+| `agent_started` | A delegated agent's recorded start | The agent's `startedAt`, the earliest transcript record time | Agent ID and label |
+| `agent_finished`, `agent_stopped` | The agent's normalized status is `finished` or `stopped` | The agent's `updatedAt`, else `lastSeen` | Agent ID, label, wall duration |
+| `signal_reported` | The session's current reported signal and each agent's current signal | The signal's `reportedAt` | Label and tone; agent ID and label for an agent signal |
+| `estimate_updated` | The session's current progress estimate | The estimate's `reportedAt` | Percent and phase |
+| `user_message` | The adapter's recorded user-message times (`userMessageTimes` evidence) | The recorded message time | None |
+| `resource_peak` | The retained resource peaks | The observation time of the highest retained peak for the field | The resource field |
+| `commit_observed` | The recorded in-window commit times in the repository snapshot sidecar | The commit's committer time | None |
+| `pull_request_opened` | A recorded pull-request creation | The recorded creation time | The pull-request number, when listed |
+
+Ordering and identity:
+
+- Events sort newest first by recorded time. Events at the same time sort by kind order,
+  then by agent or other scope, so equal inputs always derive the same feed.
+- An ID is a truncated digest of the kind, scope, time, and an ordinal for events that share
+  all three. It carries no provider ID, URL, or hash. An event whose recorded time changes,
+  such as a newer signal, gets a new ID.
+- A candidate whose timestamp is missing or unparseable is skipped; no event takes the
+  projection time.
+- Readiness follows three of the summary's sections: `core`, `agentEvidence`, and
+  `activityEvidence`. The feed is `loading`, with no items, while any of them is loading, so
+  a partial list is never served as ready. It is `unavailable`, with no items, when one is
+  unavailable and none is loading. Otherwise it is `ready`.
+- The `repository` section does not gate the feed. Its live check restarts whenever the
+  session records a new pull-request creation or its branch changes, and it stays loading
+  while the Git reader fails; gating on it would withdraw a served feed each time. The feed
+  needs nothing from that section: commit times are recorded evidence, and a pull-request
+  number is null until the pull-request list has it.
+- Resource peaks are best-effort. Retained resources are not a summary section: they come
+  from the resources store with their own readiness, and a peak appears only when that block
+  is ready. The feed does not wait for it.
+- For a live session the recorded commit times are written right after each live Git check,
+  and the summary recommits when the write lands, so a new commit event follows its check by
+  that one recommit.
+
+Limits of each source:
+
+- **Agent start** is the earliest transcript record time for that agent. The primary agent
+  has no start event: it is identified by the normalized `primary` agent ID, and the session
+  already has its own start time.
+- **Agent finish and stop** mirror the normalized agent status and its terminal time. They
+  report what the transcript showed, not authoritative completion, success, or cause. The
+  duration is wall time, so it includes idle gaps, and is null when the agent has no valid
+  non-negative duration.
+- **Signals and the estimate** are latest-only. Pomegr retains no signal or estimate history,
+  so earlier values never appear, and a newer report replaces the event instead of adding one.
+  They are agent-reported and may be stale. A signal event carries only its label and tone,
+  never its description.
+- **User messages** exist only for Claude, whose transcript records user input; Codex
+  sessions contribute none. The Claude adapter replays the whole main transcript once, then
+  only appended bytes, in the same pass that finds the session's work start, and keeps the
+  recorded time of each user message in the optional `userMessageTimes` evidence field:
+  canonical UTC timestamps, oldest to newest, the newest 256. The field holds nothing else,
+  and it is checkpointed with the evidence. A user message is direct input in the main
+  conversation or the answer to a requested input. Slash-command echoes, local-command
+  output, interruption markers, sidechain records, meta records, compaction summaries, and
+  task notifications are not user messages. The feed does not read the activity evidence,
+  which is a window of the newest 256 activity rows of any kind and would drop older
+  messages in a tool-heavy session; that window also uses a broader input rule, so its
+  user-input rows can outnumber these events. A record without a parseable recorded
+  timestamp is excluded; the file time that the activity row falls back to is not recorded
+  evidence. A single record over 8 MiB is skipped. A checkpoint written before the field
+  existed loads unchanged and has no user-message events until the session is read again.
+  An event carries only the time. It does not carry the message, its type, or a request
+  number, and it is not linked to any request.
+- **Resource peaks** are the retained session high for each resource field (CPU cores,
+  memory, read rate, write rate), taken from the retained peaks the resources domain serves.
+  When two retained peaks share the highest value, the earlier observation is used. A peak
+  event can move when a later, higher peak replaces it. The event carries no value, peak
+  ID, or matched task. Peak timing is process-tree measurement, not attribution to a task
+  or request.
+- **Commits** are committer times of commits Pomegr observed on the recorded branch inside
+  the session window, from the session start to the time of a live Git check. Each check
+  adds the times it reads to `commitTimesInWindow` in the repository snapshot sidecar: times
+  only, the newest 50. Live and historical sessions both read that recorded list, so the
+  events stay when the session ends, the branch merges, or more commits land. The live
+  repository value and its eight-entry commit list are not read, and current Git state is
+  never substituted.
+  The events are not the **Commits in session** count and can exceed it. That count is the
+  latest check's number of commits in the window. The recorded times only accumulate: an
+  amended or rebased commit is a new commit with a new committer time, so its old time and
+  its new time are both recorded, while the count still counts one commit. A reset that
+  drops a commit lowers the count and leaves its time. Each event means a commit with that
+  time was observed at some check, not that the commit is still on the branch. Beyond 50
+  recorded times the oldest leave. A sidecar written before the list existed has none until
+  the session's next live check, and a session whose recorded snapshot is not served for
+  its repository identity has none at all. Commits by anyone on that branch are included,
+  none is attributed to an agent or request, and neither hash nor subject is exposed.
+- **Pull request opened** is the recorded creation time of a creation made in the session,
+  from a recognized tool result with a canonical GitHub URL. The number is attached only when
+  the session's pull-request list contains that same URL, and is otherwise null. The URL,
+  actor, and creation ID are never exposed. A pull request associated only through the live
+  branch has no recorded creation and no event.
+
 ## Agents model and work analytics
 
 The Agents page describes model choice and delegation across retained normalized

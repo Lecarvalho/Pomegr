@@ -86,6 +86,47 @@ export type SessionSummaryDomain = SessionDomainBase & {
     items: Array<RequestSnapshot & { agentRole: Agent["role"]; agentLabel: string }>;
   };
   planTasks: MonitorState["planTasks"];
+  events: SessionEventFeed;
+};
+
+export const SESSION_EVENT_KINDS = [
+  "agent_started",
+  "agent_finished",
+  "agent_stopped",
+  "signal_reported",
+  "estimate_updated",
+  "user_message",
+  "resource_peak",
+  "commit_observed",
+  "pull_request_opened",
+] as const;
+
+export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
+
+/** Newest-first cap on `SessionEventFeed.items`; `total` counts the events derivable from retained evidence before the cap, not a complete session history. */
+export const SESSION_EVENT_LIMIT = 50;
+
+/**
+ * One high-level transition derived monitor-side from already-normalized evidence.
+ * Every field other than `id`, `kind`, and `at` is null unless its kind uses it.
+ */
+export type SessionEvent = {
+  id: string; // opaque digest, stable while the underlying evidence is unchanged
+  kind: SessionEventKind;
+  at: string; // ISO timestamp recorded with the evidence, never the projection time
+  agentId: string | null; // agent_started, agent_finished, agent_stopped, agent-scoped signal_reported
+  agentLabel: string | null;
+  durationMs: number | null; // agent_finished and agent_stopped wall time
+  signal: Pick<Agent["signal"] & object, "label" | "tone"> | null; // signal_reported, agent-reported
+  progress: Pick<NonNullable<NonNullable<MonitorState["session"]>["progress"]>, "percent" | "phase"> | null; // estimate_updated
+  resource: ResourceField | null; // resource_peak: the retained session high for that resource
+  pullRequestNumber: number | null; // pull_request_opened, when the recorded creation matches a listed pull request
+};
+
+export type SessionEventFeed = {
+  readiness: Readiness;
+  items: SessionEvent[]; // newest first, at most SESSION_EVENT_LIMIT
+  total: number;
 };
 
 export type AgentsDomain = SessionDomainBase & {

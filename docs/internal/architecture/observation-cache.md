@@ -204,6 +204,41 @@ composed domain preserves the readiness of its source sections: a ready core doe
 make missing agent, context, activity or request evidence ready. Request-strip readiness
 is retained separately from its bounded items; missing evidence is never a measured zero.
 
+`session-summary` also carries `events`, a bounded feed of high-level transitions: agent
+starts, finishes and stops, the latest reported signals and progress estimate, user-message
+times, one retained peak per resource field, Git-observed commits in the session window,
+and pull-request creations. D derives it in the same commit as the other summary fields,
+from committed normalized evidence only: the public agents, session signal and progress,
+the recorded user-message times and pull-request-creation evidence, the public pull
+requests, the recorded in-window commit times from the repository snapshot sidecar, and
+the committed retained-resource block. D itself adds no acquisition, provider parsing, or
+persistence, and a GET serves the committed value. Its two recorded lists are written
+upstream: U2 produces the optional `userMessageTimes` evidence field (Claude only, the
+newest 256 recorded times, checkpointed with the evidence), and the live Git check records
+`commitTimesInWindow` in the sidecar (the newest 50 committer times). The commit times
+reach the projection through the monitor-private `repositoryRecordForSession` side
+channel, which reads the recorded snapshot once per projection for both them and
+`gitObservedFiles`, and never ride on `session.repository`. When the recorder holds no
+answer for a session (it keeps 512 by recency), the domain store reuses the commit times
+of that session's last committed projection until the recorder reads the sidecar back, so
+commit events are not withdrawn meanwhile. A session evicted from both the recorder and
+the derived-domain cache is rebuilt without them until that read recommits; no GET or
+projection reads the sidecar synchronously to close that gap. The feed reads
+neither the windowed activity evidence nor the live repository commit list. Items are the
+50 newest by the time recorded with their evidence, never the observation time, and
+`total` counts the events derivable from that retained evidence before the cap, not a
+complete session history. The feed is `loading` with no items while any of the `core`,
+`agentEvidence`, or `activityEvidence` sections is loading, `unavailable` when one is
+unavailable and none is loading, and otherwise `ready`. The `repository` section never
+gates it: that section returns to loading whenever its live check restarts, which would
+withdraw a served feed. Retained resources
+are not a summary section, so resource peaks are best-effort and appear when that block is
+ready. A retained-resource commit, a recorded sidecar write, or an evidence change
+re-projects the summary through the existing commit path. Event IDs are opaque digests, so identical inputs derive an
+identical feed and, because the top-level observation time is excluded from semantic
+comparison, publish no new revision. Event sources and limits are in
+[Session events](metrics.md#session-events).
+
 Each projection has its own monotonic revision clock and bounded readiness. D stages and
 serializes every candidate before atomically publishing any of them. A failure therefore
 retains the complete last-known-good set and emits no partial revision events. The
@@ -2450,6 +2485,16 @@ safe hash of normalized identity and never contain a source path. Pomegr-owned c
 checkpoint writes never mutate provider sources and stay compatible with read-only
 observation.
 
+The `session-summary` event feed adds no checkpoint, L1, or persisted field; D derives it
+from evidence this contract already allows. Each event may expose only an opaque ID, a
+fixed kind, the timestamp recorded with its evidence, and the fields its kind needs: a
+normalized agent ID and label, the agent's wall duration, a signal's label and tone, the
+progress estimate's percent and phase, a fixed resource field, and a pull-request number.
+It never carries user-message content or type, request numbers, commit hashes or
+subjects, pull-request URLs, resource values or matched tasks, signal descriptions, or
+provider IDs. Commit and pull-request events name no agent or request, and a historical
+session gains no event from current Git state.
+
 Browser responses remain subject to every allowlist and privacy invariant in `AGENTS.md`.
 The optional cache message-change sequence is derived during complete-history provider
 normalization and committed only as the fixed `post_tool_task_notification_resume` enum
@@ -2791,7 +2836,8 @@ Historical repository snapshots ship as a sidecar next to each session checkpoin
 versioned, and validated as a whole record (any invalid field rejects the file, never a
 partial read). It holds the recorded branch, `isMain`, at most 200 recorded uncommitted
 files with their status, branch comparison and its check time, at most 10 allowlisted pull
-requests with their check time, `commitsInSession`, and the check timestamp. The
+requests with their check time, `commitsInSession`, the bounded in-window commit times, and
+the check timestamp. The
 checkpoint payload schema is unchanged. The monitor starts the bounded sidecar load with
 startup and gates checkpoint projection on its completion; it does not hold live observer
 attachment. That load reads only the sidecars whose checkpoint is on disk, the set the
@@ -2830,12 +2876,12 @@ Snapshot version 2 adds the Git-observed lists. `dirtyAtFirstCheck` is set once,
 first live check under version 2, and never replaced or shown; it survives restarts in the
 sidecar. `becameDirty` is the sticky union of status paths absent from that baseline.
 `committedInWindow` is the latest successful `readCommitsInWindow` result (`git log
---format=%H --name-status --no-renames --since --until HEAD` with `core.quotepath=false`
+--format="%H %cI" --name-status --no-renames --since --until HEAD` with `core.quotepath=false`
 and an argument array, 3
 seconds, 256 KiB), read only when the live branch equals the recorded branch and carried
 forward when a read fails. `gitObservedTruncated` is sticky. Each list holds at most 200
 paths and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap. A
-version 1 record loads as version 4 with null sentinels, meaning "never measured". A
+version 1 record loads as version 5 with null sentinels, meaning "never measured". A
 session already in progress when it first meets version 2 takes its then-current dirty
 set as the baseline, so earlier edits are not Git-observed.
 
@@ -2845,16 +2891,34 @@ name-status letters across the window's commits, newest first: `deleted` when th
 change deleted it, `added` when any commit in the window added it, otherwise `modified` (a
 type change counts as modified). It travels with `committedInWindow`: carried forward when a
 read fails, replaced on a successful read, and null when a read returned paths without
-change kinds. A version 2 record loads as version 4 with `committedChanges` null.
-Earlier versions load with `repositoryId` null; for every provider, they can satisfy the
+change kinds. A version 2 record loads as version 5 with `committedChanges` null.
+Version 4 adds `repositoryId`. Earlier versions load with `repositoryId` null; for every provider, they can satisfy the
 repository-identity gate again only once the same session is re-observed and its evidence
 records a matching proven single-repository identity. `launch` evidence is served
 its recorded sidecar whatever the sidecar's repository ID, as before the rule.
 
+Snapshot version 5 adds `commitTimesInWindow`: null, or at most 50 committer times of the
+window's commits as canonical UTC timestamps, oldest to newest. It holds times only, never
+a hash, subject, or author; the reader counts each `%H` header and keeps its `%cI` time.
+The whole record is rejected when the list is over its bound, out of order, or holds
+anything but a canonical timestamp. Null means the window was never read. The list only
+accumulates within one bound repository identity: a successful read adds its times, a
+failed read carries the list forward, and a read that no longer lists a commit does not
+remove its time. Commits that share a second are kept as many times as the fullest single
+read showed. Beyond 50 the oldest times leave. A version 4 record is validated against its
+own exact key set and loads as version 5 with `commitTimesInWindow` null, so no recorded
+repository history is discarded on upgrade; the next live check of that session writes
+version 5. `prune()` keeps, without loading, a sidecar whose snapshot version is higher
+than this build knows, so a downgrade does not destroy records written by a newer build.
+The list feeds only the session-event derivation, through the
+`repositoryRecordForSession` side channel. It is never placed on `/api/state`
+`session.repository` or in the `repository` domain, and a historical session serves only
+its recorded list. See [Session events](metrics.md#session-events).
+
 The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
 from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in
 both. `change` is the committed path's recorded net change, else null; the projection
-drops any other value, and an uncommitted path always carries null. It travels through the `gitObservedForSession` side channel (observation runtime to
+drops any other value, and an uncommitted path always carries null. It travels through the `repositoryRecordForSession` side channel (observation runtime to
 session-domain store to projection), like `fileHistory`, and the projection re-validates
 every path with the repository-path validator. It appears only in the `repository`
 domain, never on `/api/state` `session.repository`. The UI drops a path that already has

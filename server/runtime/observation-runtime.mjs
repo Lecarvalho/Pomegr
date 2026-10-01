@@ -136,25 +136,33 @@ export function createObservationRuntime(options = {}) {
     maxSessions: options.historyMaxSessions, maxResident: options.historyMaxResident ?? 0,
   });
   let sessionDomainServing; // assigned once observationCoordinator exists below; the store only calls it later
+  // The session's own recorded sidecar, live or historical, gated by its repository identity.
+  function recordedRepositorySnapshotForSession(sessionId) {
+    // The recorder holds fewer sidecars than the disk. One it has dropped is read back off
+    // the request path, and the session's domains recommit when it holds a snapshot.
+    if (repositorySnapshotRecorder && !repositorySnapshotRecorder.has(sessionId)) {
+      void repositorySnapshotRecorder.ensure(sessionId).then((found) => {
+        if (found && observationServingActive) sessionDomainServing.commit(sessionId);
+      }).catch(() => {});
+    }
+    return sessionRepositorySnapshot(
+      observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
+      { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
+    );
+  }
   const sessionDomains = options.sessionDomainStore || createSessionDomainStore({
     now, maxSessions: options.sessionDomainMaxSessions, idleMs: options.sessionDomainIdleMs,
     isProtected: (sessionId) => sessionDomainServing.protectedSessionIds().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
-    gitObservedForSession: (sessionId) => {
-      // The recorder holds fewer sidecars than the disk. One it has dropped is read back off
-      // the request path, and the session's domains recommit when it holds a snapshot.
-      if (repositorySnapshotRecorder && !repositorySnapshotRecorder.has(sessionId)) {
-        void repositorySnapshotRecorder.ensure(sessionId).then((found) => {
-          if (found && observationServingActive) sessionDomainServing.commit(sessionId);
-        }).catch(() => {});
-      }
-      return gitObservedFilesFromSnapshot(sessionRepositorySnapshot(
-        observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
-        { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
-      ));
-    }, onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
+    // One recorded-snapshot read per projection. The commit times are monitor-private and feed
+    // only the session-event derivation.
+    repositoryRecordForSession: (sessionId) => {
+      const recorded = recordedRepositorySnapshotForSession(sessionId);
+      return { gitObserved: gitObservedFilesFromSnapshot(recorded), commitTimes: recorded?.commitTimesInWindow ?? null };
+    },
+    onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const repositoryAssociations = createSessionRepositoryAssociations({
     registry, inventory: repositoryInventory,
