@@ -72,7 +72,7 @@ guidance.
 
 - **Skill changes:** Edit the canonical skill sources and regenerate both provider packages; follow [Skill changes](docs/internal/development/plugins.md#skill-changes).
 - **Plugin upgrade:** Bump the shared Claude and Codex plugin version and rebuild both packages; follow [Plugin upgrade](docs/internal/development/plugins.md#plugin-upgrade).
-- **Desktop release versioning and publish:** Set the canonical package version, merge the release commit, create its immutable tag, and manually publish the signed Windows artifacts by following [Publish signed artifacts](docs/internal/operations/desktop-releases.md#publish-signed-artifacts).
+- **Desktop release versioning and publish:** `npm run release:windows -- --tag vX.Y.Z` sets the canonical package version, pushes the release commit and its immutable tag, and dispatches the workflow that publishes the signed Windows artifacts. See [Publish signed artifacts](docs/internal/operations/desktop-releases.md#publish-signed-artifacts).
 - **Public landing site:** Deploy the independently audited Cloudflare Worker artifact; follow [Release the exact audited artifact](docs/internal/operations/website.md#5-release-the-exact-audited-artifact).
 
 ## Current limitations

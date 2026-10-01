@@ -2,25 +2,72 @@
 
 > Scope: packaging, signing, publishing, and rolling back the Windows x64 desktop releases.
 > Authority: operating procedure for maintainers. Users follow [Install Pomegr](../../public/get-started/install.md).
-> Related code and checks: `desktop/packaging/`, `.github/workflows/release.yml`, and the [release checklist](#release-checklist) below. [Desktop beta acceptance](desktop-beta-acceptance.md) owns the beta evidence gates, and [desktop clean-VM checklist](desktop-clean-vm.md) owns the reusable VM checks.
+> Related code and checks: `desktop/packaging/`, `scripts/release-windows-local.mjs`, and `.github/workflows/release.yml`. [Desktop beta acceptance](desktop-beta-acceptance.md) owns the beta evidence gates, and [desktop clean-VM checklist](desktop-clean-vm.md) owns the reusable VM checks.
 
-## Download the desktop app
+## Publish signed artifacts
 
-Follow [Install Pomegr](../../public/get-started/install.md) to choose a download and
-launch the Windows app. The procedures below are for maintainers packaging and
-publishing releases.
+With every intended change merged, run one command from a clean `main` that matches `origin/main`:
 
-Official Pomegr Windows releases are built only by a manually dispatched GitHub Actions workflow from a clean checkout of an existing tagged commit. Creating or pushing a tag does not start packaging or publication. A release tag and `package.json` must match exactly: stable releases use `vX.Y.Z`, while beta releases use `vX.Y.Z-beta.N`. A beta is published as a GitHub prerelease and uses the beta updater channel; a stable version is published as the latest non-prerelease and uses the stable channel. Never move or reuse a published version tag.
+```powershell
+npm run release:windows -- --tag vX.Y.Z
+```
 
-## Package and publish
+Then confirm the workflow run and the published GitHub release succeeded.
 
-To build the Windows installer and portable executable locally for development or testing, run the fail-closed helper from PowerShell at the repository root:
+Rules:
+
+- Stable releases use `vX.Y.Z`. Beta releases use `vX.Y.Z-beta.N`, publish as a GitHub prerelease, and use the beta updater channel.
+- The command pushes a version commit directly to `main`. Never edit a version by hand.
+- Pushing a tag does not start the workflow. Only the dispatch does.
+- Never move or reuse a published tag, rerun a published version, replace release assets, or publish locally built executables.
+
+### What the release command does
+
+`npm run release:windows` needs Git and an authenticated GitHub CLI on `PATH`. For a tag GitHub does not have yet, it:
+
+1. Requires a clean checkout of `main` at the same commit as `origin/main`.
+2. Runs `npm version X.Y.Z --no-git-tag-version`, commits `package.json` and `package-lock.json` as `chore: bump version to X.Y.Z`, and pushes `main`. It skips this step when `package.json` already has that version.
+3. Creates the annotated tag `vX.Y.Z` on that commit and pushes it.
+4. Checks that the tag matches `package.json` and that the checkout, the local tag, and the GitHub tag all resolve to the same commit.
+5. Dispatches `release.yml` with the tag and that commit SHA.
+
+When GitHub already has the tag, the command skips steps 1 to 3 and never changes the tag. Run it from a clean checkout of that tag to dispatch a release point that was pushed but not yet dispatched.
+
+The command never installs dependencies or builds. If a step fails, fix the cause and rerun the same command; it resumes from whatever is already in place.
+
+Append `--check-only` to run only step 4, without changing the repository or dispatching.
+
+### What the workflow does
+
+The GitHub-hosted Windows runner checks out the tag and owns all validation:
+
+1. Rejects a missing or mismatched `release_sha`.
+2. Installs locked dependencies, then runs `npm run verify` and `npm run desktop:smoke:ci`.
+3. Packages from that build, signs the installer and portable executable, and inspects the package privacy boundary.
+4. Verifies each executable's Authenticode signature, complete publisher Subject, and trusted timestamp.
+5. Generates the source archive and `SHA256SUMS.txt`, creates a draft release, checks the remote asset names against the allowlist, and publishes.
+
+The manual alternative to the dispatch command is **GitHub → Actions → Windows release → Run workflow**, entering the tag and its full commit SHA.
+
+## Release checklist
+
+The workflow enforces the release gates, so a normal release needs no manual checklist beyond confirming that the run and the published release succeeded.
+
+A published release contains the signed NSIS installer and its blockmap, the signed portable build, channel updater metadata, release notes, `SHA256SUMS.txt`, `Pomegr-X.Y.Z-source.zip`, and the `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` documents. The source archive comes from `git archive` on the release tag and is the corresponding source offered with the binaries; GitHub's automatic source snapshots do not replace it.
+
+Beta candidates that need recorded evidence also follow [desktop beta acceptance](desktop-beta-acceptance.md).
+
+## Package locally
+
+Local builds are for development and acceptance testing only. They are unsigned and must never be published.
 
 ```powershell
 .\scripts\package-desktop-local.ps1
 ```
 
-The helper stops only validated Pomegr development, local Electron, and current-checkout portable or unpacked desktop processes, installs the locked dependencies with `npm ci`, downloads and verifies the Electron runtime, archives any existing `release/` directory, runs `npm run desktop:package` into a clean output directory, inspects the packaged runtime and privacy boundary with `npm run desktop:inspect`, and restores the development server in a detached PowerShell terminal when it was running beforehand. Previous release output—including portable `PomegrData` and legacy artifacts—is preserved beneath the ignored `.electron-builder-cache/local-package-backups/` directory rather than deleted. Use `-LeaveDevStopped` to leave development stopped, or `-WhatIf` to preview every state-changing step. The equivalent manual build commands are:
+The helper stops this checkout's Pomegr processes, runs `npm ci`, packages into a clean `release/`, inspects the result, and restarts the development server if it was running. Earlier `release/` output moves to `.electron-builder-cache/local-package-backups/`. Use `-LeaveDevStopped` to keep development stopped or `-WhatIf` to preview.
+
+The manual equivalent, after moving any existing `release/` aside:
 
 ```powershell
 npm ci
@@ -29,193 +76,62 @@ npm run desktop:package
 npm run desktop:inspect
 ```
 
-The command prepares the desktop runtime, builds the web application, and creates the NSIS installer and portable executable under `release/`. These local artifacts are for development and acceptance testing only; do not publish them or manually substitute them for artifacts produced and signed by the manually dispatched release workflow.
+`npm run verify:release:local` is an optional preflight that runs the canonical verifier and CI smoke, then builds and inspects unsigned artifacts. It performs no signing or GitHub checks.
 
-Before running the manual commands, move any existing `release/` directory aside. The finalizer intentionally rejects stale artifacts and portable data so only the current allowlisted output can remain in the release directory.
-
-### Refresh dependencies on Windows
-
-The helper handles the usual repository-owned lock holders automatically. Use this manual fallback if npm still reports `EPERM` while unlinking a native `.node` file or `EBUSY` while removing a package directory:
-
-1. In the terminal running `npm run dev` or `npm run desktop:start`, press `Ctrl+C` and wait for the PowerShell prompt to return. Close any locally launched Pomegr Electron window as well.
-2. From the repository root, verify that no repository-owned Node or Electron processes remain:
-
-   ```powershell
-   $repo = (Resolve-Path .).Path
-   Get-CimInstance Win32_Process |
-     Where-Object {
-       $_.Name -in @("node.exe", "electron.exe") -and
-       $_.CommandLine -like "*$repo*"
-     } |
-     Select-Object ProcessId, ParentProcessId, Name, CommandLine
-   ```
-
-3. If the command still lists a process, confirm that its command line belongs to this Pomegr checkout, then stop only the listed process ID. Repeat the inspection until it returns no rows:
-
-   ```powershell
-   $verifiedProcessId = 12345 # Replace with the verified ProcessId from the inspection above.
-   Stop-Process -Id $verifiedProcessId -Force
-   ```
-
-   Never stop every `node.exe` process; other development tools and applications may also use Node.js.
-4. Run `npm ci` again. Administrator privileges are not normally required when the checkout belongs to the current user.
-5. Run `npm run desktop:runtime` to populate Electron's on-demand `dist` runtime, then continue with `npm run desktop:package` or restart development with `npm run dev`.
-
-### Publish signed artifacts
-
-The canonical desktop application version is the root [`package.json`](../../../package.json) `version` field. `package-lock.json` mirrors that value and must remain synchronized. Do not edit the sidebar, installer filenames, updater metadata, or `package-lock.json` by hand to set a release version.
-
-The manual GitHub Actions workflow packages an existing tag. It does not choose a version, commit changes, create a tag, or move a tag. Use this sequence for every stable or beta release:
-
-1. Finish and merge every product change intended for the release. Confirm that no pending branch or pull request must be included.
-2. Update local `main`, create a release-preparation branch, and choose the next immutable stable (`X.Y.Z`) or beta (`X.Y.Z-beta.N`) version.
-3. From the repository root, set the version without creating a tag:
-
-   ```powershell
-   npm version X.Y.Z --no-git-tag-version
-   ```
-
-   Substitute the chosen version. This updates both `package.json` and `package-lock.json`. Then replace the previous candidate version in `desktop/packaging/build-acceptance-prior.mjs`, which asserts the candidate and prior-fixture version pair for the clean-VM upgrade test and intentionally fails when only the package files were bumped. The reusable [clean-VM checklist](desktop-clean-vm.md) is version-neutral; record each candidate's run under its "Recorded acceptance runs" section.
-4. Run the applicable pre-release quality gates from the [release checklist](#release-checklist). Commit the complete release-preparation change, open a pull request, and merge it into `main`. Do not create the release tag on the feature branch because the pull-request merge produces the commit that must be released.
-5. Update local `main` after the merge and verify the canonical version and clean release point:
-
-   ```powershell
-   git switch main
-   git pull --ff-only origin main
-   node -p "require('./package.json').version"
-   git status --short
-   ```
-
-   The printed version must equal the intended release and the status output must be empty.
-6. Create the matching annotated tag on that exact `main` commit, then push the tag:
-
-   ```powershell
-   git tag -a vX.Y.Z -m "Pomegr X.Y.Z"
-   git push origin vX.Y.Z
-   ```
-
-   Use the matching beta form when applicable. A tag push does not start the release workflow or package any artifacts.
-7. Confirm that GitHub can resolve the tag before opening Actions:
-
-   ```powershell
-   git ls-remote --exit-code --tags origin refs/tags/vX.Y.Z
-   ```
-
-   If this command returns no tag, do not run the workflow. Entering a nonexistent tag causes checkout to fail with `pathspec 'refs/tags/…' did not match any file(s) known to git`. If the tag exists but its `package.json` version differs, the release verification fails.
-8. Run the dispatch command below. It starts the workflow only after confirming that the clean local checkout, local tag, and GitHub tag identify the same commit. The manual alternative is to run the helper with `--check-only`, then open **GitHub → Actions → Windows release → Run workflow**: select the existing release tag as the workflow source, enter that tag in **tag**, and enter its full commit SHA in **release_sha**. The workflow checks out that immutable tag, validates and tests it on a clean runner, signs and inspects the Windows artifacts, creates a draft GitHub release, verifies its exact assets, and publishes it.
-9. Confirm the workflow and published release completed successfully, then finish the artifact and runtime checks in the release checklist. For beta releases, also complete and archive the evidence required by [the beta acceptance procedure](desktop-beta-acceptance.md).
-
-Do not publish locally built executables, rerun a published version, move a release tag, or manually replace release assets. Correct a failed or broken published release with a new commit and a higher version as described in [Failure and rollback](#failure-and-rollback).
-
-### Dispatch the release workflow
-
-Before creating the release tag, run the local preflight from the repository root:
+If `npm ci` reports `EPERM` or `EBUSY`, a process from this checkout still holds a file. Stop `npm run dev` and any local Pomegr window, then list what remains:
 
 ```powershell
-npm run verify:release:local
+$repo = (Resolve-Path .).Path
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -in @("node.exe", "electron.exe") -and $_.CommandLine -like "*$repo*" } |
+  Select-Object ProcessId, Name, CommandLine
 ```
 
-It installs the Electron runtime, runs the canonical verifier and CI renderer smoke,
-archives any previous local `release/` output, then builds and inspects unsigned NSIS
-and portable artifacts. Packaging explicitly disables publication, removes release
-credentials from the builder environment, and disables automatic certificate
-discovery. It does not run GitHub authentication, Azure signing, Authenticode, or
-GitHub release checks; the hosted workflow owns those external stages.
-
-After the preflight passes, create and push the tag. From a clean checkout of that
-committed and pushed release tag, run:
-
-```powershell
-npm run release:windows -- --tag vX.Y.Z
-```
-
-Git and an authenticated GitHub CLI must be available on `PATH`. The command performs
-no dependency installation, build, desktop launch, or process cleanup. It requires the
-tag to match `package.json` and the clean checkout, local tag, and GitHub tag to resolve
-to the same commit. It then dispatches `release.yml` with that tag and exact commit SHA.
-It never commits, pushes, creates tags, or moves them. Append `--check-only` to perform
-the same release-point checks without dispatching.
-
-The GitHub-hosted Windows runner owns the mandatory validation. Before signing, it
-checks the tagged source archive, installs the locked root and landing dependencies and
-Electron's on-demand runtime, runs the canonical `npm run verify`, and runs
-`npm run desktop:smoke:ci`. The canonical
-verifier owns lint, type checks, builds, generated-artifact checks, plugin and Node
-tests, repository-inventory tests, UI tests, and landing tests/build. The workflow does
-not repeat those checks with separate build, generated-file, or desktop-security
-commands. The full renderer smoke (`npm run desktop:smoke`) and
-clean-VM acceptance remain separate release requirements.
-
-CI rejects a missing, malformed, or mismatched `release_sha` before dependency
-installation or signing. This value selects the exact release commit; it is not a claim
-that tests ran locally. Both normal and `--check-only` runs print the selected SHA.
-
-CI packaging uses `npm run desktop:prepare:from-build` to reuse the production
-web output already built and smoke-tested in CI. `npm run build` generates legal
-notices before copying public assets, including on a fresh Windows checkout with
-CRLF line endings. Preparation checks the built legal copies byte-for-byte before
-signing and regenerates only desktop service bundles. It does not regenerate legal
-files or run a second web build. A stale build fails with
-`DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH`; rebuild before packaging.
-
-## Release checklist
-
-- [ ] The exact tag matches `package.json`, is immutable, and points at the clean checkout used by CI.
-- [ ] The workflow's source check, `npm run verify`, CI desktop smoke, and artifact inspection pass; complete the full renderer smoke separately on an interactive Windows system.
-- [ ] Both executables have valid Authenticode signatures, the exact complete publisher Subject, and trusted timestamps.
-- [ ] `SHA256SUMS.txt` matches every published artifact and update metadata names/version/checksum are internally consistent.
-- [ ] The exact tagged `Pomegr-X.Y.Z-source.zip` is published beside the binaries at no charge.
-- [ ] `LICENSE`, `NOTICE`, `SOURCE.md`, `THIRD_PARTY_NOTICES.md`, and `TRADEMARKS.md` are present, non-empty, and accessible from About.
-- [ ] The remote release asset set exactly matches the allowlist; no diagnostics, unsigned fixtures, private paths, secrets, certificate material, or signing configuration are present.
-- [ ] For beta, every clean-VM gate in [desktop beta acceptance](desktop-beta-acceptance.md) passes and `npm run desktop:beta:verify -- --version X.Y.Z-beta.N` verifies the archived evidence record.
-- [ ] Download, first launch, provider discovery, notification transition/clear, preference restart, signed update, clean shutdown, uninstall data preservation, and portable isolation are recorded as pass.
+Stop only the listed process IDs with `Stop-Process -Id <id> -Force`. Never stop every `node.exe`.
 
 ## Signing configuration
 
-Pomegr release signing uses Azure Artifact Signing with GitHub OpenID Connect (OIDC). The certificate and private key remain in Microsoft's managed signing service; GitHub stores no certificate file, certificate password, Azure client secret, or long-lived signing credential.
+Signing uses Azure Artifact Signing through GitHub OpenID Connect (OIDC). The certificate and private key stay in Microsoft's managed service; GitHub stores no certificate, password, or client secret. Never create an `AZURE_CLIENT_SECRET` for this workflow.
 
-Create a GitHub environment named `release`, then create a Microsoft Entra application and a GitHub Actions federated credential for the `release` environment. Use the immutable organization and repository IDs requested by the Azure portal and retain its generated subject identifier. Assign that application's service principal the `Artifact Signing Certificate Profile Signer` role on the Pomegr Artifact Signing account. Do not assign Owner or Contributor for signing.
+Setup:
 
-The `release` environment must define these non-secret GitHub Actions variables:
+- A GitHub environment named `release`.
+- A Microsoft Entra application with a federated credential for that environment.
+- The `Artifact Signing Certificate Profile Signer` role for that application on the signing account. Do not assign Owner or Contributor.
 
-- `AZURE_CLIENT_ID`: the Application (client) ID of the Microsoft Entra application trusted by the `release` environment.
-- `AZURE_TENANT_ID`: the Directory (tenant) ID containing that application.
-- `AZURE_SUBSCRIPTION_ID`: the subscription containing the Artifact Signing account.
-- `ARTIFACT_SIGNING_ENDPOINT`: the endpoint matching the Artifact Signing account region, such as `https://eus.codesigning.azure.net/` for East US.
-- `ARTIFACT_SIGNING_ACCOUNT_NAME`: the Artifact Signing account name.
-- `ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME`: the Public Trust certificate profile name.
-- `WINDOWS_PUBLISHER_SUBJECT`: the certificate's complete canonical Subject distinguished name exactly as shown by the certificate profile preview and later reported by PowerShell, including `CN=` and every organization, locality, state, country, and other Subject component in the same order. Example structure: `CN=Example Organization Inc, O=Example Organization Inc, L=Toronto, S=Ontario, C=CA`. Copy the actual value from the issued certificate; do not use the example.
+The `release` environment defines these non-secret variables:
 
-These IDs and resource names identify the federation and signing resources but do not authenticate by themselves. The Entra federated credential restricts token exchange to the immutable GitHub repository identity and its `release` environment. Never create or store an `AZURE_CLIENT_SECRET` for this workflow.
+| Variable | Value |
+| --- | --- |
+| `AZURE_CLIENT_ID` | Application (client) ID of the Entra application |
+| `AZURE_TENANT_ID` | Directory (tenant) ID of that application |
+| `AZURE_SUBSCRIPTION_ID` | Subscription containing the signing account |
+| `ARTIFACT_SIGNING_ENDPOINT` | Regional endpoint, such as `https://eus.codesigning.azure.net/` |
+| `ARTIFACT_SIGNING_ACCOUNT_NAME` | Artifact Signing account name |
+| `ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME` | Public Trust certificate profile name |
+| `WINDOWS_PUBLISHER_SUBJECT` | The certificate's complete Subject distinguished name, copied exactly from the issued certificate |
 
-The release-only electron-builder configuration signs the unpacked application, NSIS installer, and portable executable through Azure and writes the same complete Subject DN into the updater metadata. Before accepting a downloaded installer, Pomegr independently requires one full DN and compares the valid Authenticode signer's Subject exactly (case-insensitively) with it; a CN-only value is rejected. CI applies the same complete Subject comparison to every executable and also requires a trusted timestamp. The workflow fails if its OIDC identifiers or Artifact Signing variables are absent, the endpoint is malformed, Azure authentication or signing fails, any executable has an invalid signature, the full Subject differs, or a trusted timestamp is absent. Rotate a compromised GitHub federation or Microsoft Entra application authorization immediately; the Artifact Signing certificate itself remains non-exportable and managed by Microsoft.
+`WINDOWS_PUBLISHER_SUBJECT` must be the full DN in certificate order, such as `CN=Example Organization Inc, O=Example Organization Inc, L=Toronto, S=Ontario, C=CA`. A CN-only value is rejected. The same Subject is written into the updater metadata, and Pomegr compares it with the signer of every downloaded installer before accepting an update.
 
-The workflow runs only through `workflow_dispatch`. Select **Run workflow** and provide an existing release tag and its successfully preflighted commit SHA only when the candidate is ready to package and publish. The manual run builds once, smoke-tests the desktop runtime, signs every Windows artifact, inspects the package privacy boundary, verifies the publisher and timestamp, generates the exact source and checksums, creates a draft release, verifies its remote asset set, and then publishes it. Tag creation and tag pushes never start this workflow.
-
-## Release contents and integrity
-
-The workflow first creates a draft release and publishes it only after the remote asset names match the fail-closed allowlist. Each release contains the signed NSIS installer, signed portable build, installer blockmap, channel-specific updater metadata, generated release notes, `SHA256SUMS.txt`, an exact tagged source archive, and the AGPL, notice, source-offer, third-party-license, and trademark documents. Update metadata containing a query-bearing URL is rejected so a signed or credential-bearing URL cannot become a durable release artifact.
-
-Before publishing, compare `SHA256SUMS.txt` with fresh SHA-256 hashes and verify the Authenticode signature and publisher on both executables. After installation, repeat signature verification on the installed executable. GitHub's automatically generated source snapshots do not replace `Pomegr-X.Y.Z-source.zip`, which is produced with `git archive` from the exact release tag and is the corresponding source offered with the binaries at no charge.
+The workflow fails if a variable is absent, the endpoint is malformed, Azure authentication or signing fails, or any executable has an invalid signature, a different Subject, or no trusted timestamp. Rotate a compromised federation or Entra application authorization immediately.
 
 ## Beta update acceptance
 
-Do not promote the first beta produced by a new signing or updater configuration until two monotonically increasing beta versions have passed this clean-VM exercise:
+Run this clean-VM exercise for the first beta produced by a new signing or updater configuration. It needs two consecutive beta versions and is not part of a routine release.
 
-1. On a fully patched, clean Windows VM, download the older beta installer, its checksum manifest, and its source archive from the same release.
-2. Verify the installer SHA-256, valid Authenticode signature, exact publisher, and trusted timestamp; install it without disabling SmartScreen or other security controls.
-3. Confirm the older installed beta remains usable when offline and when the update endpoint fails.
-4. Publish the newer beta, start the older beta, and confirm its background check silently downloads only the newer beta channel version without blocking the dashboard. If validating periodic discovery, keep the app running and confirm the next non-overlapping four-hour check finds the release.
-5. Confirm the bottom-left **Restart to update** action appears only after verification. Activate it as the explicit confirmation, then confirm Pomegr shuts down its local services, installs the update, restarts, and reports the newer version.
-6. Verify the downloaded installer and installed executable signatures and checksums again. Confirm the old installation was not damaged if download or verification was deliberately interrupted.
-7. Repeat with an unsigned test package and a package signed by a different publisher; both must be rejected while the current installation remains usable. Never publish those negative fixtures.
-8. Inspect the workflow log and downloaded artifacts for credential values, signed URLs with query strings, certificate bytes, private workstation paths, transcripts, prompts, responses, commands, and tool output.
+1. On a clean, fully patched Windows VM, download the older beta installer and verify its SHA-256, Authenticode signature, publisher, and timestamp. Install it without disabling SmartScreen.
+2. Confirm the older beta stays usable offline and when the update endpoint fails.
+3. Publish the newer beta, start the older one, and confirm it silently downloads only the newer beta-channel version without blocking the dashboard.
+4. Confirm **Restart to update** appears only after verification, then activate it and confirm Pomegr installs the update, restarts, and reports the newer version.
+5. Verify the installed executable's signature again, and confirm an interrupted download or verification leaves the old installation intact.
+6. Repeat with an unsigned package and a package signed by a different publisher. Both must be rejected while the installation stays usable. Never publish these fixtures.
+7. Inspect the workflow log and artifacts for credentials, query-bearing signed URLs, certificate bytes, private paths, and transcript content.
 
-Record the two versions, VM image/version, workflow run URLs, hashes, signature result, publisher, update outcome, interruption outcome, and negative-test outcome in the release acceptance record. These observations are required external evidence; unit tests and a successful packaging job are not substitutes.
+Record the versions, VM image, workflow run URLs, hashes, and outcomes in the [beta acceptance record](desktop-beta-acceptance.md). Before building the clean-VM upgrade fixture, update the pinned version pair in `desktop/packaging/build-acceptance-prior.mjs`.
 
 ### Real-file signature acceptance
 
-Run every candidate through Pomegr's production Authenticode verifier. Set the expected complete publisher Subject only in the process environment; the command prints no path or certificate identity:
+Check candidates and negative fixtures with the production Authenticode verifier:
 
 ```powershell
 $env:WINDOWS_PUBLISHER_SUBJECT = "CN=YOUR COMMON NAME, O=YOUR ORGANIZATION, L=YOUR CITY, S=YOUR STATE OR PROVINCE, C=YOUR COUNTRY"
@@ -227,15 +143,15 @@ npm run desktop:update:verify-signature -- --file .\wrong-publisher-negative-fix
 Remove-Item Env:WINDOWS_PUBLISHER_SUBJECT
 ```
 
-Use the complete Subject copied from the issued certificate, not the example. `accepted` requires a valid timestamped Authenticode signature whose complete Subject matches. `rejected-unsigned` requires Windows to report `NotSigned`. `rejected-wrong-publisher` requires a valid timestamped signature with a different complete Subject, so an unsigned or corrupt second fixture cannot satisfy that gate. The command verifies a private snapshot and fails if the source changes during the run. A PowerShell failure, unreadable file, malformed publisher Subject, duplicate option, or unexpected result also fails closed. Record each command's reported SHA-256 and only the fixed signature/publisher/timestamp result words required by the beta evidence schema; do not copy certificate Subjects or private paths into the record. Keep negative fixtures outside `release/`, never upload them, and remove them after the acceptance run.
+`rejected-wrong-publisher` requires a valid timestamped signature with a different Subject, so an unsigned or corrupt file cannot satisfy it. Record only the reported SHA-256 and the fixed result words; never copy certificate Subjects or private paths into the record. Keep negative fixtures outside `release/` and delete them afterward.
 
 ## Failure and rollback
 
-An update check, download, or verification failure must leave the installed version runnable. Do not delete the working installation, bypass signature checks, switch a stable installation to beta, or manually replace updater metadata to force a retry.
+Published versions and tags are immutable. Fix a broken release with a new commit and a higher version: `X.Y.Z-beta.N+1` for a beta, `X.Y.(Z+1)` for a stable release. If exposure is dangerous, also mark the affected GitHub release unavailable. Never overwrite assets or reuse the version number.
 
-Published version numbers and tags are immutable. If a beta is broken, stop promoting it and publish the fix as a higher beta such as `X.Y.Z-beta.N+1`. If a stable release is broken, publish a higher patch version such as `X.Y.(Z+1)`. If exposure is dangerous, mark the affected GitHub release unavailable and document the issue, but still use a higher fixed version; never overwrite assets or reuse the broken version number. Existing installations can then accept the higher correctly signed release through their own channel.
+If the workflow fails before publishing, leave the draft release unpublished or delete only that draft, correct the cause, and release from a new version tag.
 
-If a draft release fails validation, leave it unpublished while investigating or delete only that draft through the GitHub release UI. Rerun the workflow from a new immutable version tag after correcting the cause.
+An update check, download, or verification failure must leave the installed version runnable. Do not bypass signature checks, switch a stable installation to beta, or edit updater metadata to force a retry.
 
 ## Reference documentation
 

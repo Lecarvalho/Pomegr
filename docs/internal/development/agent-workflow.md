@@ -100,8 +100,11 @@ The independent public landing deployment is also manual: dispatch
 tests, typecheck, build, and artifact audit before deploying to Cloudflare. See
 [website operations](../operations/website.md) for GitHub secrets and production setup.
 
-`npm run release:windows -- --tag vX.Y.Z` performs only release-point checks and
-dispatches the Windows workflow with the exact clean local and remote tagged commit.
+`npm run release:windows -- --tag vX.Y.Z` is the whole release. For a tag GitHub does
+not have yet, it sets the version from a clean `main` that matches `origin/main`,
+pushes that commit and its annotated tag, runs the release-point checks, and dispatches
+the Windows workflow with the exact clean local and remote tagged commit. An existing
+remote tag is only checked and dispatched, never changed.
 CI checks that SHA, installs both dependency trees and the Electron runtime, runs the
 canonical verifier and CI desktop smoke, then owns signing, artifact/privacy checks,
 and publication. The SHA
