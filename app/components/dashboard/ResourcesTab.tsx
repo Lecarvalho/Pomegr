@@ -18,7 +18,26 @@ import {
 } from "./ResourceSparklineCard";
 import { ResourcePeakZoomPanel, ResourcePeaksTable } from "./ResourcePeaksTable";
 
-export type ResourcesTabProps = { sessionId: string; historical: boolean; paused?: boolean };
+export type ResourcesTabProps = {
+  sessionId: string;
+  historical: boolean;
+  paused?: boolean;
+  /** Deep link from an Overview event: open the Session window on this field's session-high peak. */
+  peakField?: string | null;
+  onClearPeakField?: () => void;
+};
+
+const RESOURCE_FIELDS: readonly ResourceField[] = ["cpu_cores", "memory_bytes", "read_bps", "write_bps"];
+
+/** The retained session high for a field; with equal highs the earlier observation wins, as in the events feed. */
+function sessionHighPeak(peaks: ResourcePeak[], field: ResourceField | null) {
+  let high: ResourcePeak | null = null;
+  for (const peak of peaks) {
+    if (peak.field !== field) continue;
+    if (!high || peak.value > high.value || (peak.value === high.value && peak.observedAt < high.observedAt)) high = peak;
+  }
+  return high;
+}
 
 type WindowKind = "5min" | "30min" | "session";
 const LIVE_WINDOW_MS: Record<"5min" | "30min", number> = { "5min": 5 * 60_000, "30min": 30 * 60_000 };
@@ -174,13 +193,21 @@ function peaksInWindow(peaks: ResourcePeak[], window: WindowKind, live: Resource
 }
 
 /** The Resources tab: sparkline cards, a window selector, a peak zoom panel, and a peaks table. */
-export function ResourcesTab({ sessionId, historical, paused = false }: ResourcesTabProps) {
+export function ResourcesTab({ sessionId, historical, paused = false, peakField = null, onClearPeakField }: ResourcesTabProps) {
   const result = useSessionDomain({ sessionId, domain: "resources" }, { historical, enabled: !paused });
   const resources = result.data;
 
   const defaultWindow: WindowKind = historical ? "session" : "30min";
   const [windowState, setWindowState] = useState<{ sessionId: string; window: WindowKind }>({ sessionId, window: defaultWindow });
   if (windowState.sessionId !== sessionId) setWindowState({ sessionId, window: defaultWindow });
+  // A peak link opens the Session window once; the reader's own window or row choice then wins and clears the link.
+  const linkedField = RESOURCE_FIELDS.find((field) => field === peakField) ?? null;
+  const [appliedLink, setAppliedLink] = useState<string | null>(null);
+  const linkKey = linkedField ? `${sessionId}:${linkedField}` : null;
+  if (appliedLink !== linkKey) {
+    setAppliedLink(linkKey);
+    if (linkKey) setWindowState({ sessionId, window: "session" });
+  }
   const selectedWindow = windowState.window;
 
   const [peakState, setPeakState] = useState<{ key: string; id: string | null }>({ key: `${sessionId}:${selectedWindow}`, id: null });
@@ -194,6 +221,12 @@ export function ResourcesTab({ sessionId, historical, paused = false }: Resource
   const selectWindow = (next: WindowKind) => {
     if (next !== "session" && !enabled) return;
     setWindowState({ sessionId, window: next });
+    if (linkedField) onClearPeakField?.();
+  };
+
+  const selectPeak = (id: string) => {
+    setPeakState({ key: peakKey, id });
+    if (linkedField) onClearPeakField?.();
   };
 
   const sourceCaption = selectedWindow === "session" ? "stored minute aggregates" : "live samples";
@@ -212,7 +245,7 @@ export function ResourcesTab({ sessionId, historical, paused = false }: Resource
         <div className="resourceCardsGrid">{cards.map((card) => <ResourceSparklineCard model={card} key={card.key} />)}</div>
         {resources.retained.readiness === "ready" ? <div className="resourcesLowerGrid">
           <ResourcePeakZoomPanel sessionId={sessionId} peak={selectedPeak} />
-          <ResourcePeaksTable sessionId={sessionId} peaks={windowPeaks} selectedPeakId={selectedPeak?.id ?? null} onSelect={(id) => setPeakState({ key: peakKey, id })} />
+          <ResourcePeaksTable sessionId={sessionId} peaks={windowPeaks} selectedPeakId={selectedPeak?.id ?? null} onSelect={selectPeak} />
         </div> : <p className="resourcesWindowState" role="status">{retainedStateMessage(resources.retained.readiness)}</p>}
       </>;
     }
@@ -224,10 +257,10 @@ export function ResourcesTab({ sessionId, historical, paused = false }: Resource
       body = <p className="resourcesWindowState" role="status">No resource history was recorded for this session.</p>;
     } else {
       const windowPeaks = retained.peaks;
-      const selectedPeak = windowPeaks.find((peak) => peak.id === peakState.id) || windowPeaks[0] || null;
+      const selectedPeak = windowPeaks.find((peak) => peak.id === peakState.id) || sessionHighPeak(windowPeaks, linkedField) || windowPeaks[0] || null;
       const lowerGrid = <div className="resourcesLowerGrid">
         <ResourcePeakZoomPanel sessionId={sessionId} peak={selectedPeak} />
-        <ResourcePeaksTable sessionId={sessionId} peaks={windowPeaks} selectedPeakId={selectedPeak?.id ?? null} onSelect={(id) => setPeakState({ key: peakKey, id })} />
+        <ResourcePeaksTable sessionId={sessionId} peaks={windowPeaks} selectedPeakId={selectedPeak?.id ?? null} onSelect={selectPeak} />
       </div>;
       if (retained.minutes.length === 0) {
         body = <>

@@ -98,14 +98,17 @@ describe("Design-system reference page", () => {
     const user = userEvent.setup();
     render(<DesignSystemView />);
     const section = screen.getByRole("heading", { level: 2, name: "Events rail" }).closest("section") as HTMLElement;
-    const panels = within(section).getAllByRole("region", { name: "Events" });
+    const panels = within(section).getAllByRole("region", { name: "Events · newest first" });
     expect(panels).toHaveLength(4);
     const [full, empty, loading, unavailable] = panels as [HTMLElement, HTMLElement, HTMLElement, HTMLElement];
     const rowName = /, \d\d:\d\d$/;
-    expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(9);
+    // The estimate row has no owning tab, so it is plain text: 9 rows, 8 of them buttons.
+    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(9);
+    expect(full.querySelectorAll(".sessionEventRow.isStatic")).toHaveLength(1);
+    expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(8);
     expect(within(full).getAllByRole("button", { name: rowName })[0]).toHaveClass("commandQuietAction", "sessionEventRow");
     await user.click(within(full).getByRole("button", { name: "Show 2 earlier" }));
-    expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(11);
+    expect(full.querySelectorAll(".sessionEventRow")).toHaveLength(11);
     expect(within(full).getByRole("button", { name: "Show fewer" })).toHaveClass("commandTextLink");
     for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened"]) {
       expect(within(full).getAllByText(label, { selector: ".sessionEventLabel" }).length).toBeGreaterThan(0);

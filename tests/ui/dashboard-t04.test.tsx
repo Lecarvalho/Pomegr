@@ -418,7 +418,7 @@ describe("T04 session workspace", () => {
     expect(url).toMatch(/agent=primary/);
   });
 
-  it.each([["Right now", "agents"], ["Events", "activities"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
+  it.each([["Right now", "agents"], ["Repository", "repository"], ["Requests", "activities"]])("opens the matching tab from the Overview heading %s", async (name, tab) => {
     mount({ tab: "overview" });
     const overview = await screen.findByLabelText("Session overview");
     for (const label of ["All agents", "View signals", "View evidence", "Open repository", "Open activities"]) expect(within(overview).queryByRole("button", { name: label })).not.toBeInTheDocument();
@@ -459,7 +459,7 @@ describe("T04 session workspace", () => {
       { id: "e1", kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null },
     ];
     mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 2 } }));
-    const rail = await screen.findByRole("region", { name: "Events" });
+    const rail = await screen.findByRole("region", { name: "Events · newest first" });
     const user = userEvent.setup();
     await user.click(within(rail).getByRole("button", { name: "Agent finished, Primary agent · 4m wall, 11:21" }));
     expect(String(navigation.replace.mock.calls.at(-1)?.[0])).toMatch(/tab=agents.*agent=primary/);
@@ -472,7 +472,7 @@ describe("T04 session workspace", () => {
     const summary = sessionSummaryFixture();
     delete (summary as Partial<typeof summary>).events;
     mount({ tab: "overview" }, summary);
-    const rail = await screen.findByRole("region", { name: "Events" });
+    const rail = await screen.findByRole("region", { name: "Events · newest first" });
     expect(within(rail).getByText("Event evidence unavailable.")).toBeInTheDocument();
   });
 
@@ -482,7 +482,7 @@ describe("T04 session workspace", () => {
       const at = new Date(2026, 8, 14, 11, 21).toISOString();
       const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null }));
       mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 8 } }));
-      const rail = await screen.findByRole("region", { name: "Events" });
+      const rail = await screen.findByRole("region", { name: "Events · newest first" });
       expect(within(rail).getAllByRole("button", { name: /^Commit observed/ })).toHaveLength(5);
       expect(within(rail).getByRole("button", { name: "Show 3 earlier" })).toBeInTheDocument();
     } finally {

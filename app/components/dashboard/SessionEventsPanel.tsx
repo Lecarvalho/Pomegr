@@ -4,7 +4,6 @@ import { useId, useState, type ReactNode } from "react";
 import type { ResourceField, SessionEvent, SessionEventFeed, SessionEventKind } from "../../../shared/session-domain-contract";
 import { formatDuration } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
-import { PanelHeadingLink } from "../PanelHeadingLink";
 import { RESOURCE_FIELD_LABEL } from "./ResourceSparklineCard";
 import type { SessionRouteQuery } from "./session-route";
 import { Unavailable } from "./SessionOverviewUnavailable";
@@ -28,7 +27,7 @@ const GLYPH_SHAPES: Record<SessionEventKind, ReactNode> = {
   pull_request_opened: <><circle cx="4" cy="4" r="1.6" /><circle cx="4" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><path d="M4 5.6v4.8M12 10.4V7a2 2 0 0 0-2-2H8" /></>,
 };
 
-type EventPresentation = { label: string; detail: (event: SessionEvent) => string | null; destination: (event: SessionEvent) => Partial<SessionRouteQuery> };
+type EventPresentation = { label: string; detail: (event: SessionEvent) => string | null; destination: ((event: SessionEvent) => Partial<SessionRouteQuery>) | null };
 
 const joinDetail = (...parts: Array<string | null>) => parts.filter(Boolean).join(" · ") || null;
 // A newer monitor may send a field in a shape this browser does not know; each detail prints nothing for it rather than "undefined" or a guess.
@@ -43,6 +42,8 @@ const estimateDetail = (event: SessionEvent) => {
   return phase && typeof percent === "number" && Number.isFinite(percent) ? `${percent}% · ${phase.replaceAll("_", " ")}` : null;
 };
 const resourceDetail = (event: SessionEvent) => typeof event.resource === "string" && Object.hasOwn(RESOURCE_EVENT_LABEL, event.resource) ? `${RESOURCE_EVENT_LABEL[event.resource]} · session high` : null;
+// Opens the Resources tab on that resource's session-high peak; an unknown field opens the tab alone.
+const resourceDestination = (event: SessionEvent): Partial<SessionRouteQuery> => resourceDetail(event) ? { tab: "resources", peak: event.resource as string } : { tab: "resources" };
 const pullRequestDetail = (event: SessionEvent) => typeof event.pullRequestNumber === "number" && Number.isSafeInteger(event.pullRequestNumber) && event.pullRequestNumber > 0 ? `#${event.pullRequestNumber}` : null;
 
 // Label, detail, and destination read only fields each kind owns, so an event never prints anything it was not defined to carry.
@@ -51,9 +52,10 @@ const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
   agent_finished: { label: "Agent finished", detail: agentEnded, destination: agentDestination },
   agent_stopped: { label: "Agent stopped", detail: agentEnded, destination: agentDestination },
   signal_reported: { label: "Signal reported", detail: signalDetail, destination: () => ({ tab: "signals" }) },
-  estimate_updated: { label: "Agent estimate updated", detail: estimateDetail, destination: () => ({ tab: "details" }) },
+  // No tab owns the progress estimate, so this row is plain text rather than a button.
+  estimate_updated: { label: "Agent estimate updated", detail: estimateDetail, destination: null },
   user_message: { label: "User message", detail: () => null, destination: () => ({ tab: "activities" }) },
-  resource_peak: { label: "Resource peak", detail: resourceDetail, destination: () => ({ tab: "resources" }) },
+  resource_peak: { label: "Resource peak", detail: resourceDetail, destination: resourceDestination },
   commit_observed: { label: "Commit observed", detail: () => "Git-observed", destination: () => ({ tab: "repository" }) },
   pull_request_opened: { label: "Pull request opened", detail: pullRequestDetail, destination: () => ({ tab: "repository" }) },
 };
@@ -73,7 +75,13 @@ function SessionEventRow({ event, onNavigate }: { event: SessionEvent; onNavigat
   const detail = presentation.detail(event);
   const time = clockTime(event.at);
   const text = detail ? `${presentation.label} · ${detail}` : presentation.label;
-  return <button type="button" className="commandQuietAction sessionEventRow" aria-label={[presentation.label, detail, time].filter(Boolean).join(", ")} onClick={() => onNavigate(presentation.destination(event))}>
+  const destination = presentation.destination;
+  if (!destination) return <div className="sessionEventRow isStatic">
+    <time className="sessionEventTime" dateTime={event.at} suppressHydrationWarning>{time ?? "—"}</time>
+    <svg className="sessionEventGlyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false" data-event-kind={event.kind}>{GLYPH_SHAPES[event.kind]}</svg>
+    <span className="sessionEventText" title={text}><strong className="sessionEventLabel">{presentation.label}</strong>{detail && <span className="sessionEventDetail">{detail}</span>}</span>
+  </div>;
+  return <button type="button" className="commandQuietAction sessionEventRow" aria-label={[presentation.label, detail, time].filter(Boolean).join(", ")} onClick={() => onNavigate(destination(event))}>
     <time className="sessionEventTime" dateTime={event.at} suppressHydrationWarning>{time ?? "—"}</time>
     <svg className="sessionEventGlyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false" data-event-kind={event.kind}>{GLYPH_SHAPES[event.kind]}</svg>
     <span className="sessionEventText" title={text}><strong className="sessionEventLabel">{presentation.label}</strong>{detail && <span className="sessionEventDetail">{detail}</span>}</span>
@@ -95,7 +103,7 @@ export function SessionEventsPanel({ events, onNavigate, headingId = "session-ev
   const earlier = items.length - limit;
   const visible = expanded ? items : items.slice(0, limit);
   return <section className="sessionOverviewPanel sessionEventsPanel" aria-labelledby={headingId}>
-    <div className="sessionOverviewHeading"><div className="sessionRequestHeadingMain"><PanelHeadingLink id={headingId} onOpen={() => onNavigate({ tab: "activities" })}>Events</PanelHeadingLink><span className="sessionRequestSummary">newest first</span></div></div>
+    <div className="sessionOverviewHeading"><h2 id={headingId} className="sessionEyebrow">Events · newest first</h2></div>
     {events.readiness !== "ready" ? <Unavailable readiness={events.readiness} label="Event evidence" /> : items.length === 0
       ? <p className="sessionOverviewEmpty">No events recorded.</p>
       : <>

@@ -162,4 +162,38 @@ describe("ResourcesTab", () => {
     expect(memoryRow).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Full-resolution window not retained.")).toBeInTheDocument();
   });
+
+  it("opens a peak link on the Session window with that resource's session high selected", () => {
+    const base = domain();
+    const lowerMemory = { ...base.retained.peaks[1]!, id: "p3", value: 500 * mebibyte, observedAt: "2026-09-20T11:30:00.000Z" };
+    useSessionDomain.mockReturnValue(result(domain({ retained: { ...base.retained, peaks: [base.retained.peaks[0]!, lowerMemory, base.retained.peaks[1]!] } })));
+    render(<ResourcesTab sessionId="claude:resources" historical={false} peakField="memory_bytes" />);
+
+    // A live session defaults to 30 min; the link opens Session instead.
+    expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /611 MiB/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /500 MiB/ })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /npm run build/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("lets the reader's own row or window choice win over a peak link and clears the link", async () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    const onClearPeakField = vi.fn();
+    const user = userEvent.setup();
+    render(<ResourcesTab sessionId="claude:resources" historical={false} peakField="memory_bytes" onClearPeakField={onClearPeakField} />);
+
+    await user.click(screen.getByRole("button", { name: /npm run build/ }));
+    expect(screen.getByRole("button", { name: /npm run build/ })).toHaveAttribute("aria-pressed", "true");
+    expect(onClearPeakField).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "30 min" }));
+    expect(screen.getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "true");
+    expect(onClearPeakField).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores a peak link naming an unknown resource", () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    render(<ResourcesTab sessionId="claude:resources" historical={false} peakField="gpu_bps" />);
+    expect(screen.getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "true");
+  });
 });
