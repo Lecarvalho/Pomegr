@@ -97,10 +97,15 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
         + `${cacheWriteAvailable ? `, cache write ${tokens.cacheWriteTokens.toLocaleString()}` : ""}, output ${tokens.outputTokens.toLocaleString()}` : "";
       const modelLabel = model ? `, model ${model}` : "";
       const ariaLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}${countsLabel}, ${callsText}`;
-      // The phone line has no room for the counts the desktop label spells out, so it names the
-      // agent, the model, the uncached input and the time instead.
-      const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}`
-        + `${tokens ? `, uncached input ${tokens.uncachedInputTokens.toLocaleString()}` : ""}, ${shortTime(group.request.observedAt)}, ${callsText}`;
+      // The phone line prints the same request-local counts as desktop and adds the request time,
+      // which desktop leaves to its call rows.
+      const phoneLabel = `Request #${group.request.number}, ${agentName}, ${roleLabel}${modelLabel}${countsLabel}, ${shortTime(group.request.observedAt)}, ${callsText}`;
+      // One set of counts for both lines: chart-legend colors, compact figures, exact value on hover.
+      const tokenValues = tokens && <>
+        <span className="activityTokenValue uncached" title={requestTokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
+        {cacheWriteAvailable && <span className="activityTokenValue write" title={requestTokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
+        <span className="activityTokenValue output" title={requestTokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
+      </>;
       return <article className={`activityTableFrame${selected ? " isSelectedRequest" : ""}`} key={group.request.number} data-request={group.request.number} aria-label={`Request #${group.request.number}`}>
         {phone
           ? <button type="button" className={`commandQuietAction activityRow activityRequestLine${selected ? " selected" : ""}`} aria-pressed={selected}
@@ -111,7 +116,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
               {showAgent && showModel && " "}
               {showModel && <span className="activityRequestModel">{model}</span>}
             </span>
-            <span className="activityRequestMeta">{tokens ? `${compactNumber(tokens.uncachedInputTokens)} in · ` : ""}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
+            <span className="activityRequestMeta">{tokenValues && <span className="activityRequestTokens">{tokenValues}</span>}<time dateTime={group.request.observedAt}>{shortTime(group.request.observedAt)}</time></span>
           </button>
           // The desktop line carries the agent itself, so the row is a grid container rather than
           // one button: the select control stretches its hit area over the whole row (the roster
@@ -131,11 +136,7 @@ export function ActivityRequestList({ selection, feed, agents, busy, cacheWriteA
             </span>
             {/* The counts sit above the select control's row-wide hit area so each can show its own
                 hover; a pointer click on them still selects the request, as anywhere else on the row. */}
-            <span className="activityRequestTokens" onClick={selectRequest}>{tokens && <>
-              <span className="activityTokenValue uncached" title={requestTokenTitle("Uncached input", tokens.uncachedInputTokens)}>{compactNumber(tokens.uncachedInputTokens)}</span>
-              {cacheWriteAvailable && <span className="activityTokenValue write" title={requestTokenTitle("Cache write", tokens.cacheWriteTokens)}>{compactNumber(tokens.cacheWriteTokens)}</span>}
-              <span className="activityTokenValue output" title={requestTokenTitle("Output", tokens.outputTokens)}>{compactNumber(tokens.outputTokens)}</span>
-            </>}</span>
+            <span className="activityRequestTokens" onClick={selectRequest}>{tokenValues}</span>
           </div>}
         {group.noMatchingCalls && <p className="activityLinkNote">No recorded calls for this request.</p>}
         {group.calls.length > 0 && <ul className="activityTable">
