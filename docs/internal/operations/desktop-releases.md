@@ -6,7 +6,22 @@
 
 ## Publish signed artifacts
 
-With every intended change merged, run one command from a clean `main` that matches `origin/main`:
+Before releasing a new version, test if the new version works locally
+
+```powershell
+$env:POMEGR_DATA_DIR = "C:\Temp\pomegr-test-data"; npm run desktop:start
+```
+
+With every intended change merged, bump the version by hand on `main` and push it. The release command never changes the version:
+
+```powershell
+npm version X.Y.Z --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: bump version to X.Y.Z"
+git push origin main
+```
+
+Then run the release command from that clean `main`, at the same commit as `origin/main`:
 
 ```powershell
 npm run release:windows -- --tag vX.Y.Z
@@ -17,7 +32,7 @@ Then confirm the workflow run and the published GitHub release succeeded.
 Rules:
 
 - Stable releases use `vX.Y.Z`. Beta releases use `vX.Y.Z-beta.N`, publish as a GitHub prerelease, and use the beta updater channel.
-- The command pushes a version commit directly to `main`. Never edit a version by hand.
+- The version bump is its own commit, made and pushed by hand before the release command. Use `npm version` so `package.json` and `package-lock.json` change together; the release command never edits, commits, or pushes a version.
 - Pushing a tag does not start the workflow. Only the dispatch does.
 - Never move or reuse a published tag, rerun a published version, replace release assets, or publish locally built executables.
 
@@ -26,7 +41,7 @@ Rules:
 `npm run release:windows` needs Git and an authenticated GitHub CLI on `PATH`. For a tag GitHub does not have yet, it:
 
 1. Requires a clean checkout of `main` at the same commit as `origin/main`.
-2. Runs `npm version X.Y.Z --no-git-tag-version`, commits `package.json` and `package-lock.json` as `chore: bump version to X.Y.Z`, and pushes `main`. It skips this step when `package.json` already has that version.
+2. Requires `package.json` to already have version `X.Y.Z`. Otherwise it stops with `POMEGR_RELEASE_VERSION_NOT_BUMPED` and changes nothing.
 3. Creates the annotated tag `vX.Y.Z` on that commit and pushes it.
 4. Checks that the tag matches `package.json` and that the checkout, the local tag, and the GitHub tag all resolve to the same commit.
 5. Dispatches `release.yml` with the tag and that commit SHA.

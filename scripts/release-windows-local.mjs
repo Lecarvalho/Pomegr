@@ -142,9 +142,10 @@ async function capturedLine(runCommand, args, cwd) {
   return (await execute(runCommand, "git", args, cwd, { capture: true })).trim();
 }
 
-// Creates the release point for a tag GitHub does not have yet: the version commit on
-// main, the annotated tag, and both pushes. An existing remote tag is never touched.
-async function prepareReleasePoint({ runCommand, readText, tag, cwd, npmCli, nodeExecutable, report }) {
+// Creates the release point for a tag GitHub does not have yet: the annotated tag on the
+// already-pushed version commit, and its push. The version itself is bumped and pushed by
+// hand beforehand; this never edits package.json. An existing remote tag is never touched.
+async function prepareReleasePoint({ runCommand, readText, tag, cwd, report }) {
   if (typeof tag !== "string" || !tag.startsWith("v")) throw new Error("DESKTOP_RELEASE_TAG_VERSION_MISMATCH");
   const version = tag.slice(1);
   parseReleaseVersion(version);
@@ -159,17 +160,9 @@ async function prepareReleasePoint({ runCommand, readText, tag, cwd, npmCli, nod
   const remoteMain = await localRevision(runCommand, `refs/remotes/origin/${MAIN_BRANCH}`, cwd);
   if (await localRevision(runCommand, "HEAD", cwd) !== remoteMain) throw new Error("POMEGR_RELEASE_MAIN_NOT_SYNCED");
 
-  const localTagExists = Boolean(await capturedLine(runCommand, ["tag", "--list", tag], cwd));
-  if (await readPackageVersion(readText, cwd) !== version) {
-    if (localTagExists) throw new Error("POMEGR_RELEASE_LOCAL_TAG_MISMATCH");
-    if (!npmCli) throw new Error("POMEGR_RELEASE_NPM_CLI_REQUIRED");
-    report(`Setting version ${version} on ${MAIN_BRANCH}.`);
-    await execute(runCommand, nodeExecutable, [npmCli, "version", version, "--no-git-tag-version"], cwd);
-    await execute(runCommand, "git", ["add", "--", "package.json", "package-lock.json"], cwd);
-    await execute(runCommand, "git", ["commit", "-m", `chore: bump version to ${version}`], cwd);
-    await execute(runCommand, "git", ["push", "origin", `HEAD:refs/heads/${MAIN_BRANCH}`], cwd);
-  }
+  if (await readPackageVersion(readText, cwd) !== version) throw new Error("POMEGR_RELEASE_VERSION_NOT_BUMPED");
 
+  const localTagExists = Boolean(await capturedLine(runCommand, ["tag", "--list", tag], cwd));
   if (!localTagExists) {
     await execute(runCommand, "git", ["tag", "-a", tag, "-m", `Pomegr ${version}`], cwd);
   } else if (await localRevision(runCommand, `${tagReference}^{commit}`, cwd) !== await localRevision(runCommand, "HEAD", cwd)) {
@@ -185,13 +178,11 @@ export async function validateThenDispatchRelease({
   cwd = REPOSITORY_ROOT,
   readText = (filename) => readFile(filename, "utf8"),
   runCommand = spawnCommand,
-  npmCli = process.env.npm_execpath,
-  nodeExecutable = process.execPath,
   report = () => {},
 } = {}) {
   await execute(runCommand, "gh", ["auth", "status", "--hostname", "github.com"], cwd, { capture: true });
   await execute(runCommand, "gh", ["api", "--hostname", "github.com", "--method", "GET", `repos/${REPOSITORY}`], cwd, { capture: true });
-  if (!checkOnly) await prepareReleasePoint({ runCommand, readText, tag, cwd, npmCli, nodeExecutable, report });
+  if (!checkOnly) await prepareReleasePoint({ runCommand, readText, tag, cwd, report });
 
   const packageVersion = await readPackageVersion(readText, cwd);
   assertReleaseTag({ tag, version: packageVersion });
@@ -226,6 +217,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     }
     if (error.message === "POMEGR_RELEASE_BRANCH_NOT_MAIN" || error.message === "POMEGR_RELEASE_MAIN_NOT_SYNCED") {
       process.stderr.write("A new release starts from main at the same commit as origin/main.\n");
+    }
+    if (error.message === "POMEGR_RELEASE_VERSION_NOT_BUMPED") {
+      process.stderr.write("package.json does not have the tag's version. Bump it, commit, and push main first, then rerun.\n");
     }
     process.exitCode = 1;
   });
