@@ -4,8 +4,13 @@ import test from "node:test";
 import {
   boundedNotificationTitle,
   createNeedsInputNotificationController,
+  isAllowedNotificationTarget,
   isSafeNotificationSessionId,
   NEEDS_INPUT_NOTIFICATION_COPY,
+  NEEDS_INPUT_NOTIFICATION_DETAIL,
+  needsInputNotificationPayload,
+  needsInputNotificationTarget,
+  NOTIFICATION_FALLBACK_TARGET,
 } from "../desktop/runtime/notifications.mjs";
 
 function session(id, options = {}) {
@@ -24,7 +29,7 @@ function harness(now = () => Date.parse("2026-08-12T12:00:00.000Z")) {
   const controller = createNeedsInputNotificationController({
     now,
     notify(payload, onClick) { notifications.push({ payload, onClick }); },
-    openSession(id) { opened.push(id); },
+    openTarget(target) { opened.push(target); },
   });
   return { controller, notifications, opened };
 }
@@ -93,12 +98,43 @@ test("native payload is fixed, bounded, and excludes every private sentinel", ()
 
   assert.equal(notifications.length, 1);
   assert.deepEqual(notifications[0].payload, {
-    title: "Pomegr",
-    body: NEEDS_INPUT_NOTIFICATION_COPY,
+    title: "Safe normalized title",
+    body: NEEDS_INPUT_NOTIFICATION_DETAIL,
   });
   assert.doesNotMatch(JSON.stringify(notifications[0].payload), /QUESTION|CHOICE|PROMPT|COMMAND|TOOL_INPUT|FILE_CONTENT|STDOUT|STDERR|APPROVAL/);
   notifications[0].onClick();
-  assert.deepEqual(opened, ["codex:safe-id"]);
+  assert.deepEqual(opened, ["/sessions/codex-safe-id"]);
+});
+
+test("payload carries the bounded session title and falls back to generic copy", () => {
+  assert.deepEqual(needsInputNotificationPayload({ title: "Fix flaky checkout test" }), {
+    title: "Fix flaky checkout test",
+    body: NEEDS_INPUT_NOTIFICATION_DETAIL,
+  });
+  const long = needsInputNotificationPayload({ title: "y".repeat(300) });
+  assert.equal(long.title.length, 96);
+  for (const session of [undefined, {}, { title: "" }, { title: " \n\t " }, { title: 42 }, { title: { text: "x" } }]) {
+    assert.deepEqual(needsInputNotificationPayload(session), { title: "Pomegr", body: NEEDS_INPUT_NOTIFICATION_COPY });
+  }
+  assert.deepEqual(Object.keys(needsInputNotificationPayload({ title: "T", project: "P", currentActivity: { text: "A" } })), ["title", "body"]);
+});
+
+test("click targets are same-origin relative session routes from an allowlist", () => {
+  assert.equal(needsInputNotificationTarget("claude:session-1"), "/sessions/claude-session-1");
+  assert.equal(needsInputNotificationTarget("codex:019a.b_c-d"), "/sessions/codex-019a.b_c-d");
+  for (const id of ["codex:../private", "codex:thread:child", "my_provider:abc", "unknown", "", null, "claude:a/b", "claude:a?x=1"]) {
+    assert.equal(needsInputNotificationTarget(id), NOTIFICATION_FALLBACK_TARGET);
+  }
+  for (const target of ["/sessions", "/sessions/claude-session-1"]) {
+    assert.equal(isAllowedNotificationTarget(target), true);
+  }
+  for (const target of [
+    "", "/", "/settings", "sessions/claude-a", "//evil.example/sessions", "https://evil.example/sessions/claude-a",
+    "/sessions/", "/sessions/claude-a/", "/sessions/claude-a/../../settings", "/sessions/claude-a?tab=x", "/sessions/claude-a#x",
+    "/sessions/Claude-a", "/sessions/claude-a\n", "/sessions/claude-a%2F..", "javascript:alert(1)", null, 7,
+  ]) {
+    assert.equal(isAllowedNotificationTarget(target), false);
+  }
 });
 
 test("unsafe IDs are ignored and notification titles remain one bounded line", () => {
@@ -113,15 +149,20 @@ test("unsafe IDs are ignored and notification titles remain one bounded line", (
   assert.doesNotMatch(bounded, /[\r\n\u0000]/);
 });
 
-test("session-title privacy sentinels never enter the native notification payload", () => {
+test("only the catalog title reaches the payload; other session fields never do", () => {
   const { controller, notifications } = harness();
   controller.observe([session("codex:safe-id", {
     needsInput: true,
-    title: "PROMPT_MUST_NOT_LEAK CREDENTIAL_MUST_NOT_LEAK C:\\Users\\private",
+    title: "Catalog title",
+    privateFields: {
+      project: "PROJECT_MUST_NOT_LEAK",
+      currentActivity: { text: "ACTIVITY_MUST_NOT_LEAK" },
+      transcriptPath: "C:\\Users\\private",
+    },
   })], { enabled: true });
   assert.deepEqual(notifications[0].payload, {
-    title: "Pomegr",
-    body: NEEDS_INPUT_NOTIFICATION_COPY,
+    title: "Catalog title",
+    body: NEEDS_INPUT_NOTIFICATION_DETAIL,
   });
   assert.doesNotMatch(JSON.stringify(notifications[0].payload), /MUST_NOT_LEAK|C:\\\\Users/);
 });

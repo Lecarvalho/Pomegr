@@ -196,7 +196,7 @@ test("desktop monitor provider surface is observation-only", () => {
 test("notification failures and session-catalog failures remain isolated and bounded", async () => {
   const controller = createNeedsInputNotificationController({
     notify() { throw new Error("PROMPT_MUST_NOT_LEAK"); },
-    openSession() { throw new Error("COMMAND_MUST_NOT_LEAK"); },
+    openTarget() { throw new Error("COMMAND_MUST_NOT_LEAK"); },
   });
   assert.equal(controller.observe([{ id: "codex:safe", isLive: true, needsInput: true, title: "PRIVATE_PATH_MUST_NOT_LEAK" }], { enabled: true }), 0);
 
