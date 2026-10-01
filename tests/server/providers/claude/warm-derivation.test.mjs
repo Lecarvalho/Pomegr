@@ -218,6 +218,30 @@ test("tool-call evidence reader: cwd and validator-answer changes always recompu
   }
 });
 
+test("tool-call evidence reader: an agent-worktree target is recorded at its repository-relative path", async () => {
+  await withTempDir(async (root) => {
+    const worktree = path.join(root, ".claude", "worktrees", "agent-a1");
+    const edit = (id, minute, target) => [
+      toolUse(id, `2026-09-01T00:0${minute}:00.000Z`, "Edit", { file_path: target, old_string: "a", new_string: "b" }),
+      toolResult(id, `2026-09-01T00:0${minute}:01.000Z`, { toolUseResult: { type: "update" } }),
+    ];
+    const records = [
+      ...edit("nested", 0, path.join(worktree, "server", "file.mjs")),
+      ...edit("private", 1, path.join(worktree, ".claude", "settings.json")),
+      ...edit("worktreeRoot", 2, worktree),
+      ...edit("otherPrivate", 3, path.join(root, ".claude", "settings.json")),
+    ];
+    const reader = createClaudeToolCallEvidenceReader({});
+    const { toolCalls } = reader.read({ file: "/fake/agent-a1.jsonl", key: null, records, actor: { id: "agent-a1", label: "Agent" },
+      isMain: false, stat, cwd: root, forbiddenRoots: [], validatePath: repositoryRelativePath });
+    const changes = Object.fromEntries(toolCalls.map((call) => [call.id, call.fileChanges]));
+    assert.deepStrictEqual(changes.nested, [{ path: "server/file.mjs", kind: "edited", previousPath: null }]);
+    assert.equal(changes.private, null, "a provider folder inside the worktree stays rejected");
+    assert.equal(changes.worktreeRoot, null);
+    assert.equal(changes.otherPrivate, null, "the session's own provider folder stays rejected");
+  });
+});
+
 test("tool-call evidence reader: mutating a returned tool call does not affect the next read", async () => {
   const { root, records } = await buildToolCallFixture();
   try {

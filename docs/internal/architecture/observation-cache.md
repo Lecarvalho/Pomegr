@@ -2610,7 +2610,12 @@ or transcript locations, and any candidate that cannot be contained under the re
 root. It normalizes the accepted browser value to a bounded repository-relative path and
 preserves legitimate nested directories and filenames; the custom-agent identifier syntax
 is not a path validator. Invalid or over-bound candidates are dropped rather than
-truncated into a different path. Repository roots, native target values, commands, tool
+truncated into a different path. The Claude adapter makes one structural rebase before
+validation: a target under the session working directory's `.claude/worktrees/<name>/`,
+where Claude Code checks out an isolated agent's worktree, is validated as the remaining
+path under the session working directory, so the change is recorded at the same
+repository-relative path as an edit in the main checkout. The remainder passes the same
+validator, so a provider folder inside the worktree stays rejected. Repository roots, native target values, commands, tool
 arguments, provider records, and validation failures remain monitor-private.
 
 Codex binds successful structured mutations during U2 through the inventory's private

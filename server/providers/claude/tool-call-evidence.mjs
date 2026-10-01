@@ -111,12 +111,31 @@ function computeTemplate(file, records, stat, isMain) {
   return { userInputActivity, toolCallTemplates, calls, updatedAt: { first, bestValid } };
 }
 
+/**
+ * Claude Code checks an isolated agent's worktree out at `<cwd>/.claude/worktrees/<name>/`, so a
+ * structured file tool run there targets the same repository-relative path under a private-root
+ * prefix the path validator rejects outright. Rebase such a target onto the session cwd; anything
+ * else (including a target naming the worktree directory itself) is returned unchanged. The
+ * remainder still goes through the validator, so a provider folder inside the worktree stays
+ * rejected.
+ */
+function rebaseAgentWorktreeTarget(target, cwd) {
+  if (typeof target !== "string" || !path.isAbsolute(target) || typeof cwd !== "string" || !path.isAbsolute(cwd)) return target;
+  const segments = path.relative(cwd, target).split(path.sep);
+  if (segments.length < 4 || segments[0].toLowerCase() !== ".claude" || segments[1].toLowerCase() !== "worktrees") return target;
+  return path.join(cwd, ...segments.slice(3));
+}
+
+function rebaseAgentWorktreeCandidates(candidates, cwd) {
+  return candidates.map((candidate) => ({ ...candidate, target: rebaseAgentWorktreeTarget(candidate.target, cwd) }));
+}
+
 function toolCallsFromTemplate(templates, actor, cwd, forbiddenRoots, validatePath) {
   return templates.map(({ fileChangeCandidates, ...rest }) => ({
     ...rest,
     actor: { id: actor.id, label: actor.label },
     fileChanges: fileChangeCandidates
-      ? boundedFileChanges(fileChangeCandidates, cwd, { forbiddenRoots, validatePath })
+      ? boundedFileChanges(rebaseAgentWorktreeCandidates(fileChangeCandidates, cwd), cwd, { forbiddenRoots, validatePath })
       : null,
   }));
 }
