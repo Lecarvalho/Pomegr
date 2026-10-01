@@ -30,7 +30,7 @@ describe("personal Home", () => {
     const user = userEvent.setup();
     const view = home();
     const update = screen.getByRole("complementary", { name: "What’s new" });
-    expect(within(update).getByRole("heading", { name: "See the files each session touched" })).toBeInTheDocument();
+    expect(within(update).getByRole("heading", { name: "See what happened in a session" })).toBeInTheDocument();
     expect(within(update).queryByRole("link")).not.toBeInTheDocument();
     const navigation = screen.getByRole("region", { name: "Sessions" });
     expect(update.compareDocumentPosition(navigation) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -39,7 +39,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Browse sessions" })).toHaveFocus();
     expect(JSON.parse(window.localStorage.getItem(HOME_PREFERENCES_STORAGE_KEY)!)).toEqual({
       version: 1, pins: [{ kind: "session", id: sessions[0].id }],
-      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-files-and-resources-v1",
+      lastViewedSessionId: sessions[1].id, dismissedUpdateId: "session-events-v1",
     });
     view.unmount();
     home();
@@ -47,7 +47,7 @@ describe("personal Home", () => {
     expect(screen.getByRole("link", { name: "Build Home · Pomegr · Codex" })).toBeInTheDocument();
     act(() => {
       window.localStorage.setItem(HOME_PREFERENCES_STORAGE_KEY, JSON.stringify({
-        version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "older-update",
+        version: 1, pins: [], lastViewedSessionId: null, dismissedUpdateId: "session-files-and-resources-v1",
       }));
       window.dispatchEvent(new StorageEvent("storage", { key: HOME_PREFERENCES_STORAGE_KEY }));
     });

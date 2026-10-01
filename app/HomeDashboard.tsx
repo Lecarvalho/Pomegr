@@ -95,9 +95,9 @@ export function HomeDashboard() {
     <div className={styles.workspace}>
       <div className={styles.sessionColumn}>
         {ready && !updateDismissed && <HomeUpdateCard
-          title="See the files each session touched"
-          description="A session's Repository tab now shows its branch, pull request, and the files it changed with their history, and Resources keeps CPU, memory, and disk curves with their peaks."
-          details="Select a file under Touched here to see its recorded edits. Files changed outside agent tools are marked as seen in Git, not as agent edits. Repository pages add Files and Git tabs."
+          title="See what happened in a session"
+          description="A session's Overview now lists its events, newest first: agents starting and finishing, signals, user messages, resource peaks, commits, and pull requests."
+          details="Select an event to open the tab that holds its evidence. The list covers retained evidence, not the complete session history. Commits are observed in Git and never attributed to an agent, and user messages appear for Claude Code sessions only."
           onDismiss={() => { dismissUpdate(); browseRef.current?.focus(); }}
         />}
         <section className={styles.sessions} aria-labelledby="home-sessions-heading" aria-busy={!ready || undefined}>
