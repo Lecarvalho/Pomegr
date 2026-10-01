@@ -64,7 +64,7 @@ test("commits all seven complete domain snapshots with independent revisions", (
     assert.equal(result.snapshot.value.observedAt, OBSERVED_AT);
   }
   const summary = store.read(SESSION_ID, "session-summary").snapshot.value;
-  assert.deepEqual(Object.keys(summary).sort(), ["activity", "allAgentContext", "capabilities", "domain", "lifecycle", "metrics", "observedAt", "planTasks", "readiness", "repository", "requestSnapshots", "resourceAvailability", "revision", "rightNow", "sectionReadiness", "session", "sessionId", "source", "topSignals", "view"].sort());
+  assert.deepEqual(Object.keys(summary).sort(), ["activity", "allAgentContext", "capabilities", "domain", "events", "lifecycle", "metrics", "observedAt", "planTasks", "readiness", "repository", "requestSnapshots", "resourceAvailability", "revision", "rightNow", "sectionReadiness", "session", "sessionId", "source", "topSignals", "view"].sort());
 });
 
 test("session-summary alone carries the bounded header and Overview data", () => {

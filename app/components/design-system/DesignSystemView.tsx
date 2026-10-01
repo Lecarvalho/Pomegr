@@ -36,6 +36,7 @@ import {
 import { useClientAccess } from "../../hooks/ClientAccessContext";
 import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSamples";
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
+import { EventsRailSection } from "./DesignSystemEventsSample";
 import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
 // Layer 1 of the web-only gate: the desktop preload exposes `window.pomegrDesktop`
@@ -71,6 +72,7 @@ export function DesignSystemView() {
       <RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail={<><code>v1.0.0</code> · Project installation · Up to date</>} actions={<button type="button" className="commandQuietAction">Recheck</button>} />
     </Section>
     <PanelsSection />
+    <EventsRailSection />
     <CommandTableSection />
     <SettingsRailSection />
     <TypographySection />

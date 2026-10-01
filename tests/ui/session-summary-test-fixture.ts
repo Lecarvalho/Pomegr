@@ -22,6 +22,7 @@ export function sessionSummaryFixture(overrides: Partial<SessionSummaryDomain> =
     resourceAvailability: { readiness: "ready", hasData: true },
     requestSnapshots: { status: "ready", items: [{ id: "request-1", agentId: "primary", agentRole: "orchestrator", agentLabel: "Primary agent", observedAt: "2026-09-14T12:00:00.000Z", cacheLifetime: null, uncachedInputTokens: 10, cacheWriteTokens: 20, cacheReadTokens: 100, outputTokens: 5, totalTokens: 135, precedingWork: [], precedingAssociation: null, issuedWork: [], issuedAssociation: null }] },
     planTasks: [{ id: "task-1", subject: "Build tabs", status: "completed", blocks: [], blockedBy: [] }],
+    events: { readiness: "ready", items: [], total: 0 },
     ...overrides,
   };
 }

@@ -29,6 +29,7 @@
 .designSystemInspectorFrame { width: min(340px, 100%); overflow: hidden; border: 1px solid var(--command-line); border-radius: var(--panel-radius); }
 .designSystemInspectorFrame .agentInspector-inline { max-height: none; border-left: 0; }
 .designSystemTable { min-width: 560px; }
+.designSystemEventsFrame { width: min(380px, 100%); }
 .designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
 .designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }

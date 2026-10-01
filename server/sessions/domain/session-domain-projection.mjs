@@ -2,6 +2,7 @@ import { repositoryRelativePath } from "../../normalize/repository-path.mjs";
 import { isSafeRecordedRepositoryPath } from "../../repository/repository-snapshot.mjs";
 import { fileChangeAgentIdentity, SAFE_FILE_CHANGE_AGENT_ID } from "../../repository/file-change-agents.mjs";
 import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
+import { SESSION_EVENT_READINESS_SECTIONS, sessionEvents } from "./session-events.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
@@ -368,7 +369,7 @@ function base(domain, sessionId, observedAt, state, domainReadiness) {
   };
 }
 
-function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFiles) {
+function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFiles, events) {
   const session = state?.session;
   const agentById = new Map(agents.map((agent) => [agent.id, agent]));
   const sections = sectionReadiness(ready, ["core", "agentEvidence", "contextEvidence", "activityEvidence", "repository"]);
@@ -454,6 +455,7 @@ function sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agent
     },
     requestSnapshots: { ...requests, items: requests.items.slice(-48) },
     planTasks: list(state.planTasks, publicPlanTask),
+    events,
   };
 }
 
@@ -512,8 +514,22 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
   const fileHistory = publicFileHistory(options.fileHistory, agents);
   const gitObservedFiles = publicGitObservedFiles(options.gitObserved);
+  // Derived here, from the same committed inputs as the other domains, so a resource, repository,
+  // or evidence change re-projects the summary and an unchanged feed leaves its revision alone.
+  const events = sessionEvents({
+    readiness: sectionReadiness(ready, SESSION_EVENT_READINESS_SECTIONS),
+    session,
+    agents,
+    userMessageTimes: snapshot.evidence?.userMessageTimes,
+    pullRequestCreations: snapshot.evidence?.pullRequestCreations,
+    pullRequests,
+    // Never read from session.repository (which /api/state serializes verbatim): the recorded
+    // commit times arrive only through options.commitTimes, a side channel like options.gitObserved.
+    commitTimes: options.commitTimes,
+    retainedResources,
+  });
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(fileHistory, gitObservedFiles)));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(fileHistory, gitObservedFiles), events));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,

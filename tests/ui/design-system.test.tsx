@@ -17,8 +17,8 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Typography and tokens"];
-const SAMPLE_SOURCES = ["DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples"].map((name) => `app/components/design-system/${name}.tsx`);
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Typography and tokens"];
+const SAMPLE_SOURCES = ["DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample"].map((name) => `app/components/design-system/${name}.tsx`);
 
 function source(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -91,6 +91,29 @@ describe("Design-system reference page", () => {
     expect(single.querySelectorAll(".requestRoleSegment")).toHaveLength(32);
     expect(within(single).getByLabelText("Agent roles in view")).toHaveTextContent(/orchestrator ×1.*explore ×1/);
     expect(single.querySelector(".requestRoleNamed")).toHaveTextContent(/#34.*Primary agent.*orchestrator/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders the Events rail from static data: every kind, the expander, and the empty and unavailable states", async () => {
+    const user = userEvent.setup();
+    render(<DesignSystemView />);
+    const section = screen.getByRole("heading", { level: 2, name: "Events rail" }).closest("section") as HTMLElement;
+    const panels = within(section).getAllByRole("region", { name: "Events" });
+    expect(panels).toHaveLength(4);
+    const [full, empty, loading, unavailable] = panels as [HTMLElement, HTMLElement, HTMLElement, HTMLElement];
+    const rowName = /, \d\d:\d\d$/;
+    expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(9);
+    expect(within(full).getAllByRole("button", { name: rowName })[0]).toHaveClass("commandQuietAction", "sessionEventRow");
+    await user.click(within(full).getByRole("button", { name: "Show 2 earlier" }));
+    expect(within(full).getAllByRole("button", { name: rowName })).toHaveLength(11);
+    expect(within(full).getByRole("button", { name: "Show fewer" })).toHaveClass("commandTextLink");
+    for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened"]) {
+      expect(within(full).getAllByText(label, { selector: ".sessionEventLabel" }).length).toBeGreaterThan(0);
+    }
+    expect(within(full).getByText("11 events")).toBeInTheDocument();
+    expect(within(empty).getByText("No events recorded.")).toBeInTheDocument();
+    expect(within(loading).getByText("Loading Event evidence…")).toBeInTheDocument();
+    expect(within(unavailable).getByText("Event evidence unavailable.")).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

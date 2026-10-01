@@ -57,6 +57,11 @@ export function createSessionDomainStore(options = {}) {
   // Requests for a session without a committed projection yet. The first commit
   // after asynchronous hydration or rebuild inherits that demand.
   const pendingDemand = new Map();
+  // sessionId -> the recorded commit times of its last evidence commit. The repository recorder
+  // holds fewer records than the disk, so a projection can find it without an answer; the last
+  // committed list then stands in until the recorder reads the record back, instead of
+  // withdrawing commit events. Bounded by `sessions`.
+  const lastCommitTimes = new Map();
   const subscribers = new Set();
 
   function key(sessionId, domain) { return `${sessionId}\u0000${domain}`; }
@@ -83,6 +88,7 @@ export function createSessionDomainStore(options = {}) {
   function evictSession(sessionId) {
     for (const domain of SESSION_DOMAIN_NAMES) records.delete(key(sessionId, domain));
     sessions.delete(sessionId);
+    lastCommitTimes.delete(sessionId);
   }
   function evictIdle(at = now()) {
     const evicted = [];
@@ -186,14 +192,20 @@ export function createSessionDomainStore(options = {}) {
       if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) {
         throw new TypeError("Invalid session domain identity");
       }
-      return commitProjection(sessionId, projectSessionDomains(sessionId, snapshot, {
+      // One read of the session's recorded repository snapshot per projection.
+      const recorded = options.repositoryRecordForSession?.(sessionId) ?? null;
+      const commitTimes = Array.isArray(recorded?.commitTimes) ? recorded.commitTimes : lastCommitTimes.get(sessionId) ?? null;
+      const published = commitProjection(sessionId, projectSessionDomains(sessionId, snapshot, {
         catalogEntry,
         forbiddenRoots: options.forbiddenRoots || [],
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
         retainedResources: options.retainedResourcesForSession?.(sessionId) ?? null,
         fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
-        gitObserved: options.gitObservedForSession?.(sessionId) ?? null,
+        gitObserved: recorded?.gitObserved ?? null,
+        commitTimes,
       }), "evidence");
+      if (sessions.has(sessionId) && Array.isArray(commitTimes)) lastCommitTimes.set(sessionId, commitTimes);
+      return published;
     },
     commitUnavailable(sessionId, catalogEntry, source, capabilities) {
       if (sessions.get(sessionId)?.kind === "evidence") return Object.freeze([]);
@@ -248,6 +260,6 @@ export function createSessionDomainStore(options = {}) {
     has(sessionId) { return sessions.has(sessionId); },
     sessionIds() { return Object.freeze([...sessions.keys()]); },
     size() { return sessions.size; },
-    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); },
+    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); },
   });
 }

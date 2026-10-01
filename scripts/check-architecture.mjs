@@ -44,6 +44,8 @@ async function collectSourceFiles(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     if (entry.isDirectory() && SKIP_DIRECTORIES.has(entry.name)) continue;
     const entryPath = path.join(directory, entry.name);
+    // Agent worktrees are separate checkouts of other branches, not part of this tree.
+    if (displayPath(entryPath) === ".claude/worktrees") continue;
     // Exported design-reference runtimes are generated assets, not source modules.
     if (/^docs\/internal\/plans\/ia-redesign\/prototype\/[^/]+-html\/(?:vendor(?:\/|$)|support\.js$)/.test(displayPath(entryPath))) continue;
     if (/^docs\/internal\/plans\/session-allowance\/prototype\/(?:vendor(?:\/|$)|support\.js$)/.test(displayPath(entryPath))) continue;

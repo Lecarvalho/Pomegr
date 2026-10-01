@@ -461,7 +461,7 @@ export const providerSessionEvidenceSchema = z.object({
   activity: z.array(evidenceActivity).max(4_096), planTasks: z.array(evidencePlanTask).max(256), compactions: z.array(evidenceCompaction).max(1_024),
   efficiencyRuleEvidence: z.object({ repetition: z.boolean(), concurrentMutation: z.boolean(), unsharedContext: z.boolean(), healthyFallback: z.boolean(), cacheUsageClassification: z.boolean() }).strict(),
   pullRequestCreations: z.array(z.object({ id: evidenceId, actorId: evidenceId, timestamp: evidenceNullableTimestamp, url: z.string().url().max(2_048) }).strict()).max(256),
-  usageLimitRejections: z.array(z.object({ observedAt: evidenceTimestamp, resetsAt: evidenceTimestamp }).strict()).max(64).optional(),
+  usageLimitRejections: z.array(z.object({ observedAt: evidenceTimestamp, resetsAt: evidenceTimestamp }).strict()).max(64).optional(), /* Recorded user-message times only (never content, type, IDs, or paths): canonical UTC ISO strings, oldest to newest, newest 256. */ userMessageTimes: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/).refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value, "Invalid timestamp")).max(256).refine((values) => values.every((value, index) => index === 0 || values[index - 1] <= value), "Expected oldest-to-newest order").optional(),
 }).strict();
 
 export const providerSessionReferenceSchema = z.object({

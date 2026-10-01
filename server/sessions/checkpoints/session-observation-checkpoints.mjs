@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { mkdir, opendir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isSafeRecordedRepositoryPath, normalizeRepositorySnapshot } from "../../repository/repository-snapshot.mjs";
+import { isSafeRecordedRepositoryPath, normalizeRepositorySnapshot, REPOSITORY_SNAPSHOT_VERSION } from "../../repository/repository-snapshot.mjs";
 
 export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 
@@ -575,8 +575,10 @@ export class SessionObservationCheckpointStore {
 
   /**
    * A repository-snapshot sidecar is removed when it is invalid, or when it is among the oldest
-   * beyond the sidecars' own bound. It is never removed with its checkpoint: an evicted
-   * checkpoint is rebuilt from its transcript, a recorded repository snapshot cannot be.
+   * beyond the sidecars' own bound. One written by a newer build (a higher snapshot version than
+   * this build knows) is kept, counted toward the bound, and never loaded. A sidecar is never
+   * removed with its checkpoint: an evicted checkpoint is rebuilt from its transcript, a recorded
+   * repository snapshot cannot be.
    */
   async #pruneRepositorySnapshots() {
     const valid = [];
@@ -585,7 +587,11 @@ export class SessionObservationCheckpointStore {
       let remove;
       try {
         const payload = JSON.parse(await readFile(filePath, "utf8"));
-        remove = !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
+        // A record from a newer build is never loaded here, and never deleted either: recorded
+        // repository state cannot be rebuilt, so a downgrade must leave it for the newer build.
+        const newer = isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
+          && Number.isSafeInteger(payload.snapshot?.version) && payload.snapshot.version > REPOSITORY_SNAPSHOT_VERSION;
+        remove = !newer && !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
           && Boolean(normalizeRepositorySnapshot(payload.snapshot)));
       } catch (error) {
         remove = error?.code !== "ENOENT";

@@ -3,11 +3,18 @@ import { execFile } from "node:child_process";
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 const RECORDED_PATH_DRIVE = /^[A-Za-z]:/u;
 const FILE_STATUS = /^[ MADRCUT?!]{2}$/u;
-const COMMIT_HASH_LINE = /^[0-9a-f]{40}$/iu;
+// One commit header of `git log --format="%H %cI"`: the hash is only counted, never retained.
+const COMMIT_HEADER_LINE = /^[0-9a-f]{40} (\S{1,64})$/iu;
 const MAX_FILES = 200;
 const MAX_PULL_REQUESTS = 10;
 const MAX_COUNT = 100_000;
-const SNAPSHOT_VERSION = 4;
+const SNAPSHOT_VERSION = 5;
+/** The newest sidecar version this build reads and writes. */
+export const REPOSITORY_SNAPSHOT_VERSION = SNAPSHOT_VERSION;
+// Newest in-window commit times one record keeps; matches the session-event feed cap.
+export const MAX_COMMIT_TIMES = 50;
+const MAX_COMMIT_TIME_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
+const CANONICAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const WINDOW_TIMEOUT_MS = 3_000;
 const WINDOW_MAX_BUFFER = 256 * 1024;
 // Combined character budget for one git-observed path list (dirtyAtFirstCheck,
@@ -26,7 +33,8 @@ const SNAPSHOT_KEYS_V2 = new Set([
   ...SNAPSHOT_KEYS_V1, "dirtyAtFirstCheck", "becameDirty", "committedInWindow", "gitObservedTruncated",
 ]);
 const SNAPSHOT_KEYS_V3 = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
-const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
+const SNAPSHOT_KEYS_V4 = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
+const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V4, "commitTimesInWindow"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 // Net Git change per window-committed path, aligned index-for-index with committedInWindow.
 const COMMITTED_CHANGES = new Set(["added", "modified", "deleted"]);
@@ -165,6 +173,24 @@ function normalizeCommittedChanges(value, committedInWindow) {
   return value.every((change) => COMMITTED_CHANGES.has(change)) ? [...value] : undefined;
 }
 
+/**
+ * Validate the in-window commit times: null (never measured, or a record from before version 5)
+ * or at most MAX_COMMIT_TIMES canonical UTC ISO strings, oldest to newest. Undefined on any
+ * violation so the caller rejects the whole record. Times only: never a hash, subject, or author.
+ */
+function normalizeCommitTimes(value) {
+  if (value === null) return null;
+  if (!Array.isArray(value) || value.length > MAX_COMMIT_TIMES) return undefined;
+  for (let index = 0; index < value.length; index += 1) {
+    const time = value[index];
+    if (typeof time !== "string" || !CANONICAL_TIME.test(time)) return undefined;
+    const parsed = Date.parse(time);
+    if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== time) return undefined;
+    if (index > 0 && value[index - 1] > time) return undefined;
+  }
+  return [...value];
+}
+
 /** Fields shared by every snapshot version; returns null on any violation. */
 function normalizeSnapshotCore(value) {
   if (!isBoundedText(value.branch, 256)) return null;
@@ -205,7 +231,9 @@ function normalizeSnapshotCore(value) {
  * A version-1 record (predating the Git-observed-files fields) is accepted
  * and transparently upgraded with empty/never-measured Git-observed fields,
  * and a version-2 record (predating committedChanges) is upgraded with
- * committedChanges null, so existing on-disk snapshots survive the upgrade.
+ * committedChanges null, a version-3 record (predating repositoryId) with a
+ * null identity, and a version-4 record (predating commitTimesInWindow) with
+ * commitTimesInWindow null, so existing on-disk snapshots survive the upgrade.
  */
 export function normalizeRepositorySnapshot(value) {
   if (!isPlainObject(value)) return null;
@@ -222,13 +250,16 @@ export function normalizeRepositorySnapshot(value) {
       committedChanges: null,
       gitObservedTruncated: false,
       repositoryId: null,
+      commitTimesInWindow: null,
     });
   }
   const upgradingV2 = value.version === 2;
   const upgradingV3 = value.version === 3;
+  const upgradingV4 = value.version === 4;
   if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2)
     : upgradingV3 ? !hasExactKeys(value, SNAPSHOT_KEYS_V3)
-      : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
+      : upgradingV4 ? !hasExactKeys(value, SNAPSHOT_KEYS_V4)
+        : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
   const core = normalizeSnapshotCore(value);
   if (!core) return null;
   const dirtyAtFirstCheck = normalizeGitObservedPathList(value.dirtyAtFirstCheck, { nullable: true });
@@ -242,6 +273,8 @@ export function normalizeRepositorySnapshot(value) {
   if (typeof value.gitObservedTruncated !== "boolean") return null;
   const repositoryId = upgradingV2 || upgradingV3 ? null : value.repositoryId;
   if (repositoryId !== null && (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId))) return null;
+  const commitTimesInWindow = upgradingV2 || upgradingV3 || upgradingV4 ? null : normalizeCommitTimes(value.commitTimesInWindow);
+  if (commitTimesInWindow === undefined) return null;
   return Object.freeze({
     version: SNAPSHOT_VERSION,
     ...core,
@@ -251,7 +284,36 @@ export function normalizeRepositorySnapshot(value) {
     committedChanges: committedChanges === null ? null : Object.freeze(committedChanges),
     gitObservedTruncated: value.gitObservedTruncated,
     repositoryId,
+    commitTimesInWindow: commitTimesInWindow === null ? null : Object.freeze(commitTimesInWindow),
   });
+}
+
+function commitTimeCounts(times) {
+  const counts = new Map();
+  for (const time of Array.isArray(times) ? times : []) {
+    const parsed = typeof time === "string" ? Date.parse(time) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= MAX_COMMIT_TIME_MS) counts.set(parsed, (counts.get(parsed) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Pure derivation of the next recorded in-window commit times from the previous recorded list (or
+ * null) and this check's window read (undefined/null when this check did not read the window).
+ * Sticky: a time recorded once stays until it ages out of the newest MAX_COMMIT_TIMES, so a later
+ * read that no longer lists a commit (an amend, a rebase, a reset) never withdraws it. Commits
+ * that share one second are kept as many times as the fullest single read showed. Null only while
+ * no check has ever read the window.
+ */
+export function nextCommitTimes(previousTimes, readTimes) {
+  if (!Array.isArray(readTimes)) return Array.isArray(previousTimes) ? previousTimes : null;
+  const counts = commitTimeCounts(previousTimes);
+  for (const [time, count] of commitTimeCounts(readTimes)) counts.set(time, Math.max(counts.get(time) || 0, count));
+  const merged = [];
+  for (const time of [...counts.keys()].sort((left, right) => left - right)) {
+    for (let index = 0; index < counts.get(time); index += 1) merged.push(new Date(time).toISOString());
+  }
+  return merged.slice(-MAX_COMMIT_TIMES);
 }
 
 /**
@@ -346,11 +408,12 @@ export function gitObservedFilesFromSnapshot(snapshot) {
  * repository's own files are re-validated (they were already validated
  * against the live root by git-state); comparison, pull requests, and
  * commitsInSession each independently carry the previous recorded value
- * forward when this particular check could not observe them. Returns null
+ * forward when this particular check could not observe them, and the recorded
+ * in-window commit times only ever accumulate (see nextCommitTimes). Returns null
  * (never a partial record) when the candidate fails final normalization; the
  * caller must keep whatever snapshot it already had.
  */
-export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
+export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, commitTimes, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
   if (!repository || repository.available !== true || repository.historical !== false) return null;
   // A new bound identity begins a new repository timeline. In particular, an
   // old v3 (unbound) sidecar must not donate its carry-forward fields when a
@@ -384,6 +447,7 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
     checkedAt,
     repositoryId,
     ...nextGitObserved(prior, { files, committedPaths, committedChanges }),
+    commitTimesInWindow: nextCommitTimes(prior?.commitTimesInWindow, commitTimes),
   });
 }
 
@@ -490,7 +554,8 @@ function netCommittedChange(statusesNewestFirst) {
 /**
  * Read commits on the current HEAD whose committer time falls inside
  * [since, until], with the distinct file paths they touched and each path's
- * net change (added/modified/deleted; a type change counts as modified). Only meaningful
+ * net change (added/modified/deleted; a type change counts as modified), and those commits'
+ * committer times (times only, the newest MAX_COMMIT_TIMES). Only meaningful
  * when called on the live HEAD branch; a caller that knows the session's
  * recorded branch differs from HEAD should not call this at all. `git log
  * --name-status` reports paths relative to the repository's top level, the
@@ -511,7 +576,7 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
       execFile("git", [
         "-c", "core.quotepath=false",
         "-C", repositoryRoot,
-        "log", "--format=%H", "--name-status", "--no-renames", `--since=${since}`, `--until=${until}`, "HEAD",
+        "log", "--format=%H %cI", "--name-status", "--no-renames", `--since=${since}`, `--until=${until}`, "HEAD",
       ], {
         encoding: "utf8",
         timeout: WINDOW_TIMEOUT_MS,
@@ -520,11 +585,18 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
       }, (error, stdout) => {
         if (error) { resolve(null); return; }
         let count = 0;
+        const commitTimes = [];
         // git log lists commits newest first, so each path's statuses arrive newest first.
         const statusesByPath = new Map();
         for (const line of String(stdout).split(/\r?\n/u)) {
           if (!line) continue;
-          if (COMMIT_HASH_LINE.test(line)) { count += 1; continue; }
+          const header = COMMIT_HEADER_LINE.exec(line);
+          if (header) {
+            count += 1;
+            const committedAt = Date.parse(header[1]);
+            if (Number.isFinite(committedAt) && committedAt >= 0 && committedAt <= MAX_COMMIT_TIME_MS) commitTimes.push(committedAt);
+            continue;
+          }
           const match = NAME_STATUS_LINE.exec(line);
           if (!match || !isSafeRecordedRepositoryPath(match[2])) continue;
           const statuses = statusesByPath.get(match[2]) || [];
@@ -538,6 +610,8 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
           paths: bounded.list,
           changes: bounded.list.map((path) => netCommittedChange(statusesByPath.get(path))),
           truncated: bounded.truncated,
+          // Committer times only, oldest to newest, newest MAX_COMMIT_TIMES; `count` stays complete.
+          times: commitTimes.sort((left, right) => left - right).slice(-MAX_COMMIT_TIMES).map((time) => new Date(time).toISOString()),
         });
       });
     } catch {
@@ -645,6 +719,7 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
             commitsInSession: live?.commitsInSession,
             committedPaths: live?.committedPaths,
             committedChanges: live?.committedChanges,
+            commitTimes: live?.commitTimes,
             checkedAt: live?.checkedAt,
             repositoryId: live?.repositoryId,
             previous,

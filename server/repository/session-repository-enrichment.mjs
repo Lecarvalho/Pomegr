@@ -69,16 +69,16 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     try { pullRequests = await pullRequestReader([], { cwd: input.root, branch: repository.branch, historical: false, sessionCreations: input.sessionCreations }); }
     catch { pullRequests = unavailablePullRequests(); }
     const refreshedAt = now();
-    let commitsInSession = entry.commitsInSession ?? null; let committedPaths = null; let committedChanges = null;
+    let commitsInSession = entry.commitsInSession ?? null; let committedPaths = null; let committedChanges = null; let commitTimes = null;
     if (repository.available && resolvedRoot) {
       const windowRead = await readCommitsInWindow(resolvedRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
-      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; }
+      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; commitTimes = windowRead.times; }
     }
     if (commitsInSession !== null) repository = { ...repository, commitsInSession };
     if (entry.generation !== input.generation) return true;
     entry.value = { repository, pullRequests }; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
     entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true; entry.checked = true; entry.everAvailable = true;
-    onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, committedPaths, committedChanges, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
+    onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, committedPaths, committedChanges, commitTimes, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
     return true;
   }
 
