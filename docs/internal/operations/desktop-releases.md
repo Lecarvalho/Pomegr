@@ -39,7 +39,7 @@ Rules:
 
 `npm run release:windows` needs Git and an authenticated GitHub CLI on `PATH`. For a tag GitHub does not have yet, it:
 
-1. Requires a clean checkout of `main` at the same commit as `origin/main`.
+1. Requires a clean checkout of `main` at the same commit as `origin/main`. Clean means no modified or staged tracked files; untracked files are ignored, here and in `version:bump`.
 2. Requires `package.json` to already have version `X.Y.Z`. Otherwise it stops with `POMEGR_RELEASE_VERSION_NOT_BUMPED` and changes nothing.
 3. Creates the annotated tag `vX.Y.Z` on that commit and pushes it.
 4. Checks that the tag matches `package.json` and that the checkout, the local tag, and the GitHub tag all resolve to the same commit.

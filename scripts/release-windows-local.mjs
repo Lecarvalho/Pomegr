@@ -112,8 +112,9 @@ async function resolveRemoteTagCommit(runCommand, tag, cwd) {
   return requireCommitSha(tagObject.object.sha, "POMEGR_RELEASE_REMOTE_TAG_INVALID");
 }
 
+// Untracked files are left alone: CI builds the tagged commit, never this working tree.
 async function assertClean(runCommand, cwd) {
-  const status = await execute(runCommand, "git", ["status", "--porcelain=v1", "--untracked-files=all"], cwd, { capture: true });
+  const status = await execute(runCommand, "git", ["status", "--porcelain=v1", "--untracked-files=no"], cwd, { capture: true });
   if (status.trim()) throw new Error("POMEGR_RELEASE_CHECKOUT_DIRTY");
 }
 
