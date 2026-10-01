@@ -7,15 +7,16 @@ import { createCodexProvider } from "../../../../server/providers/codex/index.mj
 import { createProviderRegistry } from "../../../../server/providers/registry.mjs";
 import { createMonitorRuntime, createMonitorServer } from "../../../../server/server.mjs";
 
-async function waitFor(predicate) {
-  const deadline = Date.now() + 5_000;
+async function waitFor(predicate, phase) {
+  // The full suite runs many file/process-heavy fixtures concurrently on Windows.
+  const deadline = Date.now() + 30_000;
   while (!predicate()) {
-    if (Date.now() > deadline) throw new Error("Native presence publication timed out");
+    if (Date.now() > deadline) throw new Error(`Native presence publication timed out: ${phase}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
 }
 
-test("native presence updates committed Live state without transcript growth or GET acquisition", async () => {
+test("native presence updates committed Live state without transcript growth or GET acquisition", { timeout: 180_000 }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-native-presence-pipeline-"));
   const sessionRoot = path.join(root, "sessions");
   const locksRoot = path.join(root, "thread-writer-locks");
@@ -64,6 +65,9 @@ test("native presence updates committed Live state without transcript growth or 
   });
   const registry = createProviderRegistry([provider]);
   const makeRuntime = () => createMonitorRuntime({
+    // Checkpoints being disabled does not disable SQLite or history persistence.
+    // Keep every runtime's storage private to this fixture, including its restart.
+    pomegrPaths: { environment: { POMEGR_DATA_DIR: path.join(root, "data") } },
     now: () => now,
     providerRegistry: registry, checkpointStore: false, observationCommitDelayMs: 0,
     scheduleObservation: (task, delay) => setTimeout(task, delay),
@@ -81,14 +85,14 @@ test("native presence updates committed Live state without transcript growth or 
   try {
     await runtime.startObservation();
     const row = () => runtime.serveCatalog().snapshot?.value?.sessions.find((entry) => entry.id === qualifiedId);
-    await waitFor(() => row()?.activityStatus === "idle" && runtime.serveSession(qualifiedId).status === "ready");
+    await waitFor(() => row()?.activityStatus === "idle" && runtime.serveSession(qualifiedId).status === "ready", "initial idle state");
     assert.equal(row().isLive, false);
     const firstRevision = runtime.serveCatalog().revision;
 
     present = true;
     callbacks.get(locksRoot)("rename", `${id}.lock`);
-    await waitFor(() => row()?.activityStatus === "open" && row()?.isLive === true);
-    await waitFor(() => runtime.serveSession(qualifiedId).snapshot?.publicState?.agents?.[0]?.status === "idle");
+    await waitFor(() => row()?.activityStatus === "open" && row()?.isLive === true, "writer acquired");
+    await waitFor(() => runtime.serveSession(qualifiedId).snapshot?.publicState?.agents?.[0]?.status === "idle", "idle agent projection");
     assert.ok(runtime.serveCatalog().revision > firstRevision);
     assert.equal(row().updatedAt, timestamp, "ownership does not rewrite activity time");
     const unchangedStat = await stat(rollout);
@@ -112,7 +116,7 @@ test("native presence updates committed Live state without transcript growth or 
     const openRevision = runtime.serveCatalog().revision;
     present = false;
     callbacks.get(locksRoot)("rename", `${id}.lock`);
-    await waitFor(() => row()?.isLive === false && row()?.activityStatus === "idle");
+    await waitFor(() => row()?.isLive === false && row()?.activityStatus === "idle", "writer released");
     assert.ok(runtime.serveCatalog().revision > openRevision);
 
     await new Promise((resolve) => server.close(resolve));
@@ -122,13 +126,13 @@ test("native presence updates committed Live state without transcript growth or 
     present = true;
     runtime = makeRuntime();
     await runtime.startObservation();
-    await waitFor(() => row()?.isLive === true && row()?.activityStatus === "open");
+    await waitFor(() => row()?.isLive === true && row()?.activityStatus === "open", "restart ownership");
     assert.equal(row().updatedAt, timestamp, "restart rechecks native presence, not recency");
 
     // Isolate the explicit historical read from the restart's independent,
     // asynchronous catalog/ownership lane before comparing acquisition counts.
     await runtime.stopObservation();
-    await waitFor(() => !provider.qaStats().catalogPending);
+    await waitFor(() => !provider.qaStats().catalogPending, "historical-read isolation");
     const beforeHistory = acquisitions;
     const historical = await provider.readSession(id, { historical: true });
     assert.equal(acquisitions, beforeHistory, "historical reads cannot probe current ownership");
