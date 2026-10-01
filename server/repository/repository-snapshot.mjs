@@ -556,7 +556,7 @@ function parseQualifiedSessionId(value) {
   return { providerId, localSessionId };
 }
 
-const DEFAULT_RECORDER_MAX_ENTRIES = 100;
+const DEFAULT_RECORDER_MAX_ENTRIES = 512;
 
 /**
  * Bounded in-memory recorder for the sidecar repository snapshots persisted
@@ -564,18 +564,22 @@ const DEFAULT_RECORDER_MAX_ENTRIES = 100;
  * the caller's perspective (it never throws and its returned promise never
  * rejects); `recorded` is a synchronous lookup so historical serving never
  * waits on, or triggers, disk or Git activity.
+ *
+ * The disk holds more sidecars than this memory does. `load` restores only the
+ * ones the startup checkpoint restore projects; every other session's sidecar
+ * is read on demand by `ensure`, one identity-keyed file, before its projection.
  */
 export function createRepositorySnapshotRecorder({ store, now = () => Date.now(), maxEntries, adoptsUnboundSidecar = () => false } = {}) {
   if (!store || typeof store.writeRepositorySnapshot !== "function" || typeof store.loadRepositorySnapshots !== "function") {
     throw new TypeError("Repository snapshot recorder requires a checkpoint store");
   }
-  const bound = Number.isSafeInteger(maxEntries) && maxEntries > 0
-    ? maxEntries
-    : Number.isSafeInteger(store.maxEntries) && store.maxEntries > 0 ? store.maxEntries : DEFAULT_RECORDER_MAX_ENTRIES;
+  const bound = Number.isSafeInteger(maxEntries) && maxEntries > 0 ? maxEntries : DEFAULT_RECORDER_MAX_ENTRIES;
   // qualifiedId -> { snapshot, lastUsedAt }. Recency covers both writes and
   // reads, so an actively viewed historical session outlives an idle one.
+  // A null snapshot is a session known to have no sidecar, so it is not re-read.
   const entries = new Map();
   const pending = new Map();
+  const reading = new Map();
 
   function retain(qualifiedId, snapshot) {
     entries.delete(qualifiedId);
@@ -586,7 +590,7 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
   async function load() {
     let records;
     try {
-      records = await store.loadRepositorySnapshots();
+      records = await store.loadRepositorySnapshots({ withCheckpoint: true });
     } catch {
       return;
     }
@@ -594,6 +598,31 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
       if (!record || typeof record.providerId !== "string" || typeof record.localSessionId !== "string" || !record.snapshot) continue;
       retain(`${record.providerId}:${record.localSessionId}`, record.snapshot);
     }
+  }
+
+  /**
+   * Make one session's sidecar available to `recorded`, reading its file only when
+   * this recorder holds no answer for it yet. Resolves whether a snapshot exists;
+   * never rejects. A store without single-sidecar reads keeps what `load` restored.
+   */
+  function ensure(qualifiedId) {
+    const held = entries.get(qualifiedId);
+    if (held) return Promise.resolve(Boolean(held.snapshot));
+    const parsed = parseQualifiedSessionId(qualifiedId);
+    if (!parsed || typeof store.loadRepositorySnapshot !== "function") return Promise.resolve(false);
+    const inFlight = reading.get(qualifiedId);
+    if (inFlight) return inFlight;
+    const read = Promise.resolve()
+      .then(() => store.loadRepositorySnapshot(parsed.providerId, parsed.localSessionId))
+      .catch(() => null)
+      .then((snapshot) => {
+        // A write that settled during the read is newer than what the read saw.
+        if (!entries.has(qualifiedId)) retain(qualifiedId, snapshot || null);
+        return Boolean(entries.get(qualifiedId)?.snapshot);
+      })
+      .finally(() => { if (reading.get(qualifiedId) === read) reading.delete(qualifiedId); });
+    reading.set(qualifiedId, read);
+    return read;
   }
 
   function record(qualifiedId, live) {
@@ -605,6 +634,8 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
       // second check must see the first check's retained dirty baseline rather
       // than independently treating its own working tree as the first check.
       .then(async () => {
+        // A sidecar this recorder has not read yet is still the session's baseline.
+        await ensure(qualifiedId);
         const previous = entries.get(qualifiedId)?.snapshot || null;
         let next = null;
         try {
@@ -647,5 +678,10 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
     return entry.snapshot;
   }
 
-  return Object.freeze({ load, record, recorded });
+  /** Whether this recorder already holds an answer (a snapshot, or a known absence) for the session. */
+  function has(qualifiedId) {
+    return entries.has(qualifiedId);
+  }
+
+  return Object.freeze({ load, ensure, record, recorded, has });
 }

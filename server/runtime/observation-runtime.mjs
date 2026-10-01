@@ -142,10 +142,19 @@ export function createObservationRuntime(options = {}) {
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
-    gitObservedForSession: (sessionId) => gitObservedFilesFromSnapshot(sessionRepositorySnapshot(
-      observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
-      { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
-    )), onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
+    gitObservedForSession: (sessionId) => {
+      // The recorder holds fewer sidecars than the disk. One it has dropped is read back off
+      // the request path, and the session's domains recommit when it holds a snapshot.
+      if (repositorySnapshotRecorder && !repositorySnapshotRecorder.has(sessionId)) {
+        void repositorySnapshotRecorder.ensure(sessionId).then((found) => {
+          if (found && observationServingActive) sessionDomainServing.commit(sessionId);
+        }).catch(() => {});
+      }
+      return gitObservedFilesFromSnapshot(sessionRepositorySnapshot(
+        observationStore.getByQualifiedId(sessionId)?.evidence, repositorySnapshotRecorder?.recorded(sessionId) || null,
+        { adoptsUnboundSidecar: adoptsUnboundSidecar(sessionId.split(":")[0]) },
+      ));
+    }, onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const repositoryAssociations = createSessionRepositoryAssociations({
     registry, inventory: repositoryInventory,
@@ -336,9 +345,10 @@ export function createObservationRuntime(options = {}) {
       || null;
     if (historical) {
       // A live historical source can arrive while the private sidecar cache is
-      // still loading. Wait only for that projection dependency so its saved
-      // repository state wins over the no-snapshot Git fallback.
-      await repositoryStartup.checkpointRestoreReady();
+      // still loading, or for a session whose sidecar that load did not cover.
+      // Wait only for that projection dependency so its saved repository state
+      // wins over the no-snapshot Git fallback.
+      await repositoryStartup.checkpointRestoreReady(sessionId);
       // A recorded snapshot serves instantly; only the no-snapshot fallback calls Git/GitHub.
       ({ repository, pullRequests } = await resolveHistoricalRepositoryAndPullRequests({
         adoptsUnboundSidecar: adoptsUnboundSidecar(provider.id),
@@ -415,7 +425,7 @@ export function createObservationRuntime(options = {}) {
     onHistoryContribution: publishHistoryContribution,
     onHistoryRequestContribution: publishHistoryRequestContribution,
     restoreState: checkpointPublicState,
-    checkpointRestoreReady: () => repositoryStartup.checkpointRestoreReady(),
+    checkpointRestoreReady: (sessionId) => repositoryStartup.checkpointRestoreReady(sessionId),
     onRestoreComplete: initializeCommittedSessions,
     async deriveSession(candidate) {
       const provider = registry.providers?.find((entry) => entry.id === candidate.providerId);

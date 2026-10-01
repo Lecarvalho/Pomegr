@@ -23,7 +23,7 @@ function evidenceFor(id, version = 1) {
 
 // A real checkpoint directory whose bulk `load()` is held until the test releases it,
 // standing in for a startup restore that has not reached the selected session yet.
-async function harness(context) {
+async function harness(context, options = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-on-demand-restore-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const checkpoints = new SessionObservationCheckpointStore({ directory });
@@ -44,6 +44,7 @@ async function harness(context) {
     commitDelayMs: 0,
     checkpointDelayMs: 60_000,
     onRestoreComplete: () => { restoreComplete = true; },
+    ...options,
     registry: {
       providers: [{ id: "claude", source: "Claude Code" }],
       async startObservers(value) {
@@ -101,6 +102,26 @@ test("a later bulk restore never replaces a newer committed revision", async (co
   assert.equal(h.store.get("claude", "one").revision, newer);
   assert.equal(h.store.get("claude", "one").evidence.version, 2);
   assert.deepEqual(h.restores, ["one"]);
+});
+
+test("an on-demand restore names its session to the readiness hook before projecting; the bulk pass names none", async (context) => {
+  const readied = [];
+  const projectedAfter = [];
+  const h = await harness(context, {
+    checkpointRestoreReady: async (qualifiedId) => { readied.push(qualifiedId); },
+    restoreState: ({ providerId, localSessionId, evidence }) => {
+      projectedAfter.push([`${providerId}:${localSessionId}`, readied.includes(`${providerId}:${localSessionId}`)]);
+      return evidence;
+    },
+  });
+  await writeCheckpoint(h.checkpoints, "one", 7);
+  await h.coordinator.start();
+  h.coordinator.session("claude:one");
+  await waitFor(() => h.store.get("claude", "one"));
+  assert.deepEqual(projectedAfter, [["claude:one", true]], "the session's own dependencies are ready before its projection");
+  h.releaseBulk();
+  await waitFor(() => h.restoreComplete());
+  assert.deepEqual(readied.sort(), ["claude:one", undefined].sort(), "the bulk pass waits on the shared readiness only");
 });
 
 test("a missing or invalid checkpoint falls back to selected hydration", async (context) => {

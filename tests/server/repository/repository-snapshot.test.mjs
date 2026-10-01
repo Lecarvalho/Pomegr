@@ -638,7 +638,7 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
   const secondStore = new SessionObservationCheckpointStore({ directory });
   const secondRecorder = createRepositorySnapshotRecorder({ store: secondStore });
   assert.equal(secondRecorder.recorded("codex:restart-session"), null, "a fresh recorder has not loaded yet");
-  await secondRecorder.load();
+  await secondRecorder.ensure("codex:restart-session"); // no checkpoint on disk, so read on demand
   const restored = secondRecorder.recorded("codex:restart-session");
   assert.ok(restored);
   assert.equal(restored.branch, "feat/restart");
@@ -651,6 +651,7 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
 
   // A live check after restart, with no in-memory carry-forward, still keeps the restored
   // baseline and correctly resumes committedInWindow tracking from the restored snapshot.
+  const thirdRecorder = createRepositorySnapshotRecorder({ store: new SessionObservationCheckpointStore({ directory }) }); // never read the sidecar
   const afterRestartCheck = {
     repository: {
       available: true, branch: "feat/restart", historical: false, isMain: false,
@@ -662,8 +663,8 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
     commitsInSession: 4,
     checkedAt: "2026-09-20T13:00:05.000Z",
   };
-  assert.equal(await secondRecorder.record("codex:restart-session", afterRestartCheck), true);
-  const afterRestart = secondRecorder.recorded("codex:restart-session");
+  assert.equal(await thirdRecorder.record("codex:restart-session", afterRestartCheck), true);
+  const afterRestart = thirdRecorder.recorded("codex:restart-session");
   assert.deepEqual(afterRestart.dirtyAtFirstCheck, ["app/file.ts"], "baseline survives the restart and is still never replaced");
   assert.deepEqual(afterRestart.becameDirty, ["app/post-restart.ts"]);
   assert.deepEqual(afterRestart.committedInWindow, ["app/committed.ts"], "carried forward from the restored snapshot since this check did not measure the window");

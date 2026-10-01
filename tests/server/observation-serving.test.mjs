@@ -60,6 +60,29 @@ test("repository sidecar loads serialize across stopped startup lifetimes", { ti
   lifecycle.stop();
 });
 
+test("a session's projection reads its own sidecar after the startup load, and the bulk restore reads none", { timeout: 5_000 }, async () => {
+  let releaseLoad;
+  const loaded = new Promise((resolve) => { releaseLoad = resolve; });
+  const order = [];
+  const lifecycle = createObservationStartupRepository({
+    repositoryInventory: { ready: Promise.resolve(), async reconcile() {} },
+    repositorySnapshotRecorder: {
+      async load() { await loaded; order.push("load"); },
+      async ensure(sessionId) { order.push(`ensure ${sessionId}`); return true; },
+    },
+    isActive: () => true, catalog: () => [], onRecorded() {},
+  });
+  lifecycle.start();
+  const selected = lifecycle.checkpointRestoreReady("claude:evicted-checkpoint");
+  const bulk = lifecycle.checkpointRestoreReady();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(order, [], "neither path runs ahead of the startup sidecar load");
+  releaseLoad();
+  await Promise.all([selected, bulk]);
+  assert.deepEqual(order, ["load", "ensure claude:evicted-checkpoint"]);
+  lifecycle.stop();
+});
+
 test("live observation startup does not wait for repository inventory or sidecars", { timeout: 5_000 }, async (context) => {
   let releaseInventory;
   const inventoryReady = new Promise((resolve) => { releaseInventory = resolve; });

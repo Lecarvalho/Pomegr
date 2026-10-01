@@ -476,7 +476,7 @@ export function createSessionObservationCoordinator(options = {}) {
   }
 
   // Last-known-good evidence stays available; a restored lifecycle is never current.
-  const checkpointRestore = createCheckpointRestore({ checkpointStore, ready: () => options.checkpointRestoreReady?.(),
+  const checkpointRestore = createCheckpointRestore({ checkpointStore, ready: (qualifiedId) => options.checkpointRestoreReady?.(qualifiedId),
     projectState: options.restoreState || (({ evidence }) => evidence), apply: applyRestoredRecord });
 
   // A requested miss during the startup restore reads its own checkpoint first (one file,

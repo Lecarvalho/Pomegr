@@ -8,8 +8,9 @@ export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPOSITORY_SNAPSHOT_BYTES = 64 * 1024;
-// A sidecar written before its session's first checkpoint survives prunes for this long.
-const ORPHAN_SIDECAR_GRACE_MS = 24 * 60 * 60 * 1000;
+// Sidecars outlive their checkpoint: a checkpoint is rebuilt from its transcript, a recorded
+// repository snapshot cannot be. They are bounded on their own, oldest first.
+const DEFAULT_MAX_REPOSITORY_SNAPSHOTS = 2_000;
 const ORPHAN_TEMP_GRACE_MS = 60 * 60 * 1000;
 const MAX_COLLECTION_ENTRIES = 4_096;
 const DEFAULT_PRIVACY_SENTINELS = Object.freeze([
@@ -178,6 +179,7 @@ export class SessionObservationCheckpointStore {
     upgradeEvidence = null,
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxBytes = DEFAULT_MAX_BYTES,
+    maxRepositorySnapshots = DEFAULT_MAX_REPOSITORY_SNAPSHOTS,
     privacySentinels = DEFAULT_PRIVACY_SENTINELS,
     tempGraceMs = ORPHAN_TEMP_GRACE_MS,
   } = {}) {
@@ -187,6 +189,9 @@ export class SessionObservationCheckpointStore {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || !Number.isSafeInteger(maxBytes) || maxBytes < 1) {
       throw new TypeError("checkpoint limits must be positive safe integers");
     }
+    if (!Number.isSafeInteger(maxRepositorySnapshots) || maxRepositorySnapshots < 1) {
+      throw new TypeError("repository snapshot limit must be a positive safe integer");
+    }
     this.directory = directory;
     this.validateCandidate = validateCandidate;
     // Restore-time normalization of evidence recorded before a later field existed
@@ -194,6 +199,7 @@ export class SessionObservationCheckpointStore {
     this.upgradeEvidence = typeof upgradeEvidence === "function" ? upgradeEvidence : null;
     this.maxEntries = maxEntries;
     this.maxBytes = maxBytes;
+    this.maxRepositorySnapshots = maxRepositorySnapshots;
     this.privacySentinels = Object.freeze([...privacySentinels]);
     this.tempGraceMs = Number.isSafeInteger(tempGraceMs) && tempGraceMs >= 0 ? tempGraceMs : ORPHAN_TEMP_GRACE_MS;
     this.inventory = new Map();
@@ -251,8 +257,8 @@ export class SessionObservationCheckpointStore {
    * Write one bounded historical repository snapshot sidecar for a checkpointed
    * session, atomically like `write`. The sidecar is validated independently
    * (contract shape, byte budget, privacy sentinels) and never touches the
-   * checkpoint payload itself; `prune` later removes it once its checkpoint
-   * is gone.
+   * checkpoint payload itself. It outlives an evicted checkpoint; maintenance
+   * removes it only under the sidecars' own bound.
    */
   async writeRepositorySnapshot(providerId, localSessionId, snapshot) {
     const normalized = normalizeRepositorySnapshot(snapshot);
@@ -279,23 +285,44 @@ export class SessionObservationCheckpointStore {
     return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
   }
 
-  /** Read every valid repository-snapshot sidecar on startup; invalid ones are silently ignored. */
-  async loadRepositorySnapshots() {
+  /**
+   * Read valid repository-snapshot sidecars on startup; invalid ones are silently ignored.
+   * `withCheckpoint` reads only the sidecars whose checkpoint is on disk: the set the bulk
+   * checkpoint restore projects, so startup cost follows the checkpoint bound rather than
+   * every retained sidecar. Any other session reads its own file through
+   * `loadRepositorySnapshot`.
+   */
+  async loadRepositorySnapshots({ withCheckpoint = false } = {}) {
     const records = [];
+    const checkpoints = withCheckpoint ? new Set(await this.#filenames()) : null;
     for (const filename of await this.#repositorySnapshotFilenames()) {
-      try {
-        const payload = JSON.parse(await readFile(path.join(this.directory, filename), "utf8"));
-        if (!isPlainObject(payload) || payload.version !== SESSION_OBSERVATION_CHECKPOINT_VERSION) continue;
-        assertIdentity(payload);
-        const snapshot = normalizeRepositorySnapshot(payload.snapshot);
-        if (!snapshot) continue;
-        assertPrivacy(payload, this.privacySentinels);
-        records.push(Object.freeze({ providerId: payload.providerId, localSessionId: payload.localSessionId, snapshot }));
-      } catch {
-        // An unreadable or invalid sidecar contributes nothing at restart.
-      }
+      if (checkpoints && !checkpoints.has(filename.replace(/^repository-/, "checkpoint-"))) continue;
+      const record = await this.#readRepositorySnapshot(filename);
+      if (record) records.push(record);
     }
     return Object.freeze(records);
+  }
+
+  /** Read one session's sidecar by its identity-keyed filename, without a directory scan. */
+  async loadRepositorySnapshot(providerId, localSessionId) {
+    assertIdentity({ providerId, localSessionId });
+    const record = await this.#readRepositorySnapshot(repositorySnapshotFilename(providerId, localSessionId));
+    return record && record.providerId === providerId && record.localSessionId === localSessionId ? record.snapshot : null;
+  }
+
+  async #readRepositorySnapshot(filename) {
+    try {
+      const payload = JSON.parse(await readFile(path.join(this.directory, filename), "utf8"));
+      if (!isPlainObject(payload) || payload.version !== SESSION_OBSERVATION_CHECKPOINT_VERSION) return null;
+      assertIdentity(payload);
+      const snapshot = normalizeRepositorySnapshot(payload.snapshot);
+      if (!snapshot) return null;
+      assertPrivacy(payload, this.privacySentinels);
+      return Object.freeze({ providerId: payload.providerId, localSessionId: payload.localSessionId, snapshot });
+    } catch {
+      // An absent, unreadable or invalid sidecar contributes nothing.
+      return null;
+    }
   }
 
   /**
@@ -401,12 +428,7 @@ export class SessionObservationCheckpointStore {
       }
     }
     this.qa.pruned += removed.length;
-    const removedSet = new Set(removed);
-    const hashOf = (filename) => filename.slice("checkpoint-".length, -".json".length);
-    await this.#pruneRepositorySnapshots(
-      new Set(removed.map(hashOf)),
-      new Set(files.filter((file) => !removedSet.has(file.filename)).map((file) => hashOf(file.filename))),
-    );
+    await this.#pruneRepositorySnapshots();
     return Object.freeze({ entries: retained, bytes, removed: Object.freeze(removed) });
   }
 
@@ -428,13 +450,6 @@ export class SessionObservationCheckpointStore {
       const target = path.join(this.directory, filename);
       try { await this.#withFileLock(filename, async () => {
         if (this.ownedTemps.has(target)) return;
-        // The sidecar shares ownership with its checkpoint, including across
-        // awaits in the metadata recheck. A skipped checkpoint eviction must
-        // never turn into deletion of that checkpoint's recorded repository.
-        if (filename.startsWith("repository-")) {
-          try { await stat(path.join(this.directory, filename.replace(/^repository-/, "checkpoint-"))); return; }
-          catch (error) { if (error?.code !== "ENOENT") return; }
-        }
         if (removal.generation !== undefined && (this.inventory.get(filename)?.generation || 0) !== removal.generation) return;
         if (removal.modified !== null) {
           const current = await stat(target);
@@ -455,14 +470,14 @@ export class SessionObservationCheckpointStore {
         state.cursor = null;
         for (const [filename, info] of this.inventory) if (info.generation > state.startedGeneration) state.inventory.set(filename, info);
         this.inventory = state.inventory;
-        const planned = this.#plannedEvictions();
-        state.removals.push(...planned);
-        const plannedHashes = new Set(planned.map(({ filename }) => filename.slice("checkpoint-".length, -".json".length)));
-        for (const [filename, modified] of state.sidecars) {
-          const hash = filename.slice("repository-".length, -".json".length);
-          if (plannedHashes.has(hash) || (!state.inventory.has(`checkpoint-${hash}.json`) && Date.now() - modified >= ORPHAN_SIDECAR_GRACE_MS)) {
-            state.removals.push({ filename, modified, size: null });
-          }
+        state.removals.push(...this.#plannedEvictions());
+        // A checkpoint eviction never takes its sidecar: the checkpoint is rebuilt from the
+        // transcript on the next hydration, the recorded repository state cannot be. Sidecars
+        // leave only under their own bound, and a rewrite after planning is rechecked above.
+        const excess = state.sidecars.size - this.maxRepositorySnapshots;
+        if (excess > 0) {
+          const oldest = [...state.sidecars].sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]));
+          for (const [filename, modified] of oldest.slice(0, excess)) state.removals.push({ filename, modified, size: null });
         }
         break;
       }
@@ -559,30 +574,31 @@ export class SessionObservationCheckpointStore {
   }
 
   /**
-   * A repository-snapshot sidecar is removed with a checkpoint this prune evicted, when it is
-   * invalid, or when it has had no checkpoint for longer than the orphan grace. A sidecar
-   * recorded before its session's first checkpoint write is therefore kept.
+   * A repository-snapshot sidecar is removed when it is invalid, or when it is among the oldest
+   * beyond the sidecars' own bound. It is never removed with its checkpoint: an evicted
+   * checkpoint is rebuilt from its transcript, a recorded repository snapshot cannot be.
    */
-  async #pruneRepositorySnapshots(removedHashes, survivingHashes) {
+  async #pruneRepositorySnapshots() {
+    const valid = [];
     for (const filename of await this.#repositorySnapshotFilenames()) {
-      const hash = filename.slice("repository-".length, -".json".length);
       const filePath = path.join(this.directory, filename);
-      let remove = removedHashes.has(hash);
-      if (!remove && !survivingHashes.has(hash)) {
-        try { remove = Date.now() - (await stat(filePath)).mtimeMs > ORPHAN_SIDECAR_GRACE_MS; } catch { remove = false; }
-      }
-      if (!remove) {
-        try {
-          const payload = JSON.parse(await readFile(filePath, "utf8"));
-          remove = !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
-            && Boolean(normalizeRepositorySnapshot(payload.snapshot)));
-        } catch (error) {
-          remove = error?.code !== "ENOENT";
-        }
+      let remove;
+      try {
+        const payload = JSON.parse(await readFile(filePath, "utf8"));
+        remove = !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
+          && Boolean(normalizeRepositorySnapshot(payload.snapshot)));
+      } catch (error) {
+        remove = error?.code !== "ENOENT";
       }
       if (remove) {
         try { await unlink(filePath); } catch { /* A concurrent writer may have already removed it. */ }
+        continue;
       }
+      try { valid.push({ filePath, filename, modified: (await stat(filePath)).mtimeMs }); } catch { /* removed meanwhile */ }
+    }
+    valid.sort((left, right) => left.modified - right.modified || left.filename.localeCompare(right.filename));
+    for (const { filePath } of valid.slice(0, Math.max(0, valid.length - this.maxRepositorySnapshots))) {
+      try { await unlink(filePath); } catch { /* A concurrent writer may have already removed it. */ }
     }
   }
 

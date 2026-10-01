@@ -19,8 +19,9 @@ export function createCheckpointRestore({ checkpointStore, ready, projectState, 
   }
   let active = null;
 
-  async function waitReady(window) {
-    const pending = ready?.();
+  // The identity lets the owner prepare that one session's projection dependencies.
+  async function waitReady(window, id) {
+    const pending = ready?.(id);
     if (pending) await pending;
     return window.isCurrent();
   }
@@ -63,7 +64,7 @@ export function createCheckpointRestore({ checkpointStore, ready, projectState, 
     const entry = { state: "pending" };
     window.onDemand.set(id, entry);
     void (async () => {
-      if (!(await waitReady(window))) return false;
+      if (!(await waitReady(window, id))) return false;
       const record = await checkpointStore.loadOne(parsed.providerId, parsed.localSessionId, { projectState });
       if (!record || !window.isCurrent()) return false;
       return apply(record, window.freshSessions) === true;

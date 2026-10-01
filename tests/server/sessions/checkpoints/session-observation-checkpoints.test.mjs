@@ -341,46 +341,91 @@ test("checkpoint schema stays version 1 and unchanged by the repository-snapshot
   assert.equal(payload.version, 1);
 });
 
-test("maintenance keeps a sidecar recorded before its session's first checkpoint, and drops a day-old orphan", async (t) => {
+test("maintenance keeps a sidecar that has no checkpoint, however old", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 10, maxBytes: 100_000 });
   await checkpoints.writeRepositorySnapshot("provider-a", "early", repositorySnapshot());
-  await checkpoints.writeRepositorySnapshot("provider-a", "stale", repositorySnapshot());
-  const stale = path.join(directory, repositorySnapshotFilename("provider-a", "stale"));
-  const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
-  await utimes(stale, dayAgo, dayAgo);
+  await checkpoints.writeRepositorySnapshot("provider-a", "old", repositorySnapshot());
+  const old = path.join(directory, repositorySnapshotFilename("provider-a", "old"));
+  const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  await utimes(old, monthAgo, monthAgo);
 
   await checkpoints.write(snapshot("provider-a", "other", 1));
   await settleCheckpointMaintenance(checkpoints);
-  const afterPrune = await readdir(directory);
-  assert.ok(afterPrune.includes(repositorySnapshotFilename("provider-a", "early")), "a fresh sidecar without a checkpoint yet is kept");
-  assert.equal(afterPrune.includes(repositorySnapshotFilename("provider-a", "stale")), false, "a day-old orphan is removed");
-
-  await checkpoints.write(snapshot("provider-a", "early", 1));
-  const records = await checkpoints.loadRepositorySnapshots();
-  assert.deepEqual(records.map((record) => record.localSessionId), ["early"]);
+  const afterMaintenance = await readdir(directory);
+  assert.ok(afterMaintenance.includes(repositorySnapshotFilename("provider-a", "early")), "a sidecar recorded before its session's first checkpoint is kept");
+  assert.ok(afterMaintenance.includes(repositorySnapshotFilename("provider-a", "old")), "age alone never removes recorded repository state");
 });
 
-test("maintenance removes a repository-snapshot sidecar once its checkpoint is evicted, and keeps a surviving pair", async (t) => {
+test("an evicted checkpoint keeps its repository-snapshot sidecar, which serves again once the checkpoint is rebuilt", async (t) => {
   const directory = await temporaryCheckpointDirectory(t);
   const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1, maxBytes: 10_000 });
-  await checkpoints.write(snapshot("provider-a", "evicted", 1));
-  await checkpoints.writeRepositorySnapshot("provider-a", "evicted", repositorySnapshot());
-  const evictedSidecar = repositorySnapshotFilename("provider-a", "evicted");
-  assert.ok((await readdir(directory)).includes(evictedSidecar));
+  await checkpoints.write(snapshot("provider-a", "ended", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "ended", repositorySnapshot({ branch: "feat/ended" }));
+  const endedCheckpoint = path.join(directory, checkpointFilename("provider-a", "ended"));
+  const older = new Date(Date.now() - 60_000);
+  await utimes(endedCheckpoint, older, older);
 
-  // Writing a second checkpoint exceeds maxEntries: 1, evicting the first checkpoint and,
-  // through the same prune pass, its now-orphaned repository-snapshot sidecar.
+  // A second checkpoint exceeds maxEntries: 1 and evicts the first. The checkpoint is a cache
+  // rebuilt from its transcript; the recorded repository state is not, so the sidecar stays.
   await checkpoints.write(snapshot("provider-a", "current", 1));
   await checkpoints.writeRepositorySnapshot("provider-a", "current", repositorySnapshot({ branch: "feat/current" }));
   await settleCheckpointMaintenance(checkpoints);
   const afterEviction = await readdir(directory);
-  assert.equal(afterEviction.includes(evictedSidecar), false, "the orphaned sidecar is pruned with its checkpoint");
-  const currentSidecar = repositorySnapshotFilename("provider-a", "current");
-  assert.ok(afterEviction.includes(currentSidecar), "a sidecar whose checkpoint survives is kept");
+  assert.equal(afterEviction.includes(checkpointFilename("provider-a", "ended")), false, "the older checkpoint is evicted");
+  assert.ok(afterEviction.includes(repositorySnapshotFilename("provider-a", "ended")), "its sidecar outlives the eviction");
 
+  assert.deepEqual((await checkpoints.loadRepositorySnapshots({ withCheckpoint: true })).map((record) => record.localSessionId), ["current"],
+    "the startup load reads only sidecars whose checkpoint is on disk");
+  assert.equal((await checkpoints.loadRepositorySnapshot("provider-a", "ended")).branch, "feat/ended", "the evicted session's sidecar is read on demand");
+  assert.equal(await checkpoints.loadRepositorySnapshot("provider-a", "never-recorded"), null);
+
+  await checkpoints.write(snapshot("provider-a", "ended", 2));
+  assert.equal((await checkpoints.loadRepositorySnapshot("provider-a", "ended")).branch, "feat/ended", "the rebuilt checkpoint still has its recorded repository state");
+});
+
+test("the recorder loads only checkpointed sidecars at startup and reads any other on demand, once", async (t) => {
+  const { createRepositorySnapshotRecorder } = await import("../../../../server/repository/repository-snapshot.mjs");
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  await checkpoints.write(snapshot("provider-a", "checkpointed", 1));
+  await checkpoints.writeRepositorySnapshot("provider-a", "checkpointed", repositorySnapshot({ branch: "feat/checkpointed" }));
+  await checkpoints.writeRepositorySnapshot("provider-a", "evicted", repositorySnapshot({ branch: "feat/evicted" }));
+  let singleReads = 0;
+  const readOne = checkpoints.loadRepositorySnapshot.bind(checkpoints);
+  checkpoints.loadRepositorySnapshot = (...args) => { singleReads += 1; return readOne(...args); };
+
+  const recorder = createRepositorySnapshotRecorder({ store: checkpoints });
+  await recorder.load();
+  assert.equal(recorder.recorded("provider-a:checkpointed").branch, "feat/checkpointed");
+  assert.equal(recorder.has("provider-a:evicted"), false, "a sidecar without a checkpoint is not part of the startup load");
+  assert.equal(recorder.recorded("provider-a:evicted"), null);
+
+  assert.deepEqual(await Promise.all([recorder.ensure("provider-a:evicted"), recorder.ensure("provider-a:evicted")]), [true, true]);
+  assert.equal(recorder.recorded("provider-a:evicted").branch, "feat/evicted");
+  assert.equal(await recorder.ensure("provider-a:never-recorded"), false);
+  assert.equal(recorder.has("provider-a:never-recorded"), true);
+  assert.equal(await recorder.ensure("provider-a:never-recorded"), false);
+  assert.equal(await recorder.ensure("provider-a:checkpointed"), true);
+  assert.equal(singleReads, 2, "concurrent, repeated, known-absent and already-loaded requests do not reread");
+});
+
+test("maintenance bounds repository-snapshot sidecars on their own, oldest first", async (t) => {
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxRepositorySnapshots: 2 });
+  for (const [index, id] of ["oldest", "middle", "newest"].entries()) {
+    await checkpoints.writeRepositorySnapshot("provider-a", id, repositorySnapshot());
+    const at = new Date(Date.now() - (3 - index) * 60_000);
+    await utimes(path.join(directory, repositorySnapshotFilename("provider-a", id)), at, at);
+  }
+  // A checkpoint does not shield its sidecar from the sidecar bound, and does not go with it.
+  await checkpoints.write(snapshot("provider-a", "oldest", 1));
+
+  await settleCheckpointMaintenance(checkpoints);
   const records = await checkpoints.loadRepositorySnapshots();
-  assert.deepEqual(records.map((record) => record.localSessionId), ["current"]);
+  assert.deepEqual(records.map((record) => record.localSessionId).sort(), ["middle", "newest"]);
+  assert.ok((await readdir(directory)).includes(checkpointFilename("provider-a", "oldest")));
+  assert.throws(() => new SessionObservationCheckpointStore({ directory, maxRepositorySnapshots: 0 }), /repository snapshot limit/);
 });
 
 test("checkpoint writes do no cleanup scan and maintenance clears thousands of old owned temps in bounded batches", async (t) => {

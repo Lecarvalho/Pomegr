@@ -46,8 +46,15 @@ export function createObservationStartupRepository({
     sidecarsReady = null;
   }
 
-  function checkpointRestoreReady() {
-    return sidecarsReady || Promise.resolve();
+  /**
+   * Resolves once the startup sidecar load settled. With a session ID it also reads that
+   * session's own sidecar when the load did not cover it (no checkpoint on disk at startup),
+   * so its projection sees the recorded snapshot rather than the no-snapshot fallback.
+   */
+  function checkpointRestoreReady(sessionId) {
+    const ready = sidecarsReady || Promise.resolve();
+    if (typeof sessionId !== "string" || typeof repositorySnapshotRecorder?.ensure !== "function") return ready;
+    return ready.then(() => repositorySnapshotRecorder.ensure(sessionId)).then(() => {}, () => {});
   }
 
   function record(sessionId, live) {

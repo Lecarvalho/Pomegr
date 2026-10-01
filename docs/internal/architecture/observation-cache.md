@@ -1485,9 +1485,10 @@ React, persisted checkpoints, or browser API fields.
 - U1 observer attachment and the first local catalog run before repository inventory
   readiness, reconciliation, or current plugin-setup observation. Those D-only
   jobs continue in the background and a late completion cannot start plugin
-  observation after monitor shutdown. Repository sidecars load concurrently;
-  checkpoint projection waits for that private sidecar load, while live provider
-  discovery does not.
+  observation after monitor shutdown. Repository sidecars load concurrently, and
+  only those whose checkpoint is on disk, so the load follows the checkpoint bound
+  rather than every retained sidecar; checkpoint projection waits for that private
+  sidecar load, while live provider discovery does not.
 - L2 checkpoint restoration runs independently and does not delay observer
   attachment. Fresh
   candidates seen while restoration is pending win over the matching saved
@@ -1501,7 +1502,8 @@ React, persisted checkpoints, or browser API fields.
   probe is unchanged.
   The GET only queues this work and answers `loading`; it never reads or parses
   synchronously. The asynchronous load reads the one identity-keyed checkpoint file
-  (no directory scan), waits for the same private sidecar readiness, and applies the
+  (no directory scan), waits for the same private sidecar readiness plus that session's
+  own identity-keyed sidecar when the startup load did not cover it, and applies the
   same payload, legacy-upgrade, candidate-validation, lifecycle-downgrade, and
   preserved-revision rules as the bulk pass. Fresh or already committed evidence
   still wins. Each identity is tried at most once per restore window (at most 256),
@@ -1899,8 +1901,10 @@ than reparsing every checkpoint after every write. Startup restores valid checkp
 without pruning or deleting temps. Exact owned temp names become cleanup candidates
 only after a one-hour age grace; active writes are protected. Deferred deletions recheck
 recorded file metadata and generation under the same per-identity ownership as atomic
-publication. A sidecar is deleted only if its checkpoint is actually absent, so a skipped
-eviction cannot erase recorded repository state. Unrecognized files are left
+publication. A checkpoint eviction never deletes its repository sidecar: the checkpoint
+is rebuilt from its transcript on the next hydration, recorded repository state cannot
+be. Sidecars are bounded on their own (2,000 files, oldest modification time first),
+with the same metadata recheck. Unrecognized files are left
 alone. Capacity can temporarily exceed retention targets until a maintenance pass
 finishes; continuously busy higher-priority work can defer that pass.
 
@@ -2782,16 +2786,29 @@ files with their status, branch comparison and its check time, at most 10 allowl
 requests with their check time, `commitsInSession`, and the check timestamp. The
 checkpoint payload schema is unchanged. The monitor starts the bounded sidecar load with
 startup and gates checkpoint projection on its completion; it does not hold live observer
-attachment. Each live Git check calls `onRepositoryCheck` once observation serving is
+attachment. That load reads only the sidecars whose checkpoint is on disk, the set the
+bulk checkpoint restore projects. Any other session's sidecar is read on demand, one
+identity-keyed file with no directory scan, before that session's historical projection,
+its on-demand checkpoint restore, or its next live write; a session-domain commit that
+finds the recorder without an answer queues the same read and recommits when it holds a
+snapshot. These reads run in projection and commit work, never in a GET. The recorder
+keeps at most 512 answers in memory (a snapshot, or a known absence) by recency.
+Each live Git check calls `onRepositoryCheck` once observation serving is
 active; until that load settles the check queues behind it, so a live write cannot replace
 an older sidecar baseline before it is restored. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
 or commit count was not observed carries the previous recorded value forward only within
 the same bound repository identity, and an
-invalid candidate never replaces the last complete valid snapshot. `prune()` removes a
-sidecar with the checkpoint that prune evicted, an invalid sidecar, and an orphan sidecar
-with no checkpoint for more than 24 hours; a sidecar recorded before its session's first
-checkpoint write is kept. Historical serving prefers the recorded snapshot and otherwise
+invalid candidate never replaces the last complete valid snapshot.
+
+A sidecar's lifetime is independent of its checkpoint. A checkpoint is a cache that the
+next hydration rebuilds from the transcript; a recorded repository snapshot cannot be
+rebuilt, because an ended session never has another live check. Checkpoint capacity
+eviction therefore leaves the sidecar in place, as does age: a sidecar recorded before
+its session's first checkpoint write, or one whose checkpoint was evicted long ago, is
+kept. Maintenance removes sidecars only beyond their own bound of 2,000 files, oldest
+modification time first; `prune()` applies the same bound and also removes an invalid
+sidecar. Historical serving prefers the recorded snapshot and otherwise
 keeps the branch-only recorded state, itself shown only when the session's own recorded
 identity resolved a proven single repository (`session.repositoryAttribution`/
 `repositoryId`, the same rule for every provider; see `server/normalize/session-identity.mjs`), or
