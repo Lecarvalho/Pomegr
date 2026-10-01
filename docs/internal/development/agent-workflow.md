@@ -79,7 +79,8 @@ exactly before bundling services; it never regenerates legal files after the web
 `BrowserWindow`. Pull requests targeting `main` and pushes to `main` run
 [Windows verification](../../../.github/workflows/verify.yml) on `windows-2022` with Node
 22.13.0. It installs the locked root and landing dependencies plus Electron's on-demand
-runtime, then runs the canonical `npm run verify` followed by
+runtime, checks the checked-out commit's release source archive with
+`npm run check:release-source -- --ref HEAD`, then runs the canonical `npm run verify` followed by
 `npm run desktop:smoke:ci`. The CI-safe smoke exercises the packaged Electron main
 process, ASAR/native runtime, loopback services, provider discovery, APIs, privacy
 checks, and shutdown without constructing an Electron renderer. The canonical verifier

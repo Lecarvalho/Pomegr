@@ -117,12 +117,17 @@ export async function assertReleasePublishPrivacy(outputRoot, expectedNames, opt
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("DESKTOP_RELEASE_ARTIFACT_SET_INVALID");
   for (const name of actual) {
     const filename = path.join(outputRoot, name);
-    await assertFileHasNoPrivacySentinel(filename);
+    const isSourceArchive = /^Pomegr-.+-source\.zip$/i.test(name);
+    // Source tests contain deliberate sentinels; apply their path allowance
+    // after extraction, while retaining the archive's file-size bound.
+    await assertFileHasNoPrivacySentinel(filename, {
+      allowSentinel: isSourceArchive && options.extractorPath !== false,
+    });
     if (/^Pomegr-(?:Setup|Portable)-.+\.exe$/i.test(name) && options.extractorPath !== false) {
       const extractorPath = options.extractorPath || await resolveArtifactExtractor(options.environment);
       await assertExtractedArtifactHasNoPrivacySentinel(filename, extractorPath);
     }
-    if (/^Pomegr-.+-source\.zip$/i.test(name) && options.extractorPath !== false) {
+    if (isSourceArchive && options.extractorPath !== false) {
       const extractorPath = options.extractorPath || await resolveArtifactExtractor(options.environment);
       await assertExtractedArtifactHasNoPrivacySentinel(filename, extractorPath, {
         allowedSentinelPath: (relativePath) => /^[^/]+\/tests\//.test(relativePath),

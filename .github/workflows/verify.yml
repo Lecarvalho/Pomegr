@@ -41,6 +41,13 @@ jobs:
           npm run desktop:runtime
           npm ci --prefix landing
 
+      - name: Verify release source archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm run check:release-source -- --ref HEAD
+
       - name: Run canonical verifier and desktop smoke
         shell: pwsh
         run: |

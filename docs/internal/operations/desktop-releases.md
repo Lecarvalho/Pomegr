@@ -55,13 +55,19 @@ Append `--check-only` to run only step 4, without changing the repository or dis
 
 The GitHub-hosted Windows runner checks out the tag and owns all validation:
 
-1. Rejects a missing or mismatched `release_sha`.
+1. Rejects a missing or mismatched `release_sha` and validates the tagged source archive.
 2. Installs locked dependencies, then runs `npm run verify` and `npm run desktop:smoke:ci`.
 3. Packages from that build, signs the installer and portable executable, and inspects the package privacy boundary.
 4. Verifies each executable's Authenticode signature, complete publisher Subject, and trusted timestamp.
 5. Generates the source archive and `SHA256SUMS.txt`, creates a draft release, checks the remote asset names against the allowlist, and publishes.
 
 The manual alternative to the dispatch command is **GitHub → Actions → Windows release → Run workflow**, entering the tag and its full commit SHA.
+
+Windows verification also runs `npm run check:release-source -- --ref HEAD` on
+pull requests and `main`, without requiring a release tag. Both source gates scan
+the extracted archive, allowing deliberate privacy sentinels only under its root
+`tests/` directory. Raw ZIP bytes cannot apply that path allowance. Executables
+and other published files retain their strict raw-byte privacy scans.
 
 ## Release checklist
 
