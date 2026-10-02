@@ -202,3 +202,26 @@ export function createSessionEventRecorder({ store, maxEntries } = {}) {
 
   return Object.freeze({ ensure, record, recorded, has });
 }
+
+/**
+ * The two session-domain store hooks that connect a projection to the recorder. Both are
+ * monitor-private and feed only the session-event derivation. A store without event sidecars
+ * (a minimal test double) records nothing.
+ */
+export function createSessionEventRecording({ store, isActive, commit } = {}) {
+  const recorder = typeof store?.writeSessionEventRecord === "function" ? createSessionEventRecorder({ store }) : null;
+  const recommit = (sessionId) => (changed) => { if (changed && isActive()) commit(sessionId); };
+  return Object.freeze({
+    // A record the recorder has not read yet is read off the request path, and the session's
+    // domains recommit when it exists.
+    eventRecordForSession(sessionId) {
+      if (!recorder) return null;
+      if (!recorder.has(sessionId)) void recorder.ensure(sessionId).then(recommit(sessionId)).catch(() => {});
+      return recorder.recorded(sessionId);
+    },
+    onEventRecord(sessionId, record) {
+      if (!recorder || !isActive()) return;
+      void recorder.record(sessionId, record).then(recommit(sessionId)).catch(() => {});
+    },
+  });
+}

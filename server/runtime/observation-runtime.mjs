@@ -1,4 +1,4 @@
-import { createSessionEventRecorder } from "../sessions/domain/session-event-record.mjs";
+import { createSessionEventRecording } from "../sessions/domain/session-event-record.mjs";
 import { createHistoryContributionPublisher } from "../sessions/history/history-contribution-publisher.mjs";
 import path from "node:path";
 import { resolvePomegrDataRoot } from "../../shared/pomegr-paths.mjs";
@@ -111,7 +111,7 @@ export function createObservationRuntime(options = {}) {
   // and also when an injected checkpoint store (a minimal test double) predates the sidecar.
   const repositorySnapshotRecorder = typeof checkpointStore?.writeRepositorySnapshot === "function" ? createRepositorySnapshotRecorder({ store: checkpointStore, now, adoptsUnboundSidecar }) : null;
   // Recorded refill and compaction times, sidecars like the repository snapshots.
-  const sessionEventRecorder = typeof checkpointStore?.writeSessionEventRecord === "function" ? createSessionEventRecorder({ store: checkpointStore }) : null;
+  const sessionEventRecording = createSessionEventRecording({ store: checkpointStore, isActive: () => observationServingActive, commit: (sessionId) => sessionDomainServing.commit(sessionId) });
   const monitorStoreRuntime = options.monitorStoreRuntime || createObservationMonitorStoreRuntime({ options, dataRoot: resolvePomegrDataRoot(pomegrPaths), now });
   const resourceHistory = attachResourceHistory({ enabled: options.monitorStore !== false, monitorStoreRuntime, sampler: resourceUsageSampler, observationStore, now });
   // Registered after resource-history so its cycle contributor reads fresh writes; onChange
@@ -166,22 +166,7 @@ export function createObservationRuntime(options = {}) {
       const recorded = recordedRepositorySnapshotForSession(sessionId);
       return { gitObserved: gitObservedFilesFromSnapshot(recorded), commitTimes: recorded?.commitTimesInWindow ?? null };
     },
-    // Monitor-private; feeds only the session-event derivation. A record the recorder has not
-    // read yet is read off the request path, and the session's domains recommit when it exists.
-    eventRecordForSession: (sessionId) => {
-      if (sessionEventRecorder && !sessionEventRecorder.has(sessionId)) {
-        void sessionEventRecorder.ensure(sessionId).then((found) => {
-          if (found && observationServingActive) sessionDomainServing.commit(sessionId);
-        }).catch(() => {});
-      }
-      return sessionEventRecorder?.recorded(sessionId) || null;
-    },
-    onEventRecord: (sessionId, record) => {
-      if (!sessionEventRecorder || !observationServingActive) return;
-      void sessionEventRecorder.record(sessionId, record).then((changed) => {
-        if (changed && observationServingActive) sessionDomainServing.commit(sessionId);
-      }).catch(() => {});
-    },
+    ...sessionEventRecording,
     onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
   const repositoryAssociations = createSessionRepositoryAssociations({
