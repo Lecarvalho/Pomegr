@@ -362,3 +362,133 @@ test("evaluates refill and lifetime evidence independently for primary, subagent
   assert.deepEqual(feed.possibleFullRefills.map(({ occurrences }) => occurrences[0].cacheLifetimeInference.cacheLifetime), ["5m", "1h", "1h"]);
   assert.doesNotMatch(JSON.stringify(feed), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
 });
+
+const DIAGNOSED_START = Date.parse("2026-10-02T10:00:00.000Z");
+
+function diagnosedPair({ before = {}, after = {}, gapMs = 45 * 60_000 } = {}) {
+  return [
+    snapshot("before", new Date(DIAGNOSED_START).toISOString(), { input: 800, cacheRead: 213_345, ...before }),
+    snapshot("after", new Date(DIAGNOSED_START + gapMs).toISOString(), {
+      input: 2, cacheRead: 36_700, cacheWrite: 177_443, cacheMissReason: "tools_changed", ...after,
+    }),
+  ];
+}
+
+function diagnosedFeed(usageSnapshots, compactions = []) {
+  return buildCacheEvidence({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots, compactions });
+}
+
+test("keeps a provider-diagnosed partial rewrite apart from possible full refills", () => {
+  const result = diagnosedFeed(diagnosedPair({ before: { cacheLifetime: "5m" }, after: { cacheMissProviderStatus: "previous_cache_entry_unavailable" } }));
+  const afterAt = new Date(DIAGNOSED_START + 45 * 60_000).toISOString();
+  assert.deepEqual(result.feed.possibleFullRefills, [{
+    agentId: "primary",
+    count: 0,
+    providerDiagnosedCount: 1,
+    occurrences: [{
+      observedAt: afterAt,
+      kind: "provider_diagnosed",
+      reason: "tools_changed",
+      providerStatus: "previous_cache_entry_unavailable",
+      cacheLifetimeInference: null,
+      messageChangeSequence: null,
+      toolChangeAttribution: null,
+    }],
+    reasons: [],
+    toolChangeAttributions: [],
+  }]);
+  assert.deepEqual(result.refillRequests, [], "the session report keeps listing only full refills");
+  assert.deepEqual(result.feed.items.map((event) => event.kind), ["refill"], "no miss_refill event for a partial rewrite");
+  assert.equal(result.feed.items[0].cacheReadPercent, 17);
+  assert.doesNotMatch(JSON.stringify(result.feed), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
+});
+
+test("carries the bounded sequence and tool attribution of a provider-diagnosed rewrite without aggregate counts", () => {
+  const messages = diagnosedFeed(diagnosedPair({ after: {
+    cacheMissReason: "messages_changed", cacheMessageChangeSequence: "post_tool_task_notification_resume", cacheRead: 100_000, cacheWrite: 100_000,
+  } })).feed.possibleFullRefills[0];
+  assert.equal(messages.providerDiagnosedCount, 1);
+  assert.equal(messages.occurrences[0].reason, "messages_changed");
+  assert.equal(messages.occurrences[0].messageChangeSequence, "post_tool_task_notification_resume");
+
+  const tools = diagnosedFeed(diagnosedPair({ after: { cacheToolChangeCause: "remote_control_connected" } })).feed.possibleFullRefills[0];
+  assert.equal(tools.occurrences[0].toolChangeAttribution.cause, "remote_control_connected");
+  assert.deepEqual([tools.count, tools.reasons, tools.toolChangeAttributions], [0, [], []]);
+});
+
+test("records no provider-diagnosed occurrence without a recognized reason", () => {
+  for (const cacheMissReason of [null, "private_provider_reason", "recognized_reason", ""]) {
+    const result = diagnosedFeed(diagnosedPair({ after: { cacheMissReason, cacheMissProviderStatus: "previous_cache_entry_unavailable" } }));
+    assert.deepEqual(result.feed.possibleFullRefills, [], String(cacheMissReason));
+    assert.deepEqual(result.refillRequests, []);
+  }
+});
+
+test("requires the write, prompt-size, and previous read-share thresholds", () => {
+  const { minimumCacheWriteTokens, minimumPromptInputTokens } = CACHE_EVENT_RULES;
+  const cases = [
+    ["write at the minimum", { after: { cacheRead: 36_700, cacheWrite: minimumCacheWriteTokens } }, 1],
+    ["write below the minimum", { after: { cacheRead: 36_700, cacheWrite: minimumCacheWriteTokens - 1 } }, 0],
+    ["previous share at the minimum", { before: { input: 42_669, cacheRead: 170_676 } }, 1],
+    ["previous share below the minimum", { before: { input: 42_670, cacheRead: 170_675 } }, 0],
+    ["small previous prompt", { before: { input: 100, cacheRead: minimumPromptInputTokens - 101 } }, 0],
+  ];
+  for (const [label, options, expected] of cases) {
+    const result = diagnosedFeed(diagnosedPair(options));
+    assert.equal(result.feed.possibleFullRefills[0]?.providerDiagnosedCount ?? 0, expected, label);
+  }
+});
+
+test("breaks provider-diagnosed comparison on a group, model, or compaction change", () => {
+  const between = new Date(DIAGNOSED_START + 20 * 60_000).toISOString();
+  for (const [label, options, compactions, expected] of [
+    ["comparison group", { after: { group: 1 } }, [], 0],
+    ["model", { after: { model: "other-model" } }, [], 0],
+    ["compaction between", {}, [{ actorId: "primary", timestamp: between }], 0],
+    ["compaction at the previous request", {}, [{ actorId: "primary", timestamp: new Date(DIAGNOSED_START).toISOString() }], 1],
+    ["compaction of another agent", {}, [{ actorId: "child", timestamp: between }], 1],
+  ]) {
+    const result = diagnosedFeed(diagnosedPair(options), compactions);
+    assert.equal(result.feed.possibleFullRefills[0]?.providerDiagnosedCount ?? 0, expected, label);
+  }
+});
+
+test("a full refill with a recognized reason stays a possible full refill", () => {
+  const result = diagnosedFeed(diagnosedPair({ after: { cacheRead: 500, cacheWrite: 213_000 } }));
+  const [summary] = result.feed.possibleFullRefills;
+  assert.equal(summary.count, 1);
+  assert.equal(Object.hasOwn(summary, "providerDiagnosedCount"), false);
+  assert.equal(Object.hasOwn(summary.occurrences[0], "kind"), false);
+  assert.deepEqual(summary.reasons, [{ reason: "tools_changed", count: 1 }]);
+  assert.equal(result.refillRequests.length, 1);
+  assert.deepEqual(result.feed.items.map((event) => event.kind), ["miss_refill"]);
+});
+
+test("counts each occurrence kind separately with its own 999 cap and exact serialized keys", () => {
+  const usageSnapshots = [];
+  const cap = CACHE_EVENT_RULES.maximumAgentRefillCount;
+  for (let index = 0; index < cap + 2; index += 1) {
+    const at = (offset) => new Date(DIAGNOSED_START + index * 600_000 + offset).toISOString();
+    usageSnapshots.push(
+      snapshot(`reuse-${index}`, at(0), { input: 1_000, cacheRead: 213_000 }),
+      snapshot(`partial-${index}`, at(60_000), { input: 2, cacheRead: 36_700, cacheWrite: 177_443, cacheMissReason: "tools_changed" }),
+      snapshot(`reuse-b-${index}`, at(120_000), { input: 1_000, cacheRead: 213_000 }),
+      snapshot(`full-${index}`, at(180_000), { input: 1_000, cacheWrite: 213_000 }),
+    );
+  }
+  const [summary] = diagnosedFeed(usageSnapshots).feed.possibleFullRefills;
+  assert.equal(summary.count, cap);
+  assert.equal(summary.providerDiagnosedCount, cap);
+  assert.equal(summary.occurrences.length, cap * 2);
+  assert.deepEqual(Object.keys(summary).sort(), ["agentId", "count", "occurrences", "providerDiagnosedCount", "reasons", "toolChangeAttributions"]);
+  const diagnosed = summary.occurrences.filter((occurrence) => occurrence.kind === "provider_diagnosed");
+  assert.equal(diagnosed.length, cap);
+  assert.deepEqual(Object.keys(diagnosed[0]).sort(), [
+    "cacheLifetimeInference", "kind", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution",
+  ]);
+  const full = summary.occurrences.filter((occurrence) => !Object.hasOwn(occurrence, "kind"));
+  assert.equal(full.length, cap);
+  assert.deepEqual(Object.keys(full[0]).sort(), [
+    "cacheLifetimeInference", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution",
+  ]);
+});

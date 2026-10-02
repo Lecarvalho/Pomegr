@@ -10,6 +10,18 @@ Pomegr observed two comparable requests for the same normalized agent and model,
 
 This is deterministic threshold evidence of a possible near-full rewrite. It does not prove a charge, cost, provider defect, or why the request changed.
 
+<a id="cache-provider-diagnosed-refill"></a>
+
+### `cache.provider_diagnosed_refill`
+
+Pomegr emits this code when two comparable requests for the same normalized agent and model, with no compaction between them, meet the `cache.possible_full_refill` thresholds except that the current request's cache-read share is above 10%, and the current request carries a recognized provider reason: `model_changed`, `system_changed`, `tools_changed`, or `messages_changed`. A request that also meets the possible-full-refill share stays a possible full refill. Without a recognized reason, a partial drop in reuse records nothing.
+
+What it means: the provider named a recognized reason, and the request wrote at least 8,000 tokens while part of the prompt prefix was still read from cache.
+
+What it does not prove: that the whole prefix was rewritten, why the reason arose, that a cache entry expired, or that the provider charged any amount. A recognized reason excludes a cache-lifetime expiry inference, so none is shown. A fixed tool-change attribution may accompany the occurrence, labeled as an inference. The monitor counts these in `providerDiagnosedCount`, never in the possible-full-refill count, the miss-refill events, or the MCP session report.
+
+Privacy: browser state contains only the fixed kind, the recognized reason enum, the observation timestamp, the same bounded provider status, message-change sequence, and fixed tool-change attribution a possible full refill may carry, and this stable public code. Raw provider diagnostics, diagnostic token estimates, tool definitions, model identifiers, request IDs, and cache keys remain monitor-private.
+
 <a id="cache-read-reuse-dropped"></a>
 
 ### `cache.read_reuse_dropped`

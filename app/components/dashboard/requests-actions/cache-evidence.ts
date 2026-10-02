@@ -3,7 +3,7 @@ import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropF
 import { formatDuration } from "../../../dashboard-utils";
 
 export type RequestCacheEvidence = {
-  kind: "refill" | "possible_refill" | "model_change";
+  kind: "refill" | "provider_diagnosed" | "possible_refill" | "model_change";
   event?: CacheEvent;
   occurrence?: CacheRefillOccurrence;
   readDrop?: CacheReadDropOccurrence;
@@ -11,6 +11,7 @@ export type RequestCacheEvidence = {
 
 export function cacheEvidenceLabel(evidence: RequestCacheEvidence, compact = false) {
   if (evidence.kind === "model_change") return compact ? "Reuse drop · model change" : "Cache reuse dropped across a model change";
+  if (evidence.kind === "provider_diagnosed") return compact ? "Diagnosed refill" : "Provider-diagnosed refill";
   return evidence.kind === "refill" ? "Possible full refill" : "Possible refill";
 }
 
@@ -64,7 +65,7 @@ export function requestCacheEvidence(snapshots: RequestSnapshot[], events?: Cach
     // Only the monitor's qualifying transition warrants a line. A large write
     // alone can be cache growth or initial creation; event details only enrich it.
     // Occurrences also preserve transitions beyond the detailed event cap.
-    if (occurrence) result.set(request.id, { kind: "refill", event, occurrence });
+    if (occurrence) result.set(request.id, { kind: occurrence.kind === "provider_diagnosed" ? "provider_diagnosed" : "refill", event, occurrence });
     else if (readDrop) result.set(request.id, { kind: readDrop.kind === "model_change" ? "model_change" : "possible_refill", readDrop });
   }
   return result;

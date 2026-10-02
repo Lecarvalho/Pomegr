@@ -6,7 +6,7 @@ import { agentDisplayLabel, agentDisplayName, agentRoleLabel, cacheLifetimeLabel
 import { CopyTranscriptButton } from "../../CopyTranscriptButton";
 import { EmptyState } from "../../EmptyState";
 import { AgentWallTimeText, RelativeTimeText } from "../../LiveTime";
-import { AgentHistoryIndicators, summarizeCacheReadDrops, summarizeCacheRefills, summarizeCompactions } from "../AgentHistoryIndicators";
+import { AgentHistoryIndicators, summarizeCacheReadDrops, summarizeCacheRefills, summarizeCompactions, summarizeProviderDiagnosedRefills } from "../AgentHistoryIndicators";
 import { AgentTurnCacheTiming } from "../AgentTurnCacheTiming";
 import { AgentInspectorDetails } from "./AgentInspectorDetails";
 import { AgentLineage } from "./AgentLineage";
@@ -28,7 +28,7 @@ export function AgentInspector({ agent, agents = [], workflows = [], sessionId =
   const phase = workflow?.phases.find((item) => item.id === agent.workflowPhaseId);
   const label = agentDisplayLabel(agent);
   const ownInsights = insights.filter((item) => item.agentId === agent.id);
-  const hasHistory = summarizeCompactions(contextBoundaries, [agent.id]).total + summarizeCacheRefills(cacheRefills, [agent.id]) + summarizeCacheReadDrops(cacheReadDrops, [agent.id]) > 0;
+  const hasHistory = summarizeCompactions(contextBoundaries, [agent.id]).total + summarizeCacheRefills(cacheRefills, [agent.id]) + summarizeProviderDiagnosedRefills(cacheRefills, [agent.id]) + summarizeCacheReadDrops(cacheReadDrops, [agent.id]) > 0;
   const openTree = () => onOpenTree(agent.id);
   // Both presentations stack their exits as full-width chevron rows; only the phone sheet grows them to 44px.
   const actionClass = "commandSecondaryAction inspectorActionRow";

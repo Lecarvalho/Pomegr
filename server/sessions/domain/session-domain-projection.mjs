@@ -85,9 +85,9 @@ function publicCacheEvents(value) {
     items: list(value?.items, (item) => fields(item, ["id", "agentId", "kind", "observedAt", "promptInputTokens", "cacheReadPercent", "cacheWriteTokens",
       "previousCacheReadPercent", "gapMs", "relatedEventId"])),
     possibleFullRefills: list(value?.possibleFullRefills, (refill) => ({
-      ...fields(refill, ["agentId", "count"]),
+      ...fields(refill, ["agentId", "count", "providerDiagnosedCount"]),
       occurrences: list(refill.occurrences, (occurrence) => ({
-        ...fields(occurrence, ["observedAt", "reason", "providerStatus", "messageChangeSequence"]),
+        ...fields(occurrence, ["observedAt", "kind", "reason", "providerStatus", "messageChangeSequence"]),
         cacheLifetimeInference: fields(occurrence.cacheLifetimeInference, ["cause", "cacheLifetime", "elapsedMs"]),
         toolChangeAttribution: occurrence.toolChangeAttribution ? {
           ...fields(occurrence.toolChangeAttribution, ["cause"]),

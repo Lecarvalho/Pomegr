@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Agent, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, CacheRefillCount, CacheRefillOccurrence, Workflow } from "../../../shared/monitor-contract";
 import type { StorageSnapshot } from "../../../shared/storage-contract";
 import type { FileHistoryResponse } from "../../../shared/repository-files-contract";
 import { AgentChip } from "../AgentChip";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
+import { PopoverFrame } from "../PopoverFrame";
 import { ProviderBadge } from "../ProviderBadge";
 import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
+import { cacheRefillEvidenceView } from "../dashboard/AgentHistoryIndicators";
 import { SessionFilePanel } from "../dashboard/SessionFilePanel";
 import { FileTree, type FileTreeFile } from "../repositories/FileTree";
 import { RepositoryRow } from "../repositories/RepositoryRow";
@@ -64,6 +66,7 @@ export function DesignSystemView() {
     <StorageUsageSection />
     <RoleFamilySection />
     <RequestChartsSection />
+    <CacheRefillEvidenceSection />
     <AgentRosterSection />
     <AgentInspectorSection />
     <ChipsSection />
@@ -546,6 +549,24 @@ function RequestChartsSection() {
         </div>
       </div>
     </section>
+  </Section>;
+}
+
+const REFILL_BASE: CacheRefillOccurrence = { observedAt: "2026-08-09T12:04:00.000Z", reason: "tools_changed", providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+const REFILL_COUNT: CacheRefillCount = { agentId: "primary", count: 0, occurrences: [], reasons: [], toolChangeAttributions: [] };
+const REFILLS_DIAGNOSED = [{ ...REFILL_COUNT, providerDiagnosedCount: 2, occurrences: [{ ...REFILL_BASE, kind: "provider_diagnosed" as const }, { ...REFILL_BASE, kind: "provider_diagnosed" as const, observedAt: "2026-08-09T12:21:00.000Z", reason: "messages_changed" as const }] }];
+const REFILLS_POSSIBLE_FULL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: "system_changed" as const }], reasons: [{ reason: "system_changed" as const, count: 1 }] }];
+
+function CacheRefillEvidenceSection() {
+  const frame = (sample: string, refills: CacheRefillCount[]) => {
+    const view = cacheRefillEvidenceView(refills, ["primary"]);
+    return <div data-sample={sample}><PopoverFrame id={`${sample}-popover`} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title={view.title} closeLabel="Close cache refill evidence" onClose={ignoreFocus} summary={view.summary}>{view.body}</PopoverFrame></div>;
+  };
+  return <Section id="cache-refill-evidence" title="Cache refill evidence" lede="The agent cache popover lists a possible full refill (read share at most 10%) apart from a provider-diagnosed refill, where the provider named a reason while part of the prefix was still read from cache. Both render the real popover content, inert and with static data.">
+    <div className="designSystemGrid">
+      {frame("refill-provider-diagnosed", REFILLS_DIAGNOSED)}
+      {frame("refill-possible-full", REFILLS_POSSIBLE_FULL)}
+    </div>
   </Section>;
 }
 

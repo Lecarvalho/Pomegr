@@ -43,6 +43,15 @@ export const CACHE_REFILL_REASON_SIGNAL_DEFINITIONS: Record<CacheRefillReason, C
   ),
 };
 
+/** A recognized provider reason on a rewrite that still read part of the prefix from cache. */
+export const CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION: CacheSignalDefinition = {
+  code: "cache.provider_diagnosed_refill",
+  anchor: "cache-provider-diagnosed-refill",
+  href: `${SIGNAL_DICTIONARY_DOCUMENT_URL}#cache-provider-diagnosed-refill`,
+  observed: "The provider named this reason for the rewrite.",
+  impact: "Part of the prefix was reused; counted separately.",
+};
+
 export const CACHE_REFILL_PROVIDER_STATUS_SIGNAL_DEFINITIONS: Record<CacheRefillProviderStatus, CacheSignalDefinition> = {
   previous_cache_entry_unavailable: definition(
     "cache.previous_cache_entry_unavailable",
@@ -97,7 +106,8 @@ export function cacheReadReuseDroppedModelChangeSignalDefinition(): CacheSignalD
   };
 }
 
-export function cacheRefillSignalDefinition(occurrence: Pick<CacheRefillOccurrence, "cacheLifetimeInference" | "messageChangeSequence" | "providerStatus" | "reason" | "toolChangeAttribution">) {
+export function cacheRefillSignalDefinition(occurrence: Pick<CacheRefillOccurrence, "cacheLifetimeInference" | "kind" | "messageChangeSequence" | "providerStatus" | "reason" | "toolChangeAttribution">) {
+  if (occurrence.kind === "provider_diagnosed") return CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION;
   if (occurrence.messageChangeSequence) return CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS[occurrence.messageChangeSequence];
   if (occurrence.reason === "tools_changed" && occurrence.toolChangeAttribution?.cause === "remote_control_connected") {
     return CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.remote_control_connected;

@@ -247,6 +247,33 @@ test("agent projections carry selected inspector evidence", () => {
   assert.equal(agent.cacheReadDrops.items[0].agentId, "primary");
 });
 
+test("projects a provider-diagnosed refill kind and count through the cache allowlist only", () => {
+  const diagnosed = { observedAt: OBSERVED_AT, kind: "provider_diagnosed", reason: "tools_changed", providerStatus: null,
+    cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+  const full = { observedAt: "2026-09-14T11:00:00.000Z", reason: null, providerStatus: null,
+    cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+  const publicState = state();
+  publicState.metrics.tokens.cacheEvents = { status: "ready", items: [], possibleFullRefills: [
+    { agentId: "primary", count: 1, providerDiagnosedCount: 1, occurrences: [full, { ...diagnosed, rawDiagnostics: "PRIVATE_DIAGNOSTIC", modelId: "PRIVATE_MODEL" }],
+      reasons: [], toolChangeAttributions: [], diagnosticTokens: 99 },
+    { agentId: "child", count: 0, providerDiagnosedCount: 1, occurrences: [diagnosed], reasons: [], toolChangeAttributions: [] },
+  ] };
+  const store = createSessionDomainStore();
+  store.commit(SESSION_ID, snapshot(publicState));
+
+  const refills = store.read(SESSION_ID, "agents").snapshot.value.cacheRefills;
+  assert.deepEqual(Object.keys(refills[0]).sort(), ["agentId", "count", "occurrences", "providerDiagnosedCount", "reasons", "toolChangeAttributions"]);
+  assert.deepEqual(Object.keys(refills[0].occurrences[0]).sort(), Object.keys(full).sort(), "the possible full refill keeps its shape");
+  assert.deepEqual(refills[0].occurrences[1], diagnosed);
+  assert.deepEqual([refills[1].count, refills[1].providerDiagnosedCount], [0, 1]);
+  assert.deepEqual(store.read(SESSION_ID, "signals").snapshot.value.cacheEvents.possibleFullRefills[1].occurrences, [diagnosed]);
+  const child = store.read(SESSION_ID, "agent", "child").snapshot.value.cacheEvents.possibleFullRefills;
+  assert.deepEqual(child.map((item) => [item.agentId, item.count, item.providerDiagnosedCount]), [["child", 0, 1]]);
+  for (const domain of ["agents", "signals"]) {
+    assert.doesNotMatch(store.read(SESSION_ID, domain).snapshot.serialized, /PRIVATE_DIAGNOSTIC|PRIVATE_MODEL|diagnosticTokens|rawDiagnostics/);
+  }
+});
+
 test("rejects a late unserializable value atomically and retains every committed revision", () => {
   const store = createSessionDomainStore();
   const events = [];

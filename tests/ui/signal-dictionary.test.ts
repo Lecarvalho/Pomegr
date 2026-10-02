@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   CACHE_LIFETIME_INFERENCE_SIGNAL_DEFINITIONS,
   CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS,
+  CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION,
   CACHE_REFILL_PROVIDER_STATUS_SIGNAL_DEFINITIONS,
   CACHE_REFILL_REASON_SIGNAL_DEFINITIONS,
   CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS,
@@ -15,6 +16,7 @@ describe("signal dictionary", () => {
   it("keeps the public cache sequence code and document anchor aligned", () => {
     const document = fs.readFileSync(path.join(process.cwd(), "docs", "internal", "architecture", "signal-dictionary.md"), "utf8");
     const definitions = [
+      CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.model_changed,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.system_changed,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.messages_changed!,
@@ -64,5 +66,16 @@ describe("signal dictionary", () => {
       reason: null,
       cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime: "1h", elapsedMs: 61 * 60_000 },
     })?.code).toBe("cache.lifetime_elapsed");
+  });
+
+  it("gives a provider-diagnosed refill its own definition, whatever attribution it carries", () => {
+    const diagnosed = {
+      observedAt: "2026-08-15T12:01:00.000Z", kind: "provider_diagnosed" as const, reason: "tools_changed" as const, providerStatus: null,
+      cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: { cause: "remote_control_connected" as const, changes: [] },
+    };
+
+    expect(cacheRefillSignalDefinition(diagnosed)?.code).toBe("cache.provider_diagnosed_refill");
+    expect(cacheRefillSignalDefinition({ ...diagnosed, kind: undefined })?.code).toBe("cache.tools_changed.remote_control_connected");
+    expect(JSON.stringify(CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION)).not.toMatch(/full|infer/i);
   });
 });

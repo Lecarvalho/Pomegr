@@ -173,13 +173,22 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     }
     assert.doesNotMatch(JSON.stringify(state.metrics.tokens.cacheReadDrops), /cacheReadComparable|cacheReadPreviousAt|dedupeId|comparisonGroup|"model"\s*:|input|cacheWrite/);
     for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
-      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "occurrences", "reasons", "toolChangeAttributions"]);
+      const diagnosedCount = refill.providerDiagnosedCount ?? 0;
+      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "occurrences", ...(diagnosedCount > 0 ? ["providerDiagnosedCount"] : []), "reasons", "toolChangeAttributions"]);
       assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);
-      assert.equal(Number.isSafeInteger(refill.count) && refill.count > 0 && refill.count <= 999, true);
+      assert.equal(Number.isSafeInteger(refill.count) && refill.count >= 0 && refill.count <= 999, true);
+      assert.equal(Number.isSafeInteger(diagnosedCount) && diagnosedCount >= 0 && diagnosedCount <= 999, true);
+      assert.equal(refill.count + diagnosedCount > 0, true);
       assert.equal(Array.isArray(refill.occurrences), true);
-      assert.equal(refill.occurrences.length, refill.count);
+      assert.equal(refill.occurrences.length, refill.count + diagnosedCount);
+      assert.equal(refill.occurrences.filter(({ kind }) => kind === "provider_diagnosed").length, diagnosedCount);
       for (const occurrence of refill.occurrences) {
-        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
+        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", ...(Object.hasOwn(occurrence, "kind") ? ["kind"] : []), "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
+        if (Object.hasOwn(occurrence, "kind")) {
+          assert.equal(occurrence.kind, "provider_diagnosed");
+          assert.notEqual(occurrence.reason, null);
+          assert.equal(occurrence.cacheLifetimeInference, null);
+        }
         assert.equal(Number.isFinite(Date.parse(occurrence.observedAt)), true);
         assert.equal(occurrence.reason === null || /^(model_changed|system_changed|tools_changed|messages_changed)$/.test(occurrence.reason), true);
         assert.equal(occurrence.providerStatus === null || occurrence.providerStatus === "previous_cache_entry_unavailable", true);

@@ -256,6 +256,8 @@ export type CacheToolChangeAttributionCount = {
 
 export type CacheRefillOccurrence = {
   observedAt: string;
+  /** Omitted for a possible full refill; provider-diagnosed partial rewrites are not counted as one. */
+  kind?: "provider_diagnosed";
   /** Provider-diagnosed cause when recognized; otherwise unavailable. */
   reason: CacheRefillReason | null;
   /** Bounded provider status; raw diagnostics remain monitor-private. */
@@ -270,7 +272,8 @@ export type CacheRefillOccurrence = {
 
 export type CacheRefillCount = {
   agentId: string;
-  count: number;
+  count: number; // possible full refills only
+  providerDiagnosedCount?: number; // bounded to 999; present only when positive
   /** Chronological, bounded details for each counted refill. */
   occurrences: CacheRefillOccurrence[];
   /** Provider-diagnosed causes for a bounded subset of these refills. */

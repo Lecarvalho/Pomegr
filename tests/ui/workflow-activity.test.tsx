@@ -295,6 +295,35 @@ describe("workflow activity and agent tree view", () => {
     expect(description.length).toBeLessThan(500);
   });
 
+  it("lists a provider-diagnosed refill under its own heading and reason without calling it full or inferred", async () => {
+    const user = userEvent.setup();
+    const base = { providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+    const diagnosed = { ...base, observedAt: "2026-08-15T12:02:00.000Z", kind: "provider_diagnosed" as const, reason: "tools_changed" as const };
+    const only = { agentId: "primary", count: 0, providerDiagnosedCount: 1, occurrences: [diagnosed], reasons: [], toolChangeAttributions: [] };
+    const { unmount } = render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[only]} />);
+
+    const mark = screen.getByRole("button", { name: "Provider-diagnosed refill observed 1 time. Part of the prefix was still read from cache." });
+    expect(mark).toHaveTextContent("1");
+    await user.click(mark);
+    const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
+    expect(popover).toHaveTextContent("Providertool definitions changed");
+    expect(popover).toHaveTextContent("cache.provider_diagnosed_refill");
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-provider-diagnosed-refill$/));
+    expect(popover).not.toHaveTextContent(/full|infer/i);
+    unmount();
+
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[{ ...only, count: 1, occurrences: [{ ...base, observedAt: "2026-08-15T12:01:00.000Z", reason: "system_changed" }, diagnosed], reasons: [{ reason: "system_changed", count: 1 }] }]} />);
+    const mixed = screen.getByRole("button", { name: /^Possible full cache refill observed 1 time\. Provider diagnostic: system instructions changed\. Provider-diagnosed refill observed 1 time\./ });
+    expect(mixed).toHaveTextContent("1");
+    await user.click(mixed);
+    const lists = screen.getAllByRole("list");
+    expect(lists.map((list) => list.getAttribute("aria-label"))).toEqual(["Cache refill occurrences", "Provider-diagnosed refill occurrences"]);
+    expect(lists[0]).toHaveTextContent("system instructions changed");
+    expect(lists[0]).toHaveTextContent("possible full-refill thresholds");
+    expect(lists[1]).toHaveTextContent("tool definitions changed");
+    expect(screen.getByRole("dialog", { name: "Cache refill evidence" })).toHaveTextContent("Possible full cache refill observed 1 time.");
+  });
+
   it("keeps the expiry inference for an unavailable previous cache entry", async () => {
     const user = userEvent.setup();
     render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[{
