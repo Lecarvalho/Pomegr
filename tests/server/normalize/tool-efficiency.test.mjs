@@ -60,3 +60,18 @@ test("Codex patch and file-change mutations keep paths and anchors monitor-side"
   assert.notEqual(changes[0], patchScopes[0]);
   assert.match(changes[2], /src[\\/]final\.ts:whole-file$/);
 });
+
+test("overlap keeps evidence beyond the former per-action scope limit", () => {
+  const scopes = mutationScopes("MultiEdit", {
+    file_path: "handler.ts",
+    edits: Array.from({ length: 74 }, (_, index) => ({ old_string: `region-${index}` })),
+  });
+  assert.equal(scopes.length, 74);
+  const overlaps = concurrentMutationOverlaps([
+    { actorId: "one", timestamp: "2026-08-05T12:00:00Z", display: "handler.ts", scopes },
+    { actorId: "two", timestamp: "2026-08-05T12:00:20Z", display: "handler.ts", scopes: [scopes[73]] },
+  ]);
+  assert.equal(overlaps.length, 1);
+  assert.equal(overlaps[0].actors.size, 2);
+  assert.equal(overlaps[0].calls, 2);
+});
