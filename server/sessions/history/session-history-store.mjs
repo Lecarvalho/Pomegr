@@ -526,7 +526,7 @@ export class SessionHistoryStore {
       const index = rows.findIndex((item) => item.id === target || (kind === "activity" && item.requestId === target));
       if (index >= 0 && kind === "activity" && query.anchor) offset = index;
       else if (index >= 0 && kind === "activity") offset = Math.floor(index / limit) * limit;
-      else if (index >= 0) offset = Math.max(0, index - Math.floor(limit / 2));
+      else if (index >= 0) offset = Math.max(0, Math.min(index - Math.floor(limit / 2), total - limit));
     }
     offset = Math.min(offset, Math.max(0, total - 1));
     const items = rows.slice(offset, offset + limit).map((item) => kind === "activity" ? servedActivityRow(clone(item)) : clone(item));
@@ -733,7 +733,7 @@ export class SessionHistoryStore {
     if (target) { const position = refs.findIndex((item) => item.id === target || (kind === "activity" && item.requestId === target));
       if (position >= 0 && kind === "activity" && query.anchor) offset = position;
       else if (position >= 0 && kind === "activity") offset = Math.floor(position / limit) * limit;
-      else if (position >= 0) offset = Math.max(0, position - Math.floor(limit / 2)); }
+      else if (position >= 0) offset = Math.max(0, Math.min(position - Math.floor(limit / 2), total - limit)); }
     offset = Math.min(offset, Math.max(0, total - 1)); const selected = refs.slice(offset, offset + limit);
     const blocks = new Map();
     await Promise.all([...new Set(selected.map((item) => item.page))].map(async (page) => {
