@@ -119,16 +119,16 @@ test("user-message events survive any amount of later tool activity", () => {
   assert.equal(busy.total, 2);
 });
 
-test("resource_peak is the single highest retained peak per field and nothing else", () => {
+test("resource_peak is the single highest retained peak per field that reaches its floor, and nothing else", () => {
   const peak = (field, observedAt, value, extra = {}) => ({ id: `p${value}`, field, observedAt, value, matchedTaskIds: ["task"], matchedTaskCount: 1, window: { status: "not_retained", samples: [], minute: null }, ...extra });
   const retainedResources = { readiness: "ready", minutes: [], minutesTruncated: false, curveRemoval: null, peaks: [
     peak("cpu_cores", at(2), 3),
     peak("cpu_cores", at(4), 6),
     peak("cpu_cores", at(3), 5),
-    peak("memory_bytes", at(5), 900),
-    peak("memory_bytes", at(1), 900), // equal high: the earlier observation wins
-    peak("read_bps", at(6), 10),
-    peak("write_bps", at(7), 20),
+    peak("memory_bytes", at(5), 2 * 1024 ** 3),
+    peak("memory_bytes", at(1), 2 * 1024 ** 3), // equal high at the floor: the earlier observation wins
+    peak("read_bps", at(6), 50 * 1024 ** 2),
+    peak("write_bps", at(7), 50 * 1024 ** 2 + 1),
     peak("cpu_machine_percent", at(8), 99), // not a display field
     peak("write_bps", "not a time", 9_999), // unusable timestamp is skipped, not preferred
     peak("read_bps", at(9), Number.NaN),
@@ -143,6 +143,14 @@ test("resource_peak is the single highest retained peak per field and nothing el
   for (const readiness of ["loading", "unavailable", "rebuilding", undefined]) {
     assert.equal(derive({ retainedResources: { ...retainedResources, readiness } }).total, 0, `retained ${readiness}`);
   }
+  // A session high below its field's floor is ordinary use, not an event.
+  const quiet = { ...retainedResources, peaks: [
+    peak("cpu_cores", at(2), 1.99),
+    peak("memory_bytes", at(3), 2 * 1024 ** 3 - 1),
+    peak("read_bps", at(4), 50 * 1024 ** 2 - 1),
+    peak("write_bps", at(5), 50 * 1024 ** 2 - 1),
+  ] };
+  assert.equal(derive({ retainedResources: quiet }).total, 0);
   assert.equal(derive({ retainedResources: null }).total, 0);
 });
 
@@ -249,7 +257,7 @@ test("events are newest first with a deterministic tie-break that ignores input 
       { id: "c2", timestamp: at(5), url: "https://github.com/acme/widgets/pull/10" },
     ],
     pullRequests: { items: [{ number: 2, url: "https://github.com/acme/widgets/pull/2" }, { number: 10, url: "https://github.com/acme/widgets/pull/10" }] },
-    retainedResources: { readiness: "ready", peaks: [{ field: "cpu_cores", observedAt: at(5), value: 1 }] },
+    retainedResources: { readiness: "ready", peaks: [{ field: "cpu_cores", observedAt: at(5), value: 2 }] },
   };
   const feed = derive(inputs);
   assert.equal(feed.total, 12);
@@ -340,8 +348,8 @@ test("a feed built from sentinel-laden inputs exposes only the ten contract keys
     commitTimes: [at(4)],
     repository: { available: true, commits: [{ hash: "SENTINEL_COMMIT_HASH", subject: "SENTINEL_COMMIT_SUBJECT", committedAt: at(4, 30) }] },
     retainedResources: { readiness: "ready", peaks: [
-      { id: "SENTINEL_PEAK_ID", field: "memory_bytes", observedAt: at(5), value: 987654321, matchedTaskIds: ["SENTINEL_TASK_ID"], matchedTaskCount: 1,
-        tasks: [{ id: "SENTINEL_TASK_ID", label: "SENTINEL_TASK_LABEL" }], window: { status: "retained", samples: [{ at: at(5), value: 987654321 }], minute: null } },
+      { id: "SENTINEL_PEAK_ID", field: "memory_bytes", observedAt: at(5), value: 9876543210, matchedTaskIds: ["SENTINEL_TASK_ID"], matchedTaskCount: 1,
+        tasks: [{ id: "SENTINEL_TASK_ID", label: "SENTINEL_TASK_LABEL" }], window: { status: "retained", samples: [{ at: at(5), value: 9876543210 }], minute: null } },
     ] },
   });
   assert.equal(feed.total, 10);
