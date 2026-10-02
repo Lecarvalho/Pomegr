@@ -8,9 +8,10 @@ disable-model-invocation: true
 
 You are the **orchestrator**. Before any token is spent on the task you
 size it, compose a run manifest, show it, and wait for GO. A task too big
-for one session becomes a plan: several manifests, one per session. Then
-you do the work, mostly yourself, without asking again, and record what
-actually ran.
+for one context becomes a plan of parts, cut for how the user wants to
+run it: in this one session, in sessions one after the other, or in
+sessions side by side. Then the work runs without asking again, and you
+record what actually ran.
 
 ## Files
 
@@ -47,7 +48,7 @@ log records what ran.
 | Invocation | Action | Read |
 |------------|--------|------|
 | `/acos <task>` | Size, compose, present, GO, execute, close. | the loop below |
-| `/acos plan <task>` | Size and compose; write the plan or the one manifest; stop. | `references/sizing.md` |
+| `/acos plan <task>` | Size, ask the run mode, cut and compose; write the plan or the one manifest; stop. | `references/sizing.md` |
 | `/acos run <path> [n]` | Run a manifest, run dir, or plan dir + part (default: first not `done`). A bare id resolves under `runs/`. | step 4 onward |
 | `/acos init` | Derive `config.yaml` from the repo. | `references/maintain.md` |
 | `/acos calibrate` | Learn from past runs into `calibration.md`. Own session. | `references/maintain.md` |
@@ -62,8 +63,9 @@ log records what ran.
    `design.sources` now; a design added later means stop and re-present.
 2. **Size.** Count files, lines and deliverables, then derive context
    reservations from the counts, never the reverse. Fits: one manifest.
-   Does not fit: slice inside one part, then cut into parts, confirm the
-   cut, write the plan, present it and stop. `references/sizing.md`.
+   Does not fit: ask the run mode (`single`, `sequential`, `parallel`),
+   cut for it, confirm the cut, write the plan, present it and stop.
+   `references/sizing.md`.
 3. **Compose.** Build the manifest from a preset or ad hoc from blocks,
    resolve tiers and placeholders, estimate, validate.
    `references/manifest.md`.
@@ -97,7 +99,24 @@ Budget
   actual.
 
 Shape
-- **Inline by default.** Delegate only for an independent judgement
+- **The mode shapes the cut.** `single`: one session, you orchestrate
+  and workers implement side by side, as many at once as the groups
+  allow. `sequential`: a fresh session per part, in order. `parallel`:
+  sessions at the same time on parts sharing no file, so their pull
+  requests cannot conflict, in one worktree unless a part cannot share
+  it. Ask before cutting unless the request says.
+- **In `single` you are there until the end.** Delegate every group,
+  brief from structure, read verdicts instead of files, diffs and
+  artifacts. Edit inline only what is cheaper than a spawn. Your lane
+  for the whole plan must fit before GO.
+- **Whoever opens a file edits it.** A file read to plan and read again
+  to implement is paid twice. Cut and brief from structure, let the
+  implementer be the first to open its files, and give it the signature
+  it needs instead of a file it does not own. Only a `fast`-tier locate
+  pass reads without editing. If the repo's coupling forces files open
+  just to learn who changes what, say it out loud in the cut and the
+  presentation.
+- **Inline by default**, outside `single`. Delegate only for an independent judgement
   (review), disjoint slices worth running in parallel (fan-out), a script
   whose output must be looked at (evidence), a wide read that returns one
   page (explore), or work your remaining budget cannot hold.
@@ -113,11 +132,10 @@ Shape
   through every layer it touches. Never cut by layer. An unavoidable
   shared file has one owner and is named in the later part's `assumes`.
 - **Fan-out only for real slices:** two or more groups sharing no file,
-  each about three files or more and within `limits.files`/`lines`. You
-  plan once and brief each slice; implementers never see each other's
+  each worth a worker's startup and fitting its worker's context. You
+  brief each slice from structure; implementers never see each other's
   briefs. A file two slices need has one owner, or goes in a small part
-  that runs first. Never more agents than independent parts;
-  `limits.agents` caps (3 when absent).
+  that runs first. Never more agents than independent groups.
 - **Plan and implement share one context** outside a fan-out: both
   inline, or both in one subagent.
 - **Review once per plan**, in a part near the end, unless a part is
@@ -158,6 +176,10 @@ Running
 - **Manifests stand alone.** A fresh session with no memory of this
   conversation must be able to run one.
 - **Scope is advisory.** Warn once if a worker writes outside it.
+- **Workers are proactive inside their perimeter.** `owns` is a
+  worker's perimeter: there it changes whatever the work turns out to
+  need. With others editing the tree it writes nothing outside, owned
+  or not, and says what is needed there. Alone, the tree is its own.
 - **Workers do not commit.** The user decides.
 - **Terse terminal, contents in files.** Summaries fit one screen; point
   at paths instead of repeating them.

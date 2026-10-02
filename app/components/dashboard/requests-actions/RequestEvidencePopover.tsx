@@ -1,18 +1,36 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { cacheLifetimeInferenceLabel } from "./cache-evidence";
+import { summarizeCacheRefillOccurrences } from "../AgentHistoryIndicators";
+import { refillEvidenceCounts } from "./cache-evidence";
 import type { RequestRow } from "./model";
 
 type Position = { arrowLeft: number; left: number; top: number; placement: "top" | "bottom" };
 
 /**
- * Shows the monitor's cache-expiry inference above a hovered or focused refill marker.
+ * What the monitor recorded for a request's matched refill occurrence, in one or two short sentences:
+ * the expiry inference, the provider reason with any tool-change inference, or that no cause was
+ * recorded. Empty without a matched occurrence; the browser adds no classification.
+ */
+export function requestRefillTooltip(row: RequestRow | undefined) {
+  const occurrence = row?.cacheEvidence?.occurrence;
+  if (!row || !occurrence) return "";
+  const [evidence] = summarizeCacheRefillOccurrences(refillEvidenceCounts(row.agentId, occurrence), [row.agentId], occurrence.kind ?? false);
+  if (!evidence) return "";
+  if (evidence.lifetimeInference) return `${evidence.lifetimeInference}.`;
+  // The upstream-issue link belongs to the Agents-tab popover; the tooltip stays one short line.
+  if (evidence.unexplained) return "No cause was recorded. See the Agents tab for details.";
+  const reason = evidence.reason === "reason unavailable" ? "No cause was recorded." : `Provider diagnostic: ${evidence.reason}.`;
+  return evidence.inference ? `${reason} Inference: ${evidence.inference}.` : reason;
+}
+
+/**
+ * Shows the monitor's refill evidence above a hovered or focused refill marker.
  * Native SVG titles appear late and unreliably, so the chart uses the shared tooltip surface.
  */
 export function RequestEvidencePopover({ chartRef, row }: { chartRef: RefObject<Element | null>; row: RequestRow | undefined }) {
   const popoverRef = useRef<HTMLSpanElement | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
-  const text = cacheLifetimeInferenceLabel(row?.cacheEvidence?.occurrence?.cacheLifetimeInference);
+  const text = requestRefillTooltip(row);
   const id = row?.id;
 
   useLayoutEffect(() => {
@@ -47,7 +65,7 @@ export function RequestEvidencePopover({ chartRef, row }: { chartRef: RefObject<
     : { visibility: "hidden" } as CSSProperties;
   return createPortal(
     <span ref={popoverRef} className="tooltipPopover signalTooltip" role="tooltip" data-placement={position?.placement || "top"} style={style}>
-      <span className="tooltipPopoverText">{text}.</span>
+      <span className="tooltipPopoverText">{text}</span>
     </span>,
     document.body,
   );

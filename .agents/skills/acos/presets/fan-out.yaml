@@ -9,7 +9,7 @@
 # costs a whole session's startup plus a handoff written and read.
 #
 # The two implement entries are a shape, not a count: compose one per
-# slice, each with a unique name and its own `owns`, up to limits.agents.
+# slice, each with a unique name and its own `owns`.
 # Tiers, not model ids: compose resolves them to the current model.
 
 acos: "0.1"

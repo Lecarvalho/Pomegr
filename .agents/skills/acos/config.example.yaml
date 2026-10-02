@@ -39,16 +39,10 @@ startup:
   basis: "claude code /context, fresh session, 2026-09-18"
 
 # Session limits. Advisory and compose-time only: they split big tasks
-# into a plan and cap delegation. files/lines size a part; token limits are
-# per context unless explicitly named `_total`. Nothing checks them mid-run;
+# into a plan. Token limits are per context unless explicitly named
+# `_total`. Nothing checks them mid-run;
 # `/acos calibrate` reports afterwards how often runs outgrew them.
 limits:
-  files: 8                       # per context: one inline part, or one slice of a
-                                 # fan-out, tests included. A session running three
-                                 # slices legitimately touches three times this.
-  lines: 400                     # added plus removed, same per-context meaning
   orchestrator_tokens: 120000    # context the orchestrating session may spend
   worker_context_tokens: 300000  # each subagent/workflow/external worker may spend
   # worker_tokens_total: 900000  # optional aggregate ceiling across workers
-  agents: 3                      # delegations per run
-  stages: 5

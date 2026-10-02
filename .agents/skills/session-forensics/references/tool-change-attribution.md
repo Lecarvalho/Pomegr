@@ -71,10 +71,14 @@ Do not attribute Remote Control from any of these alone:
 
 ## Reconstruct deferred-tool changes
 
-Use this procedure when `tools_changed` follows tool discovery or an attachment
-with type `deferred_tools_record`. This is a forensic method, not a shipped
-Pomegr attribution rule or permission to expose arbitrary tool names in browser
-state. The existing runtime allowlist remains unchanged.
+Pomegr ships a bounded rule for this case, described in the deferred-definition
+paragraph of [Cache events](../../../../docs/internal/architecture/metrics.md#cache-events).
+It reports only the fixed cause and a count of newly recorded definitions, never
+names. Use the procedure below by hand when that rule declines (for example an
+ambiguous interval, a competing transition, incomplete history, or a client
+version it was not verified against) or when you need the batch's names for your
+own analysis. This is a forensic method, not permission to expose arbitrary tool
+names in browser state. The existing runtime allowlist remains unchanged.
 
 ### Establish the recorder semantics
 

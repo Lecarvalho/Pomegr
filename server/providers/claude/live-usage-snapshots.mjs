@@ -28,11 +28,15 @@ function mergeLiveUsageSnapshots(previous, current) {
  * `read`'s optional trailing `generation` lets a caller that already computed the file's generation
  * this readSession (see claude-read-generations.mjs) pass it in instead of having it recomputed here;
  * when omitted, it is computed the same way as before (`fileGeneration(file, stat)`).
+ *
+ * The optional last argument carries tool-change attributions decided from the whole transcript (see
+ * session-work-start.mjs), which a bounded tail cannot decide; a given file generation always receives
+ * the same decisions for the requests it holds, so the map is not part of the cache key.
  */
 export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile, maxEntries = DEFAULT_HISTORICAL_CACHE_MAX_ENTRIES }) {
   const cache = new Map();
   const historicalCache = new Map();
-  function read(file, records, actor, stat, historical, sessionId, compactionTimestamps, unlimited = false, precomputedGeneration) {
+  function read(file, records, actor, stat, historical, sessionId, compactionTimestamps, unlimited = false, precomputedGeneration, toolChangeCauses) {
     const completeHistory = unlimited || stat.size <= maximumBytesPerFile;
     const parse = () => parseClaudeContextRecords(records, {
       actorId: actor.id,
@@ -43,6 +47,7 @@ export function createClaudeLiveUsageSnapshotReader({ maximumBytesPerFile, maxEn
       compactionTimestamps,
       includeToolUseIds: true,
       unlimited,
+      toolChangeCauses,
     });
     if (unlimited) return parse();
 

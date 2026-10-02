@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Agent, Workflow } from "../../../shared/monitor-contract";
+import type { Agent, CacheRefillCount, CacheRefillOccurrence, Workflow } from "../../../shared/monitor-contract";
 import type { StorageSnapshot } from "../../../shared/storage-contract";
 import type { FileHistoryResponse } from "../../../shared/repository-files-contract";
 import { AgentChip } from "../AgentChip";
 import { PanelHeadingLink } from "../PanelHeadingLink";
 import { PanelHeader } from "../PanelHeader";
+import { PopoverFrame } from "../PopoverFrame";
 import { ProviderBadge } from "../ProviderBadge";
 import { FileHistoryPanel } from "../repositories/FileHistoryPanel";
+import { cacheRefillEvidenceView } from "../dashboard/AgentHistoryIndicators";
 import { SessionFilePanel } from "../dashboard/SessionFilePanel";
 import { FileTree, type FileTreeFile } from "../repositories/FileTree";
 import { RepositoryRow } from "../repositories/RepositoryRow";
@@ -18,6 +20,7 @@ import { WorkKindIcon } from "../WorkKindIcon";
 import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
 import { scaleMax, type RequestRow } from "../dashboard/requests-actions/model";
 import { RequestBarsChart } from "../dashboard/requests-actions/RequestBarsChart";
+import { requestRefillTooltip } from "../dashboard/requests-actions/RequestEvidencePopover";
 import { RequestLaneChart } from "../dashboard/requests-actions/RequestLaneChart";
 import { RequestMinimap } from "../dashboard/requests-actions/RequestMinimap";
 import { RequestRoleLegend } from "../dashboard/requests-actions/RequestRoleTrack";
@@ -64,6 +67,7 @@ export function DesignSystemView() {
     <StorageUsageSection />
     <RoleFamilySection />
     <RequestChartsSection />
+    <CacheRefillEvidenceSection />
     <AgentRosterSection />
     <AgentInspectorSection />
     <ChipsSection />
@@ -544,6 +548,57 @@ function RequestChartsSection() {
           </article>
           <p className="designSystemNote">Documented exceptions: the selected phone request group alone carries the brand left rule; its nested call disclosure line alone is 32px high.</p>
         </div>
+      </div>
+    </section>
+  </Section>;
+}
+
+const REFILL_BASE: CacheRefillOccurrence = { observedAt: "2026-08-09T12:04:00.000Z", reason: "tools_changed", providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+const REFILL_COUNT: CacheRefillCount = { agentId: "primary", count: 0, occurrences: [], reasons: [], toolChangeAttributions: [] };
+const REFILLS_DIAGNOSED = [{ ...REFILL_COUNT, providerDiagnosedCount: 2, occurrences: [{ ...REFILL_BASE, kind: "provider_diagnosed" as const }, { ...REFILL_BASE, kind: "provider_diagnosed" as const, observedAt: "2026-08-09T12:21:00.000Z", reason: "messages_changed" as const }] }];
+const REFILLS_LIFETIME_ELAPSED = [{ ...REFILL_COUNT, lifetimeElapsedCount: 1, occurrences: [{ ...REFILL_BASE, kind: "lifetime_elapsed" as const, reason: null, cacheLifetimeInference: { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 354_000 } }] }];
+const REFILLS_POSSIBLE_FULL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: "system_changed" as const }], reasons: [{ reason: "system_changed" as const, count: 1 }] }];
+
+const REMOTE_CONTROL_CHANGES = [{ tool: "RemoteTrigger", kind: "added" }, { tool: "PushNotification", kind: "added" }, { tool: "ListAgents", kind: "definition_changed" }] as const;
+const REFILLS_DEFERRED_DEFINITIONS = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded" as const, changes: [], addedDefinitionCount: 8 } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "deferred_definitions_loaded" as const, count: 1, changes: [] }] }];
+const REFILLS_UNEXPLAINED = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: null }] }];
+const REFILLS_REMOTE_CONTROL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "remote_control_connected" as const, changes: [...REMOTE_CONTROL_CHANGES] } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "remote_control_connected" as const, count: 1, changes: [...REMOTE_CONTROL_CHANGES] }] }];
+
+// Sixteen requests, one provider-diagnosed marker beside one possible full refill; both open the real request popover.
+const DEFERRED_OCCURRENCE: CacheRefillOccurrence = { ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount: 8 } };
+const MARKER_ROWS: RequestRow[] = SAMPLE_ROWS.slice(0, 16).map((row, index) => {
+  const refill = (kind: "refill" | "provider_diagnosed", occurrence: CacheRefillOccurrence): RequestRow => ({ ...row, cacheEvidence: { kind, occurrence: { ...occurrence, observedAt: row.observedAt } } });
+  return index === 2 ? refill("provider_diagnosed", { ...REFILL_BASE, kind: "provider_diagnosed" }) : index === 5 ? refill("refill", DEFERRED_OCCURRENCE) : row;
+});
+const UNEXPLAINED_ROW: RequestRow = { ...MARKER_ROWS[5], cacheEvidence: { kind: "refill", occurrence: { ...REFILL_BASE, reason: null, observedAt: MARKER_ROWS[5].observedAt } } };
+
+function CacheRefillEvidenceSection() {
+  const requestFrame = (sample: string, row: RequestRow) => <div data-sample={sample}>
+    <span className="tooltipPopover" role="tooltip"><span className="tooltipPopoverText">{requestRefillTooltip(row)}</span></span>
+  </div>;
+  const frame = (sample: string, refills: CacheRefillCount[]) => {
+    const view = cacheRefillEvidenceView(refills, ["primary"]);
+    return <div data-sample={sample}><PopoverFrame id={`${sample}-popover`} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title={view.title} closeLabel="Close cache refill evidence" onClose={ignoreFocus} summary={view.summary}>{view.body}</PopoverFrame></div>;
+  };
+  return <Section id="cache-refill-evidence" title="Cache refill evidence" lede="The agent cache popover lists a possible full refill (read share at most 10%) apart from a provider-diagnosed refill, where the provider named a reason while part of the prefix was still read from cache. A tools-changed refill can carry a labeled inference: definitions loaded after a tool search (count only, never names) or the fixed Remote Control changes. All render the real popover content, inert and with static data.">
+    <div className="designSystemGrid">
+      {frame("refill-provider-diagnosed", REFILLS_DIAGNOSED)}
+      {frame("refill-lifetime-elapsed", REFILLS_LIFETIME_ELAPSED)}
+      {frame("refill-possible-full", REFILLS_POSSIBLE_FULL)}
+      {frame("refill-deferred-definitions", REFILLS_DEFERRED_DEFINITIONS)}
+      {frame("refill-remote-control", REFILLS_REMOTE_CONTROL)}
+      {frame("refill-unexplained", REFILLS_UNEXPLAINED)}
+    </div>
+    <p className="designSystemNote">The Activities request chart shows the same evidence as a small tooltip when a refill marker is hovered or focused. A possible full refill with no reason, provider status or inference says that no cause was recorded and points to the Agents tab; the upstream-issue link stays in the agent popover.</p>
+    <div className="designSystemGrid">
+      {requestFrame("request-refill-popover", MARKER_ROWS[5])}
+      {requestFrame("request-refill-lifetime-elapsed", { ...MARKER_ROWS[5], cacheEvidence: { kind: "lifetime_elapsed", occurrence: { ...REFILLS_LIFETIME_ELAPSED[0].occurrences[0], observedAt: MARKER_ROWS[5].observedAt } } })}
+      {requestFrame("request-refill-unexplained", UNEXPLAINED_ROW)}
+    </div>
+    <section className="panel requestsActionsPanel" aria-label="Refill marker sample" style={SAMPLE_PANEL_STYLE} data-sample="request-refill-marker">
+      <div className="requestsActionsPlot">
+        <RequestBarsChart rows={MARKER_ROWS} start={1} end={16} size={16} maximum={Math.max(1, scaleMax(MARKER_ROWS, "fresh", true))} mode="fresh" selectedId={MARKER_ROWS[0].id} phone={false} cacheWriteAvailable
+          onSelect={ignoreFocus} onStep={ignoreFocus} windowStart={1} total={MARKER_ROWS.length} onMove={ignoreFocus} />
       </div>
     </section>
   </Section>;

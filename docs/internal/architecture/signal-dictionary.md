@@ -10,6 +10,30 @@ Pomegr observed two comparable requests for the same normalized agent and model,
 
 This is deterministic threshold evidence of a possible near-full rewrite. It does not prove a charge, cost, provider defect, or why the request changed.
 
+<a id="cache-provider-diagnosed-refill"></a>
+
+### `cache.provider_diagnosed_refill`
+
+Pomegr emits this code when two comparable requests for the same normalized agent and model, with no compaction between them, meet the `cache.possible_full_refill` thresholds except that the current request's cache-read share is above 10%, and the current request carries a recognized provider reason: `model_changed`, `system_changed`, `tools_changed`, or `messages_changed`. A request that also meets the possible-full-refill share stays a possible full refill. Without a recognized reason, a partial drop in reuse records nothing.
+
+What it means: the provider named a recognized reason, and the request wrote at least 8,000 tokens while part of the prompt prefix was still read from cache.
+
+What it does not prove: that the whole prefix was rewritten, why the reason arose, that a cache entry expired, or that the provider charged any amount. A recognized reason excludes a cache-lifetime expiry inference, so none is shown. A fixed tool-change attribution may accompany the occurrence, labeled as an inference. The monitor counts these in `providerDiagnosedCount`, never in the possible-full-refill count, the miss-refill events, or the MCP session report.
+
+Privacy: browser state contains only the fixed kind, the recognized reason enum, the observation timestamp, the same bounded provider status, message-change sequence, and fixed tool-change attribution a possible full refill may carry, and this stable public code. Raw provider diagnostics, diagnostic token estimates, tool definitions, model identifiers, request IDs, and cache keys remain monitor-private.
+
+<a id="cache-lifetime-elapsed-partial-refill"></a>
+
+### `cache.lifetime_elapsed_partial_refill`
+
+Pomegr emits this code when two comparable requests for the same normalized agent and model, with no compaction between them, meet the `cache.possible_full_refill` thresholds except that the current request's cache-read share is above 10%, the current request carries no recognized provider reason, the `cache.lifetime_elapsed` inference holds, and the current request read at most half the cached tokens the preceding request read.
+
+What it means: most of the prompt was written again after the preceding request's resolved cache lifetime had gone unused, while part of the prefix was still read from cache. This typically follows a request that took longer than a five-minute lifetime to answer; a prefix shared with other agents can remain cached.
+
+What it does not prove: that the provider expired the entry, which part of the prompt was rewritten, why the earlier request ran long, or that the provider charged any amount. The expiry is an inference. A larger prompt that still reads its whole previous prefix is ordinary growth and records nothing. The monitor counts these in `lifetimeElapsedCount`, never in the possible-full-refill count, the miss-refill events, or the MCP session report.
+
+Privacy: browser state contains only the fixed kind, the observation timestamp, the bounded provider status, the lifetime inference (`5m`, `1h`, or `mixed` plus elapsed milliseconds), and this stable public code. Send times, token counts used by the rule, raw provider diagnostics, model identifiers, request IDs, and cache keys remain monitor-private.
+
 <a id="cache-read-reuse-dropped"></a>
 
 ### `cache.read_reuse_dropped`
@@ -131,6 +155,20 @@ What it means: Claude reported changed tool definitions at the same occurrence w
 What it does not prove: Remote Control caused the refill, no other tool changed, the provider charged any amount, or the normalized fixed change list is a raw provider schema diff.
 
 Privacy: browser state contains only the fixed attribution enum, fixed tool labels and change kinds, and stable public code. Provider session and bridge IDs, raw lifecycle records, tool schemas, prompts, results, and diagnostics remain monitor-private.
+
+<a id="cache-tools-changed-deferred-definitions-loaded"></a>
+
+### `cache.tools_changed.deferred_definitions_loaded`
+
+Class: bounded lifecycle attribution attached to provider diagnostic and refill evidence.
+
+Pomegr emits this code only when complete Claude Code transcript history shows a structured tool-search call answered by a tool result, then a record of tool definitions with names not recorded before, then a request carrying Claude's `tools_changed` diagnostic. The request must follow directly, with no other request in between and no Remote Control transition at the same occurrence. A recorded count outside 1 to 64 makes the code unavailable, and the plain `cache.tools_changed` definition applies instead. The same rule can accompany a provider-diagnosed refill, which keeps its own code.
+
+What it means: Claude reported changed tool definitions right after new definitions were recorded following a tool search. The browser shows the count of newly recorded definitions, such as "8 added", and renders 64 as "64 or more" because the count is capped.
+
+What it does not prove: that the loaded definitions caused the refill, which tools were loaded, that no other tool changed, or that the provider charged any amount. Pomegr always labels this conclusion as an inference.
+
+Privacy: browser state contains only the fixed attribution enum, an empty change list, the bounded count, and stable public code. Tool names, descriptions, schemas, search queries, results, and diagnostics remain monitor-private.
 
 <a id="cache-messages-changed-post-tool-notification-resume"></a>
 

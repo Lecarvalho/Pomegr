@@ -11,7 +11,7 @@ export function mergeClaudeRequestFragments(previous, next) {
   for (const [, kind] of retained) counts.set(kind, (counts.get(kind) || 0) + 1);
   // Calls without a recorded ID cannot be deduplicated across fragments.
   for (const { kind, count } of [...(previous.issuedWork || []), ...(next.issuedWork || [])]) counts.set(kind, Math.max(counts.get(kind) || 0, count));
-  return {
+  const merged = {
     ...latest,
     precedingWork: previous.precedingWork?.length ? previous.precedingWork : next.precedingWork,
     issuedWork: normalizedRequestWork([...counts].map(([kind, count]) => ({ kind, count }))),
@@ -19,6 +19,19 @@ export function mergeClaudeRequestFragments(previous, next) {
     issuedToolUseKinds: retained.map(([id, kind]) => ({ id, kind })),
     precedingUserInputIds: [...new Set([...(previous.precedingUserInputIds || []), ...(next.precedingUserInputIds || [])])].slice(-64),
   };
+  // The first fragment recorded when the request was sent; a later fragment's preceding record is
+  // not that time, so its value (or absence) never replaces it, including in a live-tail merge.
+  if (previous.requestSentAt) merged.requestSentAt = previous.requestSentAt;
+  else delete merged.requestSentAt;
+  // A tool-change attribution, once observed for a request, is never withdrawn: a live-tail parse past the
+  // read window cannot decide and reports none. Cause and count are one observation, taken from one snapshot.
+  const attributed = [previous, next].find((snapshot) => snapshot.cacheToolChangeCause);
+  if (attributed) {
+    merged.cacheToolChangeCause = attributed.cacheToolChangeCause;
+    if (Object.hasOwn(attributed, "cacheToolChangeAddedDefinitionCount")) merged.cacheToolChangeAddedDefinitionCount = attributed.cacheToolChangeAddedDefinitionCount;
+    else delete merged.cacheToolChangeAddedDefinitionCount;
+  }
+  return merged;
 }
 
 /** Keep request correlation indexes inside the Claude adapter. */

@@ -100,6 +100,8 @@ export function RequestsActionsPanel({ agents, workflows = NO_WORKFLOWS, request
             <span><i className="requestsActionsSwatch output" />Output</span>
             <span><i className="requestsActionsSwatch compaction" />Compaction dashed</span>
             {rows.some((row) => row.cacheEvidence?.kind === "refill") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Possible full refill dotted</span>}
+            {rows.some((row) => row.cacheEvidence?.kind === "provider_diagnosed") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Provider-diagnosed refill dotted</span>}
+            {rows.some((row) => row.cacheEvidence?.kind === "lifetime_elapsed") && <span><CacheRefillIcon className="requestsActionsLegendIcon" />Partial refill dotted</span>}
             {rows.some((row) => row.cacheEvidence?.kind === "possible_refill") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Possible refill dotted</span>}
             {rows.some((row) => row.cacheEvidence?.kind === "model_change") && <span><CacheRefillIcon inferred className="requestsActionsLegendIcon" />Reuse drop · model change dotted</span>}
           </div>

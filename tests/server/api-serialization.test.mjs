@@ -173,13 +173,28 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     }
     assert.doesNotMatch(JSON.stringify(state.metrics.tokens.cacheReadDrops), /cacheReadComparable|cacheReadPreviousAt|dedupeId|comparisonGroup|"model"\s*:|input|cacheWrite/);
     for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
-      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "occurrences", "reasons", "toolChangeAttributions"]);
+      const diagnosedCount = refill.providerDiagnosedCount ?? 0;
+      const elapsedCount = refill.lifetimeElapsedCount ?? 0;
+      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", ...(elapsedCount > 0 ? ["lifetimeElapsedCount"] : []), "occurrences", ...(diagnosedCount > 0 ? ["providerDiagnosedCount"] : []), "reasons", "toolChangeAttributions"]);
       assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);
-      assert.equal(Number.isSafeInteger(refill.count) && refill.count > 0 && refill.count <= 999, true);
+      assert.equal(Number.isSafeInteger(refill.count) && refill.count >= 0 && refill.count <= 999, true);
+      assert.equal(Number.isSafeInteger(diagnosedCount) && diagnosedCount >= 0 && diagnosedCount <= 999, true);
+      assert.equal(Number.isSafeInteger(elapsedCount) && elapsedCount >= 0 && elapsedCount <= 999, true);
+      assert.equal(refill.count + diagnosedCount + elapsedCount > 0, true);
       assert.equal(Array.isArray(refill.occurrences), true);
-      assert.equal(refill.occurrences.length, refill.count);
+      assert.equal(refill.occurrences.length, refill.count + diagnosedCount + elapsedCount);
+      assert.equal(refill.occurrences.filter(({ kind }) => kind === "lifetime_elapsed").length, elapsedCount);
+      assert.equal(refill.occurrences.filter(({ kind }) => kind === "provider_diagnosed").length, diagnosedCount);
       for (const occurrence of refill.occurrences) {
-        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
+        assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", ...(Object.hasOwn(occurrence, "kind") ? ["kind"] : []), "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
+        if (Object.hasOwn(occurrence, "kind") && occurrence.kind === "lifetime_elapsed") {
+          assert.equal(occurrence.reason, null);
+          assert.notEqual(occurrence.cacheLifetimeInference, null);
+        } else if (Object.hasOwn(occurrence, "kind")) {
+          assert.equal(occurrence.kind, "provider_diagnosed");
+          assert.notEqual(occurrence.reason, null);
+          assert.equal(occurrence.cacheLifetimeInference, null);
+        }
         assert.equal(Number.isFinite(Date.parse(occurrence.observedAt)), true);
         assert.equal(occurrence.reason === null || /^(model_changed|system_changed|tools_changed|messages_changed)$/.test(occurrence.reason), true);
         assert.equal(occurrence.providerStatus === null || occurrence.providerStatus === "previous_cache_entry_unavailable", true);
@@ -192,11 +207,15 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
           assert.equal(Number.isSafeInteger(occurrence.cacheLifetimeInference.elapsedMs) && occurrence.cacheLifetimeInference.elapsedMs >= 0, true);
         }
         if (occurrence.toolChangeAttribution !== null) {
-          assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), ["cause", "changes"]);
+          const { cause, changes, addedDefinitionCount } = occurrence.toolChangeAttribution;
           assert.equal(occurrence.reason, "tools_changed");
-          assert.equal(occurrence.toolChangeAttribution.cause, "remote_control_connected");
-          assert.equal(Array.isArray(occurrence.toolChangeAttribution.changes) && occurrence.toolChangeAttribution.changes.length > 0 && occurrence.toolChangeAttribution.changes.length <= 8, true);
-          for (const change of occurrence.toolChangeAttribution.changes) {
+          assert.match(cause, /^(remote_control_connected|deferred_definitions_loaded)$/);
+          assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), cause === "deferred_definitions_loaded" ? ["addedDefinitionCount", "cause", "changes"] : ["cause", "changes"]);
+          if (cause === "deferred_definitions_loaded") {
+            assert.deepEqual(changes, []);
+            assert.equal(Number.isSafeInteger(addedDefinitionCount) && addedDefinitionCount >= 1 && addedDefinitionCount <= 64, true);
+          } else assert.equal(Array.isArray(changes) && changes.length > 0 && changes.length <= 8, true);
+          for (const change of changes) {
             assert.deepEqual(Object.keys(change).sort(), ["kind", "tool"]);
             assert.match(change.tool, /^(RemoteTrigger|PushNotification|ListAgents)$/);
             assert.match(change.kind, /^(added|definition_changed)$/);
@@ -215,9 +234,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.equal(attributedRefills <= diagnosedToolChanges, true);
       for (const attribution of refill.toolChangeAttributions) {
         assert.deepEqual(Object.keys(attribution).sort(), ["cause", "changes", "count"]);
-        assert.equal(attribution.cause, "remote_control_connected");
+        assert.match(attribution.cause, /^(remote_control_connected|deferred_definitions_loaded)$/);
         assert.equal(Number.isSafeInteger(attribution.count) && attribution.count > 0 && attribution.count <= refill.count, true);
-        assert.equal(Array.isArray(attribution.changes) && attribution.changes.length > 0 && attribution.changes.length <= 8, true);
+        assert.equal(Array.isArray(attribution.changes) && attribution.changes.length <= 8 && (attribution.changes.length > 0) === (attribution.cause === "remote_control_connected"), true);
         for (const change of attribution.changes) {
           assert.deepEqual(Object.keys(change).sort(), ["kind", "tool"]);
           assert.match(change.tool, /^(RemoteTrigger|PushNotification|ListAgents)$/);

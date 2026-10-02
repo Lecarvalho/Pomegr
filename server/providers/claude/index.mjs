@@ -287,7 +287,7 @@ export function createClaudeProvider(options = {}) {
     const mainRecords = recordsByFile.get(mainFile) || [];
     // One whole-transcript pass yields both facts. The 2 MiB record tail and the activity window
     // below both slide, so neither can back a user-message event that must not disappear.
-    const mainFacts = completeHistory ? null : await sessionWorkStartReader.readTranscriptFacts(mainFile);
+    const mainFacts = completeHistory ? null : await sessionWorkStartReader.readTranscriptFacts(mainFile, { expectedSessionId: sessionId, inlineSidechains: true });
     const { startedAt: primaryStartedAt, userMessageTimes } = mainFacts
       || { startedAt: claudeSessionWorkStartedAt(mainRecords), userMessageTimes: claudeUserMessageTimes(mainRecords) };
     const cwd = projectCwd(mainRecords);
@@ -354,8 +354,16 @@ export function createClaudeProvider(options = {}) {
       if (observedCompactions === undefined) observedCompactions = await readContextCompactions(file);
       observedCompactions = mergeContextCompactions(observedCompactions, contextCompactions(records));
       contextCompactionsCache.set(file, observedCompactions);
+      // The 2 MiB tail slides, so a transcript that outgrew it would lose its earliest calls. Past
+      // that size the call, work-kind and skill counts come from the whole-transcript pass; the main
+      // transcript's pass already ran. The pass also decides the tool-change attributions, for the main
+      // transcript at any size so one source decides, and it is never behind the tail it follows.
+      const facts = completeHistory ? null
+        : file === mainFile ? mainFacts
+          : stat.size > MAX_BYTES_PER_FILE ? await sessionWorkStartReader.readTranscriptFacts(file, { expectedSessionId: sessionId }) : null;
       const requestEvidence = splitClaudeRequestCorrelationEvidence(liveUsageSnapshots.read(file, records, actor, stat, historical, sessionId,
-        observedCompactions.map((compaction) => compaction.timestamp), completeHistory, completeHistory ? undefined : readGenerations.generation(file)));
+        observedCompactions.map((compaction) => compaction.timestamp), completeHistory, completeHistory ? undefined : readGenerations.generation(file),
+        facts?.toolChangeCauses));
       for (const [key, toolUseIds] of requestEvidence.toolUseIdsByRequest) activityRequestLinks.toolUseIdsByRequest.set(key, toolUseIds);
       for (const [key, replyId] of requestEvidence.replyIdsByRequest) activityRequestLinks.replyIdsByRequest.set(key, replyId);
       for (const [key, userInputIds] of requestEvidence.userInputIdsByRequest) activityRequestLinks.userInputIdsByRequest.set(key, userInputIds);
@@ -370,12 +378,7 @@ export function createClaudeProvider(options = {}) {
         stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath });
       activity.push(...toolEvidence.userInputActivity.map((event) => ({ ...event, _historyAgentId: actor.id })));
       toolCalls.push(...toolEvidence.toolCalls);
-      // The 2 MiB tail slides, so a transcript that outgrew it would lose its earliest calls. Past
-      // that size the call, work-kind and skill counts come from the whole-transcript pass; the
-      // main transcript's pass already ran. A pass that is behind the tail is not used.
-      const facts = completeHistory ? null
-        : file === mainFile ? mainFacts
-          : stat.size > MAX_BYTES_PER_FILE ? await sessionWorkStartReader.readTranscriptFacts(file) : null;
+      // A pass that is behind the tail is not used for the call counts.
       const whole = facts && facts.toolUses >= toolEvidence.calls ? facts : null;
       const calls = whole ? whole.toolUses : toolEvidence.calls;
       updatedAt = mergeUpdatedAt(updatedAt, toolEvidence.updatedAt);
@@ -668,7 +671,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v9:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v12:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 
