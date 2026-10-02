@@ -83,6 +83,40 @@ describe("ResourcesTab", () => {
     expect(screen.getAllByText("Latest minute").length).toBeGreaterThan(0);
   });
 
+  it.each(["minutes", "peaks"] as const)("selects Session when only stored %s are available after loading", (evidence) => {
+    useSessionDomain.mockReturnValue(result(null));
+    const view = render(<ResourcesTab sessionId="claude:resources" historical={false} />);
+    const base = domain();
+    useSessionDomain.mockReturnValue(result(domain({
+      live: { status: "unavailable", reason: null, current: null, samples: [] },
+      retained: { ...base.retained, minutes: evidence === "minutes" ? base.retained.minutes : [], peaks: evidence === "peaks" ? base.retained.peaks : [] },
+    })));
+    view.rerender(<ResourcesTab sessionId="claude:resources" historical={false} />);
+
+    expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "30 min" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "false");
+    if (evidence === "minutes") expect(screen.getAllByText("Latest minute").length).toBeGreaterThan(0);
+    else expect(screen.getByRole("button", { name: /npm run build/ })).toBeInTheDocument();
+  });
+
+  it("falls back when live samples disappear and preserves Session when they return", async () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    const user = userEvent.setup();
+    const view = render(<ResourcesTab sessionId="claude:resources" historical={false} />);
+    await user.click(screen.getByRole("button", { name: "5 min" }));
+
+    useSessionDomain.mockReturnValue(result(domain({ live: null })));
+    view.rerender(<ResourcesTab sessionId="claude:resources" historical={false} />);
+    expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("aria-pressed", "true");
+
+    useSessionDomain.mockReturnValue(result(domain()));
+    view.rerender(<ResourcesTab sessionId="claude:resources" historical={false} />);
+    expect(screen.getByRole("button", { name: "Session" })).toHaveAttribute("aria-pressed", "true");
+    await user.click(screen.getByRole("button", { name: "30 min" }));
+    expect(screen.getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("opens historical sessions on Session with the live segments disabled and explained", () => {
     useSessionDomain.mockReturnValue(result(domain({ live: { status: "unavailable", reason: null, current: null, samples: [] } })));
     render(<ResourcesTab sessionId="claude:resources" historical />);
