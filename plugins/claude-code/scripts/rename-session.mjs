@@ -4,12 +4,7 @@ import fs from "node:fs";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { renameSession } from "@anthropic-ai/claude-agent-sdk";
-import {
-  createSessionTitleRenamer,
-  readExplicitSessionTitle,
-  sessionIdFromTranscriptPath,
-  validSessionId,
-} from "./session-title.mjs";
+import { createSessionTitleRenamer, sessionIdFromTranscriptPath, validSessionId } from "./session-title.mjs";
 
 const RENAME_TOOL_NAMES = new Set([
   "mcp__plugin_pomegr_pomegr__rename_session",
@@ -36,21 +31,17 @@ export async function runRenameSessionHook(payload, options = {}) {
   const sessionId = sessionIdFromTranscriptPath(payload.transcript_path);
   if (!sessionId || sessionId !== payload.session_id) return { status: "unavailable" };
 
-  const renameCurrentSession = createSessionTitleRenamer({
-    readExplicitTitle: options.readExplicitTitle || readExplicitSessionTitle,
-    renameSession: options.renameSession || renameSession,
-  });
+  const renameCurrentSession = createSessionTitleRenamer({ renameSession: options.renameSession || renameSession });
   return renameCurrentSession({
     sessionId,
     directory: options.projectDirectory || process.env.CLAUDE_PROJECT_DIR || payload.cwd,
-    transcriptPath: payload.transcript_path,
     title: payload.tool_input?.title,
   });
 }
 
 async function main() {
   const result = await runRenameSessionHook(readPayload());
-  if (result.status === "renamed" || result.status === "preserved" || result.status === "ignored") return;
+  if (result.status === "renamed" || result.status === "ignored") return;
   process.stderr.write(`${FAILURE_MESSAGE}\n`);
   process.exitCode = 2;
 }

@@ -1,11 +1,11 @@
 # Pomegr reporting policy
 
-Policy version: 7
+Policy version: 8
 
 ## Session naming
 
 - After the first substantive request makes the work clear, set one concise, meaningful title through an available provider-native capability. If no safe title capability is available, allow the provider's automatic title.
-- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.
+- Never ask the user to name the session. A new title replaces the current one. Only the main session names itself; subagents never rename the session.
 
 ## Privacy and semantics
 

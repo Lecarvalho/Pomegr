@@ -59,8 +59,8 @@ function rejected(text) {
 
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
-    { name: "pomegr", version: "0.7.4" },
-    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, preserve any existing custom title, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
+    { name: "pomegr", version: "0.7.5" },
+    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
   );
 
   server.registerTool("report_agent_signal", {
@@ -125,11 +125,11 @@ export function buildPomegrMcpServer(options = {}) {
 
   server.registerTool("rename_session", {
     title: "Rename current Claude session",
-    description: "Assign one concise, meaningful title to the calling Claude Code session after its purpose is clear. A trusted Pomegr hook binds the request to the current session and preserves any existing custom title.",
+    description: "Assign one concise, meaningful title to the calling Claude Code session after its purpose is clear. A trusted Pomegr hook binds the request to the current session; the new title replaces the current one.",
     inputSchema: z.object({ title: sessionTitle }).strict(),
     annotations: titleAnnotations,
     _meta: { "anthropic/alwaysLoad": true },
-  }, async () => success("Session title request accepted; Claude Code preserves any existing explicit title."));
+  }, async () => success("Session title request accepted."));
 
   const query = options.query ?? options.agentQuery ?? createAgentQueryReader({
     dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot(),
