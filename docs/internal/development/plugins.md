@@ -87,7 +87,7 @@ Use `$pomegr:doctor` in Codex or `/pomegr:doctor` in Claude Code for a read-only
 
 ## Shared repository policy
 
-`.pomegr/signals.md` uses provider-neutral policy version `7`. A policy initialized by either adapter works with both. Legacy version `6` remains accepted as signals-only with Session progress disabled. The current template contains these sections:
+`.pomegr/signals.md` uses provider-neutral policy version `8`. A policy initialized by either adapter works with both. Legacy version `7` remains accepted with its earlier Session naming text, which told agents to keep an explicitly set title; the Claude Code rename hook replaces the current title under every version. Legacy version `6` remains accepted as signals-only with Session progress disabled. The current template contains these sections:
 
 - Session naming
 - Privacy and semantics
@@ -99,7 +99,7 @@ Use `$pomegr:doctor` in Codex or `/pomegr:doctor` in Claude Code for a read-only
 - Agent signals
 - Task signals
 
-The `Tool suffixes` section maps each configured scope to its report or clear action. Earlier valid version 7 policies may omit this explanatory section; their MCP tool descriptions provide the same generic behavior.
+The `Tool suffixes` section maps each configured scope to its report or clear action. Earlier valid version 7 and 8 policies may omit this explanatory section; their MCP tool descriptions provide the same generic behavior.
 
 Signal tables use `Label`, `Tone`, `Report when`, and `Replace or clear when`. Labels are bounded plain text; tones are `neutral`, `info`, `positive`, `warning`, or `negative`; transition conditions must be concrete and observable. Session and agent rows state when they are replaced or cleared. Task outcomes are durable and cannot be cleared.
 

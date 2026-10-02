@@ -7,8 +7,10 @@ import { StringDecoder } from "node:string_decoder";
 import { pathToFileURL } from "node:url";
 
 export const POLICY_RELATIVE_PATH = path.join(".pomegr", "signals.md");
-export const POLICY_VERSION = 7;
-export const LEGACY_POLICY_VERSION = 6;
+export const POLICY_VERSION = 8;
+export const LEGACY_POLICY_VERSIONS = [7, 6];
+const SIGNALS_ONLY_POLICY_VERSION = 6;
+const RETITLE_POLICY_VERSION = 8;
 export const POLICY_MAX_BYTES = 24 * 1024;
 export const POLICY_MAX_CONDITION_LENGTH = 240;
 export const POLICY_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
@@ -44,8 +46,13 @@ const DELEGATED_AGENT_TYPE_PATTERN = /^(?:\*|[a-z0-9][a-z0-9._:-]{0,63})$/;
 const FORK_AGENT_TYPE = "fork";
 const CANONICAL_SESSION_NAMING = [
   "- After the first substantive request makes the work clear, set one concise, meaningful title through an available provider-native capability. If no safe title capability is available, allow the provider's automatic title.",
-  "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
+  "- Never ask the user to name the session. A new title replaces the current one. Only the main session names itself; subagents never rename the session.",
 ].join("\n");
+// Versions before 8 told agents to keep an explicitly set title.
+const LEGACY_SESSION_NAMING = CANONICAL_SESSION_NAMING.replace(
+  "Never ask the user to name the session. A new title replaces the current one.",
+  "Never ask the user to name the session and never overwrite a title explicitly set by the user.",
+);
 const CANONICAL_PRIVACY = [
   "- Report only project-specific state that helps an observer understand the work.",
   "- Treat every signal as agent-reported and potentially stale, not as a Pomegr judgment.",
@@ -193,8 +200,9 @@ export function validatePolicyText(text) {
   if (!/^# Pomegr reporting policy\s*$/m.test(text)) errors.push("Missing the Pomegr reporting policy title.");
   const versionMatch = text.match(/^Policy version:\s*(\d+)\s*$/m);
   const version = versionMatch ? Number(versionMatch[1]) : null;
-  if (![POLICY_VERSION, LEGACY_POLICY_VERSION].includes(version)) errors.push(`Policy version must be ${POLICY_VERSION} (legacy version ${LEGACY_POLICY_VERSION} is accepted).`);
-  const requiredSections = version === POLICY_VERSION ? [...REQUIRED_SECTIONS, PROGRESS_SECTION] : REQUIRED_SECTIONS;
+  if (![POLICY_VERSION, ...LEGACY_POLICY_VERSIONS].includes(version)) errors.push(`Policy version must be ${POLICY_VERSION} (legacy versions ${LEGACY_POLICY_VERSIONS.join(" and ")} are accepted).`);
+  const hasProgress = version !== SIGNALS_ONLY_POLICY_VERSION;
+  const requiredSections = hasProgress ? [...REQUIRED_SECTIONS, PROGRESS_SECTION] : REQUIRED_SECTIONS;
 
   for (const name of requiredSections) {
     const matches = text.match(new RegExp(`^## ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "gm")) || [];
@@ -207,7 +215,7 @@ export function validatePolicyText(text) {
     if (body === null || !body) errors.push(`Missing or empty "${name}" section.`);
     sections.set(name, body || "");
   }
-  if (sections.get("Session naming") !== CANONICAL_SESSION_NAMING) {
+  if (sections.get("Session naming") !== (version < RETITLE_POLICY_VERSION ? LEGACY_SESSION_NAMING : CANONICAL_SESSION_NAMING)) {
     errors.push("Session naming must match the canonical agent-title policy.");
   }
   if (sections.get("Privacy and semantics") !== CANONICAL_PRIVACY) {
@@ -220,9 +228,9 @@ export function validatePolicyText(text) {
   const signals = {};
   for (const name of SIGNAL_SECTIONS) signals[name] = validateSignalSection(name, sections.get(name), errors);
   const delegatedAgents = validateDelegatedAgentsSection(sections.get("Delegated agents"), signals, errors);
-  const progressBody = version === POLICY_VERSION ? sections.get(PROGRESS_SECTION) : null;
+  const progressBody = hasProgress ? sections.get(PROGRESS_SECTION) : null;
   const progressEnabled = progressBody === "- Enabled: yes";
-  if (version === POLICY_VERSION && !["- Enabled: yes", "- Enabled: no"].includes(progressBody)) {
+  if (hasProgress && !["- Enabled: yes", "- Enabled: no"].includes(progressBody)) {
     errors.push('Session progress must contain exactly "- Enabled: yes" or "- Enabled: no".');
   }
   return policyResult(errors.length ? "invalid" : "valid", { errors, bytes, signals, delegatedAgents, version, progressEnabled });

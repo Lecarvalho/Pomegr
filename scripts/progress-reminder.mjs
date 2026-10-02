@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const REMINDER_VERSION = 1;
-export const PROGRESS_POLICY_VERSION = 7;
+export const PROGRESS_POLICY_VERSION = 8;
 export const QUALIFYING_EVENT_LIMIT = 3;
 export const QUALIFYING_TIME_MS = 10 * 60 * 1000;
 export const STATE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -109,7 +109,7 @@ export function readProgressPolicy(startDirectory) {
     if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) return { status: "invalid", enabled: false };
     if (!/^# Pomegr reporting policy\s*$/m.test(text)) return { status: "invalid", enabled: false };
     const version = Number(text.match(/^Policy version:\s*(\d+)\s*$/m)?.[1]);
-    if (![6, PROGRESS_POLICY_VERSION].includes(version)) return { status: "invalid", enabled: false };
+    if (![6, 7, PROGRESS_POLICY_VERSION].includes(version)) return { status: "invalid", enabled: false };
     if (version === 6) return { status: "valid", version, enabled: false };
     if ((text.match(/^## Session progress\s*$/gm) || []).length !== 1) return { status: "invalid", enabled: false };
     const match = text.match(/^## Session progress\s*$([\s\S]*?)(?=^## |$(?![\s\S]))/m);

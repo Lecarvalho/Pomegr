@@ -59,7 +59,7 @@ test("legacy, disabled, subagent, and Pomegr tool events never qualify", async (
     const text = await readFile(disabled, "utf8");
     await writeFile(disabled, text.replace("- Enabled: yes", "- Enabled: no"));
     assert.equal(handleProgressReminder(payload(root, sessionId, t0, "Bash"), options), null);
-    await writeFile(disabled, text.replace("Policy version: 7", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: yes\n/, "\n"));
+    await writeFile(disabled, text.replace("Policy version: 8", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: yes\n/, "\n"));
     assert.equal(readProgressPolicy(root).enabled, false);
     assert.equal(handleProgressReminder(payload(root, sessionId, t0, "Bash"), options), null);
     assert.equal(hashSessionId(sessionId), hashSessionId(sessionId));

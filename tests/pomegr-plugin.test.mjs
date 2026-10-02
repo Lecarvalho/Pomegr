@@ -196,7 +196,15 @@ policyTest("validates the repository policy template and extracts bounded signal
     assert.deepEqual(result.delegatedAgents, []);
   }
 
-  const legacy = provider.policy.validatePolicyText(lfTemplate.replace("Policy version: 7", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: no\n/, "\n"));
+  const previous = lfTemplate.replace("Policy version: 8", "Policy version: 7").replace(
+    "Never ask the user to name the session. A new title replaces the current one.",
+    "Never ask the user to name the session and never overwrite a title explicitly set by the user.",
+  );
+  assert.equal(provider.policy.validatePolicyText(previous).status, "valid");
+  assert.equal(provider.policy.validatePolicyText(previous.replace("Policy version: 7", "Policy version: 8")).status, "invalid");
+  assert.equal(provider.policy.validatePolicyText(lfTemplate.replace("Policy version: 8", "Policy version: 7")).status, "invalid");
+
+  const legacy = provider.policy.validatePolicyText(previous.replace("Policy version: 7", "Policy version: 6").replace(/\n## Session progress\n\n- Enabled: no\n/, "\n"));
   assert.equal(legacy.status, "valid");
   assert.equal(legacy.progressEnabled, false);
 });
@@ -242,9 +250,9 @@ policyTest("validates the delegated-agents table and rejects incoherent delegati
 
 policyTest("rejects malformed and oversized policies without interpreting their content", async (provider) => {
   const template = await readTemplate(provider);
-  const malformed = provider.policy.validatePolicyText(template.replace("Policy version: 7", "Policy version: 1"));
+  const malformed = provider.policy.validatePolicyText(template.replace("Policy version: 8", "Policy version: 1"));
   assert.equal(malformed.status, "invalid");
-  assert.ok(malformed.errors.some((error) => error.includes("Policy version must be 7")));
+  assert.ok(malformed.errors.some((error) => error.includes("Policy version must be 8")));
 
   const oversized = provider.policy.validatePolicyText(`${template}\n${"x".repeat(provider.policy.POLICY_MAX_BYTES)}`);
   assert.equal(oversized.status, "invalid");
@@ -255,7 +263,7 @@ policyTest("rejects policies that contradict naming, privacy, and signal-lifetim
   const { validatePolicyText } = provider.policy;
   const template = await readTemplate(provider);
   const badNaming = validatePolicyText(template.replace(
-    "- Never ask the user to name the session and never overwrite a title explicitly set by the user. Only the main session names itself; subagents never rename the session.",
+    "- Never ask the user to name the session. A new title replaces the current one. Only the main session names itself; subagents never rename the session.",
     "- Always ask the user to run /rename and report the title.",
   ));
   assert.equal(badNaming.status, "invalid");
@@ -381,13 +389,13 @@ policyTest("SessionStart hook reports plugin metadata and injects valid policy c
     const validOutput = JSON.parse(valid.stdout);
     assert.equal(validOutput.hookSpecificOutput.hookEventName, "SessionStart");
     const context = validOutput.hookSpecificOutput.additionalContext;
-    assert.match(context, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":7/);
+    assert.match(context, /\[Pomegr plugin metadata\].*"pluginVersion":"[^"]+".*"policyStatus":"valid".*"policyVersion":8/);
     assert.match(context, /\[Pomegr reporting policy loaded\]/);
     assert.match(context, /read tools are decision-triggered observations[\s\S]*do not poll routinely or infer causation/i);
     assert.match(context, /# Pomegr reporting policy/);
     for (const note of provider.sessionStartNotes) assert.match(context, note);
 
-    await writePolicy(repository, template.replace("Policy version: 7", "Policy version: invalid"));
+    await writePolicy(repository, template.replace("Policy version: 8", "Policy version: invalid"));
     const invalid = runSessionStart(provider, nested);
     assert.equal(invalid.status, 0);
     const invalidOutput = JSON.parse(invalid.stdout);
@@ -515,7 +523,7 @@ policyTest("delegation hook stays silent for an undeclared policy, a missing pol
     await writePolicy(repository, template);
     assertQuiet(provider, runHook(provider, "subagent-start", payload));
 
-    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 7", "Policy version: 9"));
+    await writePolicy(repository, withDelegatedAgents(template, ["| release-verifier | task |"]).replace("Policy version: 8", "Policy version: 9"));
     assertQuiet(provider, runHook(provider, "subagent-start", payload));
   });
 });
