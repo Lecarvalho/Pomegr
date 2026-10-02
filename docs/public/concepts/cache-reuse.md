@@ -49,10 +49,10 @@ dotted marker. The other bars in this agent's lane are small.*
 entirely Cache read. #93 is mostly Cache write instead, so reuse dropped and
 then returned.*
 
-To see any explanation Pomegr can support, select the refill marker above the
-affected bar. Click it, or focus it and press Enter or Space. It opens the same
-popover as the refill icon on an agent's row in the **Agents** tab. Each
-explanation is labeled by its source:
+To see any explanation Pomegr can support, hover or focus the affected bar. A
+small tooltip above the refill marker gives it in a sentence or two. The refill
+icon on an agent's row in the **Agents** tab opens a popover with the full
+evidence. Each explanation is labeled by its source:
 
 - **Provider diagnostic.** Claude Code can record that the model configuration,
   system instructions, tool definitions, or message history changed. The popover
@@ -76,8 +76,14 @@ prompt from cache, is marked **Provider-diagnosed refill**. It is not a
 **Possible full refill**, because only part of the prompt was written again, and
 Pomegr counts it separately.
 
-If a **Possible full refill** has no recorded reason and no inference, the popover
-says no cause was recorded and links to
+A **Partial refill** is the same situation without a recorded reason: most of the
+prompt was written again after the cache lifetime had gone unused, while part of
+it was still read from cache. This usually follows a request that took longer
+than five minutes to answer. The expiry is an inference, and Pomegr counts these
+separately too.
+
+If a **Possible full refill** has no recorded reason and no inference, the tooltip
+says no cause was recorded and points to the **Agents** tab, where the popover links to
 [anthropics/claude-code#82563](https://github.com/anthropics/claude-code/issues/82563),
 the upstream issue where this behavior is tracked. Pomegr infers nothing in that
 case.

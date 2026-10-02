@@ -174,17 +174,23 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
     assert.doesNotMatch(JSON.stringify(state.metrics.tokens.cacheReadDrops), /cacheReadComparable|cacheReadPreviousAt|dedupeId|comparisonGroup|"model"\s*:|input|cacheWrite/);
     for (const refill of state.metrics.tokens.cacheEvents.possibleFullRefills) {
       const diagnosedCount = refill.providerDiagnosedCount ?? 0;
-      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", "occurrences", ...(diagnosedCount > 0 ? ["providerDiagnosedCount"] : []), "reasons", "toolChangeAttributions"]);
+      const elapsedCount = refill.lifetimeElapsedCount ?? 0;
+      assert.deepEqual(Object.keys(refill).sort(), ["agentId", "count", ...(elapsedCount > 0 ? ["lifetimeElapsedCount"] : []), "occurrences", ...(diagnosedCount > 0 ? ["providerDiagnosedCount"] : []), "reasons", "toolChangeAttributions"]);
       assert.equal(state.agents.some((agent) => agent.id === refill.agentId), true);
       assert.equal(Number.isSafeInteger(refill.count) && refill.count >= 0 && refill.count <= 999, true);
       assert.equal(Number.isSafeInteger(diagnosedCount) && diagnosedCount >= 0 && diagnosedCount <= 999, true);
-      assert.equal(refill.count + diagnosedCount > 0, true);
+      assert.equal(Number.isSafeInteger(elapsedCount) && elapsedCount >= 0 && elapsedCount <= 999, true);
+      assert.equal(refill.count + diagnosedCount + elapsedCount > 0, true);
       assert.equal(Array.isArray(refill.occurrences), true);
-      assert.equal(refill.occurrences.length, refill.count + diagnosedCount);
+      assert.equal(refill.occurrences.length, refill.count + diagnosedCount + elapsedCount);
+      assert.equal(refill.occurrences.filter(({ kind }) => kind === "lifetime_elapsed").length, elapsedCount);
       assert.equal(refill.occurrences.filter(({ kind }) => kind === "provider_diagnosed").length, diagnosedCount);
       for (const occurrence of refill.occurrences) {
         assert.deepEqual(Object.keys(occurrence).sort(), ["cacheLifetimeInference", ...(Object.hasOwn(occurrence, "kind") ? ["kind"] : []), "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution"]);
-        if (Object.hasOwn(occurrence, "kind")) {
+        if (Object.hasOwn(occurrence, "kind") && occurrence.kind === "lifetime_elapsed") {
+          assert.equal(occurrence.reason, null);
+          assert.notEqual(occurrence.cacheLifetimeInference, null);
+        } else if (Object.hasOwn(occurrence, "kind")) {
           assert.equal(occurrence.kind, "provider_diagnosed");
           assert.notEqual(occurrence.reason, null);
           assert.equal(occurrence.cacheLifetimeInference, null);

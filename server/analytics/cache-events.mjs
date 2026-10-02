@@ -5,6 +5,8 @@ export const CACHE_EVENT_RULES = Object.freeze({
   minimumCacheWriteTokens: 8_000,
   minimumReuseReadShare: 0.8,
   maximumMissReadShare: 0.1,
+  // A partial refill inferred from an elapsed lifetime must have lost most of its cached tokens.
+  maximumPartialReadRetention: 0.5,
   minimumMissGapMs: 30 * 60 * 1_000,
   maximumSessionEvents: 20,
   maximumAgentRefillCount: 999,
@@ -12,6 +14,7 @@ export const CACHE_EVENT_RULES = Object.freeze({
 
 const CACHE_REFILL_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
 const PROVIDER_DIAGNOSED_KIND = "provider_diagnosed";
+const LIFETIME_ELAPSED_KIND = "lifetime_elapsed";
 const CACHE_REFILL_PROVIDER_STATUSES = new Set(["previous_cache_entry_unavailable"]);
 const CACHE_MESSAGE_CHANGE_SEQUENCES = new Set(["post_tool_task_notification_resume"]);
 const CACHE_LIFETIME_MS = new Map([
@@ -145,6 +148,7 @@ export function buildCacheEvidence({
   const trackedRefillByActor = new Map();
   const possibleFullRefillsByActor = new Map();
   const providerDiagnosedByActor = new Map();
+  const lifetimeElapsedByActor = new Map();
   const possibleFullRefillOccurrencesByActor = new Map();
   const possibleFullRefillReasonsByActor = new Map();
   const possibleToolChangeAttributionsByActor = new Map();
@@ -203,26 +207,44 @@ export function buildCacheEvidence({
         possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
       }
     }
+    let cacheLifetimeInference = null;
+    if (comparableLargeRewrite && !recognizedReason) {
+      const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
+      const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
+        || snapshot.cacheMissDiagnosticState === "absent";
+      const unusedGapMs = unusedCacheGapMs(previous, snapshot, gapMs);
+      if (expiryEvidenceAvailable && Number.isSafeInteger(cacheLifetimeMs) && unusedGapMs >= cacheLifetimeMs) {
+        cacheLifetimeInference = { cause: "cache_lifetime_elapsed", cacheLifetime: previous.cacheLifetime, elapsedMs: unusedGapMs };
+      }
+    }
+    // An elapsed lifetime keeps a partial rewrite only when most cached tokens were lost: a shared
+    // prefix can stay cached while the rest expires, but a grown prompt that still reads its whole
+    // previous prefix is ordinary growth. It never joins the possible-full-refill counts.
+    const lifetimeElapsedRefill = comparableLargeRewrite && !lowReadShare && cacheLifetimeInference !== null
+      && parts.cacheRead <= previous.parts.cacheRead * CACHE_EVENT_RULES.maximumPartialReadRetention;
+    if (lifetimeElapsedRefill) {
+      const elapsedCount = lifetimeElapsedByActor.get(snapshot.actorId) || 0;
+      if (elapsedCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
+        lifetimeElapsedByActor.set(snapshot.actorId, elapsedCount + 1);
+        const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
+        occurrences.push({
+          observedAt: snapshot.timestamp,
+          kind: LIFETIME_ELAPSED_KIND,
+          reason: null,
+          providerStatus,
+          cacheLifetimeInference,
+          messageChangeSequence: null,
+          toolChangeAttribution: null,
+        });
+        possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
+      }
+    }
     if (possibleFullRefill) {
       const previousRefillCount = possibleFullRefillsByActor.get(snapshot.actorId) || 0;
       possibleFullRefillsByActor.set(snapshot.actorId, Math.min(
         CACHE_EVENT_RULES.maximumAgentRefillCount,
         previousRefillCount + 1,
       ));
-      const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
-      const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
-        || snapshot.cacheMissDiagnosticState === "absent";
-      const unusedGapMs = unusedCacheGapMs(previous, snapshot, gapMs);
-      const cacheLifetimeInference = !recognizedReason
-        && expiryEvidenceAvailable
-        && Number.isSafeInteger(cacheLifetimeMs)
-        && unusedGapMs >= cacheLifetimeMs
-        ? {
-            cause: "cache_lifetime_elapsed",
-            cacheLifetime: previous.cacheLifetime,
-            elapsedMs: unusedGapMs,
-          }
-        : null;
       // Private links select exact request identities before UI trimming.
       refillRequests.push({
         snapshot, previous: previous.snapshot,
@@ -338,12 +360,13 @@ export function buildCacheEvidence({
       event.kind !== "reuse"
       || (event.relatedEventId !== null && retainedIds.has(event.relatedEventId))
     )),
-    possibleFullRefills: [...new Set([...possibleFullRefillsByActor.keys(), ...providerDiagnosedByActor.keys()])]
+    possibleFullRefills: [...new Set([...possibleFullRefillsByActor.keys(), ...providerDiagnosedByActor.keys(), ...lifetimeElapsedByActor.keys()])]
       .sort((left, right) => left.localeCompare(right))
       .map((agentId) => ({
         agentId,
         count: possibleFullRefillsByActor.get(agentId) || 0,
         ...(providerDiagnosedByActor.has(agentId) ? { providerDiagnosedCount: providerDiagnosedByActor.get(agentId) } : {}),
+        ...(lifetimeElapsedByActor.has(agentId) ? { lifetimeElapsedCount: lifetimeElapsedByActor.get(agentId) } : {}),
         occurrences: (possibleFullRefillOccurrencesByActor.get(agentId) || []).map((occurrence) => ({
           ...occurrence,
           cacheLifetimeInference: occurrence.cacheLifetimeInference

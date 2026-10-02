@@ -428,6 +428,60 @@ test("evaluates refill and lifetime evidence independently for primary, subagent
   assert.doesNotMatch(JSON.stringify(feed), /cacheMissDiagnosticState|recognized_reason|inconclusive/);
 });
 
+/** A subagent's long answer: the shared prefix stays cached while the rest outlives a five-minute lifetime. */
+function partialAfter(previous, current, { before = {}, ...after } = {}) {
+  return buildCacheEvidence({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots: [
+    snapshot("before", secondsAt(previous.answer), { input: 2, cacheRead: 135_838, cacheWrite: 1_342, cacheLifetime: "5m", requestSentAt: previous.sent, ...before }),
+    snapshot("after", secondsAt(current.answer), { input: 2, cacheRead: 29_587, cacheWrite: 148_096, requestSentAt: current.sent, ...after }),
+  ] });
+}
+
+test("keeps a partial rewrite whose lifetime elapsed behind a long answer apart from possible full refills", () => {
+  const result = partialAfter({ answer: 348, sent: secondsAt(0) }, { answer: 360, sent: secondsAt(354) });
+  assert.deepEqual(result.feed.possibleFullRefills, [{
+    agentId: "primary",
+    count: 0,
+    lifetimeElapsedCount: 1,
+    occurrences: [{
+      observedAt: secondsAt(360),
+      kind: "lifetime_elapsed",
+      reason: null,
+      providerStatus: null,
+      cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 354_000 },
+      messageChangeSequence: null,
+      toolChangeAttribution: null,
+    }],
+    reasons: [],
+    toolChangeAttributions: [],
+  }]);
+  assert.deepEqual(result.refillRequests, [], "the session report keeps listing only full refills");
+  assert.deepEqual(result.feed.items.map((event) => event.kind), ["refill"], "no miss_refill event for a partial rewrite");
+  assert.doesNotMatch(JSON.stringify(result.feed), /requestSentAt|cacheMissDiagnosticState/);
+});
+
+test("never marks a partial rewrite as expired without complete lifetime evidence", () => {
+  const long = [{ answer: 348, sent: secondsAt(0) }, { answer: 360, sent: secondsAt(354) }];
+  const cases = [
+    ["answered inside the lifetime", partialAfter({ answer: 200, sent: secondsAt(0) }, { answer: 212, sent: secondsAt(203) })],
+    ["inconclusive diagnostic", partialAfter(...long, { cacheMissDiagnosticState: "inconclusive" })],
+    ["minimum-only lifetime", partialAfter(...long, { before: { cacheLifetime: "30m+" } })],
+    ["unresolved lifetime", partialAfter(...long, { before: { cacheLifetime: null } })],
+    ["small write", partialAfter(...long, { cacheWrite: 7_999, cacheRead: 29_587 })],
+    // The whole previous prefix was still read: the prompt grew, the cache did not expire.
+    ["ordinary growth", partialAfter(...long, { cacheRead: 137_180, cacheWrite: 148_096 })],
+    ["comparison group changed", partialAfter(...long, { group: 1 })],
+  ];
+  for (const [label, result] of cases) assert.deepEqual(result.feed.possibleFullRefills, [], label);
+  // A recognized reason stays provider-diagnosed and never gains the expiry inference.
+  const reasoned = partialAfter(...long, { cacheMissReason: "tools_changed", cacheMissDiagnosticState: "recognized_reason" }).feed.possibleFullRefills[0];
+  assert.deepEqual([reasoned.providerDiagnosedCount, reasoned.lifetimeElapsedCount, reasoned.occurrences[0].kind], [1, undefined, "provider_diagnosed"]);
+  assert.equal(reasoned.occurrences[0].cacheLifetimeInference, null);
+  // At 10% read share or less the rewrite stays a possible full refill carrying the same inference.
+  const full = partialAfter(...long, { cacheRead: 10_000, cacheWrite: 148_096 }).feed.possibleFullRefills[0];
+  assert.deepEqual([full.count, full.lifetimeElapsedCount, full.occurrences[0].kind], [1, undefined, undefined]);
+  assert.equal(full.occurrences[0].cacheLifetimeInference.elapsedMs, 354_000);
+});
+
 const DIAGNOSED_START = Date.parse("2026-10-02T10:00:00.000Z");
 
 function diagnosedPair({ before = {}, after = {}, gapMs = 45 * 60_000 } = {}) {

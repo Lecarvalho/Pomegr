@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { Agent } from "../../../../shared/monitor-contract";
 import { compactNumber, shortTime } from "../../../dashboard-utils";
 import { requestMarker, type ChartMode, type RequestRow } from "./model";
-import { cacheEvidenceDescription, cacheEvidenceIsInferred, cacheEvidenceLabel } from "./cache-evidence";
+import { cacheEvidenceIsInferred, cacheEvidenceLabel } from "./cache-evidence";
 import { CacheRefillIcon } from "../CacheRefillIcon";
 import { requestAgentRole, RequestRoleTrack } from "./RequestRoleTrack";
 import { useRequestChartDrag } from "./useRequestChartDrag";
-import { RequestEvidencePopover, RequestRefillPopover } from "./RequestEvidencePopover";
+import { RequestEvidencePopover, requestRefillTooltip } from "./RequestEvidencePopover";
 
 export type AxisLabel = { index: number; text: string; x: number; anchor: "middle" | "end"; left: number; right: number };
 
@@ -98,7 +98,7 @@ export function RequestBandLabels({ labels, y }: { labels: BandLabel[]; y: numbe
  * selection, compaction boundary, and the cache-evidence marker drawn in the `band` above `top`.
  * `marker` sizes that icon; without `labels` the caller places the compaction and selected text.
  * `agent` names the request's agent in the accessible name where no lane label already does.
- * A marker with a matched refill occurrence gets its own button that opens the shared evidence popover.
+ * Hovering or focusing a bar with a matched refill occurrence shows its evidence in the chart's tooltip.
  */
 export function RequestBar({ row, x, width, gap, top, bottom, right, band, marker = 16, labels = true, agent, inspected = false, maximum, mode, cacheWriteAvailable, selected, onSelect, onHover, onFocus }: {
   row: RequestRow; x: number; width: number; gap: number; top: number; bottom: number; right: number; band: number;
@@ -113,22 +113,16 @@ export function RequestBar({ row, x, width, gap, top, bottom, right, band, marke
     ...(mode === "full" ? [{ kind: "read", value: row.cacheReadTokens }] : []),
     { kind: "output", value: row.outputTokens },
   ];
-  const [evidenceOpen, setEvidenceOpen] = useState(false);
-  const evidenceId = useId();
-  const markerRef = useRef<SVGGElement>(null);
-  const closeEvidence = useCallback(() => setEvidenceOpen(false), []);
-  const openable = row.cacheEvidence?.occurrence !== undefined;
   const inferred = row.cacheEvidence ? cacheEvidenceIsInferred(row.cacheEvidence) : false;
-  const markerX = x + width / 2;
-  const activateMarker = () => { onSelect(row); setEvidenceOpen((open) => !open); };
+  const evidenceText = row.cacheEvidence ? [cacheEvidenceLabel(row.cacheEvidence), requestRefillTooltip(row).replace(/\.$/, "")].filter(Boolean).join(". ") : "";
   let stacked = 0;
   const stack = segments.map(({ kind, value }) => {
     stacked += value;
     return <rect key={kind} className={`requestsActionsSegment ${kind}`} x={x} y={bottom - height(stacked)} width={width} height={height(value)} />;
   });
   const barTop = bottom - height(stacked);
-  return <><g className={`requestsActionsBar${selected ? " isSelected" : ""}${inspected ? " isInspected" : ""}`} role="button" tabIndex={0}
-    aria-pressed={selected} aria-label={`Request ${requestMarker(row)}, ${agent ? `${agent}, ` : ""}${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${row.cacheEvidence ? `, ${cacheEvidenceDescription(row.cacheEvidence)}` : ""}`}
+  return <g className={`requestsActionsBar${selected ? " isSelected" : ""}${inspected ? " isInspected" : ""}`} role="button" tabIndex={0}
+    aria-pressed={selected} aria-label={`Request ${requestMarker(row)}, ${agent ? `${agent}, ` : ""}${row.uncachedInputTokens.toLocaleString()} uncached input, ${cacheWriteAvailable ? `${row.cacheWriteTokens.toLocaleString()} cache write, ` : ""}${row.cacheReadTokens.toLocaleString()} cache read, ${row.outputTokens.toLocaleString()} output${evidenceText ? `, ${evidenceText}` : ""}`}
     onPointerEnter={() => onHover(row.id)} onPointerLeave={() => onHover(null)}
     onFocus={() => onFocus(row.id)} onBlur={() => onFocus(null)}
     onClick={() => onSelect(row)} onKeyDown={(event) => {
@@ -145,17 +139,7 @@ export function RequestBar({ row, x, width, gap, top, bottom, right, band, marke
       <g transform={`translate(${x + width / 2 - marker / 2} ${top - band + 2})`}><CacheRefillIcon size={marker} inferred={inferred} /></g>
     </g>}
     {labels && selected && <text className="requestsActionsSelectedLabel" x={x + width / 2} y={Math.max(Math.min(16, top), barTop - 8)} textAnchor="middle">{requestMarker(row)}</text>}
-  </g>
-  {openable && <>
-    <g ref={markerRef} className="requestsActionsRefillTrigger" role="button" tabIndex={0}
-      aria-label={`Cache refill evidence for request ${requestMarker(row)}`} aria-haspopup="dialog" aria-expanded={evidenceOpen} aria-controls={evidenceOpen ? evidenceId : undefined}
-      onPointerEnter={() => onHover(row.id)} onPointerLeave={() => onHover(null)} onFocus={() => onFocus(row.id)} onBlur={() => onFocus(null)}
-      onClick={activateMarker} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activateMarker(); } }}>
-      <rect className="requestsActionsHit" x={markerX - marker / 2 - 2} y={top - band} width={marker + 4} height={Math.min(band, marker + 4)} />
-    </g>
-    {evidenceOpen && <RequestRefillPopover row={row} id={evidenceId} anchorRef={markerRef} onClose={closeEvidence} />}
-  </>}
-  </>;
+  </g>;
 }
 
 /**

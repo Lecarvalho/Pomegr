@@ -1,20 +1,36 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { cacheRefillEvidenceView } from "../AgentHistoryIndicators";
-import { CacheEvidencePopover } from "../CacheEvidencePopover";
-import { cacheLifetimeInferenceLabel, refillEvidenceCounts } from "./cache-evidence";
-import { requestMarker, type RequestRow } from "./model";
+import { summarizeCacheRefillOccurrences } from "../AgentHistoryIndicators";
+import { refillEvidenceCounts } from "./cache-evidence";
+import type { RequestRow } from "./model";
 
 type Position = { arrowLeft: number; left: number; top: number; placement: "top" | "bottom" };
 
 /**
- * Shows the monitor's cache-expiry inference above a hovered or focused refill marker.
+ * What the monitor recorded for a request's matched refill occurrence, in one or two short sentences:
+ * the expiry inference, the provider reason with any tool-change inference, or that no cause was
+ * recorded. Empty without a matched occurrence; the browser adds no classification.
+ */
+export function requestRefillTooltip(row: RequestRow | undefined) {
+  const occurrence = row?.cacheEvidence?.occurrence;
+  if (!row || !occurrence) return "";
+  const [evidence] = summarizeCacheRefillOccurrences(refillEvidenceCounts(row.agentId, occurrence), [row.agentId], occurrence.kind ?? false);
+  if (!evidence) return "";
+  if (evidence.lifetimeInference) return `${evidence.lifetimeInference}.`;
+  // The upstream-issue link belongs to the Agents-tab popover; the tooltip stays one short line.
+  if (evidence.unexplained) return "No cause was recorded. See the Agents tab for details.";
+  const reason = evidence.reason === "reason unavailable" ? "No cause was recorded." : `Provider diagnostic: ${evidence.reason}.`;
+  return evidence.inference ? `${reason} Inference: ${evidence.inference}.` : reason;
+}
+
+/**
+ * Shows the monitor's refill evidence above a hovered or focused refill marker.
  * Native SVG titles appear late and unreliably, so the chart uses the shared tooltip surface.
  */
 export function RequestEvidencePopover({ chartRef, row }: { chartRef: RefObject<Element | null>; row: RequestRow | undefined }) {
   const popoverRef = useRef<HTMLSpanElement | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
-  const text = cacheLifetimeInferenceLabel(row?.cacheEvidence?.occurrence?.cacheLifetimeInference);
+  const text = requestRefillTooltip(row);
   const id = row?.id;
 
   useLayoutEffect(() => {
@@ -49,34 +65,8 @@ export function RequestEvidencePopover({ chartRef, row }: { chartRef: RefObject<
     : { visibility: "hidden" } as CSSProperties;
   return createPortal(
     <span ref={popoverRef} className="tooltipPopover signalTooltip" role="tooltip" data-placement={position?.placement || "top"} style={style}>
-      <span className="tooltipPopoverText">{text}.</span>
+      <span className="tooltipPopoverText">{text}</span>
     </span>,
     document.body,
   );
-}
-
-/** Props shared by the request refill popover and its static design-system sample; null without a matched occurrence. */
-export function requestRefillPopoverProps(row: RequestRow, id: string, onClose: () => void) {
-  const occurrence = row.cacheEvidence?.occurrence;
-  if (!occurrence) return null;
-  const view = cacheRefillEvidenceView(refillEvidenceCounts(row.agentId, occurrence), [row.agentId]);
-  return {
-    id, ariaLabel: "Cache refill evidence", eyebrow: "Cache evidence", title: view.title, summary: view.summary, children: view.body, onClose,
-    closeLabel: `Close cache refill evidence for request ${requestMarker(row)}`,
-  };
-}
-
-/**
- * The same refill evidence the Agents tab shows, opened from a request marker. The anchor is the
- * marker's SVG element: the popover reads only its geometry, so it stands in for the Agents-tab span.
- */
-export function RequestRefillPopover({ row, id, anchorRef, onClose }: {
-  row: RequestRow; id: string; anchorRef: RefObject<SVGGElement | null>; onClose: () => void;
-}) {
-  const props = requestRefillPopoverProps(row, id, onClose);
-  // React bubbles portal events to the chart: keep drags and arrow keys inside the popover from moving its window.
-  const contain = (event: SyntheticEvent) => event.stopPropagation();
-  return props ? <g onPointerDown={contain} onPointerMove={contain} onPointerUp={contain} onPointerCancel={contain} onKeyDown={(event) => { if (event.key !== "Escape") event.stopPropagation(); }}>
-    <CacheEvidencePopover {...props} className="cacheRefillPopover" anchorRef={anchorRef} />
-  </g> : null;
 }

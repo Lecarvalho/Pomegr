@@ -241,7 +241,9 @@ Cache events expose only their fixed kind, normalized agent ID, observation time
 
 The `possibleFullRefills` summary uses the same comparable-adjacent-request checks as `miss_refill`: both requests have at least 8,000 prompt-input tokens, the earlier request has at least an 80% cache-read share, and the current request has at most a 10% share while recording at least 8,000 cache-write tokens. Unlike `miss_refill`, this summary does not require a 30-minute gap, so it also retains short-gap evidence of a possible full rewrite. Initial cache creation, compaction boundaries, and model or comparison-group changes do not qualify. Counts and their chronological occurrence details are capped at 999 per agent and are computed before the 20-event detail cap. Every agent, including a subagent or fork, is evaluated against only its own preceding observations.
 
-A provider-diagnosed partial rewrite is a second, separately counted occurrence kind. It uses the same checks as a possible full refill (same agent, model, and comparison group, no compaction between, both prompts at least 8,000 tokens, the earlier read share at least 80%, at least 8,000 cache-write tokens) except that the current read share exceeds 10% when the request carries a recognized `model_changed`, `system_changed`, `tools_changed`, or `messages_changed` provider reason. Without a recognized reason, a request above the 10% share records nothing, so low reuse alone is never an occurrence. The occurrence carries `kind: "provider_diagnosed"`, which is omitted for a possible full refill, and the agent's summary reports `providerDiagnosedCount` only when positive, capped at 999 independently of `count`. `count` still counts only possible full refills, so an agent with only partial rewrites has `count` 0. The kind never enters `reasons`, `toolChangeAttributions`, the miss-refill event rule, the private refill requests behind the session report, or a cache-lifetime inference, because a recognized reason already excludes expiry. A request that is both a full rewrite and carries a reason stays a possible full refill. The partial rewrite may still carry its fixed message-change sequence and tool-change attribution. The browser must label it as provider-diagnosed, never as a possible full refill or a claim that the whole prefix was rewritten.
+A provider-diagnosed partial rewrite is a second, separately counted occurrence kind. It uses the same checks as a possible full refill (same agent, model, and comparison group, no compaction between, both prompts at least 8,000 tokens, the earlier read share at least 80%, at least 8,000 cache-write tokens) except that the current read share exceeds 10% when the request carries a recognized `model_changed`, `system_changed`, `tools_changed`, or `messages_changed` provider reason. Without a recognized reason, a request above the 10% share records nothing unless the elapsed-lifetime rule below applies, so low reuse alone is never an occurrence. The occurrence carries `kind: "provider_diagnosed"`, which is omitted for a possible full refill, and the agent's summary reports `providerDiagnosedCount` only when positive, capped at 999 independently of `count`. `count` still counts only possible full refills, so an agent with only partial rewrites has `count` 0. The kind never enters `reasons`, `toolChangeAttributions`, the miss-refill event rule, the private refill requests behind the session report, or a cache-lifetime inference, because a recognized reason already excludes expiry. A request that is both a full rewrite and carries a reason stays a possible full refill. The partial rewrite may still carry its fixed message-change sequence and tool-change attribution. The browser must label it as provider-diagnosed, never as a possible full refill or a claim that the whole prefix was rewritten.
+
+A partial rewrite whose cache lifetime elapsed is a third, separately counted occurrence kind. A long-running request can outlast a five-minute lifetime while a prefix shared with other agents stays cached, so the next request rewrites most of the prompt yet reads more than 10% of it. The rule uses the same checks as a possible full refill except the 10% share, and additionally requires no recognized provider reason, the complete cache-lifetime expiry inference described above (resolved `5m`, `1h`, or `mixed` lifetime on the preceding request, an absent diagnostic or the unavailable-entry status, and an unused gap at least that lifetime, measured between recorded send times when both exist), and a cached-token collapse: the current request reads at most half the tokens the preceding request read. That last check keeps ordinary growth out, where a larger prompt still reads its whole previous prefix. The occurrence carries `kind: "lifetime_elapsed"`, a null reason, and the `cacheLifetimeInference`; the agent's summary reports `lifetimeElapsedCount` only when positive, capped at 999 independently. Like the provider-diagnosed kind it never enters `count`, `reasons`, `toolChangeAttributions`, the miss-refill event rule, or the session report. The browser labels it **Partial refill** and always presents the expiry as an inference.
 
 For Claude Code only, an occurrence diagnosed as `messages_changed` may additionally expose the fixed `post_tool_task_notification_resume` sequence. Complete transcript history must contain a structured assistant tool use, a matching structured user tool result, a provider-owned task-notification metadata record, and the directly resumed distinct assistant request; when both UUIDs are present the request must be parented to the notification. Unrelated user input, an unmatched result, an intervening request, malformed evidence, or incomplete history fails closed. The sequence is observed structure, not proof that the notification caused the change or that a specific outgoing request body was rewritten. Stable public wording and evidence limits live in the [signal dictionary](signal-dictionary.md).
 
@@ -255,7 +257,8 @@ monitor's `possibleFullRefills` occurrences produce **Possible full refill** lin
 they preserve qualifying transitions beyond the detailed event cap. A
 provider-diagnosed occurrence is a separate marker kind: it uses the recorded-refill
 glyph, never the open-arrowhead inferred one, on both the chart and the minimap, and
-the legend names it **Provider-diagnosed refill**. Detailed
+the legend names it **Provider-diagnosed refill**. An elapsed-lifetime partial rewrite
+uses the same recorded-refill glyph under the label **Partial refill**. Detailed
 `refill`/`miss_refill` events may enrich a matched transition but never create a line
 on their own. Ordinary cache growth and initial cache creation remain visible in
 cache-write bars, request token details, and the separate event disclosure. Independent
@@ -274,17 +277,19 @@ details retain the evidence on phones and distinguish provider diagnostics from
 inferences. These are presentation associations only; classification, feed limits,
 report totals, and API contracts remain unchanged.
 
-A marker with a matched `possibleFullRefills` occurrence, of either kind, is also an
-interactive control, reachable by pointer and keyboard (click, or Enter or Space when
-focused). It opens the same evidence popover the Agents tab opens for that one
-occurrence: the refill kind and the provider reason, any **Inference** (cache-lifetime
-expiry or fixed tool-change attribution), or **Reason unavailable**. The browser adds no
-classification. Read-drop markers do not open it. Both popovers show a pointer to
-[anthropics/claude-code#82563](https://github.com/anthropics/claude-code/issues/82563)
-only for a possible full refill with no recognized reason, no provider status, and no
-inference. A provider-diagnosed occurrence, or one with any reason, status, or
-inference, never shows it. The link is fixed text, not derived from evidence, and
-the same gap is recorded in [limitations](limitations.md).
+Hovering or focusing a bar whose marker has a matched `possibleFullRefills`
+occurrence, of any kind, shows a small non-interactive tooltip above the marker with
+the evidence the Agents tab popover holds for that one occurrence, in one or two short
+sentences: the cache-lifetime expiry inference, or the provider reason with any fixed
+tool-change **Inference**, or **Reason unavailable**. The same text is in the bar's
+accessible name. The browser adds no classification, and read-drop markers show no
+tooltip. The full evidence popover stays on the Agents tab. A possible full refill
+with no recognized reason, no provider status, and no inference points to
+[anthropics/claude-code#82563](https://github.com/anthropics/claude-code/issues/82563):
+the Agents tab popover links it, and the tooltip says that no cause was recorded
+and to see the Agents tab for details. A partial occurrence, or one with any reason, status, or inference, never
+shows the link. The link is fixed text, not derived from evidence, and the same gap
+is recorded in [limitations](limitations.md).
 
 `metrics.tokens.cacheReadDrops` is an independent, bounded read-drop feed. It does not
 enable `cacheWriteUsage` or `cacheUsageClassification`, add write-backed cache events,

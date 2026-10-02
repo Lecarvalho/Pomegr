@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION,
   CACHE_LIFETIME_INFERENCE_SIGNAL_DEFINITIONS,
   CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS,
   CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION,
@@ -17,6 +18,7 @@ describe("signal dictionary", () => {
     const document = fs.readFileSync(path.join(process.cwd(), "docs", "internal", "architecture", "signal-dictionary.md"), "utf8");
     const definitions = [
       CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION,
+      CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.model_changed,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.system_changed,
       CACHE_REFILL_REASON_SIGNAL_DEFINITIONS.messages_changed!,
@@ -88,5 +90,16 @@ describe("signal dictionary", () => {
     expect(cacheRefillSignalDefinition(diagnosed)?.code).toBe("cache.provider_diagnosed_refill");
     expect(cacheRefillSignalDefinition({ ...diagnosed, kind: undefined })?.code).toBe("cache.tools_changed.remote_control_connected");
     expect(JSON.stringify(CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION)).not.toMatch(/full|infer/i);
+  });
+
+  it("gives an elapsed-lifetime partial refill its own definition only with its inference", () => {
+    const elapsed = {
+      observedAt: "2026-08-15T12:01:00.000Z", kind: "lifetime_elapsed" as const, reason: null, providerStatus: null, messageChangeSequence: null, toolChangeAttribution: null,
+      cacheLifetimeInference: { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 354_000 },
+    };
+
+    expect(cacheRefillSignalDefinition(elapsed)?.code).toBe("cache.lifetime_elapsed_partial_refill");
+    expect(cacheRefillSignalDefinition({ ...elapsed, cacheLifetimeInference: null })).toBeNull();
+    expect(JSON.stringify(CACHE_LIFETIME_ELAPSED_PARTIAL_REFILL_SIGNAL_DEFINITION)).not.toMatch(/full/i);
   });
 });

@@ -296,6 +296,26 @@ describe("workflow activity and agent tree view", () => {
     expect(description.length).toBeLessThan(500);
   });
 
+  it("lists an elapsed-lifetime partial refill as an inference without calling it full", async () => {
+    const user = userEvent.setup();
+    const elapsed = {
+      observedAt: "2026-08-15T12:02:00.000Z", kind: "lifetime_elapsed" as const, reason: null, providerStatus: null, messageChangeSequence: null, toolChangeAttribution: null,
+      cacheLifetimeInference: { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 354_000 },
+    };
+    const only = { agentId: "primary", count: 0, lifetimeElapsedCount: 1, occurrences: [elapsed], reasons: [], toolChangeAttributions: [] };
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[only]} />);
+
+    const mark = screen.getByRole("button", { name: "Partial refill observed 1 time. Inference: the cache lifetime elapsed; part of the prefix was still read from cache." });
+    expect(mark).toHaveTextContent("1");
+    await user.click(mark);
+    const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
+    expect(popover).toHaveTextContent("Partial refill observed 1 time.");
+    expect(popover).toHaveTextContent("Five-minute cache likely expired; 5m elapsed since the preceding request.");
+    expect(popover).toHaveTextContent("cache.lifetime_elapsed_partial_refill");
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-lifetime-elapsed-partial-refill$/));
+    expect(popover).not.toHaveTextContent(/full refill|anthropics\/claude-code/i);
+  });
+
   it("lists a provider-diagnosed refill under its own heading and reason without calling it full or inferred", async () => {
     const user = userEvent.setup();
     const base = { providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
