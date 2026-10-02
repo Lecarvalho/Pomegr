@@ -18,7 +18,14 @@ export const SESSION_EVENT_READINESS_SECTIONS = Object.freeze(["core", "agentEvi
 const KIND_ORDER = new Map(SESSION_EVENT_KINDS.map((kind, index) => [kind, index]));
 const SIGNAL_TONES = new Set(["neutral", "info", "positive", "warning", "negative"]);
 const PROGRESS_PHASES = new Set(["planning", "implementing", "verifying", "blocked", "complete"]);
-const RESOURCE_FIELDS = new Set(["cpu_cores", "memory_bytes", "read_bps", "write_bps"]);
+// The fixed floor a field's session high must reach to be an event. A session high always exists,
+// so without a floor every session would report four peaks however little it used.
+const RESOURCE_PEAK_FLOORS = new Map([
+  ["cpu_cores", 2],
+  ["memory_bytes", 2 * 1024 ** 3],
+  ["read_bps", 50 * 1024 ** 2],
+  ["write_bps", 50 * 1024 ** 2],
+]);
 const PRIMARY_AGENT_ID = "primary";
 
 function instant(value) {
@@ -108,18 +115,21 @@ function userMessageEvents(userMessageTimes) {
   return events;
 }
 
-// The retained session high per resource field; with equal highs the earlier observation wins.
+// The retained session high per resource field, when it reaches the field's floor; with equal
+// highs the earlier observation wins.
 function resourcePeakEvents(retainedResources) {
   if (retainedResources?.readiness !== "ready" || !Array.isArray(retainedResources.peaks)) return [];
   const highs = new Map();
   for (const peak of retainedResources.peaks) {
-    if (!RESOURCE_FIELDS.has(peak?.field) || !Number.isFinite(peak.value)) continue;
+    if (!RESOURCE_PEAK_FLOORS.has(peak?.field) || !Number.isFinite(peak.value)) continue;
     const atMs = instant(peak.observedAt);
     if (atMs === null) continue;
     const high = highs.get(peak.field);
     if (!high || peak.value > high.value || (peak.value === high.value && atMs < high.atMs)) highs.set(peak.field, { value: peak.value, atMs });
   }
-  return [...highs].map(([field, high]) => candidate("resource_peak", high.atMs, `resource:${field}`, { resource: field }));
+  return [...highs]
+    .filter(([field, high]) => high.value >= RESOURCE_PEAK_FLOORS.get(field))
+    .map(([field, high]) => candidate("resource_peak", high.atMs, `resource:${field}`, { resource: field }));
 }
 
 // The session's recorded in-window commit times: the same recorded snapshot that backs "Commits

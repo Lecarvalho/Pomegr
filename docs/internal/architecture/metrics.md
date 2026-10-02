@@ -944,7 +944,7 @@ accumulate.
 | `signal_reported` | The session's current reported signal and each agent's current signal | The signal's `reportedAt` | Label and tone; agent ID and label for an agent signal |
 | `estimate_updated` | The session's current progress estimate | The estimate's `reportedAt` | Percent and phase |
 | `user_message` | The adapter's recorded user-message times (`userMessageTimes` evidence) | The recorded message time | None |
-| `resource_peak` | The retained resource peaks | The observation time of the highest retained peak for the field | The resource field |
+| `resource_peak` | The retained resource peaks, for a field whose session high reaches its fixed floor | The observation time of the highest retained peak for the field | The resource field |
 | `commit_observed` | The recorded in-window commit times in the repository snapshot sidecar | The commit's committer time | None |
 | `pull_request_opened` | A recorded pull-request creation | The recorded creation time | The pull-request number, when listed |
 
@@ -1005,6 +1005,10 @@ Limits of each source:
   number, and it is not linked to any request.
 - **Resource peaks** are the retained session high for each resource field (CPU cores,
   memory, read rate, write rate), taken from the retained peaks the resources domain serves.
+  A session high always exists, so a field yields an event only when its high reaches a
+  fixed floor: 2 CPU cores, 2 GiB of memory, or 50 MiB/s of disk read or write. The floors
+  are fixed monitor-side constants that separate notable use from ordinary use, not a
+  baseline comparison; a session below every floor has no peak event.
   When two retained peaks share the highest value, the earlier observation is used. A peak
   event can move when a later, higher peak replaces it. The event carries no value, peak
   ID, or matched task. Peak timing is process-tree measurement, not attribution to a task
