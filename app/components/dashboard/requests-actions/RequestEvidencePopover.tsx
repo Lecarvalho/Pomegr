@@ -1,7 +1,9 @@
-import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
-import { cacheLifetimeInferenceLabel } from "./cache-evidence";
-import type { RequestRow } from "./model";
+import { cacheRefillEvidenceView } from "../AgentHistoryIndicators";
+import { CacheEvidencePopover } from "../CacheEvidencePopover";
+import { cacheLifetimeInferenceLabel, refillEvidenceCounts } from "./cache-evidence";
+import { requestMarker, type RequestRow } from "./model";
 
 type Position = { arrowLeft: number; left: number; top: number; placement: "top" | "bottom" };
 
@@ -51,4 +53,30 @@ export function RequestEvidencePopover({ chartRef, row }: { chartRef: RefObject<
     </span>,
     document.body,
   );
+}
+
+/** Props shared by the request refill popover and its static design-system sample; null without a matched occurrence. */
+export function requestRefillPopoverProps(row: RequestRow, id: string, onClose: () => void) {
+  const occurrence = row.cacheEvidence?.occurrence;
+  if (!occurrence) return null;
+  const view = cacheRefillEvidenceView(refillEvidenceCounts(row.agentId, occurrence), [row.agentId]);
+  return {
+    id, ariaLabel: "Cache refill evidence", eyebrow: "Cache evidence", title: view.title, summary: view.summary, children: view.body, onClose,
+    closeLabel: `Close cache refill evidence for request ${requestMarker(row)}`,
+  };
+}
+
+/**
+ * The same refill evidence the Agents tab shows, opened from a request marker. The anchor is the
+ * marker's SVG element: the popover reads only its geometry, so it stands in for the Agents-tab span.
+ */
+export function RequestRefillPopover({ row, id, anchorRef, onClose }: {
+  row: RequestRow; id: string; anchorRef: RefObject<SVGGElement | null>; onClose: () => void;
+}) {
+  const props = requestRefillPopoverProps(row, id, onClose);
+  // React bubbles portal events to the chart: keep drags and arrow keys inside the popover from moving its window.
+  const contain = (event: SyntheticEvent) => event.stopPropagation();
+  return props ? <g onPointerDown={contain} onPointerMove={contain} onPointerUp={contain} onPointerCancel={contain} onKeyDown={(event) => { if (event.key !== "Escape") event.stopPropagation(); }}>
+    <CacheEvidencePopover {...props} className="cacheRefillPopover" anchorRef={anchorRef} />
+  </g> : null;
 }

@@ -666,6 +666,8 @@ html[data-theme="dark"] .desktopUpdateOffer button:not(:disabled) {
 .requestsActionsHit { fill: transparent; }
 .requestsActionsSelection { fill: none; stroke: var(--command-brand-text); stroke-width: 1; pointer-events: none; }
 .requestsActionsBar:focus-visible .requestsActionsHit { stroke: var(--focus-ring); stroke-width: 2; }
+.requestsActionsRefillTrigger { cursor: pointer; outline: none; }
+.requestsActionsRefillTrigger:focus-visible .requestsActionsHit { stroke: var(--focus-ring); stroke-width: 2; }
 .requestsActionsSelectedLabel { fill: var(--command-brand-text); }
 .requestsActionsCompaction line { stroke: var(--command-amber); stroke-dasharray: 3 4; }
 .requestsActionsCompaction text { fill: var(--command-amber); font: 10px var(--font-ui); }

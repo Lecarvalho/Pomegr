@@ -49,18 +49,38 @@ dotted marker. The other bars in this agent's lane are small.*
 entirely Cache read. #93 is mostly Cache write instead, so reuse dropped and
 then returned.*
 
-Hover or focus the affected bar to see any explanation Pomegr can support, each
-labeled by its source:
+To see any explanation Pomegr can support, select the refill marker above the
+affected bar. Click it, or focus it and press Enter or Space. It opens the same
+popover as the refill icon on an agent's row in the **Agents** tab. Each
+explanation is labeled by its source:
 
 - **Provider diagnostic.** Claude Code can record that the model configuration,
-  system instructions, tool definitions, or message history changed. The
-  refill icon on an agent's row in the **Agents** tab opens a popover that lists
-  these, or "reason unavailable".
-- **Inference.** When no recognized diagnostic explains the drop and more time
-  passed since the preceding request than its recorded lifetime, the tooltip
-  reads, for example, "Five-minute cache likely expired; 7m elapsed since the
-  preceding request." That is Pomegr's reading of timestamps, not a provider
-  statement.
+  system instructions, tool definitions, or message history changed. The popover
+  lists the reason, or "reason unavailable".
+- **Inference.** Pomegr reads recorded structure and timestamps. It is not a
+  provider statement. For Claude Code, it can show these:
+  - **Cache lifetime elapsed.** No recognized diagnostic explains the drop, and
+    more time passed than the preceding request's recorded lifetime. For example,
+    "Five-minute cache likely expired; 7m elapsed since the preceding request."
+    The time is measured between when the two requests were sent. A cache that
+    expired while a long-running request was still being answered is therefore
+    seen.
+  - **Tool definitions loaded.** A tool search was followed by newly recorded
+    tool definitions, and the next request reported changed tool definitions. For
+    example, "tool definitions loaded after a tool search (8 added)". It gives a
+    count, not tool names, and it does not prove the new definitions caused the
+    refill.
+
+A refill whose reason the provider recorded, but which still read part of the
+prompt from cache, is marked **Provider-diagnosed refill**. It is not a
+**Possible full refill**, because only part of the prompt was written again, and
+Pomegr counts it separately.
+
+If a **Possible full refill** has no recorded reason and no inference, the popover
+says no cause was recorded and links to
+[anthropics/claude-code#82563](https://github.com/anthropics/claude-code/issues/82563),
+the upstream issue where this behavior is tracked. Pomegr infers nothing in that
+case.
 
 ## Drops without a recorded write
 

@@ -23,6 +23,14 @@ export function mergeClaudeRequestFragments(previous, next) {
   // not that time, so its value (or absence) never replaces it, including in a live-tail merge.
   if (previous.requestSentAt) merged.requestSentAt = previous.requestSentAt;
   else delete merged.requestSentAt;
+  // A tool-change attribution, once observed for a request, is never withdrawn: a live-tail parse past the
+  // read window cannot decide and reports none. Cause and count are one observation, taken from one snapshot.
+  const attributed = [previous, next].find((snapshot) => snapshot.cacheToolChangeCause);
+  if (attributed) {
+    merged.cacheToolChangeCause = attributed.cacheToolChangeCause;
+    if (Object.hasOwn(attributed, "cacheToolChangeAddedDefinitionCount")) merged.cacheToolChangeAddedDefinitionCount = attributed.cacheToolChangeAddedDefinitionCount;
+    else delete merged.cacheToolChangeAddedDefinitionCount;
+  }
   return merged;
 }
 

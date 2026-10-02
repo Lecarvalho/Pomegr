@@ -4,6 +4,10 @@ import { toolWorkKind } from "../../normalize/work-kind.mjs";
 import { safeDetail } from "./tool-detail.mjs";
 import { mergeClaudeRequestFragments } from "./activity-correlation.mjs";
 import { claudeReplyActivityId, userInputContentType } from "./activity-events.mjs";
+import { inferredToolChangeCauses } from "./tool-change-attribution.mjs";
+import {
+  CACHE_MISS_REASONS, assistantIdentity, assistantRecord, boundedIdentity, normalizedCacheMissReason, plainObject, structuredContent, structuredToolResultIds,
+} from "./record-shapes.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 1_000;
 const MAX_INPUT_CHAIN_RECORDS = 4_096;
@@ -13,11 +17,6 @@ function nonNegativeInteger(value) {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isSafeInteger(number) && number >= 0 ? number : null;
-}
-
-function boundedIdentity(value) {
-  if (typeof value !== "string" && typeof value !== "number") return "";
-  return String(value).replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 160);
 }
 
 function boundedModel(value) {
@@ -39,10 +38,6 @@ function fallbackIdentity(timestamp, model, usage) {
 
 function validTimestamp(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
-}
-
-function assistantRecord(record) {
-  return record?.type === "assistant";
 }
 
 /** Provider-owned records written before a request is sent: tool results, user input, attachments. */
@@ -93,19 +88,6 @@ function normalizedCacheLifetime(record, cacheWrite) {
   return null;
 }
 
-const CACHE_MISS_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
-const REMOTE_CONTROL_ACTIVE_PREFIX = "/remote-control is active";
-const MAX_BRIDGE_STATUS_DISTANCE = 12;
-
-function plainObject(value) {
-  return value && typeof value === "object" && !Array.isArray(value);
-}
-
-function normalizedCacheMissReason(record) {
-  const value = record?.message?.diagnostics?.cache_miss_reason?.type;
-  return typeof value === "string" && CACHE_MISS_REASONS.has(value) ? value : null;
-}
-
 function normalizedCacheMissProviderStatus(record) {
   return record?.message?.diagnostics?.cache_miss_reason?.type === "previous_message_not_found"
     ? "previous_cache_entry_unavailable"
@@ -124,20 +106,10 @@ function normalizedCacheMissDiagnosticState(record) {
   return "inconclusive";
 }
 
-function assistantIdentity(record) {
-  return assistantRecord(record)
-    ? boundedIdentity(record.message?.id ?? record.requestId ?? record.uuid)
-    : "";
-}
-
 function assistantRequestIdentity(record) {
   return assistantRecord(record)
     ? boundedIdentity(record.requestId ?? record.message?.id ?? record.uuid)
     : "";
-}
-
-function structuredContent(record) {
-  return Array.isArray(record?.message?.content) ? record.message.content : [];
 }
 
 function structuredToolUseIds(record) {
@@ -145,13 +117,6 @@ function structuredToolUseIds(record) {
     .filter((block) => plainObject(block) && block.type === "tool_use")
     .map((block) => boundedIdentity(block.id))
     .filter(Boolean);
-}
-
-function structuredToolResultIds(record) {
-  if (record?.type !== "user") return [];
-  const content = structuredContent(record);
-  if (content.length === 0 || content.some((block) => !plainObject(block) || block.type !== "tool_result")) return [];
-  return content.map((block) => boundedIdentity(block.tool_use_id)).filter(Boolean);
 }
 
 function providerTaskNotification(record) {
@@ -232,188 +197,6 @@ function inferredMessageChangeSequences(records, completeHistory) {
   return sequences;
 }
 
-function normalizedBridgeSession(record, expectedSessionId) {
-  const sessionId = boundedIdentity(record?.sessionId);
-  const bridgeSessionId = boundedIdentity(record?.bridgeSessionId);
-  return record?.type === "bridge-session"
-    && sessionId.length > 0
-    && sessionId === expectedSessionId
-    && bridgeSessionId.length > 0
-    && sessionId !== bridgeSessionId
-    && Number.isSafeInteger(record.lastSequenceNum)
-    && record.lastSequenceNum >= 0
-    ? { sessionId, bridgeSessionId, sequence: record.lastSequenceNum }
-    : null;
-}
-
-function remoteControlActiveRecord(record) {
-  return record?.type === "system"
-    && record.subtype === "bridge_status"
-    && typeof record.content === "string"
-    && record.content.startsWith(REMOTE_CONTROL_ACTIVE_PREFIX);
-}
-
-const DEFERRED_DEFINITIONS_LOADED = "deferred_definitions_loaded";
-const MAX_ADDED_DEFINITIONS = 64;
-const MAX_DEFINITION_NAME_LENGTH = 256;
-
-/** Entry names of a provider-written `deferred_tools_record`, null for any other record; an unreadable entry is null. */
-function deferredDefinitionNames(record) {
-  const attachment = record?.type === "attachment" ? record.attachment : null;
-  if (!plainObject(attachment) || attachment.type !== "deferred_tools_record" || !Array.isArray(attachment.entries)) return null;
-  return attachment.entries.map((entry) => (plainObject(entry) && typeof entry.name === "string"
-    && entry.name.length > 0 && entry.name.length <= MAX_DEFINITION_NAME_LENGTH ? entry.name : null));
-}
-
-/**
- * Requests whose first distinct successor records newly added deferred tool definitions after a
- * matched ToolSearch call: identity -> bounded count and whether a bridge record fell in the interval.
- * Names are replayed only to tell new from known; no name, description or schema leaves this function.
- */
-function inferredDeferredDefinitionLoads(records) {
-  const loads = new Map();
-  const known = new Set();
-  /** @type {{ id: string, searchIds: Set<string>, resolved: boolean, bridge: boolean } | null} */
-  let request = null;
-  /** @type {{ requestId: string, added: number, targetId: string, bridge: boolean } | null} */
-  let pending = null;
-  for (const record of records) {
-    const identity = assistantIdentity(record);
-    if (assistantRecord(record) && !identity) {
-      // An assistant record with no identity could be an intervening request.
-      pending = null;
-      request = null;
-      continue;
-    }
-    if (identity) {
-      // The preceding request answering again after the record puts the record inside it, not between.
-      if (pending && identity === pending.requestId) pending = null;
-      else if (pending && !pending.targetId) pending.targetId = identity;
-      else if (pending && pending.targetId !== identity) pending = null;
-      const current = request?.id === identity ? request : { id: identity, searchIds: new Set(), resolved: false, bridge: false };
-      request = current;
-      for (const block of structuredContent(record)) {
-        if (plainObject(block) && block.type === "tool_use" && block.name === "ToolSearch") current.searchIds.add(boundedIdentity(block.id));
-      }
-      if (pending?.targetId === identity && normalizedCacheMissReason(record) === "tools_changed") {
-        loads.set(identity, { added: Math.min(MAX_ADDED_DEFINITIONS, pending.added), bridge: pending.bridge });
-      }
-      continue;
-    }
-    if (record?.type === "bridge-session" || (record?.type === "system" && record.subtype === "bridge_status")) {
-      if (request) request.bridge = true;
-      if (pending) pending.bridge = true;
-      continue;
-    }
-    const names = deferredDefinitionNames(record);
-    if (names) {
-      const added = new Set(names.filter((name) => name && !known.has(name)));
-      for (const name of added) known.add(name);
-      if (names.includes(null)) pending = null;
-      else if (added.size > 0 && request?.resolved) {
-        const open = pending && pending.requestId === request.id && !pending.targetId ? pending : null;
-        pending = { requestId: request.id, added: (open?.added || 0) + added.size, targetId: "", bridge: request.bridge };
-      }
-    } else if (request && !request.resolved && structuredToolResultIds(record).some((id) => request.searchIds.has(id))) {
-      request.resolved = true;
-    }
-  }
-  return loads;
-}
-
-/** Cause and, for a loaded-definitions cause, the added count. A bridge record or a Remote Control claim on the same request makes the load ambiguous. */
-function inferredToolChangeCauses(records, completeHistory, expectedSessionId) {
-  const causes = new Map();
-  if (!completeHistory || !Array.isArray(records)) return causes;
-  const remoteControl = remoteControlConnectionCauses(records, expectedSessionId);
-  for (const [identity, { added, bridge }] of inferredDeferredDefinitionLoads(records)) {
-    if (remoteControl.delete(identity) || bridge) continue;
-    causes.set(identity, { cause: DEFERRED_DEFINITIONS_LOADED, added });
-  }
-  for (const [identity, cause] of remoteControl) causes.set(identity, { cause });
-  return causes;
-}
-
-function remoteControlConnectionCauses(records, expectedSessionId) {
-  const causes = new Map();
-  if (!expectedSessionId) return causes;
-  let lastAssistantId = "";
-  let distinctAssistantRequests = 0;
-  let sawBridgeSession = false;
-  let candidate = null;
-
-  for (const [index, record] of records.entries()) {
-    const identity = assistantIdentity(record);
-    if (identity && identity !== lastAssistantId) {
-      lastAssistantId = identity;
-      distinctAssistantRequests = Math.min(1_000, distinctAssistantRequests + 1);
-      if (candidate?.active && identity !== candidate.activationRequestId) {
-        if (!candidate.targetRequestId) candidate.targetRequestId = identity;
-        else if (candidate.targetRequestId !== identity) candidate = null;
-      }
-    }
-
-    const bridgeSession = normalizedBridgeSession(record, expectedSessionId);
-    if (bridgeSession) {
-      if (!sawBridgeSession) {
-        sawBridgeSession = true;
-        if (distinctAssistantRequests > 0) candidate = {
-          active: false,
-          activationRequestId: "",
-          bridgeCount: 1,
-          bridgeSessionId: bridgeSession.bridgeSessionId,
-          lastBridgeSequence: bridgeSession.sequence,
-          firstBridgeIndex: index,
-          targetRequestId: "",
-          turnBoundaryObserved: false,
-        };
-      } else if (candidate && candidate.bridgeSessionId === bridgeSession.bridgeSessionId) {
-        if (candidate.active
-          && candidate.turnBoundaryObserved
-          && bridgeSession.sequence >= candidate.lastBridgeSequence) {
-          candidate.bridgeCount += 1;
-          candidate.lastBridgeSequence = bridgeSession.sequence;
-          candidate.turnBoundaryObserved = false;
-        } else if (bridgeSession.sequence < candidate.lastBridgeSequence) {
-          candidate = null;
-        }
-      } else {
-        candidate = null;
-      }
-      continue;
-    }
-
-    if (candidate?.active
-      && record?.type === "last-prompt"
-      && boundedIdentity(record.sessionId) === expectedSessionId) {
-      candidate.turnBoundaryObserved = true;
-      continue;
-    }
-
-    if (record?.type === "system" && record.subtype === "bridge_status") {
-      if (remoteControlActiveRecord(record)
-        && candidate
-        && index - candidate.firstBridgeIndex <= MAX_BRIDGE_STATUS_DISTANCE
-        && lastAssistantId) {
-        candidate.active = true;
-        candidate.activationRequestId = lastAssistantId;
-      } else {
-        candidate = null;
-      }
-      continue;
-    }
-
-    if (identity
-      && candidate?.active
-      && candidate.bridgeCount >= 2
-      && identity === candidate.targetRequestId
-      && normalizedCacheMissReason(record) === "tools_changed") {
-      causes.set(identity, "remote_control_connected");
-    }
-  }
-  return causes;
-}
-
 /**
  * The user-input records a request answers: every one on the request's recorded parent chain back
  * to the previous assistant record. Recorded linkage only; transcript order and timing never link.
@@ -435,7 +218,10 @@ export function parseClaudeContextRecords(records, options = {}) {
   const expectedSessionId = boundedIdentity(options.expectedSessionId);
   const fallbackTimestamp = validTimestamp(options.fallbackTimestamp);
   const snapshots = new Map();
-  const toolChangeCauses = inferredToolChangeCauses(records, options.completeHistory === true, expectedSessionId);
+  // Decided from complete history, either this record list or the caller's whole-transcript pass; a bounded
+  // window alone never creates an attribution. A subagent's own transcript flags every record as a sidechain.
+  const toolChangeCauses = options.toolChangeCauses instanceof Map ? options.toolChangeCauses
+    : options.completeHistory === true ? inferredToolChangeCauses(records, { expectedSessionId, inlineSidechains: actorId === "primary" }) : new Map();
   const messageChangeSequences = inferredMessageChangeSequences(records, options.completeHistory === true);
   // The adapter calls this parser separately for each transcript's resolved actor.
   // Raw record agent IDs must not override that ownership.

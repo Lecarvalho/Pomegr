@@ -20,6 +20,7 @@ import { WorkKindIcon } from "../WorkKindIcon";
 import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
 import { scaleMax, type RequestRow } from "../dashboard/requests-actions/model";
 import { RequestBarsChart } from "../dashboard/requests-actions/RequestBarsChart";
+import { requestRefillPopoverProps } from "../dashboard/requests-actions/RequestEvidencePopover";
 import { RequestLaneChart } from "../dashboard/requests-actions/RequestLaneChart";
 import { RequestMinimap } from "../dashboard/requests-actions/RequestMinimap";
 import { RequestRoleLegend } from "../dashboard/requests-actions/RequestRoleTrack";
@@ -559,9 +560,22 @@ const REFILLS_POSSIBLE_FULL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...R
 
 const REMOTE_CONTROL_CHANGES = [{ tool: "RemoteTrigger", kind: "added" }, { tool: "PushNotification", kind: "added" }, { tool: "ListAgents", kind: "definition_changed" }] as const;
 const REFILLS_DEFERRED_DEFINITIONS = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded" as const, changes: [], addedDefinitionCount: 8 } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "deferred_definitions_loaded" as const, count: 1, changes: [] }] }];
+const REFILLS_UNEXPLAINED = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: null }] }];
 const REFILLS_REMOTE_CONTROL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "remote_control_connected" as const, changes: [...REMOTE_CONTROL_CHANGES] } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "remote_control_connected" as const, count: 1, changes: [...REMOTE_CONTROL_CHANGES] }] }];
 
+// Sixteen requests, one provider-diagnosed marker beside one possible full refill; both open the real request popover.
+const DEFERRED_OCCURRENCE: CacheRefillOccurrence = { ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount: 8 } };
+const MARKER_ROWS: RequestRow[] = SAMPLE_ROWS.slice(0, 16).map((row, index) => {
+  const refill = (kind: "refill" | "provider_diagnosed", occurrence: CacheRefillOccurrence): RequestRow => ({ ...row, cacheEvidence: { kind, occurrence: { ...occurrence, observedAt: row.observedAt } } });
+  return index === 2 ? refill("provider_diagnosed", { ...REFILL_BASE, kind: "provider_diagnosed" }) : index === 5 ? refill("refill", DEFERRED_OCCURRENCE) : row;
+});
+const UNEXPLAINED_ROW: RequestRow = { ...MARKER_ROWS[5], cacheEvidence: { kind: "refill", occurrence: { ...REFILL_BASE, reason: null, observedAt: MARKER_ROWS[5].observedAt } } };
+
 function CacheRefillEvidenceSection() {
+  const requestFrame = (sample: string, row: RequestRow) => {
+    const props = requestRefillPopoverProps(row, `${sample}-popover`, ignoreFocus)!;
+    return <div data-sample={sample}><PopoverFrame {...props} /></div>;
+  };
   const frame = (sample: string, refills: CacheRefillCount[]) => {
     const view = cacheRefillEvidenceView(refills, ["primary"]);
     return <div data-sample={sample}><PopoverFrame id={`${sample}-popover`} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title={view.title} closeLabel="Close cache refill evidence" onClose={ignoreFocus} summary={view.summary}>{view.body}</PopoverFrame></div>;
@@ -572,7 +586,19 @@ function CacheRefillEvidenceSection() {
       {frame("refill-possible-full", REFILLS_POSSIBLE_FULL)}
       {frame("refill-deferred-definitions", REFILLS_DEFERRED_DEFINITIONS)}
       {frame("refill-remote-control", REFILLS_REMOTE_CONTROL)}
+      {frame("refill-unexplained", REFILLS_UNEXPLAINED)}
     </div>
+    <p className="designSystemNote">The Activities request chart opens the same evidence from a refill marker: click it or focus it and press Enter, Escape closes. A possible full refill with no reason, provider status or inference, and nothing else, links the upstream issue.</p>
+    <div className="designSystemGrid">
+      {requestFrame("request-refill-popover", MARKER_ROWS[5])}
+      {requestFrame("request-refill-unexplained", UNEXPLAINED_ROW)}
+    </div>
+    <section className="panel requestsActionsPanel" aria-label="Refill marker sample" style={SAMPLE_PANEL_STYLE} data-sample="request-refill-marker">
+      <div className="requestsActionsPlot">
+        <RequestBarsChart rows={MARKER_ROWS} start={1} end={16} size={16} maximum={Math.max(1, scaleMax(MARKER_ROWS, "fresh", true))} mode="fresh" selectedId={MARKER_ROWS[0].id} phone={false} cacheWriteAvailable
+          onSelect={ignoreFocus} onStep={ignoreFocus} windowStart={1} total={MARKER_ROWS.length} onMove={ignoreFocus} />
+      </div>
+    </section>
   </Section>;
 }
 

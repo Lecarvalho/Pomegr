@@ -1,4 +1,4 @@
-import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
+import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillCount, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
 
 import { formatDuration } from "../../../dashboard-utils";
 
@@ -8,6 +8,23 @@ export type RequestCacheEvidence = {
   occurrence?: CacheRefillOccurrence;
   readDrop?: CacheReadDropOccurrence;
 };
+
+/** The upstream issue behind a possible full refill that carries no reason, status or inference. */
+export const CACHE_REFILL_UPSTREAM_ISSUE = { label: "anthropics/claude-code#82563", href: "https://github.com/anthropics/claude-code/issues/82563" } as const;
+
+/** Read-drop evidence is an inference; recorded and provider-diagnosed refills carry a recorded write. */
+export function cacheEvidenceIsInferred(evidence: RequestCacheEvidence) {
+  return evidence.kind === "possible_refill" || evidence.kind === "model_change";
+}
+
+/** One matched occurrence in the per-agent shape the Agents-tab popover renders. */
+export function refillEvidenceCounts(agentId: string, occurrence: CacheRefillOccurrence): CacheRefillCount[] {
+  const diagnosed = occurrence.kind === "provider_diagnosed";
+  return [{
+    agentId, count: diagnosed ? 0 : 1, ...(diagnosed ? { providerDiagnosedCount: 1 } : {}), occurrences: [occurrence],
+    reasons: !diagnosed && occurrence.reason ? [{ reason: occurrence.reason, count: 1 }] : [], toolChangeAttributions: [],
+  }];
+}
 
 export function cacheEvidenceLabel(evidence: RequestCacheEvidence, compact = false) {
   if (evidence.kind === "model_change") return compact ? "Reuse drop · model change" : "Cache reuse dropped across a model change";

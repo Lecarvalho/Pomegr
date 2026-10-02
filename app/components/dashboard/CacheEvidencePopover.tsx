@@ -7,7 +7,7 @@ import { PopoverFrame } from "../PopoverFrame";
 
 /** Keep cache evidence next to its mark, outside clipped or zoomed tree rows. */
 export function CacheEvidencePopover({ anchorRef, onClose, ...props }: ComponentProps<typeof PopoverFrame> & {
-  anchorRef: RefObject<HTMLSpanElement | null>;
+  anchorRef: RefObject<Element | null>;
 }) {
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);

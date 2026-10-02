@@ -8,7 +8,7 @@ import { AgentChip } from "../AgentChip";
 import { ExternalLink } from "../ExternalLink";
 import { CacheEvidencePopover } from "./CacheEvidencePopover";
 import { CacheRefillIcon } from "./CacheRefillIcon";
-import { cacheLifetimeInferenceLabel } from "./requests-actions/cache-evidence";
+import { CACHE_REFILL_UPSTREAM_ISSUE, cacheLifetimeInferenceLabel } from "./requests-actions/cache-evidence";
 
 export type CompactionSummary = {
   automatic: number;
@@ -185,13 +185,15 @@ export function cacheRefillOccurrenceDescriptions(
 
 export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[], diagnosed = false) {
   const observedAgents = new Set(agentIds);
-  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string; lifetimeInference: string; signal: ReturnType<typeof cacheRefillSignalDefinition> }> = [];
+  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string; lifetimeInference: string; unexplained: boolean; signal: ReturnType<typeof cacheRefillSignalDefinition> }> = [];
   for (const refill of cacheRefills) {
     if (!observedAgents.has(refill.agentId)) continue;
     const recorded = Array.isArray(refill.occurrences) ? refill.occurrences.filter((occurrence) => (occurrence.kind === "provider_diagnosed") === diagnosed) : [];
     if (recorded.length > 0) {
       occurrences.push(...recorded.map((occurrence) => {
         const lifetimeInference = cacheLifetimeInferenceLabel(occurrence.cacheLifetimeInference);
+        const inference = [lifetimeInference, cacheRefillOccurrenceInference(occurrence.toolChangeAttribution)].filter(Boolean).join(" · ");
+        const recognizedReason = Boolean(occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason));
         return {
           agentId: refill.agentId,
           observedAt: occurrence.observedAt,
@@ -200,11 +202,10 @@ export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[]
             : occurrence.providerStatus === "previous_cache_entry_unavailable"
               ? "previous cache entry unavailable"
               : "reason unavailable",
-          inference: [
-            lifetimeInference,
-            cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
-          ].filter(Boolean).join(" · "),
+          inference,
           lifetimeInference,
+          // Only a recorded possible full refill with nothing to explain it points upstream.
+          unexplained: !diagnosed && !recognizedReason && !occurrence.providerStatus && !inference,
           signal: cacheRefillSignalDefinition(occurrence),
         };
       }));
@@ -212,7 +213,7 @@ export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[]
     }
     if (diagnosed) continue;
     occurrences.push(...cacheRefillOccurrenceDescriptions(refill.count, summarizeCacheRefillReasons([refill], [refill.agentId]))
-      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "", lifetimeInference: "", signal: null })));
+      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "", lifetimeInference: "", unexplained: false, signal: null })));
   }
   return occurrences.sort((left, right) => {
     if (!left.observedAt) return 1;
@@ -260,6 +261,13 @@ export function cacheRefillDescription(
   return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
+/** Shown in the agent and request popovers for a possible full refill that nothing explains. */
+function UnexplainedRefillNote() {
+  return <p className="cacheRefillInference">
+    No cause was recorded. Follow <ExternalLink href={CACHE_REFILL_UPSTREAM_ISSUE.href}>{CACHE_REFILL_UPSTREAM_ISSUE.label}</ExternalLink> for the upstream issue.
+  </p>;
+}
+
 /** Popover frame props for one agent set; possible full refills keep their wording, provider-diagnosed ones get their own list. */
 export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const fullCount = summarizeCacheRefills(cacheRefills, agentIds);
@@ -298,6 +306,7 @@ export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentI
                 <div><dt>Impact</dt><dd>{occurrence.signal?.impact || "Possible full-refill thresholds were met."}</dd></div>
               </dl>
               {occurrence.signal && definition(occurrence.signal)}
+              {occurrence.unexplained && <UnexplainedRefillNote />}
             </>}
         </li>)}
       </ol>)}

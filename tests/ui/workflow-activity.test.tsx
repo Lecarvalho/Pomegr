@@ -396,6 +396,36 @@ describe("workflow activity and agent tree view", () => {
     expect(popover).not.toHaveTextContent("observed 1 time");
   });
 
+  it("links the upstream issue only for a possible full refill with no reason, status or inference", async () => {
+    const user = userEvent.setup();
+    const none = { reason: null, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+    const refills = (occurrence: Partial<CacheRefillCount["occurrences"][number]>): CacheRefillCount[] => [{
+      agentId: "primary", count: occurrence.kind ? 0 : 1, ...(occurrence.kind ? { providerDiagnosedCount: 1 } : {}), reasons: [], toolChangeAttributions: [],
+      occurrences: [{ observedAt: "2026-08-15T12:02:00.000Z", ...none, ...occurrence }],
+    }];
+    const { unmount } = render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={refills({})} />);
+    await user.click(screen.getByRole("button", { name: /^Possible full cache refill observed 1 time/ }));
+    const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
+    expect(popover).toHaveTextContent("reason unavailable");
+    expect(within(popover).getByRole("link", { name: "anthropics/claude-code#82563 (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/anthropics/claude-code/issues/82563");
+    unmount();
+
+    const attribution = { cause: "deferred_definitions_loaded" as const, changes: [], addedDefinitionCount: 3 };
+    for (const occurrence of [
+      { reason: "system_changed" as const },
+      { providerStatus: "previous_cache_entry_unavailable" as const },
+      { cacheLifetimeInference: { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 600_000 } },
+      { reason: "tools_changed" as const, toolChangeAttribution: attribution },
+      { kind: "provider_diagnosed" as const, reason: "tools_changed" as const },
+    ]) {
+      const view = render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={refills(occurrence)} />);
+      await user.click(screen.getByRole("button", { name: /refill observed 1 time/ }));
+      expect(screen.getByRole("dialog", { name: "Cache refill evidence" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /82563/ })).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
   it("aggregates possible full cache refills only across agents represented by a Tree cluster", () => {
     const primary = worker({ id: "primary", parentId: null, label: "Primary", role: "orchestrator", workflowId: null, workflowPhaseId: null });
     const clustered = Array.from({ length: 5 }, (_, index) => worker({ id: `clustered-${index}`, parentId: "primary", label: "Repeated worker", workflowId: null, workflowPhaseId: null }));

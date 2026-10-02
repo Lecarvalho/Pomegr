@@ -163,10 +163,11 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v11` and Codex's `codex-activity-v4` source
+Claude's `conversation-activity-v12` and Codex's `codex-activity-v4` source
 fingerprints trigger rehydration of checkpoints produced before the current
-work-kind classification, Claude recorded request send times, and Codex
-completed-item coverage; see the [provider tool inventory](tool-inventory.md).
+work-kind classification, Claude recorded request send times, Claude tool-change
+attribution, and Codex completed-item coverage; see the
+[provider tool inventory](tool-inventory.md).
 Claude merges recorded tool IDs across fragments sharing one request identity,
 including live snapshot merges after a read window advances. The private
 ID-to-kind map is stripped before normalized evidence and checkpoints. Usage
@@ -887,7 +888,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v11`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v12`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
@@ -913,6 +914,24 @@ and the result stays an inference. The field is optional under checkpoint versio
 checkpoint without it loads unchanged, the source fingerprint advance rehydrates
 retained sessions, and the field never reaches browser state, reports, or the paged
 history.
+
+The optional `cacheToolChangeCause` and `cacheToolChangeAddedDefinitionCount` on a
+usage observation are decided by U2 from complete history only, and a bounded read never
+creates or replaces them. The Claude whole-transcript pass (the adapter-private incremental
+reducer that also backs call counts and user-message times) evaluates the reducers from
+byte zero with bounded private state, the newest 1,000 decisions and a name set capped at
+8,192, and decides the main transcript at any size. A subagent transcript within the 2
+MiB window is decided from its record list by the same reducers. That pass replays after a restart or when the
+source is replaced or truncated, so a live read past the window, a historical read after
+the session ends, and a restarted provider reach the same cause and count for a request,
+and the first fresh observation never commits away what a restored checkpoint showed.
+Cause and count are one decision, never mixed; a retained pair also wins an in-memory
+live-tail merge. A complete record the pass cannot read, or one over the fragment bound,
+stops new attributions from that point and never changes earlier ones. The pass is never behind the tail it follows, so a request is first shown with its
+attribution. The
+source fingerprint advance replays unchanged sources whose checkpoints hold an
+attribution that the narrowed deferred-definition rule no longer makes. This adds no
+checkpoint field, GET acquisition, polling lane, or revision mechanism.
 
 ## Cache-lifetime policy normalization
 
