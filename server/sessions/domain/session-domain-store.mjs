@@ -1,3 +1,4 @@
+import { mergeSessionEventRecord, sessionEventRecordIsEmpty } from "./session-event-record.mjs";
 import { projectSessionDomains, unavailableSessionDomains } from "./session-domain-projection.mjs";
 
 export const SESSION_DOMAIN_NAMES = Object.freeze([
@@ -62,6 +63,9 @@ export function createSessionDomainStore(options = {}) {
   // committed list then stands in until the recorder reads the record back, instead of
   // withdrawing commit events. Bounded by `sessions`.
   const lastCommitTimes = new Map();
+  // sessionId -> the recorded refill and compaction times of its last evidence commit, kept for
+  // the same reason: the event recorder may not hold the session's record at a projection.
+  const lastEventRecords = new Map();
   const subscribers = new Set();
 
   function key(sessionId, domain) { return `${sessionId}\u0000${domain}`; }
@@ -89,6 +93,7 @@ export function createSessionDomainStore(options = {}) {
     for (const domain of SESSION_DOMAIN_NAMES) records.delete(key(sessionId, domain));
     sessions.delete(sessionId);
     lastCommitTimes.delete(sessionId);
+    lastEventRecords.delete(sessionId);
   }
   function evictIdle(at = now()) {
     const evicted = [];
@@ -195,7 +200,9 @@ export function createSessionDomainStore(options = {}) {
       // One read of the session's recorded repository snapshot per projection.
       const recorded = options.repositoryRecordForSession?.(sessionId) ?? null;
       const commitTimes = Array.isArray(recorded?.commitTimes) ? recorded.commitTimes : lastCommitTimes.get(sessionId) ?? null;
-      const published = commitProjection(sessionId, projectSessionDomains(sessionId, snapshot, {
+      const lastEventRecord = lastEventRecords.get(sessionId) ?? null;
+      const eventRecord = mergeSessionEventRecord(lastEventRecord, options.eventRecordForSession?.(sessionId) ?? null);
+      const projection = projectSessionDomains(sessionId, snapshot, {
         catalogEntry,
         forbiddenRoots: options.forbiddenRoots || [],
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
@@ -204,8 +211,13 @@ export function createSessionDomainStore(options = {}) {
         fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
         gitObserved: recorded?.gitObserved ?? null,
         commitTimes,
-      }), "evidence");
+        eventRecord,
+      });
+      const published = commitProjection(sessionId, projection, "evidence");
       if (sessions.has(sessionId) && Array.isArray(commitTimes)) lastCommitTimes.set(sessionId, commitTimes);
+      if (sessions.has(sessionId)) lastEventRecords.set(sessionId, projection.eventRecord);
+      // Hands a changed union to the recorder, which merges it into the session's sidecar.
+      if (projection.eventRecord !== lastEventRecord && !sessionEventRecordIsEmpty(projection.eventRecord)) options.onEventRecord?.(sessionId, projection.eventRecord);
       return published;
     },
     commitUnavailable(sessionId, catalogEntry, source, capabilities) {
@@ -261,6 +273,6 @@ export function createSessionDomainStore(options = {}) {
     has(sessionId) { return sessions.has(sessionId); },
     sessionIds() { return Object.freeze([...sessions.keys()]); },
     size() { return sessions.size; },
-    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); },
+    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); lastEventRecords.clear(); },
   });
 }

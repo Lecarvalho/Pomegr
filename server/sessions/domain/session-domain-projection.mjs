@@ -3,6 +3,7 @@ import { isSafeRecordedRepositoryPath } from "../../repository/repository-snapsh
 import { sessionTouchedFiles, touchedFileCount } from "../../repository/session-touched-files.mjs";
 import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 import { SESSION_EVENT_READINESS_SECTIONS, sessionEvents } from "./session-events.mjs";
+import { derivedSessionEventRecord, mergeSessionEventRecord } from "./session-event-record.mjs";
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
@@ -437,6 +438,9 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const touchedFiles = sessionTouchedFiles({ fileHistory: options.fileHistory, gitObserved: options.gitObserved, agents });
   // Derived here, from the same committed inputs as the other domains, so a resource, repository,
   // or evidence change re-projects the summary and an unchanged feed leaves its revision alone.
+  // The recorded refill and compaction times plus the ones this evidence derives. The union is
+  // returned beside the domains so the store can record it; it is monitor-private.
+  const eventRecord = mergeSessionEventRecord(options.eventRecord || null, derivedSessionEventRecord({ cacheEvents, contextBoundaries: boundaries }));
   const events = sessionEvents({
     readiness: sectionReadiness(ready, SESSION_EVENT_READINESS_SECTIONS),
     session,
@@ -448,6 +452,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     // commit times arrive only through options.commitTimes, a side channel like options.gitObserved.
     commitTimes: options.commitTimes,
     retainedResources,
+    eventRecord,
   });
   const domains = new Map();
   domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events));
@@ -520,7 +525,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     cacheReadDrops: { status: cacheReadDrops.status, items: cacheReadDrops.items.filter((item) => item.agentId === agent.id) },
     planTasks: list(state.planTasks, publicPlanTask),
   }]));
-  return Object.freeze({ domains, agentResponses });
+  return Object.freeze({ domains, agentResponses, eventRecord });
 }
 
 export function unavailableSessionDomains(sessionId, catalogEntry, source, capabilities, options = {}) {

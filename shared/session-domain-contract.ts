@@ -99,6 +99,8 @@ export const SESSION_EVENT_KINDS = [
   "resource_peak",
   "commit_observed",
   "pull_request_opened",
+  "cache_refill",
+  "context_compacted",
 ] as const;
 
 export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
@@ -114,13 +116,16 @@ export type SessionEvent = {
   id: string; // opaque digest, stable while the underlying evidence is unchanged
   kind: SessionEventKind;
   at: string; // ISO timestamp recorded with the evidence, never the projection time
-  agentId: string | null; // agent_started, agent_finished, agent_stopped, agent-scoped signal_reported
+  agentId: string | null; // agent_started, agent_finished, agent_stopped, agent-scoped signal_reported, cache_refill, context_compacted
   agentLabel: string | null;
   durationMs: number | null; // agent_finished and agent_stopped wall time
   signal: Pick<Agent["signal"] & object, "label" | "tone"> | null; // signal_reported, agent-reported
   progress: Pick<NonNullable<NonNullable<MonitorState["session"]>["progress"]>, "percent" | "phase"> | null; // estimate_updated
   resource: ResourceField | null; // resource_peak: the retained session high for that resource
   pullRequestNumber: number | null; // pull_request_opened, when the recorded creation matches a listed pull request
+  /** cache_refill: the fixed kind of the agent's recorded refill occurrence. `lifetime_elapsed` is an inference. */
+  refill: "possible_full" | "provider_diagnosed" | "lifetime_elapsed" | null;
+  compaction: "automatic" | "manual" | null; // context_compacted: the recorded compaction trigger
 };
 
 export type SessionEventFeed = {

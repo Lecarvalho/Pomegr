@@ -924,7 +924,8 @@ newest first. It holds at most 50 events. `total` counts the events derivable fr
 retained evidence before that cap. It is not a count of everything that happened in the
 session, because each source is itself bounded: the newest 256 user-message times, the newest
 50 commit times, the retained pull-request creations (eight for Claude), one peak per
-resource field, and only the latest signal and estimate. Each event has an opaque ID, a fixed kind, the time recorded with
+resource field, only the latest signal and estimate, and the newest 256 recorded refill
+times and 256 recorded compaction times. Each event has an opaque ID, a fixed kind, the time recorded with
 its evidence, and only the fields its kind needs; every other field is null. D derives the
 feed from committed normalized evidence, never from the observation time and never from new
 provider parsing. The feed selects recorded transitions. It is not a complete session
@@ -935,7 +936,8 @@ An event is never shown and then withdrawn while its evidence is retained. User-
 commit events come from recorded lists that only grow until their bound; an older time then
 leaves the list, and by then it is already outside the 50 events the feed shows. Signal,
 estimate, and resource-peak events are latest-only by definition and move rather than
-accumulate.
+accumulate. Cache-refill and compaction events come from the session's recorded event
+record, which also only grows until its bound of 256 per list.
 
 | Kind | Source | Event time | Fields |
 | --- | --- | --- | --- |
@@ -947,6 +949,8 @@ accumulate.
 | `resource_peak` | The retained resource peaks, for a field whose session high reaches its fixed floor | The observation time of the highest retained peak for the field | The resource field |
 | `commit_observed` | The recorded in-window commit times in the repository snapshot sidecar | The commit's committer time | None |
 | `pull_request_opened` | A recorded pull-request creation | The recorded creation time | The pull-request number, when listed |
+| `cache_refill` | The recorded refill times in the session-event sidecar, accumulated from the cache-event feed's per-agent refill occurrences (`possibleFullRefills[].occurrences`) | The occurrence's recorded request time | Agent ID and label; the fixed refill kind |
+| `context_compacted` | The recorded compaction times in the session-event sidecar, accumulated from context-history boundaries of kind `automatic_compaction` or `manual_compaction` | The boundary's recorded time | Agent ID and label; the fixed trigger |
 
 Ordering and identity:
 
@@ -969,6 +973,10 @@ Ordering and identity:
 - Resource peaks are best-effort. Retained resources are not a summary section: they come
   from the resources store with their own readiness, and a peak appears only when that block
   is ready. The feed does not wait for it.
+- Cache refills and compactions are best-effort in the same way. `contextEvidence` does not
+  gate the feed. Each projection adds what the current evidence derives to the recorded
+  list: refill occurrences only while the cache-event feed's status is `ready`, compactions
+  only when the context history carries boundaries. Recorded entries are served either way.
 - For a live session the recorded commit times are written right after each live Git check,
   and the summary recommits when the write lands, so a new commit event follows its check by
   that one recommit.
@@ -1035,6 +1043,32 @@ Limits of each source:
   the session's pull-request list contains that same URL, and is otherwise null. The URL,
   actor, and creation ID are never exposed. A pull request associated only through the live
   branch has no recorded creation and no event.
+- **Cache refills** repeat the refill occurrences the Agents and Signals tabs already count
+  per agent; the feed adds no rule of its own. The `refill` field is `possible_full` for a
+  possible full refill, `provider_diagnosed` for a partial rewrite with a recognized provider
+  reason, and `lifetime_elapsed` for a partial rewrite carrying the lifetime-expiry
+  inference, which the row labels as an inference. The event carries the agent and that kind
+  only: no reason, provider status, inference detail, tool attribution, token count,
+  percentage, gap, or request number. The write-backed `items` list (any large write, and
+  reuse) and cache-read drops are not sources. An entry for an agent that is not visible is
+  skipped.
+- **Compactions** are the recorded automatic and manual compactions among the context-history
+  boundaries. `snapshot_drop` boundaries are unexplained context reductions, not recorded
+  compactions, and yield no event. The event carries the agent and the trigger only, never
+  the prior context total, the boundary ID, or the compaction summary.
+- **The session-event record** is why refill and compaction events do not disappear. The
+  evidence they derive from slides: a live read keeps the newest 1,000 usage snapshots and,
+  after a restart, only what the transcript tail and the checkpoint still hold. So each
+  projection merges what it derives into a per-session record of refill times (`at`, agent
+  ID, kind) and compaction times (`at`, agent ID, trigger), the newest 256 of each, and the
+  feed reads only that record. Entries only accumulate. One the current evidence no longer
+  derives stays, and for the same agent and time the newest kind replaces the older one. The
+  record is persisted as a sidecar next to the session checkpoint; see
+  [Session-event sidecar](observation-cache.md#session-event-sidecar). Because entries are
+  never withdrawn, the events can exceed the per-agent refill counts on the Agents and
+  Signals tabs, which count only the currently retained evidence. A refill that happened
+  while no monitor observed the session, and whose request had already left the retained
+  evidence when one did, is not recorded.
 
 ## Agents model and work analytics
 

@@ -2,12 +2,14 @@ import crypto from "node:crypto";
 import { mkdir, opendir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isSafeRecordedRepositoryPath, normalizeRepositorySnapshot, REPOSITORY_SNAPSHOT_VERSION } from "../../repository/repository-snapshot.mjs";
+import { normalizeSessionEventRecord, SESSION_EVENT_RECORD_VERSION } from "../domain/session-event-record.mjs";
 
 export const SESSION_OBSERVATION_CHECKPOINT_VERSION = 1;
 
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_REPOSITORY_SNAPSHOT_BYTES = 64 * 1024;
+const MAX_SESSION_EVENT_RECORD_BYTES = 128 * 1024;
 // Sidecars outlive their checkpoint: a checkpoint is rebuilt from its transcript, a recorded
 // repository snapshot cannot be. They are bounded on their own, oldest first.
 const DEFAULT_MAX_REPOSITORY_SNAPSHOTS = 2_000;
@@ -147,6 +149,11 @@ export function repositorySnapshotFilename(providerId, localSessionId) {
   return `repository-${identityHash(providerId, localSessionId)}.json`;
 }
 
+/** The session-event sidecar shares its checkpoint's identity hash, never its filename. */
+export function sessionEventRecordFilename(providerId, localSessionId) {
+  return `events-${identityHash(providerId, localSessionId)}.json`;
+}
+
 /** Validate the versioned, bounded and privacy-filtered L2 schema. */
 export function assertCheckpointPayload(payload, privacySentinels = DEFAULT_PRIVACY_SENTINELS) {
   if (!isPlainObject(payload) || payload.version !== SESSION_OBSERVATION_CHECKPOINT_VERSION) {
@@ -283,6 +290,52 @@ export class SessionObservationCheckpointStore {
       if (!committed) await unlink(temporary).catch(() => {});
     }
     return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
+  }
+
+  /**
+   * Write one session's recorded refill and compaction times as a sidecar, atomically like
+   * `writeRepositorySnapshot`. Validated as a whole record; it outlives an evicted checkpoint,
+   * because its older entries cannot be rebuilt once their requests leave the retained evidence.
+   */
+  async writeSessionEventRecord(providerId, localSessionId, record) {
+    const normalized = normalizeSessionEventRecord(record);
+    if (!normalized) throw new TypeError("session event record is invalid");
+    assertIdentity({ providerId, localSessionId });
+    const payload = { version: SESSION_OBSERVATION_CHECKPOINT_VERSION, providerId, localSessionId, record: normalized };
+    assertPrivacy(payload, this.privacySentinels);
+    const serialized = JSON.stringify(payload);
+    if (Buffer.byteLength(serialized) > MAX_SESSION_EVENT_RECORD_BYTES) throw new TypeError("session event record exceeds byte budget");
+    await mkdir(this.directory, { recursive: true });
+    const filename = sessionEventRecordFilename(providerId, localSessionId);
+    const target = path.join(this.directory, filename);
+    const temporary = path.join(this.directory, `.${filename}.${crypto.randomUUID()}.tmp`);
+    let committed = false;
+    this.ownedTemps.add(temporary);
+    try {
+      await writeFile(temporary, serialized, { encoding: "utf8", flag: "wx" });
+      await this.#withFileLock(filename, () => rename(temporary, target));
+      committed = true;
+    } finally {
+      this.ownedTemps.delete(temporary);
+      if (!committed) await unlink(temporary).catch(() => {});
+    }
+    return Object.freeze({ filename, bytes: Buffer.byteLength(serialized) });
+  }
+
+  /** Read one session's event sidecar by its identity-keyed filename; null when absent or invalid. */
+  async loadSessionEventRecord(providerId, localSessionId) {
+    assertIdentity({ providerId, localSessionId });
+    try {
+      const payload = JSON.parse(await readFile(path.join(this.directory, sessionEventRecordFilename(providerId, localSessionId)), "utf8"));
+      if (!isPlainObject(payload) || payload.version !== SESSION_OBSERVATION_CHECKPOINT_VERSION) return null;
+      if (payload.providerId !== providerId || payload.localSessionId !== localSessionId) return null;
+      const record = normalizeSessionEventRecord(payload.record);
+      if (!record) return null;
+      assertPrivacy(payload, this.privacySentinels);
+      return record;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -429,6 +482,7 @@ export class SessionObservationCheckpointStore {
     }
     this.qa.pruned += removed.length;
     await this.#pruneRepositorySnapshots();
+    await this.#pruneSessionEventRecords();
     return Object.freeze({ entries: retained, bytes, removed: Object.freeze(removed) });
   }
 
@@ -474,9 +528,12 @@ export class SessionObservationCheckpointStore {
         // A checkpoint eviction never takes its sidecar: the checkpoint is rebuilt from the
         // transcript on the next hydration, the recorded repository state cannot be. Sidecars
         // leave only under their own bound, and a rewrite after planning is rechecked above.
-        const excess = state.sidecars.size - this.maxRepositorySnapshots;
-        if (excess > 0) {
-          const oldest = [...state.sidecars].sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]));
+        // Each sidecar kind is bounded on its own, by the same limit.
+        for (const prefix of ["repository-", "events-"]) {
+          const sidecars = [...state.sidecars].filter(([filename]) => filename.startsWith(prefix));
+          const excess = sidecars.length - this.maxRepositorySnapshots;
+          if (excess <= 0) continue;
+          const oldest = sidecars.sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]));
           for (const [filename, modified] of oldest.slice(0, excess)) state.removals.push({ filename, modified, size: null });
         }
         break;
@@ -493,9 +550,9 @@ export class SessionObservationCheckpointStore {
           if (payload) state.inventory.set(filename, { size: info.size, modified: info.mtimeMs, valid: true, generation: known?.generation || 0 });
           else state.removals.push({ filename, modified: info.mtimeMs, size: info.size, generation: known?.generation || 0 });
         } catch { /* a concurrent replacement is reconciled next cycle */ }
-      } else if (/^repository-[a-f0-9]{64}\.json$/u.test(filename)) {
+      } else if (/^(?:repository|events)-[a-f0-9]{64}\.json$/u.test(filename)) {
         try { state.sidecars.set(filename, (await stat(path.join(this.directory, filename))).mtimeMs); } catch { /* retry later */ }
-      } else if (/^\.(?:checkpoint|repository)-[a-f0-9]{64}\.json\.[a-f0-9-]+\.tmp$/u.test(filename)) {
+      } else if (/^\.(?:checkpoint|repository|events)-[a-f0-9]{64}\.json\.[a-f0-9-]+\.tmp$/u.test(filename)) {
         // Only our exact atomic-write naming convention is eligible, and only
         // after a conservative age grace. Never remove arbitrary dot files.
         try {
@@ -593,6 +650,36 @@ export class SessionObservationCheckpointStore {
           && Number.isSafeInteger(payload.snapshot?.version) && payload.snapshot.version > REPOSITORY_SNAPSHOT_VERSION;
         remove = !newer && !(isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION
           && Boolean(normalizeRepositorySnapshot(payload.snapshot)));
+      } catch (error) {
+        remove = error?.code !== "ENOENT";
+      }
+      if (remove) {
+        try { await unlink(filePath); } catch { /* A concurrent writer may have already removed it. */ }
+        continue;
+      }
+      try { valid.push({ filePath, filename, modified: (await stat(filePath)).mtimeMs }); } catch { /* removed meanwhile */ }
+    }
+    valid.sort((left, right) => left.modified - right.modified || left.filename.localeCompare(right.filename));
+    for (const { filePath } of valid.slice(0, Math.max(0, valid.length - this.maxRepositorySnapshots))) {
+      try { await unlink(filePath); } catch { /* A concurrent writer may have already removed it. */ }
+    }
+  }
+
+  /**
+   * A session-event sidecar is removed when it is invalid, or when it is among the oldest beyond
+   * the sidecars' bound. One written by a newer build (a higher record version) is kept, counted
+   * toward the bound, and never loaded. It is never removed with its checkpoint.
+   */
+  async #pruneSessionEventRecords() {
+    const valid = [];
+    for (const filename of await this.#matchingFilenames(/^events-[a-f0-9]{64}\.json$/u)) {
+      const filePath = path.join(this.directory, filename);
+      let remove;
+      try {
+        const payload = JSON.parse(await readFile(filePath, "utf8"));
+        const current = isPlainObject(payload) && payload.version === SESSION_OBSERVATION_CHECKPOINT_VERSION;
+        const newer = current && Number.isSafeInteger(payload.record?.version) && payload.record.version > SESSION_EVENT_RECORD_VERSION;
+        remove = !newer && !(current && Boolean(normalizeSessionEventRecord(payload.record)));
       } catch (error) {
         remove = error?.code !== "ENOENT";
       }
