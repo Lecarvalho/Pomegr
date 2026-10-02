@@ -61,7 +61,9 @@ function safeActivity(value, requests) {
   if (durationMs !== null && durationMs > 86_400_000) return null;
   const requestId = REQUEST_ID.test(value.requestId || "") ? value.requestId : null;
   return { id: value.id, timestamp: safeTime(value.timestamp), actor: value.actor, tool: value.tool,
-    workKind: normalizedWorkKind(value.workKind, toolWorkKind(value.tool, { detail: value.detail })), detail: value.detail,
+    // Reply and summary rows committed as `report`, before the `reply` kind existed, are upgraded on read.
+    workKind: ["Assistant replied", "Summary updated"].includes(value.tool) ? "reply"
+      : normalizedWorkKind(value.workKind, toolWorkKind(value.tool, { detail: value.detail })), detail: value.detail,
     status: value.status === "failed" ? "failed" : null, durationMs, requestId, agentId,
     requestNumber: requestId ? (requests.get(requestId)?.number || null) : null,
     // Monitor-private tool-call marker; rows committed before it existed are classified by label.

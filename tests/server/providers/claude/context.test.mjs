@@ -127,14 +127,14 @@ test("tool identities from assistant records without usage still resolve later r
 });
 
 test("request work retains the eight largest kinds with deterministic ties and capped counts", () => {
-  const names = ["Read", "Write", "Search", "Build", "Git", "WebSearch", "ImageGen", "AskUserQuestion", "Skill"];
+  const names = ["Read", "Write", "Grep", "Agent", "TodoWrite", "WebSearch", "SendUserFile", "AskUserQuestion", "Skill"];
   const blocks = names.map((name, index) => ({ type: "tool_use", id: `tool-${index}`, name }));
-  for (let index = 0; index < 1_005; index += 1) blocks.push({ type: "tool_use", id: `test-${index}`, name: "Test" });
+  for (let index = 0; index < 1_005; index += 1) blocks.push({ type: "tool_use", id: `test-${index}`, name: "Monitor" });
   const snapshots = parseClaudeContextRecords([
     actionRequest("one", 0, blocks), actionResults(...blocks.map(({ id }) => id)), actionRequest("two", 1),
   ]);
-  const expected = ["test", "build", "git", "image", "input", "read", "search", "skill"]
-    .map((kind) => ({ kind, count: kind === "test" ? 999 : 1 }));
+  const expected = ["wait", "agent", "input", "plan", "read", "search", "skill", "transfer"]
+    .map((kind) => ({ kind, count: kind === "wait" ? 999 : 1 }));
   assert.deepEqual(snapshots[0].issuedWork, expected);
   assert.deepEqual(snapshots[1].precedingWork, expected);
 });

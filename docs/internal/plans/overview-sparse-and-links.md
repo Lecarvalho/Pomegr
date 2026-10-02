@@ -46,7 +46,7 @@ A session that started minutes ago has one agent, about five requests, no progre
 
 1. Five request bars about 230px wide each, because every bar has `flex: 1 1 0` and no width limit (`app/styles/session.css` line 182).
 2. A tall empty **Right now** panel, because it is forced to span two grid rows and stretch (`app/styles/session.css` lines 151–152).
-3. An empty **Progress** card with a reserved `min-height: 140px` (`app/styles/session.css` line 189), and `0m median` on every **Work by kind** row because `formatDuration` floors anything under one minute to `0m`.
+3. An empty **Progress** card with a reserved `min-height: 140px` (`app/styles/session.css` line 189), and `0m median` on every **Tool calls by kind** row because `formatDuration` floors anything under one minute to `0m`.
 4. Five brand-colored links in one screen (**All agents**, **View signals**, **View evidence**, **Open repository**, **Open activities**). `DESIGN.md` reserves the text link for section expanders and says it is never a standalone action, so these links also break the contract.
 
 ### The link rule (approved 2026-09-20)
@@ -142,7 +142,7 @@ File: `app/components/dashboard/SessionOverview.tsx`. Line numbers refer to the 
    | 65 | `<PanelHeadingLink id="session-repository" onOpen={() => onNavigate({ tab: "repository" })}>Repository</PanelHeadingLink>` |
    | 72 | `<PanelHeadingLink id="session-requests" onOpen={() => onNavigate({ tab: "activities" })}>Requests</PanelHeadingLink>` |
 
-   The `id` values are unchanged, so every `aria-labelledby` keeps working. The headings of **Progress**, **Work by kind**, and **Cost** stay plain `<h2>` elements: they have no tab.
+   The `id` values are unchanged, so every `aria-labelledby` keeps working. The headings of **Progress**, **Tool calls by kind**, and **Cost** stay plain `<h2>` elements: they have no tab.
 3. Signal rows (line 61). When `signal.agentId` is set, keep a **Show agent** button but change its class to `commandQuietAction`. When it is not set, render nothing (remove **View evidence**; the heading is now the way to the Signals tab). Replace the ternary with:
 
    ```tsx
@@ -285,7 +285,7 @@ Files: `app/components/dashboard/SessionOverview.tsx`, `app/styles/session.css`.
    ```
 
 4. Inside **Cost**, remove the three empty-state branches on lines 105–106 (hidden in Settings, unavailable for this provider, no estimate recorded). The panel now renders only when `cost` exists, so keep only the final branch that prints the amount.
-5. Inside **Work by kind** (line 100), print the median only when it is at least one minute:
+5. Inside **Tool calls by kind** (line 100), print the median only when it is at least one minute:
 
    ```tsx
    {item.count.toLocaleString()}{item.medianDurationMs === null || item.medianDurationMs < 60_000 ? "" : ` · ${formatDuration(item.medianDurationMs)} median`}
@@ -294,14 +294,14 @@ Files: `app/components/dashboard/SessionOverview.tsx`, `app/styles/session.css`.
 6. In `app/styles/session.css`:
    - Line 189: change to `.sessionProgressOverview, .sessionWorkOverview, .sessionCostOverview { min-width: 0; }` (the `grid-column: span 2` and `min-height: 140px` go away).
    - Add after it: `.sessionOverviewBottom { grid-column: 1 / -1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 16px; align-items: start; }`
-   - Inside the `@media (max-width: 760px)` block add `.sessionOverviewBottom { display: contents; }` and leave lines 276–278 as they are, so the phone order (Progress 5, Work by kind 6, Cost 7) still applies.
+   - Inside the `@media (max-width: 760px)` block add `.sessionOverviewBottom { display: contents; }` and leave lines 276–278 as they are, so the phone order (Progress 5, Tool calls by kind 6, Cost 7) still applies.
 
 Result: one, two, or three bottom panels share the row equally; none of them renders an empty box.
 
 Tests, added to `tests/ui/dashboard-t04.test.tsx`:
 
-- With `sessionSummaryFixture()` defaults (progress and cost present): headings **Progress**, **Work by kind**, **Cost** are all in the document.
-- With `session: { ...base.session, progress: null, cost: null }` and `planTasks: []`: `screen.queryByRole("heading", { name: "Progress" })` and `{ name: "Cost" }` are absent, **Work by kind** is present, and the text `median` is absent (the fixture medians are 900 ms and 1200 ms).
+- With `sessionSummaryFixture()` defaults (progress and cost present): headings **Progress**, **Tool calls by kind**, **Cost** are all in the document.
+- With `session: { ...base.session, progress: null, cost: null }` and `planTasks: []`: `screen.queryByRole("heading", { name: "Progress" })` and `{ name: "Cost" }` are absent, **Tool calls by kind** is present, and the text `median` is absent (the fixture medians are 900 ms and 1200 ms).
 - With `sectionReadiness: { ...base.sectionReadiness, activityEvidence: "unavailable" }`: the text `Progress evidence unavailable.` is present.
 
 Here `base` is `sessionSummaryFixture()`.
@@ -322,7 +322,7 @@ Files: `app/components/dashboard/signals/SignalsEfficiencySection.tsx`, `app/com
    ```
 
 3. `SignalsTab.module.css`: add `:global(.signalsInsight) > :global(.commandQuietAction), :global(.signalsCacheEvidenceRow) > :global(.commandIconAction) { flex: 0 0 auto; align-self: center; }` and, inside the file's phone media query (add `@media (max-width: 760px)` if the file has none), `:global(.signalsInsight) > :global(.commandQuietAction) { width: auto; }`.
-4. `DESIGN.md`, section **Session Evidence** (heading on line 285): add one paragraph: `Overview and Signals follow the link rule: panel headings open their tab, a cache evidence row ends in a chevron icon action named Open in Activities, and Show agent is a quiet action. Overview is sparse-aware: the request strip always draws 48 slots so a bar keeps its width in a new session, Right now spans the full width while at most two agents are listed, and a bottom panel (Progress, Work by kind, Cost) renders only when it has evidence or a readiness message to show. Work by kind omits medians under one minute.` Also update the Overview sentence on line 281 only if it contradicts this paragraph.
+4. `DESIGN.md`, section **Session Evidence** (heading on line 285): add one paragraph: `Overview and Signals follow the link rule: panel headings open their tab, a cache evidence row ends in a chevron icon action named Open in Activities, and Show agent is a quiet action. Overview is sparse-aware: the request strip always draws 48 slots so a bar keeps its width in a new session, Right now spans the full width while at most two agents are listed, and a bottom panel (Progress, Tool calls by kind, Cost) renders only when it has evidence or a readiness message to show. Tool calls by kind omits medians under one minute.` Also update the Overview sentence on line 281 only if it contradicts this paragraph.
 
 Accepted difference from artboard 5: the drawing makes the whole row the link. The app uses one chevron button per row instead, so each row has a single focusable control and no nested interactive elements.
 

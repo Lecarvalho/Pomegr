@@ -166,7 +166,7 @@ export function claudeConversationActivity(records, actor = { id: "primary", lab
     if (previous && Date.parse(previous.timestamp) >= time) continue;
     retain(events, id, {
       id, timestamp, actor: summary ? "System" : actor.label,
-      tool: summary ? "Summary updated" : "Assistant replied", workKind: "report", detail: "", status: null,
+      tool: summary ? "Summary updated" : "Assistant replied", workKind: "reply", detail: "", status: null,
     }, maximum);
   }
   return [...events.values()];

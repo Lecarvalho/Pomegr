@@ -427,7 +427,7 @@ describe("T04 session workspace", () => {
   });
 
   it("lays Overview out as a main column, the Events rail, and one bottom row, with no sparse Work-by-kind special case", async () => {
-    // One agent in Right now used to pull Work by kind up beside it; the bottom row now owns it at every density.
+    // One agent in Right now used to pull Tool calls by kind up beside it; the bottom row now owns it at every density.
     mount({ tab: "overview" });
     const overview = await screen.findByLabelText("Session overview");
     expect(overview).not.toHaveAttribute("data-work");

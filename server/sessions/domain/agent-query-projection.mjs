@@ -27,7 +27,8 @@ const WORK_LABELS = Object.freeze({
   pull_request: "pull request operation", process: "process task", web: "web activity",
   image: "image activity", input: "input request", transfer: "file transfer",
   skill: "skill use", report: "status report", agent: "agent coordination",
-  integration: "integration activity", wait: "wait",
+  integration: "integration activity", wait: "wait", reply: "reply",
+  plan: "plan update", other: "tool call",
 });
 
 function iso(value) {

@@ -6,7 +6,7 @@ export const ROLE_LABELS: Record<AgentRole, string> = {
 };
 
 export const WORK_LABELS: Record<WorkKind, string> = {
-  shell: "Shell", search: "Searching", read: "Reading", write: "Editing", test: "Running tests", build: "Building", git: "Git", git_push: "Git push", pull_request: "Pull requests", process: "Processes", web: "Web", image: "Images", input: "Input", transfer: "Transfer", skill: "Skills", report: "Reports", agent: "Agents", integration: "Integration", wait: "Waiting",
+  shell: "Shell", search: "Searching", read: "Reading", write: "Editing", test: "Running tests", build: "Building", git: "Git", git_push: "Git push", pull_request: "Pull requests", process: "Processes", web: "Web", image: "Images", input: "Input", transfer: "Transfer", skill: "Skills", report: "Reports", agent: "Agents", integration: "Integration", wait: "Waiting", reply: "Replies", plan: "Planning", other: "Other",
 };
 
 export function agentRunRoleLabel(role: AgentRole, customType?: string | null) {

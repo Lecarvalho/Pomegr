@@ -15,7 +15,7 @@ const MAX_DETAIL_LENGTH = 96;
 const MAX_CALL_ID_LENGTH = 160;
 const MAX_ASSISTANT_REPLIES = 256;
 const ASSISTANT_REPLY_TOOL = "Assistant replied";
-const ASSISTANT_REPLY_WORK_KIND = "report";
+const ASSISTANT_REPLY_WORK_KIND = "reply";
 
 function safeIdentifier(value) {
   return collapsedText(value, MAX_IDENTIFIER_LENGTH).replace(/[^A-Za-z0-9_.:/ -]/g, "").trim();
@@ -150,6 +150,7 @@ function collaborationTool(value) {
   if (name === "resumeagent") return "Resume agent";
   if (["closeagent", "interruptagent"].includes(name)) return "Stop agent";
   if (["wait", "waitagent"].includes(name)) return "Wait for agent";
+  if (name === "listagents") return "List agents";
   return null;
 }
 
@@ -217,7 +218,21 @@ function rolloutFileChangeList(changes) {
   return Object.entries(changes).map(([changePath, change]) => ({ path: changePath, kind: change }));
 }
 
+/** A recognized extension item reduced to its canonical item; an unrecognized one records nothing. */
+function extensionDescriptor(item) {
+  const kind = String(item.kind || "").toLowerCase();
+  if (kind === "web.search") return canonicalDescriptor({ type: "webSearch", action: item.action, query: item.query });
+  if (kind === "clock.sleep") return canonicalDescriptor({ type: "sleep", durationMs: item.durationMs ?? item.duration_ms });
+  if (kind === "image_gen.generation") return canonicalDescriptor({ type: "imageGeneration" });
+  return null;
+}
+
 function rolloutExecutionDescriptor(kind, item) {
+  if (kind === "extension") return extensionDescriptor(item);
+  if (kind === "imageview") return canonicalDescriptor({ type: "imageView", path: item.path });
+  if (kind === "websearch") return canonicalDescriptor({ type: "webSearch", action: item.action, query: item.query });
+  if (kind === "collabagenttoolcall") return canonicalDescriptor({ ...item, type: "collabAgentToolCall" });
+  if (kind === "dynamictoolcall") return canonicalDescriptor({ type: "dynamicToolCall", namespace: item.namespace, tool: item.tool, arguments: item.arguments });
   if (kind === "filechange") return canonicalDescriptor({ type: "fileChange", changes: rolloutFileChangeList(item.changes) });
   if (kind === "commandexecution") return canonicalDescriptor({
     type: "commandExecution", command: item.command, commandActions: item.parsed_cmd ?? item.commandActions, cwd: item.cwd,
@@ -227,6 +242,13 @@ function rolloutExecutionDescriptor(kind, item) {
 
 function functionDescriptor(name, input, namespace = "") {
   const normalized = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Code mode's own `wait` resumes a yielded exec cell; it names a cell, never an agent.
+  if (normalized === "wait" && namespace !== "collaboration" && input?.cell_id !== undefined) {
+    return { tool: "Wait", detail: "", repetitionInput: input, mutationInput: null };
+  }
+  if (normalized === "sleep" && namespace === "clock") {
+    return canonicalDescriptor({ type: "sleep", durationMs: input?.duration_ms ?? input?.durationMs });
+  }
   const collaboration = collaborationTool(name);
   if (collaboration) return { tool: collaboration, detail: "", repetitionInput: input, mutationInput: null };
   if (["shellcommand", "execcommand", "commandexecution"].includes(normalized)) {
@@ -243,7 +265,7 @@ function functionDescriptor(name, input, namespace = "") {
       fileChangeCandidates: patchFileChangeCandidates(patch),
     };
   }
-  if (normalized === "requestuserinput") {
+  if (normalized === "requestuserinput" || normalized === "requestuserinputasync") {
     return { tool: "Request input", detail: "User input", repetitionInput: input, mutationInput: null };
   }
   if (["viewimage", "imageview"].includes(normalized)) {
@@ -255,6 +277,19 @@ function functionDescriptor(name, input, namespace = "") {
   }
   if (normalized === "webrun" || normalized === "websearch" || normalized === "searchquery") {
     return { tool: "Web search", detail: "Web activity", repetitionInput: input, mutationInput: null };
+  }
+  if (normalized === "sendusermessageasync") {
+    return { tool: "Message to user", detail: "", repetitionInput: input, mutationInput: null };
+  }
+  if (normalized === "updateplan") {
+    return { tool: "Plan update", detail: "", repetitionInput: input, mutationInput: null };
+  }
+  if (normalized === "writestdin") {
+    return { tool: "Shell input", detail: "", repetitionInput: input, mutationInput: null };
+  }
+  // A namespaced MCP function call is the same call its completed McpToolCall item records.
+  if (String(namespace || "").startsWith("mcp__")) {
+    return { tool: "MCP", detail: mcpDetail(String(namespace).slice(5), name), repetitionInput: input, mutationInput: null };
   }
   if (String(name || "").startsWith("mcp__")) {
     const parts = String(name).split("__");

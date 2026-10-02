@@ -9,12 +9,16 @@ export function normalizedStatus(value, fallback = "running") {
   return fallback;
 }
 
-const ROLLOUT_EXECUTION_ITEMS = new Set(["filechange", "commandexecution", "mcptoolcall"]);
+const ROLLOUT_EXECUTION_ITEMS = new Set([
+  "filechange", "commandexecution", "mcptoolcall", "dynamictoolcall", "collabagenttoolcall", "imageview", "websearch", "extension",
+]);
 
 /**
  * The kind of a completed rollout item that records one executed action: a file change, a shell
- * command, or an MCP tool call. A code-mode `exec` cell runs these inside its wrapper call, and
- * they are the only structured record of what the cell did.
+ * command, an MCP, dynamic or collaboration tool call, an image view, a web search, or an
+ * extension action. A code-mode `exec` cell runs these inside its wrapper call, and they are the
+ * only structured record of what the cell did. Items that record no tool call (messages,
+ * reasoning, plans, compactions, sub-agent activity) are never execution items.
  */
 export function rolloutExecutionItemKind(payload) {
   const type = String(payload?.type || "").toLowerCase().replace(/[^a-z0-9]/g, "");

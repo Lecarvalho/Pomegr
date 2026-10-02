@@ -21,6 +21,9 @@ const SHAPES: Record<WorkKind, ReactNode> = {
   agent: <><circle cx="5" cy="5" r="2" /><circle cx="15" cy="5" r="2" /><circle cx="10" cy="15" r="2" /><path d="m6.5 6.5 2.25 6M13.5 6.5l-2.25 6M7 5h6" /></>,
   integration: <><path d="M7 2.5v4M13 2.5v4M5 6.5h10v2a5 5 0 0 1-5 5v4M7 17.5h6" /></>,
   wait: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4l3 2" /></>,
+  reply: <><path d="M2.5 3.5h10v7h-5l-3 2.5v-2.5h-2z" /><path d="M14.5 7.5h3v7h-2v2.5l-3-2.5H9.5" /></>,
+  plan: <><path d="m3 5 1.5 1.5L7 4M3 10l1.5 1.5L7 9M3 15l1.5 1.5L7 14M10 5.5h7M10 10.5h7M10 15.5h7" /></>,
+  other: <><circle cx="10" cy="10" r="7" /><circle cx="6.5" cy="10" r=".75" /><circle cx="10" cy="10" r=".75" /><circle cx="13.5" cy="10" r=".75" /></>,
 };
 
 export function WorkKindIcon({ kind, className = "" }: { kind: WorkKind; className?: string }) {

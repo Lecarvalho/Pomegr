@@ -44,8 +44,8 @@ test("Claude conversation events deduplicate reply fragments and keep summary up
   const summary = awaySummary();
   const events = claudeConversationActivity([reply, later, reply, summary, summary]);
   assert.deepEqual(events.map(({ id, ...event }) => event), [
-    { timestamp: later.timestamp, actor: "Primary agent", tool: "Assistant replied", workKind: "report", detail: "", status: null },
-    { timestamp: summary.timestamp, actor: "System", tool: "Summary updated", workKind: "report", detail: "", status: null },
+    { timestamp: later.timestamp, actor: "Primary agent", tool: "Assistant replied", workKind: "reply", detail: "", status: null },
+    { timestamp: summary.timestamp, actor: "System", tool: "Summary updated", workKind: "reply", detail: "", status: null },
   ]);
   assert.doesNotMatch(JSON.stringify(events), /PRIVATE|content|usage|claude-test/);
   const distinct = claudeConversationActivity([reply, assistantReply("PRIVATE_OTHER_ID")]);

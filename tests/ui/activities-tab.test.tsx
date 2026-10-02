@@ -175,7 +175,7 @@ describe("Activities tab", () => {
     expect(feed).toHaveTextContent("Failed shell runs");
   });
 
-  it("renders Actions by kind as read-only summary rows that never filter the feed", async () => {
+  it("renders Tool calls by kind as read-only summary rows that never filter the feed", async () => {
     const { server } = fixture();
     const feed = await ready();
     const rail = feed.querySelector(".activityBreakdown") as HTMLElement;
