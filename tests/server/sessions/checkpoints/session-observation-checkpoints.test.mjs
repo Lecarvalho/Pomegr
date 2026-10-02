@@ -384,6 +384,68 @@ test("an evicted checkpoint keeps its repository-snapshot sidecar, which serves 
   assert.equal((await checkpoints.loadRepositorySnapshot("provider-a", "ended")).branch, "feat/ended", "the rebuilt checkpoint still has its recorded repository state");
 });
 
+test("a session-event sidecar is written atomically, validated whole, and outlives its evicted checkpoint", async (t) => {
+  const { sessionEventRecordFilename } = await import("../../../../server/sessions/checkpoints/session-observation-checkpoints.mjs");
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxEntries: 1, maxBytes: 10_000 });
+  const record = (minute) => ({ version: 1, refills: [{ at: new Date(Date.UTC(2026, 9, 2, 10, minute)).toISOString(), agentId: "primary", kind: "possible_full" }],
+    compactions: [{ at: new Date(Date.UTC(2026, 9, 2, 11, minute)).toISOString(), agentId: "agent-a", trigger: "automatic" }] });
+  await checkpoints.write(snapshot("provider-a", "ended", 1));
+  const written = await checkpoints.writeSessionEventRecord("provider-a", "ended", record(1));
+  assert.equal(written.filename, sessionEventRecordFilename("provider-a", "ended"));
+  assert.equal(written.filename.replace(/^events-/, ""), checkpointFilename("provider-a", "ended").replace(/^checkpoint-/, ""));
+  assert.equal((await readdir(directory)).some((file) => file.endsWith(".tmp")), false);
+  assert.deepEqual(await checkpoints.loadSessionEventRecord("provider-a", "ended"), record(1));
+  assert.equal(await checkpoints.loadSessionEventRecord("provider-a", "never-recorded"), null);
+
+  await assert.rejects(checkpoints.writeSessionEventRecord("provider-a", "ended", { ...record(1), reason: "tools_changed" }), /session event record/);
+  await assert.rejects(checkpoints.writeSessionEventRecord("provider-a", "ended", { ...record(1), refills: [{ at: "soon", agentId: "primary", kind: "possible_full" }] }), /session event record/);
+  assert.deepEqual(await checkpoints.loadSessionEventRecord("provider-a", "ended"), record(1), "a rejected write leaves the record alone");
+
+  await writeFile(path.join(directory, sessionEventRecordFilename("provider-a", "corrupt")), "{not-json", "utf8");
+  await writeFile(path.join(directory, sessionEventRecordFilename("provider-a", "foreign")),
+    JSON.stringify({ version: 1, providerId: "provider-a", localSessionId: "someone-else", record: record(2) }), "utf8");
+  await writeFile(path.join(directory, sessionEventRecordFilename("provider-a", "newer")),
+    JSON.stringify({ version: 1, providerId: "provider-a", localSessionId: "newer", record: { ...record(3), version: 2 } }), "utf8");
+  assert.equal(await checkpoints.loadSessionEventRecord("provider-a", "corrupt"), null);
+  assert.equal(await checkpoints.loadSessionEventRecord("provider-a", "foreign"), null);
+  assert.equal(await checkpoints.loadSessionEventRecord("provider-a", "newer"), null, "an unknown version is never loaded");
+
+  // A second checkpoint evicts the first; its event sidecar stays, because it cannot be rebuilt.
+  const older = new Date(Date.now() - 60_000);
+  await utimes(path.join(directory, checkpointFilename("provider-a", "ended")), older, older);
+  await checkpoints.write(snapshot("provider-a", "current", 1));
+  await settleCheckpointMaintenance(checkpoints);
+  const afterEviction = await readdir(directory);
+  assert.equal(afterEviction.includes(checkpointFilename("provider-a", "ended")), false);
+  assert.ok(afterEviction.includes(sessionEventRecordFilename("provider-a", "ended")));
+
+  await checkpoints.prune();
+  const afterPrune = await readdir(directory);
+  assert.equal(afterPrune.includes(sessionEventRecordFilename("provider-a", "corrupt")), false, "an invalid sidecar is removed");
+  assert.ok(afterPrune.includes(sessionEventRecordFilename("provider-a", "newer")), "a newer build's sidecar is kept");
+  assert.ok(afterPrune.includes(sessionEventRecordFilename("provider-a", "ended")));
+});
+
+test("event sidecars are bounded on their own, oldest first", async (t) => {
+  const { sessionEventRecordFilename } = await import("../../../../server/sessions/checkpoints/session-observation-checkpoints.mjs");
+  const directory = await temporaryCheckpointDirectory(t);
+  const checkpoints = new SessionObservationCheckpointStore({ directory, maxRepositorySnapshots: 2 });
+  const record = { version: 1, refills: [{ at: "2026-10-02T10:00:00.000Z", agentId: "primary", kind: "possible_full" }], compactions: [] };
+  for (const [index, name] of ["oldest", "middle", "newest"].entries()) {
+    await checkpoints.writeSessionEventRecord("provider-a", name, record);
+    const when = new Date(Date.now() - (3 - index) * 60_000);
+    await utimes(path.join(directory, sessionEventRecordFilename("provider-a", name)), when, when);
+  }
+  await checkpoints.writeRepositorySnapshot("provider-a", "oldest", repositorySnapshot());
+  await checkpoints.prune();
+  const files = await readdir(directory);
+  assert.equal(files.includes(sessionEventRecordFilename("provider-a", "oldest")), false);
+  assert.ok(files.includes(sessionEventRecordFilename("provider-a", "middle")));
+  assert.ok(files.includes(sessionEventRecordFilename("provider-a", "newest")));
+  assert.ok(files.includes(repositorySnapshotFilename("provider-a", "oldest")), "the repository sidecars keep their own count");
+});
+
 test("the recorder loads only checkpointed sidecars at startup and reads any other on demand, once", async (t) => {
   const { createRepositorySnapshotRecorder } = await import("../../../../server/repository/repository-snapshot.mjs");
   const directory = await temporaryCheckpointDirectory(t);

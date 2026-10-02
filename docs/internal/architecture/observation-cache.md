@@ -212,8 +212,10 @@ and pull-request creations. D derives it in the same commit as the other summary
 from committed normalized evidence only: the public agents, session signal and progress,
 the recorded user-message times and pull-request-creation evidence, the public pull
 requests, the recorded in-window commit times from the repository snapshot sidecar, and
-the committed retained-resource block. D itself adds no acquisition, provider parsing, or
-persistence, and a GET serves the committed value. Its two recorded lists are written
+the committed retained-resource block, and the session's recorded refill and compaction
+times. D itself adds no acquisition or provider parsing, and a GET serves the committed
+value. Its only persistence is the session-event sidecar described below, written by P
+after a commit. Its two recorded lists are written
 upstream: U2 produces the optional `userMessageTimes` evidence field (Claude only, the
 newest 256 recorded times, checkpointed with the evidence), and the live Git check records
 `commitTimesInWindow` in the sidecar (the newest 50 committer times). The commit times
@@ -224,7 +226,11 @@ answer for a session (it keeps 512 by recency), the domain store reuses the comm
 of that session's last committed projection until the recorder reads the sidecar back, so
 commit events are not withdrawn meanwhile. A session evicted from both the recorder and
 the derived-domain cache is rebuilt without them until that read recommits; no GET or
-projection reads the sidecar synchronously to close that gap. The feed reads
+projection reads the sidecar synchronously to close that gap. Refill and compaction times
+follow the same pattern through `eventRecordForSession`, with one difference: the
+projection also derives the current entries from committed cache-event and context-boundary
+state, so only entries older than the retained evidence wait for that read. See
+[Session-event sidecar](#session-event-sidecar). The feed reads
 neither the windowed activity evidence nor the live repository commit list. Items are the
 50 newest by the time recorded with their evidence, never the observation time, and
 `total` counts the events derivable from that retained evidence before the cap, not a
@@ -2991,6 +2997,45 @@ the `repository` domain's `touchedFiles` block, never on `/api/state`
 `session.repository`. The module drops a path that already has a `recorded` entry, so each
 path is listed once. GETs never run Git for it, and a historical session serves only its
 recorded list, never the current tree.
+
+### Session-event sidecar
+
+Cache-refill and compaction events are derived from usage evidence that slides: a live read
+keeps the newest 1,000 usage snapshots, and after a restart the evidence holds only what the
+transcript tail and the checkpoint still carry. To keep an event from being shown and then
+withdrawn, the monitor records them in a second sidecar, `events-<identity hash>.json`, next
+to the session checkpoint and its repository sidecar.
+
+- **Content.** `{ version: 1, refills: [{ at, agentId, kind }], compactions: [{ at, agentId, trigger }] }`:
+  canonical UTC times, normalized agent IDs, `kind` one of `possible_full`,
+  `provider_diagnosed`, `lifetime_elapsed`, and `trigger` one of `automatic`, `manual`. Each
+  list keeps its newest 256 entries, oldest first. Nothing else is stored: no reason,
+  provider status, inference detail, token count, percentage, prior context total, request
+  number, or provider ID. `normalizeSessionEventRecord` validates the record as a whole, with
+  exact key sets; an invalid record is neither written nor loaded. The file is at most
+  128 KiB and passes the checkpoint privacy sentinels.
+- **Derivation (D).** `projectSessionDomains` derives the current entries from the public
+  cache-event feed (only while its status is `ready`) and the public context boundaries, and
+  merges them with the record it is given. The feed reads the merged record, and the
+  projection returns it beside the domains. It is never placed in a domain response or on
+  `/api/state`.
+- **Merge rule.** Entries only accumulate. One entry per agent and time; for the same agent
+  and time the later kind wins. An entry the current evidence no longer derives stays.
+- **Persistence (P).** After a commit whose merged record changed, the domain store hands it
+  to `createSessionEventRecorder`. The recorder first reads the session's sidecar when it
+  holds no answer for it, merges into what the disk holds, and writes atomically only when
+  the union changed. A write is followed by one recommit of that session's domains, which is
+  a no-op when the feed is unchanged. A failed write is dropped; the next changed record
+  carries the same entries, because the domain store keeps the last merged record per
+  session.
+- **Restore.** The recorder loads nothing at startup. A projection that finds no answer for
+  its session queues a single identity-keyed read off the request path, and the session
+  recommits when a record exists. Until then the feed shows the entries the restored evidence
+  derives; the read only adds older ones. No GET reads the sidecar.
+- **Retention.** Like the repository sidecar, it outlives an evicted checkpoint, because its
+  older entries cannot be rebuilt. `prune()` and maintenance remove an invalid one and the
+  oldest beyond 2,000, counted separately from repository sidecars. A sidecar with a higher
+  record version is kept without being loaded.
 
 ## Monitor SQLite store
 

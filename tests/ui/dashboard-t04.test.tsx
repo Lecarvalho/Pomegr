@@ -455,8 +455,8 @@ describe("T04 session workspace", () => {
   it("renders the Events rail from the summary and opens the tab each row continues", async () => {
     const at = new Date(2026, 8, 14, 11, 21).toISOString();
     const items = [
-      { id: "e2", kind: "agent_finished" as const, at, agentId: "primary", agentLabel: "Primary agent", durationMs: 240_000, signal: null, progress: null, resource: null, pullRequestNumber: null },
-      { id: "e1", kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null },
+      { id: "e2", kind: "agent_finished" as const, at, agentId: "primary", agentLabel: "Primary agent", durationMs: 240_000, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null },
+      { id: "e1", kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null },
     ];
     mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 2 } }));
     const rail = await screen.findByRole("region", { name: "Events · newest first" });
@@ -480,7 +480,7 @@ describe("T04 session workspace", () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
       const at = new Date(2026, 8, 14, 11, 21).toISOString();
-      const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null }));
+      const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null }));
       mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 8 } }));
       const rail = await screen.findByRole("region", { name: "Events · newest first" });
       expect(within(rail).getAllByRole("button", { name: /^Commit observed/ })).toHaveLength(5);

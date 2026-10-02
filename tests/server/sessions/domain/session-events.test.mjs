@@ -3,13 +3,14 @@ import test from "node:test";
 import { SESSION_EVENT_KINDS as CONTRACT_KINDS, SESSION_EVENT_LIMIT as CONTRACT_LIMIT } from "../../../../shared/session-domain-contract.ts";
 import { createEmptyMonitorState } from "../../../../shared/monitor-state.mjs";
 import { SESSION_EVENT_KINDS, SESSION_EVENT_LIMIT, SESSION_EVENT_READINESS_SECTIONS, sessionEvents } from "../../../../server/sessions/domain/session-events.mjs";
+import { createSessionEventRecorder, derivedSessionEventRecord, mergeSessionEventRecord, normalizeSessionEventRecord, SESSION_EVENT_RECORD_LIMIT } from "../../../../server/sessions/domain/session-event-record.mjs";
 import { createSessionDomainStore } from "../../../../server/sessions/domain/session-domain-store.mjs";
 import { projectSessionDomains } from "../../../../server/sessions/domain/session-domain-projection.mjs";
 import { historicalRepositoryFromSnapshot, snapshotFromLiveCheck } from "../../../../server/repository/repository-snapshot.mjs";
 import { liveRepositoryReadiness } from "../../../../server/repository/session-repository-enrichment.mjs";
 
 const READY = { core: "ready", agentEvidence: "ready", activityEvidence: "ready" };
-const EVENT_KEYS = ["agentId", "agentLabel", "at", "durationMs", "id", "kind", "pullRequestNumber", "progress", "resource", "signal"].sort();
+const EVENT_KEYS = ["agentId", "agentLabel", "at", "compaction", "durationMs", "id", "kind", "pullRequestNumber", "progress", "refill", "resource", "signal"].sort();
 const PR_URL = "https://github.com/acme/widgets/pull/17";
 
 function at(minute, second = 0, millisecond = 0) {
@@ -18,14 +19,16 @@ function at(minute, second = 0, millisecond = 0) {
 
 // Every contract field other than `kind` and `at` defaults to null, so a test names only what its kind uses.
 function expected(kind, time, fields = {}) {
-  return { kind, at: time, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, ...fields };
+  return { kind, at: time, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null, ...fields };
 }
 function withoutId({ id, ...event }) {
   assert.match(id, /^event-[a-f0-9]{16}$/u);
   return event;
 }
-function derive(inputs = {}) {
-  return sessionEvents({ readiness: READY, ...inputs });
+// Refill and compaction events read the recorded union; a test hands in the public feeds it derives from.
+function derive({ cacheEvents, contextBoundaries, ...inputs } = {}) {
+  const eventRecord = cacheEvents === undefined && contextBoundaries === undefined ? inputs.eventRecord : derivedSessionEventRecord({ cacheEvents, contextBoundaries });
+  return sessionEvents({ readiness: READY, ...inputs, eventRecord });
 }
 function kinds(feed) { return feed.items.map((item) => item.kind); }
 
@@ -186,6 +189,53 @@ test("pull_request_opened joins the listed pull request number by canonical URL 
   assert.deepEqual(derive({ pullRequestCreations: creations, pullRequests: { status: "unavailable", items: [] } }).items.map((item) => item.pullRequestNumber), [null, null]);
 });
 
+test("cache_refill names the agent and the fixed kind of each recorded refill occurrence", () => {
+  const agents = [{ id: "primary", label: "Primary agent", status: "active" }, { id: "agent-a", label: "Reviewer", status: "active" }];
+  const occurrence = (observedAt, kind) => ({ observedAt, ...(kind ? { kind } : {}), reason: "tools_changed", providerStatus: "previous_cache_entry_unavailable",
+    cacheLifetimeInference: { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 424_242 }, messageChangeSequence: null,
+    toolChangeAttribution: { cause: "deferred_definitions_loaded", addedDefinitionCount: 7, changes: [] } });
+  const cacheEvents = { status: "ready", items: [{ id: "cache-1", agentId: "primary", kind: "refill", observedAt: at(9), promptInputTokens: 987_654 }], possibleFullRefills: [
+    { agentId: "primary", count: 1, providerDiagnosedCount: 1, lifetimeElapsedCount: 1, reasons: [], toolChangeAttributions: [],
+      occurrences: [occurrence(at(2)), occurrence(at(4), "provider_diagnosed"), occurrence(at(6), "lifetime_elapsed"), occurrence("soon"), occurrence(at(7), "future_kind")] },
+    { agentId: "agent-a", count: 1, reasons: [], toolChangeAttributions: [], occurrences: [occurrence(at(3))] },
+    { agentId: "hidden", count: 1, reasons: [], toolChangeAttributions: [], occurrences: [occurrence(at(5))] },
+    { agentId: "primary", count: 0, occurrences: "none" },
+  ] };
+  const feed = derive({ agents, cacheEvents });
+  assert.deepEqual(feed.items.map(withoutId), [
+    expected("cache_refill", at(6), { agentId: "primary", agentLabel: "Primary agent", refill: "lifetime_elapsed" }),
+    expected("cache_refill", at(4), { agentId: "primary", agentLabel: "Primary agent", refill: "provider_diagnosed" }),
+    expected("cache_refill", at(3), { agentId: "agent-a", agentLabel: "Reviewer", refill: "possible_full" }),
+    expected("cache_refill", at(2), { agentId: "primary", agentLabel: "Primary agent", refill: "possible_full" }),
+  ]);
+  // The write-backed items list (any large write, reuse) is never a source, and no evidence value rides along.
+  for (const forbidden of ["987654", "424242", "tools_changed", "previous_cache_entry_unavailable", "deferred_definitions_loaded", "cache-1"]) {
+    assert.ok(!JSON.stringify(feed).includes(forbidden), forbidden);
+  }
+  assert.equal(derive({ agents, cacheEvents: { ...cacheEvents, status: "unavailable" } }).total, 0);
+  assert.equal(derive({ agents, cacheEvents: { status: "ready", possibleFullRefills: "none" } }).total, 0);
+  assert.equal(derive({ cacheEvents }).total, 0, "no visible agent, no refill event");
+});
+
+test("context_compacted comes only from recorded automatic and manual compactions", () => {
+  const agents = [{ id: "primary", label: "Primary agent", status: "active" }, { id: "agent-a", label: "Reviewer", status: "active" }];
+  const contextBoundaries = [
+    { id: "boundary-1", agentId: "primary", timestamp: at(2), kind: "automatic_compaction", preTokens: 987_654 },
+    { id: "boundary-2", agentId: "agent-a", timestamp: at(4), kind: "manual_compaction", preTokens: null },
+    { id: "boundary-3", agentId: "primary", timestamp: at(5), kind: "snapshot_drop", preTokens: 123_456 }, // an unexplained reduction is not a compaction
+    { id: "boundary-4", agentId: "hidden", timestamp: at(6), kind: "automatic_compaction", preTokens: 1 },
+    { id: "boundary-5", agentId: "primary", timestamp: "soon", kind: "manual_compaction", preTokens: 1 },
+    null,
+  ];
+  const feed = derive({ agents, contextBoundaries });
+  assert.deepEqual(feed.items.map(withoutId), [
+    expected("context_compacted", at(4), { agentId: "agent-a", agentLabel: "Reviewer", compaction: "manual" }),
+    expected("context_compacted", at(2), { agentId: "primary", agentLabel: "Primary agent", compaction: "automatic" }),
+  ]);
+  for (const forbidden of ["987654", "123456", "boundary-"]) assert.ok(!JSON.stringify(feed).includes(forbidden), forbidden);
+  assert.equal(derive({ agents, contextBoundaries: "none" }).total, 0);
+});
+
 test("the feed is gated by its three evidence sections and by nothing else", () => {
   const input = { agents: [{ id: "agent-a", label: "A", status: "active", startedAt: at(1) }], session: { progress: { phase: "planning", percent: 1, reportedAt: at(1) } } };
   assert.deepEqual([...SESSION_EVENT_READINESS_SECTIONS], ["core", "agentEvidence", "activityEvidence"]);
@@ -224,9 +274,12 @@ test("every input may be missing", () => {
   assert.deepEqual(sessionEvents({}), { readiness: "unavailable", items: [], total: 0 });
   assert.deepEqual(derive(), { readiness: "ready", items: [], total: 0 });
   assert.deepEqual(derive({
-    session: null, agents: undefined, userMessageTimes: undefined, pullRequestCreations: undefined, pullRequests: undefined, commitTimes: undefined, retainedResources: undefined,
+    session: null, agents: undefined, userMessageTimes: undefined, pullRequestCreations: undefined, pullRequests: undefined, commitTimes: undefined, retainedResources: undefined, eventRecord: undefined,
   }), { readiness: "ready", items: [], total: 0 });
-  assert.deepEqual(derive({ agents: "none", userMessageTimes: {}, pullRequestCreations: 1, pullRequests: { items: "none" }, commitTimes: 1, retainedResources: { readiness: "ready", peaks: "none" } }),
+  assert.deepEqual(derive({ agents: "none", userMessageTimes: {}, pullRequestCreations: 1, pullRequests: { items: "none" }, commitTimes: 1, retainedResources: { readiness: "ready", peaks: "none" },
+    cacheEvents: { status: "ready", possibleFullRefills: [null, 7, { agentId: "x" }] }, contextBoundaries: [null, 7, {}] }),
+    { readiness: "ready", items: [], total: 0 });
+  assert.deepEqual(derive({ agents: [{ id: "primary", label: "P" }], eventRecord: { refills: [null, 7, { at: "soon", agentId: "primary", kind: "possible_full" }, { at: at(1), agentId: "primary", kind: "odd" }], compactions: "none" } }),
     { readiness: "ready", items: [], total: 0 });
   assert.deepEqual(derive({ agents: [null, undefined, 7, { label: "No id", status: "finished", updatedAt: at(1) }] }), { readiness: "ready", items: [], total: 0 });
 });
@@ -250,10 +303,12 @@ test("events are newest first with a deterministic tie-break that ignores input 
     ],
     pullRequests: { items: [{ number: 2, url: "https://github.com/acme/widgets/pull/2" }, { number: 10, url: "https://github.com/acme/widgets/pull/10" }] },
     retainedResources: { readiness: "ready", peaks: [{ field: "cpu_cores", observedAt: at(5), value: 1 }] },
+    cacheEvents: { status: "ready", possibleFullRefills: [{ agentId: "agent-b", occurrences: [{ observedAt: at(5) }] }] },
+    contextBoundaries: [{ agentId: "agent-a", timestamp: at(5), kind: "manual_compaction" }],
   };
   const feed = derive(inputs);
-  assert.equal(feed.total, 12);
-  assert.deepEqual(feed.items.map((item) => item.at), Array(12).fill(at(5)));
+  assert.equal(feed.total, 14);
+  assert.deepEqual(feed.items.map((item) => item.at), Array(14).fill(at(5)));
   // Equal instants order by kind, then scope text ("agent:..." before "session"), then pull-request number text.
   assert.deepEqual(feed.items.map((item) => [item.kind, item.agentId, item.pullRequestNumber]), [
     ["agent_started", "agent-a", null],
@@ -268,6 +323,8 @@ test("events are newest first with a deterministic tie-break that ignores input 
     ["commit_observed", null, null],
     ["pull_request_opened", null, 10],
     ["pull_request_opened", null, 2],
+    ["cache_refill", "agent-b", null],
+    ["context_compacted", "agent-a", null],
   ]);
   const reversed = derive({
     ...inputs,
@@ -314,11 +371,12 @@ test("ids are unique, opaque, and stable for unchanged evidence, even for events
   for (const item of feed.items) assert.match(item.id, /^event-[a-f0-9]{16}$/u);
 });
 
-test("a feed built from sentinel-laden inputs exposes only the ten contract keys and bounded values", () => {
+test("a feed built from sentinel-laden inputs exposes only the twelve contract keys and bounded values", () => {
   const sentinels = [
     "SENTINEL_COMMIT_HASH", "SENTINEL_COMMIT_SUBJECT", "SENTINEL_PR_URL", "SENTINEL_PR_OWNER", "SENTINEL_PR_TITLE", "SENTINEL_CREATION_ID", "SENTINEL_CREATION_ACTOR",
     "SENTINEL_USER_DETAIL", "SENTINEL_USER_ROW_ID", "SENTINEL_USER_REQUEST", "SENTINEL_SIGNAL_DESCRIPTION", "SENTINEL_AGENT_DESCRIPTION", "SENTINEL_TASK_LABEL",
     "SENTINEL_TASK_ID", "SENTINEL_PEAK_ID", "SENTINEL_PROGRESS_CONFIDENCE", "SENTINEL_PROVIDER_KIND", "SENTINEL_TRANSCRIPT_PATH",
+    "SENTINEL_CACHE_EVENT_ID", "SENTINEL_REFILL_REASON", "SENTINEL_BOUNDARY_ID",
   ];
   const url = "https://github.com/SENTINEL_PR_OWNER/repo/pull/23";
   const feed = derive({
@@ -343,8 +401,11 @@ test("a feed built from sentinel-laden inputs exposes only the ten contract keys
       { id: "SENTINEL_PEAK_ID", field: "memory_bytes", observedAt: at(5), value: 987654321, matchedTaskIds: ["SENTINEL_TASK_ID"], matchedTaskCount: 1,
         tasks: [{ id: "SENTINEL_TASK_ID", label: "SENTINEL_TASK_LABEL" }], window: { status: "retained", samples: [{ at: at(5), value: 987654321 }], minute: null } },
     ] },
+    cacheEvents: { status: "ready", items: [{ id: "SENTINEL_CACHE_EVENT_ID", agentId: "primary", kind: "refill", observedAt: at(4, 10) }],
+      possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: at(4, 10), reason: "SENTINEL_REFILL_REASON", cacheLifetimeInference: { elapsedMs: 424242 } }] }] },
+    contextBoundaries: [{ id: "SENTINEL_BOUNDARY_ID", agentId: "primary", timestamp: at(4, 20), kind: "automatic_compaction", preTokens: 434343 }],
   });
-  assert.equal(feed.total, 10);
+  assert.equal(feed.total, 12);
   assert.deepEqual(new Set(kinds(feed)), new Set(SESSION_EVENT_KINDS));
   const serialized = JSON.stringify(feed);
   for (const sentinel of sentinels) assert.ok(!serialized.includes(sentinel), `${sentinel} must not reach the feed`);
@@ -366,6 +427,102 @@ test("a source object is never spread into an event", () => {
   const feed = derive({ agents: [agent] });
   assert.ok(!JSON.stringify(feed).includes("SENTINEL_EXTRA"));
   for (const item of feed.items) assert.deepEqual(Object.keys(item).sort(), EVENT_KEYS);
+});
+
+test("a recorded refill or compaction outlives the evidence window that derived it", () => {
+  const agents = [{ id: "primary", label: "Primary agent", status: "active" }];
+  const feedOf = (...times) => ({ status: "ready", items: [], possibleFullRefills: [{ agentId: "primary", count: times.length, occurrences: times.map((observedAt) => ({ observedAt })) }] });
+  const early = derivedSessionEventRecord({ cacheEvents: feedOf(at(1), at(2)), contextBoundaries: [{ agentId: "primary", timestamp: at(3), kind: "automatic_compaction" }] });
+  // The window slid: the first refill and the compaction are no longer derived, a new refill is.
+  const later = mergeSessionEventRecord(early, derivedSessionEventRecord({ cacheEvents: feedOf(at(2), at(8)), contextBoundaries: [] }));
+  assert.deepEqual(sessionEvents({ readiness: READY, agents, eventRecord: later }).items.map((item) => [item.kind, item.at]),
+    [["cache_refill", at(8)], ["context_compacted", at(3)], ["cache_refill", at(2)], ["cache_refill", at(1)]]);
+  // An unavailable feed derives nothing and withdraws nothing.
+  const quiet = mergeSessionEventRecord(later, derivedSessionEventRecord({ cacheEvents: { status: "unavailable" } }));
+  assert.equal(quiet, later, "an unchanged union is the same object");
+  // The same agent and time keeps one entry, with the later kind.
+  const reclassified = mergeSessionEventRecord(later, { version: 1, refills: [{ at: at(8), agentId: "primary", kind: "lifetime_elapsed" }], compactions: [] });
+  assert.deepEqual(reclassified.refills.map((item) => [item.at, item.kind]), [[at(1), "possible_full"], [at(2), "possible_full"], [at(8), "lifetime_elapsed"]]);
+  // Each list keeps its newest entries.
+  const many = derivedSessionEventRecord({ cacheEvents: feedOf(...Array.from({ length: SESSION_EVENT_RECORD_LIMIT + 20 }, (_, index) => new Date(Date.UTC(2026, 8, 30, 11, 0, index)).toISOString())) });
+  assert.equal(many.refills.length, SESSION_EVENT_RECORD_LIMIT);
+  assert.equal(many.refills[0].at, new Date(Date.UTC(2026, 8, 30, 11, 0, 20)).toISOString());
+});
+
+test("a persisted event record is validated as a whole and holds only times, agent IDs, and fixed kinds", () => {
+  const valid = { version: 1, refills: [{ at: at(1), agentId: "primary", kind: "possible_full" }], compactions: [{ at: at(2), agentId: "agent-a", trigger: "manual" }] };
+  assert.deepEqual(normalizeSessionEventRecord(valid), valid);
+  const invalid = [
+    null, [], { ...valid, version: 2 }, { ...valid, extra: 1 }, { version: 1, refills: [] },
+    { ...valid, refills: [{ at: at(1), agentId: "primary", kind: "tools_changed" }] },
+    { ...valid, refills: [{ at: at(1), agentId: "primary", kind: "possible_full", reason: "PRIVATE" }] },
+    { ...valid, refills: [{ at: "2026-09-30T10:01:00Z", agentId: "primary", kind: "possible_full" }] },
+    { ...valid, refills: [{ at: at(1), agentId: "C:\\private\\path", kind: "possible_full" }] },
+    { ...valid, compactions: [{ at: at(2), agentId: "agent-a", trigger: "snapshot_drop" }] },
+    { ...valid, compactions: [{ at: "soon", agentId: "agent-a", trigger: "manual" }] },
+    { ...valid, refills: Array.from({ length: SESSION_EVENT_RECORD_LIMIT + 1 }, (_, index) => ({ at: new Date(Date.UTC(2026, 8, 30, 11, 0, index)).toISOString(), agentId: "primary", kind: "possible_full" })) },
+  ];
+  for (const value of invalid) assert.equal(normalizeSessionEventRecord(value), null, JSON.stringify(value)?.slice(0, 120));
+});
+
+test("the recorder merges into the sidecar on disk, never over it", async () => {
+  const disk = new Map([["claude:kept", { version: 1, refills: [{ at: at(1), agentId: "primary", kind: "possible_full" }], compactions: [] }]]);
+  let writes = 0;
+  const store = {
+    loadSessionEventRecord: async (providerId, localSessionId) => normalizeSessionEventRecord(disk.get(`${providerId}:${localSessionId}`)),
+    writeSessionEventRecord: async (providerId, localSessionId, record) => { writes += 1; disk.set(`${providerId}:${localSessionId}`, structuredClone(record)); },
+  };
+  const recorder = createSessionEventRecorder({ store });
+  assert.equal(recorder.recorded("claude:kept"), null, "not read yet");
+  assert.equal(recorder.has("claude:kept"), false);
+  // A record derived before the sidecar was read does not replace it.
+  const derived = { version: 1, refills: [{ at: at(5), agentId: "primary", kind: "provider_diagnosed" }], compactions: [] };
+  assert.equal(await recorder.record("claude:kept", derived), true);
+  assert.deepEqual(disk.get("claude:kept").refills.map((item) => item.at), [at(1), at(5)]);
+  assert.deepEqual(recorder.recorded("claude:kept").refills.map((item) => item.at), [at(1), at(5)]);
+  assert.equal(await recorder.record("claude:kept", derived), false, "nothing new, nothing written");
+  assert.equal(writes, 1);
+  assert.equal(await recorder.record("claude:kept", { version: 1, refills: [{ at: at(6), agentId: "primary", kind: "PRIVATE_KIND" }], compactions: [] }), false, "an invalid record is never written");
+  assert.equal(await recorder.record("claude:empty", { version: 1, refills: [], compactions: [] }), false, "an empty record writes no file");
+  assert.equal(await recorder.ensure("claude:empty"), false);
+  assert.equal(await recorder.record("no-provider", derived), false);
+  assert.equal(writes, 1);
+  const failing = createSessionEventRecorder({ store: { loadSessionEventRecord: async () => { throw new Error("PRIVATE"); }, writeSessionEventRecord: async () => { throw new Error("PRIVATE"); } } });
+  assert.equal(await failing.record("claude:kept", derived), false, "a failed write never rejects");
+});
+
+test("the store keeps recorded refills across a slid window and an evicted recorder entry, and hands a grown union to the recorder", () => {
+  let recorded = null;
+  const handed = [];
+  const store = createSessionDomainStore({ eventRecordForSession: () => recorded, onEventRecord: (sessionId, record) => handed.push([sessionId, record]) });
+  const refillTimes = () => summaryOf(store).events.items.filter((item) => item.kind === "cache_refill").map((item) => item.at);
+  const stateWith = (...times) => {
+    const state = monitorState();
+    state.metrics.tokens.cacheEvents = { status: "ready", items: [], possibleFullRefills: [{ agentId: "primary", count: times.length, occurrences: times.map((observedAt) => ({ observedAt })), reasons: [], toolChangeAttributions: [] }] };
+    return state;
+  };
+  store.commit(SESSION_ID, snapshotOf(stateWith(at(5), at(7))));
+  assert.deepEqual(refillTimes(), [at(7), at(5)]);
+  assert.equal(handed.length, 1);
+  // The usage window slid past the first refill; the recorder holds no record for the session.
+  store.commit(SESSION_ID, snapshotOf(stateWith(at(7), at(9)), at(40)));
+  assert.deepEqual(refillTimes(), [at(9), at(7), at(5)]);
+  assert.equal(handed.length, 2);
+  // Nothing new: nothing handed over, no revision.
+  assert.deepEqual(store.commit(SESSION_ID, snapshotOf(stateWith(at(7), at(9)), at(41))), []);
+  assert.equal(handed.length, 2);
+  // The sidecar is read back with an older refill from before a restart.
+  recorded = normalizeSessionEventRecord({ version: 1, refills: [{ at: at(3), agentId: "primary", kind: "lifetime_elapsed" }], compactions: [] });
+  store.commit(SESSION_ID, snapshotOf(stateWith(at(9)), at(42)));
+  assert.deepEqual(refillTimes(), [at(9), at(7), at(5), at(3)]);
+  // The record never reaches a served domain as such.
+  for (const domain of ["session-summary", "agents", "signals", "details", "repository", "resources"]) {
+    assert.ok(!store.read(SESSION_ID, domain).snapshot.serialized.includes("eventRecord"), domain);
+  }
+  store.clear();
+  recorded = null;
+  store.commit(SESSION_ID, snapshotOf(stateWith(at(9)), at(43)));
+  assert.deepEqual(refillTimes(), [at(9)], "the kept record leaves with its session");
 });
 
 // --- Integration with the session-domain projection and its commit path -------------------------

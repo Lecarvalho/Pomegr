@@ -39,7 +39,7 @@ function splitMedia(css: string) {
 // Built from local clock parts so the expected HH:mm holds in every time zone.
 const at = (hour: number, minute: number) => new Date(2026, 8, 14, hour, minute).toISOString();
 function event(id: string, kind: SessionEventKind, fields: Partial<SessionEvent> = {}): SessionEvent {
-  return { id, kind, at: at(11, 29), agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, ...fields };
+  return { id, kind, at: at(11, 29), agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null, ...fields };
 }
 function feed(items: SessionEvent[], fields: Partial<SessionEventFeed> = {}): SessionEventFeed {
   return { readiness: "ready", items, total: items.length, ...fields };
@@ -70,6 +70,11 @@ const KIND_CASES: KindCase[] = [
   ["resource_peak", { resource: "write_bps" }, "Resource peak", "Disk write · session high", { tab: "resources", peak: "write_bps" }],
   ["commit_observed", {}, "Commit observed", "Git-observed", { tab: "repository" }],
   ["pull_request_opened", { pullRequestNumber: 43 }, "Pull request opened", "#43", { tab: "repository" }],
+  ["cache_refill", { agentId: "primary", agentLabel: "Primary agent", refill: "possible_full" }, "Cache refill", "Possible full refill · Primary agent", { tab: "agents", agent: "primary" }],
+  ["cache_refill", { agentId: "explore-1", agentLabel: "Explore", refill: "provider_diagnosed" }, "Cache refill", "Provider-diagnosed · Explore", { tab: "agents", agent: "explore-1" }],
+  ["cache_refill", { agentId: "primary", agentLabel: "Primary agent", refill: "lifetime_elapsed" }, "Cache refill", "Partial refill · inference · Primary agent", { tab: "agents", agent: "primary" }],
+  ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "automatic" }, "Context compacted", "Automatic · Primary agent", { tab: "agents", agent: "primary" }],
+  ["context_compacted", { agentId: "primary", agentLabel: "Primary agent", compaction: "manual" }, "Context compacted", "Manual · Primary agent", { tab: "agents", agent: "primary" }],
 ];
 
 describe("SessionEventsPanel", () => {
@@ -282,6 +287,17 @@ describe("SessionEventsPanel", () => {
     expect(rowButtons().map((button) => button.getAttribute("aria-label"))).toEqual(labels.filter((label) => label !== "Agent estimate updated").map((label) => `${label}, 11:29`));
     expect(rows.map((row) => row.textContent)).toEqual(labels.map((label) => `11:29${label}`));
     expect(document.body.innerHTML).not.toMatch(/undefined|NaN|\[object|session high/);
+  });
+
+  it("renders a refill or compaction with an unrecognised kind as its label alone", () => {
+    const loose = (id: string, kind: SessionEventKind, fields: Record<string, unknown>) => event(id, kind, fields as Partial<SessionEvent>);
+    mount(feed([
+      loose("a", "cache_refill", { refill: "toString", agentLabel: 5 }),
+      loose("b", "context_compacted", { compaction: "snapshot_drop" }),
+      loose("c", "cache_refill", { refill: undefined, agentLabel: "Primary agent" }),
+    ]));
+    expect(rowButtons().map((button) => button.getAttribute("aria-label"))).toEqual(["Cache refill, 11:29", "Context compacted, 11:29", "Cache refill, Primary agent, 11:29"]);
+    expect(document.body.innerHTML).not.toMatch(/undefined|\[object|native code|inference/);
   });
 
   it("opens the Agents tab without a selection when the recorded agent ID is not a usable string", async () => {

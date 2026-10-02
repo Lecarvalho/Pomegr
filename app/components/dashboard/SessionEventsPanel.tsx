@@ -26,6 +26,8 @@ const GLYPH_SHAPES: Record<SessionEventKind, ReactNode> = {
   resource_peak: <path d="M2 13l4-9 3 6 2-3 3 6" />,
   commit_observed: <><circle cx="8" cy="8" r="2.5" /><path d="M2 8h3.5M10.5 8H14" /></>,
   pull_request_opened: <><circle cx="4" cy="4" r="1.6" /><circle cx="4" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><path d="M4 5.6v4.8M12 10.4V7a2 2 0 0 0-2-2H8" /></>,
+  cache_refill: <><path d="M13 8a5 5 0 1 1-1.6-3.7" /><path d="M13 2.5v3h-3" /></>,
+  context_compacted: <><path d="M2.5 8h11" /><path d="M8 1.5v4M6 3.5l2 2 2-2M8 14.5v-4M6 12.5l2-2 2 2" /></>,
 };
 
 type EventPresentation = { label: string; detail: (event: SessionEvent) => string | null; destination: ((event: SessionEvent) => Partial<SessionRouteQuery>) | null };
@@ -46,6 +48,11 @@ const resourceDetail = (event: SessionEvent) => typeof event.resource === "strin
 // Opens the Resources tab on that resource's session-high peak; an unknown field opens the tab alone.
 const resourceDestination = (event: SessionEvent): Partial<SessionRouteQuery> => resourceDetail(event) ? { tab: "resources", peak: event.resource as string } : { tab: "resources" };
 const pullRequestDetail = (event: SessionEvent) => typeof event.pullRequestNumber === "number" && Number.isSafeInteger(event.pullRequestNumber) && event.pullRequestNumber > 0 ? `#${event.pullRequestNumber}` : null;
+// A partial refill behind an elapsed lifetime is an inference and says so.
+const REFILL_EVENT_LABEL: Record<NonNullable<SessionEvent["refill"]>, string> = { possible_full: "Possible full refill", provider_diagnosed: "Provider-diagnosed", lifetime_elapsed: "Partial refill · inference" };
+const COMPACTION_EVENT_LABEL: Record<NonNullable<SessionEvent["compaction"]>, string> = { automatic: "Automatic", manual: "Manual" };
+const refillDetail = (event: SessionEvent) => joinDetail(typeof event.refill === "string" && Object.hasOwn(REFILL_EVENT_LABEL, event.refill) ? REFILL_EVENT_LABEL[event.refill] : null, plainText(event.agentLabel));
+const compactionDetail = (event: SessionEvent) => joinDetail(typeof event.compaction === "string" && Object.hasOwn(COMPACTION_EVENT_LABEL, event.compaction) ? COMPACTION_EVENT_LABEL[event.compaction] : null, plainText(event.agentLabel));
 
 // Label, detail, and destination read only fields each kind owns, so an event never prints anything it was not defined to carry.
 const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
@@ -60,6 +67,9 @@ const PRESENTATION: Record<SessionEventKind, EventPresentation> = {
   resource_peak: { label: "Resource peak", detail: resourceDetail, destination: resourceDestination },
   commit_observed: { label: "Commit observed", detail: () => "Git-observed", destination: () => ({ tab: "repository" }) },
   pull_request_opened: { label: "Pull request opened", detail: pullRequestDetail, destination: () => ({ tab: "repository" }) },
+  // Both open the agent whose history marks carry the full refill or compaction evidence.
+  cache_refill: { label: "Cache refill", detail: refillDetail, destination: agentDestination },
+  context_compacted: { label: "Context compacted", detail: compactionDetail, destination: agentDestination },
 };
 
 /** Local 24-hour HH:mm, the same on every locale; null when the recorded timestamp does not parse. */

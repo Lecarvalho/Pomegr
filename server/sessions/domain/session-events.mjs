@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 export const SESSION_EVENT_KINDS = Object.freeze([
   "agent_started", "agent_finished", "agent_stopped", "signal_reported", "estimate_updated",
   "user_message", "resource_peak", "commit_observed", "pull_request_opened",
+  "cache_refill", "context_compacted",
 ]);
 export const SESSION_EVENT_LIMIT = 50;
 // The session-summary sections that gate the feed. The repository section is deliberately not
@@ -13,6 +14,7 @@ export const SESSION_EVENT_LIMIT = 50;
 // branch change, a failing Git reader), which would withdraw a served feed. Commit times are
 // recorded evidence and a pull-request number is nullable, so neither needs that section.
 // Retained resources are not a summary section: their own readiness is checked where peaks are derived.
+// Cache refills and compactions are best-effort the same way: context evidence never holds the feed.
 export const SESSION_EVENT_READINESS_SECTIONS = Object.freeze(["core", "agentEvidence", "activityEvidence"]);
 
 const KIND_ORDER = new Map(SESSION_EVENT_KINDS.map((kind, index) => [kind, index]));
@@ -20,6 +22,8 @@ const SIGNAL_TONES = new Set(["neutral", "info", "positive", "warning", "negativ
 const PROGRESS_PHASES = new Set(["planning", "implementing", "verifying", "blocked", "complete"]);
 const RESOURCE_FIELDS = new Set(["cpu_cores", "memory_bytes", "read_bps", "write_bps"]);
 const PRIMARY_AGENT_ID = "primary";
+const REFILL_KINDS = new Set(["possible_full", "provider_diagnosed", "lifetime_elapsed"]);
+const COMPACTION_TRIGGERS = new Set(["automatic", "manual"]);
 
 function instant(value) {
   if (typeof value !== "string") return null;
@@ -45,6 +49,8 @@ function candidate(kind, atMs, scope, fields = {}, tie = "") {
       progress: fields.progress ?? null,
       resource: fields.resource ?? null,
       pullRequestNumber: fields.pullRequestNumber ?? null,
+      refill: fields.refill ?? null,
+      compaction: fields.compaction ?? null,
     },
   };
 }
@@ -149,6 +155,41 @@ function pullRequestEvents(creations, pullRequests) {
   return events;
 }
 
+function labelsById(agents) {
+  const labels = new Map();
+  for (const agent of Array.isArray(agents) ? agents : []) {
+    const identity = agentIdentity(agent);
+    if (identity) labels.set(identity.agentId, identity.agentLabel);
+  }
+  return labels;
+}
+
+// The session's recorded refill times: the recorded request time, the agent, and the fixed kind,
+// nothing else. The live cache-event feed is deliberately not read: its usage evidence is a
+// window that slides. An entry whose agent is not visible is skipped.
+function cacheRefillEvents(eventRecord, agents) {
+  const labels = labelsById(agents);
+  const events = [];
+  for (const refill of Array.isArray(eventRecord?.refills) ? eventRecord.refills : []) {
+    const atMs = instant(refill?.at);
+    if (atMs === null || !REFILL_KINDS.has(refill.kind) || !labels.has(refill.agentId)) continue;
+    events.push(candidate("cache_refill", atMs, `agent:${refill.agentId}`, { agentId: refill.agentId, agentLabel: labels.get(refill.agentId), refill: refill.kind }, refill.kind));
+  }
+  return events;
+}
+
+// The session's recorded automatic and manual compaction times.
+function compactionEvents(eventRecord, agents) {
+  const labels = labelsById(agents);
+  const events = [];
+  for (const compaction of Array.isArray(eventRecord?.compactions) ? eventRecord.compactions : []) {
+    const atMs = instant(compaction?.at);
+    if (atMs === null || !COMPACTION_TRIGGERS.has(compaction.trigger) || !labels.has(compaction.agentId)) continue;
+    events.push(candidate("context_compacted", atMs, `agent:${compaction.agentId}`, { agentId: compaction.agentId, agentLabel: labels.get(compaction.agentId), compaction: compaction.trigger }, compaction.trigger));
+  }
+  return events;
+}
+
 // Loading while any gating section is loading, so a partial list is never served as ready;
 // unavailable while one is unavailable and none is loading; otherwise ready.
 function feedReadiness(readiness) {
@@ -176,14 +217,16 @@ function compare(left, right) {
  * - pullRequestCreations / pullRequests: recorded creations and the public pull-request list.
  * - commitTimes: the recorded in-window commit times from the repository snapshot (timestamps only).
  * - retainedResources: the committed retained-resource block.
+ * - eventRecord: the session's recorded refill and compaction times (see session-event-record.mjs).
  *
  * Returns { readiness, items, total }: `items` is the newest SESSION_EVENT_LIMIT events and
  * `total` counts the events derivable from the retained evidence before that cap. It is not a
  * count of everything that happened in the session: the sources are themselves bounded. Each
- * item has exactly the ten SessionEvent keys, with every field its kind does not use set to null.
+ * item has exactly the twelve SessionEvent keys, with every field its kind does not use set to null.
  */
 export function sessionEvents({
   readiness, session, agents, userMessageTimes, pullRequestCreations, pullRequests, commitTimes, retainedResources,
+  eventRecord,
 } = {}) {
   const feed = feedReadiness(readiness);
   if (feed !== "ready") return { readiness: feed, items: [], total: 0 };
@@ -194,6 +237,8 @@ export function sessionEvents({
     ...resourcePeakEvents(retainedResources),
     ...commitEvents(commitTimes),
     ...pullRequestEvents(pullRequestCreations, pullRequests),
+    ...cacheRefillEvents(eventRecord, agents),
+    ...compactionEvents(eventRecord, agents),
   ].sort(compare);
   // Equal (kind, scope, time) events are interchangeable, so an ordinal in sorted order keeps
   // their IDs distinct and stable. Only the capped items are hashed.

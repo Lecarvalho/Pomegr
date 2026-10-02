@@ -5,7 +5,7 @@ import { SessionEventsPanel } from "../dashboard/SessionEventsPanel";
 import { Sample, Section } from "./DesignSystemKit";
 
 function event(id: string, kind: SessionEvent["kind"], at: string, fields: Partial<SessionEvent> = {}): SessionEvent {
-  return { id, kind, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, ...fields };
+  return { id, kind, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null, ...fields };
 }
 
 // Newest first, one row per kind plus a few repeats, so the 9-row desktop cap leaves an expander.
@@ -17,6 +17,8 @@ const ITEMS: SessionEvent[] = [
   event("e07", "agent_started", "2026-08-09T11:17:00.000Z", { agentId: "explore-summary", agentLabel: "Explore: summary domain" }),
   event("e06", "signal_reported", "2026-08-09T11:12:00.000Z", { signal: { label: "Privacy verified", tone: "positive" } }),
   event("e05", "resource_peak", "2026-08-09T11:05:00.000Z", { resource: "memory_bytes" }),
+  event("e04b", "cache_refill", "2026-08-09T11:01:00.000Z", { agentId: "primary", agentLabel: "Primary agent", refill: "possible_full" }),
+  event("e04a", "context_compacted", "2026-08-09T11:00:00.000Z", { agentId: "primary", agentLabel: "Primary agent", compaction: "automatic" }),
   event("e04", "user_message", "2026-08-09T10:58:00.000Z"),
   event("e03", "pull_request_opened", "2026-08-09T10:41:00.000Z", { pullRequestNumber: 43 }),
   event("e02", "agent_stopped", "2026-08-09T10:30:00.000Z", { agentId: "explore-tests", agentLabel: "Explore: tests", durationMs: 1_500_000 }),
@@ -44,6 +46,6 @@ export function EventsRailSection() {
         <div className="designSystemEventsFrame"><SessionEventsPanel headingId="design-system-events-unavailable" events={UNAVAILABLE} onNavigate={ignore} /></div>
       </Sample>
     </div>
-    <p className="designSystemNote">Glyphs stay muted for every kind; the label names the transition, so no row carries a tone color. Rows read only the normalized fields their kind owns and never print prompt, command, or file content. Timestamps are the evidence time, and a commit row says Git-observed in its detail.</p>
+    <p className="designSystemNote">Glyphs stay muted for every kind; the label names the transition, so no row carries a tone color. Rows read only the normalized fields their kind owns and never print prompt, command, or file content. Timestamps are the evidence time, and a commit row says Git-observed in its detail. A cache-refill row names its recorded kind and marks the elapsed-lifetime partial refill as an inference.</p>
   </Section>;
 }
