@@ -48,6 +48,12 @@ export async function assertPackagedElectronRuntime(options = {}) {
   }
 }
 
+export function onParentMessage(listener) {
+  if (typeof process.send === "function") process.on("message", listener);
+  else if (parentPort) parentPort.on("message", (event) => listener(event.data));
+  else workerParentPort?.on("message", listener);
+}
+
 export function installShutdown(close) {
   let closing = false;
   const shutdown = async (exitCode = 0) => {
@@ -57,21 +63,9 @@ export function installShutdown(close) {
     send({ type: "stopped" });
     setImmediate(() => process.exit(exitCode));
   };
-  if (typeof process.send === "function") {
-    process.on("message", (message) => {
-      if (message?.type === "shutdown") void shutdown();
-    });
-  } else {
-    if (parentPort) {
-      parentPort.on("message", (event) => {
-        if (event.data?.type === "shutdown") void shutdown();
-      });
-    } else {
-      workerParentPort?.on("message", (message) => {
-        if (message?.type === "shutdown") void shutdown();
-      });
-    }
-  }
+  onParentMessage((message) => {
+    if (message?.type === "shutdown") void shutdown();
+  });
   for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void shutdown(); });
   return shutdown;
 }

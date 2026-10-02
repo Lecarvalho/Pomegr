@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import http from "node:http";
+import { EventEmitter } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createMonitorWorker } from "../desktop/runtime/monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn } from "../desktop/runtime/monitor-worker.mjs";
 import { startShellRuntime } from "../desktop/runtime/shell-orchestrator.mjs";
 import { waitForMessage } from "../desktop/runtime/utility-lifecycle.mjs";
 import {
@@ -16,6 +17,23 @@ import {
 
 const TOKEN = "A".repeat(43);
 const STOP_OPTIONS = { gracefulTimeoutMs: 100, killTimeoutMs: 5_000 };
+
+test("sign-in recovery waits for the fixed worker acknowledgement and releases listeners", async () => {
+  const child = new EventEmitter();
+  child.postMessage = (message) => assert.deepEqual(message, { type: "claude-sign-in-completed" });
+  let settled = false;
+  const pending = refreshClaudeUsageAfterSignIn(child).then(() => { settled = true; });
+  child.emit("message", { type: "ready" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false);
+  child.emit("message", { type: "claude-usage-rechecked" });
+  await pending;
+  assert.equal(child.listenerCount("message"), 0);
+  assert.equal(child.listenerCount("exit"), 0);
+  assert.equal(child.listenerCount("error"), 0);
+  await refreshClaudeUsageAfterSignIn(child, 1);
+  assert.equal(child.listenerCount("message"), 0);
+});
 const workerSource = `
   const { parentPort, workerData } = require('node:worker_threads');
   const http = require('node:http');

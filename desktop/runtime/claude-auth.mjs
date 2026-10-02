@@ -143,7 +143,11 @@ export function createClaudeSignInAction(options = {}) {
       }
       const observer = observeChild(child, { timeoutMs, shutdownTimeoutMs });
       active = Object.freeze({ child, observer });
-      return await observer.result;
+      const status = await observer.result;
+      if (status === "completed") {
+        try { await options.onCompleted?.(); } catch { /* Sign-in succeeded even if the monitor is shutting down. */ }
+      }
+      return status;
     } catch {
       return "failed";
     } finally {

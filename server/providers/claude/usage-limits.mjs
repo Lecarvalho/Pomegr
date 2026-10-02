@@ -132,15 +132,15 @@ export function createClaudeUsageLimitsReader(options = {}) {
     return retainedLocal;
   }
 
-  return async function readUsageLimits() {
+  return async function readUsageLimits({ afterSignIn = false } = {}) {
     const activeRemote = coordinatedRemote();
     const localUsage = local();
     // Keep model-specific windows current on the existing shared API cooldown.
     // A fresh local pair can be served immediately while that request is pending.
-    const remoteRead = activeRemote.get();
+    const remoteRead = activeRemote.get({ afterSignIn });
     const completedRemote = activeRemote.peek();
     if (completedRemote) acceptRemote(completedRemote);
-    if (localUsage && freshness(localUsage, true) === "fresh") {
+    if (!afterSignIn && localUsage && freshness(localUsage, true) === "fresh") {
       void remoteRead.then((usage) => { if (currentRemote(activeRemote)) acceptRemote(usage); }).catch(() => {});
       const selected = newestSuccessful;
       return withRetainedLimits(selected ? {

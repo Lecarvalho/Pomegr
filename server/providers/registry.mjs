@@ -458,7 +458,7 @@ export function createProviderRegistry(adapters, options = {}) {
       try {
         let value;
         try {
-          value = await provider.readUsageLimits();
+          value = await provider.readUsageLimits({ afterSignIn: options.afterSignIn === true });
         } catch {
           recordDiagnostic(provider.id, "usageLimitReadFailures");
           return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });

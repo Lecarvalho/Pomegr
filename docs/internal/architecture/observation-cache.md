@@ -2211,7 +2211,13 @@ existing user configuration while installing the bridge. The second launches onl
 Claude Code's own sign-in flow. They accept no renderer-supplied paths, commands, or URLs;
 return only allowlisted outcomes; and neither read nor expose credentials. No HTTP
 control route exists. Serving GETs remain cache-only and never launch setup, sign-in,
-provider acquisition, or normalization. Recovery uses normal background retry cadence.
+provider acquisition, or normalization. Successful native sign-in immediately queues
+the U1 usage job through a fixed private worker message. It waits for an older job
+to finish, retries rejected or missing authentication without the ordinary five-minute
+delay, and publishes the completed normalized result. Successful checks and provider
+throttling retain their cooldowns; ordinary recovery uses the background retry cadence.
+The native action waits for a bounded completion acknowledgement, then F revalidates
+the shared usage store with a cache-only GET instead of waiting for its next poll.
 F expands usage connection help for a recorded failure even while last-good readings
 remain available, and removes it after recovery. Browser help supplies the fixed manual
 sign-in command for the monitor computer; desktop sign-in remains explicit and native.

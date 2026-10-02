@@ -40,6 +40,41 @@ function delayedRepositoryInventory(ready) {
   };
 }
 
+test("native sign-in recovery follows an in-flight usage job and commits without GET acquisition", async (context) => {
+  const provider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities(),
+    homePolicy: { requestModelObservations: false, modelSelection: false, usageLimitActivity: { enabled: false } } };
+  const reads = [];
+  let finish;
+  const firstRead = new Promise((resolve) => { finish = resolve; });
+  const registry = {
+    providers: [provider], defaultProvider: provider, providerForSessionId: () => provider,
+    async resolveCapabilities() { return provider.capabilities; },
+    async readUsageLimits(_provider, options) {
+      reads.push(options.afterSignIn);
+      if (reads.length === 1) return firstRead;
+      return createEmptyUsageLimits({ fetchedAt: "2026-10-02T12:00:00.000Z" });
+    },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    unavailableMessage: () => "Unavailable",
+    async startObservers() { return { async stop() {} }; },
+  };
+  const runtime = createMonitorRuntime({ providerRegistry: registry, checkpointStore: false,
+    resourceUsageSampler: { async sample() {}, get() { return null; } } });
+  context.after(() => runtime.stopObservation());
+  await runtime.startObservation();
+  await waitFor(() => reads.length === 1, "startup usage read starts");
+  const recovery = runtime.refreshUsageAfterClaudeSignIn();
+  runtime.serveUsageLimits();
+  assert.deepEqual(reads, [false]);
+  finish(createEmptyUsageLimits({ failureKind: "authentication_required" }));
+  await recovery;
+  assert.deepEqual(reads, [false, true]);
+  const served = runtime.serveUsageLimits();
+  assert.equal(served.snapshot.value.providers[0].usageLimits.failureKind, null);
+  runtime.serveUsageLimits();
+  assert.equal(reads.length, 2, "GET serving never starts a usage request");
+});
+
 test("repository sidecar loads serialize across stopped startup lifetimes", { timeout: 5_000 }, async () => {
   let releaseFirst;
   const firstLoad = new Promise((resolve) => { releaseFirst = resolve; });
