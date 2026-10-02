@@ -219,7 +219,7 @@ documented in [MCP observation queries](../architecture/mcp-queries.md).
 
 ### Claude Code native naming
 
-Claude Code additionally exposes `rename_session`. The main agent supplies one concise title; a trusted `PreToolUse` hook binds the mutation to the current native `session_id` and preserves any explicit user title. Subagents never rename the main session. If the bridge cannot safely identify or update the session, it fails closed and provider automatic naming remains the fallback.
+Claude Code additionally exposes `rename_session`. The main agent supplies one concise title; a trusted `PreToolUse` hook binds the mutation to the current native `session_id` and the new title replaces the current one, including a title `/clear` carried over from the preceding session or one set with `/rename`. Subagents never rename the main session. If the bridge cannot safely identify or update the session, it fails closed and provider automatic naming remains the fallback.
 
 Codex does not receive this Claude-specific control bridge. Its provider-native automatic task title is the fallback unless Codex exposes another safe title capability.
 
