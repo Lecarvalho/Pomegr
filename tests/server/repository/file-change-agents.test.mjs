@@ -98,7 +98,7 @@ test("an index without agent identities backfills them once from retained checkp
   assert.equal(changes, 1, "the backfill replay never duplicates recorded changes");
 });
 
-test("the repository domain prefers the visible agent's fields, falls back to the recorded identity, and drops invalid agents", () => {
+test("the repository domain's touchedFiles prefers the visible agent's fields, falls back to the recorded identity, and drops invalid agents", () => {
   const base = createEmptyMonitorState({ connected: true, source: "Claude Code", view: "history" });
   const state = { ...base, session: { id: "claude:s1" }, agents: [{ id: "primary", label: "Main", model: "claude-opus-5-5" }] };
   const fileHistory = { readiness: "ready", truncated: false, files: [{
@@ -112,7 +112,7 @@ test("the repository domain prefers the visible agent's fields, falls back to th
     ],
   }] };
   const project = (history) => projectSessionDomains("claude:s1", { publicState: state, readiness: {}, observedAt: null }, { fileHistory: history })
-    .domains.get("repository").fileHistory.files[0].agents;
+    .domains.get("repository").touchedFiles.files[0].agents;
   assert.deepEqual(project(fileHistory), [
     { id: "primary", label: "Main", assignment: "Ship the fix", model: "claude-opus-5-5", changeCount: 2 },
     { id: "agent-gone", label: "Explore", assignment: "Map the docs", model: "claude-haiku-4-5", changeCount: 1 },

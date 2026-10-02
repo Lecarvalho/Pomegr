@@ -189,7 +189,7 @@ describe("repository detail git", () => {
       domain: "repository", sessionId: "claude:live-git", revision: 1, readiness: "ready", observedAt: "2026-09-22T12:00:05.000Z",
       repositoryId, contextInventoryRef: null, repository: baseRepository, unavailableReason: null,
       pullRequests: { status: "ready", checkedAt: "2026-09-22T12:00:00.000Z", items: [] },
-      recordedAt: null, commitsInSession: 1, gitTasks: null, fileHistory: { readiness: "unavailable", files: [], truncated: false }, gitObservedFiles: null,
+      recordedAt: null, commitsInSession: 1, gitTasks: null, touchedFiles: { readiness: "unavailable", files: [], truncated: false },
       ...overrides,
     } as RepositoryDomain;
   }

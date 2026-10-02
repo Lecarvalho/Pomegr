@@ -604,7 +604,7 @@ The evidence recapture ran after the final source change.
 store cycle; GETs read an in-memory map. Repository: the historical snapshot is a 64 KiB
 `repository-<hash>.json` sidecar beside the checkpoint, validated as a whole record, with
 the checkpoint schema unchanged; `RepositoryDomain` gains `recordedAt`,
-`commitsInSession`, `gitTasks` and a served `fileHistory`. File history:
+`commitsInSession`, `gitTasks` and a served `touchedFiles` list. File history:
 `GET /api/repository-files` (listing, or one file's history by `fileId` or `path`),
 `no-store` with the revision in the body, LAN-allowlisted. Repository tab order is
 Overview, Files, Git, Plugin, Context inventory, Reporting. Docs: architecture/observation-cache.md
