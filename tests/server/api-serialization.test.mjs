@@ -201,11 +201,15 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
           assert.equal(Number.isSafeInteger(occurrence.cacheLifetimeInference.elapsedMs) && occurrence.cacheLifetimeInference.elapsedMs >= 0, true);
         }
         if (occurrence.toolChangeAttribution !== null) {
-          assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), ["cause", "changes"]);
+          const { cause, changes, addedDefinitionCount } = occurrence.toolChangeAttribution;
           assert.equal(occurrence.reason, "tools_changed");
-          assert.equal(occurrence.toolChangeAttribution.cause, "remote_control_connected");
-          assert.equal(Array.isArray(occurrence.toolChangeAttribution.changes) && occurrence.toolChangeAttribution.changes.length > 0 && occurrence.toolChangeAttribution.changes.length <= 8, true);
-          for (const change of occurrence.toolChangeAttribution.changes) {
+          assert.match(cause, /^(remote_control_connected|deferred_definitions_loaded)$/);
+          assert.deepEqual(Object.keys(occurrence.toolChangeAttribution).sort(), cause === "deferred_definitions_loaded" ? ["addedDefinitionCount", "cause", "changes"] : ["cause", "changes"]);
+          if (cause === "deferred_definitions_loaded") {
+            assert.deepEqual(changes, []);
+            assert.equal(Number.isSafeInteger(addedDefinitionCount) && addedDefinitionCount >= 1 && addedDefinitionCount <= 64, true);
+          } else assert.equal(Array.isArray(changes) && changes.length > 0 && changes.length <= 8, true);
+          for (const change of changes) {
             assert.deepEqual(Object.keys(change).sort(), ["kind", "tool"]);
             assert.match(change.tool, /^(RemoteTrigger|PushNotification|ListAgents)$/);
             assert.match(change.kind, /^(added|definition_changed)$/);
@@ -224,9 +228,9 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
       assert.equal(attributedRefills <= diagnosedToolChanges, true);
       for (const attribution of refill.toolChangeAttributions) {
         assert.deepEqual(Object.keys(attribution).sort(), ["cause", "changes", "count"]);
-        assert.equal(attribution.cause, "remote_control_connected");
+        assert.match(attribution.cause, /^(remote_control_connected|deferred_definitions_loaded)$/);
         assert.equal(Number.isSafeInteger(attribution.count) && attribution.count > 0 && attribution.count <= refill.count, true);
-        assert.equal(Array.isArray(attribution.changes) && attribution.changes.length > 0 && attribution.changes.length <= 8, true);
+        assert.equal(Array.isArray(attribution.changes) && attribution.changes.length <= 8 && (attribution.changes.length > 0) === (attribution.cause === "remote_control_connected"), true);
         for (const change of attribution.changes) {
           assert.deepEqual(Object.keys(change).sort(), ["kind", "tool"]);
           assert.match(change.tool, /^(RemoteTrigger|PushNotification|ListAgents)$/);

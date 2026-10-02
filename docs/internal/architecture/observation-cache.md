@@ -163,7 +163,7 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v10` and Codex's `codex-activity-v4` source
+Claude's `conversation-activity-v11` and Codex's `codex-activity-v4` source
 fingerprints trigger rehydration of checkpoints produced before the current
 work-kind classification, Claude recorded request send times, and Codex
 completed-item coverage; see the [provider tool inventory](tool-inventory.md).
@@ -887,7 +887,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v10`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v11`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged

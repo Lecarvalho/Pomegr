@@ -28,7 +28,22 @@ const CACHE_TOOL_CHANGE_CAUSES = new Map([
     Object.freeze({ tool: "PushNotification", kind: "added" }),
     Object.freeze({ tool: "ListAgents", kind: "definition_changed" }),
   ])],
+  // Newly recorded deferred definitions: a bounded count, never which tools.
+  ["deferred_definitions_loaded", Object.freeze([])],
 ]);
+const MAX_ADDED_DEFINITIONS = 64;
+
+/** Fixed attribution for a recognized `tools_changed` reason, or null; a loaded-definitions cause needs a valid count. */
+function toolChangeAttributionFor(snapshot, recognizedReason) {
+  const cause = snapshot.cacheToolChangeCause;
+  if (recognizedReason !== "tools_changed" || typeof cause !== "string" || !CACHE_TOOL_CHANGE_CAUSES.has(cause)) return null;
+  const attribution = { cause, changes: CACHE_TOOL_CHANGE_CAUSES.get(cause).map((change) => ({ ...change })) };
+  if (cause !== "deferred_definitions_loaded") return attribution;
+  const added = snapshot.cacheToolChangeAddedDefinitionCount;
+  return Number.isSafeInteger(added) && added >= 1 && added <= MAX_ADDED_DEFINITIONS
+    ? { ...attribution, addedDefinitionCount: added }
+    : null;
+}
 
 function timestampMs(value) {
   const milliseconds = Date.parse(value || "");
@@ -156,11 +171,7 @@ export function buildCacheEvidence({
       && CACHE_REFILL_PROVIDER_STATUSES.has(snapshot.cacheMissProviderStatus)
       ? snapshot.cacheMissProviderStatus
       : null;
-    const recognizedToolChangeCause = recognizedReason === "tools_changed"
-      && typeof snapshot.cacheToolChangeCause === "string"
-      && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
-      ? snapshot.cacheToolChangeCause
-      : null;
+    const toolChangeAttribution = toolChangeAttributionFor(snapshot, recognizedReason);
     const messageChangeSequence = recognizedReason === "messages_changed"
       && typeof snapshot.cacheMessageChangeSequence === "string"
       && CACHE_MESSAGE_CHANGE_SEQUENCES.has(snapshot.cacheMessageChangeSequence)
@@ -187,10 +198,7 @@ export function buildCacheEvidence({
           providerStatus,
           cacheLifetimeInference: null,
           messageChangeSequence,
-          toolChangeAttribution: recognizedToolChangeCause ? {
-            cause: recognizedToolChangeCause,
-            changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),
-          } : null,
+          toolChangeAttribution,
         });
         possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
       }
@@ -241,10 +249,7 @@ export function buildCacheEvidence({
           providerStatus,
           cacheLifetimeInference,
           messageChangeSequence,
-          toolChangeAttribution: recognizedToolChangeCause ? {
-            cause: recognizedToolChangeCause,
-            changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),
-          } : null,
+          toolChangeAttribution,
         });
         possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
       }
@@ -261,12 +266,13 @@ export function buildCacheEvidence({
       }
       if (
         previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
-        && recognizedToolChangeCause
+        && toolChangeAttribution
       ) {
+        // Totals count occurrences only; the per-occurrence added count is never summed.
         const attributions = possibleToolChangeAttributionsByActor.get(snapshot.actorId) || new Map();
-        attributions.set(recognizedToolChangeCause, Math.min(
+        attributions.set(toolChangeAttribution.cause, Math.min(
           CACHE_EVENT_RULES.maximumAgentRefillCount,
-          (attributions.get(recognizedToolChangeCause) || 0) + 1,
+          (attributions.get(toolChangeAttribution.cause) || 0) + 1,
         ));
         possibleToolChangeAttributionsByActor.set(snapshot.actorId, attributions);
       }

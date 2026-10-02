@@ -90,7 +90,7 @@ function publicCacheEvents(value) {
         ...fields(occurrence, ["observedAt", "kind", "reason", "providerStatus", "messageChangeSequence"]),
         cacheLifetimeInference: fields(occurrence.cacheLifetimeInference, ["cause", "cacheLifetime", "elapsedMs"]),
         toolChangeAttribution: occurrence.toolChangeAttribution ? {
-          ...fields(occurrence.toolChangeAttribution, ["cause"]),
+          ...fields(occurrence.toolChangeAttribution, ["cause", "addedDefinitionCount"]),
           changes: list(occurrence.toolChangeAttribution.changes, (change) => fields(change, ["tool", "kind"])),
         } : null,
       })),

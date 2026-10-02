@@ -413,7 +413,7 @@ const evidenceUsageSnapshot = z.object({
   cacheReadComparable: z.boolean().optional(), cacheReadPreviousAt: evidenceTimestamp.nullable().optional(), requestSentAt: evidenceTimestamp.nullable().optional(),
   cacheMissReason: z.enum(["model_changed", "system_changed", "tools_changed", "messages_changed"]).nullable().optional(),
   cacheMissDiagnosticState: z.enum(["absent", "recognized_reason", "previous_cache_entry_unavailable", "inconclusive"]).optional(),
-  cacheMissProviderStatus: z.literal("previous_cache_entry_unavailable").nullable().optional(), cacheToolChangeCause: z.literal("remote_control_connected").nullable().optional(),
+  cacheMissProviderStatus: z.literal("previous_cache_entry_unavailable").nullable().optional(), cacheToolChangeCause: z.enum(["remote_control_connected", "deferred_definitions_loaded"]).nullable().optional(), cacheToolChangeAddedDefinitionCount: z.number().int().min(1).max(64).optional(),
   cacheMessageChangeSequence: z.literal("post_tool_task_notification_resume").nullable().optional(),
   precedingWork: z.array(evidenceWorkCount).max(8).default([]),
   issuedWork: z.array(evidenceWorkCount).max(8).default([]),

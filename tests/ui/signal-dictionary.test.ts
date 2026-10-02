@@ -24,6 +24,7 @@ describe("signal dictionary", () => {
       CACHE_REFILL_PROVIDER_STATUS_SIGNAL_DEFINITIONS.previous_cache_entry_unavailable,
       CACHE_LIFETIME_INFERENCE_SIGNAL_DEFINITIONS.cache_lifetime_elapsed,
       CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.remote_control_connected,
+      CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.deferred_definitions_loaded,
       CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS.post_tool_task_notification_resume,
       cacheReadReuseDroppedModelChangeSignalDefinition(),
     ];
@@ -51,6 +52,16 @@ describe("signal dictionary", () => {
       ...occurrence,
       toolChangeAttribution: { cause: "remote_control_connected", changes: [] },
     })?.code).toBe("cache.tools_changed.remote_control_connected");
+    expect(cacheRefillSignalDefinition({
+      ...occurrence,
+      toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount: 8 },
+    })?.code).toBe("cache.tools_changed.deferred_definitions_loaded");
+    for (const addedDefinitionCount of [undefined, 0, 65, 2.5, Number.NaN, "8" as unknown as number]) {
+      expect(cacheRefillSignalDefinition({
+        ...occurrence,
+        toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount },
+      })?.code).toBe("cache.tools_changed");
+    }
     expect(cacheRefillSignalDefinition({
       ...occurrence,
       reason: "messages_changed",

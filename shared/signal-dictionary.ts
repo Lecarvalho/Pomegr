@@ -74,7 +74,20 @@ export const CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS = {
     "cache-tools-changed-remote-control-connected",
     "Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.",
   ),
+  deferred_definitions_loaded: definition(
+    "cache.tools_changed.deferred_definitions_loaded",
+    "cache-tools-changed-deferred-definitions-loaded",
+    "Claude reported changed tool definitions, and Pomegr saw new tool definitions recorded after a tool search.",
+  ),
 } as const;
+
+export const DEFERRED_DEFINITION_COUNT_CAP = 64;
+
+/** The bounded added-definition count of a deferred-definitions attribution, or null when missing or out of range. */
+export function deferredDefinitionCount(attribution: { addedDefinitionCount?: unknown } | null | undefined) {
+  const count = attribution?.addedDefinitionCount;
+  return typeof count === "number" && Number.isSafeInteger(count) && count >= 1 && count <= DEFERRED_DEFINITION_COUNT_CAP ? count : null;
+}
 
 export const CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS: Record<CacheMessageChangeSequence, CacheSignalDefinition> = {
   post_tool_task_notification_resume: {
@@ -109,8 +122,10 @@ export function cacheReadReuseDroppedModelChangeSignalDefinition(): CacheSignalD
 export function cacheRefillSignalDefinition(occurrence: Pick<CacheRefillOccurrence, "cacheLifetimeInference" | "kind" | "messageChangeSequence" | "providerStatus" | "reason" | "toolChangeAttribution">) {
   if (occurrence.kind === "provider_diagnosed") return CACHE_PROVIDER_DIAGNOSED_REFILL_SIGNAL_DEFINITION;
   if (occurrence.messageChangeSequence) return CACHE_MESSAGE_CHANGE_SIGNAL_DEFINITIONS[occurrence.messageChangeSequence];
-  if (occurrence.reason === "tools_changed" && occurrence.toolChangeAttribution?.cause === "remote_control_connected") {
-    return CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.remote_control_connected;
+  const toolChange = occurrence.reason === "tools_changed" ? occurrence.toolChangeAttribution : null;
+  if (toolChange?.cause === "remote_control_connected") return CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.remote_control_connected;
+  if (toolChange?.cause === "deferred_definitions_loaded" && deferredDefinitionCount(toolChange) !== null) {
+    return CACHE_TOOL_CHANGE_SIGNAL_DEFINITIONS.deferred_definitions_loaded;
   }
   if (occurrence.reason) return CACHE_REFILL_REASON_SIGNAL_DEFINITIONS[occurrence.reason] || null;
   if (occurrence.providerStatus) return CACHE_REFILL_PROVIDER_STATUS_SIGNAL_DEFINITIONS[occurrence.providerStatus] || null;

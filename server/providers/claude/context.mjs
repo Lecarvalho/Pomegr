@@ -253,9 +253,90 @@ function remoteControlActiveRecord(record) {
     && record.content.startsWith(REMOTE_CONTROL_ACTIVE_PREFIX);
 }
 
+const DEFERRED_DEFINITIONS_LOADED = "deferred_definitions_loaded";
+const MAX_ADDED_DEFINITIONS = 64;
+const MAX_DEFINITION_NAME_LENGTH = 256;
+
+/** Entry names of a provider-written `deferred_tools_record`, null for any other record; an unreadable entry is null. */
+function deferredDefinitionNames(record) {
+  const attachment = record?.type === "attachment" ? record.attachment : null;
+  if (!plainObject(attachment) || attachment.type !== "deferred_tools_record" || !Array.isArray(attachment.entries)) return null;
+  return attachment.entries.map((entry) => (plainObject(entry) && typeof entry.name === "string"
+    && entry.name.length > 0 && entry.name.length <= MAX_DEFINITION_NAME_LENGTH ? entry.name : null));
+}
+
+/**
+ * Requests whose first distinct successor records newly added deferred tool definitions after a
+ * matched ToolSearch call: identity -> bounded count and whether a bridge record fell in the interval.
+ * Names are replayed only to tell new from known; no name, description or schema leaves this function.
+ */
+function inferredDeferredDefinitionLoads(records) {
+  const loads = new Map();
+  const known = new Set();
+  /** @type {{ id: string, searchIds: Set<string>, resolved: boolean, bridge: boolean } | null} */
+  let request = null;
+  /** @type {{ requestId: string, added: number, targetId: string, bridge: boolean } | null} */
+  let pending = null;
+  for (const record of records) {
+    const identity = assistantIdentity(record);
+    if (assistantRecord(record) && !identity) {
+      // An assistant record with no identity could be an intervening request.
+      pending = null;
+      request = null;
+      continue;
+    }
+    if (identity) {
+      // The preceding request answering again after the record puts the record inside it, not between.
+      if (pending && identity === pending.requestId) pending = null;
+      else if (pending && !pending.targetId) pending.targetId = identity;
+      else if (pending && pending.targetId !== identity) pending = null;
+      const current = request?.id === identity ? request : { id: identity, searchIds: new Set(), resolved: false, bridge: false };
+      request = current;
+      for (const block of structuredContent(record)) {
+        if (plainObject(block) && block.type === "tool_use" && block.name === "ToolSearch") current.searchIds.add(boundedIdentity(block.id));
+      }
+      if (pending?.targetId === identity && normalizedCacheMissReason(record) === "tools_changed") {
+        loads.set(identity, { added: Math.min(MAX_ADDED_DEFINITIONS, pending.added), bridge: pending.bridge });
+      }
+      continue;
+    }
+    if (record?.type === "bridge-session" || (record?.type === "system" && record.subtype === "bridge_status")) {
+      if (request) request.bridge = true;
+      if (pending) pending.bridge = true;
+      continue;
+    }
+    const names = deferredDefinitionNames(record);
+    if (names) {
+      const added = new Set(names.filter((name) => name && !known.has(name)));
+      for (const name of added) known.add(name);
+      if (names.includes(null)) pending = null;
+      else if (added.size > 0 && request?.resolved) {
+        const open = pending && pending.requestId === request.id && !pending.targetId ? pending : null;
+        pending = { requestId: request.id, added: (open?.added || 0) + added.size, targetId: "", bridge: request.bridge };
+      }
+    } else if (request && !request.resolved && structuredToolResultIds(record).some((id) => request.searchIds.has(id))) {
+      request.resolved = true;
+    }
+  }
+  return loads;
+}
+
+/** Cause and, for a loaded-definitions cause, the added count. A bridge record or a Remote Control claim on the same request makes the load ambiguous. */
 function inferredToolChangeCauses(records, completeHistory, expectedSessionId) {
   const causes = new Map();
-  if (!completeHistory || !Array.isArray(records) || !expectedSessionId) return causes;
+  if (!completeHistory || !Array.isArray(records)) return causes;
+  const remoteControl = remoteControlConnectionCauses(records, expectedSessionId);
+  for (const [identity, { added, bridge }] of inferredDeferredDefinitionLoads(records)) {
+    if (remoteControl.delete(identity) || bridge) continue;
+    causes.set(identity, { cause: DEFERRED_DEFINITIONS_LOADED, added });
+  }
+  for (const [identity, cause] of remoteControl) causes.set(identity, { cause });
+  return causes;
+}
+
+function remoteControlConnectionCauses(records, expectedSessionId) {
+  const causes = new Map();
+  if (!expectedSessionId) return causes;
   let lastAssistantId = "";
   let distinctAssistantRequests = 0;
   let sawBridgeSession = false;
@@ -378,6 +459,7 @@ export function parseClaudeContextRecords(records, options = {}) {
   // Recorded time of the latest record since the previous assistant record, once an input record is
   // seen. An input record with no valid timestamp clears it rather than leaving an older time.
   let inputRecordedAt = null;
+  let sawAssistantRecord = false;
 
   for (const record of Array.isArray(records) ? records : []) {
     if (!assistantRecord(record)) chainRecord(record, Boolean(userInputContentType(record, requestedInputIds)));
@@ -396,6 +478,10 @@ export function parseClaudeContextRecords(records, options = {}) {
     // Every assistant record, including a provider error that is retried, consumes the input time.
     const recordedInputAt = inputRecordedAt;
     inputRecordedAt = null;
+    // A bounded window can open on a later fragment of a request, after the mid-answer record that
+    // precedes it; that record is not when the request was sent. A complete read opens at its start.
+    const opensWindow = options.completeHistory !== true && !sawAssistantRecord;
+    sawAssistantRecord = true;
     const issued = new Map();
     const issuedTools = [];
     for (const block of structuredContent(record)) {
@@ -428,12 +514,13 @@ export function parseClaudeContextRecords(records, options = {}) {
     if (!usage.cacheComparable || !observedTimestamp) comparisonGroup += 1;
     // Recorded send time: the input record just before the first fragment. It is a record time, never a
     // file time, and it cannot follow the answer it precedes. Absent when no such record is recorded.
-    const requestSentAt = recordedInputAt && observedTimestamp && Date.parse(recordedInputAt) <= assistantTime
+    const requestSentAt = !opensWindow && recordedInputAt && observedTimestamp && Date.parse(recordedInputAt) <= assistantTime
       ? recordedInputAt : null;
     const providerIdentity = boundedIdentity(record.message.id ?? record.requestId ?? record.uuid);
     const dedupeId = providerIdentity
       ? `${sourceKey}:message:${providerIdentity}`
       : `${sourceKey}:fallback-${fallbackIdentity(observedTimestamp || "unobserved", boundedModel(record.message.model), usage)}`;
+    const toolChange = toolChangeCauses.get(providerIdentity);
     const snapshot = {
       dedupeId,
       actorId,
@@ -450,7 +537,8 @@ export function parseClaudeContextRecords(records, options = {}) {
       cacheMissProviderStatus: normalizedCacheMissProviderStatus(record),
       // Monitor-private evidence state. Cache-event serialization never exposes it.
       cacheMissDiagnosticState: normalizedCacheMissDiagnosticState(record),
-      cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
+      cacheToolChangeCause: toolChange?.cause || null,
+      ...(toolChange?.added ? { cacheToolChangeAddedDefinitionCount: toolChange.added } : {}),
       cacheMessageChangeSequence: messageChangeSequences.get(providerIdentity) || null,
       // Monitor-private, optional. Only the first fragment of a request records it.
       ...(requestSentAt ? { requestSentAt } : {}),

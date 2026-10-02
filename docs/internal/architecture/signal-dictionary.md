@@ -144,6 +144,20 @@ What it does not prove: Remote Control caused the refill, no other tool changed,
 
 Privacy: browser state contains only the fixed attribution enum, fixed tool labels and change kinds, and stable public code. Provider session and bridge IDs, raw lifecycle records, tool schemas, prompts, results, and diagnostics remain monitor-private.
 
+<a id="cache-tools-changed-deferred-definitions-loaded"></a>
+
+### `cache.tools_changed.deferred_definitions_loaded`
+
+Class: bounded lifecycle attribution attached to provider diagnostic and refill evidence.
+
+Pomegr emits this code only when complete Claude Code transcript history shows a structured tool-search call answered by a tool result, then a record of tool definitions with names not recorded before, then a request carrying Claude's `tools_changed` diagnostic. The request must follow directly, with no other request in between and no Remote Control transition at the same occurrence. A recorded count outside 1 to 64 makes the code unavailable, and the plain `cache.tools_changed` definition applies instead. The same rule can accompany a provider-diagnosed refill, which keeps its own code.
+
+What it means: Claude reported changed tool definitions right after new definitions were recorded following a tool search. The browser shows the count of newly recorded definitions, such as "8 added", and renders 64 as "64 or more" because the count is capped.
+
+What it does not prove: that the loaded definitions caused the refill, which tools were loaded, that no other tool changed, or that the provider charged any amount. Pomegr always labels this conclusion as an inference.
+
+Privacy: browser state contains only the fixed attribution enum, an empty change list, the bounded count, and stable public code. Tool names, descriptions, schemas, search queries, results, and diagnostics remain monitor-private.
+
 <a id="cache-messages-changed-post-tool-notification-resume"></a>
 
 ### `cache.messages_changed.post_tool_notification_resume`

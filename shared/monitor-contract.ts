@@ -242,16 +242,15 @@ export type CacheRefillReasonCount = {
   count: number;
 };
 
-export type CacheToolDefinitionChange = {
-  tool: "RemoteTrigger" | "PushNotification" | "ListAgents";
-  kind: "added" | "definition_changed";
-};
+export type CacheToolDefinitionChange = { tool: "RemoteTrigger" | "PushNotification" | "ListAgents"; kind: "added" | "definition_changed" };
 
 export type CacheToolChangeAttributionCount = {
-  cause: "remote_control_connected";
+  cause: "remote_control_connected" | "deferred_definitions_loaded";
   count: number;
-  /** Fixed monitor-derived tool delta; provider schemas remain private. */
+  /** Fixed monitor-derived tool delta, Remote Control only (empty otherwise); provider schemas remain private. */
   changes: CacheToolDefinitionChange[];
+  /** Deferred definitions only, on an occurrence: 1 to 64, where 64 is a cap. Names stay private. */
+  addedDefinitionCount?: number;
 };
 
 export type CacheRefillOccurrence = {

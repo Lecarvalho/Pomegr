@@ -16,11 +16,13 @@ function snapshot(id, timestamp, {
   cacheMissProviderStatus = null,
   cacheMissDiagnosticState = "absent",
   cacheToolChangeCause = null,
+  cacheToolChangeAddedDefinitionCount = undefined,
   cacheMessageChangeSequence = null,
   requestSentAt = undefined,
 } = {}) {
   return {
     ...(requestSentAt === undefined ? {} : { requestSentAt }),
+    ...(cacheToolChangeAddedDefinitionCount === undefined ? {} : { cacheToolChangeAddedDefinitionCount }),
     dedupeId: id,
     actorId,
     timestamp,
@@ -554,4 +556,35 @@ test("counts each occurrence kind separately with its own 999 cap and exact seri
   assert.deepEqual(Object.keys(full[0]).sort(), [
     "cacheLifetimeInference", "messageChangeSequence", "observedAt", "providerStatus", "reason", "toolChangeAttribution",
   ]);
+});
+
+test("attributes loaded deferred definitions to either occurrence kind with a bounded count and no tool list", () => {
+  const cause = "deferred_definitions_loaded";
+  const attribution = { cause, changes: [], addedDefinitionCount: 8 };
+  const loaded = { cacheToolChangeCause: cause, cacheToolChangeAddedDefinitionCount: 8 };
+  const diagnosed = diagnosedFeed(diagnosedPair({ after: loaded })).feed.possibleFullRefills[0];
+  assert.deepEqual(diagnosed.occurrences[0].toolChangeAttribution, attribution);
+  assert.deepEqual([diagnosed.count, diagnosed.reasons, diagnosed.toolChangeAttributions], [0, [], []]);
+  const full = diagnosedFeed(diagnosedPair({ after: { cacheRead: 500, cacheWrite: 213_000, ...loaded } })).feed.possibleFullRefills[0];
+  assert.deepEqual(full.occurrences[0].toolChangeAttribution, attribution);
+  // Totals count occurrences; the per-occurrence count is never summed or repeated.
+  assert.deepEqual(full.toolChangeAttributions, [{ cause, count: 1, changes: [] }]);
+  assert.deepEqual(Object.keys(full.occurrences[0].toolChangeAttribution).sort(), ["addedDefinitionCount", "cause", "changes"]);
+  assert.deepEqual(diagnosedFeed(diagnosedPair({ after: { cacheRead: 500, cacheWrite: 213_000, ...loaded } })).refillRequests.length, 1);
+});
+
+test("a loaded-definitions attribution needs a tools_changed reason and a positive bounded integer count", () => {
+  const cause = "deferred_definitions_loaded";
+  const attributionOf = (after) => diagnosedFeed(diagnosedPair({ after })).feed.possibleFullRefills[0]?.occurrences[0]?.toolChangeAttribution;
+  assert.equal(attributionOf({ cacheToolChangeCause: cause, cacheToolChangeAddedDefinitionCount: 64 }).addedDefinitionCount, 64);
+  assert.equal(attributionOf({ cacheToolChangeCause: cause, cacheToolChangeAddedDefinitionCount: 1 }).addedDefinitionCount, 1);
+  for (const count of [undefined, 0, -1, 65, 1.5, "8", null, Number.NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(attributionOf({ cacheToolChangeCause: cause, cacheToolChangeAddedDefinitionCount: count }), null, String(count));
+  }
+  assert.equal(attributionOf({ cacheToolChangeCause: cause, cacheToolChangeAddedDefinitionCount: 8, cacheMissReason: "messages_changed" }), null);
+  assert.equal(attributionOf({ cacheToolChangeCause: "unrecognized_cause", cacheToolChangeAddedDefinitionCount: 8 }), null);
+  // Remote Control keeps its fixed list and never carries a count, even if one is supplied.
+  const remote = attributionOf({ cacheToolChangeCause: "remote_control_connected", cacheToolChangeAddedDefinitionCount: 8 });
+  assert.equal(remote.changes.length, 3);
+  assert.equal(Object.hasOwn(remote, "addedDefinitionCount"), false);
 });

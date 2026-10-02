@@ -557,15 +557,21 @@ const REFILL_COUNT: CacheRefillCount = { agentId: "primary", count: 0, occurrenc
 const REFILLS_DIAGNOSED = [{ ...REFILL_COUNT, providerDiagnosedCount: 2, occurrences: [{ ...REFILL_BASE, kind: "provider_diagnosed" as const }, { ...REFILL_BASE, kind: "provider_diagnosed" as const, observedAt: "2026-08-09T12:21:00.000Z", reason: "messages_changed" as const }] }];
 const REFILLS_POSSIBLE_FULL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, reason: "system_changed" as const }], reasons: [{ reason: "system_changed" as const, count: 1 }] }];
 
+const REMOTE_CONTROL_CHANGES = [{ tool: "RemoteTrigger", kind: "added" }, { tool: "PushNotification", kind: "added" }, { tool: "ListAgents", kind: "definition_changed" }] as const;
+const REFILLS_DEFERRED_DEFINITIONS = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "deferred_definitions_loaded" as const, changes: [], addedDefinitionCount: 8 } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "deferred_definitions_loaded" as const, count: 1, changes: [] }] }];
+const REFILLS_REMOTE_CONTROL = [{ ...REFILL_COUNT, count: 1, occurrences: [{ ...REFILL_BASE, toolChangeAttribution: { cause: "remote_control_connected" as const, changes: [...REMOTE_CONTROL_CHANGES] } }], reasons: [{ reason: "tools_changed" as const, count: 1 }], toolChangeAttributions: [{ cause: "remote_control_connected" as const, count: 1, changes: [...REMOTE_CONTROL_CHANGES] }] }];
+
 function CacheRefillEvidenceSection() {
   const frame = (sample: string, refills: CacheRefillCount[]) => {
     const view = cacheRefillEvidenceView(refills, ["primary"]);
     return <div data-sample={sample}><PopoverFrame id={`${sample}-popover`} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title={view.title} closeLabel="Close cache refill evidence" onClose={ignoreFocus} summary={view.summary}>{view.body}</PopoverFrame></div>;
   };
-  return <Section id="cache-refill-evidence" title="Cache refill evidence" lede="The agent cache popover lists a possible full refill (read share at most 10%) apart from a provider-diagnosed refill, where the provider named a reason while part of the prefix was still read from cache. Both render the real popover content, inert and with static data.">
+  return <Section id="cache-refill-evidence" title="Cache refill evidence" lede="The agent cache popover lists a possible full refill (read share at most 10%) apart from a provider-diagnosed refill, where the provider named a reason while part of the prefix was still read from cache. A tools-changed refill can carry a labeled inference: definitions loaded after a tool search (count only, never names) or the fixed Remote Control changes. All render the real popover content, inert and with static data.">
     <div className="designSystemGrid">
       {frame("refill-provider-diagnosed", REFILLS_DIAGNOSED)}
       {frame("refill-possible-full", REFILLS_POSSIBLE_FULL)}
+      {frame("refill-deferred-definitions", REFILLS_DEFERRED_DEFINITIONS)}
+      {frame("refill-remote-control", REFILLS_REMOTE_CONTROL)}
     </div>
   </Section>;
 }

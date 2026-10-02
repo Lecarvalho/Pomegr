@@ -2,7 +2,7 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import type { CacheReadDropCount, CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
-import { cacheReadReuseDroppedModelChangeSignalDefinition, cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
+import { DEFERRED_DEFINITION_COUNT_CAP, cacheReadReuseDroppedModelChangeSignalDefinition, cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition, deferredDefinitionCount } from "../../../shared/signal-dictionary";
 import { timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { ExternalLink } from "../ExternalLink";
@@ -97,6 +97,7 @@ const CACHE_REFILL_REASON_LABELS: Record<CacheRefillReason, string> = {
 
 const CACHE_TOOL_CHANGE_CAUSE_LABELS: Record<CacheToolChangeAttributionCount["cause"], string> = {
   remote_control_connected: "Remote Control connected",
+  deferred_definitions_loaded: "tool definitions loaded after a tool search",
 };
 const CACHE_TOOL_NAMES = new Set(["RemoteTrigger", "PushNotification", "ListAgents"]);
 const CACHE_TOOL_CHANGE_KIND_LABELS = {
@@ -158,6 +159,10 @@ function cacheRefillInference(toolChangeAttributions: ReturnType<typeof summariz
 function cacheRefillOccurrenceInference(attribution: CacheToolChangeAttributionCount | Omit<CacheToolChangeAttributionCount, "count"> | null) {
   if (!attribution || !Object.hasOwn(CACHE_TOOL_CHANGE_CAUSE_LABELS, attribution.cause)) return "";
   const cause = CACHE_TOOL_CHANGE_CAUSE_LABELS[attribution.cause];
+  if (attribution.cause === "deferred_definitions_loaded") {
+    const added = deferredDefinitionCount(attribution);
+    return added === null ? "" : `${cause} (${added === DEFERRED_DEFINITION_COUNT_CAP ? `${added} or more` : added} added)`;
+  }
   const changes = (attribution.changes || []).filter((change) => (
     CACHE_TOOL_NAMES.has(change.tool) && Object.hasOwn(CACHE_TOOL_CHANGE_KIND_LABELS, change.kind)
   )).map((change) => `${change.tool} (${CACHE_TOOL_CHANGE_KIND_LABELS[change.kind]})`).join(", ");
@@ -289,6 +294,7 @@ export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentI
               <dl className="cacheRefillEvidenceGrid">
                 <div><dt>Provider</dt><dd>{occurrence.reason}</dd></div>
                 <div><dt>Observed</dt><dd>{occurrence.signal?.observed || occurrence.inference || "No recognized lifecycle sequence."}</dd></div>
+                {occurrence.signal && occurrence.inference && <div><dt>Inference</dt><dd>{occurrence.inference}</dd></div>}
                 <div><dt>Impact</dt><dd>{occurrence.signal?.impact || "Possible full-refill thresholds were met."}</dd></div>
               </dl>
               {occurrence.signal && definition(occurrence.signal)}

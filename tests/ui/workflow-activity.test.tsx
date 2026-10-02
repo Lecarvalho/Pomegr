@@ -170,6 +170,7 @@ describe("workflow activity and agent tree view", () => {
     expect(occurrences[0]).toHaveTextContent("tool definitions changed");
     expect(occurrences[0].querySelector("time")).toHaveAttribute("datetime", "2026-08-15T12:01:00.000Z");
     expect(occurrences[0]).toHaveTextContent("Claude reported changed tool definitions, and Pomegr matched the fixed Remote Control connection transition.");
+    expect(occurrences[0]).toHaveTextContent("InferenceRemote Control connected; likely changed RemoteTrigger (added), PushNotification (added), ListAgents (definition changed)");
     expect(occurrences[0]).toHaveTextContent("cache.tools_changed.remote_control_connected");
     expect(within(occurrences[0]).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", "https://github.com/Lecarvalho/pomegr/blob/main/docs/internal/architecture/signal-dictionary.md#cache-tools-changed-remote-control-connected");
     expect(occurrences[1]).toHaveTextContent("message history changed");
@@ -322,6 +323,52 @@ describe("workflow activity and agent tree view", () => {
     expect(lists[0]).toHaveTextContent("possible full-refill thresholds");
     expect(lists[1]).toHaveTextContent("tool definitions changed");
     expect(screen.getByRole("dialog", { name: "Cache refill evidence" })).toHaveTextContent("Possible full cache refill observed 1 time.");
+  });
+
+  it("shows a deferred-definitions inference with its count and never a tool name", async () => {
+    const user = userEvent.setup();
+    const occurrence = (addedDefinitionCount: number | undefined, extra: Partial<CacheRefillCount["occurrences"][number]> = {}) => ({
+      observedAt: "2026-08-15T12:02:00.000Z", reason: "tools_changed" as const, providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null,
+      toolChangeAttribution: { cause: "deferred_definitions_loaded" as const, changes: [], addedDefinitionCount }, ...extra,
+    });
+    const refills = (...occurrences: CacheRefillCount["occurrences"]): CacheRefillCount[] => [{
+      agentId: "primary", count: occurrences.filter(({ kind }) => !kind).length, ...(occurrences.some(({ kind }) => kind) ? { providerDiagnosedCount: 1 } : {}), occurrences, reasons: [{ reason: "tools_changed", count: 1 }],
+      toolChangeAttributions: [{ cause: "deferred_definitions_loaded", count: 1, changes: [] }],
+    }];
+    const { unmount } = render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={refills(occurrence(8))} />);
+
+    await user.click(screen.getByRole("button", { name: "Possible full cache refill observed 1 time. Provider diagnostic: tool definitions changed. Inference: tool definitions loaded after a tool search (8 added)." }));
+    const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
+    expect(popover).toHaveTextContent("Inferencetool definitions loaded after a tool search (8 added)");
+    expect(popover).toHaveTextContent("Claude reported changed tool definitions, and Pomegr saw new tool definitions recorded after a tool search.");
+    expect(popover).toHaveTextContent("cache.tools_changed.deferred_definitions_loaded");
+    expect(within(popover).getByRole("link", { name: "Open signal definition (opens in a new tab)" })).toHaveAttribute("href", expect.stringMatching(/#cache-tools-changed-deferred-definitions-loaded$/));
+    expect(popover).not.toHaveTextContent(/RemoteTrigger|PushNotification|ListAgents|Remote Control|likely changed/);
+    unmount();
+
+    const capped = render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={refills(occurrence(64))} />);
+    expect(screen.getByRole("button", { name: /Inference: tool definitions loaded after a tool search \(64 or more added\)\.$/ })).toBeInTheDocument();
+    capped.unmount();
+
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={refills(occurrence(1, { kind: "provider_diagnosed" }))} />);
+    await user.click(screen.getByRole("button", { name: /^Provider-diagnosed refill observed 1 time/ }));
+    expect(screen.getByRole("dialog", { name: "Cache refill evidence" })).toHaveTextContent("Inferencetool definitions loaded after a tool search (1 added)");
+  });
+
+  it.each([undefined, 0, 65, 2.5, Number.NaN])("renders no attribution text for a deferred-definitions count of %s", async (addedDefinitionCount) => {
+    const user = userEvent.setup();
+    render(<AgentHistoryIndicators agentIds={["primary"]} boundaries={[]} cacheRefills={[{
+      agentId: "primary", count: 1, reasons: [{ reason: "tools_changed", count: 1 }], toolChangeAttributions: [],
+      occurrences: [{ observedAt: "2026-08-15T12:02:00.000Z", reason: "tools_changed", providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: { cause: "deferred_definitions_loaded", changes: [], addedDefinitionCount } }],
+    }]} />);
+
+    const mark = screen.getByRole("button", { name: /Possible full cache refill observed 1 time/ });
+    expect(mark).not.toHaveAccessibleName(/Inference|loaded/);
+    await user.click(mark);
+    const popover = screen.getByRole("dialog", { name: "Cache refill evidence" });
+    expect(popover).not.toHaveTextContent(/Inference|loaded|added/);
+    expect(popover).toHaveTextContent("cache.tools_changed");
+    expect(popover).not.toHaveTextContent("deferred_definitions_loaded");
   });
 
   it("keeps the expiry inference for an unavailable previous cache entry", async () => {
