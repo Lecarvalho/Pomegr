@@ -208,6 +208,13 @@ export function ResourcesTab({ sessionId, historical, paused = false, peakField 
     setAppliedLink(linkKey);
     if (linkKey) setWindowState({ sessionId, window: "session" });
   }
+  // Stored evidence may arrive after the initial render, without any live samples.
+  if (windowState.sessionId === sessionId && windowState.window !== "session"
+    && resources?.readiness === "ready" && !liveWindowsEnabled(resources.live)
+    && resources.retained.readiness === "ready"
+    && (resources.retained.minutes.length > 0 || resources.retained.peaks.length > 0)) {
+    setWindowState({ sessionId, window: "session" });
+  }
   const selectedWindow = windowState.window;
 
   const [peakState, setPeakState] = useState<{ key: string; id: string | null }>({ key: `${sessionId}:${selectedWindow}`, id: null });
