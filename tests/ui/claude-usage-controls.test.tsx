@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ClaudeUsageControls } from "../../app/components/ClaudeUsageControls";
+import { getUsageLimitsStore } from "../../app/usage-limits-client";
 import type { UsageLimits } from "../../shared/monitor-contract";
 
 const rejected: UsageLimits = {
@@ -17,6 +18,7 @@ function desktop(bridge: Record<string, unknown>) {
 
 afterEach(() => {
   Reflect.deleteProperty(window, "pomegrDesktop");
+  vi.restoreAllMocks();
 });
 
 describe("Claude usage recovery", () => {
@@ -92,6 +94,7 @@ describe("Claude usage recovery", () => {
 
   it("waits for an explicit click and prevents duplicate sign-in actions", async () => {
     let complete!: (value: { status: string }) => void;
+    const refresh = vi.spyOn(getUsageLimitsStore(), "refresh").mockResolvedValue(true);
     const startClaudeSignIn = vi.fn(() => new Promise<{ status: string }>((resolve) => { complete = resolve; }));
     desktop({ startClaudeSignIn, getClaudeUsageIntegration: async () => ({ status: "disabled" }) });
     render(<ClaudeUsageControls usageLimits={rejected} />);
@@ -109,6 +112,7 @@ describe("Claude usage recovery", () => {
     expect(actions).not.toContainElement(screen.getByRole("status"));
     await act(async () => complete({ status: "completed" }));
     expect(screen.getByRole("status")).toHaveTextContent("Claude Code sign-in completed.");
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(button).toBeEnabled();
   });
 

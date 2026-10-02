@@ -34,7 +34,7 @@ import {
   secureBrowserWindowOptions,
 } from "./security-policy.mjs";
 import { waitForMessage } from "./utility-lifecycle.mjs";
-import { createMonitorWorker } from "./monitor-worker.mjs";
+import { createMonitorWorker, refreshClaudeUsageAfterSignIn } from "./monitor-worker.mjs";
 import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
@@ -511,6 +511,7 @@ async function startDesktop() {
     environment: providerEnvironment,
     nativeEnvironment: nativeClaudeEnvironment(providerEnvironment),
     confirm: confirmClaudeSignIn,
+    onCompleted: () => refreshClaudeUsageAfterSignIn(monitorChild),
   });
   repositoryPluginCli = createRepositoryPluginCli({ environment: providerEnvironment });
   providerSettingsController = createProviderSettingsController({

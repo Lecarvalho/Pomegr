@@ -4,6 +4,28 @@ import { Worker } from "node:worker_threads";
 import { removeAgentQueryDescriptorIfTokenMatches } from "../../shared/agent-query-transport.mjs";
 import { stopChild } from "./utility-lifecycle.mjs";
 
+/** A fixed native-only request; no credential data or renderer arguments cross it. */
+export function refreshClaudeUsageAfterSignIn(child, timeoutMs = 15_000) {
+  if (!child) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", finish);
+      child.removeListener("error", finish);
+      resolve();
+    };
+    const onMessage = (message) => {
+      if (message?.type === "claude-usage-rechecked") finish();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    child.on("message", onMessage);
+    child.once("exit", finish);
+    child.once("error", finish);
+    try { child.postMessage({ type: "claude-sign-in-completed" }); } catch { finish(); }
+  });
+}
+
 /** The parent owns descriptor cleanup even when the worker cannot run shutdown. */
 export function createMonitorWorker(entrypoint, options) {
   const { agentQueryDescriptorPath: descriptorPath, agentAuthorizationToken: token } = options.workerData;

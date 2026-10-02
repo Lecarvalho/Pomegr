@@ -46,15 +46,18 @@ test("Claude sign-in requires confirmation, keeps credentials private, and expos
   const executable = "C:\\Users\\Ada\\.local\\bin\\claude.exe";
   const files = nativeClaude(executable);
   let spawned = 0;
+  let refreshes = 0;
   const action = createClaudeSignInAction({
     environment: { USERPROFILE: "C:\\Users\\Ada", CLAUDE_CONFIG_DIR: "C:\\Users\\Ada\\.claude", SECRET: "must-not-pass" },
     nativeEnvironment: { USERPROFILE: "C:\\Users\\Ada", CLAUDE_CONFIG_DIR: "C:\\Users\\Ada\\.claude" },
     fileExists: existsFrom(files),
     confirm: async () => false,
+    onCompleted: () => { refreshes += 1; },
     spawn: () => { spawned += 1; throw new Error("must not launch"); },
   });
   assert.equal(await action.start(), "cancelled");
   assert.equal(spawned, 0);
+  assert.equal(refreshes, 0);
 
   let options;
   const completedChild = child();
@@ -63,6 +66,7 @@ test("Claude sign-in requires confirmation, keeps credentials private, and expos
     nativeEnvironment: { USERPROFILE: "C:\\Users\\Ada", CLAUDE_CONFIG_DIR: "C:\\Users\\Ada\\.claude" },
     fileExists: existsFrom(files),
     confirm: async () => true,
+    onCompleted: () => { refreshes += 1; },
     spawn: (command, args, value) => {
       assert.equal(command, executable);
       assert.deepEqual(args, ["auth", "login", "--claudeai"]);
@@ -72,6 +76,7 @@ test("Claude sign-in requires confirmation, keeps credentials private, and expos
     },
   });
   assert.equal(await completed.start(), "completed");
+  assert.equal(refreshes, 1, "successful native sign-in immediately wakes usage observation");
   assert.deepEqual(options, {
     env: { USERPROFILE: "C:\\Users\\Ada", CLAUDE_CONFIG_DIR: "C:\\Users\\Ada\\.claude" },
     shell: false,

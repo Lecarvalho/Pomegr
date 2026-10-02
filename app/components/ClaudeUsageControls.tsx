@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { UsageLimits } from "../../shared/monitor-contract";
 import { usageLimitFailureKind } from "../usage-limit-presentation";
+import { getUsageLimitsStore } from "../usage-limits-client";
 import { ExternalLink } from "./ExternalLink";
 
 type IntegrationStatus = "enabled" | "disabled" | "unavailable";
@@ -15,7 +16,7 @@ type ClaudeDesktopBridge = {
 };
 
 const SIGN_IN_MESSAGES: Record<SignInStatus, string> = {
-  completed: "Claude Code sign-in completed. Pomegr will retry the usage check automatically.",
+  completed: "Claude Code sign-in completed. Pomegr is checking usage now.",
   cancelled: "Sign-in cancelled. You can reconnect whenever you’re ready.",
   failed: "Claude Code could not complete sign-in. Try again, or see the setup guide.",
   unavailable: "Claude Code could not be found. Install the native Claude Code app on this computer, then try again.",
@@ -82,6 +83,8 @@ export function ClaudeUsageControls({ usageLimits, showObservationNote = true }:
         if (status === "enabled") setIntegration("enabled");
         setMessage(SETUP_MESSAGES[status] || SETUP_MESSAGES.failed);
       } else {
+        if (result?.status === "completed") await getUsageLimitsStore().refresh();
+        if (!mounted.current) return;
         setMessage(SIGN_IN_MESSAGES[result?.status as SignInStatus] || SIGN_IN_MESSAGES.failed);
       }
     } catch {

@@ -14,6 +14,7 @@ import {
 import {
   assertPackagedElectronRuntime,
   installShutdown,
+  onParentMessage,
   recordUtilityStage,
   send,
   workerData,
@@ -22,6 +23,12 @@ import {
 const quietLogger = Object.freeze({ log() {} });
 installQuietConsole();
 let handle;
+onParentMessage((message) => {
+  if (message?.type === "claude-sign-in-completed") {
+    void Promise.resolve(handle?.refreshUsageAfterClaudeSignIn?.())
+      .catch(() => {}).finally(() => send({ type: "claude-usage-rechecked" }));
+  }
+});
 let agentQueryDescriptorPath;
 let agentAuthorizationToken;
 const shutdown = installShutdown(async () => {

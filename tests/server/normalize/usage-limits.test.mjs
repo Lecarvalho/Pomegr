@@ -24,6 +24,61 @@ test("parses Retry-After seconds and HTTP dates", () => {
   assert.equal(retryAfterDelay(null, now), null);
 });
 
+test("native sign-in retries rejected authentication immediately and waits for the new result", async () => {
+  let calls = 0;
+  let complete;
+  const coordinator = createUsageLimitsCoordinator({
+    request: async () => {
+      calls += 1;
+      if (calls === 1) return new Response("", { status: 401 });
+      return new Promise((resolve) => { complete = resolve; });
+    },
+  });
+  assert.equal((await coordinator.get()).failureKind, "authentication_required");
+  await coordinator.get();
+  assert.equal(calls, 1);
+  const recovered = coordinator.get({ afterSignIn: true });
+  const concurrent = coordinator.get({ afterSignIn: true });
+  assert.equal(calls, 2);
+  complete(usageResponse());
+  for (const value of await Promise.all([recovered, concurrent])) {
+    assert.equal(value.failureKind, null);
+    assert.equal(value.limits[0].percent, 12);
+  }
+});
+
+test("native sign-in preserves successful-check and provider-throttle cooldowns", async () => {
+  for (const status of [200, 429]) {
+    let calls = 0;
+    const coordinator = createUsageLimitsCoordinator({
+      request: async () => {
+        calls += 1;
+        return status === 200 ? usageResponse() : new Response("", { status: 429, headers: { "retry-after": "3600" } });
+      },
+    });
+    const initial = await coordinator.get();
+    assert.deepEqual(await coordinator.get({ afterSignIn: true }), initial);
+    assert.equal(calls, 1);
+  }
+});
+
+test("native recovery retries authentication rejected by an older pending account check", async () => {
+  let calls = 0;
+  let complete;
+  const coordinator = createUsageLimitsCoordinator({
+    request: () => {
+      calls += 1;
+      return calls === 1 ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(usageResponse());
+    },
+  });
+  const old = coordinator.get();
+  const recovery = coordinator.get({ afterSignIn: true });
+  complete(new Response("", { status: 401 }));
+  assert.equal((await old).failureKind, "authentication_required");
+  assert.equal((await recovery).failureKind, null);
+  assert.equal(calls, 2);
+});
+
 test("deduplicates concurrent clients and caches a success for five minutes", async () => {
   let currentTime = Date.parse("2026-08-10T14:00:00.000Z");
   let calls = 0;

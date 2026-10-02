@@ -121,11 +121,18 @@ export function createCoordinatedUsageLimitsReader({
     return cache.pending;
   }
 
-  async function get() {
-    if (cache.pending) return cache.value || cache.pending;
+  async function get({ afterSignIn = false } = {}) {
+    // A local feed may have returned while an older account request was still
+    // pending. Its rejection must not consume the native recovery trigger.
+    if (afterSignIn && cache.pending) await cache.pending;
+    if (cache.pending) return afterSignIn ? cache.pending : cache.value || cache.pending;
+    if (afterSignIn && (cache.value?.failureKind === "authentication_required"
+      || cache.value?.error === "Claude usage credentials are unavailable.")) {
+      return startRefresh();
+    }
     if (now() < cache.nextAttemptAt) return cachedValue();
     const pending = startRefresh();
-    return cache.value || pending;
+    return afterSignIn ? pending : cache.value || pending;
   }
 
   // Observation adapters can inspect an already completed check without acquiring data.

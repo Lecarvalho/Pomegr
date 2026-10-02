@@ -229,7 +229,7 @@ export function createObservationRuntime(options = {}) {
     }
   }
 
-  async function refreshUsageResponses() {
+  async function refreshUsageResponses(afterClaudeSignIn = false) {
     if (usageRefreshInFlight) return usageRefreshInFlight;
     const publish = () => {
       const committed = usageResponseCache.commit({
@@ -246,10 +246,10 @@ export function createObservationRuntime(options = {}) {
       agentQueryProjection?.refresh?.();
       return committed;
     };
-    const tasks = (registry.providers || []).map(async (provider) => {
+    const tasks = (registry.providers || []).filter((provider) => !afterClaudeSignIn || provider.id === "claude").map(async (provider) => {
       let usageLimits = createEmptyUsageLimits();
       try {
-        usageLimits = await registry.readUsageLimits(provider);
+        usageLimits = await registry.readUsageLimits(provider, { afterSignIn: afterClaudeSignIn && provider.id === "claude" });
       } catch {
         usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }
@@ -729,6 +729,13 @@ export function createObservationRuntime(options = {}) {
     serveSessionDomain: sessionDomainServing.serveSessionDomain,
     serveHome: (revision) => homeResponseCache.read(revision),
     serveUsageLimits: (revision) => usageResponseCache.read(revision),
+    async refreshUsageAfterClaudeSignIn() {
+      // Native completion is a deliberate U1 trigger, never a browser GET.
+      // Wait out an older job so it cannot swallow the recovery request.
+      if (usageRefreshInFlight) await usageRefreshInFlight;
+      if (!observationServingActive) return;
+      await refreshUsageResponses(true);
+    },
     async serveSessionHistory(sessionId, query) {
       // The Activity/Requests surface is the sole demand signal for a full
       // replay. The scheduler coalesces duplicate requests by session id.
