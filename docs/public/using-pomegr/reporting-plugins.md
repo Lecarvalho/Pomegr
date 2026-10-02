@@ -94,6 +94,34 @@ The optional usage guard, off until you ask `init` to create
 observations. It never blocks a prompt or tool call, and its thresholds are a
 fixed rule, not a quota guarantee.
 
+## The session line in Claude Code
+
+In Claude Code the plugin also draws one quiet line above the prompt. It needs
+Claude Code 2.1.288 or newer, and it works whether or not the Pomegr app is
+running, because it reads only the figures Claude Code already has for the
+session you are in.
+
+```text
+◆ Pomegr │ context ━━━━━━━━ 32% · 319k/1M │ requests ⡀⡄⡀⡆⡀⡄⡇⡆ │ verifying ━━━━━━━━ 90% · 5m–15m │ 5h ━━━━━━━━ 8% · 3h15
+╰ 2 agents running │ ● Explore 42k │ reviewer 18k ✓
+```
+
+*Illustrative values.*
+
+| Section | Meaning |
+| --- | --- |
+| **context** | The main agent's latest context snapshot against its window. |
+| **requests** | One bar for each of the last 8 main-agent requests: that request's cache write, uncached input, and output tokens. |
+| Progress | The agent's own estimate, shown only after it reports progress through the plugin. |
+| **cache** | Appears only when the cache lifetime is about to end or has ended. Elapsed is an inference, not proof the provider dropped the entry. |
+| **5h**, **7d** | Account usage windows and the time until each resets. |
+| Agents row | Subagents of the current prompt with their latest context snapshot; `✓` finished, `✗` failed or stopped. |
+
+Without the Pomegr app the cache lifetime is assumed (one hour on a subscription,
+five minutes otherwise) and shown with `~`. With the app running, the line uses
+the lifetime Pomegr recorded. Run `/pomegr-hud` to move the line below the prompt or
+hide it.
+
 ## Check the setup in Pomegr
 
 Open **Repositories**, select a repository, and open its **Plugin** tab. Each

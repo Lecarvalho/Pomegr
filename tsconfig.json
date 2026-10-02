@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "server/web/entry.ts", "work", "outputs"]
+  "exclude": ["node_modules", "server/web/entry.ts", "work", "outputs", "plugins/claude-code/hooks", "plugins/claude-code/types", "plugins/claude-code/tests", "plugins/claude-code/.claude-plugin"]
 }

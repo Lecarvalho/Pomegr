@@ -15,6 +15,7 @@ For installation, repository setup, and troubleshooting, read the [Reporting plu
 | Signal and progress tools | Seven shared tools | Seven shared tools |
 | Observation query tools | Seven shared tools | Seven shared tools |
 | Native session-title tool | Provider automatic naming | `rename_session` |
+| Session line above the prompt | Not available | Function-hook module |
 
 Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local, read-only capability and return only bounded normalized evidence. The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
@@ -222,6 +223,35 @@ documented in [MCP observation queries](../architecture/mcp-queries.md).
 Claude Code additionally exposes `rename_session`. The main agent supplies one concise title; a trusted `PreToolUse` hook binds the mutation to the current native `session_id` and the new title replaces the current one, including a title `/clear` carried over from the preceding session or one set with `/rename`. Subagents never rename the main session. If the bridge cannot safely identify or update the session, it fails closed and provider automatic naming remains the fallback.
 
 Codex does not receive this Claude-specific control bridge. Its provider-native automatic task title is the fallback unless Codex exposes another safe title capability.
+
+### Claude Code session line
+
+The Claude Code package also carries a function-hook module, `hooks/register.tsx`, named under `modules` in `hooks/hooks.json` beside the command hooks. It draws one line above the prompt and needs Claude Code 2.1.288 or newer. The [guide](../../public/using-pomegr/reporting-plugins.md#the-session-line-in-claude-code) describes each section; this subsection keeps the contract.
+
+The module is read-only and stays inside the session. It never blocks, rewrites, or denies a prompt or tool call, writes no file, and makes no network request.
+
+| Section | Source | Rule |
+| --- | --- | --- |
+| Context | Claude Code's own session measurement | Latest snapshot against the window; amber from 75%, red from 90%. |
+| Requests | Each main-agent request's reported usage | The last 8 requests, each bar that request's cache write + uncached input + output. Nothing is summed, carried, or subtracted between requests. |
+| Progress | The main agent's `report_session_progress` and `clear_session_progress` calls | Percent, phase, and paired ETA bounds only; agent-reported. A completed estimate clears on the person's next prompt. |
+| Cache | Time since the main agent's last request | Shown only inside the last five minutes of a one-hour lifetime, the last minute of a five-minute lifetime, or after it. Elapsed is an inference. |
+| Limits | Claude Code's rate-limit windows | Amber from 80%, red from 95%; a toast when a window crosses either step. |
+| Agents row | Claude Code's agent list and each subagent request's usage | Subagents seen running since the person's last prompt, with their latest context snapshot. |
+
+Two heuristics belong to the module, not the monitor:
+
+- **Cache lifetime.** When the Pomegr MCP server answers `get_agent_context` for the session, the line uses that recorded lifetime (`5m`, `1h`, `mixed` treated as five minutes, or `30m+`, which never counts as an expiry threshold). Otherwise it assumes one hour when rate-limit windows are present and five minutes when they are not, and marks the value `~`.
+- **Cache rewrite toast.** A main-agent request raises one toast when the previous request of the same model read at least half its prompt from cache, and this request read under 20% and wrote at least half of a prompt of 20,000 tokens or more that did not shrink below 70% of the previous one. It names no cause and no cost.
+
+Its only call outside the session's own data is that optional `get_agent_context` read, at session start and after each main turn, retried at most every five minutes while unavailable.
+
+The module, its pure logic in `hooks/hud.ts`, its `$.state` contract in `types/index.d.ts`, and its tests in `tests/` are source files, not generated artifacts. The declarations of the `claude-code` module come from Claude Code itself, so the repository type-check excludes these folders. Check them with:
+
+```powershell
+claude plugin validate .\plugins\claude-code
+claude plugin test .\plugins\claude-code
+```
 
 ## Troubleshooting
 

@@ -554,6 +554,8 @@ Remaining minutes are displayed exactly as the bounded range reported by the age
 
 For a live session, “may be stale” is shown only when the monitor is connected and unpaused, the primary agent is not waiting or needs-input, at least ten minutes have elapsed since the report, and later primary-agent activity is present. Offline, paused, waiting, needs-input, blocked, and historical views freeze the snapshot without a stale warning. This age gate is a presentation rule; it never changes the underlying report or its range/confidence values.
 
+The Claude Code plugin's session line shows the same agent-reported estimate inside the terminal, along with two heuristics of its own (an assumed cache lifetime and a cache-rewrite toast). Those rules are defined in [Pomegr plugins](../development/plugins.md#claude-code-session-line) and never feed monitor state.
+
 ## User attention
 
 `needs_input` is an operational attention state, not an efficiency signal. The dashboard presents it through live-session navigation and the affected agent's status in the activity and tree views; the desktop app may also issue a transition notification. It does not enter the **Efficiency signals** panel.

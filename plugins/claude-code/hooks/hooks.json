@@ -1,5 +1,6 @@
 {
   "description": "Load a repository's bounded Pomegr reporting policy, supply applicable rows to declared subagents, report a delegated agent that finished without reporting, and optionally check cached account-usage guardrails.",
+  "modules": ["./register.tsx"],
   "hooks": {
     "SessionStart": [
       {

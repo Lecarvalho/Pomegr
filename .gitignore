@@ -52,5 +52,9 @@ next-env.d.ts
 /.codex-remote-attachments/
 /.generated-check-*/
 
+# declarations and tsconfig Claude Code lays beside a plugin it loads from disk
+/plugins/claude-code/.claude-plugin/types/
+/plugins/claude-code/tsconfig.json
+
 # claude code machine-local settings
 /.claude/settings.local.json

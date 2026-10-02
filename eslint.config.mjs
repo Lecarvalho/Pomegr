@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
     "docs/internal/plans/session-allowance/prototype/support.js",
     "desktop/workers/**",
     "plugins/claude-code/mcp/server.bundle.mjs",
+    // Claude Code function hooks: JSX here compiles against the engine, not React.
+    "plugins/claude-code/hooks/**",
+    "plugins/claude-code/tests/**",
+    "plugins/claude-code/types/**",
     "next-env.d.ts",
   ]),
   {
