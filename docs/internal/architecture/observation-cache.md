@@ -163,9 +163,10 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v8` and Codex's `codex-activity-v2` source
-fingerprints trigger rehydration of checkpoints produced before duration and
-request-link normalization was added.
+Claude's `conversation-activity-v9` and Codex's `codex-activity-v4` source
+fingerprints trigger rehydration of checkpoints produced before the current
+work-kind classification and Codex completed-item coverage; see the
+[provider tool inventory](tool-inventory.md).
 Claude merges recorded tool IDs across fragments sharing one request identity,
 including live snapshot merges after a read window advances. The private
 ID-to-kind map is stripped before normalized evidence and checkpoints. Usage
@@ -579,8 +580,9 @@ user-authored lookalikes do not establish these events. An assistant reply does
 not require usage data; a summary update never becomes a request snapshot.
 
 Events carry only a bounded opaque ID, original provider timestamp, normalized
-actor label (`System` for a summary), fixed event label, existing `report` work
-kind, empty detail, and null failure status. No message/summary text or native
+actor label (`System` for a summary), fixed event label, the `reply` work
+kind, empty detail, and null failure status. History rows committed with the
+earlier `report` kind are served as `reply`. No message/summary text or native
 request/record identity enters the activity feed or its checkpoint. Provider
 summary text remains governed by the separate session-summary contract.
 Repeated fragments of the same assistant message collapse to one event at the
@@ -885,7 +887,7 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v8`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v9`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged

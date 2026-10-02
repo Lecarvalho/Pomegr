@@ -360,7 +360,7 @@ const evidenceSignal = z.object({
   reportedAt: evidenceNullableTimestamp,
   description: evidenceOneLine(512).optional(),
 }).strict();
-const evidenceWorkKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
+const evidenceWorkKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait", "reply", "plan", "other"]);
 const evidenceFileChange = z.object({
   repositoryId: z.string().regex(/^repo-[a-f0-9]{24}$/).optional(),
   path: evidenceOneLine(512),
@@ -401,7 +401,7 @@ const evidenceAgent = z.object({
     reason: z.enum(["source_not_integrated", "source_unavailable", "source_unsupported", "observation_gap", "ambiguous_event", "legacy_snapshot", "writer_released"]).optional(),
   }).strict().nullable().optional(),
   signal: evidenceSignal.nullable(), currentActivity: z.object({ label: evidenceOneLine(256), observedAt: evidenceTimestamp }).strict().nullable().optional(),
-  toolCalls: evidenceCount, workKindCounts: z.array(z.object({ kind: evidenceWorkKind, count: evidenceCount }).strict()).max(19).optional(), skills: z.array(z.object({ name: evidenceOneLine(128), calls: evidenceCount, lastUsed: evidenceNullableTimestamp }).strict()).max(256),
+  toolCalls: evidenceCount, workKindCounts: z.array(z.object({ kind: evidenceWorkKind, count: evidenceCount }).strict()).max(22).optional(), skills: z.array(z.object({ name: evidenceOneLine(128), calls: evidenceCount, lastUsed: evidenceNullableTimestamp }).strict()).max(256),
   executionTasks: z.array(evidenceTask).max(256), reviewDecisions: evidenceReviewDecisions.optional(),
   lastSeen: evidenceTimestamp, startedAt: evidenceTimestamp, updatedAt: evidenceTimestamp, durationMs: evidenceCount,
 }).strict();
@@ -422,7 +422,7 @@ const evidenceToolCall = z.object({
   id: evidenceId, timestamp: evidenceTimestamp, actor: z.object({ id: evidenceId, label: evidenceOneLine(512) }).strict(), tool: evidenceOneLine(128), detail: evidenceOneLine(1_024),
   workKind: evidenceWorkKind.optional(),
   status: z.enum(["running", "completed", "failed"]).nullable(), repetitionSignature: evidenceOneLine(512), durationMs: evidenceActivityDuration, requestId: evidenceRequestId,
-  mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)).max(64) }).strict().nullable(),
+  mutation: z.object({ display: evidenceOneLine(512), scopes: z.array(evidenceOneLine(256)) }).strict().nullable(),
   fileChanges: z.array(evidenceFileChange).max(64).nullable().optional(), wrapper: z.boolean().optional(),
 }).strict();
 const evidenceActivity = z.object({ id: evidenceId, timestamp: evidenceTimestamp, actor: evidenceOneLine(512), tool: evidenceOneLine(128), workKind: evidenceWorkKind.optional(), detail: evidenceOneLine(1_024), status: z.literal("failed").nullable(), durationMs: evidenceActivityDuration, requestId: evidenceRequestId }).strict();

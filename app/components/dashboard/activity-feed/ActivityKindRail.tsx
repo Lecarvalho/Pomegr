@@ -26,7 +26,7 @@ export function ActivityKindRail({ feed, tasks, selectedKinds }: { feed: Activit
   // Busiest kind first: the bars only read as a ranking when the rows follow their own lengths.
   const rows = [...feed.byKind].sort((left, right) => right.count - left.count || WORK_LABELS[left.kind].localeCompare(WORK_LABELS[right.kind]));
   return <div className="activityBreakdown">
-    <header><h3 className="sessionEyebrow">Actions by kind</h3><span>count</span><span>share</span><span>median</span></header>
+    <header><h3 className="sessionEyebrow">Tool calls by kind</h3><span>count</span><span>share</span><span>median</span></header>
     <div className="activityKindRows" role="list" aria-label="Recorded calls by kind">
       {rows.map(({ kind, count, medianDurationMs }) => <div key={kind} className={`activityKindRow${selectedKinds.has(kind) ? " selected" : ""}`} role="listitem"
         aria-label={selectedKinds.has(kind) ? `${WORK_LABELS[kind]} · recorded for selected request` : undefined}>

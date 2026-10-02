@@ -2,7 +2,7 @@
 export type CacheLifetime = "5m" | "1h" | "mixed" | "30m+";
 
 /** Bounded monitor-derived purpose. Raw commands and provider-native tool schemas stay private. */
-export type WorkKind = "shell" | "search" | "read" | "write" | "test" | "build" | "git" | "git_push" | "pull_request" | "process" | "web" | "image" | "input" | "transfer" | "skill" | "report" | "agent" | "integration" | "wait";
+export type WorkKind = "shell" | "search" | "read" | "write" | "test" | "build" | "git" | "git_push" | "pull_request" | "process" | "web" | "image" | "input" | "transfer" | "skill" | "report" | "agent" | "integration" | "wait" | "reply" | "plan" | "other";
 
 export type RequestSnapshot = {
   id: string;

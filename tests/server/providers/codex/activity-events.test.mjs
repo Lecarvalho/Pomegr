@@ -13,6 +13,7 @@ import {
 import { createCodexProvider } from "../../../../server/providers/codex/index.mjs";
 import { createCodexIncrementalObserver } from "../../../../server/providers/codex/observation.mjs";
 import { canonicalCodexSourcePath } from "../../../../server/providers/codex/source-path.mjs";
+import { providerSessionEvidenceSchema } from "../../../../server/providers/provider-contract.mjs";
 import {
   assertNoPrivateFixtureSentinels,
   monitorStateFromProviderEvidence,
@@ -61,9 +62,9 @@ test("normalizes delivered Codex assistant text without retaining content or cou
 
   assert.equal(events.length, 3);
   assert.deepEqual(events.map(({ tool, workKind, detail, status }) => ({ tool, workKind, detail, status })), [
-    { tool: "Assistant replied", workKind: "report", detail: "", status: null },
-    { tool: "Assistant replied", workKind: "report", detail: "", status: null },
-    { tool: "Assistant replied", workKind: "report", detail: "", status: null },
+    { tool: "Assistant replied", workKind: "reply", detail: "", status: null },
+    { tool: "Assistant replied", workKind: "reply", detail: "", status: null },
+    { tool: "Assistant replied", workKind: "reply", detail: "", status: null },
   ]);
   assert.equal(new Set(events.map((event) => event.id)).size, 3);
   assertNoPrivateFixtureSentinels(events, "Codex assistant reply activity");
@@ -231,6 +232,25 @@ test("normalizes canonical Codex items with bounded safe targets and lifecycle s
   assert.doesNotMatch(JSON.stringify(calls), /commandActions|arguments|prompt|query|diff|futurePrivateItem/);
 });
 
+test("Codex file changes retain every mutation scope beyond the former 64-scope limit", () => {
+  for (const count of [64, 65, 74, 1024]) {
+    const diff = Array.from({ length: count }, (_, index) => `@@ region-${index} @@\n-PATCH_MUST_NOT_LEAK\n+RESPONSE_MUST_NOT_LEAK`).join("\n");
+    const calls = parseCodexCanonicalTurns([{
+      id: "large-patch", status: "completed", startedAt: STARTED_SECONDS,
+      completedAt: COMPLETED_SECONDS,
+      items: [{ id: "change", type: "fileChange", status: "completed",
+        changes: [{ path: "src/handler.ts", kind: { type: "update" }, diff }],
+      }],
+    }], { actor: ACTOR });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].tool, "File change");
+    assert.equal(calls[0].status, "completed");
+    assert.equal(calls[0].mutation.scopes.length, count);
+    assert.equal(providerSessionEvidenceSchema.shape.toolCalls.safeParse(calls).success, true);
+    assertNoPrivateFixtureSentinels(calls, "large Codex file change");
+  }
+});
+
 test("pairs rollout calls with outputs, ignores unknown records, and hashes materially different inputs", async () => {
   const { records } = await readProviderJsonlFixture("codex/parent.jsonl");
   const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "fixture-parent" });
@@ -357,7 +377,7 @@ test("provider merges rollout and canonical duplicates while agent and grouped t
     timestamp: "2026-08-10T19:00:02.000Z",
     actor: "Primary agent",
     tool: "Assistant replied",
-    workKind: "report",
+    workKind: "reply",
     detail: "",
     status: null,
   });
@@ -411,4 +431,66 @@ test("a native call's own completed item is the same row, not a nested action", 
   const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "native" });
   assert.equal(calls.length, 1);
   assert.deepEqual([calls[0].tool, calls[0].workKind, calls[0].status, Object.hasOwn(calls[0], "wrapper")], ["MCP", "integration", "completed", false]);
+});
+
+test("image views, web searches, extension actions and nested tool items inside an exec cell are recorded actions", () => {
+  const stamp = (second) => `2026-10-01T11:00:${String(second).padStart(2, "0")}.000Z`;
+  const ms = (second) => Date.parse(stamp(second));
+  const item = (second, value) => ({ type: "event_msg", timestamp: stamp(second + 1), payload: { type: "item_completed", started_at_ms: ms(second), completed_at_ms: ms(second + 1), item: value } });
+  const records = [
+    { type: "response_item", timestamp: stamp(1), payload: { type: "custom_tool_call", call_id: "cell", name: "exec", input: "PRIVATE_PROGRAM" } },
+    item(2, { type: "ImageView", id: "view-1", path: "C:/PRIVATE/shot.png" }),
+    item(4, { type: "Extension", id: "ext-1", kind: "web.search", action: { type: "openPage", url: "https://PRIVATE.test" }, query: "PRIVATE_QUERY", results: ["PRIVATE_RESULT"] }),
+    item(6, { type: "WebSearch", id: "web-1", action: { type: "find_in_page", pattern: "PRIVATE_PATTERN" }, query: "PRIVATE_QUERY" }),
+    item(8, { type: "Extension", id: "ext-2", kind: "image_gen.generation" }),
+    item(10, { type: "DynamicToolCall", id: "dyn-1", namespace: "codex_app", tool: "list_threads", arguments: { private: "PRIVATE_ARGUMENT" }, status: "failed", success: false }),
+    item(12, { type: "CollabAgentToolCall", id: "collab-1", tool: "spawn_agent", prompt: "PRIVATE_PROMPT", status: "completed" }),
+    // Items that record no tool call, and an unrecognized extension, record nothing.
+    item(14, { type: "Extension", id: "ext-3", kind: "future.extension" }),
+    item(15, { type: "Plan", id: "plan-1", text: "PRIVATE_PLAN" }),
+    item(16, { type: "SubAgentActivity", id: "sub-1", kind: "started", agent_thread_id: "PRIVATE_THREAD" }),
+    { type: "response_item", timestamp: stamp(18), payload: { type: "custom_tool_call_output", call_id: "cell", output: "PRIVATE_OUTPUT" } },
+  ];
+  const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "items" });
+  assert.deepEqual(calls.filter((row) => row.wrapper === undefined).map((row) => [row.tool, row.workKind, row.detail, row.status, row.timestamp]), [
+    ["View image", "image", "shot.png", "completed", stamp(2)],
+    ["Web search", "web", "Open page", "completed", stamp(4)],
+    ["Web search", "web", "Find in page", "completed", stamp(6)],
+    ["Image generation", "image", "Generate image", "completed", stamp(8)],
+    ["Dynamic tool", "integration", "codex_app / list_threads", "failed", stamp(10)],
+    ["Spawn agent", "agent", "", "completed", stamp(12)],
+  ]);
+  assert.deepEqual(calls.filter((row) => row.wrapper !== undefined).map((row) => [row.tool, row.wrapper]), [["Dynamic tool", true]]);
+  assert.doesNotMatch(JSON.stringify(calls.map(({ repetitionSignature, ...row }) => row)), /PRIVATE/);
+});
+
+test("native Codex function tools keep their own identity instead of a dynamic-tool guess", () => {
+  const stamp = (second) => `2026-10-01T12:00:${String(second).padStart(2, "0")}.000Z`;
+  const fn = (second, name, namespace, args = {}) => ({ type: "response_item", timestamp: stamp(second), payload: { type: "function_call", call_id: `call-${second}`, name, ...(namespace ? { namespace } : {}), arguments: JSON.stringify(args) } });
+  const records = [
+    fn(1, "list_agents", "collaboration"),
+    fn(2, "wait", "", { cell_id: "PRIVATE_CELL", yield_time_ms: 1_000 }),
+    fn(3, "wait_agent", "collaboration"),
+    fn(4, "sleep", "clock", { duration_ms: 1_500 }),
+    { type: "event_msg", timestamp: stamp(5), payload: { type: "item_completed", item: { type: "Extension", id: "call-4", kind: "clock.sleep", durationMs: 1_500 } } },
+    fn(6, "request_user_input_async", "", { questions: ["PRIVATE_QUESTION"] }),
+    fn(7, "send_user_message_async", "", { message: "PRIVATE_MESSAGE" }),
+    fn(8, "update_plan", "", { plan: ["PRIVATE_PLAN"] }),
+    fn(9, "write_stdin", "", { chars: "PRIVATE_INPUT" }),
+    fn(10, "js", "mcp__cua_repl", { code: "PRIVATE_CODE" }),
+    { type: "event_msg", timestamp: stamp(11), payload: { type: "item_completed", item: { type: "McpToolCall", id: "call-10", server: "cua_repl", tool: "js", status: "completed" } } },
+  ];
+  const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "native" });
+  assert.deepEqual(calls.map((row) => [row.tool, row.workKind, row.detail]), [
+    ["List agents", "agent", ""],
+    ["Wait", "wait", ""],
+    ["Wait for agent", "wait", ""],
+    ["Wait", "wait", "1500ms"],
+    ["Request input", "input", "User input"],
+    ["Message to user", "reply", ""],
+    ["Plan update", "plan", ""],
+    ["Shell input", "process", ""],
+    ["MCP", "integration", "cua_repl / js"],
+  ]);
+  assert.doesNotMatch(JSON.stringify(calls.map(({ repetitionSignature, ...row }) => row)), /PRIVATE/);
 });

@@ -13,7 +13,7 @@ const MAX_ID = 256;
 const MAX_DEPTH = 64;
 const VALID_STATUSES = new Set(["active", "waiting", "needs_input", "warm", "finished", "stopped", "idle", "unknown"]);
 const VALID_ROLES = new Set(["orchestrator", "explore", "plan", "builder", "reviewer", "tester", "researcher", "general-purpose", "workflow-worker", "fork", "compaction", "unknown"]);
-const VALID_WORK_KINDS = new Set(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
+const VALID_WORK_KINDS = new Set(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait", "reply", "plan", "other"]);
 
 function safeText(value, fallback = "", maximum = MAX_TEXT) {
   if (typeof value !== "string") return fallback;

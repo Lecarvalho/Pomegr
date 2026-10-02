@@ -22,7 +22,7 @@ const readAnnotations = {
 const timestampSchema = z.iso.datetime({ offset: true }).nullable();
 const readinessSchema = z.enum(["loading", "ready", "unavailable"]);
 const providerNameSchema = z.enum(["claude", "codex"]);
-const workKindSchema = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
+const workKindSchema = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait", "reply", "plan", "other"]);
 const failureCategorySchema = z.enum(["command_not_found", "invalid_path", "network_error", "not_found", "non_zero_exit", "permission_denied", "provider_error", "syntax_error", "tests_failed", "timed_out"]).nullable();
 const reportFilenameSchema = z.string().regex(/^pomegr-[a-z0-9](?:[a-z0-9-]{0,118}[a-z0-9])?-\d{4}-\d{2}-\d{2}\.md$/u);
 

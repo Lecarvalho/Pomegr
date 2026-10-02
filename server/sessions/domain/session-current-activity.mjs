@@ -45,6 +45,9 @@ const WORK_LABELS = Object.freeze({
   agent: ["Coordinating agents", "agent coordination"],
   integration: ["Using an integration", "integration activity"],
   wait: ["Waiting", "wait"],
+  reply: ["Writing a reply", "reply"],
+  plan: ["Updating the plan", "plan update"],
+  other: ["Using a tool", "tool call"],
 });
 
 function activityTimestamp(value) {

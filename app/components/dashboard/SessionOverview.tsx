@@ -55,7 +55,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
   const repositoryPullRequestsLabel = repositoryPullRequestCount === null ? "—" : `${repositoryPullRequestCount} pull request${repositoryPullRequestCount === 1 ? "" : "s"}`;
 
   const workSection = <section className="sessionOverviewPanel sessionWorkOverview" aria-labelledby="session-work">
-    <div className="sessionOverviewHeading"><h2 id="session-work" className="sessionEyebrow">Work by kind · session</h2></div>
+    <div className="sessionOverviewHeading"><h2 id="session-work" className="sessionEyebrow">Tool calls by kind · session</h2></div>
     {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Activity evidence" /> : summary.activity.byKind.length === 0
       ? <p className="sessionOverviewEmpty">No classified work recorded.</p>
       : <>

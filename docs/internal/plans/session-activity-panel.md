@@ -299,7 +299,7 @@ do not trigger this navigation. Keep the off-page link for manual paging away.
 ### Activity panel (phone ≤ 640 px, follows “Evidence region · phone”)
 
 - Header stacks title and metadata; Refresh is a 44 px quiet action.
-- Breakdown folds into one 44 px disclosure row: `Actions by kind · Web 40% ·
+- Breakdown folds into one 44 px disclosure row: `Tool calls by kind · Web 40% ·
   Reading 26% · Shell 16%` with a chevron, closed by default, state persisted per
   session via `DashboardDisclosurePanel`.
 - Rows are two lines, 56 px minimum, 20 px icon column: line 1 icon + tool

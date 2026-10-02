@@ -630,18 +630,36 @@ transcript grows. An agent counted this way carries the optional evidence field
 evidence, feeds only the session aggregate, and never appears on the public agent.
 
 Work kinds are Pomegr's own provider-neutral terms: equivalent work gets the same
-kind on every provider. A tool whose own name identifies its work keeps that kind
-whatever its detail says, because a detail is often a file name or label; only a
-carrier (an MCP or dynamic tool, or a name that identifies nothing) is classified
-with its detail, which then names the real tool. A shell tool's kind still comes
-from its private command structure.
+kind on every provider. A tool is classified by its exact identity alone: its
+detail is a file name, a label, or free text such as an agent description or a
+task subject, and never decides the kind. A carrier (an MCP or dynamic tool call)
+is **Integration**; an MCP tool name is third-party text, so only two exact
+families leave that kind: the Pomegr reporting tools on a Pomegr server
+(**Reports**) and GitHub pull-request tools (**Pull requests**). A tool that
+matches no known identity is **Other**, never a guess. Plan and task-list tools
+are **Planning**. Assistant reply and summary rows, and a tool that messages the
+user, are **Replies**; **Reports** is reserved for the agent-reported signal and
+progress tools.
+
+A shell tool's kind comes from its private command structure. A program counts
+only where a command can start (the start of the text or a line, or after a
+separator), so a program name inside a quoted string or an argument does not
+classify the command. Git is classified by its subcommand after any global
+options, so `push` in a commit message is not a push. GNU `timeout <seconds>
+<command>` wraps another command and is not a wait. The
+[provider tool inventory](tool-inventory.md) lists every identity observed per
+harness version, its kind, and what is deliberately not read.
 
 Newer Codex runs its tools inside a code-mode `exec` cell: the model issues one
 wrapper call and the rollout records what ran as completed items. The Codex
-adapter therefore normalizes completed `CommandExecution`, `McpToolCall`, and
-`FileChange` items as the actions, with the kind, status (a non-zero exit code or
+adapter therefore normalizes completed `CommandExecution`, `McpToolCall`,
+`FileChange`, `DynamicToolCall`, `CollabAgentToolCall`, `ImageView`, and
+`WebSearch` items, and `Extension` items of a recognized kind (web search, image
+generation, sleep), as the actions, with the kind, status (a non-zero exit code or
 an MCP error is failed), recorded start time, and bounded wall duration of each;
-commands, output, arguments, and results stay monitor-private. The wrapper call
+commands, output, arguments, queries, URLs, and results stay monitor-private. An
+image view exposes only the file's base name, as the function-call form already
+did. A plan item is plan-mode text, not a tool call, and is not read. The wrapper call
 carries the evidence flag `wrapper` and is listed but never counted once an item
 was recorded while it was the only open response call. A wrapper still awaiting
 its output is undecided and also uncounted, so a count never includes a wrapper
@@ -654,7 +672,7 @@ work; the wrapper itself does not. A nested file change never inherits a request
 because file-change attribution requires recorded proof and enclosure is only
 source order.
 
-The Overview **Work by kind** panel shows the six largest kinds of
+The Overview **Tool calls by kind** panel shows the six largest kinds of
 `activity.byKind`. Its counts use `workKindCounts` for agents that carry it and
 the retained calls of every other agent, so their sum equals the Calls figure.
 `byKind` medians still describe retained calls only, so the panel no longer shows
@@ -719,6 +737,11 @@ do not contribute to tool counts or repetition.
 An overlap insight appears only when at least two agents modify the same edit anchor, whole-file write target, or notebook cell within 30 seconds. Reads and searches never count as collisions. Edits to different regions of one file and sequential review/fix work remain distinct. The 30-second window is a deterministic proxy for concurrent work because transcripts record invocation timestamps rather than full edit lifetimes.
 
 ### Shared and broad file changes
+
+Mutation scopes retain every normalized edit anchor recorded for an action,
+including actions with more than 64 scopes. Each scope remains validated and
+monitor-private; an action's scope count neither rejects the session nor removes
+its overlap evidence.
 
 Two session-wide rules read the retained tool calls' recorded `fileChanges`, the same
 structured evidence that feeds [file-change history](#file-change-history). Only

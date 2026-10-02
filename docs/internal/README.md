@@ -57,6 +57,7 @@ Each page below is maintained at its current path.
 | [Provider service status](architecture/provider-status.md) | Public status sources and interpretation |
 | [Cache timing](architecture/cache-timing.md) | Cache timestamps, lifetime indication, and inference limits; the public explanation is [Cache reuse](../public/concepts/cache-reuse.md) |
 | [Signal dictionary](architecture/signal-dictionary.md) | Stable evidence identifiers |
+| [Provider tool inventory](architecture/tool-inventory.md) | Tool identities and rollout items observed per harness version, their work kinds, and what is not read |
 | [MCP observation queries](architecture/mcp-queries.md) | Session resolution, evidence semantics, transport, and privacy; usage guidance is the public [MCP queries guide](../public/using-pomegr/mcp-queries.md) |
 
 ## Development

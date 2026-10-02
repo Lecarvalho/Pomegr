@@ -310,7 +310,7 @@ describe("SessionEventsPanel", () => {
     expect(container.innerHTML).not.toContain("99%");
   });
 
-  it("orders the phone Overview panels Right now, Events, Requests, Repository, Progress, Work by kind, Cost", () => {
+  it("orders the phone Overview panels Right now, Events, Requests, Repository, Progress, Tool calls by kind, Cost", () => {
     const phoneStyles = sessionStyles.slice(sessionStyles.indexOf("@media (max-width: 760px)", sessionStyles.indexOf(".sessionEventsTotal")));
     const orderOf = (name: string) => Number(new RegExp(String.raw`\.${name}[^{]*\{[^}]*[\s;{]order:\s*(\d+)`).exec(phoneStyles)?.[1]);
     const names = ["sessionRightNow", "sessionEventsPanel", "sessionRequestStrip", "sessionRepositoryOneLine", "sessionProgressOverview", "sessionWorkOverview", "sessionCostOverview"];

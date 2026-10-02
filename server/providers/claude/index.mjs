@@ -16,7 +16,7 @@ import { recentActivityEvents } from "../../normalize/activity-events.mjs";
 import { latestContextMachinery, readLatestContextMachinery } from "../../normalize/context-machinery.mjs";
 import { contextCompactions, mergeContextCompactions, readContextCompactions } from "../../normalize/context-compactions.mjs";
 import { createExecutionTaskReader } from "../../normalize/execution-tasks.mjs";
-import { createSessionFileLister, liveSessionFiles, isLiveSessionActivity, SESSION_LIVE_WINDOW_MS, SESSION_REGISTRY_GRACE_MS, statSafe, walkJsonl } from "../../normalize/session-discovery.mjs";
+import { createSessionFileLister, liveSessionFiles, statSafe, walkJsonl } from "../../normalize/session-discovery.mjs";
 import { memoizeRepositoryResolver } from "../../normalize/session-identity.mjs";
 import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../../normalize/session-registry.mjs";
 import { readSessionTasks } from "../../normalize/session-tasks.mjs";
@@ -668,7 +668,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v8:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v9:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 

@@ -22,7 +22,7 @@ const id = text.min(1).max(256);
 const timestamp = z.string().max(64).refine((value) => Number.isFinite(Date.parse(value))).nullable();
 const role = z.enum(["orchestrator", "explore", "plan", "builder", "reviewer", "tester", "researcher", "general-purpose", "workflow-worker", "fork", "compaction", "unknown"]);
 const customType = z.string().max(64).regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u).refine((value) => !["unknown", "unavailable", "none", "null"].includes(value), "Invalid custom agent type").nullable().optional();
-const workKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait"]);
+const workKind = z.enum(["shell", "search", "read", "write", "test", "build", "git", "git_push", "pull_request", "process", "web", "image", "input", "transfer", "skill", "report", "agent", "integration", "wait", "reply", "plan", "other"]);
 const scope = z.enum(["all", "main", "delegated"]);
 const work = z.array(z.object({ workKind, count }).strict()).max(32);
 const run = z.object({
