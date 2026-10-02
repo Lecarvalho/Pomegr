@@ -44,11 +44,5 @@ gates:
 # Session limits. Advisory, compose-time only: size tasks into slices, cap
 # delegation. Not checked mid-run; /acos calibrate reports overruns.
 limits:
-  files: 8                       # per context: an inline part, or one slice of a
-                                 # fan-out. A session running three slices
-                                 # legitimately touches three times this.
-  lines: 400                     # added plus removed, same per-context meaning
   orchestrator_tokens: 120000
   worker_context_tokens: 300000
-  agents: 3
-  stages: 5

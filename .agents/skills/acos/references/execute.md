@@ -7,16 +7,38 @@ manifest id, `sessions` with this session's id when exposed (Claude
 Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
 `CODEX_THREAD_ID`), a start timestamp, `drift: []`.
 
+`part.mode` decides what surrounds the stages:
+
+- `single`: GO covered the whole plan. Run it wave by wave: spawn the
+  delegated stages of every part in the wave in one message, check
+  each, verify the merged tree, close those parts, start the next wave
+  without stopping or asking. One `log.yaml` per part, no handoff
+  between them. Keep from each worker its verdict and paths, nothing
+  else. A session that dies is resumed with `/acos run <plan>`, from
+  the first part not `done`.
+- `sequential`: one part, then stop.
+- `parallel`, `worktree: shared`: other sessions are editing this tree
+  now. The part's `owns` is its perimeter: change anything inside it,
+  planned or not; write nothing outside it, owned by another part or by
+  nobody, and put what is needed there in the handoff for the part that
+  owns it or the last part. A change you did not make is another
+  session's: never fixed, reverted or reported as yours. Run the part's
+  scoped check, not the full verify, unless this is the last part.
+
 ## Each stage
 
 1. **Gate.** `gate: true` or `gates.per_stage: true`: show the stage, ask.
 2. **Prompt.** Block `prompt` + stage `prompt` + intent + scope notes +
    every named input. Inline: it is your own instruction. A fan-out
    implementer gets only its brief (its `## <stage>` section of the
-   plan), its `owns`, and the interfaces the brief names.
+   plan), its `owns`, the interfaces the brief names, and whether other
+   agents run at the same time. Its `owns` is then its perimeter: free
+   inside, nothing written outside.
 3. **Run** through the adapter (`adapters.md`). `∥` stages are spawned in
-   one message and awaited together. Write the handoff while evidence
-   runs.
+   one message and awaited together. When they return, apply the
+   changes they asked for outside their perimeters: yourself when
+   small, otherwise in the next wave's briefs. Write the handoff while
+   evidence runs.
 4. **Artifacts.** Write an output to `runs/<id>/artifacts/<name>.md` only
    when another context reads it (a delegated stage, a gate, a later
    part). Between inline stages it stays in your context; `git diff` is
@@ -38,7 +60,7 @@ Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
   (stage, else loop, else 3).
 - `escalate`: as retry, on the next `escalation` entry's tier and
   effort; the last entry repeats. From an inline stage the retry runs as
-  a subagent (log `adapter: subagent`, count it in `limits.agents`).
+  a subagent (log `adapter: subagent`).
 - `ask`: show the output; retry, skip or stop. Opt-in only: blocks and
   shipped presets never default to it.
 - `stop`: end the run as failed.
@@ -91,8 +113,8 @@ cause, later part's scope, order, ownership or acceptance target).
 3. **Handoff.** When later parts build on this one,
    `artifacts/handoff.md`, at most 40 lines: what they reuse, decisions
    not to undo, deferred findings with their owning part, verify result,
-   plan adjustments from discoveries. None outside a plan or for the
-   last part.
+   plan adjustments from discoveries. None outside a plan, in `single`
+   mode, or for the last part.
 4. **Evidence.** A part that changed a visible surface closes only with
    `artifacts/try-it.md` from the evidence stage: one captioned crop per
    claim, verdict `PASS`. Open a crop yourself only when the verdict names
@@ -111,6 +133,7 @@ cause, later part's scope, order, ownership or acceptance target).
    - drift, one line each
    - actual files, lines, agents against the estimate; tokens if reported
    - in a plan: parts done/total and the next command
-     (`/acos run runs/<plan-id> <i+1>`), or "plan complete"
+     (`/acos run runs/<plan-id> <i+1>`), or "plan complete"; in
+     `single`, one report at the end of the plan, not one per part
    - `git status --short`
    - paths worth opening: run dir, handoff, try-it page
