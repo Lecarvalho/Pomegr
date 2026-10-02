@@ -43,7 +43,7 @@ Spawn one agent with the Agent tool.
   through your context twice.
 - Tokens: log the total the Agent tool result reports, if any. Never an
   estimate.
-- Each spawn counts against `limits.agents`. A retry is a new spawn.
+- A retry is a new spawn, logged as its own stage record.
 
 Artifact names: Claude Code's Write tool refuses a subagent's file whose
 name reads as a report, in any folder, with "Subagents should return
@@ -66,7 +66,12 @@ right shape.
 
 Fan-out brief: an implementer receives its own `## <stage name>` section
 of `artifacts/plan.md`, its `owns` list, the intent, the scope notes and
-the verify command. Not the other sections. Its report ends with the
+the verify command. Not the other sections. It is told that other
+agents run at the same time, which makes `owns` its perimeter: free
+inside, nothing written outside. The brief is written from
+structure: the implementer is the first and only context to open its
+files, and what it needs from a file it does not own arrives as a
+signature in the brief. Its report ends with the
 capture lines for its slice when the slice is visible; collect those from
 every implementer into the evidence stage's prompt.
 

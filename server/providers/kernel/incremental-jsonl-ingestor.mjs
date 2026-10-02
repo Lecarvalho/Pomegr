@@ -10,6 +10,7 @@ export function createIncrementalJsonlIngestor(options) {
     parseRecord,
     initialState,
     reduce,
+    reduceGap,
     chunkBytes = 64 * 1024,
     maximumFragmentBytes = 256 * 1024,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
@@ -58,6 +59,12 @@ export function createIncrementalJsonlIngestor(options) {
     };
   }
 
+  /** An optional reducer hook: a skipped record is a gap its reducer may need to treat as unknown, not as absent. */
+  function markGap(state) {
+    if (typeof reduceGap !== "function") return;
+    try { state.candidate = reduceGap(state.candidate); } catch { /* a gap marker cannot block acquisition */ }
+  }
+
   function appendCompleteLines(state, bytes, counters) {
     const buffer = state.fragment.length ? Buffer.concat([state.fragment, bytes]) : bytes;
     let lineStart = 0;
@@ -76,6 +83,7 @@ export function createIncrementalJsonlIngestor(options) {
         // A malformed complete record never blocks later complete records or
         // contaminates an otherwise valid committed candidate.
         state.malformedRecords += 1;
+        markGap(state);
       }
     }
     state.fragment = buffer.subarray(lineStart);
@@ -85,6 +93,7 @@ export function createIncrementalJsonlIngestor(options) {
       state.completeOffset += state.fragment.length;
       state.fragment = Buffer.alloc(0);
       state.oversizedFragments += 1;
+      markGap(state);
     }
   }
 

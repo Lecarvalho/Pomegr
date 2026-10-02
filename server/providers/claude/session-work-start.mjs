@@ -4,6 +4,7 @@ import { priorFileSuffixStillMatches } from "./file-generation.mjs";
 import { claudeUserMessageTimesFromState, createClaudeUserMessageTimeState, reduceClaudeUserMessageTimes } from "./user-message-times.mjs";
 import { reduceSkillUsage, skillUsageFromState } from "../../normalize/skill-usage.mjs";
 import { claudeToolUseWorkKind } from "./tool-call-evidence.mjs";
+import { createToolChangeState, markToolChangeGap, reduceToolChange, toolChangeCauses } from "./tool-change-attribution.mjs";
 import { createIncrementalJsonlIngestor } from "../kernel/incremental-jsonl-ingestor.mjs";
 import { incrementalSourceDescriptor } from "../kernel/incremental-provider-observer.mjs";
 
@@ -36,14 +37,16 @@ function toolUseTotal(kinds) {
  * replay of the whole main transcript, then appended bytes only, feeds both the work-start time
  * and the recorded user-message times, so the transcript is read and parsed once for both. The same
  * pass counts recorded tool uses per work kind and skill invocations, so an agent's call, work-kind
- * and skill counts never shrink when its transcript outgrows the display tail.
+ * and skill counts never shrink when its transcript outgrows the display tail. It also decides the
+ * tool-change attributions from the whole transcript, so an attribution neither depends on nor is
+ * withdrawn by the display tail, a historical read, or a restart (the pass replays from byte zero).
  */
 export function createClaudeSessionWorkStartReader(options = {}) {
   const maximumEntries = Number.isInteger(options.maximumEntries)
     ? Math.max(1, Math.min(options.maximumEntries, 256)) : 64;
   const entries = new Map();
 
-  function createEntry(file) {
+  function createEntry(file, { expectedSessionId = "", inlineSidechains = false } = {}) {
     return {
       source: null,
       generation: 0,
@@ -52,6 +55,7 @@ export function createClaudeSessionWorkStartReader(options = {}) {
       userMessageTimes: [],
       toolKinds: {},
       skills: [],
+      toolChangeCauses: new Map(),
       pending: Promise.resolve(),
       ingestor: createIncrementalJsonlIngestor({
         readChunk(offset, bytes) {
@@ -63,13 +67,17 @@ export function createClaudeSessionWorkStartReader(options = {}) {
           } finally { fs.closeSync(descriptor); }
         },
         parseRecord: (line) => JSON.parse(line.toString("utf8")),
-        initialState: () => ({ workStart: createClaudeSessionWorkStartState(), userMessages: createClaudeUserMessageTimeState(), toolKinds: {}, skills: {} }),
+        initialState: () => ({ workStart: createClaudeSessionWorkStartState(), userMessages: createClaudeUserMessageTimeState(), toolKinds: {}, skills: {},
+          toolChanges: createToolChangeState({ expectedSessionId, inlineSidechains }) }),
         reduce: (state, record) => ({
           workStart: reduceClaudeSessionWorkStart(state.workStart, record),
           userMessages: reduceClaudeUserMessageTimes(state.userMessages, record),
           toolKinds: reduceClaudeToolUseKinds(state.toolKinds, record),
           skills: reduceSkillUsage(state.skills, record),
+          toolChanges: reduceToolChange(state.toolChanges, record),
         }),
+        // An unreadable or oversized complete record may have been a definition or bridge record.
+        reduceGap: (state) => ({ ...state, toolChanges: markToolChangeGap(state.toolChanges) }),
         chunkBytes: CHUNK_BYTES,
         maximumFragmentBytes: MAX_FRAGMENT_BYTES,
         yieldControl: options.yieldControl,
@@ -111,15 +119,16 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     // replacement keeps the prior generation's answer. A failed observation never reaches here,
     // so the next read resumes from the last committed offset instead of serving a stale list.
     if (!confirmed) assertSourceStillHolds(file, source);
-    const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }> } } | null} */ (entry.ingestor.snapshot());
+    const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }>, toolChanges: ReturnType<typeof createToolChangeState> } } | null} */ (entry.ingestor.snapshot());
     entry.userMessageTimes = committed ? claudeUserMessageTimesFromState(committed.candidate.userMessages) : [];
     entry.toolKinds = committed ? { ...committed.candidate.toolKinds } : {};
     entry.skills = committed ? skillUsageFromState(committed.candidate.skills) : [];
+    entry.toolChangeCauses = committed ? toolChangeCauses(committed.candidate.toolChanges) : new Map();
     return entry;
   }
 
-  function observed(file) {
-    const entry = entries.get(file) || createEntry(file);
+  function observed(file, context) {
+    const entry = entries.get(file) || createEntry(file, context);
     entries.delete(file);
     entries.set(file, entry);
     while (entries.size > maximumEntries) entries.delete(entries.keys().next().value);
@@ -139,12 +148,15 @@ export function createClaudeSessionWorkStartReader(options = {}) {
   }
 
   /**
-   * `readSessionFacts` plus the whole-transcript tool-use total, its per-work-kind counts, and the
-   * skill usage list, from the same single observation.
+   * `readSessionFacts` plus the whole-transcript tool-use total, its per-work-kind counts, the
+   * skill usage list, and the tool-change attributions (request identity -> cause and count), from
+   * the same single observation. `context` binds a new file's attribution rules: the session ID its
+   * bridge records name, and whether it is a primary transcript that can carry inline sidechain records.
    */
-  function readTranscriptFacts(file) {
-    return observed(file).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes,
-      toolUses: toolUseTotal(entry.toolKinds), toolKinds: { ...entry.toolKinds }, skills: entry.skills.map((skill) => ({ ...skill })) }));
+  function readTranscriptFacts(file, context) {
+    return observed(file, context).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes,
+      toolUses: toolUseTotal(entry.toolKinds), toolKinds: { ...entry.toolKinds }, skills: entry.skills.map((skill) => ({ ...skill })),
+      toolChangeCauses: entry.toolChangeCauses }));
   }
 
   /** Recorded tool uses in the whole transcript, counted like the tail's tool_use loop. */

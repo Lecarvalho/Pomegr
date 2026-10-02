@@ -48,7 +48,9 @@ function requestRangeLabel(selection: SessionRequestSelection, feed: ActivityFee
   const first = chartRows.find((row) => typeof row.number === "number")?.number;
   // Keep this compatible with the dashboard's browser baseline, which predates Array#findLast.
   const last = [...chartRows].reverse().find((row) => typeof row.number === "number")?.number;
-  if (!selection.history.preview && selection.history.status === "ready" && typeof first === "number" && typeof last === "number") {
+  // Gate on the held page, not the status: a live session reports `loading` for every refresh
+  // while the previous page and its stable numbers stay on screen.
+  if (!selection.history.preview && typeof first === "number" && typeof last === "number") {
     clauses.push(first === last ? `window #${first}` : `window #${first}–#${last}`);
   }
   return clauses.join(" · ");

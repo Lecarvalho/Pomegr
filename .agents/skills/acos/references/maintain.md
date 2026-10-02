@@ -17,10 +17,9 @@ Never overwrite an existing `config.yaml` without asking. Shape:
    overrides. Of the other providers, only those whose CLI (`claude`,
    `codex`, `gemini`, `ollama`) exists are reachable. Say which alias
    each tier maps to.
-4. **Defaults.** No `preset`. `gates.go: required`. `limits`: `files: 8`,
-   `lines: 400`, `orchestrator_tokens: 120000`,
-   `worker_context_tokens: 300000`, `agents: 3`, `stages: 5`, unless the
-   user gave others.
+4. **Defaults.** No `preset`. `gates.go: required`. `limits`:
+   `orchestrator_tokens: 120000`, `worker_context_tokens: 300000`,
+   unless the user gave others.
 5. **startup**, what a session holds before reading any code:
    - Measured: ask the user to run `/context` (or the harness's
      equivalent) in a fresh session and paste the total and breakdown.

@@ -68,6 +68,12 @@ The detailed precedence rules and integration gaps remain in
   upstream gap is tracked at [openai/codex#35300](https://github.com/openai/codex/issues/35300).
   See [context usage](metrics.md#context-usage) and
   [cache events](metrics.md#cache-events).
+- **Unexplained Claude Code full refills:** A request can rewrite its whole cached
+  prefix seconds after a fully cached request, with no provider diagnostic and no
+  recorded transcript cause. Pomegr shows it as a possible full refill with the
+  reason unavailable and infers nothing. This upstream behavior is tracked at
+  [anthropics/claude-code#82563](https://github.com/anthropics/claude-code/issues/82563).
+  See [cache events](metrics.md#cache-events).
 - **Cache timing for either provider:** A reply, summary, or lifecycle event
   without valid request usage cannot supply a request or cache-touch timestamp.
   Missing or malformed cache evidence leaves lifetime and classification

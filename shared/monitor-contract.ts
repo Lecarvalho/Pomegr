@@ -242,20 +242,21 @@ export type CacheRefillReasonCount = {
   count: number;
 };
 
-export type CacheToolDefinitionChange = {
-  tool: "RemoteTrigger" | "PushNotification" | "ListAgents";
-  kind: "added" | "definition_changed";
-};
+export type CacheToolDefinitionChange = { tool: "RemoteTrigger" | "PushNotification" | "ListAgents"; kind: "added" | "definition_changed" };
 
 export type CacheToolChangeAttributionCount = {
-  cause: "remote_control_connected";
+  cause: "remote_control_connected" | "deferred_definitions_loaded";
   count: number;
-  /** Fixed monitor-derived tool delta; provider schemas remain private. */
+  /** Fixed monitor-derived tool delta, Remote Control only (empty otherwise); provider schemas remain private. */
   changes: CacheToolDefinitionChange[];
+  /** Deferred definitions only, on an occurrence: 1 to 64, where 64 is a cap. Names stay private. */
+  addedDefinitionCount?: number;
 };
 
 export type CacheRefillOccurrence = {
   observedAt: string;
+  /** Omitted for a possible full refill; a partial rewrite with a provider reason or an elapsed-lifetime inference is not counted as one. */
+  kind?: "provider_diagnosed" | "lifetime_elapsed";
   /** Provider-diagnosed cause when recognized; otherwise unavailable. */
   reason: CacheRefillReason | null;
   /** Bounded provider status; raw diagnostics remain monitor-private. */
@@ -270,7 +271,9 @@ export type CacheRefillOccurrence = {
 
 export type CacheRefillCount = {
   agentId: string;
-  count: number;
+  count: number; // possible full refills only
+  providerDiagnosedCount?: number; // bounded to 999; present only when positive
+  lifetimeElapsedCount?: number; // bounded to 999; present only when positive
   /** Chronological, bounded details for each counted refill. */
   occurrences: CacheRefillOccurrence[];
   /** Provider-diagnosed causes for a bounded subset of these refills. */

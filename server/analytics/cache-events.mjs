@@ -5,12 +5,16 @@ export const CACHE_EVENT_RULES = Object.freeze({
   minimumCacheWriteTokens: 8_000,
   minimumReuseReadShare: 0.8,
   maximumMissReadShare: 0.1,
+  // A partial refill inferred from an elapsed lifetime must have lost most of its cached tokens.
+  maximumPartialReadRetention: 0.5,
   minimumMissGapMs: 30 * 60 * 1_000,
   maximumSessionEvents: 20,
   maximumAgentRefillCount: 999,
 });
 
 const CACHE_REFILL_REASONS = new Set(["model_changed", "system_changed", "tools_changed", "messages_changed"]);
+const PROVIDER_DIAGNOSED_KIND = "provider_diagnosed";
+const LIFETIME_ELAPSED_KIND = "lifetime_elapsed";
 const CACHE_REFILL_PROVIDER_STATUSES = new Set(["previous_cache_entry_unavailable"]);
 const CACHE_MESSAGE_CHANGE_SEQUENCES = new Set(["post_tool_task_notification_resume"]);
 const CACHE_LIFETIME_MS = new Map([
@@ -27,11 +31,42 @@ const CACHE_TOOL_CHANGE_CAUSES = new Map([
     Object.freeze({ tool: "PushNotification", kind: "added" }),
     Object.freeze({ tool: "ListAgents", kind: "definition_changed" }),
   ])],
+  // Newly recorded deferred definitions: a bounded count, never which tools.
+  ["deferred_definitions_loaded", Object.freeze([])],
 ]);
+const MAX_ADDED_DEFINITIONS = 64;
+
+/** Fixed attribution for a recognized `tools_changed` reason, or null; a loaded-definitions cause needs a valid count. */
+function toolChangeAttributionFor(snapshot, recognizedReason) {
+  const cause = snapshot.cacheToolChangeCause;
+  if (recognizedReason !== "tools_changed" || typeof cause !== "string" || !CACHE_TOOL_CHANGE_CAUSES.has(cause)) return null;
+  const attribution = { cause, changes: CACHE_TOOL_CHANGE_CAUSES.get(cause).map((change) => ({ ...change })) };
+  if (cause !== "deferred_definitions_loaded") return attribution;
+  const added = snapshot.cacheToolChangeAddedDefinitionCount;
+  return Number.isSafeInteger(added) && added >= 1 && added <= MAX_ADDED_DEFINITIONS
+    ? { ...attribution, addedDefinitionCount: added }
+    : null;
+}
 
 function timestampMs(value) {
   const milliseconds = Date.parse(value || "");
   return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+/**
+ * Time the cache entry went unused: the gap between the two requests' recorded send times when both
+ * are recorded and neither follows its own answer, otherwise the gap between their response times.
+ * A request can wait longer than the lifetime for its first fragment, so response times alone
+ * would miss an expiry that elapsed while the earlier request was still being answered.
+ */
+function unusedCacheGapMs(previous, snapshot, responseGapMs) {
+  const sent = (item) => {
+    const sentAt = timestampMs(item.requestSentAt);
+    return sentAt !== null && sentAt <= timestampMs(item.timestamp) ? sentAt : null;
+  };
+  const previousSentAt = sent(previous.snapshot);
+  const currentSentAt = sent(snapshot);
+  return previousSentAt !== null && currentSentAt !== null ? currentSentAt - previousSentAt : responseGapMs;
 }
 
 function count(value) {
@@ -112,6 +147,8 @@ export function buildCacheEvidence({
   const previousByActor = new Map();
   const trackedRefillByActor = new Map();
   const possibleFullRefillsByActor = new Map();
+  const providerDiagnosedByActor = new Map();
+  const lifetimeElapsedByActor = new Map();
   const possibleFullRefillOccurrencesByActor = new Map();
   const possibleFullRefillReasonsByActor = new Map();
   const possibleToolChangeAttributionsByActor = new Map();
@@ -130,49 +167,84 @@ export function buildCacheEvidence({
       && model === previous.model
       && !hasCompactionBetween(compactions, snapshot.actorId, previous.observedAt, observedAt);
     const gapMs = comparableToPrevious ? observedAt - previous.observedAt : null;
-    const possibleFullRefill = comparableToPrevious
+    const recognizedReason = typeof snapshot.cacheMissReason === "string"
+      && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
+      ? snapshot.cacheMissReason
+      : null;
+    const providerStatus = typeof snapshot.cacheMissProviderStatus === "string"
+      && CACHE_REFILL_PROVIDER_STATUSES.has(snapshot.cacheMissProviderStatus)
+      ? snapshot.cacheMissProviderStatus
+      : null;
+    const toolChangeAttribution = toolChangeAttributionFor(snapshot, recognizedReason);
+    const messageChangeSequence = recognizedReason === "messages_changed"
+      && typeof snapshot.cacheMessageChangeSequence === "string"
+      && CACHE_MESSAGE_CHANGE_SEQUENCES.has(snapshot.cacheMessageChangeSequence)
+      ? snapshot.cacheMessageChangeSequence
+      : null;
+    const comparableLargeRewrite = comparableToPrevious
       && previous.parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && parts.promptInputTokens >= CACHE_EVENT_RULES.minimumPromptInputTokens
       && previous.parts.cacheReadShare >= CACHE_EVENT_RULES.minimumReuseReadShare
-      && parts.cacheReadShare <= CACHE_EVENT_RULES.maximumMissReadShare
       && parts.cacheWrite >= CACHE_EVENT_RULES.minimumCacheWriteTokens;
+    const lowReadShare = parts.cacheReadShare <= CACHE_EVENT_RULES.maximumMissReadShare;
+    const possibleFullRefill = comparableLargeRewrite && lowReadShare;
+    // A recognized provider reason keeps a partial rewrite; it never joins the possible-full-refill counts.
+    const providerDiagnosedRefill = comparableLargeRewrite && !lowReadShare && recognizedReason !== null;
+    if (providerDiagnosedRefill) {
+      const diagnosedCount = providerDiagnosedByActor.get(snapshot.actorId) || 0;
+      if (diagnosedCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
+        providerDiagnosedByActor.set(snapshot.actorId, diagnosedCount + 1);
+        const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
+        occurrences.push({
+          observedAt: snapshot.timestamp,
+          kind: PROVIDER_DIAGNOSED_KIND,
+          reason: recognizedReason,
+          providerStatus,
+          cacheLifetimeInference: null,
+          messageChangeSequence,
+          toolChangeAttribution,
+        });
+        possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
+      }
+    }
+    let cacheLifetimeInference = null;
+    if (comparableLargeRewrite && !recognizedReason) {
+      const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
+      const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
+        || snapshot.cacheMissDiagnosticState === "absent";
+      const unusedGapMs = unusedCacheGapMs(previous, snapshot, gapMs);
+      if (expiryEvidenceAvailable && Number.isSafeInteger(cacheLifetimeMs) && unusedGapMs >= cacheLifetimeMs) {
+        cacheLifetimeInference = { cause: "cache_lifetime_elapsed", cacheLifetime: previous.cacheLifetime, elapsedMs: unusedGapMs };
+      }
+    }
+    // An elapsed lifetime keeps a partial rewrite only when most cached tokens were lost: a shared
+    // prefix can stay cached while the rest expires, but a grown prompt that still reads its whole
+    // previous prefix is ordinary growth. It never joins the possible-full-refill counts.
+    const lifetimeElapsedRefill = comparableLargeRewrite && !lowReadShare && cacheLifetimeInference !== null
+      && parts.cacheRead <= previous.parts.cacheRead * CACHE_EVENT_RULES.maximumPartialReadRetention;
+    if (lifetimeElapsedRefill) {
+      const elapsedCount = lifetimeElapsedByActor.get(snapshot.actorId) || 0;
+      if (elapsedCount < CACHE_EVENT_RULES.maximumAgentRefillCount) {
+        lifetimeElapsedByActor.set(snapshot.actorId, elapsedCount + 1);
+        const occurrences = possibleFullRefillOccurrencesByActor.get(snapshot.actorId) || [];
+        occurrences.push({
+          observedAt: snapshot.timestamp,
+          kind: LIFETIME_ELAPSED_KIND,
+          reason: null,
+          providerStatus,
+          cacheLifetimeInference,
+          messageChangeSequence: null,
+          toolChangeAttribution: null,
+        });
+        possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
+      }
+    }
     if (possibleFullRefill) {
       const previousRefillCount = possibleFullRefillsByActor.get(snapshot.actorId) || 0;
       possibleFullRefillsByActor.set(snapshot.actorId, Math.min(
         CACHE_EVENT_RULES.maximumAgentRefillCount,
         previousRefillCount + 1,
       ));
-      const recognizedReason = typeof snapshot.cacheMissReason === "string"
-        && CACHE_REFILL_REASONS.has(snapshot.cacheMissReason)
-        ? snapshot.cacheMissReason
-        : null;
-      const providerStatus = typeof snapshot.cacheMissProviderStatus === "string"
-        && CACHE_REFILL_PROVIDER_STATUSES.has(snapshot.cacheMissProviderStatus)
-        ? snapshot.cacheMissProviderStatus
-        : null;
-      const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
-      const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
-        || snapshot.cacheMissDiagnosticState === "absent";
-      const cacheLifetimeInference = !recognizedReason
-        && expiryEvidenceAvailable
-        && Number.isSafeInteger(cacheLifetimeMs)
-        && gapMs >= cacheLifetimeMs
-        ? {
-            cause: "cache_lifetime_elapsed",
-            cacheLifetime: previous.cacheLifetime,
-            elapsedMs: gapMs,
-          }
-        : null;
-      const recognizedToolChangeCause = recognizedReason === "tools_changed"
-        && typeof snapshot.cacheToolChangeCause === "string"
-        && CACHE_TOOL_CHANGE_CAUSES.has(snapshot.cacheToolChangeCause)
-        ? snapshot.cacheToolChangeCause
-        : null;
-      const messageChangeSequence = recognizedReason === "messages_changed"
-        && typeof snapshot.cacheMessageChangeSequence === "string"
-        && CACHE_MESSAGE_CHANGE_SEQUENCES.has(snapshot.cacheMessageChangeSequence)
-        ? snapshot.cacheMessageChangeSequence
-        : null;
       // Private links select exact request identities before UI trimming.
       refillRequests.push({
         snapshot, previous: previous.snapshot,
@@ -199,10 +271,7 @@ export function buildCacheEvidence({
           providerStatus,
           cacheLifetimeInference,
           messageChangeSequence,
-          toolChangeAttribution: recognizedToolChangeCause ? {
-            cause: recognizedToolChangeCause,
-            changes: CACHE_TOOL_CHANGE_CAUSES.get(recognizedToolChangeCause).map((change) => ({ ...change })),
-          } : null,
+          toolChangeAttribution,
         });
         possibleFullRefillOccurrencesByActor.set(snapshot.actorId, occurrences);
       }
@@ -219,12 +288,13 @@ export function buildCacheEvidence({
       }
       if (
         previousRefillCount < CACHE_EVENT_RULES.maximumAgentRefillCount
-        && recognizedToolChangeCause
+        && toolChangeAttribution
       ) {
+        // Totals count occurrences only; the per-occurrence added count is never summed.
         const attributions = possibleToolChangeAttributionsByActor.get(snapshot.actorId) || new Map();
-        attributions.set(recognizedToolChangeCause, Math.min(
+        attributions.set(toolChangeAttribution.cause, Math.min(
           CACHE_EVENT_RULES.maximumAgentRefillCount,
-          (attributions.get(recognizedToolChangeCause) || 0) + 1,
+          (attributions.get(toolChangeAttribution.cause) || 0) + 1,
         ));
         possibleToolChangeAttributionsByActor.set(snapshot.actorId, attributions);
       }
@@ -290,11 +360,13 @@ export function buildCacheEvidence({
       event.kind !== "reuse"
       || (event.relatedEventId !== null && retainedIds.has(event.relatedEventId))
     )),
-    possibleFullRefills: [...possibleFullRefillsByActor]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([agentId, refillCount]) => ({
+    possibleFullRefills: [...new Set([...possibleFullRefillsByActor.keys(), ...providerDiagnosedByActor.keys(), ...lifetimeElapsedByActor.keys()])]
+      .sort((left, right) => left.localeCompare(right))
+      .map((agentId) => ({
         agentId,
-        count: refillCount,
+        count: possibleFullRefillsByActor.get(agentId) || 0,
+        ...(providerDiagnosedByActor.has(agentId) ? { providerDiagnosedCount: providerDiagnosedByActor.get(agentId) } : {}),
+        ...(lifetimeElapsedByActor.has(agentId) ? { lifetimeElapsedCount: lifetimeElapsedByActor.get(agentId) } : {}),
         occurrences: (possibleFullRefillOccurrencesByActor.get(agentId) || []).map((occurrence) => ({
           ...occurrence,
           cacheLifetimeInference: occurrence.cacheLifetimeInference

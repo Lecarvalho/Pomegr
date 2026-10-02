@@ -2,8 +2,7 @@
 # Plan in-session, implement in-session (escalate on failure), review in a
 # subagent (strong) for an independent judgement. Inline stages carry no
 # model and no effort: they run at the session's, which nothing can change
-# mid-run. The escalated retry is therefore delegated to the named tier
-# and counts against limits.agents.
+# mid-run. The escalated retry is therefore delegated to the named tier.
 
 acos: "0.1"
 name: plan-build-review

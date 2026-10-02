@@ -1,16 +1,35 @@
-import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
+import type { CacheEvent, CacheEventFeed, CacheLifetimeInference, CacheReadDropFeed, CacheReadDropOccurrence, CacheRefillCount, CacheRefillOccurrence, RequestSnapshot } from "../../../../shared/monitor-contract";
 
 import { formatDuration } from "../../../dashboard-utils";
 
 export type RequestCacheEvidence = {
-  kind: "refill" | "possible_refill" | "model_change";
+  kind: "refill" | "provider_diagnosed" | "lifetime_elapsed" | "possible_refill" | "model_change";
   event?: CacheEvent;
   occurrence?: CacheRefillOccurrence;
   readDrop?: CacheReadDropOccurrence;
 };
 
+/** The upstream issue behind a possible full refill that carries no reason, status or inference. */
+export const CACHE_REFILL_UPSTREAM_ISSUE = { label: "anthropics/claude-code#82563", href: "https://github.com/anthropics/claude-code/issues/82563" } as const;
+
+/** Read-drop evidence is an inference; recorded and provider-diagnosed refills carry a recorded write. */
+export function cacheEvidenceIsInferred(evidence: RequestCacheEvidence) {
+  return evidence.kind === "possible_refill" || evidence.kind === "model_change";
+}
+
+/** One matched occurrence in the per-agent shape the Agents-tab popover renders. */
+export function refillEvidenceCounts(agentId: string, occurrence: CacheRefillOccurrence): CacheRefillCount[] {
+  const partial = occurrence.kind === "provider_diagnosed" ? { providerDiagnosedCount: 1 } : occurrence.kind === "lifetime_elapsed" ? { lifetimeElapsedCount: 1 } : null;
+  return [{
+    agentId, count: partial ? 0 : 1, ...partial, occurrences: [occurrence],
+    reasons: !partial && occurrence.reason ? [{ reason: occurrence.reason, count: 1 }] : [], toolChangeAttributions: [],
+  }];
+}
+
 export function cacheEvidenceLabel(evidence: RequestCacheEvidence, compact = false) {
   if (evidence.kind === "model_change") return compact ? "Reuse drop · model change" : "Cache reuse dropped across a model change";
+  if (evidence.kind === "provider_diagnosed") return compact ? "Diagnosed refill" : "Provider-diagnosed refill";
+  if (evidence.kind === "lifetime_elapsed") return "Partial refill";
   return evidence.kind === "refill" ? "Possible full refill" : "Possible refill";
 }
 
@@ -64,7 +83,7 @@ export function requestCacheEvidence(snapshots: RequestSnapshot[], events?: Cach
     // Only the monitor's qualifying transition warrants a line. A large write
     // alone can be cache growth or initial creation; event details only enrich it.
     // Occurrences also preserve transitions beyond the detailed event cap.
-    if (occurrence) result.set(request.id, { kind: "refill", event, occurrence });
+    if (occurrence) result.set(request.id, { kind: occurrence.kind === "provider_diagnosed" || occurrence.kind === "lifetime_elapsed" ? occurrence.kind : "refill", event, occurrence });
     else if (readDrop) result.set(request.id, { kind: readDrop.kind === "model_change" ? "model_change" : "possible_refill", readDrop });
   }
   return result;

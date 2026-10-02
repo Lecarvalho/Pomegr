@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useId, useRef, useState } from "react";
-import type { CacheReadDropCount, CacheRefillCount, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
-import { cacheReadReuseDroppedModelChangeSignalDefinition, cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition } from "../../../shared/signal-dictionary";
+import type { CacheReadDropCount, CacheRefillCount, CacheRefillOccurrence, CacheRefillReason, CacheToolChangeAttributionCount, ContextHistoryBoundary } from "../../../shared/monitor-contract";
+import { DEFERRED_DEFINITION_COUNT_CAP, cacheReadReuseDroppedModelChangeSignalDefinition, cacheReadReuseDroppedSignalDefinition, cacheRefillSignalDefinition, deferredDefinitionCount } from "../../../shared/signal-dictionary";
 import { timelineTime } from "../../dashboard-utils";
 import { AgentChip } from "../AgentChip";
 import { ExternalLink } from "../ExternalLink";
 import { CacheEvidencePopover } from "./CacheEvidencePopover";
 import { CacheRefillIcon } from "./CacheRefillIcon";
-import { cacheLifetimeInferenceLabel } from "./requests-actions/cache-evidence";
+import { CACHE_REFILL_UPSTREAM_ISSUE, cacheLifetimeInferenceLabel } from "./requests-actions/cache-evidence";
 
 export type CompactionSummary = {
   automatic: number;
@@ -41,6 +41,27 @@ export function compactionDescription(summary: CompactionSummary, representedAge
 export function summarizeCacheRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
   const observedAgents = new Set(agentIds);
   return cacheRefills.reduce((count, refill) => observedAgents.has(refill.agentId) ? count + refill.count : count, 0);
+}
+
+/** Provider-diagnosed partial rewrites are counted apart from `count`, which covers possible full refills only. */
+export function summarizeProviderDiagnosedRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+  const observedAgents = new Set(agentIds);
+  return cacheRefills.reduce((total, { agentId, providerDiagnosedCount: n }) => (
+    observedAgents.has(agentId) && Number.isSafeInteger(n) && n! > 0 ? total + n! : total
+  ), 0);
+}
+
+/** Partial rewrites kept by an elapsed-lifetime inference, also counted apart from `count`. */
+export function summarizeLifetimeElapsedRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+  const observedAgents = new Set(agentIds);
+  return cacheRefills.reduce((total, { agentId, lifetimeElapsedCount: n }) => (
+    observedAgents.has(agentId) && Number.isSafeInteger(n) && n! > 0 ? total + n! : total
+  ), 0);
+}
+
+/** Every partial rewrite: provider-diagnosed plus elapsed-lifetime. */
+export function summarizePartialRefills(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+  return summarizeProviderDiagnosedRefills(cacheRefills, agentIds) + summarizeLifetimeElapsedRefills(cacheRefills, agentIds);
 }
 
 export function summarizeCacheReadDrops(cacheReadDrops: CacheReadDropCount[], agentIds: string[]) {
@@ -89,6 +110,7 @@ const CACHE_REFILL_REASON_LABELS: Record<CacheRefillReason, string> = {
 
 const CACHE_TOOL_CHANGE_CAUSE_LABELS: Record<CacheToolChangeAttributionCount["cause"], string> = {
   remote_control_connected: "Remote Control connected",
+  deferred_definitions_loaded: "tool definitions loaded after a tool search",
 };
 const CACHE_TOOL_NAMES = new Set(["RemoteTrigger", "PushNotification", "ListAgents"]);
 const CACHE_TOOL_CHANGE_KIND_LABELS = {
@@ -150,6 +172,10 @@ function cacheRefillInference(toolChangeAttributions: ReturnType<typeof summariz
 function cacheRefillOccurrenceInference(attribution: CacheToolChangeAttributionCount | Omit<CacheToolChangeAttributionCount, "count"> | null) {
   if (!attribution || !Object.hasOwn(CACHE_TOOL_CHANGE_CAUSE_LABELS, attribution.cause)) return "";
   const cause = CACHE_TOOL_CHANGE_CAUSE_LABELS[attribution.cause];
+  if (attribution.cause === "deferred_definitions_loaded") {
+    const added = deferredDefinitionCount(attribution);
+    return added === null ? "" : `${cause} (${added === DEFERRED_DEFINITION_COUNT_CAP ? `${added} or more` : added} added)`;
+  }
   const changes = (attribution.changes || []).filter((change) => (
     CACHE_TOOL_NAMES.has(change.tool) && Object.hasOwn(CACHE_TOOL_CHANGE_KIND_LABELS, change.kind)
   )).map((change) => `${change.tool} (${CACHE_TOOL_CHANGE_KIND_LABELS[change.kind]})`).join(", ");
@@ -170,14 +196,20 @@ export function cacheRefillOccurrenceDescriptions(
   return occurrences;
 }
 
-export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+/** Possible full refills by default; `true` or a kind selects that partial-rewrite kind instead. */
+export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[], agentIds: string[], partial: boolean | NonNullable<CacheRefillOccurrence["kind"]> = false) {
+  const kind = partial === true ? "provider_diagnosed" : partial || undefined;
+  const diagnosed = kind !== undefined;
   const observedAgents = new Set(agentIds);
-  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string; lifetimeInference: string; signal: ReturnType<typeof cacheRefillSignalDefinition> }> = [];
+  const occurrences: Array<{ agentId: string; observedAt: string | null; reason: string; inference: string; lifetimeInference: string; unexplained: boolean; signal: ReturnType<typeof cacheRefillSignalDefinition> }> = [];
   for (const refill of cacheRefills) {
     if (!observedAgents.has(refill.agentId)) continue;
-    if (Array.isArray(refill.occurrences) && refill.occurrences.length > 0) {
-      occurrences.push(...refill.occurrences.map((occurrence) => {
+    const recorded = Array.isArray(refill.occurrences) ? refill.occurrences.filter((occurrence) => occurrence.kind === kind) : [];
+    if (recorded.length > 0) {
+      occurrences.push(...recorded.map((occurrence) => {
         const lifetimeInference = cacheLifetimeInferenceLabel(occurrence.cacheLifetimeInference);
+        const inference = [lifetimeInference, cacheRefillOccurrenceInference(occurrence.toolChangeAttribution)].filter(Boolean).join(" · ");
+        const recognizedReason = Boolean(occurrence.reason && Object.hasOwn(CACHE_REFILL_REASON_LABELS, occurrence.reason));
         return {
           agentId: refill.agentId,
           observedAt: occurrence.observedAt,
@@ -186,24 +218,36 @@ export function summarizeCacheRefillOccurrences(cacheRefills: CacheRefillCount[]
             : occurrence.providerStatus === "previous_cache_entry_unavailable"
               ? "previous cache entry unavailable"
               : "reason unavailable",
-          inference: [
-            lifetimeInference,
-            cacheRefillOccurrenceInference(occurrence.toolChangeAttribution),
-          ].filter(Boolean).join(" · "),
+          inference,
           lifetimeInference,
+          // Only a recorded possible full refill with nothing to explain it points upstream.
+          unexplained: !diagnosed && !recognizedReason && !occurrence.providerStatus && !inference,
           signal: cacheRefillSignalDefinition(occurrence),
         };
       }));
       continue;
     }
+    if (diagnosed) continue;
     occurrences.push(...cacheRefillOccurrenceDescriptions(refill.count, summarizeCacheRefillReasons([refill], [refill.agentId]))
-      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "", lifetimeInference: "", signal: null })));
+      .map((reason) => ({ agentId: refill.agentId, observedAt: null, reason, inference: "", lifetimeInference: "", unexplained: false, signal: null })));
   }
   return occurrences.sort((left, right) => {
     if (!left.observedAt) return 1;
     if (!right.observedAt) return -1;
     return Date.parse(left.observedAt) - Date.parse(right.observedAt);
   });
+}
+
+export function providerDiagnosedRefillDescription(count: number, representedAgents = 1) {
+  const occurrences = count === 1 ? "1 time" : `${count} times`;
+  const scope = representedAgents > 1 ? ` across ${representedAgents} agents` : "";
+  return `Provider-diagnosed refill observed ${occurrences}${scope}. Part of the prefix was still read from cache.`;
+}
+
+export function lifetimeElapsedRefillDescription(count: number, representedAgents = 1) {
+  const occurrences = count === 1 ? "1 time" : `${count} times`;
+  const scope = representedAgents > 1 ? ` across ${representedAgents} agents` : "";
+  return `Partial refill observed ${occurrences}${scope}. Inference: the cache lifetime elapsed; part of the prefix was still read from cache.`;
 }
 
 export function cacheRefillDescription(
@@ -239,6 +283,88 @@ export function cacheRefillDescription(
   return `${cacheRefillSummary(count, representedAgents)}${evidence ? ` Provider diagnostic: ${evidence}.` : " Reason unavailable."}${inference ? ` Inference: ${inference}.` : ""}`;
 }
 
+/** Shown in the agent and request popovers for a possible full refill that nothing explains. */
+function UnexplainedRefillNote() {
+  return <p className="cacheRefillInference">
+    No cause was recorded. Follow <ExternalLink href={CACHE_REFILL_UPSTREAM_ISSUE.href}>{CACHE_REFILL_UPSTREAM_ISSUE.label}</ExternalLink> for the upstream issue.
+  </p>;
+}
+
+/** Popover frame props for one agent set; possible full refills keep their wording, provider-diagnosed ones get their own list. */
+export function cacheRefillEvidenceView(cacheRefills: CacheRefillCount[], agentIds: string[]) {
+  const fullCount = summarizeCacheRefills(cacheRefills, agentIds);
+  const diagnosedCount = summarizeProviderDiagnosedRefills(cacheRefills, agentIds);
+  const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
+  const diagnosed = summarizeCacheRefillOccurrences(cacheRefills, agentIds, true);
+  const elapsedCount = summarizeLifetimeElapsedRefills(cacheRefills, agentIds);
+  const elapsed = summarizeCacheRefillOccurrences(cacheRefills, agentIds, "lifetime_elapsed");
+  const elapsedSummary = lifetimeElapsedRefillDescription(elapsedCount, agentIds.length);
+  const kinds = [fullCount, diagnosedCount, elapsedCount].filter((count) => count > 0).length;
+  const onlyExpiryInferences = cacheRefillOccurrences.length > 0 && cacheRefillOccurrences.every((occurrence) => occurrence.signal && occurrence.lifetimeInference);
+  const diagnosedSummary = providerDiagnosedRefillDescription(diagnosedCount, agentIds.length);
+  const heading = (index: number, observedAt: string | null) => <div className="cacheRefillPopoverOccurrenceHeading">
+    <span>{index + 1}</span>
+    {observedAt ? <time dateTime={observedAt}>{timelineTime(observedAt, true)}</time> : <span>Time unavailable</span>}
+  </div>;
+  const definition = (signal: NonNullable<(typeof diagnosed)[number]["signal"]>) => <div className="cacheRefillDefinition">
+    <code>{signal.code}</code>
+    <ExternalLink href={signal.href}>Open signal definition</ExternalLink>
+  </div>;
+  return {
+    title: kinds > 1 ? "Cache refills" : diagnosedCount > 0 ? "Provider-diagnosed refill" : elapsedCount > 0 ? "Partial refill" : "Possible full refill",
+    summary: fullCount > 0 ? (onlyExpiryInferences ? undefined : cacheRefillSummary(fullCount, agentIds.length)) : diagnosedCount > 0 ? diagnosedSummary : elapsedSummary,
+    body: <>
+      {fullCount > 0 && (onlyExpiryInferences ? <ul className="cacheRefillPopoverOccurrences cacheExpiryOccurrences" aria-label="Cache refill occurrences">
+        {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
+          <p>{occurrence.lifetimeInference}.</p>
+          {occurrence.observedAt && <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>}
+        </li>)}
+      </ul> : <ol className="cacheRefillPopoverOccurrences" aria-label="Cache refill occurrences">
+        {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
+          {heading(index, occurrence.observedAt)}
+          {occurrence.signal && occurrence.lifetimeInference
+            ? <p className="cacheRefillInference">{occurrence.lifetimeInference}.</p>
+            : <>
+              <dl className="cacheRefillEvidenceGrid">
+                <div><dt>Provider</dt><dd>{occurrence.reason}</dd></div>
+                <div><dt>Observed</dt><dd>{occurrence.signal?.observed || occurrence.inference || "No recognized lifecycle sequence."}</dd></div>
+                {occurrence.signal && occurrence.inference && <div><dt>Inference</dt><dd>{occurrence.inference}</dd></div>}
+                <div><dt>Impact</dt><dd>{occurrence.signal?.impact || "Possible full-refill thresholds were met."}</dd></div>
+              </dl>
+              {occurrence.signal && definition(occurrence.signal)}
+              {occurrence.unexplained && <UnexplainedRefillNote />}
+            </>}
+        </li>)}
+      </ol>)}
+      {diagnosed.length > 0 && <>
+        {fullCount > 0 && <p className="agentPopoverIntro">{diagnosedSummary}</p>}
+        <ol className="cacheRefillPopoverOccurrences" aria-label="Provider-diagnosed refill occurrences">
+          {diagnosed.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
+            {heading(index, occurrence.observedAt)}
+            <dl className="cacheRefillEvidenceGrid">
+              <div><dt>Provider</dt><dd>{occurrence.reason}</dd></div>
+              <div><dt>Observed</dt><dd>{occurrence.signal?.observed}</dd></div>
+              {occurrence.inference && <div><dt>Inference</dt><dd>{occurrence.inference}</dd></div>}
+              <div><dt>Impact</dt><dd>{occurrence.signal?.impact}</dd></div>
+            </dl>
+            {occurrence.signal && definition(occurrence.signal)}
+          </li>)}
+        </ol>
+      </>}
+      {elapsed.length > 0 && <>
+        {(fullCount > 0 || diagnosedCount > 0) && <p className="agentPopoverIntro">{elapsedSummary}</p>}
+        <ol className="cacheRefillPopoverOccurrences" aria-label="Partial refill occurrences">
+          {elapsed.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
+            {heading(index, occurrence.observedAt)}
+            <p className="cacheRefillInference">{occurrence.lifetimeInference}.</p>
+            {occurrence.signal && definition(occurrence.signal)}
+          </li>)}
+        </ol>
+      </>}
+    </>,
+  };
+}
+
 export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = [], cacheReadDrops = [], className = "", expandedRows = false }: {
   agentIds: string[];
   boundaries: ContextHistoryBoundary[];
@@ -257,12 +383,25 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
   const closeCacheReadDropPopover = useCallback(() => setCacheReadDropPopoverOpen(false), []);
   const summary = summarizeCompactions(boundaries, agentIds);
   const cacheRefillCount = summarizeCacheRefills(cacheRefills, agentIds);
+  const diagnosedRefillCount = summarizeProviderDiagnosedRefills(cacheRefills, agentIds);
+  const elapsedRefillCount = summarizeLifetimeElapsedRefills(cacheRefills, agentIds);
   const cacheReadDropCount = summarizeCacheReadDrops(cacheReadDrops, agentIds);
   const cacheRefillReasons = summarizeCacheRefillReasons(cacheRefills, agentIds);
   const cacheToolChangeAttributions = summarizeCacheToolChangeAttributions(cacheRefills, agentIds);
   const cacheRefillOccurrences = summarizeCacheRefillOccurrences(cacheRefills, agentIds);
-  const onlyExpiryInferences = cacheRefillOccurrences.length > 0 && cacheRefillOccurrences.every((occurrence) => occurrence.signal && occurrence.lifetimeInference);
-  const cacheRefillLabel = cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions, cacheRefillOccurrences);
+  const cacheRefillLabel = [
+    cacheRefillCount > 0 ? cacheRefillDescription(cacheRefillCount, agentIds.length, cacheRefillReasons, cacheToolChangeAttributions, cacheRefillOccurrences) : "",
+    diagnosedRefillCount > 0 ? providerDiagnosedRefillDescription(diagnosedRefillCount, agentIds.length) : "",
+    elapsedRefillCount > 0 ? lifetimeElapsedRefillDescription(elapsedRefillCount, agentIds.length) : "",
+  ].filter(Boolean).join(" ");
+  const partialRefillTriggerText = [
+    diagnosedRefillCount > 0 ? `Provider-diagnosed refill ×${diagnosedRefillCount}` : "",
+    elapsedRefillCount > 0 ? `Partial refill ×${elapsedRefillCount} · inference` : "",
+  ].filter(Boolean).join(" · ");
+  const cacheRefillTriggerText = !expandedRows ? undefined
+    : cacheRefillCount === 0 ? partialRefillTriggerText
+      : `Possible cache refill ×${cacheRefillCount} · inference${diagnosedRefillCount > 0 ? ` · ${diagnosedRefillCount} provider-diagnosed` : ""}${elapsedRefillCount > 0 ? ` · ${elapsedRefillCount} partial` : ""}`;
+  const refillView = cachePopoverOpen ? cacheRefillEvidenceView(cacheRefills, agentIds) : null;
   const cacheReadDropOccurrences = summarizeCacheReadDropOccurrences(cacheReadDrops, agentIds);
   const cacheReadDropLabel = cacheReadDropDescription(cacheReadDropCount, cacheReadDropOccurrences, agentIds.length);
   const modelChangeReadDropCount = cacheReadDropOccurrences.filter((occurrence) => "kind" in occurrence && occurrence.kind === "model_change").length;
@@ -280,43 +419,16 @@ export function AgentHistoryIndicators({ agentIds, boundaries, cacheRefills = []
         ? `Cache reuse drops ×${cacheReadDropCount} · model change`
         : `Cache reuse drops ×${cacheReadDropCount}`
     : undefined;
-  if (summary.total === 0 && cacheRefillCount === 0 && cacheReadDropCount === 0) return null;
+  if (summary.total === 0 && cacheRefillCount === 0 && diagnosedRefillCount === 0 && elapsedRefillCount === 0 && cacheReadDropCount === 0) return null;
   return <span className={`agentHistoryIndicators ${className}`.trim()}>
     {summary.total > 0 && <AgentChip className="agentHistoryIndicator agentCompactionIndicator" title={compactionDescription(summary, agentIds.length)} ariaLabel={compactionDescription(summary, agentIds.length)}>
       <svg aria-hidden="true" className="agentHistoryIcon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
       <span aria-hidden="true" className="agentHistoryCount">{expandedRows ? compactionDescription(summary, agentIds.length) : summary.total > 99 ? "99+" : summary.total}</span>
     </AgentChip>}
-    {cacheRefillCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cachePopoverAnchorRef}>
-      <CacheRefillTrigger count={cacheRefillCount} text={expandedRows ? `Possible cache refill ×${cacheRefillCount} · inference` : undefined} label={cacheRefillLabel} expanded={cachePopoverOpen} controls={cachePopoverId} onClick={() => setCachePopoverOpen((open) => !open)} />
-      {cachePopoverOpen && <CacheEvidencePopover anchorRef={cachePopoverAnchorRef} id={cachePopoverId} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title="Possible full refill" closeLabel="Close cache refill evidence" onClose={closeCachePopover} summary={onlyExpiryInferences ? undefined : cacheRefillSummary(cacheRefillCount, agentIds.length)} className="cacheRefillPopover">
-        {onlyExpiryInferences ? <ul className="cacheRefillPopoverOccurrences cacheExpiryOccurrences" aria-label="Cache refill occurrences">
-          {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
-            <p>{occurrence.lifetimeInference}.</p>
-            {occurrence.observedAt && <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>}
-          </li>)}
-        </ul> : <ol className="cacheRefillPopoverOccurrences" aria-label="Cache refill occurrences">
-          {cacheRefillOccurrences.map((occurrence, index) => <li key={`${occurrence.agentId}-${occurrence.observedAt || "unknown"}-${index}`}>
-            <div className="cacheRefillPopoverOccurrenceHeading">
-              <span>{index + 1}</span>
-              {occurrence.observedAt
-                ? <time dateTime={occurrence.observedAt}>{timelineTime(occurrence.observedAt, true)}</time>
-                : <span>Time unavailable</span>}
-            </div>
-            {occurrence.signal && occurrence.lifetimeInference
-              ? <p className="cacheRefillInference">{occurrence.lifetimeInference}.</p>
-              : <>
-                <dl className="cacheRefillEvidenceGrid">
-                  <div><dt>Provider</dt><dd>{occurrence.reason}</dd></div>
-                  <div><dt>Observed</dt><dd>{occurrence.signal?.observed || occurrence.inference || "No recognized lifecycle sequence."}</dd></div>
-                  <div><dt>Impact</dt><dd>{occurrence.signal?.impact || "Possible full-refill thresholds were met."}</dd></div>
-                </dl>
-                {occurrence.signal && <div className="cacheRefillDefinition">
-                  <code>{occurrence.signal.code}</code>
-                  <ExternalLink href={occurrence.signal.href}>Open signal definition</ExternalLink>
-                </div>}
-              </>}
-          </li>)}
-        </ol>}
+    {(cacheRefillCount > 0 || diagnosedRefillCount > 0 || elapsedRefillCount > 0) && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cachePopoverAnchorRef}>
+      <CacheRefillTrigger count={cacheRefillCount || diagnosedRefillCount + elapsedRefillCount} text={cacheRefillTriggerText} label={cacheRefillLabel} expanded={cachePopoverOpen} controls={cachePopoverId} onClick={() => setCachePopoverOpen((open) => !open)} />
+      {refillView && <CacheEvidencePopover anchorRef={cachePopoverAnchorRef} id={cachePopoverId} ariaLabel="Cache refill evidence" eyebrow="Cache evidence" title={refillView.title} closeLabel="Close cache refill evidence" onClose={closeCachePopover} summary={refillView.summary} className="cacheRefillPopover">
+        {refillView.body}
       </CacheEvidencePopover>}
     </span>}
     {cacheReadDropCount > 0 && <span className="agentPopoverAnchor cacheRefillPopoverAnchor" ref={cacheReadDropPopoverAnchorRef}>

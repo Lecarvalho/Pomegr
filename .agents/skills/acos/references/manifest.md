@@ -38,6 +38,13 @@
   on a stage or an escalation entry;
 - a lane over its limit (re-cut per `sizing.md`);
 - parallel stages without `owns`, or a path in two of them;
+- a part in a plan without `part.mode`; in `parallel`, a part without
+  `part.worktree`, a path owned by two parts of one wave, or a full
+  verify on a part that shares its worktree with a running one;
+- in `single`, a session lane over `limits.orchestrator_tokens`, or an
+  inline stage that reads files a worker owns;
+- a plan or explore stage that reads files another context implements,
+  unless it is a `fast`-tier locate named in a `Double read:` line;
 - an output or artifact name containing `report`, `summary`,
   `findings` or `analysis`, or a delegated prompt asking a worker to
   write such a file (Claude Code refuses it; `adapters.md`, Artifact
@@ -55,6 +62,10 @@ the previous part's handoff.
 - `part.assumes`: check the tree matches, say so in one line; a mismatch
   is a question, not a blocker.
 - A part in `part.after` not `done`: say so.
+- `part.mode: single`: present the plan table (`sizing.md` §5), not one
+  part; GO runs every part not `done`.
+- `part.mode: parallel`: name the parts running alongside and the
+  worktree in one line.
 - Earlier parts with `actual`: re-size (`sizing.md` §2). Breaking a limit:
   two lines proposing to run the first half now and add the second as a
   new part; the user may GO as is.
@@ -66,7 +77,7 @@ the previous part's handoff.
 Write `manifest.yaml`, then print:
 
 ```
-run: <slug>                              (part <i> of <n> — <slug> in a plan; no plan id)
+run: <slug>                              (part <i> of <n> — <slug>, <mode> in a plan; no plan id)
 intent: <one line>
 orchestrator: ~<reserved> / <limit>   (<startup> startup + <work> work + <coordination> coordination)
 workers: <stage> ~<reserved> / <limit>; ...
@@ -90,6 +101,7 @@ Reply GO, or tell me what to change.
 - `∥` after a model marks a stage running with the row above; list their
   `owns` under the table, one line each, plus any
   `Workflow script: runs/<id>/workflow-<n>.js`.
+- Any `Double read:` line (`sizing.md` §3), above the manifest path.
 - A long conversation or wide exploration before this: one line
   recommending `/acos run <path>` in a fresh session, just above the GO
   prompt.

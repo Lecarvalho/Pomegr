@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CacheEvent, CacheEventFeed, CacheReadDropFeed, ContextHistoryBoundary, RequestSnapshot, RequestSnapshotFeed } from "../../shared/monitor-contract";
+import { cacheEvidenceDescription, cacheEvidenceLabel } from "../../app/components/dashboard/requests-actions/cache-evidence";
 import { largestRequests, scaleMax, scopedRows, windowFor } from "../../app/components/dashboard/requests-actions/model";
 
 function request(
@@ -245,6 +246,34 @@ describe("requests and actions model", () => {
     }]));
 
     expect(result[0].cacheEvidence).toMatchObject({ kind: "refill", occurrence: occurrences[7] });
+  });
+
+  it("joins an elapsed-lifetime partial refill under its own kind and label", () => {
+    const at = "2026-08-01T12:00:00.000Z";
+    const inference = { cause: "cache_lifetime_elapsed" as const, cacheLifetime: "5m" as const, elapsedMs: 354_000 };
+    const result = scopedRows(feed([request("one", "primary", at)]), [], "all", cacheFeed([], [{
+      agentId: "primary", count: 0, lifetimeElapsedCount: 1, reasons: [], toolChangeAttributions: [],
+      occurrences: [{ observedAt: at, kind: "lifetime_elapsed", reason: null, providerStatus: null, cacheLifetimeInference: inference, messageChangeSequence: null, toolChangeAttribution: null }],
+    }]));
+
+    expect(result[0].cacheEvidence?.kind).toBe("lifetime_elapsed");
+    expect(cacheEvidenceLabel(result[0].cacheEvidence!)).toBe("Partial refill");
+    expect(cacheEvidenceLabel(result[0].cacheEvidence!, true)).toBe("Partial refill");
+  });
+
+  it("joins a provider-diagnosed occurrence under its own kind next to a possible full refill", () => {
+    const [full, diagnosed] = ["2026-08-01T12:00:00.000Z", "2026-08-01T12:05:00.000Z"];
+    const occurrence = { providerStatus: null, cacheLifetimeInference: null, messageChangeSequence: null, toolChangeAttribution: null };
+    const result = scopedRows(feed([request("one", "primary", full), request("two", "primary", diagnosed)]), [], "all", cacheFeed([], [{
+      agentId: "primary", count: 1, providerDiagnosedCount: 1, reasons: [], toolChangeAttributions: [],
+      occurrences: [{ ...occurrence, observedAt: full, reason: null }, { ...occurrence, observedAt: diagnosed, kind: "provider_diagnosed", reason: "tools_changed" }],
+    }]));
+
+    expect(result.map((row) => row.cacheEvidence?.kind)).toEqual(["refill", "provider_diagnosed"]);
+    expect(cacheEvidenceLabel(result[0].cacheEvidence!)).toBe("Possible full refill");
+    expect(cacheEvidenceLabel(result[1].cacheEvidence!)).toBe("Provider-diagnosed refill");
+    expect(cacheEvidenceLabel(result[1].cacheEvidence!, true)).toBe("Diagnosed refill");
+    expect(cacheEvidenceDescription(result[1].cacheEvidence!)).not.toMatch(/full|infer/i);
   });
 
   it("joins a read-drop as an inferred possible refill", () => {

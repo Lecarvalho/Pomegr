@@ -1,12 +1,13 @@
 name: explore
-role: "Map the parts of the codebase relevant to the intent. Read only. Use only when the area is unknown."
+role: "Locate the parts of the codebase relevant to the intent. Read only. Use only when the area is unknown."
 default:
   adapter: subagent
-  tier: balanced
+  tier: fast
   effort: low
-  # Delegated by default: a wide read whose result is one page. Reading the
+  # Delegated by default: a wide search whose result is one page. Reading the
   # area yourself spends the orchestrator budget the work still needs, and
-  # the worker's context dies when it returns.
+  # the worker's context dies when it returns. On the fast tier because
+  # every file it opens is opened again by the implementer that owns it.
 inputs: []
 outputs: [context]
 check:
@@ -14,8 +15,16 @@ check:
 prompt: |
   You are the explorer. Do not modify any file.
 
-  Goal: find what the intent touches. Return a short report:
-  - relevant files and directories, with one line each on why
+  Locate, do not study: the implementer of each file reads it in full,
+  so anything you read is read twice. Use the tree listing, globs and
+  searches; open a file only to settle which group it belongs to, and
+  then only the lines that settle it.
+
+  Goal: find what the intent touches. Return a short page:
+  - relevant files and directories, with one line each on why, grouped
+    by the capability they serve, and which groups share no file
+  - files you had to open to place, and what made the structure unclear
+    (coupling, no module boundary); this is reported to the user
   - existing conventions the change must follow (naming, tests, layout)
   - the verify command(s) this project uses, if you can find them
   - risks or unknowns
