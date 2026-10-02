@@ -1,5 +1,5 @@
 import { opendir, readFile, rm, rmdir } from "node:fs/promises";
-import { activityGroupPlan, emptyActivityGroups, scopeMatches } from "./session-history-groups.mjs";
+import { activityGroupPlan, emptyActivityGroups, isToolCallRow, scopeMatches } from "./session-history-groups.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import crypto from "node:crypto";
@@ -60,7 +60,7 @@ export class SessionHistoryBlockStore {
     const ref = kind === "requests"
       ? { id: value.id, agentId: value.agentId, number: value.number, overview: [value.uncachedInputTokens, value.cacheWriteTokens, value.cacheReadTokens, value.outputTokens] }
       : { id: value.id, agentId: value.agentId, requestId: value.requestId, workKind: value.workKind,
-          status: value.status, durationMs: value.durationMs, timestamp: value.timestamp };
+          status: value.status, durationMs: value.durationMs, call: value.call, timestamp: value.timestamp };
     const data = JSON.stringify(value); const index = JSON.stringify(ref);
     db.prepare(`INSERT INTO rows(kind,id,time,ref,data,version) VALUES(?,?,?,?,?,?)
       ON CONFLICT(kind,id) DO UPDATE SET time=excluded.time,ref=excluded.ref,data=excluded.data,version=excluded.version`)
@@ -175,8 +175,12 @@ export class SessionHistoryBlockStore {
     try {
       db.exec("BEGIN"); const meta = this.metadata(db); if (!meta) return null;
       const index = { ...meta, version: 3 };
-      for (const kind of ["requests", "activity"]) index[kind] = db.prepare(`SELECT ref FROM rows WHERE kind=? ORDER BY time ${kind === "activity" ? "DESC" : "ASC"},id`).all(kind)
-        .map((row) => { const value = JSON.parse(row.ref); return { ...value, page: value.id, slot: 0 }; });
+      // An activity ref written before the tool-call marker existed lacks `call`; only then is the
+      // row's label read so the ref can be classified without deserializing the row.
+      for (const kind of ["requests", "activity"]) index[kind] = db.prepare(`SELECT ref, CASE WHEN kind='activity' AND json_type(ref,'$.call') IS NULL
+          THEN json_extract(data,'$.tool') END AS legacyTool FROM rows WHERE kind=? ORDER BY time ${kind === "activity" ? "DESC" : "ASC"},id`).all(kind)
+        .map((row) => { const value = JSON.parse(row.ref);
+          return { ...value, ...(typeof row.legacyTool === "string" ? { call: isToolCallRow({ tool: row.legacyTool }) } : {}), page: value.id, slot: 0 }; });
       return callback(index, (kind, key) => { const value = this.get(db, kind, key); return value ? [value] : []; });
     } finally { try { db.exec("ROLLBACK"); } catch {} db.close(); }
   }

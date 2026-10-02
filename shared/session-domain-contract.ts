@@ -174,6 +174,10 @@ export type RepositoryDomain = SessionDomainBase & {
   repositoryId: string | null;
   contextInventoryRef: NonNullable<MonitorState["session"]>["contextInventoryRef"] | null;
   repository: NonNullable<MonitorState["session"]>["repository"] | null;
+  /** Why a live view shows no repository: "branch_changed" when Git answered for the session's
+   *  repository on a branch other than the recorded one. null when a repository is shown, the
+   *  view is historical, or the reason is not recognized. */
+  unavailableReason: "branch_changed" | null;
   pullRequests: NonNullable<MonitorState["session"]>["pullRequests"] | null;
   /** ISO time of the live check a historical view is served from; null for live views and
    *  for historical sessions without a recorded snapshot. */
@@ -185,18 +189,17 @@ export type RepositoryDomain = SessionDomainBase & {
    *  evidence is ready. */
   gitTasks: { total: number; failed: number } | null;
   fileHistory: SessionFileHistory;
-  /** Files seen in Git during the session window: changed by commits on the live HEAD branch
-   *  whose committer time lies in the session wall-time window ("committed"), or that became
-   *  uncommitted between the session's first and latest live Git checks ("uncommitted").
-   *  Never recorded tool edits: no agent, request, or edit count. A historical session serves
-   *  its recorded snapshot values only. null when never measured. */
+  /** Files changed by commits on the live HEAD branch whose committer time lies inside one of
+   *  this session's own finished Git commands. A time match, not proof of authorship. Never
+   *  recorded tool edits: no agent, request, or edit count. A historical session serves its
+   *  recorded snapshot values only. null when never measured. */
   gitObservedFiles: RepositoryGitObservedFiles | null;
 };
 
 export type RepositoryGitObservedFile = {
   path: string; // safe repository-relative path, same root as repository.files and fileHistory
-  source: "committed" | "uncommitted"; // "committed" wins when a path is both
-  /** Net Git change across the window's commits; committed paths only, null when not recorded. */
+  source: "committed";
+  /** Net Git change across the matched commits; null when not recorded. */
   change: "added" | "modified" | "deleted" | null;
 };
 export type RepositoryGitObservedFiles = {

@@ -37,7 +37,16 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
   const tasks = scopedAgents.flatMap((candidate) => candidate.executionTasks || []);
   // Phone reads the request groups first and keeps the kind and shell aggregates below them; the
   // desktop rail keeps its leading 360px column. Same components, same props, one order decision.
-  const rail = <ActivityKindRail feed={feed} tasks={tasks} />;
+  const selectedGroup = feed.groups.find((group) => group.request.id === selection.selected?.id);
+  // Only recorded links establish a kind match. Issued tallies also cover calls beyond the
+  // group's continuation page; preceding-work adjacency belongs to the previous request.
+  const selectedKinds = new Set(selectedGroup?.calls.map((call) => call.workKind) ?? []);
+  if (selectedGroup?.request.issuedAssociation === "recorded_link") {
+    for (const row of selectedGroup.request.issuedWork ?? []) {
+      if (row.count > 0) selectedKinds.add(row.kind);
+    }
+  }
+  const rail = <ActivityKindRail feed={feed} tasks={tasks} selectedKinds={selectedKinds} />;
   const list = <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} onSelectRequest={onSelectRequest} />;
   return <section className="panel activityPanel" aria-label="Activity feed" aria-busy={busy || undefined}>
     <header className="activityPanelHeader">

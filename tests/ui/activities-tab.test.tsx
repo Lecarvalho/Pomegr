@@ -35,7 +35,7 @@ function monitorState(cacheWriteAvailable = true, primaryTasks?: ExecutionTask[]
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, primaryTasks, requestAgent, requestModel }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, primaryTasks, requestAgent, requestModel, noCallsRequest }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
@@ -44,11 +44,12 @@ function fixture({ extra, count = 40, overview = true, route = { agent: null, re
   /** Per-request-number agent and recorded model; the default alternates agents on one model. */
   requestAgent?: (number: number) => string;
   requestModel?: (number: number) => string | null;
+  noCallsRequest?: number;
 } = {}) {
   const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1,
     requestAgent ? requestAgent(index + 1) : (index + 1) % 2 ? "child" : "primary",
     requestModel ? requestModel(index + 1) : undefined));
-  const calls = requests.flatMap((request) => request.agentId === "child"
+  const calls = requests.filter((request) => request.number !== noCallsRequest).flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
     : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]);
   const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
@@ -78,6 +79,31 @@ beforeEach(() => setPhone(false));
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("Activities tab", () => {
+  it.each([false, true])("highlights recorded kinds as request selection changes (phone %s)", async (phone) => {
+    setPhone(phone);
+    const user = userEvent.setup();
+    const { container } = fixture();
+    const feed = await ready();
+    const highlighted = () => Array.from(container.querySelectorAll(".activityKindRow.selected .activityKindLabel"), (row) => row.textContent).sort();
+    expect(highlighted()).toEqual(["Editing", "Reading"]);
+    const counts = Array.from(container.querySelectorAll(".activityKindRow strong"), (row) => row.textContent);
+    await user.click(within(feed).getByRole("button", { name: /^Request #39,/u }));
+    await waitFor(() => expect(highlighted()).toEqual(["Shell"]));
+    expect(within(feed).getByRole("listitem", { name: "Shell · recorded for selected request" })).toBeInTheDocument();
+    expect(Array.from(container.querySelectorAll(".activityKindRow strong"), (row) => row.textContent)).toEqual(counts);
+  });
+
+  it("leaves the rail unhighlighted when the selected request has no recorded calls", async () => {
+    const user = userEvent.setup();
+    const { container } = fixture({ noCallsRequest: 39 });
+    const feed = await ready();
+    expect(container.querySelectorAll(".activityKindRow.selected")).toHaveLength(2);
+    await user.click(within(feed).getByRole("button", { name: /^Request #39,/u }));
+    await waitFor(() => expect(selectedRequest()).toBe("#39"));
+    expect(within(within(feed).getByRole("article", { name: "Request #39" })).getByText("No recorded calls for this request.")).toBeInTheDocument();
+    expect(container.querySelector(".activityKindRow.selected")).toBeNull();
+  });
+
   it("applies one agent scope to the chart, Largest requests, feed groups and kind aggregates", async () => {
     const { container, server } = fixture();
     let feed = await ready();

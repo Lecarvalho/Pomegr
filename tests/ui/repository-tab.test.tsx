@@ -75,6 +75,7 @@ function domain(overrides: Record<string, unknown> = {}): RepositoryDomain {
     repositoryId: REPOSITORY_ID,
     contextInventoryRef: null,
     repository: repository(),
+    unavailableReason: null,
     pullRequests: { status: "ready", checkedAt: "2026-09-22T12:00:00.000Z", items: [draftPullRequest] },
     recordedAt: null,
     commitsInSession: 2,
@@ -147,6 +148,39 @@ describe("RepositoryTab", () => {
     expect(FileTreeMock.mock.calls.at(-1)![0].files).toEqual([{ path: "app/Dashboard.tsx", fileId: "f1", status: null, recordedKind: "edited" }]);
     // Uncommitted and Changed elsewhere need the snapshot; a zero count would read as "none".
     expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
+  });
+
+  it("lists touched files when the working tree left the session's branch, without claiming Git state", () => {
+    const unavailable = repository({ available: false, branch: "Not a Git repository", comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } });
+    useSessionDomain.mockReturnValue(result(domain({
+      readiness: "unavailable",
+      repository: unavailable,
+      unavailableReason: "branch_changed",
+      pullRequests: { status: "unavailable", checkedAt: null, items: [] },
+      commitsInSession: null,
+      fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
+      gitObservedFiles: { files: [{ path: "app/observed.ts", source: "committed", change: "added" }], truncated: false },
+    })));
+    const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });
+
+    expect(screen.getByText(/The working tree is no longer on this session's branch\./)).toBeInTheDocument();
+    expect(screen.queryByText("Not a Git repository")).not.toBeInTheDocument();
+    expect(screen.queryByText("No Git repository detected for this session.")).not.toBeInTheDocument();
+    expect(FileTreeMock.mock.calls.at(-1)![0].files.map((file) => file.path)).toEqual(["app/Dashboard.tsx", "app/observed.ts"]);
+    expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
+
+    // An unrecognized reason still lists the files, under neutral copy.
+    useSessionDomain.mockReturnValue(result(domain({ repository: unavailable, unavailableReason: null, fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false } })));
+    rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
+    expect(screen.getByText(/Git state is unavailable for this session\./)).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Find a file touched in this session" })).toBeInTheDocument();
+
+    // No linked repository: nothing to list.
+    FileTreeMock.mockReset();
+    useSessionDomain.mockReturnValue(result(domain({ repository: unavailable, repositoryId: null })));
+    rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
+    expect(screen.getByText("No Git repository detected for this session.")).toBeInTheDocument();
+    expect(FileTreeMock).not.toHaveBeenCalled();
   });
 
   it("links the quiet Git action to the repository page's Git tab and hides it without a repositoryId", () => {
@@ -327,12 +361,20 @@ describe("RepositoryTab", () => {
     });
 
     describe("Git-observed files", () => {
-      it("merges a new Git-observed path into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
+      it("merges a path this session committed into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
         useSessionDomain.mockReturnValue(result(domainWithFiles({
+          repository: repository({
+            files: [
+              { status: " M", path: "app/Dashboard.tsx" }, // touched, currently modified
+              { status: " M", path: "app/later-edit.ts" }, // committed by this session, edited again since
+              { status: "??", path: "app/new-file.ts" }, // uncommitted, not committed by this session
+            ],
+          }),
           gitObservedFiles: {
             files: [
+              { path: "app/committed-only.ts", source: "committed", change: "added" }, // not recorded and clean; gains the glyph
               { path: "app/Dashboard.tsx", source: "committed", change: "modified" }, // already recorded; stays a plain recorded row
-              { path: "app/new-file.ts", source: "uncommitted", change: null }, // not recorded; gains the glyph, moves out of elsewhere
+              { path: "app/later-edit.ts", source: "committed", change: "modified" }, // not recorded; gains the glyph, moves out of elsewhere
             ],
             truncated: false,
           },
@@ -340,16 +382,17 @@ describe("RepositoryTab", () => {
         renderTab({ sessionId: SESSION_ID, historical: false });
 
         const segment = screen.getByRole("group", { name: "File segment" });
-        expect(within(segment).getByRole("button", { name: "Touched here 2" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Touched here 3" })).toBeInTheDocument();
         expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toBeInTheDocument();
-        expect(within(segment).getByRole("button", { name: "Changed elsewhere 0" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Changed elsewhere 1" })).toBeInTheDocument();
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual([
+          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
           { path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" },
-          { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted", gitChange: null },
+          { path: "app/later-edit.ts", fileId: null, status: " M", gitObserved: "committed", gitChange: "modified" },
         ]);
-        expect(treeProps.elsewhere).toEqual([]);
+        expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       });
 
       it("ignores gitObservedFiles when null, matching prior behavior", () => {

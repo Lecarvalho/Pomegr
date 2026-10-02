@@ -27,7 +27,7 @@ function codexResponse(index) {
 
 function linkedCodex(records, actorId = "primary") {
   const parsed = parseCodexRequestActivityEvidence(records, { actor: { id: actorId, label: "Agent" }, actorId, sourceKey: actorId, unlimited: true, stableFallbackIdentity: true });
-  const evidence = { agents: [{ id: actorId, label: "Agent" }], usageSnapshots: parsed.usageSnapshots, toolCalls: parsed.toolCalls, activity: parsed.replies };
+  const evidence = { agents: [{ id: actorId, label: "Agent" }], usageSnapshots: parsed.usageSnapshots, toolCalls: parsed.toolCalls, activity: [...parsed.replies, ...parsed.inputs] };
   stampCodexActivityRequestIds({ sessionId: "test", ...evidence, linkGroups: [parsed.links], unlimited: true });
   return normalizedSessionHistory("codex", "test", evidence);
 }
@@ -140,11 +140,17 @@ test("Codex history retains complete requests and replies beyond live limits", a
   const directory = path.join(root, "sessions", "2026", "01", "01"); await mkdir(directory, { recursive: true });
   const id = "history-codex"; const file = path.join(directory, "rollout-history-codex.jsonl");
   const records = [{ timestamp: stamp(0), type: "session_meta", payload: { id, timestamp: stamp(0), cwd: "C:\\private", source: "cli" } }];
-  for (let index = 0; index < 350; index += 1) records.push(...codexResponse(index));
+  for (let index = 0; index < 350; index += 1) {
+    const response = codexResponse(index);
+    response.splice(1, 0, { timestamp: stamp(index), type: "event_msg", payload: { type: "user_message", message: "PRIVATE_PROMPT", local_images: ["PRIVATE_IMAGE_PATH"] } });
+    records.push(...response);
+  }
   await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`); await writeFile(path.join(root, "session_index.jsonl"), `${JSON.stringify({ id, thread_name: "History", updated_at: stamp(350) })}\n`);
   const provider = createCodexProvider({ codexHome: root, cacheMs: 0, includeArchived: false }); const history = await provider.readSessionHistory(id);
   assert.equal(history.complete, true); assert.equal(history.requests.length, 350); assert.equal(history.activity.filter((item) => item.tool === "Assistant replied").length, 350);
-  assert.equal(history.activity.filter((item) => item.requestId).length, 700);
+  assert.equal(history.activity.filter((item) => item.requestId).length, 1050);
+  assert.equal(history.activity.filter((item) => item.tool === "User input").length, 350);
+  assert.ok(history.activity.filter((item) => item.tool === "User input").every((item) => item.agentId === "primary" && item.detail === "Text + Image" && !item.call));
   assert.ok(history.requests.every((item) => item.issuedWork.reduce((sum, work) => sum + work.count, 0) === 1));
   const completeEvidence = await provider.readSession(id, { historical: false, completeStory: true });
   assert.doesNotThrow(() => parseProviderSessionEvidence(completeEvidence, id), "complete observer hydration must satisfy the strict publication contract");
@@ -152,7 +158,10 @@ test("Codex history retains complete requests and replies beyond live limits", a
   const live = normalizedSessionHistory("codex", id, await provider.readSession(id, { historical: false }));
   assert.deepEqual(live.requests.map((item) => item.id), history.requests.map((item) => item.id));
   assert.equal(JSON.stringify(history).includes("PRIVATE_CALL"), false);
-  assert.equal(JSON.stringify(history).includes("PRIVATE_REPLY"), false); assert.deepEqual(await provider.readSessionHistory(id), history);
+  assert.equal(JSON.stringify(history).includes("PRIVATE_REPLY"), false);
+  assert.equal(JSON.stringify(history).includes("PRIVATE_PROMPT"), false);
+  assert.equal(JSON.stringify(history).includes("PRIVATE_IMAGE_PATH"), false);
+  assert.deepEqual(await provider.readSessionHistory(id), history);
 });
 
 test("Codex observer history callbacks retain reply ownership without contaminating strict session evidence", async (context) => {
@@ -216,4 +225,18 @@ test("history requests carry each request's bounded recorded model while the sta
   assert.equal(JSON.stringify(history).includes("PRIVATE"), false);
   const feed = buildRequestSnapshots({ sessionId: "claude:models", agents: evidence.agents, usageSnapshots: evidence.usageSnapshots });
   assert.ok(feed.items.every((item) => !Object.hasOwn(item, "model")));
+});
+
+test("history rows mark only recorded tool calls as calls", () => {
+  const at = "2026-09-12T01:00:00.000Z";
+  const history = normalizedSessionHistory("claude", "call-marker", {
+    agents: [{ id: "primary", label: "Primary agent", executionTasks: [{ id: "task-1", status: "failed", label: "npm test", workKind: "test", startedAt: at, finishedAt: at, exitCode: 1 }] }],
+    usageSnapshots: [],
+    toolCalls: [
+      { id: "tool-1", timestamp: at, actor: "Primary agent", tool: "Bash", workKind: "test", detail: "npm test", status: "failed" },
+      { id: "cell-1", timestamp: at, actor: "Primary agent", tool: "Dynamic tool", workKind: "integration", detail: "exec", status: "completed", wrapper: true },
+    ],
+    activity: [{ id: "input-1", timestamp: at, actor: "User", tool: "User input", workKind: "input", detail: "Text", status: null }],
+  });
+  assert.deepEqual(history.activity.map((row) => [row.tool, row.call]).sort(), [["Bash", true], ["Dynamic tool", false], ["Shell failed", false], ["User input", false]]);
 });

@@ -1,6 +1,6 @@
 // POMEGR-DT-08 is a stable packaging-scope identifier for the signed-update configuration, not a
-// document reference. Its milestone status and open acceptance are in
-// docs/internal/operations/desktop-beta-acceptance.md.
+// document reference. Its milestone status (retired 2026-10-01) is in the desktop milestone IDs
+// table of docs/internal/operations/desktop-beta-acceptance.md.
 export const POMEGR_DT_08_PACKAGING_SCOPE = "POMEGR-DT-08-signed-updates";
 
 export function assertPomegrDt08PackagingScope(packageJson) {

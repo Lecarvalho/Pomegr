@@ -220,6 +220,35 @@ test("builds a 200-row served feed with full-retention activity aggregates", () 
   assert.equal(evenMedian.byKind.find((item) => item.kind === "shell").medianDurationMs, 1.5);
 });
 
+test("whole-source kind counts replace retained-call counts while medians stay on retained calls", () => {
+  const call = { id: "tool-1", timestamp: "2026-08-10T15:00:00.000Z", actor: { id: "primary", label: "Primary agent" }, tool: "Read", workKind: "read", detail: "Safe", status: null, durationMs: 100, requestId: null };
+  const feed = buildActivityFeed({ events: [call], toolCalls: [call], kindCounts: new Map([["read", 40], ["search", 2], ["shell", 0]]) });
+  assert.equal(feed.toolCalls, 42);
+  assert.deepEqual(feed.byKind, [{ kind: "read", count: 40, medianDurationMs: 100 }, { kind: "search", count: 2, medianDurationMs: null }]);
+});
+
+test("a Claude transcript past the 2 MiB tail keeps whole-session work-kind counts that match the Calls total", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-activity-kind-counts-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, ".claude", "projects", "fixture", "local.jsonl");
+  const use = (second, id, name, input) => ({ type: "assistant", timestamp: `2026-09-07T18:00:${second}.000Z`, message: { model: "claude-test", content: [{ type: "tool_use", id, name, input }] } });
+  const records = [
+    use("01", "early-read", "Read", { file_path: "fixture.ts" }), use("02", "early-grep", "Grep", { pattern: "PRIVATE_PATTERN" }),
+    use("03", "early-skill", "Skill", { skill: "verify-ui" }),
+    ...Array.from({ length: 8 }, (_, index) => ({ type: "system", subtype: "local_command", timestamp: `2026-09-07T18:01:0${index}.000Z`, content: "PRIVATE".repeat(60_000) })),
+    use("59", "late-read", "Read", { file_path: "fixture.ts" }),
+  ];
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, `${records.map(JSON.stringify).join("\n")}\n`);
+  const state = monitorStateFromProviderEvidence("claude", await createClaudeProvider({ homeDir: root, env: {}, explicitSession: file }).readSession("local"));
+  assert.equal(state.metrics.toolCalls, 4);
+  assert.equal(state.activity.toolCalls, 4);
+  assert.deepEqual(Object.fromEntries(state.activity.byKind.map((item) => [item.kind, item.count])), { read: 2, search: 1, skill: 1 });
+  assert.deepEqual(state.agents[0].skills.map((skill) => [skill.name, skill.calls]), [["verify-ui", 1]], "a skill used before the tail is still listed");
+  assert.equal(Object.hasOwn(state.agents[0], "workKindCounts"), false, "whole-source counts never ride on the public agent");
+  assert.doesNotMatch(JSON.stringify(state), /PRIVATE/);
+});
+
 test("Claude stamps tool rows with their served request id and recorded duration", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-activity-request-link-"));
   t.after(() => rm(root, { recursive: true, force: true }));

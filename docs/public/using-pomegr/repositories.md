@@ -30,7 +30,8 @@ read, or could not verify the setup.
 ## Open a repository
 
 The header shows live and history counts and the coding tools observed.
-**View sessions** opens **Sessions** for this repository. The tabs are:
+**View sessions** opens **Sessions** for this repository; select the close
+button on its **Repository:** chip to list every session again. The tabs are:
 
 | Tab | What it shows |
 | --- | --- |
@@ -79,8 +80,9 @@ The commit count (for example "3 commits in this session") counts every commit o
 the branch during the session, including other people's, so it does not attribute
 them to the session.
 
-**Touched here** lists files with a recorded change, plus files Git saw change
-during the session. **Uncommitted** lists the touched files that were
+**Touched here** lists files with a recorded change, plus files in commits made
+while the session ran a Git command. A file that only changed while the session
+was open is not listed. **Uncommitted** lists the touched files that were
 uncommitted at the last check, and **Changed elsewhere** lists the uncommitted
 files the session did not touch, so no file appears in both. The **Beta**
 chip means file coverage is still growing.
@@ -88,11 +90,13 @@ chip means file coverage is still growing.
 ![A recorded session's Repository tab: the main branch bar, Touched here, Uncommitted, and Changed elsewhere counts, and Dashboard.tsx selected with the text Seen in Git, no recorded agent edit.](../images/repositories/session-repository-tab.jpg)
 
 *A real recorded Claude Code session from the Pomegr project. Files with the Git
-glyph were seen by Git, not recorded as agent edits.*
+glyph were seen by Git, not recorded as agent edits. This capture predates the
+current wording and matching rule.*
 
 Select a file with a recorded change to see **Recorded in this session**, its
 kind, its change count, and the agents that made it. A file with the Git glyph
-shows "Seen in Git · no recorded agent edit" instead. Git observed the change, but
-it could be the agent through a command Pomegr cannot read, a build or generated
-file, or someone else. Pomegr never attributes a Git-observed file to an agent or
+shows "Committed by this session · no recorded agent edit" instead. Pomegr matched
+the commit by time to a Git command the session ran, so it cannot tell which agent
+changed the file, and a commit someone else made in those same seconds would match
+too. Pomegr never attributes a Git-observed file to an agent or
 counts it as a recorded edit.

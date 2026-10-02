@@ -611,7 +611,59 @@ complete paged history remains independent of that summary and of provider
 acquisition during a GET. Counts, work-kind shares, and medians use retained
 normalized evidence under the selected scope. Tool calls and per-kind counts
 exclude messages, input, system notifications, and failed-shell outcome
-duplicates; their total matches the session Tool calls KPI.
+duplicates; their total matches the session Tool calls KPI. The Activity feed's
+"tool calls in this scope" header is the sum of those per-kind counts, so it uses
+the same definition as the Overview **Calls** figure.
+
+The KPI sums each agent's recorded call count from the latest committed summary;
+the feed counts committed history rows. For Claude Code, an agent's call count is
+the number of recorded tool-use blocks in its whole transcript, not in the 2 MiB
+display tail: the main transcript's count comes from the same incremental
+whole-transcript pass that yields the work start and user-message times
+(`server/providers/claude/session-work-start.mjs`), and a subagent transcript
+uses that pass once it outgrows the tail. The pass keeps only one running count
+per work kind and one `{ calls, lastUsed }` per validated skill name (at most 256
+names), reads appended bytes after its first replay, and never retains a tool
+name, input, detail, or other record content, so a count never shrinks as a
+transcript grows. An agent counted this way carries the optional evidence field
+`workKindCounts` (bounded work kind and count); it is checkpointed with the
+evidence, feeds only the session aggregate, and never appears on the public agent.
+
+Work kinds are Pomegr's own provider-neutral terms: equivalent work gets the same
+kind on every provider. A tool whose own name identifies its work keeps that kind
+whatever its detail says, because a detail is often a file name or label; only a
+carrier (an MCP or dynamic tool, or a name that identifies nothing) is classified
+with its detail, which then names the real tool. A shell tool's kind still comes
+from its private command structure.
+
+Newer Codex runs its tools inside a code-mode `exec` cell: the model issues one
+wrapper call and the rollout records what ran as completed items. The Codex
+adapter therefore normalizes completed `CommandExecution`, `McpToolCall`, and
+`FileChange` items as the actions, with the kind, status (a non-zero exit code or
+an MCP error is failed), recorded start time, and bounded wall duration of each;
+commands, output, arguments, and results stay monitor-private. The wrapper call
+carries the evidence flag `wrapper` and is listed but never counted once an item
+was recorded while it was the only open response call. A wrapper still awaiting
+its output is undecided and also uncounted, so a count never includes a wrapper
+and later drops it. A wrapper that completed with no recorded item (older Codex
+recorded none for commands) is the only evidence of its work and counts as
+before, as **Integration**. A native call's own completed item shares its id and
+is the same row. A command or MCP call recorded inside one open wrapper is listed
+under the request that issued the wrapper and counts in that request's issued
+work; the wrapper itself does not. A nested file change never inherits a request,
+because file-change attribution requires recorded proof and enclosure is only
+source order.
+
+The Overview **Work by kind** panel shows the six largest kinds of
+`activity.byKind`. Its counts use `workKindCounts` for agents that carry it and
+the retained calls of every other agent, so their sum equals the Calls figure.
+`byKind` medians still describe retained calls only, so the panel no longer shows
+them; the Activity rail shows medians from complete committed history. The
+"repeated recently" count under Calls, the repeat and overlap signals, and the
+recent activity list remain recent-window evidence by design. Agent skill usage
+uses the same whole-transcript pass. The two figures can still differ
+briefly while one commit is newer than the other, and for a session whose
+committed history predates a complete replay.
 
 Each resolved duration is wall time from a recorded call to its matching result,
 including approval waits. Running, unmatched, invalid, and reversed timestamp
@@ -631,8 +683,14 @@ attributed to an individual action.
 All tool-call fragments of the same Claude request contribute their distinct
 recorded tool IDs and work-kind counts, even when its final fragment is text.
 Only fragments with that proven association can appear nested in the grouped
-feed. User input and system notifications have no request link and remain
-outside it. Linked replies remain messages and never contribute to tool-call or
+feed. Claude user input may link through its recorded parent chain; Codex main-thread
+`user_message` deliveries and completed `UserMessage` items may link to the first
+response through an uninterrupted source sequence and valid closing usage.
+Codex role-user response items are context
+or mirrors, not additional human deliveries; delegated and approval-review inputs
+are excluded. Input exposes only `Text`, `Image`, or `Text + Image`, never content
+or attachment paths. Unlinked input and system notifications remain outside the
+grouped feed. Linked input and replies remain messages and never contribute to tool-call or
 by-kind action counts.
 
 Retained normalized evidence can include tool invocations, failed shell completions,
@@ -730,7 +788,9 @@ cannot supply the viewed session's files, branch comparison, pull requests, or c
 counts. A mismatch retains a previously verified session snapshot, or leaves repository
 state unavailable when none exists. Missing branch evidence is unavailable; the current
 checkout is not evidence of which branch the session used. These rules do not identify
-which session made other uncommitted changes on the same branch.
+which session made other uncommitted changes on the same branch. Files the session touched
+are independent of that state: recorded changes and already Git-observed paths stay listed
+when the working tree leaves the recorded branch, and the tab says so.
 
 Accepted live branch metadata comes from read-only Git commands against the session-bound repository root. Pomegr resolves the live default branch from `origin`, fetches its commit objects into a temporary Pomegr-owned bare repository, and caches the result for one minute. It never updates the observed repository's remote-tracking refs, `FETCH_HEAD`, index, or working tree. On a feature branch, Pomegr shows bounded commit metadata unique to the live remote default branch (normally `origin/main`) and ahead/behind counts against that remote snapshot. When graph history says a feature branch is ahead but Git's deterministic merge-tree result is identical to the remote tree, Pomegr reports zero unmerged commits and labels the branch changes as integrated; this handles squash merges without pretending the rewritten commits are still outstanding. On the default branch, it shows recent commits and divergence from the live remote branch. Remote failures degrade independently and never fall back to potentially stale local remote-tracking counts. Commit metadata is limited to the abbreviated hash, a bounded subject, and commit timestamp; author identity and commit bodies are not exposed. Live views also show uncommitted file status and paths. Historical views show only a branch recorded in the transcript when one is available; they never substitute the current repository or working tree for historical Git state.
 
@@ -765,7 +825,7 @@ commands and patch-looking text embedded in `functions.exec` source do not prove
 successful file operation. Nested patches require separate structured success evidence;
 the outer wrapper's success alone cannot establish which nested calls ran. Shell
 commands never do, because the files a command writes cannot be known reliably from its
-text; those changes appear only as Git-observed files. Shell commands, scripts, builds,
+text; those changes appear only as Git-observed files, once the session commits them. Shell commands, scripts, builds,
 external editors, unrecognized tools, incomplete or
 invalid provider records, paths rejected by the repository-path policy, retention bounds,
 and observation gaps can leave changes missing. Git comparison can add repository-scoped
@@ -778,20 +838,25 @@ limits wherever totals or empty states are presented.
 ### Git-observed files
 
 A session's Touched here list also shows Git-observed files, marked with a Git glyph.
-A file is Git-observed when it was committed on the session's recorded branch during
-the session window, or when it became uncommitted after the session's first live Git
-check. Files already uncommitted at that first check form a baseline and are never
-shown. Commits are read only while the live branch matches the recorded branch. Paths
-that already have a recorded file-change row are not repeated. Git-observed files come
-from repository state, not provider evidence, so they may include changes made by
-other people, other sessions, or other tools during the window. A committed file carries
-Git's net change across the window's commits: added when any commit in the window added
-it, deleted when the newest change deleted it, otherwise modified. That describes what the
-commits did to the file, not who made the change. Git-observed files name no agent or
-request, are not recorded edits, and do not count toward edit totals or the repository
-file history. A file without a recorded edit is not evidence that someone else changed
-it: the agent may have written it through a command Pomegr cannot attribute, or a build
-or generator may have produced it.
+A file is Git-observed when a commit on the session's recorded branch changed it and that
+commit's committer time falls inside one of the session's own finished Git commands: an
+execution task with work kind `git`, `git_push`, or `pull_request`, from its start
+(floored to the second, because a committer time has one-second resolution) to its
+finish. A file that only changed or was committed while the session was open is never
+listed, and neither is a file that merely became uncommitted. Commits are read only while
+the live branch matches the recorded branch. Paths that already have a recorded
+file-change row are not repeated. A listed path stays listed: a later amend or rebase that
+moves its commit out of the match does not withdraw it.
+
+This is a time match, not authorship. It can miss a commit the session made through an
+unrecognized tool or a command still running, and it can include another actor's commit
+that landed while one of the session's Git commands ran, or every commit a session-run
+rebase rewrote. A file carries Git's net change across the matched commits: added when any
+of them added it, deleted when the newest change deleted it, otherwise modified.
+Git-observed files name no agent or request, are not recorded edits, and do not count
+toward edit totals or the repository file history. A file without a recorded edit is not
+evidence that someone else changed it: the agent may have written it through a command
+Pomegr cannot attribute, or a build or generator may have produced it.
 
 ## Pull-request associations
 

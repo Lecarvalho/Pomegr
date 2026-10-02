@@ -12,6 +12,7 @@
 .activityKindRows { display: grid; gap: 2px; margin: 0 -8px; }
 .activityBreakdown .activityKindRow { display: grid; grid-template-columns: var(--activity-kind-columns); align-items: center; gap: var(--activity-kind-gap); min-height: 34px; padding: 0 8px; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; text-align: left; }
 .activityKindRow .workKindIcon { width: 16px; height: 16px; color: var(--muted); }
+.activityKindRow.selected { background: var(--color-raised); }
 .activityKindLabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .activityKindBar { display: block; height: 5px; background: var(--line); }
 .activityKindBar i { display: block; height: 100%; background: var(--command-line-strong); }

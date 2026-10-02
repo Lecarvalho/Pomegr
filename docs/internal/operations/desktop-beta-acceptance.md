@@ -1,14 +1,15 @@
 # Windows desktop beta acceptance
 
-> Scope: the release-candidate acceptance procedure for a Pomegr Windows x64 beta, and the acceptance items still open.
-> Authority: operating procedure (gates, evidence schema, retention) plus the labeled [open items](#open-acceptance-items) carried from the retired desktop implementation plan.
+> Scope: the optional acceptance procedure for a future Pomegr Windows x64 beta candidate, and the desktop milestone IDs.
+> Authority: operating procedure (gates, evidence schema, retention). It carries no per-candidate result, and no acceptance is pending.
 > Related code and checks: `desktop/packaging/beta-acceptance.mjs` (`npm run desktop:beta:init`, `npm run desktop:beta:verify`), [desktop releases](desktop-releases.md), and the [desktop clean-VM checklist](desktop-clean-vm.md).
 >
 > Pomegr desktop is [available for Windows x64](https://github.com/Lecarvalho/Pomegr/releases/latest).
-> This checklist tracks beta acceptance evidence separately from public availability;
-> publication does not mark its unchecked gates as passed.
+> As of 2026-10-01, signed stable releases are published through v0.6.0 (see
+> [GitHub releases](https://github.com/Lecarvalho/Pomegr/releases)), and no release step
+> requires a beta acceptance record.
 
-This is the release-candidate checklist for a Pomegr Windows x64 beta. It complements the earlier unsigned alpha run kept under [Recorded acceptance runs](desktop-clean-vm.md#recorded-acceptance-runs); that alpha evidence does not prove signing or automatic updates. Complete this checklist on a clean, fully patched Windows x64 VM using assets downloaded from the same draft or prerelease. Never replace a manual result with a unit-test result.
+This is an optional checklist for a future Pomegr Windows x64 beta candidate, such as the first beta after a new signing or updater configuration (see [beta update acceptance](desktop-releases.md#beta-update-acceptance)). It is not part of a routine release, and nothing is pending against it. It complements the earlier unsigned alpha run kept under [Recorded acceptance runs](desktop-clean-vm.md#recorded-acceptance-runs); that alpha evidence does not prove signing or automatic updates. When you run it, complete it on a clean, fully patched Windows x64 VM using assets downloaded from the same draft or prerelease. Never replace a manual result with a unit-test result.
 
 Record only product versions, public release/workflow URLs, public artifact names and checksums, the VM image/version, fixed accept/reject outcomes, and pass/fail states. Do not record usernames, provider paths, session titles, repositories, prompts, responses, commands, credentials, certificate Subjects, or screenshots containing private data. The acceptance JSON uses exact key allowlists at every level; it has no free-form notes or path fields.
 
@@ -77,71 +78,18 @@ Replace every generated placeholder in these exact operator fields:
 - `evidence.updateVerification.interruptedDownloadRecovery`: exactly `pass` after interruption leaves the installed older beta runnable.
 - `evidence.manual`: exactly the 15 generated gate keys, each set to `pass` only after its matching checklist item succeeds.
 
-Do not add filenames, local paths, certificate details, error text, notes, or screenshots to the JSON. `release-acceptance/` is intentionally ignored: archive the record with release-maintainer evidence, not in source control. Verifier output includes a SHA-256 so the reviewed record can be identified later.
+Do not add filenames, local paths, certificate details, error text, notes, or screenshots to the JSON. `release-acceptance/` is intentionally ignored, so the record stays out of source control; [Evidence retention](#evidence-retention) names who keeps it and where. Verifier output includes a SHA-256 so the reviewed record can be identified later.
 
 ## Evidence retention
 
-This page keeps the procedure and the open items, never a candidate's results. `npm run desktop:beta:init` writes the record to the ignored `release-acceptance/desktop-beta-X.Y.Z-beta.N.json`. Archive each verified record, with the SHA-256 the verifier prints, with the release maintainers' evidence outside source control. The clean-VM runs recorded before this rule stay in [Recorded acceptance runs](desktop-clean-vm.md#recorded-acceptance-runs).
+This page keeps the procedure, never a candidate's results. `npm run desktop:beta:init` writes the record to the ignored `release-acceptance/desktop-beta-X.Y.Z-beta.N.json`.
 
-## Current evidence status
+- **Owner:** the release maintainer who publishes the accepted release.
+- **Store:** the GitHub release for the same tag. After `npm run desktop:beta:verify` passes, attach the verified record JSON, unchanged, as an additional asset named `desktop-beta-X.Y.Z-beta.N.json`, and put the SHA-256 the verifier prints in the release notes or beside the asset.
+- **Safe to attach:** the record uses exact key allowlists and holds only public fields (versions, public URLs, artifact checksums, fixed outcomes), so it is safe to publish.
+- **Timing:** attach the record after the release workflow has published the release. The workflow's "Verify draft assets and publish" step requires the draft's asset names to equal the closed set in `desktop/packaging/release-policy.mjs` and fails on any extra asset, so the record can never be a draft asset. Never replace or remove an existing asset. `SHA256SUMS.txt` does not list the record, and a later exact-set check of the live release would report it as extra.
 
-Open. The earlier 0.0.9-to-0.1.0 Windows Sandbox run proves unsigned installer/portable startup, upgrade-in-place, clean shutdown, and data-boundary behavior. It does not prove the signed download path, exact publisher/timestamp, synthetic notification flow, persisted beta preferences, or signed automatic update. Do not mark `POMEGR-DT-10` complete until this checklist and its machine-verifiable record pass for a signed beta.
-
-## Open acceptance items
-
-> Status: open; no signed-beta record exists in this repository's documentation.
-> Origin: carried on 2026-09-30 from the retired desktop implementation plan, whose `POMEGR-DT-08`, `POMEGR-DT-09`, and `POMEGR-DT-10` were its only unfinished tasks.
-> Lifetime: temporary. Delete this section when a signed beta's acceptance record verifies and the three items are closed. The reusable procedure above stays.
-
-Closing `POMEGR-DT-10` also closes the first desktop release's definition of done, which is the conjunction of every milestone below.
-
-### POMEGR-DT-08: signed releases and automatic updates
-
-The repository implementation and automated release gates are in place (see [desktop releases](desktop-releases.md)). Completion is blocked on external evidence from two real signed beta releases: a clean-Windows-VM upgrade, invalid-signer rejection, checksum and signature re-verification, and CI log inspection. Run the [beta update acceptance](desktop-releases.md#beta-update-acceptance) and record the result in the machine-verifiable record above.
-
-- [ ] A signed older beta can discover, download, verify, and install a newer beta.
-- [ ] Unsigned or incorrectly signed updates are rejected.
-- [ ] Update failure leaves the current installation usable.
-- [ ] Every binary release has matching corresponding source available at no charge.
-- [ ] Signing credentials never appear in repository history or artifacts.
-- [ ] Generalize or retire the `0.2.4` pin in `desktop/packaging/build-acceptance-prior.mjs`, which throws for any other `package.json` version and so blocks the prior-fixture build for every later candidate.
-
-Verification: exercise an update from one test version to the next on a clean Windows VM; verify signature and checksum before and after installation; inspect workflow logs for secret masking and private-path leakage.
-
-### POMEGR-DT-09: desktop privacy and security QA
-
-The retired plan recorded no acceptance status or completion notes for this item, so treat it as open until a maintainer confirms each item against the current desktop tests and records the result. It depends on `POMEGR-DT-03` through `POMEGR-DT-08`. The goal is to prove that desktop packaging and native integrations do not weaken Pomegr's security, privacy, read-only behavior, or failure isolation.
-
-Work to confirm:
-
-- Automated assertions for BrowserWindow sandboxing, context isolation, disabled Node integration, denied webviews, denied unexpected navigation, and bounded preload APIs.
-- Local-origin authorization, Host/Origin rejection, dynamic ports, concurrent local clients, and launch-lifetime authorization revocation.
-- The `/api/state` and `/api/sessions` serialization privacy audits, repeated through the packaged desktop path.
-- Desktop IPC privacy sentinels for prompts, responses, commands, tool output, credentials, environment values, private paths, and arbitrary exceptions.
-- Notifications, tray labels, desktop logs, crash handling, and update errors carry only bounded safe metadata.
-- The monitor remains read-only under desktop startup and cannot perform provider control actions.
-- Process cleanup after normal quit, renderer crash, utility-process crash, update restart, Windows logoff, and forced application termination.
-- An audit of packaged dependencies that records their licenses without changing third-party terms.
-
-Acceptance criteria:
-
-- [ ] No forbidden privacy sentinel reaches the renderer, IPC payloads, notifications, logs, crash UI, or release artifacts.
-- [ ] The renderer cannot access filesystem, shell, process, unrestricted IPC, or Electron internals.
-- [ ] Unexpected local origins cannot read desktop metadata.
-- [ ] Provider, Git, web, tray, notification, and updater failures degrade independently.
-- [ ] All observed desktop behavior remains read-only.
-
-Verification: `npm run build`, `npm test`, `npm run desktop:smoke`, `npm run desktop:security`, `npm run desktop:inspect`, and `npm run lint`.
-
-### POMEGR-DT-10: beta acceptance and desktop documentation
-
-Automation, user and contributor documentation, and the release checklist are implemented. Final signed-beta clean-VM evidence remains open, and the earlier unsigned alpha run cannot satisfy it. The nine-step first-run path maps to the [clean-VM gates](#clean-vm-first-run-and-lifecycle-gates): download the installer (`downloadArtifacts`), verify the publisher and signature (`verifyChecksums`, `verifyPublisherSignature`), install without Node.js (`standardUserInstall`), launch without a terminal (`firstLaunch`), discover existing provider sessions (`providerDiscovery`), receive and clear a synthetic safe needs-input notification (`needsInputNotification`), restart and preserve bounded preferences (`preferenceRestart`), update to a newer signed version (`signedUpdate`), and uninstall without touching provider data (`uninstallDataBoundary`).
-
-- [ ] A new user can go from download to visible sessions without cloning the repository or installing Node.js. The [installation guide](../../public/get-started/install.md) distinguishes desktop installation, portable beta, and source development.
-- [ ] No unsupported operating system or provider capability is implied.
-- [ ] The release has corresponding source, legal notices, signatures, checksums, and reproducible version metadata.
-- [ ] Temporary diagnostics, unsigned test artifacts, and local signing configuration are removed before publication.
-- [ ] The full build, test, lint, desktop security, and artifact-inspection commands listed under `POMEGR-DT-09` pass.
+The clean-VM runs recorded before this rule stay in [Recorded acceptance runs](desktop-clean-vm.md#recorded-acceptance-runs).
 
 ## Desktop milestone IDs
 
@@ -156,6 +104,8 @@ Automation, user and contributor documentation, and the release checklist are im
 | `POMEGR-DT-05` | Windows installer and portable build | Complete 2026-08-11 | [Desktop releases](desktop-releases.md); alpha run in [Recorded acceptance runs](desktop-clean-vm.md#recorded-acceptance-runs) |
 | `POMEGR-DT-06` | Tray, window, and launch-at-login behavior | Complete 2026-08-11 | [Desktop settings and behavior](../development/configuration.md#desktop-settings-and-behavior) |
 | `POMEGR-DT-07` | Privacy-bounded native notifications | Complete 2026-08-12 | [Desktop process ownership](../architecture/overview.md#desktop-process-ownership) and [Notifications do not appear](../development/configuration.md#notifications-do-not-appear) |
-| `POMEGR-DT-08` | Signed releases and automatic updates | Open | [Open acceptance items](#pomegr-dt-08-signed-releases-and-automatic-updates) |
-| `POMEGR-DT-09` | Desktop privacy and security QA | Open | [Open acceptance items](#pomegr-dt-09-desktop-privacy-and-security-qa) |
-| `POMEGR-DT-10` | Beta acceptance and desktop documentation | Open | [Open acceptance items](#pomegr-dt-10-beta-acceptance-and-desktop-documentation) |
+| `POMEGR-DT-08` | Signed releases and automatic updates | Retired 2026-10-01 by owner decision, see the note below | [Desktop releases](desktop-releases.md) |
+| `POMEGR-DT-09` | Desktop privacy and security QA | Retired 2026-10-01 by owner decision, see the note below | [Desktop shell security boundary](../architecture/overview.md#desktop-shell-security-boundary) |
+| `POMEGR-DT-10` | Beta acceptance and desktop documentation | Retired 2026-10-01 by owner decision, see the note below | The optional procedure on this page and the [installation guide](../../public/get-started/install.md) |
+
+`POMEGR-DT-08`, `POMEGR-DT-09`, and `POMEGR-DT-10` were the only tasks of that plan still open at the migration. The owner retired them on 2026-10-01 because signed stable releases ship (through v0.6.0, see [GitHub releases](https://github.com/Lecarvalho/Pomegr/releases)) without a recorded signed-beta clean-VM run. This is a retirement, not an acceptance result: no signed-beta acceptance record was ever produced, and nothing here claims that a signed-beta clean-VM run passed. The signing and update gates every release workflow enforces are in [desktop releases](desktop-releases.md#what-the-workflow-does), and `npm run desktop:security` runs the desktop privacy and security suites.

@@ -758,3 +758,43 @@ test("shutdown fences in-flight failures from scheduling retries in a later life
   await Promise.resolve(); owner.stop(); reject(new Error("synthetic")); await work;
   assert.equal(jobs.length, 0);
 });
+
+const mixedRows = (requestId, marked) => [
+  { ...activity("call-shell", "2026-09-12T01:00:01Z", requestId), tool: "Bash", workKind: "shell", status: "failed", durationMs: 30 },
+  { ...activity("call-read", "2026-09-12T01:00:02Z", requestId), tool: "Read", workKind: "read", durationMs: 10 },
+  { ...activity("row-input", "2026-09-12T01:00:00Z", requestId), tool: "User input", workKind: "input" },
+  { ...activity("row-reply", "2026-09-12T01:00:03Z", requestId), tool: "Assistant replied", workKind: "report", detail: "" },
+  { ...activity("row-notice", "2026-09-12T01:00:04Z", requestId), tool: "Task completed", workKind: "agent" },
+  { ...activity("row-shell-failed", "2026-09-12T01:00:05Z", requestId), tool: "Shell failed", workKind: "shell", status: "failed" },
+].map((row) => marked ? { ...row, call: row.id.startsWith("call-") } : row);
+function assertToolCallAggregates(page) {
+  assert.deepEqual(page.byKind, [{ kind: "shell", count: 1, medianDurationMs: 30 }, { kind: "read", count: 1, medianDurationMs: 10 }]);
+  assert.deepEqual(page.shellTasks, { total: 1, failed: 1 });
+  assert.equal(page.requestGroups[0].calls.length, 6, "request groups still list every recorded row");
+  for (const row of [...page.items, ...page.requestGroups[0].calls]) assert.equal(Object.hasOwn(row, "call"), false, "the marker stays monitor-private");
+}
+
+for (const [label, disk, marked] of [["memory, marked", false, true], ["disk index, marked", true, true], ["memory, legacy labels", false, false], ["disk index, legacy labels", true, false]]) {
+  test(`activity aggregates count tool calls only (${label})`, async (t) => {
+    const directory = disk ? await mkdtemp(path.join(os.tmpdir(), "pomegr-history-calls-")) : null;
+    if (directory) t.after(() => rm(directory, { recursive: true, force: true }));
+    const item = request("cdcdcdcdcdcdcdcd", "2026-09-12T01:00:00Z");
+    const store = new SessionHistoryStore({ directory });
+    await store.publish("claude:tool-calls", { requests: [item], activity: mixedRows(item.id, marked), complete: true });
+    const reader = disk ? new SessionHistoryStore({ directory }) : store;
+    assertToolCallAggregates(await reader.read("claude:tool-calls", { kind: "activity" }));
+  });
+}
+
+test("a block-store ref committed before the tool-call marker is classified by its row label", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-calls-sqlite-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const item = request("efefefefefefefef", "2026-09-12T01:00:00Z");
+  const store = new SessionHistoryStore({ directory });
+  await store.publishRequestContribution("claude:legacy-refs", { epoch: 1, sequence: 1, requests: [item], activity: mixedRows(item.id, true) });
+  assertToolCallAggregates(await store.read("claude:legacy-refs", { kind: "activity" }));
+  const db = new DatabaseSync(path.join(directory, (await readdir(directory)).find((name) => name.endsWith(".history.sqlite"))));
+  db.exec("UPDATE rows SET ref=json_remove(ref,'$.call'), data=json_remove(data,'$.call') WHERE kind='activity'");
+  db.close();
+  assertToolCallAggregates(await new SessionHistoryStore({ directory }).read("claude:legacy-refs", { kind: "activity" }));
+});

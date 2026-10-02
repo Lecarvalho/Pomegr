@@ -567,6 +567,7 @@ test("restore upgrades only legacy evidence of a provider that declares launch-b
   assert.equal(Object.hasOwn(onDisk.evidence.session, "repositoryAttribution"), false, "restore never rewrites the checkpoint file");
 });
 
+// A version-4 sidecar, as an older build wrote it: it still loads, as the current version.
 const LEGACY_SIDECAR = {
   version: 4, branch: "feat/example", isMain: false, files: [], comparison: null, comparisonCheckedAt: null,
   pullRequests: { checkedAt: "2026-09-20T12:00:00.000Z", items: [] }, commitsInSession: 1, checkedAt: "2026-09-20T12:00:05.000Z",
@@ -596,7 +597,7 @@ test("legacy launch-bound evidence keeps its pre-rule sidecar trust and recorded
 
 test("a launch-declaring provider's proven session adopts its unbound pre-rule sidecar; no other provider does", async () => {
   const { normalizeRepositorySnapshot, resolveCheckpointRepository, sessionRepositorySnapshot, snapshotFromLiveCheck } = await import("../../../../server/repository/repository-snapshot.mjs");
-  const unbound = normalizeRepositorySnapshot({ ...LEGACY_SIDECAR, repositoryId: null, dirtyAtFirstCheck: ["kept.txt"] });
+  const unbound = normalizeRepositorySnapshot({ ...LEGACY_SIDECAR, repositoryId: null, commitsInSession: 7 });
   assert.ok(unbound, "fixture sidecar is valid");
   const proven = { session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567", recordedGitBranch: "feat/example" } };
   assert.equal(sessionRepositorySnapshot(proven, unbound, { adoptsUnboundSidecar: true }), unbound);
@@ -604,6 +605,6 @@ test("a launch-declaring provider's proven session adopts its unbound pre-rule s
   const options = { historical: true, evidence: proven, snapshot: unbound, recordedGitState: (branch) => ({ available: Boolean(branch), branch, fallback: true }), unavailablePullRequests: () => ({ items: [] }) };
   assert.equal(resolveCheckpointRepository({ ...options, adoptsUnboundSidecar: true }).repository.fallback, undefined, "the recorded sidecar wins over the branch fallback");
   const live = { repository: { available: true, historical: false, branch: "feat/example", files: [], remote: { status: "unavailable" } }, checkedAt: "2026-09-28T12:00:00.000Z", repositoryId: proven.session.repositoryId };
-  assert.deepEqual(snapshotFromLiveCheck({ ...live, previous: unbound, adoptsUnboundSidecar: true }).dirtyAtFirstCheck, ["kept.txt"], "the live timeline continues");
-  assert.deepEqual(snapshotFromLiveCheck({ ...live, previous: unbound }).dirtyAtFirstCheck, [], "without adoption a new identity starts a new baseline");
+  assert.equal(snapshotFromLiveCheck({ ...live, previous: unbound, adoptsUnboundSidecar: true }).commitsInSession, 7, "the live timeline continues");
+  assert.equal(snapshotFromLiveCheck({ ...live, previous: unbound }).commitsInSession, null, "without adoption a new identity starts a new timeline");
 });

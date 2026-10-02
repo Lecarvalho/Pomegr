@@ -31,8 +31,9 @@ committed. Check the time beside a value before you treat it as current.
    - **Agent estimate**, **Progress**, and **Reported signals** need the
      [Pomegr plugin](../using-pomegr/reporting-plugins.md). Without a report,
      **Agent estimate** shows "No estimate recorded".
-   - **Cost** appears only with Claude Code local usage, and Codex has no session
-     estimate. See [Signals and estimates](../concepts/signals-and-estimates.md).
+   - **Cost** appears only with [Claude Code local usage](claude-local-usage.md),
+     and Codex has no session estimate. See
+     [Signals and estimates](../concepts/signals-and-estimates.md).
    - **Cache write** and refill markers are missing for Codex, whose records do
      not give reliable cache-write counts as of September 2026. See
      [Cache reuse](../concepts/cache-reuse.md).

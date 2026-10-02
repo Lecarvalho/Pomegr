@@ -40,6 +40,13 @@ export function mergeUpdatedAt(current, fileResult) {
   return timeValue(bestValid) > timeValue(current) ? bestValid : current;
 }
 
+/** The work kind of one tool_use block; the whole-transcript pass counts with this same rule. */
+export function claudeToolUseWorkKind(content) {
+  const tool = content.name || "Tool";
+  const input = content.input || {};
+  return toolWorkKind(tool, { detail: safeDetail(tool, input), input });
+}
+
 /**
  * Everything about one file's tool_use loop that depends only on its transcript records, its stat
  * (folded in only through the fallback timestamp, which is itself part of the file's generation),
@@ -96,7 +103,7 @@ function computeTemplate(file, records, stat, isMain) {
         id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),
         timestamp: timestamp || stat.mtime.toISOString(),
         tool,
-        workKind: toolWorkKind(tool, { detail, input }),
+        workKind: claudeToolUseWorkKind(content),
         detail,
         status: null,
         durationMs: boundedActivityDuration(timestamp, firstClaudeToolResultAfter(resultTimes, content.id, timestamp)),

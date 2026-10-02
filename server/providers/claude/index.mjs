@@ -287,9 +287,9 @@ export function createClaudeProvider(options = {}) {
     const mainRecords = recordsByFile.get(mainFile) || [];
     // One whole-transcript pass yields both facts. The 2 MiB record tail and the activity window
     // below both slide, so neither can back a user-message event that must not disappear.
-    const { startedAt: primaryStartedAt, userMessageTimes } = completeHistory
-      ? { startedAt: claudeSessionWorkStartedAt(mainRecords), userMessageTimes: claudeUserMessageTimes(mainRecords) }
-      : await sessionWorkStartReader.readSessionFacts(mainFile);
+    const mainFacts = completeHistory ? null : await sessionWorkStartReader.readTranscriptFacts(mainFile);
+    const { startedAt: primaryStartedAt, userMessageTimes } = mainFacts
+      || { startedAt: claudeSessionWorkStartedAt(mainRecords), userMessageTimes: claudeUserMessageTimes(mainRecords) };
     const cwd = projectCwd(mainRecords);
     const mainStat = readGenerations.stat(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
@@ -370,7 +370,14 @@ export function createClaudeProvider(options = {}) {
         stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath });
       activity.push(...toolEvidence.userInputActivity.map((event) => ({ ...event, _historyAgentId: actor.id })));
       toolCalls.push(...toolEvidence.toolCalls);
-      const calls = toolEvidence.calls;
+      // The 2 MiB tail slides, so a transcript that outgrew it would lose its earliest calls. Past
+      // that size the call, work-kind and skill counts come from the whole-transcript pass; the
+      // main transcript's pass already ran. A pass that is behind the tail is not used.
+      const facts = completeHistory ? null
+        : file === mainFile ? mainFacts
+          : stat.size > MAX_BYTES_PER_FILE ? await sessionWorkStartReader.readTranscriptFacts(file) : null;
+      const whole = facts && facts.toolUses >= toolEvidence.calls ? facts : null;
+      const calls = whole ? whole.toolUses : toolEvidence.calls;
       updatedAt = mergeUpdatedAt(updatedAt, toolEvidence.updatedAt);
       const runtime = runtimeMetadata(records);
       const recordedTiming = agentTiming(records, stat.mtime.toISOString());
@@ -410,8 +417,9 @@ export function createClaudeProvider(options = {}) {
         effort: runtime.effort,
         status: externallyStopped ? "stopped" : historical ? "idle" : needsInputAt ? "needs_input" : finished ? "finished" : observedStatus,
         toolCalls: calls,
+        ...(whole ? { workKindCounts: Object.entries(whole.toolKinds).map(([kind, count]) => ({ kind, count })) } : {}),
         signal: signalsByFile.get(file)?.agent || null,
-        skills: buildSkillUsage(records),
+        skills: whole ? whole.skills : buildSkillUsage(records),
         lastSeen: externallyStopped ? externallyStoppedAt : needsInputAt || (file === mainFile ? registryTimestamp(sessionRegistryEntry) : null) || stat.mtime.toISOString(),
         executionTasks: [],
         ...timing,

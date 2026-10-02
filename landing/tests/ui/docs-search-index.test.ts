@@ -102,7 +102,7 @@ describe("index of the real documentation", () => {
   const index = buildSearchIndex(realContent);
 
   it("covers every published page from the same revision as the content", () => {
-    expect(index.pages).toHaveLength(17);
+    expect(index.pages).toHaveLength(realContent.pages.length);
     expect(index.revision).toBe(realContent.revision);
     expect(index.pages.map((page) => page.route)).toEqual(realContent.pages.map((page) => page.route));
     realContent.pages.forEach((page, position) => {

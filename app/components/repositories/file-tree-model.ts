@@ -9,11 +9,10 @@ export type FileTreeFile = {
   status?: string | null; // session scope: working-tree status chip
   sessionCount?: number | null; // repository scope: distinct recorded sessions
   muted?: boolean; // repository scope: no recorded session history, or deleted
-  /** Session scope only: this row is not a recorded tool edit, only seen in Git during the
-   *  session window (committed on the live HEAD branch, or turned uncommitted between the
-   *  session's first and latest live Git checks). Renders a quiet glyph, never a chip. */
-  gitObserved?: "committed" | "uncommitted";
-  /** Session scope only: a Git-observed row's net change across the session window's commits. */
+  /** Session scope only: this row is not a recorded tool edit, only committed while one of the
+   *  session's own Git commands ran. Renders a quiet glyph, never a chip. */
+  gitObserved?: "committed";
+  /** Session scope only: a Git-observed row's net change across those commits. */
   gitChange?: "added" | "modified" | "deleted" | null;
   /** Session scope only: this session's latest recorded change kind. Shown as a neutral letter
    *  when the working tree reports no status, so a committed file keeps its C/M. */
@@ -153,8 +152,8 @@ export function sessionChangeStatus(file: Pick<FileTreeFile, "recordedKind" | "g
   if (file.recordedKind === "created") return { letter: "C", label: "Created in this session" };
   if (file.recordedKind === "edited") return { letter: "M", label: "Edited in this session" };
   if (file.recordedKind) return null;
-  if (file.gitChange === "added") return { letter: "A", label: "Added in a commit during this session" };
-  if (file.gitChange === "modified") return { letter: "M", label: "Modified in a commit during this session" };
-  if (file.gitChange === "deleted") return { letter: "D", label: "Deleted in a commit during this session" };
+  if (file.gitChange === "added") return { letter: "A", label: "Added in a commit by this session" };
+  if (file.gitChange === "modified") return { letter: "M", label: "Modified in a commit by this session" };
+  if (file.gitChange === "deleted") return { letter: "D", label: "Deleted in a commit by this session" };
   return null;
 }

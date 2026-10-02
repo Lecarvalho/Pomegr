@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,9 +8,7 @@ import {
   gitObservedFilesFromSnapshot,
   historicalRepositoryFromSnapshot,
   isSafeRecordedRepositoryPath,
-  nextGitObserved,
   normalizeRepositorySnapshot,
-  readCommitsInWindow,
   resolveCheckpointRepository,
   resolveHistoricalRepositoryAndPullRequests,
   snapshotFromLiveCheck,
@@ -20,65 +17,7 @@ import {
 import { SessionObservationCheckpointStore } from "../../../server/sessions/checkpoints/session-observation-checkpoints.mjs";
 import { projectSessionDomains } from "../../../server/sessions/domain/session-domain-projection.mjs";
 import { createEmptyMonitorState } from "../../../shared/monitor-state.mjs";
-
-function validSnapshot(overrides = {}) {
-  return {
-    version: 5,
-    branch: "feat/example",
-    isMain: false,
-    files: [{ status: " M", path: "app/file.ts" }],
-    comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false },
-    comparisonCheckedAt: "2026-09-20T12:00:00.000Z",
-    pullRequests: { checkedAt: "2026-09-20T12:00:00.000Z", items: [pullRequestItem()] },
-    commitsInSession: 3,
-    checkedAt: "2026-09-20T12:00:05.000Z",
-    dirtyAtFirstCheck: ["app/file.ts"],
-    becameDirty: [],
-    committedInWindow: null,
-    committedChanges: null,
-    gitObservedTruncated: false,
-    repositoryId: null,
-    commitTimesInWindow: null,
-    ...overrides,
-  };
-}
-
-// The version-1 shape (predates the Git-observed-files fields), used only to exercise the
-// upgrade path in normalizeRepositorySnapshot.
-function validSnapshotV1(overrides = {}) {
-  return {
-    version: 1,
-    branch: "feat/example",
-    isMain: false,
-    files: [{ status: " M", path: "app/file.ts" }],
-    comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false },
-    comparisonCheckedAt: "2026-09-20T12:00:00.000Z",
-    pullRequests: { checkedAt: "2026-09-20T12:00:00.000Z", items: [pullRequestItem()] },
-    commitsInSession: 3,
-    checkedAt: "2026-09-20T12:00:05.000Z",
-    ...overrides,
-  };
-}
-
-const withoutCommitTimes = (value) => Object.fromEntries(Object.entries(value).filter(([key]) => key !== "commitTimesInWindow"));
-function pullRequestItem(overrides = {}) {
-  return {
-    host: "github",
-    repository: "Lecarvalho/pomegr",
-    number: 24,
-    title: "Draft PR",
-    url: "https://github.com/Lecarvalho/pomegr/pull/24",
-    state: "open",
-    draft: true,
-    headBranch: "feat/example",
-    baseBranch: "main",
-    additions: 842,
-    deletions: 1117,
-    updatedAt: "2026-09-20T11:00:00.000Z",
-    association: "session",
-    ...overrides,
-  };
-}
+import { LEGACY_VALUES, REPOSITORY_ID, legacySnapshot, pullRequestItem, validSnapshot } from "../../helpers/repository-snapshot-records.mjs";
 
 test("isSafeRecordedRepositoryPath accepts nested paths and rejects every unsafe spelling", () => {
   assert.equal(isSafeRecordedRepositoryPath("app/components/File.tsx"), true);
@@ -130,141 +69,107 @@ test("normalizeRepositorySnapshot rejects unsafe file paths, over-bound lists, f
   assert.equal(normalizeRepositorySnapshot("not-an-object"), null);
 });
 
-test("normalizeRepositorySnapshot accepts a version-1 record and upgrades it to version 5 with a never-measured Git-observed baseline", () => {
-  const upgraded = normalizeRepositorySnapshot(validSnapshotV1());
-  assert.ok(upgraded);
-  assert.equal(upgraded.version, 5);
-  assert.equal(upgraded.branch, "feat/example");
-  assert.equal(upgraded.dirtyAtFirstCheck, null, "never measured");
-  assert.deepEqual(upgraded.becameDirty, []);
-  assert.equal(upgraded.committedInWindow, null);
-  assert.equal(upgraded.committedChanges, null);
-  assert.equal(upgraded.gitObservedTruncated, false);
-  assert.equal(gitObservedFilesFromSnapshot(upgraded), null, "gitObservedFilesFromSnapshot is null for a v1-upgraded record");
+test("normalizeRepositorySnapshot loads a version 1 to 5 record as version 6 with never-measured session commits, dropping the old window-wide lists", () => {
+  for (const version of [1, 2, 3, 4, 5]) {
+    const record = legacySnapshot(version);
+    const upgraded = normalizeRepositorySnapshot(record);
+    assert.ok(upgraded, `version ${version} loads`);
+    assert.equal(upgraded.version, 6);
+    assert.equal(upgraded.branch, "feat/example");
+    assert.equal(upgraded.commitsInSession, 3);
+    assert.equal(upgraded.sessionCommitPaths, null, `version ${version}: never measured, not converted from committedInWindow`);
+    assert.equal(upgraded.sessionCommitChanges, null);
+    assert.equal(upgraded.sessionCommitsTruncated, false);
+    assert.equal(upgraded.repositoryId, version >= 4 ? REPOSITORY_ID : null, "a version that predates the identity loads it as null");
+    assert.deepEqual(upgraded.commitTimesInWindow, version >= 5 ? LEGACY_VALUES.commitTimesInWindow : null, "a version that predates commit times loads them as null");
+    for (const dropped of ["dirtyAtFirstCheck", "becameDirty", "committedInWindow", "committedChanges", "gitObservedTruncated"]) {
+      assert.equal(Object.hasOwn(upgraded, dropped), false, `version ${version}: ${dropped} is dropped`);
+    }
+    assert.equal(gitObservedFilesFromSnapshot(upgraded), null, `version ${version}: an upgraded record serves no Git-observed files`);
 
-  // A record already carrying a v2-only key under version 1, or an unexpected extra key, is
-  // rejected rather than silently accepted through either shape's key set.
-  assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), dirtyAtFirstCheck: [] }), null);
-  assert.equal(normalizeRepositorySnapshot({ ...validSnapshotV1(), extraField: 1 }), null);
+    // Each version keeps its own exact key set.
+    assert.equal(normalizeRepositorySnapshot({ ...record, extraField: 1 }), null, `version ${version}: unexpected key`);
+    assert.equal(normalizeRepositorySnapshot({ ...record, sessionCommitPaths: ["app/a.ts"] }), null, `version ${version}: a version-6 key under an older version`);
+    assert.equal(normalizeRepositorySnapshot({ ...record, version: 6 }), null, `version ${version}: an older shape under version 6`);
+  }
+  assert.equal(normalizeRepositorySnapshot({ ...legacySnapshot(1), dirtyAtFirstCheck: [] }), null, "a version-2 key under version 1");
+  assert.equal(normalizeRepositorySnapshot({ ...legacySnapshot(2), committedChanges: ["added"] }), null, "a version-3 key under version 2");
+  assert.equal(normalizeRepositorySnapshot({ ...legacySnapshot(3), repositoryId: null }), null, "a version-4 key under version 3");
+  assert.equal(normalizeRepositorySnapshot({ ...legacySnapshot(4), commitTimesInWindow: [] }), null, "a version-5 key under version 4");
+  assert.equal(normalizeRepositorySnapshot({ ...validSnapshot(), version: 5 }), null, "a version-6 shape under version 5");
+  assert.equal(normalizeRepositorySnapshot({ ...validSnapshot(), version: 7 }), null, "a newer version is never read");
 });
 
-test("normalizeRepositorySnapshot upgrades version-2/3 records and validates the repository identity", () => {
-  const { committedChanges: _omitted, repositoryId: _repositoryId, ...v2Shape } = withoutCommitTimes(validSnapshot({ committedInWindow: ["app/a.ts"] }));
-  const upgraded = normalizeRepositorySnapshot({ ...v2Shape, version: 2 });
-  assert.ok(upgraded);
-  assert.equal(upgraded.version, 5);
-  assert.deepEqual(upgraded.committedInWindow, ["app/a.ts"]);
-  assert.equal(upgraded.committedChanges, null, "a v2 record never recorded change kinds");
-  assert.equal(normalizeRepositorySnapshot({ ...v2Shape, version: 2, committedChanges: ["added"] }), null, "a v3-only key under version 2 is rejected");
+test("normalizeRepositorySnapshot still validates the old window-wide lists of a version 2 to 5 record and rejects the whole record on a bad one", () => {
+  for (const version of [2, 3, 4, 5]) {
+    for (const [label, overrides] of [
+      ["an unsafe dirtyAtFirstCheck path", { dirtyAtFirstCheck: ["../../../escape.ts"] }],
+      ["an unsafe committedInWindow path", { committedInWindow: ["C:\\absolute\\path.ts"] }],
+      ["a null becameDirty", { becameDirty: null }],
+      ["a dirtyAtFirstCheck over the 200-entry cap", { dirtyAtFirstCheck: Array.from({ length: 201 }, (_, index) => `app/file-${index}.ts`) }],
+      ["a becameDirty over the character budget although each path and the count are in bounds", { becameDirty: Array.from({ length: 15 }, (_, index) => `app/${"x".repeat(495)}-${index}.ts`) }],
+      ["a non-boolean gitObservedTruncated", { gitObservedTruncated: "yes" }],
+    ]) {
+      assert.equal(normalizeRepositorySnapshot(legacySnapshot(version, overrides)), null, `version ${version}: ${label}`);
+    }
+    const neverMeasured = normalizeRepositorySnapshot(legacySnapshot(version, { dirtyAtFirstCheck: null, committedInWindow: null, committedChanges: null }));
+    assert.ok(neverMeasured, `version ${version}: a never-measured baseline and window are valid`);
+    assert.equal(neverMeasured.sessionCommitPaths, null);
+  }
+  for (const version of [3, 4, 5]) {
+    for (const [label, overrides] of [
+      ["fewer paths than committedChanges", { committedInWindow: ["app/a.ts"], committedChanges: ["added", "modified"] }],
+      ["an unknown committedChanges entry", { committedInWindow: ["app/a.ts"], committedChanges: ["renamed"] }],
+      ["committedChanges without measured paths", { committedInWindow: null, committedChanges: [] }],
+    ]) {
+      assert.equal(normalizeRepositorySnapshot(legacySnapshot(version, overrides)), null, `version ${version}: ${label}`);
+    }
+  }
+});
 
-  const aligned = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567", committedInWindow: ["app/a.ts", "app/b.ts"], committedChanges: ["added", "deleted"] }));
-  assert.deepEqual(aligned.committedChanges, ["added", "deleted"]);
-  assert.equal(aligned.repositoryId, "repo-0123456789abcdef01234567");
+test("normalizeRepositorySnapshot validates the repository identity", () => {
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ repositoryId: REPOSITORY_ID })).repositoryId, REPOSITORY_ID);
   assert.equal(normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-not-an-id" })), null);
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["added", "modified"] })), null, "length mismatch");
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: ["app/a.ts"], committedChanges: ["renamed"] })), null, "unknown change");
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: null, committedChanges: [] })), null, "changes without measured paths");
+  assert.equal(normalizeRepositorySnapshot(validSnapshot({ repositoryId: 7 })), null);
 });
 
-test("normalizeRepositorySnapshot enforces the Git-observed field bounds: nullable dirtyAtFirstCheck/committedInWindow, always-array becameDirty, path/count/character caps", () => {
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ dirtyAtFirstCheck: null })).dirtyAtFirstCheck, null);
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ committedInWindow: null })).committedInWindow, null);
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ becameDirty: null })), null, "becameDirty is never nullable");
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ dirtyAtFirstCheck: ["../../../escape.ts"] })), null);
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({
-    dirtyAtFirstCheck: Array.from({ length: 201 }, (_, index) => `app/file-${index}.ts`),
-  })), null, "over the 200-entry cap");
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({
-    becameDirty: Array.from({ length: 15 }, (_, index) => `app/${"x".repeat(495)}-${index}.ts`),
-  })), null, "over the combined character budget even though each path and the count are individually in bounds");
-  assert.equal(normalizeRepositorySnapshot(validSnapshot({ gitObservedTruncated: "yes" })), null);
-});
+test("normalizeRepositorySnapshot validates the session-commit fields as a whole: nullable paths, aligned changes, path/count/character caps, boolean truncation", () => {
+  const neverRead = normalizeRepositorySnapshot(validSnapshot());
+  assert.equal(neverRead.sessionCommitPaths, null);
+  assert.equal(neverRead.sessionCommitChanges, null);
+  assert.equal(neverRead.sessionCommitsTruncated, false);
 
-test("gitObservedFilesFromSnapshot merges committed and uncommitted paths, committed winning on overlap, sorted, and is null only for a never-measured record", () => {
-  assert.equal(gitObservedFilesFromSnapshot(null), null);
-  assert.equal(gitObservedFilesFromSnapshot({ dirtyAtFirstCheck: null, becameDirty: [], committedInWindow: null, gitObservedTruncated: false }), null);
+  const aligned = normalizeRepositorySnapshot(validSnapshot({
+    sessionCommitPaths: ["app/a.ts", "app/b.ts"], sessionCommitChanges: ["added", "deleted"], sessionCommitsTruncated: true,
+  }));
+  assert.deepEqual(aligned.sessionCommitPaths, ["app/a.ts", "app/b.ts"]);
+  assert.deepEqual(aligned.sessionCommitChanges, ["added", "deleted"]);
+  assert.equal(aligned.sessionCommitsTruncated, true);
+  assert.throws(() => { aligned.sessionCommitPaths.push("app/c.ts"); }, "the recorded path list is frozen");
+  assert.throws(() => { aligned.sessionCommitChanges.push("added"); }, "the recorded change list is frozen");
 
-  const measured = gitObservedFilesFromSnapshot({
-    dirtyAtFirstCheck: [], becameDirty: ["app/b.ts", "app/shared.ts"], committedInWindow: ["app/a.ts", "app/shared.ts"], committedChanges: ["added", "modified"], gitObservedTruncated: false,
-  });
-  assert.deepEqual(measured, {
-    files: [
-      { path: "app/a.ts", source: "committed", change: "added" },
-      { path: "app/b.ts", source: "uncommitted", change: null },
-      { path: "app/shared.ts", source: "committed", change: "modified" },
-    ],
-    truncated: false,
-  });
-  assert.equal(gitObservedFilesFromSnapshot({
-    dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: ["app/a.ts"], committedChanges: null, gitObservedTruncated: false,
-  }).files[0].change, null, "a record without change kinds (upgraded v2) projects change null");
+  assert.deepEqual(normalizeRepositorySnapshot(validSnapshot({ sessionCommitPaths: ["app/a.ts"], sessionCommitChanges: null })).sessionCommitChanges, null, "paths without recorded change kinds are valid");
+  assert.deepEqual(normalizeRepositorySnapshot(validSnapshot({ sessionCommitPaths: [], sessionCommitChanges: [] })).sessionCommitPaths, [], "a measured empty read is not never measured");
 
-  assert.deepEqual(
-    gitObservedFilesFromSnapshot({ dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: [], gitObservedTruncated: false }),
-    { files: [], truncated: false },
-    "a measured but empty record is { files: [], truncated: false }, not null",
-  );
-  assert.equal(
-    gitObservedFilesFromSnapshot({ dirtyAtFirstCheck: [], becameDirty: [], committedInWindow: [], gitObservedTruncated: true }).truncated,
-    true,
-  );
-});
-
-test("nextGitObserved captures the dirty-at-first-check baseline once and never replaces it", () => {
-  const first = nextGitObserved(null, { files: [{ status: " M", path: "app/a.ts" }, { status: "??", path: "app/b.ts" }] });
-  assert.deepEqual(first.dirtyAtFirstCheck, ["app/a.ts", "app/b.ts"]);
-  assert.deepEqual(first.becameDirty, [], "the baseline itself is not reported as newly dirty");
-  assert.equal(first.committedInWindow, null, "not measured this check");
-  assert.equal(first.gitObservedTruncated, false);
-
-  const second = nextGitObserved(first, { files: [{ status: " M", path: "app/a.ts" }, { status: "??", path: "app/c.ts" }] });
-  assert.deepEqual(second.dirtyAtFirstCheck, ["app/a.ts", "app/b.ts"], "baseline never replaced, even though app/b.ts is no longer dirty");
-  assert.deepEqual(second.becameDirty, ["app/c.ts"]);
-});
-
-test("nextGitObserved's becameDirty is a sticky union: once a newly dirty path is seen it is never dropped, even after it goes clean again", () => {
-  const first = nextGitObserved(null, { files: [] });
-  assert.deepEqual(first.dirtyAtFirstCheck, []);
-  const dirty = nextGitObserved(first, { files: [{ status: "??", path: "app/new.ts" }] });
-  assert.deepEqual(dirty.becameDirty, ["app/new.ts"]);
-  const cleanAgain = nextGitObserved(dirty, { files: [] });
-  assert.deepEqual(cleanAgain.becameDirty, ["app/new.ts"], "still reported after the file goes clean again");
-});
-
-test("nextGitObserved carries committedInWindow forward on an unmeasured check and only replaces it when the window was actually read", () => {
-  const first = nextGitObserved(null, { files: [], committedPaths: ["app/a.ts", "app/b.ts"] });
-  assert.deepEqual(first.committedInWindow, ["app/a.ts", "app/b.ts"]);
-  const unmeasured = nextGitObserved(first, { files: [], committedPaths: undefined });
-  assert.deepEqual(unmeasured.committedInWindow, first.committedInWindow, "carried forward when this check could not read the window");
-  const measuredEmpty = nextGitObserved(first, { files: [], committedPaths: [] });
-  assert.deepEqual(measuredEmpty.committedInWindow, [], "an actual empty read replaces the previous value rather than carrying it forward");
-});
-
-test("nextGitObserved aligns committedChanges with the kept paths, carries them forward unmeasured, and drops them when a read has none", () => {
-  const first = nextGitObserved(null, { files: [], committedPaths: ["app/b.ts", "app/a.ts"], committedChanges: ["deleted", "added"] });
-  assert.deepEqual(first.committedInWindow, ["app/a.ts", "app/b.ts"]);
-  assert.deepEqual(first.committedChanges, ["added", "deleted"], "re-aligned after the path list is sorted");
-  const unmeasured = nextGitObserved(first, { files: [] });
-  assert.deepEqual(unmeasured.committedChanges, ["added", "deleted"]);
-  const withoutKinds = nextGitObserved(first, { files: [], committedPaths: ["app/a.ts"] });
-  assert.equal(withoutKinds.committedChanges, null, "paths read without change kinds never guess one");
-  const mismatched = nextGitObserved(first, { files: [], committedPaths: ["app/a.ts"], committedChanges: ["added", "modified"] });
-  assert.equal(mismatched.committedChanges, null);
-});
-
-test("nextGitObserved bounds a maxed set of long paths so the resulting record stays under the repository-snapshot byte cap", () => {
-  const longPaths = (prefix, count) => Array.from({ length: count }, (_, index) => `app/${prefix}/${"a".repeat(480)}-${index}.ts`);
-  const files = longPaths("dirty", 400).map((filePath) => ({ status: " M", path: filePath }));
-  const committedPaths = longPaths("committed", 400);
-  const result = nextGitObserved(null, { files, committedPaths, committedChanges: committedPaths.map(() => "modified") });
-  assert.ok(result.dirtyAtFirstCheck.length < 400, "the character budget truncated the baseline well under the 400 candidates");
-  assert.ok(result.committedInWindow.length < 400, "the character budget truncated the committed list well under the 400 candidates");
-  assert.equal(result.gitObservedTruncated, true);
-  assert.equal(result.committedChanges.length, result.committedInWindow.length);
-
-  const snapshot = normalizeRepositorySnapshot(validSnapshot({ ...result }));
-  assert.ok(snapshot, "the bounded output is itself a valid record");
-  assert.ok(Buffer.byteLength(JSON.stringify(snapshot)) <= 64 * 1024, "fits the checkpoint store's repository-snapshot byte cap");
+  for (const [label, overrides] of [
+    ["a path traversal", { sessionCommitPaths: ["../../../escape.ts"] }],
+    ["an absolute drive path", { sessionCommitPaths: ["C:\\absolute\\path.ts"] }],
+    ["a provider configuration path", { sessionCommitPaths: [".claude/settings.json"] }],
+    ["a path list that is not a list", { sessionCommitPaths: "app/a.ts" }],
+    ["a path list over the 200-entry cap", { sessionCommitPaths: Array.from({ length: 201 }, (_, index) => `app/file-${index}.ts`) }],
+    ["a path list over the character budget even though each path and the count are in bounds", { sessionCommitPaths: Array.from({ length: 15 }, (_, index) => `app/${"x".repeat(495)}-${index}.ts`) }],
+    ["fewer changes than paths", { sessionCommitPaths: ["app/a.ts", "app/b.ts"], sessionCommitChanges: ["added"] }],
+    ["more changes than paths", { sessionCommitPaths: ["app/a.ts"], sessionCommitChanges: ["added", "modified"] }],
+    ["an unknown change", { sessionCommitPaths: ["app/a.ts"], sessionCommitChanges: ["renamed"] }],
+    ["changes without measured paths", { sessionCommitPaths: null, sessionCommitChanges: [] }],
+    ["a non-boolean truncation flag", { sessionCommitsTruncated: "yes" }],
+    ["a missing truncation flag", { sessionCommitsTruncated: undefined }],
+  ]) {
+    assert.equal(normalizeRepositorySnapshot(validSnapshot(overrides)), null, label);
+  }
+  for (const oldKey of ["dirtyAtFirstCheck", "becameDirty", "committedInWindow", "committedChanges", "gitObservedTruncated"]) {
+    assert.equal(normalizeRepositorySnapshot({ ...validSnapshot(), [oldKey]: null }), null, `a version-6 record never carries ${oldKey}`);
+  }
 });
 
 test("snapshotFromLiveCheck builds a snapshot only for an available, non-historical live check", () => {
@@ -288,36 +193,44 @@ test("snapshotFromLiveCheck builds a snapshot only for an available, non-histori
   assert.equal(snapshotFromLiveCheck({}), null);
 });
 
-test("snapshotFromLiveCheck threads committedPaths into committedInWindow, and only newly dirty files appear as uncommitted", () => {
-  const liveCheck = (files, previous) => snapshotFromLiveCheck({
+test("snapshotFromLiveCheck records the session's commit paths, keeps them across checks, and derives no Git-observed file from the working tree", () => {
+  const liveCheck = (files, extra, previous) => snapshotFromLiveCheck({
     repository: {
       available: true, branch: "main", historical: false, isMain: true, files,
       comparison: null, remote: { status: "unavailable", checkedAt: null },
     },
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
     commitsInSession: 1,
-    committedPaths: ["app/committed.ts"],
-    committedChanges: ["added"],
+    ...extra,
     checkedAt: previous ? "2026-09-20T12:10:00.000Z" : "2026-09-20T12:00:05.000Z",
     previous,
   });
 
-  const firstCheck = liveCheck([{ status: " M", path: "app/dirty.ts" }]);
+  const unread = liveCheck([{ status: " M", path: "app/dirty.ts" }], {});
+  assert.equal(unread.version, 6);
+  assert.equal(unread.sessionCommitPaths, null, "a check that never read the commits records none");
+  assert.equal(gitObservedFilesFromSnapshot(unread), null);
+
+  const firstCheck = liveCheck([{ status: " M", path: "app/dirty.ts" }], { sessionCommitPaths: ["app/committed.ts"], sessionCommitChanges: ["added"] });
   assert.ok(firstCheck);
-  assert.deepEqual(firstCheck.dirtyAtFirstCheck, ["app/dirty.ts"]);
   assert.deepEqual(gitObservedFilesFromSnapshot(firstCheck), {
     files: [{ path: "app/committed.ts", source: "committed", change: "added" }],
     truncated: false,
-  }, "the baseline-dirty file is not itself reported as uncommitted");
+  }, "a dirty working-tree file is not a Git-observed file");
 
-  const secondCheck = liveCheck([{ status: " M", path: "app/dirty.ts" }, { status: "??", path: "app/new.ts" }], firstCheck);
+  // A later check that read no commits keeps what was recorded, whatever the working tree now holds.
+  const secondCheck = liveCheck([{ status: " M", path: "app/dirty.ts" }, { status: "??", path: "app/new.ts" }], {}, firstCheck);
   assert.ok(secondCheck);
-  assert.deepEqual(secondCheck.dirtyAtFirstCheck, ["app/dirty.ts"], "baseline unchanged");
-  assert.deepEqual(secondCheck.becameDirty, ["app/new.ts"]);
-  assert.deepEqual(gitObservedFilesFromSnapshot(secondCheck), {
+  assert.deepEqual(secondCheck.sessionCommitPaths, ["app/committed.ts"]);
+  assert.deepEqual(secondCheck.files.map((file) => file.path), ["app/dirty.ts", "app/new.ts"], "files always reflect the current live check");
+  assert.deepEqual(gitObservedFilesFromSnapshot(secondCheck), gitObservedFilesFromSnapshot(firstCheck));
+
+  // A later read adds the commits it found and never withdraws a recorded path.
+  const thirdCheck = liveCheck([], { sessionCommitPaths: ["app/later.ts"], sessionCommitChanges: ["modified"] }, secondCheck);
+  assert.deepEqual(gitObservedFilesFromSnapshot(thirdCheck), {
     files: [
       { path: "app/committed.ts", source: "committed", change: "added" },
-      { path: "app/new.ts", source: "uncommitted", change: null },
+      { path: "app/later.ts", source: "committed", change: "modified" },
     ],
     truncated: false,
   });
@@ -377,33 +290,44 @@ test("historicalRepositoryFromSnapshot projects the recorded snapshot into the p
   assert.equal(noComparison.repository.commitsInSession, null);
 });
 
-test("snapshotFromLiveCheck starts a fresh baseline when a newly bound repository replaces an old sidecar", () => {
-  const { repositoryId: _repositoryId, ...oldShape } = withoutCommitTimes({ ...validSnapshot(),
-    version: 3,
-    dirtyAtFirstCheck: ["old/dirty.ts"],
-    becameDirty: ["old/later.ts"],
-    committedInWindow: ["old/commit.ts"],
-    committedChanges: ["added"],
-    commitsInSession: 9,
-  });
-  const old = normalizeRepositorySnapshot(oldShape);
-  const next = snapshotFromLiveCheck({
-    repositoryId: "repo-0123456789abcdef01234567",
-    previous: old,
+test("snapshotFromLiveCheck starts a fresh timeline when a newly bound repository replaces an old sidecar, and continues one only for the same identity or an adopted unbound sidecar", () => {
+  const live = (previous, overrides = {}) => snapshotFromLiveCheck({
+    repositoryId: REPOSITORY_ID,
+    previous,
     repository: { available: true, historical: false, branch: "feat/pomegr", isMain: false, files: [], comparison: null, remote: { status: "unavailable", checkedAt: null } },
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
     commitsInSession: null,
-    committedPaths: null,
-    committedChanges: null,
+    sessionCommitPaths: null,
+    sessionCommitChanges: null,
     checkedAt: "2026-09-21T00:00:00.000Z",
+    ...overrides,
   });
-  assert.equal(next.repositoryId, "repo-0123456789abcdef01234567");
+
+  // An old unbound (version 3) sidecar never donates its fields to a newly bound repository.
+  const old = normalizeRepositorySnapshot(legacySnapshot(3, { commitsInSession: 9 }));
+  const next = live(old);
+  assert.equal(next.repositoryId, REPOSITORY_ID);
   assert.equal(next.comparison, null);
   assert.equal(next.pullRequests, null);
   assert.equal(next.commitsInSession, null);
-  assert.deepEqual(next.dirtyAtFirstCheck, []);
-  assert.deepEqual(next.becameDirty, []);
-  assert.equal(next.committedInWindow, null);
+  assert.equal(next.sessionCommitPaths, null, "the old window-wide committedInWindow is never converted");
+
+  const recorded = normalizeRepositorySnapshot(validSnapshot({
+    repositoryId: REPOSITORY_ID, commitsInSession: 2, sessionCommitPaths: ["app/a.ts"], sessionCommitChanges: ["added"], sessionCommitsTruncated: true,
+  }));
+  const same = live(recorded);
+  assert.deepEqual(same.sessionCommitPaths, ["app/a.ts"], "the same repository identity continues its timeline");
+  assert.equal(same.sessionCommitsTruncated, true);
+  assert.equal(same.commitsInSession, 2);
+
+  const other = live(recorded, { repositoryId: "repo-fedcba9876543210fedcba98", sessionCommitPaths: [], sessionCommitChanges: [] });
+  assert.deepEqual(other.sessionCommitPaths, [], "another repository never inherits the previous commits");
+  assert.equal(other.sessionCommitsTruncated, false);
+  assert.equal(other.commitsInSession, null);
+
+  const unbound = normalizeRepositorySnapshot(validSnapshot({ repositoryId: null, sessionCommitPaths: ["app/a.ts"], sessionCommitChanges: ["added"] }));
+  assert.equal(live(unbound).sessionCommitPaths, null, "an unbound sidecar is not adopted by default");
+  assert.deepEqual(live(unbound, { adoptsUnboundSidecar: true }).sessionCommitPaths, ["app/a.ts"], "unless the provider declares its unbound sidecars launch-bound");
 });
 
 test("sessionRepositorySnapshot resolves through the recorded single-repository identity (provider-neutral: no providerId argument), rejecting unbound, ambiguous, and mismatched sidecars", () => {
@@ -478,72 +402,6 @@ test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests
   assert.equal(fromSelection.pullRequests.status, "unavailable");
 });
 
-async function commitFixture(context) {
-  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr count-commits & -"));
-  context.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
-  const env = { ...process.env, GIT_AUTHOR_NAME: "Pomegr Test", GIT_AUTHOR_EMAIL: "pomegr@example.test", GIT_COMMITTER_NAME: "Pomegr Test", GIT_COMMITTER_EMAIL: "pomegr@example.test" };
-  const run = (...args) => execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
-  run("init", "--initial-branch=main", "--quiet");
-  const commit = async (relativePath, contents, message, iso) => {
-    const target = path.join(root, relativePath);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, contents);
-    run("add", relativePath);
-    execFileSync("git", ["-C", root, "commit", "-m", message], {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
-    });
-  };
-  await commit("before.txt", "before", "before window", "2026-09-01T00:00:00Z");
-  await commit("app/inside-one.ts", "one", "inside window one", "2026-09-10T00:00:00Z");
-  await commit("app/inside-two.ts", "two", "inside window two", "2026-09-15T00:00:00Z");
-  await commit("after.txt", "after", "after window", "2026-09-25T00:00:00Z");
-  return root;
-}
-
-test("readCommitsInWindow reads the commit count and distinct changed paths on HEAD within [since, until], sorted, using an argument array, and resolves null on failure", async (context) => {
-  const root = await commitFixture(context);
-  const result = await readCommitsInWindow(root, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" });
-  assert.deepEqual(result, { count: 2, paths: ["app/inside-one.ts", "app/inside-two.ts"], changes: ["added", "added"], truncated: false, times: ["2026-09-10T00:00:00.000Z", "2026-09-15T00:00:00.000Z"] });
-
-  const none = await readCommitsInWindow(root, { since: "2026-10-01T00:00:00.000Z", until: "2026-10-02T00:00:00.000Z" });
-  assert.deepEqual(none, { count: 0, paths: [], changes: [], truncated: false, times: [] });
-
-  assert.equal(await readCommitsInWindow(path.join(os.tmpdir(), "pomegr-not-a-repo-xyz"), { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" }), null);
-  assert.equal(await readCommitsInWindow(root, { since: "not-a-date", until: "2026-09-20T00:00:00.000Z" }), null);
-  assert.equal(await readCommitsInWindow(null, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" }), null);
-});
-
-test("readCommitsInWindow nets each path's change across the window: added wins over later edits, a final delete wins, and edits of older files are modified", async (context) => {
-  const root = await commitFixture(context);
-  const env = { ...process.env, GIT_AUTHOR_NAME: "Pomegr Test", GIT_AUTHOR_EMAIL: "pomegr@example.test", GIT_COMMITTER_NAME: "Pomegr Test", GIT_COMMITTER_EMAIL: "pomegr@example.test" };
-  const commitAll = async (message, iso, change) => {
-    await change();
-    execFileSync("git", ["-C", root, "add", "-A"], { stdio: ["ignore", "pipe", "pipe"], env });
-    execFileSync("git", ["-C", root, "commit", "-m", message], { stdio: ["ignore", "pipe", "pipe"], env: { ...env, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso } });
-  };
-  await commitAll("edit added file", "2026-09-26T00:00:00Z", () => writeFile(path.join(root, "app/inside-one.ts"), "one edited"));
-  await commitAll("edit older file", "2026-09-27T00:00:00Z", () => writeFile(path.join(root, "before.txt"), "before edited"));
-  await commitAll("delete file", "2026-09-28T00:00:00Z", () => rm(path.join(root, "app/inside-two.ts")));
-
-  const result = await readCommitsInWindow(root, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-30T00:00:00.000Z" });
-  assert.deepEqual(result.paths, ["after.txt", "app/inside-one.ts", "app/inside-two.ts", "before.txt"]);
-  assert.deepEqual(result.changes, ["added", "added", "deleted", "modified"]);
-});
-
-test("readCommitsInWindow and git status report paths relative to the same repository root (the top level), from a subdirectory cwd", async (context) => {
-  const root = await commitFixture(context);
-  // Confirms the path-root finding: git status --porcelain (repository.files) and git log
-  // --name-status (readCommitsInWindow) both report paths relative to the repository's top level
-  // even when invoked from a nested subdirectory, so a live check's repositoryRoot needs no
-  // remapping between the two.
-  const subdirectory = path.join(root, "app");
-  const status = execFileSync("git", ["-C", subdirectory, "status", "--porcelain=v1", "--untracked-files=all"], { encoding: "utf8" });
-  assert.equal(status.trim(), "", "the fixture leaves a clean working tree");
-  const result = await readCommitsInWindow(subdirectory, { since: "2026-09-05T00:00:00.000Z", until: "2026-09-20T00:00:00.000Z" });
-  assert.deepEqual(result.paths, ["app/inside-one.ts", "app/inside-two.ts"], "paths from a subdirectory cwd are still relative to the top level, matching repository.files");
-});
-
 async function temporaryCheckpointDirectory(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-repository-snapshot-"));
   context.after(async () => rm(directory, { recursive: true, force: true }));
@@ -591,29 +449,28 @@ test("the recorder derives an overlapping check after the prior session write se
     },
   };
   const recorder = createRepositorySnapshotRecorder({ store });
-  const live = (files, checkedAt) => ({
+  const live = (sessionCommitPaths, sessionCommitChanges, checkedAt) => ({
     repository: {
-      available: true, branch: "main", historical: false, isMain: true, files,
+      available: true, branch: "main", historical: false, isMain: true, files: [],
       comparison: null, remote: { status: "unavailable", checkedAt: null },
     },
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
     commitsInSession: 1,
+    sessionCommitPaths,
+    sessionCommitChanges,
     checkedAt,
   });
 
-  const first = recorder.record("claude:overlap", live([{ status: " M", path: "app/baseline.ts" }], "2026-09-20T12:00:00.000Z"));
+  const first = recorder.record("claude:overlap", live(["app/first.ts"], ["added"], "2026-09-20T12:00:00.000Z"));
   await firstWriteStartedPromise;
-  const second = recorder.record("claude:overlap", live([
-    { status: " M", path: "app/baseline.ts" },
-    { status: "??", path: "app/newly-dirty.ts" },
-  ], "2026-09-20T12:01:00.000Z"));
+  const second = recorder.record("claude:overlap", live(["app/second.ts"], ["modified"], "2026-09-20T12:01:00.000Z"));
   releaseFirstWrite();
   assert.deepEqual(await Promise.all([first, second]), [true, true]);
 
   const recorded = recorder.recorded("claude:overlap");
-  assert.deepEqual(writes[0].dirtyAtFirstCheck, ["app/baseline.ts"]);
-  assert.deepEqual(recorded.dirtyAtFirstCheck, ["app/baseline.ts"], "the first persisted check remains the dirty baseline");
-  assert.deepEqual(recorded.becameDirty, ["app/newly-dirty.ts"], "the overlapping second check is compared with that baseline");
+  assert.deepEqual(writes[0].sessionCommitPaths, ["app/first.ts"]);
+  assert.deepEqual(recorded.sessionCommitPaths, ["app/first.ts", "app/second.ts"], "the overlapping second check is derived from the first persisted check");
+  assert.deepEqual(recorded.sessionCommitChanges, ["added", "modified"]);
 });
 
 test("the recorder restores its snapshots after a restart via the same checkpoint directory", async (context) => {
@@ -629,13 +486,15 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
     },
     pullRequests: { status: "ready", checkedAt: "2026-09-20T12:00:00.000Z", items: [pullRequestItem()] },
     commitsInSession: 4,
-    committedPaths: ["app/committed.ts"],
+    sessionCommitPaths: ["app/committed.ts"],
+    sessionCommitChanges: ["added"],
     checkedAt: "2026-09-20T12:00:05.000Z",
   };
   assert.equal(await firstRecorder.record("codex:restart-session", live), true);
   const beforeRestart = firstRecorder.recorded("codex:restart-session");
   assert.equal(beforeRestart.branch, "feat/restart");
-  assert.deepEqual(beforeRestart.dirtyAtFirstCheck, ["app/file.ts"], "the baseline is captured on the very first check");
+  assert.equal(beforeRestart.version, 6);
+  assert.deepEqual(beforeRestart.sessionCommitPaths, ["app/committed.ts"]);
 
   const secondStore = new SessionObservationCheckpointStore({ directory });
   const secondRecorder = createRepositorySnapshotRecorder({ store: secondStore });
@@ -646,13 +505,15 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
   assert.equal(restored.branch, "feat/restart");
   assert.equal(restored.commitsInSession, 4);
   assert.deepEqual(restored.pullRequests.items, live.pullRequests.items);
-  // The baseline and committed-window lists persist across a monitor restart (a fresh recorder,
-  // loaded from the same checkpoint directory, sees exactly what the first recorder had written).
-  assert.deepEqual(restored.dirtyAtFirstCheck, ["app/file.ts"]);
-  assert.deepEqual(restored.committedInWindow, ["app/committed.ts"]);
+  // The session-commit lists persist across a monitor restart (a fresh recorder, loaded from the
+  // same checkpoint directory, sees exactly what the first recorder had written).
+  assert.deepEqual(restored.sessionCommitPaths, ["app/committed.ts"]);
+  assert.deepEqual(restored.sessionCommitChanges, ["added"]);
+  assert.equal(restored.sessionCommitsTruncated, false);
+  assert.deepEqual(gitObservedFilesFromSnapshot(restored), { files: [{ path: "app/committed.ts", source: "committed", change: "added" }], truncated: false });
 
-  // A live check after restart, with no in-memory carry-forward, still keeps the restored
-  // baseline and correctly resumes committedInWindow tracking from the restored snapshot.
+  // A live check after restart, with no in-memory carry-forward, resumes from the restored snapshot:
+  // a check that read no commits keeps them, and a later read adds its own.
   const thirdRecorder = createRepositorySnapshotRecorder({ store: new SessionObservationCheckpointStore({ directory }) }); // never read the sidecar
   const afterRestartCheck = {
     repository: {
@@ -667,9 +528,11 @@ test("the recorder restores its snapshots after a restart via the same checkpoin
   };
   assert.equal(await thirdRecorder.record("codex:restart-session", afterRestartCheck), true);
   const afterRestart = thirdRecorder.recorded("codex:restart-session");
-  assert.deepEqual(afterRestart.dirtyAtFirstCheck, ["app/file.ts"], "baseline survives the restart and is still never replaced");
-  assert.deepEqual(afterRestart.becameDirty, ["app/post-restart.ts"]);
-  assert.deepEqual(afterRestart.committedInWindow, ["app/committed.ts"], "carried forward from the restored snapshot since this check did not measure the window");
+  assert.deepEqual(afterRestart.sessionCommitPaths, ["app/committed.ts"], "carried forward from the restored snapshot since this check did not read the commits");
+  assert.deepEqual(afterRestart.sessionCommitChanges, ["added"]);
+
+  assert.equal(await thirdRecorder.record("codex:restart-session", { ...afterRestartCheck, sessionCommitPaths: ["app/post-restart.ts"], sessionCommitChanges: ["modified"], checkedAt: "2026-09-20T14:00:05.000Z" }), true);
+  assert.deepEqual(thirdRecorder.recorded("codex:restart-session").sessionCommitPaths, ["app/committed.ts", "app/post-restart.ts"]);
 });
 
 function stateWithRepository(repository, executionTasks = []) {
@@ -758,17 +621,23 @@ test("the repository domain's gitObservedFiles comes only from options.gitObserv
   state.session.pullRequests = pullRequests;
   const baseArgs = [{ publicState: state, readiness: state.readiness, observedAt: state.session.updatedAt }];
 
-  const gitObserved = { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/dirty.ts", source: "uncommitted", change: null }], truncated: false };
+  const gitObserved = { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/old.ts", source: "committed", change: "deleted" }, { path: "app/kept.ts", source: "committed", change: null }], truncated: false };
   const withGitObserved = projectSessionDomains("claude:historical-session", ...baseArgs, { gitObserved });
   assert.deepEqual(withGitObserved.domains.get("repository").gitObservedFiles, gitObserved);
 
-  // An unknown change, or a change on an uncommitted path, degrades to null rather than leaking.
+  // An unknown change degrades to null rather than leaking.
   const oddChanges = projectSessionDomains("claude:historical-session", ...baseArgs, {
-    gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "renamed" }, { path: "app/dirty.ts", source: "uncommitted", change: "added" }], truncated: false },
+    gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "renamed" }, { path: "app/other.ts", source: "committed", change: "added" }], truncated: false },
   });
-  assert.deepEqual(oddChanges.domains.get("repository").gitObservedFiles.files.map((file) => file.change), [null, null]);
+  assert.deepEqual(oddChanges.domains.get("repository").gitObservedFiles.files.map((file) => file.change), [null, "added"]);
   assert.equal(Object.hasOwn(state.session.repository, "gitObserved"), false, "never attached to the raw session.repository object");
   assert.doesNotMatch(JSON.stringify(state.session), /gitObserved/, "gitObserved never enters the object /api/state would serialize verbatim");
+
+  // The retired uncommitted source is not a public value: the whole block degrades rather than leaking it.
+  const retired = projectSessionDomains("claude:historical-session", ...baseArgs, {
+    gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/dirty.ts", source: "uncommitted", change: null }], truncated: false },
+  });
+  assert.equal(retired.domains.get("repository").gitObservedFiles, null);
 
   // Malformed input (an unsafe path) degrades to null rather than leaking a partially-valid shape.
   const malformed = projectSessionDomains("claude:historical-session", ...baseArgs, {
@@ -781,7 +650,7 @@ test("the repository domain's gitObservedFiles comes only from options.gitObserv
   assert.equal(missing.domains.get("repository").gitObservedFiles, null);
 });
 
-test("the session summary counts the Touched here files (recorded plus Git-observed, deduplicated) only once file history is ready", () => {
+test("the session summary counts the Touched here files (recorded plus session-committed, deduplicated) only once file history is ready", () => {
   const snapshot = normalizeRepositorySnapshot(validSnapshot());
   const { repository, pullRequests } = historicalRepositoryFromSnapshot(snapshot);
   const state = stateWithRepository(repository);
@@ -789,7 +658,7 @@ test("the session summary counts the Touched here files (recorded plus Git-obser
   const baseArgs = [{ publicState: state, readiness: state.readiness, observedAt: state.session.updatedAt }];
   const recorded = (path, fileId) => ({ fileId, path, kind: "edited", changeCount: 1, lastObservedAt: "2026-09-14T12:00:00.000Z" });
   const fileHistory = { readiness: "ready", files: [recorded("app/a.ts", "f1"), recorded("app/b.ts", "f2")], truncated: false };
-  const gitObserved = { files: [{ path: "app/b.ts", source: "committed" }, { path: "app/c.ts", source: "uncommitted" }], truncated: false };
+  const gitObserved = { files: [{ path: "app/b.ts", source: "committed" }, { path: "app/c.ts", source: "committed" }], truncated: false };
 
   const ready = projectSessionDomains("claude:historical-session", ...baseArgs, { fileHistory, gitObserved });
   assert.equal(ready.domains.get("session-summary").repository.touchedFiles, 3);

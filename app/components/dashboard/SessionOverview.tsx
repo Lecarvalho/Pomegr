@@ -3,7 +3,7 @@
 import type { AgentRole } from "../../../shared/monitor-contract";
 import type { SessionSummaryDomain } from "../../../shared/session-domain-contract";
 import { WORK_LABELS } from "../agents/agent-presentation";
-import { agentRoleLabel, comparisonLabel, compactNumber, formatDuration, sessionRelativeTime } from "../../dashboard-utils";
+import { agentRoleLabel, comparisonLabel, compactNumber, sessionRelativeTime } from "../../dashboard-utils";
 import { usePhoneLayout } from "../../hooks/usePhoneLayout";
 import { roleFamilyPresentation } from "../../role-family";
 import { PanelHeadingLink } from "../PanelHeadingLink";
@@ -59,7 +59,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
     {activityReady !== "ready" ? <Unavailable readiness={activityReady} label="Activity evidence" /> : summary.activity.byKind.length === 0
       ? <p className="sessionOverviewEmpty">No classified work recorded.</p>
       : <>
-        <div className="sessionWorkRow">{summary.activity.byKind.slice(0, 6).map((item) => <span key={item.kind}>{WORK_LABELS[item.kind]} <b>{item.count.toLocaleString()}</b>{item.medianDurationMs === null || item.medianDurationMs < 60_000 ? "" : ` · ${formatDuration(item.medianDurationMs)} median`}</span>)}</div>
+        <div className="sessionWorkRow">{summary.activity.byKind.slice(0, 6).map((item) => <span key={item.kind}>{WORK_LABELS[item.kind]} <b>{item.count.toLocaleString()}</b></span>)}</div>
         <p className="sessionOverviewNote">Counts describe recorded tool calls, not quality.</p>
       </>}
   </section>;

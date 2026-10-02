@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -19,17 +19,22 @@ import { repositorySnapshotFilename, SessionObservationCheckpointStore } from ".
 
 function validSnapshot(overrides = {}) {
   return {
-    version: 5, branch: "feat/example", isMain: false, files: [{ status: " M", path: "app/file.ts" }],
+    version: 6, branch: "feat/example", isMain: false, files: [{ status: " M", path: "app/file.ts" }],
     comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false }, comparisonCheckedAt: "2026-09-20T12:00:00.000Z",
     pullRequests: { checkedAt: "2026-09-20T12:00:00.000Z", items: [] }, commitsInSession: 3, checkedAt: "2026-09-20T12:00:05.000Z",
-    dirtyAtFirstCheck: ["app/file.ts"], becameDirty: [], committedInWindow: null, committedChanges: null, gitObservedTruncated: false,
     repositoryId: null, commitTimesInWindow: null,
+    sessionCommitPaths: null, sessionCommitChanges: null, sessionCommitsTruncated: false,
     ...overrides,
   };
 }
-// The version-4 shape (predates commitTimesInWindow): what every sidecar on disk holds before upgrade.
+// The version-4 shape (predates commitTimesInWindow and the session-commit fields): what an older
+// sidecar on disk holds before upgrade, window-wide Git-observed lists included.
 function validSnapshotV4(overrides = {}) {
-  return without(validSnapshot({ version: 4, ...overrides }), "commitTimesInWindow");
+  return without({
+    ...validSnapshot(), version: 4,
+    dirtyAtFirstCheck: ["app/file.ts"], becameDirty: [], committedInWindow: null, committedChanges: null, gitObservedTruncated: false,
+    ...overrides,
+  }, "commitTimesInWindow", "sessionCommitPaths", "sessionCommitChanges", "sessionCommitsTruncated");
 }
 function without(value, ...keys) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
@@ -48,13 +53,21 @@ test("a version-4 sidecar written before commit times stays valid and loads with
   assert.equal(Object.hasOwn(v4, "commitTimesInWindow"), false);
   const upgraded = normalizeRepositorySnapshot(v4);
   assert.ok(upgraded, "recorded repository history is never discarded on upgrade");
-  assert.equal(upgraded.version, 5);
+  assert.equal(upgraded.version, 6);
   assert.equal(upgraded.commitTimesInWindow, null, "absent, not an empty measured list");
-  // Everything the version-4 record held is preserved exactly.
-  assert.deepEqual(without(upgraded, "version", "commitTimesInWindow"), without(v4, "version"));
-  // The served historical values are unchanged by the upgrade.
+  // The repository history the version-4 record held is preserved exactly; its window-wide Git-observed
+  // lists are dropped, and this session's commits start out never measured.
+  const droppedLists = ["dirtyAtFirstCheck", "becameDirty", "committedInWindow", "committedChanges", "gitObservedTruncated"];
+  assert.deepEqual(
+    without(upgraded, "version", "commitTimesInWindow", "sessionCommitPaths", "sessionCommitChanges", "sessionCommitsTruncated"),
+    without(v4, "version", ...droppedLists),
+  );
+  assert.equal(upgraded.sessionCommitPaths, null);
+  assert.equal(upgraded.sessionCommitChanges, null);
+  assert.equal(upgraded.sessionCommitsTruncated, false);
+  // The served historical values are unchanged by the upgrade, except that the old committed list is no longer shown.
   assert.equal(historicalRepositoryFromSnapshot(upgraded).repository.commitsInSession, 7);
-  assert.deepEqual(gitObservedFilesFromSnapshot(upgraded).files, [{ path: "app/a.ts", source: "committed", change: "added" }]);
+  assert.equal(gitObservedFilesFromSnapshot(upgraded), null, "a window-wide list is never presented as this session's commits");
   // A version-5-only key under version 4, or a version-5 record without it, is rejected whole.
   assert.equal(normalizeRepositorySnapshot({ ...v4, commitTimesInWindow: [] }), null);
   assert.equal(normalizeRepositorySnapshot({ ...v4, version: 5 }), null);
@@ -113,10 +126,10 @@ test("snapshotFromLiveCheck records the read commit times and starts over only w
   assert.deepEqual(live({ commitTimes: [time(4)], repositoryId: "repo-fedcba9876543210fedcba98", previous: first }).commitTimesInWindow, [time(4)],
     "another repository never inherits the previous timeline");
   // An older record without the list is a valid baseline for the first recorded times.
-  const legacy = normalizeRepositorySnapshot(validSnapshotV4({ dirtyAtFirstCheck: ["kept.txt"] }));
+  const legacy = normalizeRepositorySnapshot(validSnapshotV4({ commitsInSession: 6 }));
   const upgraded = live({ commitTimes: [time(2)], previous: legacy });
   assert.deepEqual(upgraded.commitTimesInWindow, [time(2)]);
-  assert.deepEqual(upgraded.dirtyAtFirstCheck, ["kept.txt"]);
+  assert.equal(upgraded.sessionCommitPaths, null, "a check that did not read this session's commits leaves them never measured");
 });
 
 async function commitRepository(context, count) {
@@ -158,9 +171,60 @@ test("the live enrichment hands the window's commit times to the recorder, not o
   assert.equal(checks.length, 1);
   assert.deepEqual(checks[0].commitTimes, [iso(0), iso(1)]);
   assert.equal(checks[0].commitsInSession, 2);
+  assert.deepEqual([checks[0].sessionCommitPaths, checks[0].sessionCommitChanges], [[], []], "no session Git command, so the window's commits list no path");
   const served = enrichment.liveEnrichment("claude:times", evidence, null, () => {}).value.repository;
   assert.equal(served.commitsInSession, 2);
-  assert.doesNotMatch(JSON.stringify(served), /commitTimes/u, "the public repository value carries only the count");
+  assert.doesNotMatch(JSON.stringify(served), /commitTimes|sessionCommit/u, "the public repository value carries only the count");
+});
+
+async function commitFile(root, relativePath, iso) {
+  await mkdir(path.dirname(path.join(root, relativePath)), { recursive: true });
+  await writeFile(path.join(root, relativePath), relativePath);
+  execFileSync("git", ["-C", root, "add", relativePath], { stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV });
+  execFileSync("git", ["-C", root, "commit", "--quiet", "-m", `SENTINEL_COMMIT_SUBJECT ${relativePath}`], {
+    stdio: ["ignore", "pipe", "pipe"], env: { ...GIT_ENV, GIT_AUTHOR_DATE: iso, GIT_COMMITTER_DATE: iso },
+  });
+}
+
+test("the live enrichment lists commit paths only for commits made during the session's own finished Git commands", async (context) => {
+  const root = await temporaryDirectory(context, "pomegr-session-commits-");
+  execFileSync("git", ["-C", root, "init", "--initial-branch=main", "--quiet"], { stdio: ["ignore", "pipe", "pipe"], env: GIT_ENV });
+  await commitFile(root, "app/by-session.ts", "2026-09-10T00:00:00Z");
+  await commitFile(root, "app/by-someone-else.ts", "2026-09-10T06:00:00Z");
+  const task = (workKind, finishedAt) => ({ id: `${workKind}-task`, label: "task", kind: "shell", workKind, status: finishedAt ? "completed" : "running", startedAt: "2026-09-10T00:00:00.400Z", finishedAt });
+  const checkFor = async (sessionId, executionTasks) => {
+    const checks = [];
+    const enrichment = createSessionRepositoryEnrichment({
+      gitReader: async () => ({ available: true, branch: "main", files: [], isMain: true, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root }),
+      pullRequestReader: async () => ({ status: "unavailable", checkedAt: null, items: [] }),
+      now: () => Date.UTC(2026, 8, 11), cacheMs: 60_000, providerFolders: { folders: {} },
+      unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], commits: [] }),
+      unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+    });
+    enrichment.setOnRepositoryCheck((_sessionId, live) => checks.push(live));
+    const evidence = { session: { cwd: root, recordedGitBranch: "main", startedAt: "2026-09-09T00:00:00.000Z" }, pullRequestCreations: [], executionTasks };
+    let work;
+    enrichment.liveEnrichment(sessionId, evidence, null, (scheduled) => { work = scheduled(); }).enqueue();
+    await work;
+    assert.equal(checks.length, 1);
+    assert.equal(checks[0].commitsInSession, 2, "every commit in the window still counts");
+    return checks[0];
+  };
+
+  const during = await checkFor("claude:during", [task("git", "2026-09-10T00:00:03.000Z")]);
+  assert.deepEqual([during.sessionCommitPaths, during.sessionCommitChanges], [["app/by-session.ts"], ["added"]], "the commit made inside the finished Git command, not the one hours later");
+  assert.equal(during.commitTimes.length, 2);
+  assert.doesNotMatch(JSON.stringify(during.repository), /sessionCommit|by-session/u, "the public repository value never lists the paths");
+
+  for (const [label, executionTasks] of [
+    ["no task list", undefined],
+    ["no task", []],
+    ["a finished non-Git task", [task("test", "2026-09-10T00:00:03.000Z")]],
+    ["a Git command still running", [task("git", null)]],
+  ]) {
+    const check = await checkFor(`claude:${label}`, executionTasks);
+    assert.deepEqual([check.sessionCommitPaths, check.sessionCommitChanges], [[], []], label);
+  }
 });
 
 test("the sidecar persists only commit times, keeps them across a restart, and upgrades a version-4 file on the next live check", async (context) => {
@@ -173,13 +237,13 @@ test("the sidecar persists only commit times, keeps them across a restart, and u
       commits: [{ hash: "0123456789abcdef0123456789abcdef01234567", subject: "SENTINEL_COMMIT_SUBJECT", committedAt: time(30) }],
     },
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
-    commitsInSession: commitTimes.length, committedPaths: [], committedChanges: [], commitTimes, checkedAt,
+    commitsInSession: commitTimes.length, sessionCommitPaths: [], sessionCommitChanges: [], commitTimes, checkedAt,
   });
   assert.equal(await recorder.record("claude:times", live([time(30)], "2026-09-20T12:00:00.000Z")), true);
   const [filename] = (await readdir(directory)).filter((name) => name.startsWith("repository-"));
   const onDisk = await readFile(path.join(directory, filename), "utf8");
   assert.deepEqual(JSON.parse(onDisk).snapshot.commitTimesInWindow, [time(30)]);
-  assert.equal(JSON.parse(onDisk).snapshot.version, 5);
+  assert.equal(JSON.parse(onDisk).snapshot.version, 6);
   assert.doesNotMatch(onDisk, /SENTINEL_COMMIT_SUBJECT|0123456789abcdef0123456789abcdef01234567|"hash"|"subject"|"author"/u);
 
   // After a restart, a historical session serves exactly the recorded list.
@@ -192,16 +256,17 @@ test("the sidecar persists only commit times, keeps them across a restart, and u
   const legacyStore = new SessionObservationCheckpointStore({ directory });
   await legacyStore.writeRepositorySnapshot("claude", "legacy", validSnapshot());
   const legacyFile = (await readdir(directory)).find((name) => name.startsWith("repository-") && name !== filename);
-  await writeFile(path.join(directory, legacyFile), JSON.stringify({ version: 1, providerId: "claude", localSessionId: "legacy", snapshot: validSnapshotV4({ commitsInSession: 4, dirtyAtFirstCheck: ["kept.txt"] }) }));
+  await writeFile(path.join(directory, legacyFile), JSON.stringify({ version: 1, providerId: "claude", localSessionId: "legacy", snapshot: validSnapshotV4({ commitsInSession: 4, committedInWindow: ["old/window.ts"], committedChanges: ["added"] }) }));
   await new SessionObservationCheckpointStore({ directory }).prune();
   assert.ok((await readdir(directory)).includes(legacyFile), "pruning never removes a valid version-4 sidecar");
   const legacyRecorder = createRepositorySnapshotRecorder({ store: new SessionObservationCheckpointStore({ directory }) });
   await legacyRecorder.ensure("claude:legacy");
   assert.equal(legacyRecorder.recorded("claude:legacy").commitsInSession, 4);
   assert.equal(legacyRecorder.recorded("claude:legacy").commitTimesInWindow, null);
+  assert.equal(legacyRecorder.recorded("claude:legacy").sessionCommitPaths, null, "the old window-wide committed list is not carried over");
   assert.equal(await legacyRecorder.record("claude:legacy", live([time(45)], "2026-09-20T12:10:00.000Z", "feat/example")), true);
   assert.deepEqual(legacyRecorder.recorded("claude:legacy").commitTimesInWindow, [time(45)]);
-  assert.deepEqual(legacyRecorder.recorded("claude:legacy").dirtyAtFirstCheck, ["kept.txt"], "the recorded baseline survives the upgrade");
+  assert.deepEqual(legacyRecorder.recorded("claude:legacy").sessionCommitPaths, [], "the first read of the session's own commits starts the new list");
 });
 
 test("pruning keeps, and never loads, a sidecar written by a newer build", async (context) => {
@@ -210,7 +275,7 @@ test("pruning keeps, and never loads, a sidecar written by a newer build", async
   await store.writeRepositorySnapshot("claude", "current", validSnapshot({ commitTimesInWindow: [time(1)] }));
   const file = (localSessionId) => path.join(directory, repositorySnapshotFilename("claude", localSessionId));
   const sidecar = (localSessionId, snapshot) => JSON.stringify({ version: 1, providerId: "claude", localSessionId, snapshot });
-  const newer = sidecar("newer", { ...validSnapshot(), version: 6, futureField: ["unknown to this build"] });
+  const newer = sidecar("newer", { ...validSnapshot(), version: 7, futureField: ["unknown to this build"] });
   await writeFile(file("newer"), newer);
   await writeFile(file("broken"), sidecar("broken", { ...validSnapshot(), branch: 7 }));
 
@@ -221,7 +286,7 @@ test("pruning keeps, and never loads, a sidecar written by a newer build", async
   assert.ok((await readdir(directory)).includes(path.basename(file("current"))));
   assert.ok(!(await readdir(directory)).includes(path.basename(file("broken"))), "a record invalid at a known version is still removed");
   // Not a way to keep garbage: only an integer version above this build's counts as newer.
-  for (const version of [5.5, "6", null, -1, Number.MAX_VALUE]) {
+  for (const version of [5.5, "7", null, -1, Number.MAX_VALUE]) {
     await writeFile(file("broken"), sidecar("broken", { ...validSnapshot(), version, extra: 1 }));
     await store.prune();
     assert.ok(!(await readdir(directory)).includes(path.basename(file("broken"))), `version ${version}`);

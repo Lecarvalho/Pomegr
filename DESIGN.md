@@ -436,23 +436,22 @@ or reverted), a touched row falls back to this session's recorded kind as a neut
 muted letter — **C** (**Created in this session**) or **M** (**Edited in this session**),
 never amber because nothing is pending; deleted and moved kinds show no letter. A
 Git-observed row without a recorded kind uses its Git net change the same neutral way:
-**A** (**Added in a commit during this session**), **M** (**Modified in a commit during
-this session**), or **D** (**Deleted in a commit during this session**) —
+**A** (**Added in a commit by this session**), **M** (**Modified in a commit by this
+session**), or **D** (**Deleted in a commit by this session**) —
 and, after the tree, an eyebrow **Changed elsewhere** group of flat uncommitted rows
 (full path, indent 14, their own status letter) that is hidden when empty. A touched row
-Git observed during the session window but no tool ever recorded — changed by a commit
-on the live branch, or turned uncommitted between the session's first and latest live
-Git checks — carries a quiet 14px git glyph after the file name:
+one of the session's own Git commands committed but no tool ever recorded carries a
+quiet 14px git glyph after the file name:
 muted text color, never amber, shown on historical rows too, with `title` and an
-accessible name reading **Seen in Git during this session (committed) - not a recorded
-tool edit** or the uncommitted variant; selecting the row still opens file history as
+accessible name reading **Committed by this session - not a recorded tool edit**;
+selecting the row still opens file history as
 usual. Repository scope shows each file and folder's distinct-session count
 right-aligned in muted 11px mono from the monitor's rollup; files with no recorded
 session history show no count and render muted. A pinned footer rule reads **Status from the working tree · select a
 file for its history** in session scope, with a quiet **How to read this** popover
 appearing only when a Git-observed row is visible (*Rows with the Git glyph come from
-commits and working-tree changes during the session window. They may include other
-people's or tools' changes and have no agent or request.*), and
+commits made while this session ran a Git command. Matched by time, so they have no
+agent or request.*), and
 **Folders roll up distinct sessions** in repository scope.
 
 FileHistoryPanel renders the selected file's committed session history on the repository
@@ -489,12 +488,11 @@ live check** chip), with the header action **All history on repository page** (q
 action, trailing chevron) linking to `/repositories/<id>?tab=files&path=<path>`. One entry
 follows: **Recorded in this session** with the kind chip (**Edited**, **Created**,
 **Deleted**, or **Moved**, always shown here), a muted
-**N changes** run, and the latest change time; or, for a file only Git saw, **Seen in Git
-· no recorded agent edit** with **Added in a commit on the session branch**, **Modified in
-a commit on the session branch**, **Deleted in a commit on the session branch**,
-**Committed on the session branch** (change not recorded), or **Became uncommitted during
-the session**, then a muted caption **Could be the agent through a command Pomegr can't
-read, a build or generated file, or someone else.** It never names who changed the file.
+**N changes** run, and the latest change time; or, for a file only a session commit changed, **Committed
+by this session · no recorded agent edit** with **Added in the commit**, **Modified in the
+commit**, **Deleted in the commit**, or **Net change not recorded**, then a muted caption
+**Matched by time to a Git command this session ran. Pomegr can't tell which agent changed
+the file.** It never names who changed the file.
 Otherwise it reads **No
 recorded change in this session.**, shows the loading skeleton while recorded changes
 load, or **Recorded changes are unavailable.**

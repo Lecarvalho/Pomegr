@@ -71,7 +71,14 @@ export function useDesktopUpdates() {
     }
   }
 
-  return { available, state, error, busy, run };
+  /** Adopts the snapshot a desktop mutation returned, ahead of a late initial read. */
+  function apply(next: DesktopState | null) {
+    if (!next || !active.current) return;
+    generation.current += 1;
+    setState(next);
+  }
+
+  return { available, state, error, busy, run, apply };
 }
 
 export function DesktopUpdateSettings({ updates }: { updates: ReturnType<typeof useDesktopUpdates> }) {

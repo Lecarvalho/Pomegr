@@ -199,6 +199,7 @@ export function createSessionDomainStore(options = {}) {
         catalogEntry,
         forbiddenRoots: options.forbiddenRoots || [],
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
+        repositoryUnavailableReason: options.repositoryUnavailableReasonForSession?.(sessionId) || null,
         retainedResources: options.retainedResourcesForSession?.(sessionId) ?? null,
         fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
         gitObserved: recorded?.gitObserved ?? null,

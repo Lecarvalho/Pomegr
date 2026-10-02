@@ -51,6 +51,28 @@ export function scopeMatches(item, scope) {
     || (scope === "subagents" && item.agentId && item.agentId !== "primary") || item.agentId === scope;
 }
 
+// Monitor-authored labels of rows that are not tool calls. Only rows committed before the explicit
+// `call` marker existed are classified by label; new rows always carry the marker.
+const LEGACY_NON_CALL_TOOLS = new Set(["User input", "Assistant replied", "Summary updated", "Shell failed"]);
+
+/**
+ * Whether a history row (or its compact index ref) records a tool call rather than user input, an
+ * assistant reply, a background-task notice, or a failed-shell outcome row. A legacy ref that
+ * carries neither the marker nor a label counts as a call, as it did before the marker existed.
+ */
+export function isToolCallRow(row) {
+  if (typeof row?.call === "boolean") return row.call;
+  return typeof row?.tool !== "string" || !(LEGACY_NON_CALL_TOOLS.has(row.tool) || row.tool.startsWith("Task "));
+}
+
+/** The `call` marker is monitor-private; served rows keep the existing browser shape. */
+export function servedActivityRow(row) {
+  if (!row) return row;
+  const served = { ...row };
+  delete served.call;
+  return served;
+}
+
 export function activityGroupPlan(requests, activity, query) {
   const scope = query.scope || "all";
   const scopedRequests = requests.filter((item) => scopeMatches(item, scope));
@@ -78,8 +100,11 @@ export function activityGroupPlan(requests, activity, query) {
     };
   });
   const requestGroups = headers.map((request) => plannedGroups.find((group) => group.request.id === request.id));
+  // Aggregates count tool calls only, so their total matches the session Tool calls KPI. Request
+  // groups still list every recorded row.
+  const toolCalls = allScopedCalls.filter(isToolCallRow);
   const byKind = WORK_KINDS.map((kind) => {
-    const calls = allScopedCalls.filter((item) => item.workKind === kind);
+    const calls = toolCalls.filter((item) => item.workKind === kind);
     return calls.length ? {
       kind,
       count: calls.length,
@@ -93,8 +118,8 @@ export function activityGroupPlan(requests, activity, query) {
     callTotal: scopedCalls.length,
     byKind,
     shellTasks: {
-      total: allScopedCalls.filter((item) => item.workKind === "shell").length,
-      failed: allScopedCalls.filter((item) => item.workKind === "shell" && item.status === "failed").length,
+      total: toolCalls.filter((item) => item.workKind === "shell").length,
+      failed: toolCalls.filter((item) => item.workKind === "shell" && item.status === "failed").length,
     },
   };
 }
@@ -108,6 +133,6 @@ export function servedActivityGroups(plan) {
   return {
     ...plan,
     requestGroups: plan.requestGroups.map((group) => ({ ...group,
-      request: structuredClone(group.request), calls: group.calls.map((call) => structuredClone(call)) })),
+      request: structuredClone(group.request), calls: group.calls.map((call) => servedActivityRow(structuredClone(call))) })),
   };
 }

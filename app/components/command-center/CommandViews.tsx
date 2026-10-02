@@ -20,6 +20,7 @@ import { SessionCacheTiming } from "./SessionCacheTiming";
 import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
 import { subscribeLiveEvents } from "../../live-events";
+import { useRepositoryInventory } from "../../repository-inventory-client";
 export { AgentsView } from "../agents/AgentsView";
 export { RepositoryInventoryView as RepositoriesView } from "../repositories/RepositoryInventoryView";
 
@@ -155,8 +156,16 @@ function SessionProviderWarning({ session, providers }: { session: SessionSummar
   return <ProviderStatusDetails status={status} compact chip />;
 }
 
+/** Mounted only while a repository filter is active, so the Sessions page reads the inventory only then. */
+function RepositoryFilterChip({ repositoryId, onClear }: { repositoryId: string; onClear: () => void }) {
+  const { snapshot } = useRepositoryInventory();
+  const name = snapshot.repositories.find((entry) => entry.id === repositoryId)?.displayName;
+  return <button className="commandFilterChip active" type="button" aria-label={name ? `Clear repository filter: ${name}` : "Clear repository filter"} onClick={onClear}>{name ? `Repository: ${name}` : "Repository filter"}<CommandIcon name="close" size="small" /></button>;
+}
+
 export function SessionsView({ initialProject = "", initialRepositoryId }: { initialProject?: string; initialRepositoryId?: string } = {}) {
   const [project, setProject] = useState(initialProject);
+  const [repositoryId, setRepositoryId] = useState(initialRepositoryId);
   const { providers } = useProviderStatus();
   const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions: committedSessions, connected, paused, readiness } = useSessionCatalog();
@@ -176,9 +185,9 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     const params = new URLSearchParams({ mode: "directory", filter, pageSize: String(SESSION_PAGE_SIZE) });
     if (query.trim()) params.set("query", query.trim());
     if (project) params.set("project", project);
-    if (initialRepositoryId) params.set("repositoryId", initialRepositoryId);
+    if (repositoryId) params.set("repositoryId", repositoryId);
     return params.toString();
-  }, [filter, initialRepositoryId, project, query]);
+  }, [filter, repositoryId, project, query]);
   const resetDirectory = () => { setCursor(null); setCursorTrail([]); setCursorPageBase(0); };
   const updateQuery = (value: string) => { setQuery(value); resetDirectory(); };
   const updateFilter = (value: typeof filter) => { setFilter(value); resetDirectory(); };
@@ -236,6 +245,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const coverage = directoryMatchesQuery ? directory?.coverage : undefined;
   const counts = directoryMatchesQuery ? directory?.counts : undefined;
   const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
+  // An empty page under a search, scope, project, or repository filter is a filtered result, not an empty catalog.
+  const narrowed = Boolean(query.trim() || project || repositoryId || filter !== "all");
   const liveSessionCount = counts?.live;
   const needsInputCount = counts?.needs;
   const allSessionCount = sessionCountMagnitude(coverage, counts?.all);
@@ -248,6 +259,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <div className="commandSessionFilters" role="group" aria-label="Session scope">
           {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
+          {repositoryId && <RepositoryFilterChip repositoryId={repositoryId} onClear={() => { setRepositoryId(undefined); resetDirectory(); }} />}
           <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={allSessionCount.value} ariaLabel={allSessionCount.label}>All</CommandFilter>
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
@@ -267,7 +279,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
             <span className="uiSkeleton commandSessionsSkeletonDetail" />
             <span className="uiSkeleton commandSessionsSkeletonMeta" />
           </div>)}</div>
-        </div> : (catalogUnavailable || directoryUnavailable || paused) && !pageRows.length ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={matchedCount ? "No sessions match" : "No sessions observed"} detail={matchedCount ? "Try a different search or filter." : "Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+        </div> : (catalogUnavailable || directoryUnavailable || paused) && !pageRows.length ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
       {directoryMatchesQuery && directory && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
       {!pageRows.length && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}

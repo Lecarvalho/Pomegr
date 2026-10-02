@@ -28,9 +28,9 @@ export type RepositoryTabFilesSegments = {
 };
 
 /** Builds the three segments from the session's touched-file history, its working-tree status,
- * and (session scope only) files Git observed during the session window. A Git-observed path
- * already recorded stays a plain recorded row; only paths Git saw but no tool ever touched gain
- * the quiet glyph, and they are removed from Changed elsewhere so a path shows once. */
+ * and (session scope only) files this session's own commits changed. A committed path already
+ * recorded stays a plain recorded row; only paths the session committed but no tool ever touched
+ * gain the quiet glyph, and they are removed from Changed elsewhere so a path shows once. */
 export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], workingTreeFiles: WorkingTreeFile[], gitObservedFiles: RepositoryGitObservedFiles | null = null): RepositoryTabFilesSegments {
   const workingTreeByPath = new Map(workingTreeFiles.map((file) => [file.path, file.status]));
   const touchedPaths = new Set(touchedFiles.map((file) => file.path));

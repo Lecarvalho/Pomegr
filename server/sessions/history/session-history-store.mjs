@@ -5,7 +5,7 @@ import path from "node:path";
 import { normalizedRequestModel } from "../../normalize/request-snapshots.mjs";
 import { normalizedRequestWork } from "../../normalize/request-work.mjs";
 import { normalizedWorkKind, toolWorkKind, WORK_KINDS } from "../../normalize/work-kind.mjs";
-import { activityGroupPlan, emptyActivityGroups, scopeMatches, servedActivityGroups } from "./session-history-groups.mjs";
+import { activityGroupPlan, emptyActivityGroups, isToolCallRow, scopeMatches, servedActivityGroups, servedActivityRow } from "./session-history-groups.mjs";
 
 const MAX_SESSIONS = 24;
 const MAX_RESIDENT = 1;
@@ -63,8 +63,11 @@ function safeActivity(value, requests) {
   return { id: value.id, timestamp: safeTime(value.timestamp), actor: value.actor, tool: value.tool,
     workKind: normalizedWorkKind(value.workKind, toolWorkKind(value.tool, { detail: value.detail })), detail: value.detail,
     status: value.status === "failed" ? "failed" : null, durationMs, requestId, agentId,
-    requestNumber: requestId ? (requests.get(requestId)?.number || null) : null };
+    requestNumber: requestId ? (requests.get(requestId)?.number || null) : null,
+    // Monitor-private tool-call marker; rows committed before it existed are classified by label.
+    call: isToolCallRow(value) };
 }
+function servedActivity(value, requests) { return servedActivityRow(safeActivity(value, requests)); }
 function sortRows(items, timestamp) {
   return [...items].sort((a, b) => Date.parse(b[timestamp]) - Date.parse(a[timestamp]) || a.id.localeCompare(b.id));
 }
@@ -524,7 +527,7 @@ export class SessionHistoryStore {
       else if (index >= 0) offset = Math.max(0, index - Math.floor(limit / 2));
     }
     offset = Math.min(offset, Math.max(0, total - 1));
-    const items = rows.slice(offset, offset + limit).map(clone);
+    const items = rows.slice(offset, offset + limit).map((item) => kind === "activity" ? servedActivityRow(clone(item)) : clone(item));
     const requestedId = query.requestId || query.filterRequestId;
     const linkedCount = kind === "requests" && REQUEST_ID.test(requestedId || "")
       ? record.activity.filter((item) => item.requestId === requestedId && scopeMatches(item, scope)).length
@@ -621,7 +624,7 @@ export class SessionHistoryStore {
           const item = block[slot]; index[kind].push(kind === "requests"
             ? { id: item.id, agentId: item.agentId, number: item.number, overview: requestOverview(item), page, slot }
             : { id: item.id, agentId: item.agentId, requestId: item.requestId, workKind: item.workKind,
-              status: item.status, durationMs: item.durationMs, page, slot });
+              status: item.status, durationMs: item.durationMs, call: item.call, page, slot });
         }
       }
     }
@@ -690,7 +693,7 @@ export class SessionHistoryStore {
       const activityValid = index.activity.every((item, position) => item?.id === record.activity[position]?.id
         && (item.agentId === null || Boolean(safeAgent(item.agentId)))
         && (item.requestId === null || REQUEST_ID.test(item.requestId || "")) && WORK_KINDS.includes(item.workKind)
-        && (item.status === null || item.status === "failed")
+        && (item.status === null || item.status === "failed") && typeof item.call === "boolean"
         && (item.durationMs === null || safeInteger(item.durationMs) !== null && item.durationMs <= 86_400_000)
         && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot));
       return requestsValid && activityValid;
@@ -700,7 +703,7 @@ export class SessionHistoryStore {
     try {
       if (this.#blocks?.meta(sessionId)) {
         const result = this.#blocks.read(sessionId, (index, load) => readCommittedHistoryIndex(query, index, load,
-          { safeRequest, safeActivity, overviewTuple, safeAgent, safeInteger }));
+          { safeRequest, safeActivity: servedActivity, overviewTuple, safeAgent, safeInteger }));
         if (result) this.#markCommitted(sessionId); else this.#forgetCommitted(sessionId);
         return result;
       }
@@ -740,7 +743,7 @@ export class SessionHistoryStore {
       if (kind === "requests") {
         const value = safeRequest(raw); return value && Number.isSafeInteger(raw.number) && raw.number > 0 ? { ...value, number: raw.number } : null;
       }
-      return safeActivity(raw, requestNumbers);
+      return servedActivity(raw, requestNumbers);
     });
     if (items.some((item) => item === null) || items.length !== selected.length) { this.#forgetCommitted(sessionId); return null; }
     const requestedId = query.requestId || query.filterRequestId;
@@ -772,7 +775,7 @@ export class SessionHistoryStore {
         return [`${ref.page}:${ref.slot}`, value && raw.number === ref.number ? { ...value, number: raw.number } : null];
       }));
       const groupCalls = new Map(requestedActivityRefs.map((ref) => [
-        `${ref.page}:${ref.slot}`, safeActivity(activityBlocks.get(ref.page)?.[ref.slot], requestNumbers),
+        `${ref.page}:${ref.slot}`, servedActivity(activityBlocks.get(ref.page)?.[ref.slot], requestNumbers),
       ]));
       if ([...groupRequests.values(), ...groupCalls.values()].some((item) => item === null)) { this.#forgetCommitted(sessionId); return null; }
       groups = {

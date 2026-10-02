@@ -10,30 +10,26 @@ The usual causes are a search or filter hiding the row, or Pomegr reading a
 different folder from your coding tool. A missing session is missing evidence; it
 does not show that the work never happened or did not finish.
 
-## No sessions observed
+## An empty Sessions list
 
-Pomegr shows **No sessions observed** both when it has found no sessions and when
-a search or filter matches none. The count beside **All** tells them apart: your
-search does not narrow it, so a number above zero means Pomegr has sessions.
+The list reads **No sessions match** when a search or filter matches none, and
+**No sessions observed** when Pomegr has found no sessions.
 
-### A search or filter is hiding them
+### No sessions match
 
-Pomegr has no separate message for a filtered empty result. The list reads
-**No sessions observed**, and "0 matches" appears beside the filters.
+A search or filter is hiding the rows, and "0 matches" appears beside the
+filters.
 
-1. Clear **Filter sessions**, and select the close button on a **Project:** chip
-   if one is shown.
+1. Clear **Filter sessions**, and select the close button on a **Project:** or
+   **Repository:** chip if one is shown. **View sessions** on a repository opens
+   the list with the **Repository:** chip.
 2. Select **All**. **Live** and **Needs input** list only sessions in that state.
-3. If you opened the list with **View sessions** from a repository, select
-   **Sessions** in the sidebar. That view is limited to one repository and shows
-   no chip.
 
 Rows return, and "0 matches" changes to a count of the sessions listed.
 
-### Pomegr has found no sessions
+### No sessions observed
 
-The count beside **All** is zero, or the list stays empty after you clear every
-filter.
+No search or filter is active and the count beside **All** is zero.
 
 1. Wait while the list reads "Loading sessions". The first discovery can take a
    moment, and each coding tool reports on its own.

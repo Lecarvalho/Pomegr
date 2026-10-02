@@ -55,6 +55,23 @@ function groupToolEvidence(toolCalls) {
   };
 }
 
+/**
+ * Session work-kind counts when at least one agent carries whole-source counts: that agent's own
+ * counts, plus the retained calls of every agent without them (their bounded read already covers
+ * the whole source). Null when no agent carries them, so the retained calls are counted as before.
+ */
+function sessionWorkKindCounts(evidence) {
+  const whole = new Map(evidence.agents.filter((agent) => Array.isArray(agent.workKindCounts)).map((agent) => [agent.id, agent.workKindCounts]));
+  if (!whole.size) return null;
+  const counts = new Map();
+  const add = (kind, count) => counts.set(kind, (counts.get(kind) || 0) + count);
+  for (const items of whole.values()) for (const item of items) add(item.kind, item.count);
+  for (const call of evidence.toolCalls) {
+    if (!whole.has(call.actor?.id) && call.wrapper !== true) add(normalizedWorkKind(call.workKind, toolWorkKind(call.tool, { detail: call.detail })), 1);
+  }
+  return counts;
+}
+
 function aggregateCacheLifetime(snapshots) {
   const lifetimes = new Set();
   for (const snapshot of snapshots) {
@@ -144,7 +161,11 @@ export function projectProviderSessionEvidence({
   resources = null,
 }) {
   const historical = evidence.historical;
-  const agents = evidence.agents.map(({ kind, ...agent }) => {
+  // Whole-source work-kind counts are evidence for the session aggregate only; they never ride on
+  // the public agent shape.
+  const agents = evidence.agents.map(({ kind, ...evidenceAgent }) => {
+    const agent = { ...evidenceAgent };
+    delete agent.workKindCounts;
     const normalized = {
       workflowId: null,
       workflowPhaseId: null,
@@ -297,7 +318,8 @@ export function projectProviderSessionEvidence({
     loops: loopPatterns,
     activity: buildActivityFeed({
       events: allEvents,
-      toolCalls: evidence.toolCalls,
+      toolCalls: evidence.toolCalls.filter((call) => call.wrapper !== true),
+      kindCounts: sessionWorkKindCounts(evidence),
       messages: messageCount,
       failed: failedShellEvents.length,
     }),

@@ -2,6 +2,8 @@ import fs from "node:fs";
 import { createClaudeSessionWorkStartState, reduceClaudeSessionWorkStart } from "./activity-events.mjs";
 import { priorFileSuffixStillMatches } from "./file-generation.mjs";
 import { claudeUserMessageTimesFromState, createClaudeUserMessageTimeState, reduceClaudeUserMessageTimes } from "./user-message-times.mjs";
+import { reduceSkillUsage, skillUsageFromState } from "../../normalize/skill-usage.mjs";
+import { claudeToolUseWorkKind } from "./tool-call-evidence.mjs";
 import { createIncrementalJsonlIngestor } from "../kernel/incremental-jsonl-ingestor.mjs";
 import { incrementalSourceDescriptor } from "../kernel/incremental-provider-observer.mjs";
 
@@ -10,9 +12,31 @@ const CHUNK_BYTES = 256 * 1024;
 const MAX_FRAGMENT_BYTES = 8 * 1024 * 1024;
 
 /**
+ * Running per-work-kind tool-use counts; the same blocks and classification as the tail's tool_use
+ * loop. Only the bounded kind and a count are kept, never a tool name, input, or detail.
+ */
+export function reduceClaudeToolUseKinds(state, record) {
+  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return state;
+  const uses = record.message.content.filter((content) => content?.type === "tool_use");
+  if (!uses.length) return state;
+  const next = { ...state };
+  for (const content of uses) {
+    const kind = claudeToolUseWorkKind(content);
+    next[kind] = (next[kind] || 0) + 1;
+  }
+  return next;
+}
+
+function toolUseTotal(kinds) {
+  return Object.values(kinds).reduce((total, count) => total + count, 0);
+}
+
+/**
  * Complete-source session facts with bounded private state, independent of the display tail: one
  * replay of the whole main transcript, then appended bytes only, feeds both the work-start time
- * and the recorded user-message times, so the transcript is read and parsed once for both.
+ * and the recorded user-message times, so the transcript is read and parsed once for both. The same
+ * pass counts recorded tool uses per work kind and skill invocations, so an agent's call, work-kind
+ * and skill counts never shrink when its transcript outgrows the display tail.
  */
 export function createClaudeSessionWorkStartReader(options = {}) {
   const maximumEntries = Number.isInteger(options.maximumEntries)
@@ -26,6 +50,8 @@ export function createClaudeSessionWorkStartReader(options = {}) {
       identity: null,
       startedAt: null,
       userMessageTimes: [],
+      toolKinds: {},
+      skills: [],
       pending: Promise.resolve(),
       ingestor: createIncrementalJsonlIngestor({
         readChunk(offset, bytes) {
@@ -37,10 +63,12 @@ export function createClaudeSessionWorkStartReader(options = {}) {
           } finally { fs.closeSync(descriptor); }
         },
         parseRecord: (line) => JSON.parse(line.toString("utf8")),
-        initialState: () => ({ workStart: createClaudeSessionWorkStartState(), userMessages: createClaudeUserMessageTimeState() }),
+        initialState: () => ({ workStart: createClaudeSessionWorkStartState(), userMessages: createClaudeUserMessageTimeState(), toolKinds: {}, skills: {} }),
         reduce: (state, record) => ({
           workStart: reduceClaudeSessionWorkStart(state.workStart, record),
           userMessages: reduceClaudeUserMessageTimes(state.userMessages, record),
+          toolKinds: reduceClaudeToolUseKinds(state.toolKinds, record),
+          skills: reduceSkillUsage(state.skills, record),
         }),
         chunkBytes: CHUNK_BYTES,
         maximumFragmentBytes: MAX_FRAGMENT_BYTES,
@@ -83,8 +111,10 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     // replacement keeps the prior generation's answer. A failed observation never reaches here,
     // so the next read resumes from the last committed offset instead of serving a stale list.
     if (!confirmed) assertSourceStillHolds(file, source);
-    const committed = /** @type {{ candidate: { userMessages: { times: number[] } } } | null} */ (entry.ingestor.snapshot());
+    const committed = /** @type {{ candidate: { userMessages: { times: number[] }, toolKinds: Record<string, number>, skills: Record<string, { calls: number, lastUsed: string | null }> } } | null} */ (entry.ingestor.snapshot());
     entry.userMessageTimes = committed ? claudeUserMessageTimesFromState(committed.candidate.userMessages) : [];
+    entry.toolKinds = committed ? { ...committed.candidate.toolKinds } : {};
+    entry.skills = committed ? skillUsageFromState(committed.candidate.skills) : [];
     return entry;
   }
 
@@ -108,5 +138,19 @@ export function createClaudeSessionWorkStartReader(options = {}) {
     return observed(file).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes }));
   }
 
-  return Object.freeze({ read, readSessionFacts });
+  /**
+   * `readSessionFacts` plus the whole-transcript tool-use total, its per-work-kind counts, and the
+   * skill usage list, from the same single observation.
+   */
+  function readTranscriptFacts(file) {
+    return observed(file).then((entry) => ({ startedAt: entry.startedAt, userMessageTimes: entry.userMessageTimes,
+      toolUses: toolUseTotal(entry.toolKinds), toolKinds: { ...entry.toolKinds }, skills: entry.skills.map((skill) => ({ ...skill })) }));
+  }
+
+  /** Recorded tool uses in the whole transcript, counted like the tail's tool_use loop. */
+  function readToolUseCount(file) {
+    return observed(file).then((entry) => toolUseTotal(entry.toolKinds));
+  }
+
+  return Object.freeze({ read, readSessionFacts, readTranscriptFacts, readToolUseCount });
 }

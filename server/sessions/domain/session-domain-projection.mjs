@@ -143,13 +143,12 @@ function repositoryRecordedAt(value) {
 function repositoryCommitsInSession(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
-const GIT_OBSERVED_SOURCES = new Set(["committed", "uncommitted"]);
+const GIT_OBSERVED_SOURCES = new Set(["committed"]);
 const GIT_OBSERVED_CHANGES = new Set(["added", "modified", "deleted"]);
 const MAX_GIT_OBSERVED_FILES = 200;
 function publicGitObservedFile(value) {
   if (!isSafeRecordedRepositoryPath(value?.path) || !GIT_OBSERVED_SOURCES.has(value?.source)) return null;
-  // Only a committed path carries a net Git change; anything else degrades to null.
-  const change = value.source === "committed" && GIT_OBSERVED_CHANGES.has(value.change) ? value.change : null;
+  const change = GIT_OBSERVED_CHANGES.has(value.change) ? value.change : null;
   return { path: value.path, source: value.source, change };
 }
 // Re-validates the already recorded Git-observed block passed in via options.gitObserved (the
@@ -166,7 +165,7 @@ function publicGitObservedFiles(value) {
   return { files, truncated: value.truncated };
 }
 // The session tab chip's count of the Repository tab's Touched here list: recorded file-history
-// paths plus Git-observed paths no tool touched. Only a count leaves here; null until the
+// paths plus paths this session's own commits changed that no tool touched. Only a count leaves here; null until the
 // recorded history is ready so the chip never shows a partial or unknown figure.
 function touchedFileCount(fileHistory, gitObserved) {
   if (fileHistory.readiness !== "ready") return null;
@@ -556,6 +555,10 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     repositoryId: session?.repositoryId || null,
     contextInventoryRef: publicInventoryRef(session?.contextInventoryRef),
     repository,
+    // Live views only, and only while no repository is shown: the one recognized reason the
+    // live Git check found none. A side channel like options.gitObserved, never /api/state.
+    unavailableReason: repository?.available !== true && repository?.historical !== true
+      && options.repositoryUnavailableReason === "branch_changed" ? "branch_changed" : null,
     pullRequests,
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),

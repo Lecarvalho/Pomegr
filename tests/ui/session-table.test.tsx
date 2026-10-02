@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionsView } from "../../app/components/command-center/CommandViews";
@@ -23,6 +23,23 @@ describe("sessions table", () => {
     await renderDirectory([historical]);
     expect(screen.queryByText("Preparing tab4 for header measurement")).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Previous activity: Old task/ })).toHaveLength(2);
+  });
+  it("tells a filtered empty result apart from an empty catalog", async () => {
+    await renderDirectory([]);
+    expect(screen.getByRole("heading", { name: "No sessions observed" })).toBeInTheDocument();
+    cleanup();
+    installDirectoryFixture([sessions[0]]);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView initialProject="Elsewhere" /></SessionCatalogProvider>);
+    expect(await screen.findByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
+    expect(screen.getByText("Try a different search or filter.")).toBeInTheDocument();
+  });
+  it("shows a removable chip for a repository filter", async () => {
+    installDirectoryFixture([{ ...sessions[0], repositoryId: "repo-000000000000000000000001" }]);
+    render(<SessionCatalogProvider sessions={[]}><SessionsView initialRepositoryId="repo-000000000000000000000002" /></SessionCatalogProvider>);
+    expect(await screen.findByRole("heading", { name: "No sessions match" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Clear repository filter/ }));
+    expect(await screen.findByText("Progress available")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Clear repository filter/ })).not.toBeInTheDocument();
   });
   it("renders current labels as text instead of markup", async () => {
     const label = '<img src=x onerror="alert(1)">';

@@ -97,7 +97,9 @@ describe("Claude usage recovery", () => {
     render(<ClaudeUsageControls usageLimits={rejected} />);
     const button = await screen.findByRole("button", { name: "Reconnect Claude Code" });
     const actions = button.closest(".claudeUsageActions");
-    expect(actions).toContainElement(screen.getByRole("link", { name: "Setup guide (opens in a new tab)" }));
+    const guide = screen.getByRole("link", { name: "Setup guide (opens in a new tab)" });
+    expect(actions).toContainElement(guide);
+    expect(guide).toHaveAttribute("href", "https://pomegr.com/docs/help/claude-local-usage");
     expect(startClaudeSignIn).not.toHaveBeenCalled();
     fireEvent.click(button);
     fireEvent.click(button);

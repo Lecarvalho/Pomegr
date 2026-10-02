@@ -155,6 +155,7 @@ export function createObservationRuntime(options = {}) {
     isProtected: (sessionId) => sessionDomainServing.protectedSessionIds().has(sessionId),
     forbiddenRoots: Object.values(registry.providerFolders?.folders || {}).filter(Boolean),
     repositoryRootForSession: options.repositoryRootForSession,
+    repositoryUnavailableReasonForSession: options.repositoryUnavailableReasonForSession,
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
     // One recorded-snapshot read per projection. The commit times are monitor-private and feed
     // only the session-event derivation.

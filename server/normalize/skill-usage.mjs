@@ -30,18 +30,48 @@ export function buildSkillUsageFromInvocations(invocations = []) {
   });
 }
 
-export function buildSkillUsage(records) {
+/** The recorded Skill invocations of one transcript record: validated name and record time only. */
+export function skillInvocations(record) {
+  if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) return [];
   const invocations = [];
-
-  for (const record of records) {
-    if (record?.type !== "assistant" || !Array.isArray(record.message?.content)) continue;
-    for (const content of record.message.content) {
-      if (content?.type !== "tool_use" || content.name !== "Skill") continue;
-      const name = normalizedSkillName(content.input);
-      if (!name) continue;
-      const timestamp = record.timestamp || record.message?.timestamp || null;
-      invocations.push({ name, timestamp });
-    }
+  for (const content of record.message.content) {
+    if (content?.type !== "tool_use" || content.name !== "Skill") continue;
+    const name = normalizedSkillName(content.input);
+    if (!name) continue;
+    invocations.push({ name, timestamp: record.timestamp || record.message?.timestamp || null });
   }
-  return buildSkillUsageFromInvocations(invocations);
+  return invocations;
+}
+
+export function buildSkillUsage(records) {
+  return buildSkillUsageFromInvocations(records.flatMap(skillInvocations));
+}
+
+const MAX_SKILLS = 256;
+
+/**
+ * Running skill usage for a whole-transcript pass: one `{ calls, lastUsed }` per validated skill
+ * name, at most 256 names. Returns the same state when the record invokes no skill, and a new one
+ * otherwise, so a rejected observation never alters a committed state.
+ */
+export function reduceSkillUsage(state, record) {
+  const invocations = skillInvocations(record);
+  if (!invocations.length) return state;
+  const next = { ...state };
+  for (const { name, timestamp } of invocations) {
+    const current = next[name];
+    if (!current && Object.keys(next).length >= MAX_SKILLS) continue;
+    const valid = typeof timestamp === "string" && Number.isFinite(Date.parse(timestamp)) ? timestamp : null;
+    const lastUsed = valid && (!current?.lastUsed || Date.parse(valid) >= Date.parse(current.lastUsed)) ? valid : current?.lastUsed || null;
+    next[name] = { calls: (current?.calls || 0) + 1, lastUsed };
+  }
+  return next;
+}
+
+/** The running state in the order `buildSkillUsage` returns: most recently used first, then by name. */
+export function skillUsageFromState(state) {
+  return Object.entries(state || {}).map(([name, value]) => ({ name, calls: value.calls, lastUsed: value.lastUsed })).sort((a, b) => {
+    const recency = new Date(b.lastUsed || 0).getTime() - new Date(a.lastUsed || 0).getTime();
+    return recency || a.name.localeCompare(b.name);
+  });
 }

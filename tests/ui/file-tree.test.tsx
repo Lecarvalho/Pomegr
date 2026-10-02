@@ -97,25 +97,29 @@ describe("FileTree", () => {
     expect(cleanRow.querySelector(".fileTreeStatusLetter")).toBeNull();
   });
 
-  it("shows a quiet Git-observed glyph with a title and accessible name, leaving status chips unchanged", () => {
+  it("shows a quiet glyph on a row this session committed without a recorded tool edit, with a title and accessible name, leaving status chips unchanged", () => {
     const files: FileTreeFile[] = [
       { path: "gitobserved-clean.ts", fileId: null, status: null, gitObserved: "committed" },
-      { path: "gitobserved-dirty.ts", fileId: null, status: "??", gitObserved: "uncommitted" },
+      { path: "gitobserved-edited.ts", fileId: null, status: "M", gitObserved: "committed" },
       { path: "recorded-only.ts", fileId: "f1", status: "M" },
     ];
     render(<FileTree scope="session" rootLabel="Pomegr" files={files} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
 
-    const committedGlyph = screen.getByRole("img", { name: "Seen in Git during this session (committed) - not a recorded tool edit" });
-    expect(committedGlyph).toHaveAttribute("title", "Seen in Git during this session (committed) - not a recorded tool edit");
-    const uncommittedGlyph = screen.getByRole("img", { name: "Seen in Git during this session (uncommitted) - not a recorded tool edit" });
-    expect(uncommittedGlyph).toHaveAttribute("title", "Seen in Git during this session (uncommitted) - not a recorded tool edit");
+    const glyphLabel = "Committed by this session - not a recorded tool edit";
+    const glyphs = screen.getAllByRole("img", { name: glyphLabel });
+    expect(glyphs).toHaveLength(2);
+    for (const glyph of glyphs) expect(glyph).toHaveAttribute("title", glyphLabel);
+    // The only Git-observed source left is a commit by this session; nothing is described as uncommitted.
+    expect(screen.queryByRole("img", { name: /uncommitted|Seen in Git/i })).not.toBeInTheDocument();
 
-    // The committed row has no working-tree status, so it carries no status letter alongside the glyph.
-    const committedRow = screen.getByRole("button", { name: /gitobserved-clean\.ts/ });
-    expect(committedRow.querySelector(".fileTreeStatusLetter")).toBeNull();
-    // The uncommitted row keeps its ordinary Untracked status letter unchanged, plus the glyph.
-    const uncommittedRow = screen.getByRole("button", { name: /gitobserved-dirty\.ts/ });
-    expect(within(uncommittedRow).getByRole("img", { name: "Untracked" })).toHaveClass("fileTreeStatusLetter", "positive");
+    // The clean row has no working-tree status, so it carries no status letter alongside the glyph.
+    const cleanRow = screen.getByRole("button", { name: /gitobserved-clean\.ts/ });
+    expect(within(cleanRow).getByRole("img", { name: glyphLabel })).toBeInTheDocument();
+    expect(cleanRow.querySelector(".fileTreeStatusLetter")).toBeNull();
+    // A row edited again after the commit keeps its ordinary working-tree status letter unchanged, plus the glyph.
+    const editedRow = screen.getByRole("button", { name: /gitobserved-edited\.ts/ });
+    expect(within(editedRow).getByRole("img", { name: glyphLabel })).toBeInTheDocument();
+    expect(within(editedRow).getByRole("img", { name: "Modified" })).toHaveClass("fileTreeStatusLetter", "warning");
     // A plain recorded row never carries the glyph.
     const recordedRow = screen.getByRole("button", { name: /recorded-only\.ts/ });
     expect(recordedRow.querySelector(".fileTreeGitObservedGlyph")).toBeNull();
@@ -127,6 +131,8 @@ describe("FileTree", () => {
 
     rerender(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "committed.ts", fileId: null, status: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
     expect(screen.getByText("How to read this")).toBeInTheDocument();
+    fireEvent.pointerEnter(screen.getByRole("button", { name: "How Git-observed rows are chosen" }), { pointerType: "mouse" });
+    expect(screen.getByRole("dialog", { name: "How Git-observed rows are chosen" })).toHaveTextContent("Rows with the Git glyph come from commits made while this session ran a Git command. Matched by time, so they have no agent or request.");
 
     // Repository scope never shows the session-only Git-observed popover.
     rerender(<FileTree scope="repository" rootLabel="Pomegr" files={[{ path: "committed.ts", fileId: null, sessionCount: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="Nothing" />);
@@ -207,11 +213,11 @@ describe("FileTree recorded-kind letters", () => {
       { path: "deleted.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "deleted" },
       { path: "unknown.ts", fileId: null, status: null, gitObserved: "committed", gitChange: null },
     ]} />);
-    const added = screen.getByRole("img", { name: "Added in a commit during this session" });
+    const added = screen.getByRole("img", { name: "Added in a commit by this session" });
     expect(added).toHaveTextContent("A");
     expect(added).not.toHaveClass("positive");
-    expect(screen.getByRole("img", { name: "Modified in a commit during this session" })).toHaveTextContent("M");
-    expect(screen.getByRole("img", { name: "Deleted in a commit during this session" })).toHaveTextContent("D");
+    expect(screen.getByRole("img", { name: "Modified in a commit by this session" })).toHaveTextContent("M");
+    expect(screen.getByRole("img", { name: "Deleted in a commit by this session" })).toHaveTextContent("D");
     expect(screen.getAllByRole("img").filter((node) => node.classList.contains("fileTreeStatusLetter"))).toHaveLength(3);
   });
 });
@@ -357,10 +363,16 @@ describe("SessionFilePanel", () => {
     expect(within(screen.getByRole("list", { name: "Agents that changed this file" })).queryByText("4 changes")).not.toBeInTheDocument();
   });
 
-  it("labels a Git-observed file with its Git change and never attributes it", () => {
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change: "added" }} />);
-    expect(screen.getByText("Seen in Git · no recorded agent edit")).toBeInTheDocument();
-    expect(screen.getByText("Added in a commit on the session branch")).toBeInTheDocument();
-    expect(screen.getByText(/Could be the agent through a command Pomegr can't read/)).toBeInTheDocument();
+  it("labels a file this session committed with its Git change and never attributes it to an agent", () => {
+    const { rerender } = render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change: "added" }} />);
+    expect(screen.getByText("Committed by this session · no recorded agent edit")).toBeInTheDocument();
+    expect(screen.getByText("Added in the commit")).toBeInTheDocument();
+    expect(screen.getByText(/Matched by time to a Git command this session ran\. Pomegr can't tell which agent changed the file\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Seen in Git ·|session branch|Became uncommitted/)).not.toBeInTheDocument();
+
+    for (const [change, text] of [["modified", "Modified in the commit"], ["deleted", "Deleted in the commit"], [null, "Net change not recorded"]] as const) {
+      rerender(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change }} />);
+      expect(screen.getByText(text)).toBeInTheDocument();
+    }
   });
 });
