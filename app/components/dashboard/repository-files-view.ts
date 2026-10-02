@@ -3,7 +3,7 @@
  * Changed elsewhere). Kept out of RepositoryTab.tsx so that file stays focused on rendering; see
  * runs/2026-09-22-ia-session-5/3-file-history/artifacts/plan.md ("implement-tabs").
  */
-import type { RepositoryDomain, RepositoryGitObservedFiles } from "../../../shared/session-domain-contract";
+import type { SessionTouchedFile, SessionTouchedFiles } from "../../../shared/session-domain-contract";
 import type { FileTreeFile } from "../repositories/FileTree";
 
 export type RepositoryTabFilesSegment = "touched" | "uncommitted" | "elsewhere";
@@ -15,7 +15,6 @@ export const REPOSITORY_TAB_FILES_SEGMENTS: ReadonlyArray<{ id: RepositoryTabFil
 ];
 
 type WorkingTreeFile = { status: string; path: string };
-type TouchedFile = RepositoryDomain["fileHistory"]["files"][number];
 
 export type RepositoryTabFilesSegments = {
   touched: FileTreeFile[];
@@ -27,42 +26,27 @@ export type RepositoryTabFilesSegments = {
   elsewhere: FileTreeFile[];
 };
 
-/** Builds the three segments from the session's touched-file history, its working-tree status,
- * and (session scope only) files this session's own commits changed. A committed path already
- * recorded stays a plain recorded row; only paths the session committed but no tool ever touched
- * gain the quiet glyph, and they are removed from Changed elsewhere so a path shows once. */
-export function buildRepositoryTabFilesSegments(touchedFiles: TouchedFile[], workingTreeFiles: WorkingTreeFile[], gitObservedFiles: RepositoryGitObservedFiles | null = null): RepositoryTabFilesSegments {
+/** Builds the three segments from the monitor's finished Touched here list and the working-tree
+ * status. A recorded entry is a plain recorded row; a committed entry (a path the session's own
+ * commits changed that no tool touched) carries the quiet glyph and is removed from Changed
+ * elsewhere, so a path shows once. */
+export function buildRepositoryTabFilesSegments(touchedFiles: SessionTouchedFile[], workingTreeFiles: WorkingTreeFile[]): RepositoryTabFilesSegments {
   const workingTreeByPath = new Map(workingTreeFiles.map((file) => [file.path, file.status]));
-  const touchedPaths = new Set(touchedFiles.map((file) => file.path));
-  const recorded: FileTreeFile[] = touchedFiles.map((file) => ({
+  const touched: FileTreeFile[] = touchedFiles.map((file) => ({
     path: file.path,
-    fileId: file.fileId,
+    fileId: file.source === "recorded" ? file.fileId : null,
     status: workingTreeByPath.get(file.path) ?? null,
-    recordedKind: file.kind,
+    ...(file.source === "recorded" ? { recordedKind: file.kind } : { gitObserved: file.source, gitChange: file.change }),
   }));
-  const gitObservedExtra: FileTreeFile[] = (gitObservedFiles?.files ?? [])
-    .filter((file) => !touchedPaths.has(file.path))
-    .map((file) => ({
-      path: file.path,
-      fileId: null,
-      status: workingTreeByPath.get(file.path) ?? null,
-      gitObserved: file.source,
-      gitChange: file.change,
-    }));
-  const gitObservedPaths = new Set(gitObservedExtra.map((file) => file.path));
-  const touched: FileTreeFile[] = [...recorded, ...gitObservedExtra].sort((left, right) => left.path.localeCompare(right.path));
+  const touchedFileIds = new Map(touched.map((file) => [file.path, file.fileId]));
   const untouched: FileTreeFile[] = workingTreeFiles
-    .filter((file) => !touchedPaths.has(file.path) && !gitObservedPaths.has(file.path))
+    .filter((file) => !touchedFileIds.has(file.path))
     .map((file) => ({ path: file.path, fileId: null, status: file.status }));
   // Uncommitted and Changed elsewhere partition the working tree: a path in Touched here stays
   // under Uncommitted, every other path under Changed elsewhere, so no file is in both.
   const uncommitted: FileTreeFile[] = workingTreeFiles
-    .filter((file) => touchedPaths.has(file.path) || gitObservedPaths.has(file.path))
-    .map((file) => ({
-      path: file.path,
-      fileId: touchedFiles.find((touchedFile) => touchedFile.path === file.path)?.fileId ?? null,
-      status: file.status,
-    }));
+    .filter((file) => touchedFileIds.has(file.path))
+    .map((file) => ({ path: file.path, fileId: touchedFileIds.get(file.path) ?? null, status: file.status }));
   return { touched, touchedElsewhere: untouched, uncommitted, elsewhere: untouched };
 }
 
@@ -84,7 +68,7 @@ export function filterFilesByPath(files: FileTreeFile[], query: string): FileTre
 }
 
 /** null signals the loading skeleton (see RepositoryTab.tsx); every other readiness has fixed copy. */
-export function touchedSegmentEmptyText(readiness: RepositoryDomain["fileHistory"]["readiness"]): string | null {
+export function touchedSegmentEmptyText(readiness: SessionTouchedFiles["readiness"]): string | null {
   if (readiness === "loading") return null;
   if (readiness === "unavailable") return "File history is unavailable.";
   if (readiness === "rebuilding") return "File history is rebuilding.";

@@ -382,11 +382,11 @@ function FileHistoryPanelSection() {
   return <Section id="file-history-panel" title="File history panel" lede="FileHistoryPanel (app/components/repositories/FileHistoryPanel.tsx) renders on the repository Files tab the committed session history the caller already fetched; it never fetches on its own. A moved entry shows its old path, and every state shares one panel frame. The session Repository tab uses SessionFilePanel instead, showing only that session's change.">
     <div className="designSystemGrid">
       <Sample label="Session file panel" note="SessionFilePanel: this session's recorded change only, fetch-free, with the repository-page link for full history.">
-        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
-          recorded={{ fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: "claude-opus-5-5", changeCount: 2 }, { id: "agent-2", label: "Explore", assignment: "Map the dashboard components", model: "claude-sonnet-5-5", changeCount: 1 }] }} onOpenAgent={() => {}} />
+        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus="M" readiness="ready"
+          file={{ source: "recorded", fileId: "f12", path: "app/components/dashboard/Dashboard.tsx", kind: "created", changeCount: 3, lastObservedAt: "2026-09-22T11:40:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: "claude-opus-5-5", changeCount: 2 }, { id: "agent-2", label: "Explore", assignment: "Map the dashboard components", model: "claude-sonnet-5-5", changeCount: 1 }] }} onOpenAgent={() => {}} />
       </Sample>
       <Sample label="Session file panel, Git-observed" note="No tool recorded the file; Git saw it change in the session window.">
-        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "app/committed.ts", source: "committed", change: "added" }} />
+        <SessionFilePanel repositoryId="repo-0123456789abcdef01234567" repositoryLabel="Pomegr" path="app/committed.ts" workingTreeStatus={null} readiness="ready" file={{ path: "app/committed.ts", source: "committed", change: "added" }} />
       </Sample>
       <Sample label="Repository side" note="Copy path action.">
         <FileHistoryPanel repositoryLabel="Pomegr" path="app/components/dashboard/Dashboard.tsx" workingTreeStatus={null} history={FILE_HISTORY_SAMPLE} />

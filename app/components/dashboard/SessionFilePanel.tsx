@@ -1,11 +1,11 @@
 import Link from "next/link";
-import type { RepositoryDomain } from "../../../shared/session-domain-contract";
+import type { SessionTouchedFile, SessionTouchedFiles } from "../../../shared/session-domain-contract";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { FileHistoryLoadingRows, FilePanelHeader, KIND_LABELS } from "../repositories/FileHistoryPanel";
 import { sessionTimeLabel } from "../repositories/file-history-format";
 
-type RecordedFile = RepositoryDomain["fileHistory"]["files"][number];
-type GitObservedFile = NonNullable<RepositoryDomain["gitObservedFiles"]>["files"][number];
+type RecordedFile = Extract<SessionTouchedFile, { source: "recorded" }>;
+type CommittedFile = Extract<SessionTouchedFile, { source: "committed" }>;
 
 const COMMITTED_CHANGE_TEXT = {
   added: "Added in the commit",
@@ -13,7 +13,7 @@ const COMMITTED_CHANGE_TEXT = {
   deleted: "Deleted in the commit",
 } as const;
 
-function gitObservedText(file: GitObservedFile): string {
+function committedText(file: CommittedFile): string {
   return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Net change not recorded";
 }
 
@@ -43,7 +43,7 @@ function RecordedAgents({ agents, onOpenAgent }: { agents: RecordedFile["agents"
 /** The session Repository tab's right panel: what this session did to the selected file, built
  * only from the repository domain the tab already holds, so selecting a file never waits on a
  * fetch. The file's history across sessions lives on the repository page, one link away. */
-export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, recorded, recordedReadiness, gitObserved, onOpenAgent, className = "" }: {
+export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingTreeStatus, statusRecorded = false, file, readiness, onOpenAgent, className = "" }: {
   repositoryId: string;
   repositoryLabel: string;
   /** Selected repository-relative path; null renders the "no file selected" state. */
@@ -51,11 +51,11 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
   workingTreeStatus: string | null;
   /** The status was recorded at the session's last live check (historical session), not read now. */
   statusRecorded?: boolean;
-  /** This session's recorded change summary for the path, when one exists. */
-  recorded: RecordedFile | null;
-  recordedReadiness: RepositoryDomain["fileHistory"]["readiness"];
-  /** How Git saw the path change in the session window, when no tool recorded it. */
-  gitObserved: GitObservedFile | null;
+  /** The path's entry in this session's Touched here list: a recorded change summary, or how Git
+   *  saw the path change in the session window when no tool recorded it; null when it has none. */
+  file: SessionTouchedFile | null;
+  /** Recorded history readiness; explains an absent `file`. */
+  readiness: SessionTouchedFiles["readiness"];
   /** Opens a recorded agent in the session's Agents tab. */
   onOpenAgent?: (agentId: string) => void;
   className?: string;
@@ -66,32 +66,32 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
     </section>;
   }
 
-  const kind = recorded ? KIND_LABELS[recorded.kind] : null;
-  const body = recorded && kind
+  const kind = file?.source === "recorded" ? KIND_LABELS[file.kind] : null;
+  const body = file?.source === "recorded" && kind
     ? <article className="fileHistoryEntry">
         <div className="fileHistoryEntryBody">
           <span className="fileHistoryEntryTitle">Recorded in this session</span>
           <div className="fileHistoryEntryMeta">
             <span className={`commandChip${kind.tone ? ` ${kind.tone}` : ""}`}>{kind.label}</span>
-            <span className="fileHistoryEntryMetaText">{recorded.changeCount} change{recorded.changeCount === 1 ? "" : "s"}</span>
+            <span className="fileHistoryEntryMetaText">{file.changeCount} change{file.changeCount === 1 ? "" : "s"}</span>
           </div>
-          <RecordedAgents agents={recorded.agents ?? []} onOpenAgent={onOpenAgent} />
+          <RecordedAgents agents={file.agents ?? []} onOpenAgent={onOpenAgent} />
         </div>
-        {recorded.lastObservedAt && <time className="fileHistoryEntryTime" dateTime={recorded.lastObservedAt}>{sessionTimeLabel(recorded.lastObservedAt)}</time>}
+        {file.lastObservedAt && <time className="fileHistoryEntryTime" dateTime={file.lastObservedAt}>{sessionTimeLabel(file.lastObservedAt)}</time>}
       </article>
-    : gitObserved
+    : file?.source === "committed"
       ? <article className="fileHistoryEntry">
           <div className="fileHistoryEntryBody">
             <span className="fileHistoryEntryTitle">Committed by this session · no recorded agent edit</span>
             <div className="fileHistoryEntryMeta">
-              <span className="fileHistoryEntryMetaText">{gitObservedText(gitObserved)}</span>
+              <span className="fileHistoryEntryMetaText">{committedText(file)}</span>
             </div>
             <p className="fileHistoryEntryNote">Matched by time to a Git command this session ran. Pomegr can&apos;t tell which agent changed the file.</p>
           </div>
         </article>
-      : recordedReadiness === "loading"
+      : readiness === "loading"
         ? <FileHistoryLoadingRows />
-        : <p className="fileHistoryEmptyState">{recordedReadiness === "ready" ? "No recorded change in this session." : "Recorded changes are unavailable."}</p>;
+        : <p className="fileHistoryEmptyState">{readiness === "ready" ? "No recorded change in this session." : "Recorded changes are unavailable."}</p>;
 
   return <section className={`panel fileHistoryPanel ${className}`.trim()} aria-label="File in this session">
     <FilePanelHeader repositoryLabel={repositoryLabel} path={path} workingTreeStatus={workingTreeStatus} statusRecorded={statusRecorded}

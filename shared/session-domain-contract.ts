@@ -188,42 +188,45 @@ export type RepositoryDomain = SessionDomainBase & {
   /** Execution tasks whose workKind is git, git_push or pull_request; null until activity
    *  evidence is ready. */
   gitTasks: { total: number; failed: number } | null;
-  fileHistory: SessionFileHistory;
-  /** Files changed by commits on the live HEAD branch whose committer time lies inside one of
-   *  this session's own finished Git commands. A time match, not proof of authorship. Never
-   *  recorded tool edits: no agent, request, or edit count. A historical session serves its
-   *  recorded snapshot values only. null when never measured. */
-  gitObservedFiles: RepositoryGitObservedFiles | null;
+  /** The Repository tab's Touched here list, built monitor-side from recorded evidence only. */
+  touchedFiles: SessionTouchedFiles;
 };
 
-export type RepositoryGitObservedFile = {
-  path: string; // safe repository-relative path, same root as repository.files and fileHistory
-  source: "committed";
-  /** Net Git change across the matched commits; null when not recorded. */
-  change: "added" | "modified" | "deleted" | null;
-};
-export type RepositoryGitObservedFiles = {
-  files: RepositoryGitObservedFile[]; // sorted by path, at most 200
-  truncated: boolean;
-};
+/** One file this session touched. A path is listed once: a path both recorded and committed is
+ *  its `recorded` entry only. */
+export type SessionTouchedFile =
+  | {
+      path: string; // safe repository-relative path, same root as repository.files
+      /** A recorded tool change, from the committed file-history cache (never a GET-time read). */
+      source: "recorded";
+      fileId: string; // opaque `f<integer>`, see shared/repository-files-contract.ts
+      kind: "created" | "edited" | "deleted" | "moved"; // newest kind in this session
+      changeCount: number;
+      lastObservedAt: string; // ISO
+      /** Agents a recorded tool call proves changed this file in this session, newest first, at
+       *  most 12. `label`, `assignment`, and `model` come from the visible agent when listed,
+       *  else from the identity recorded with the file index; `model` is the agent's latest
+       *  reported model, never the model of the request that made a change. Shell-command and
+       *  Git-only changes never appear here. */
+      agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null; changeCount: number }>;
+    }
+  | {
+      path: string; // safe repository-relative path, same root as repository.files
+      /** Changed by a commit on the live HEAD branch whose committer time lies inside one of this
+       *  session's own finished Git commands, and no recorded tool touched it. A time match, not
+       *  proof of authorship. Never a recorded tool edit: no agent, request, or edit count. A
+       *  historical session serves its recorded snapshot values only. */
+      source: "committed";
+      /** Net Git change across the matched commits; null when not recorded. */
+      change: "added" | "modified" | "deleted" | null;
+    };
 
-/** Files this session changed, from the committed file-history cache (never a GET-time read). */
-export type SessionFileHistory = {
-  readiness: "loading" | "ready" | "unavailable" | "rebuilding";
-  files: Array<{
-    fileId: string; // opaque `f<integer>`, see shared/repository-files-contract.ts
-    path: string; // current repository-relative path
-    kind: "created" | "edited" | "deleted" | "moved"; // newest kind in this session
-    changeCount: number;
-    lastObservedAt: string; // ISO
-    /** Agents a recorded tool call proves changed this file in this session, newest first, at
-     *  most 12. `label`, `assignment`, and `model` come from the visible agent when listed,
-     *  else from the identity recorded with the file index; `model` is the agent's latest
-     *  reported model, never the model of the request that made a change. Shell-command and
-     *  Git-only changes never appear here. */
-    agents: Array<{ id: string; label: string | null; assignment: string | null; model: string | null; changeCount: number }>;
-  }>; // newest change first, bounded
-  truncated: boolean;
+/** Files this session touched, sorted by path. Committed entries are listed whatever the
+ *  recorded history's readiness. */
+export type SessionTouchedFiles = {
+  readiness: "loading" | "ready" | "unavailable" | "rebuilding"; // recorded history readiness
+  files: SessionTouchedFile[]; // sorted by path; a path appears once
+  truncated: boolean; // either source was cut at its cap
 };
 
 /** Display fields. cpu_machine_percent stays in live samples only; peaks and curves use these four. */

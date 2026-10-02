@@ -329,8 +329,8 @@ describe("SessionFilePanel", () => {
 
   it("shows this session's recorded change and links the full history to the repository page", () => {
     const path = "app/components/Dashboard.tsx";
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null}
-      recorded={{ fileId: "f7", path, kind: "created", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [] }} />);
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" readiness="ready"
+      file={{ source: "recorded", fileId: "f7", path, kind: "created", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [] }} />);
     expect(screen.getByText("Recorded in this session")).toBeInTheDocument();
     expect(screen.getByText("Created")).toHaveClass("commandChip", "info");
     expect(screen.getByText("3 changes")).toBeInTheDocument();
@@ -342,8 +342,8 @@ describe("SessionFilePanel", () => {
   it("names the recorded agents and opens a visible one in the Agents inspector", () => {
     const path = "docs/METRICS.md";
     const onOpenAgent = vi.fn();
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" recordedReadiness="ready" gitObserved={null} onOpenAgent={onOpenAgent}
-      recorded={{ fileId: "f8", path, kind: "edited", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z",
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus="M" readiness="ready" onOpenAgent={onOpenAgent}
+      file={{ source: "recorded", fileId: "f8", path, kind: "edited", changeCount: 3, lastObservedAt: "2026-09-23T17:00:00.000Z",
         agents: [{ id: "agent-2", label: "Explore", assignment: "Map the metrics docs", model: "claude-sonnet-5-5", changeCount: 2 }, { id: "agent-9", label: null, assignment: null, model: null, changeCount: 1 }] }} />);
     expect(screen.getByRole("list", { name: "Agents that changed this file" })).toBeInTheDocument();
     expect(screen.getByText("claude-sonnet-5-5")).toHaveAttribute("title", "Latest model this agent reported");
@@ -357,21 +357,21 @@ describe("SessionFilePanel", () => {
 
   it("omits per-agent counts when one agent made every change", () => {
     const path = "docs/METRICS.md";
-    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus={null} recordedReadiness="ready" gitObserved={null} onOpenAgent={() => {}}
-      recorded={{ fileId: "f8", path, kind: "edited", changeCount: 4, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: null, changeCount: 4 }] }} />);
+    render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path={path} workingTreeStatus={null} readiness="ready" onOpenAgent={() => {}}
+      file={{ source: "recorded", fileId: "f8", path, kind: "edited", changeCount: 4, lastObservedAt: "2026-09-23T17:00:00.000Z", agents: [{ id: "primary", label: "Main", assignment: null, model: null, changeCount: 4 }] }} />);
     expect(screen.getByRole("button", { name: "Open Main in the Agents inspector" })).toHaveTextContent("Main");
     expect(within(screen.getByRole("list", { name: "Agents that changed this file" })).queryByText("4 changes")).not.toBeInTheDocument();
   });
 
   it("labels a file this session committed with its Git change and never attributes it to an agent", () => {
-    const { rerender } = render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change: "added" }} />);
+    const { rerender } = render(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} readiness="ready" file={{ path: "a.ts", source: "committed", change: "added" }} />);
     expect(screen.getByText("Committed by this session · no recorded agent edit")).toBeInTheDocument();
     expect(screen.getByText("Added in the commit")).toBeInTheDocument();
     expect(screen.getByText(/Matched by time to a Git command this session ran\. Pomegr can't tell which agent changed the file\./)).toBeInTheDocument();
     expect(screen.queryByText(/Seen in Git ·|session branch|Became uncommitted/)).not.toBeInTheDocument();
 
     for (const [change, text] of [["modified", "Modified in the commit"], ["deleted", "Deleted in the commit"], [null, "Net change not recorded"]] as const) {
-      rerender(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} recorded={null} recordedReadiness="ready" gitObserved={{ path: "a.ts", source: "committed", change }} />);
+      rerender(<SessionFilePanel repositoryId={repositoryId} repositoryLabel="Pomegr" path="a.ts" workingTreeStatus={null} readiness="ready" file={{ path: "a.ts", source: "committed", change }} />);
       expect(screen.getByText(text)).toBeInTheDocument();
     }
   });

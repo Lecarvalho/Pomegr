@@ -128,19 +128,18 @@ function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical
   const [manualSegment, setManualSegment] = useState<RepositoryTabFilesSegment | null>(null);
   const { sessions } = useSessionCatalog();
   const rootLabel = sessions.find((session) => session.id === sessionId)?.project ?? "Repository";
-  const segments = buildRepositoryTabFilesSegments(domain.fileHistory.files, workingTreeFiles, domain.gitObservedFiles);
+  const segments = buildRepositoryTabFilesSegments(domain.touchedFiles.files, workingTreeFiles);
   // Without a snapshot the Uncommitted and Changed elsewhere segments would read as "none", so
   // only Touched here (the recorded file-change index) is offered.
   const segment = workingTreeKnown ? manualSegment ?? bestRepositoryTabFilesSegment(selectedPath, segments) : "touched";
   const query = search.trim();
-  const treeLoading = segment === "touched" && domain.fileHistory.readiness === "loading";
+  const treeLoading = segment === "touched" && domain.touchedFiles.readiness === "loading";
   const listedFiles = filterFilesByPath(segments[segment], query);
   const listedElsewhere = segment === "touched" ? filterFilesByPath(segments.touchedElsewhere, query) : undefined;
   // The panel describes only a file the tree currently lists: after a segment switch or a search
   // that drops the selected row, its history would read as a file that is not there.
   const shownPath = selectedPath && (treeLoading || [...listedFiles, ...listedElsewhere ?? []].some((file) => file.path === selectedPath)) ? selectedPath : null;
-  const recorded = shownPath ? domain.fileHistory.files.find((file) => file.path === shownPath) ?? null : null;
-  const gitObserved = shownPath ? domain.gitObservedFiles?.files.find((file) => file.path === shownPath) ?? null : null;
+  const shownFile = shownPath ? domain.touchedFiles.files.find((file) => file.path === shownPath) ?? null : null;
   const workingTreeStatus = shownPath ? workingTreeFiles.find((file) => file.path === shownPath)?.status ?? null : null;
 
   const selectSegment = (next: RepositoryTabFilesSegment) => setManualSegment(next);
@@ -157,7 +156,7 @@ function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical
         onSelect={(file) => selectFile(file.path)}
         expandAll={query.length > 0}
         emptyText={segment === "touched"
-          ? touchedSegmentEmptyText(domain.fileHistory.readiness) ?? "No files touched in this session yet."
+          ? touchedSegmentEmptyText(domain.touchedFiles.readiness) ?? "No files touched in this session yet."
           : segment === "uncommitted" ? uncommittedSegmentEmptyText(historical) : ELSEWHERE_SEGMENT_EMPTY_TEXT}
         className="repositoryTabFilesTree"
       />;
@@ -185,9 +184,8 @@ function RepositoryTabFiles({ domain, workingTreeFiles, repositoryId, historical
         path={shownPath}
         workingTreeStatus={workingTreeStatus}
         statusRecorded={historical}
-        recorded={recorded}
-        recordedReadiness={domain.fileHistory.readiness}
-        gitObserved={gitObserved}
+        file={shownFile}
+        readiness={domain.touchedFiles.readiness}
         onOpenAgent={onOpenAgent}
         className="repositoryTabFilesPanel"
       />

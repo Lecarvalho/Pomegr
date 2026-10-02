@@ -1,6 +1,6 @@
 import { repositoryRelativePath } from "../../normalize/repository-path.mjs";
 import { isSafeRecordedRepositoryPath } from "../../repository/repository-snapshot.mjs";
-import { fileChangeAgentIdentity, SAFE_FILE_CHANGE_AGENT_ID } from "../../repository/file-change-agents.mjs";
+import { sessionTouchedFiles, touchedFileCount } from "../../repository/session-touched-files.mjs";
 import { projectAgentSessionActivityFallback } from "./session-current-activity.mjs";
 import { SESSION_EVENT_READINESS_SECTIONS, sessionEvents } from "./session-events.mjs";
 
@@ -143,90 +143,10 @@ function repositoryRecordedAt(value) {
 function repositoryCommitsInSession(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
-const GIT_OBSERVED_SOURCES = new Set(["committed"]);
-const GIT_OBSERVED_CHANGES = new Set(["added", "modified", "deleted"]);
-const MAX_GIT_OBSERVED_FILES = 200;
-function publicGitObservedFile(value) {
-  if (!isSafeRecordedRepositoryPath(value?.path) || !GIT_OBSERVED_SOURCES.has(value?.source)) return null;
-  const change = GIT_OBSERVED_CHANGES.has(value.change) ? value.change : null;
-  return { path: value.path, source: value.source, change };
-}
-// Re-validates the already recorded Git-observed block passed in via options.gitObserved (the
-// recorder's persisted snapshot for this session, live or historical); never reads the current
-// working tree itself, so a historical session can never pick up live drift here.
-function publicGitObservedFiles(value) {
-  if (!value || !Array.isArray(value.files) || value.files.length > MAX_GIT_OBSERVED_FILES || typeof value.truncated !== "boolean") return null;
-  const files = [];
-  for (const file of value.files) {
-    const normalized = publicGitObservedFile(file);
-    if (!normalized) return null;
-    files.push(normalized);
-  }
-  return { files, truncated: value.truncated };
-}
-// The session tab chip's count of the Repository tab's Touched here list: recorded file-history
-// paths plus paths this session's own commits changed that no tool touched. Only a count leaves here; null until the
-// recorded history is ready so the chip never shows a partial or unknown figure.
-function touchedFileCount(fileHistory, gitObserved) {
-  if (fileHistory.readiness !== "ready") return null;
-  const paths = new Set(fileHistory.files.map((file) => file.path));
-  for (const file of gitObserved?.files || []) paths.add(file.path);
-  return paths.size;
-}
 const GIT_TASK_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 function gitTaskTally(executionTasks) {
   const relevant = (Array.isArray(executionTasks) ? executionTasks : []).filter((task) => GIT_TASK_WORK_KINDS.has(task?.workKind));
   return { total: relevant.length, failed: relevant.filter((task) => task?.status === "failed").length };
-}
-const FILE_HISTORY_READINESS = new Set(["loading", "ready", "unavailable", "rebuilding"]);
-const FILE_CHANGE_KINDS = new Set(["created", "edited", "deleted", "moved"]);
-const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
-const MAX_SESSION_FILE_HISTORY_FILES = 200;
-const MAX_SESSION_FILE_HISTORY_AGENTS = 12;
-// Recorded agents for one file: the normalized agent ID from the index, its change count, and
-// its label, assignment, and latest reported model. The matching visible agent in this same
-// session supplies each field when it has one; otherwise the index's recorded identity does.
-function publicSessionFileAgents(value, agentById) {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set();
-  const agents = [];
-  for (const agent of value) {
-    if (agents.length >= MAX_SESSION_FILE_HISTORY_AGENTS) break;
-    if (!agent || typeof agent.agentId !== "string" || !SAFE_FILE_CHANGE_AGENT_ID.test(agent.agentId) || seen.has(agent.agentId)) continue;
-    if (!Number.isSafeInteger(agent.changeCount) || agent.changeCount < 1) continue;
-    seen.add(agent.agentId);
-    const visible = fileChangeAgentIdentity(agentById.get(agent.agentId));
-    const recorded = fileChangeAgentIdentity(agent);
-    agents.push({
-      id: agent.agentId,
-      label: visible.label ?? recorded.label,
-      assignment: visible.assignment ?? recorded.assignment,
-      model: visible.model ?? recorded.model,
-      changeCount: agent.changeCount,
-    });
-  }
-  return agents;
-}
-function publicSessionFileHistoryEntry(value, agentById) {
-  if (!value || typeof value.fileId !== "string" || !FILE_ID_PATTERN.test(value.fileId)) return null;
-  if (!isSafeRecordedRepositoryPath(value.path) || !FILE_CHANGE_KINDS.has(value.kind)) return null;
-  if (!Number.isSafeInteger(value.changeCount) || value.changeCount < 0) return null;
-  if (typeof value.lastObservedAt !== "string" || !Number.isFinite(Date.parse(value.lastObservedAt))) return null;
-  return {
-    fileId: value.fileId, path: value.path, kind: value.kind, changeCount: value.changeCount, lastObservedAt: value.lastObservedAt,
-    agents: publicSessionFileAgents(value.agents, agentById),
-  };
-}
-// Re-validates the committed file-history-domain block: an invalid or missing block degrades
-// to unavailable rather than ever letting an unvalidated path or count reach the browser.
-function publicFileHistory(value, agents = []) {
-  const readiness = FILE_HISTORY_READINESS.has(value?.readiness) ? value.readiness : "unavailable";
-  const agentById = new Map(agents.map((agent) => [agent.id, agent]));
-  return {
-    readiness,
-    files: list(value?.files, (entry) => publicSessionFileHistoryEntry(entry, agentById)).slice(0, MAX_SESSION_FILE_HISTORY_FILES),
-    truncated: Boolean(value?.truncated),
-  };
 }
 function publicPullRequests(value) {
   if (!value) return null;
@@ -511,8 +431,10 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const insights = list(state.insights, publicInsight);
   const loops = list(state.loops, publicLoop);
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
-  const fileHistory = publicFileHistory(options.fileHistory, agents);
-  const gitObservedFiles = publicGitObservedFiles(options.gitObserved);
+  // Never read from session.repository (which /api/state serializes verbatim): the recorded file
+  // history and the recorded Git-observed block arrive only through options.fileHistory and
+  // options.gitObserved, side channels, and one module owns the finished list and its count.
+  const touchedFiles = sessionTouchedFiles({ fileHistory: options.fileHistory, gitObserved: options.gitObserved, agents });
   // Derived here, from the same committed inputs as the other domains, so a resource, repository,
   // or evidence change re-projects the summary and an unchanged feed leaves its revision alone.
   const events = sessionEvents({
@@ -528,7 +450,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     retainedResources,
   });
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(fileHistory, gitObservedFiles), events));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,
@@ -563,11 +485,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     recordedAt: repositoryRecordedAt(session?.repository?.recordedAt),
     commitsInSession: repositoryCommitsInSession(session?.repository?.commitsInSession),
     gitTasks: ready.activityEvidence === "ready" ? gitTaskTally(state.executionTasks) : null,
-    fileHistory,
-    // Never read from session.repository: that object is publicState.session.repository, which
-    // /api/state serializes verbatim, and gitObserved must never reach that endpoint. It arrives
-    // here only through options.gitObserved, a side channel exactly like options.fileHistory.
-    gitObservedFiles,
+    touchedFiles,
   });
   const executionTasksById = new Map((Array.isArray(state.executionTasks) ? state.executionTasks : [])
     .filter((task) => typeof task?.id === "string")

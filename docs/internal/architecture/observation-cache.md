@@ -218,7 +218,7 @@ newest 256 recorded times, checkpointed with the evidence), and the live Git che
 `commitTimesInWindow` in the sidecar (the newest 50 committer times). The commit times
 reach the projection through the monitor-private `repositoryRecordForSession` side
 channel, which reads the recorded snapshot once per projection for both them and
-`gitObservedFiles`, and never ride on `session.repository`. When the recorder holds no
+the Git-observed files, and never ride on `session.repository`. When the recorder holds no
 answer for a session (it keeps 512 by recency), the domain store reuses the commit times
 of that session's last committed projection until the recorder reads the sidecar back, so
 commit events are not withdrawn meanwhile. A session evicted from both the recorder and
@@ -260,9 +260,11 @@ special forms, configured provider roots, and link escapes. An unknown root or u
 containment cannot admit a path. Existing committed live repository/resource evidence
 remains available, and missing historical evidence never falls back to today's working tree.
 
-The `repository` domain's `fileHistory` block is served from the `file-history-domain`
-source (see "Approved file-history persistence contract"), and `recordedAt`,
-`commitsInSession`, `gitTasks`, and the recorded `gitObservedFiles` accompany it. A historical session's repository block
+The `repository` domain's `touchedFiles` block is the session's finished Touched here list.
+The session touched-files module (`server/repository/session-touched-files.mjs`) builds it
+from the `file-history-domain` source (see "Approved file-history persistence contract")
+and the recorded Git-observed files, and owns its validation and the session-summary
+count. `recordedAt`, `commitsInSession`, and `gitTasks` accompany it. A historical session's repository block
 is the recorded snapshot described there when one exists; without one it keeps the
 branch-only recorded state. The `resources` domain's `retained` block is committed by the
 `resource-domain` monitor-store contributor, registered after `resource-history` so it
@@ -2752,7 +2754,7 @@ keeps the private reason `branch_changed`. The repository domain serves it as
 `unavailableReason: "branch_changed" | null`, only for a live view that shows no repository,
 through a projection side channel like `gitObserved`; it never rides on `session.repository`
 or `/api/state`, and no branch name accompanies it. Any other mismatch serves `null`.
-Recorded `fileHistory` and `gitObservedFiles` are session evidence, not live Git state: the
+The `touchedFiles` block is session evidence, not live Git state: the
 session Repository tab lists Touched here for a linked repository whether or not a
 repository is available, and offers the working-tree segments only when one is.
 
@@ -2832,7 +2834,7 @@ The `file-history-domain` source (`server/repository/file-history-domain.mjs`) s
 registers after the file-change-index contributor, so each cycle groups already-committed
 rows, and reports `rebuildComplete: true` because it is a derived cache, never a rebuild
 target. Per cycle it builds at most 32 demanded sessions' touched-file summaries (at most
-200 files, folded into the `repository` domain's `fileHistory`), 8 repository listings
+200 files, folded into the `repository` domain's `touchedFiles`), 8 repository listings
 (at most 5,000 files), and 32 per-file histories (at most 100 sessions). It retains at
 most 64 listings and 256 histories in LRU order and drops an entry idle for ten minutes.
 Explicitly requested session summaries lead the 32-session budget; when requested
@@ -2970,15 +2972,17 @@ The list feeds only the session-event derivation, through the
 `session.repository` or in the `repository` domain, and a historical session serves only
 its recorded list. See [Session events](metrics.md#session-events).
 
-The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
+The monitor derives the Git-observed files, `{ files: [{ path, source, change }], truncated } | null`,
 from `sessionCommitPaths`, and null while that list was never read. `source` is always
-`committed`. `change` is the path's recorded net change, else null; the projection
-drops any other value. It travels through the `repositoryRecordForSession` side channel (observation runtime to
-session-domain store to projection), like `fileHistory`, and the projection re-validates
-every path with the repository-path validator. It appears only in the `repository`
-domain, never on `/api/state` `session.repository`. The UI drops a path that already has
-a recorded `fileHistory` row. GETs never run Git for it, and a historical session serves
-only its recorded list, never the current tree.
+`committed`. `change` is the path's recorded net change, else null; the session
+touched-files module drops any other value. The list travels through the
+`repositoryRecordForSession` side channel (observation runtime to session-domain store to
+projection), like the recorded file history, and the module re-validates every path with
+the repository-path validator. It reaches the browser only as the `committed` entries of
+the `repository` domain's `touchedFiles` block, never on `/api/state`
+`session.repository`. The module drops a path that already has a `recorded` entry, so each
+path is listed once. GETs never run Git for it, and a historical session serves only its
+recorded list, never the current tree.
 
 ## Monitor SQLite store
 

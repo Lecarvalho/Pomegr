@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PullRequest, SessionSummary } from "../../shared/monitor-contract";
-import type { RepositoryDomain } from "../../shared/session-domain-contract";
+import type { RepositoryDomain, SessionTouchedFile } from "../../shared/session-domain-contract";
 import type { FileHistoryResponse } from "../../shared/repository-files-contract";
 import { RepositoryTab, type RepositoryTabProps } from "../../app/components/dashboard/RepositoryTab";
 import type { SessionFilePanel } from "../../app/components/dashboard/SessionFilePanel";
@@ -38,7 +38,8 @@ const SESSION_ID = "claude:repo-tab";
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 
 type Repository = NonNullable<RepositoryDomain["repository"]>;
-type FileHistoryFiles = RepositoryDomain["fileHistory"]["files"];
+type RecordedFile = Extract<SessionTouchedFile, { source: "recorded" }>;
+type CommittedFile = Extract<SessionTouchedFile, { source: "committed" }>;
 
 function repository(overrides: Partial<Repository> = {}): Repository {
   return {
@@ -80,14 +81,17 @@ function domain(overrides: Record<string, unknown> = {}): RepositoryDomain {
     recordedAt: null,
     commitsInSession: 2,
     gitTasks: { total: 9, failed: 0 },
-    gitObservedFiles: null,
-    fileHistory: { readiness: "unavailable", files: [], truncated: false },
+    touchedFiles: { readiness: "unavailable", files: [], truncated: false },
     ...overrides,
   } as RepositoryDomain;
 }
 
-function touchedFile(overrides: Partial<FileHistoryFiles[number]> = {}): FileHistoryFiles[number] {
-  return { fileId: "f1", path: "app/Dashboard.tsx", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-22T12:00:00.000Z", agents: [], ...overrides };
+function recordedFile(overrides: Partial<RecordedFile> = {}): RecordedFile {
+  return { source: "recorded", fileId: "f1", path: "app/Dashboard.tsx", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-22T12:00:00.000Z", agents: [], ...overrides };
+}
+
+function committedFile(path: string, change: CommittedFile["change"] = "added"): CommittedFile {
+  return { path, source: "committed", change };
 }
 
 function result(data: RepositoryDomain | null, error: string | null = null, unavailable = false) {
@@ -135,7 +139,7 @@ describe("RepositoryTab", () => {
       recordedAt: null,
       pullRequests: { status: "unavailable", checkedAt: null, items: [] },
       commitsInSession: null,
-      fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
+      touchedFiles: { readiness: "ready", files: [recordedFile()], truncated: false },
     })));
     renderTab({ sessionId: SESSION_ID, historical: true });
 
@@ -158,8 +162,7 @@ describe("RepositoryTab", () => {
       unavailableReason: "branch_changed",
       pullRequests: { status: "unavailable", checkedAt: null, items: [] },
       commitsInSession: null,
-      fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
-      gitObservedFiles: { files: [{ path: "app/observed.ts", source: "committed", change: "added" }], truncated: false },
+      touchedFiles: { readiness: "ready", files: [recordedFile(), committedFile("app/observed.ts")], truncated: false },
     })));
     const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });
 
@@ -170,7 +173,7 @@ describe("RepositoryTab", () => {
     expect(screen.queryByRole("group", { name: "File segment" })).not.toBeInTheDocument();
 
     // An unrecognized reason still lists the files, under neutral copy.
-    useSessionDomain.mockReturnValue(result(domain({ repository: unavailable, unavailableReason: null, fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false } })));
+    useSessionDomain.mockReturnValue(result(domain({ repository: unavailable, unavailableReason: null, touchedFiles: { readiness: "ready", files: [recordedFile()], truncated: false } })));
     rerender(<LiveClockProvider running={false}><SessionCatalogProvider sessions={[]}><RepositoryTab sessionId={SESSION_ID} historical={false} /></SessionCatalogProvider></LiveClockProvider>);
     expect(screen.getByText(/Git state is unavailable for this session\./)).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Find a file touched in this session" })).toBeInTheDocument();
@@ -204,7 +207,7 @@ describe("RepositoryTab", () => {
             { status: "??", path: "app/new-file.ts" }, // uncommitted, not touched this session
           ],
         }),
-        fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
+        touchedFiles: { readiness: "ready", files: [recordedFile()], truncated: false },
         ...overrides,
       });
     }
@@ -298,14 +301,17 @@ describe("RepositoryTab", () => {
       expect(panelProps.repositoryId).toBe(REPOSITORY_ID);
       expect(panelProps.path).toBe("app/Dashboard.tsx");
       expect(panelProps.workingTreeStatus).toBe(" M");
-      expect(panelProps.recorded?.fileId).toBe("f1");
-      expect(panelProps.gitObserved).toBeNull();
+      expect(panelProps.file).toEqual(recordedFile());
+      expect(panelProps.readiness).toBe("ready");
     });
 
     it("empties the panel while the tree does not list the selected file", async () => {
       useSessionDomain.mockReturnValue(result(domainWithFiles()));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/Dashboard.tsx" });
-      const shown = () => [FileTreeMock.mock.calls.at(-1)![0].selectedPath, SessionFilePanelMock.mock.calls.at(-1)![0].path, SessionFilePanelMock.mock.calls.at(-1)![0].recorded?.fileId ?? null];
+      const shown = () => {
+        const panelProps = SessionFilePanelMock.mock.calls.at(-1)![0];
+        return [FileTreeMock.mock.calls.at(-1)![0].selectedPath, panelProps.path, panelProps.file?.source === "recorded" ? panelProps.file.fileId : null];
+      };
 
       // Changed elsewhere holds only files this session did not touch.
       await userEvent.click(screen.getByRole("button", { name: "Changed elsewhere 1" }));
@@ -319,13 +325,12 @@ describe("RepositoryTab", () => {
       expect(shown()).toEqual([null, null, null]);
     });
 
-    it("passes the Git-observed entry when no tool recorded the selected file", () => {
-      const committedOnly = { path: "app/committed-only.ts", source: "committed", change: "added" } as const;
-      useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: { files: [committedOnly], truncated: false } })));
+    it("passes the committed entry when no tool recorded the selected file", () => {
+      const committedOnly = committedFile("app/committed-only.ts");
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ touchedFiles: { readiness: "ready", files: [recordedFile(), committedOnly], truncated: false } })));
       renderTab({ sessionId: SESSION_ID, historical: false, selectedPath: "app/committed-only.ts" });
       const panelProps = SessionFilePanelMock.mock.calls.at(-1)![0];
-      expect(panelProps.recorded).toBeNull();
-      expect(panelProps.gitObserved).toEqual(committedOnly);
+      expect(panelProps.file).toEqual(committedOnly);
     });
 
     it("uses the catalog project as the tree root label, falling back to Repository when unknown", () => {
@@ -343,7 +348,7 @@ describe("RepositoryTab", () => {
     });
 
     it("shows a loading skeleton for Touched here while file history is still loading, without rendering FileTree", () => {
-      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "loading", files: [], truncated: false } })));
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ touchedFiles: { readiness: "loading", files: [], truncated: false } })));
       FileTreeMock.mockClear();
       renderTab({ sessionId: SESSION_ID, historical: false });
       expect(screen.getByLabelText("Loading file history")).toBeInTheDocument();
@@ -351,17 +356,17 @@ describe("RepositoryTab", () => {
     });
 
     it("gives an unavailable/rebuilding empty text without a skeleton once file history has answered", () => {
-      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "unavailable", files: [], truncated: false } })));
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ touchedFiles: { readiness: "unavailable", files: [], truncated: false } })));
       renderTab({ sessionId: SESSION_ID, historical: false });
       expect(FileTreeMock.mock.calls.at(-1)![0].emptyText).toBe("File history is unavailable.");
 
-      useSessionDomain.mockReturnValue(result(domainWithFiles({ fileHistory: { readiness: "rebuilding", files: [], truncated: false } })));
+      useSessionDomain.mockReturnValue(result(domainWithFiles({ touchedFiles: { readiness: "rebuilding", files: [], truncated: false } })));
       renderTab({ sessionId: SESSION_ID, historical: false });
       expect(FileTreeMock.mock.calls.at(-1)![0].emptyText).toBe("File history is rebuilding.");
     });
 
-    describe("Git-observed files", () => {
-      it("merges a path this session committed into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
+    describe("Committed files", () => {
+      it("lists a path this session committed in Touched here, tags it, and removes it from Changed elsewhere/counts, leaving an already-recorded path a plain recorded row", () => {
         useSessionDomain.mockReturnValue(result(domainWithFiles({
           repository: repository({
             files: [
@@ -370,11 +375,12 @@ describe("RepositoryTab", () => {
               { status: "??", path: "app/new-file.ts" }, // uncommitted, not committed by this session
             ],
           }),
-          gitObservedFiles: {
+          touchedFiles: {
+            readiness: "ready",
             files: [
-              { path: "app/committed-only.ts", source: "committed", change: "added" }, // not recorded and clean; gains the glyph
-              { path: "app/Dashboard.tsx", source: "committed", change: "modified" }, // already recorded; stays a plain recorded row
-              { path: "app/later-edit.ts", source: "committed", change: "modified" }, // not recorded; gains the glyph, moves out of elsewhere
+              recordedFile(), // recorded and also committed: the monitor lists it once, as a plain recorded row
+              committedFile("app/committed-only.ts", "added"), // not recorded and clean; gains the glyph
+              committedFile("app/later-edit.ts", "modified"), // not recorded; gains the glyph, moves out of elsewhere
             ],
             truncated: false,
           },
@@ -388,15 +394,15 @@ describe("RepositoryTab", () => {
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual([
-          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
           { path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" },
+          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
           { path: "app/later-edit.ts", fileId: null, status: " M", gitObserved: "committed", gitChange: "modified" },
         ]);
         expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       });
 
-      it("ignores gitObservedFiles when null, matching prior behavior", () => {
-        useSessionDomain.mockReturnValue(result(domainWithFiles({ gitObservedFiles: null })));
+      it("lists no committed row when the touched list holds no committed entry, matching prior behavior", () => {
+        useSessionDomain.mockReturnValue(result(domainWithFiles({ touchedFiles: { readiness: "ready", files: [recordedFile()], truncated: false } })));
         renderTab({ sessionId: SESSION_ID, historical: false });
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
@@ -404,7 +410,7 @@ describe("RepositoryTab", () => {
         expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       });
 
-      it("keeps Git-observed rows on a historical session with a recorded snapshot", () => {
+      it("keeps committed rows on a historical session with a recorded snapshot", () => {
         useSessionDomain.mockReturnValue(result(domainWithFiles({
           repository: repository({
             historical: true,
@@ -414,7 +420,7 @@ describe("RepositoryTab", () => {
             ],
           }),
           recordedAt: "2026-09-21T09:00:05.000Z",
-          gitObservedFiles: { files: [{ path: "app/committed-only.ts", source: "committed", change: "added" }], truncated: false },
+          touchedFiles: { readiness: "ready", files: [recordedFile(), committedFile("app/committed-only.ts")], truncated: false },
         })));
         renderTab({ sessionId: SESSION_ID, historical: true });
 

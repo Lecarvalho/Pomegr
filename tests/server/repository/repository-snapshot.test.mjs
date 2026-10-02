@@ -611,43 +611,58 @@ test("the repository domain has no recorded snapshot for a historical session wi
   assert.equal(repositoryDomain.commitsInSession, null);
   assert.equal(repositoryDomain.gitTasks, null);
   assert.deepEqual(repositoryDomain.repository.files, []);
-  assert.equal(repositoryDomain.gitObservedFiles, null);
+  assert.deepEqual(repositoryDomain.touchedFiles, { readiness: "unavailable", files: [], truncated: false });
 });
 
-test("the repository domain's gitObservedFiles comes only from options.gitObserved, re-validated, and never appears on session.repository (which /api/state serializes verbatim)", () => {
+test("the repository domain's touchedFiles comes only from options.fileHistory and options.gitObserved, re-validated, and never appears on session.repository (which /api/state serializes verbatim)", () => {
   const snapshot = normalizeRepositorySnapshot(validSnapshot());
   const { repository, pullRequests } = historicalRepositoryFromSnapshot(snapshot);
   const state = stateWithRepository(repository);
   state.session.pullRequests = pullRequests;
   const baseArgs = [{ publicState: state, readiness: state.readiness, observedAt: state.session.updatedAt }];
+  const touched = (options) => projectSessionDomains("claude:historical-session", ...baseArgs, options).domains.get("repository").touchedFiles;
 
   const gitObserved = { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/old.ts", source: "committed", change: "deleted" }, { path: "app/kept.ts", source: "committed", change: null }], truncated: false };
-  const withGitObserved = projectSessionDomains("claude:historical-session", ...baseArgs, { gitObserved });
-  assert.deepEqual(withGitObserved.domains.get("repository").gitObservedFiles, gitObserved);
+  assert.deepEqual(touched({ gitObserved }), {
+    readiness: "unavailable",
+    files: [{ path: "app/kept.ts", source: "committed", change: null }, { path: "app/new.ts", source: "committed", change: "added" }, { path: "app/old.ts", source: "committed", change: "deleted" }],
+    truncated: false,
+  }, "committed entries are listed even while no recorded history is available");
+
+  const recorded = { fileId: "f1", path: "app/new.ts", kind: "edited", changeCount: 2, lastObservedAt: "2026-09-14T12:00:00.000Z", agents: [] };
+  const merged = touched({ fileHistory: { readiness: "ready", files: [recorded], truncated: false }, gitObserved });
+  assert.equal(merged.readiness, "ready");
+  assert.deepEqual(merged.files.map((file) => [file.path, file.source]), [["app/kept.ts", "committed"], ["app/new.ts", "recorded"], ["app/old.ts", "committed"]]);
+  assert.deepEqual(touched({ fileHistory: { readiness: "ready", files: [{ ...recorded, path: "../escape.ts" }], truncated: false } }).files, [], "an unsafe recorded path never reaches the block");
 
   // An unknown change degrades to null rather than leaking.
-  const oddChanges = projectSessionDomains("claude:historical-session", ...baseArgs, {
+  assert.deepEqual(touched({
     gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "renamed" }, { path: "app/other.ts", source: "committed", change: "added" }], truncated: false },
-  });
-  assert.deepEqual(oddChanges.domains.get("repository").gitObservedFiles.files.map((file) => file.change), [null, "added"]);
-  assert.equal(Object.hasOwn(state.session.repository, "gitObserved"), false, "never attached to the raw session.repository object");
-  assert.doesNotMatch(JSON.stringify(state.session), /gitObserved/, "gitObserved never enters the object /api/state would serialize verbatim");
+  }).files.map((file) => file.change), [null, "added"]);
+
+  // Never attached to the raw session.repository object, nor to anything /api/state would serialize verbatim.
+  for (const key of ["gitObserved", "touchedFiles", "fileHistory", "gitObservedFiles"]) {
+    assert.equal(Object.hasOwn(state.session.repository, key), false, `${key} is never attached to the raw session.repository object`);
+  }
+  assert.doesNotMatch(JSON.stringify(state.session), /gitObserved|touchedFiles|fileHistory/, "no touched-files block enters the object /api/state would serialize verbatim");
+  const { domains } = projectSessionDomains("claude:historical-session", ...baseArgs, { gitObserved });
+  assert.equal(Object.hasOwn(domains.get("repository"), "fileHistory"), false, "the old fileHistory block is gone");
+  assert.equal(Object.hasOwn(domains.get("repository"), "gitObservedFiles"), false, "the old gitObservedFiles block is gone");
+  assert.equal(Object.hasOwn(domains.get("session-summary").repository, "touchedFiles"), true);
+  assert.equal(domains.get("session-summary").repository.touchedFiles, null, "the summary carries a count, never the list");
 
   // The retired uncommitted source is not a public value: the whole block degrades rather than leaking it.
-  const retired = projectSessionDomains("claude:historical-session", ...baseArgs, {
+  assert.deepEqual(touched({
     gitObserved: { files: [{ path: "app/new.ts", source: "committed", change: "added" }, { path: "app/dirty.ts", source: "uncommitted", change: null }], truncated: false },
-  });
-  assert.equal(retired.domains.get("repository").gitObservedFiles, null);
+  }).files, []);
 
-  // Malformed input (an unsafe path) degrades to null rather than leaking a partially-valid shape.
-  const malformed = projectSessionDomains("claude:historical-session", ...baseArgs, {
+  // Malformed input (an unsafe path) degrades to no committed entries rather than leaking a partially-valid shape.
+  assert.deepEqual(touched({
     gitObserved: { files: [{ path: "../../../escape.ts", source: "committed" }], truncated: false },
-  });
-  assert.equal(malformed.domains.get("repository").gitObservedFiles, null);
+  }).files, []);
 
   // No options.gitObserved at all (e.g. a session with no recorded Git-observed snapshot yet).
-  const missing = projectSessionDomains("claude:historical-session", ...baseArgs, {});
-  assert.equal(missing.domains.get("repository").gitObservedFiles, null);
+  assert.deepEqual(touched({}), { readiness: "unavailable", files: [], truncated: false });
 });
 
 test("the session summary counts the Touched here files (recorded plus session-committed, deduplicated) only once file history is ready", () => {
