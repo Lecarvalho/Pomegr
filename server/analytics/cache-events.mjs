@@ -35,6 +35,22 @@ function timestampMs(value) {
   return Number.isFinite(milliseconds) ? milliseconds : null;
 }
 
+/**
+ * Time the cache entry went unused: the gap between the two requests' recorded send times when both
+ * are recorded and neither follows its own answer, otherwise the gap between their response times.
+ * A request can wait longer than the lifetime for its first fragment, so response times alone
+ * would miss an expiry that elapsed while the earlier request was still being answered.
+ */
+function unusedCacheGapMs(previous, snapshot, responseGapMs) {
+  const sent = (item) => {
+    const sentAt = timestampMs(item.requestSentAt);
+    return sentAt !== null && sentAt <= timestampMs(item.timestamp) ? sentAt : null;
+  };
+  const previousSentAt = sent(previous.snapshot);
+  const currentSentAt = sent(snapshot);
+  return previousSentAt !== null && currentSentAt !== null ? currentSentAt - previousSentAt : responseGapMs;
+}
+
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -188,14 +204,15 @@ export function buildCacheEvidence({
       const cacheLifetimeMs = CACHE_LIFETIME_MS.get(previous.cacheLifetime);
       const expiryEvidenceAvailable = providerStatus === "previous_cache_entry_unavailable"
         || snapshot.cacheMissDiagnosticState === "absent";
+      const unusedGapMs = unusedCacheGapMs(previous, snapshot, gapMs);
       const cacheLifetimeInference = !recognizedReason
         && expiryEvidenceAvailable
         && Number.isSafeInteger(cacheLifetimeMs)
-        && gapMs >= cacheLifetimeMs
+        && unusedGapMs >= cacheLifetimeMs
         ? {
             cause: "cache_lifetime_elapsed",
             cacheLifetime: previous.cacheLifetime,
-            elapsedMs: gapMs,
+            elapsedMs: unusedGapMs,
           }
         : null;
       // Private links select exact request identities before UI trimming.

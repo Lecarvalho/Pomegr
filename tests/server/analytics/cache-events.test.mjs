@@ -17,8 +17,10 @@ function snapshot(id, timestamp, {
   cacheMissDiagnosticState = "absent",
   cacheToolChangeCause = null,
   cacheMessageChangeSequence = null,
+  requestSentAt = undefined,
 } = {}) {
   return {
+    ...(requestSentAt === undefined ? {} : { requestSentAt }),
     dedupeId: id,
     actorId,
     timestamp,
@@ -344,6 +346,67 @@ test("fails cache-expiry inference closed below the TTL or with competing or inc
     });
     assert.equal(feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, null);
   }
+});
+
+const sendStart = Date.parse("2026-08-10T10:00:00.000Z");
+const secondsAt = (seconds) => new Date(sendStart + seconds * 1_000).toISOString();
+
+/** A high-reuse request followed by a full rewrite; `answer` is the response time in seconds, `sent` the recorded send time. */
+function refillAfter(previous, current, { cacheLifetime = "5m", ...currentOptions } = {}) {
+  const result = buildCacheEvidence({ sessionId: "session", agents: [agent], enabled: true, usageSnapshots: [
+    snapshot("before", secondsAt(previous.answer), { input: 1_000, cacheRead: 9_000, cacheLifetime, requestSentAt: previous.sent }),
+    snapshot("after", secondsAt(current.answer), { input: 1_000, cacheWrite: 9_000, requestSentAt: current.sent, ...currentOptions }),
+  ] });
+  return { result, occurrence: result.feed.possibleFullRefills[0].occurrences[0] };
+}
+
+test("infers cache expiry that elapsed while the earlier request was still being answered", () => {
+  // Sent at 0 s, first answered 348 s later; the next request is sent 3 s after that answer.
+  const { result, occurrence } = refillAfter({ answer: 348, sent: secondsAt(0) }, { answer: 360, sent: secondsAt(351) });
+  assert.deepEqual(occurrence.cacheLifetimeInference, { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 351_000 });
+  assert.equal(result.refillRequests[0].observation.gapMs, 12_000, "the response-time gap is unchanged");
+  assert.doesNotMatch(JSON.stringify(result.feed), /requestSentAt/);
+  // The same shape with an answer under five minutes is not an expiry.
+  const quick = refillAfter({ answer: 200, sent: secondsAt(0) }, { answer: 212, sent: secondsAt(203) });
+  assert.equal(quick.occurrence.cacheLifetimeInference, null);
+  assert.equal(quick.result.refillRequests[0].observation.gapMs, 12_000);
+});
+
+test("a slow answer to the next request no longer reads as an elapsed lifetime", () => {
+  const previous = { answer: 10, sent: secondsAt(0) };
+  // Sent 4 s after the earlier answer, then answered 6 minutes later.
+  assert.equal(refillAfter(previous, { answer: 370, sent: secondsAt(14) }).occurrence.cacheLifetimeInference, null);
+  // Without recorded send times only the response-time gap exists, so the earlier rule applies.
+  assert.deepEqual(refillAfter({ answer: 10 }, { answer: 370 }).occurrence.cacheLifetimeInference,
+    { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 360_000 });
+});
+
+test("falls back to the response-time gap unless both send times are recorded and consistent", () => {
+  const response = { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 360_000 };
+  for (const [name, previous, current] of [
+    ["previous missing", { answer: 10 }, { answer: 370, sent: secondsAt(14) }],
+    ["current null", { answer: 10, sent: secondsAt(0) }, { answer: 370, sent: null }],
+    ["previous after its own answer", { answer: 10, sent: secondsAt(20) }, { answer: 370, sent: secondsAt(14) }],
+    ["current invalid", { answer: 10, sent: secondsAt(0) }, { answer: 370, sent: "not-a-time" }],
+  ]) {
+    assert.deepEqual(refillAfter(previous, current).occurrence.cacheLifetimeInference, response, name);
+  }
+  // Both recorded but out of order is contradictory evidence, so it never establishes expiry.
+  assert.equal(refillAfter({ answer: 10, sent: secondsAt(8) }, { answer: 370, sent: secondsAt(5) }).occurrence.cacheLifetimeInference, null);
+});
+
+test("send times never relax the other expiry requirements", () => {
+  const previous = { answer: 348, sent: secondsAt(0) };
+  const current = { answer: 360, sent: secondsAt(351) };
+  const reasoned = refillAfter(previous, current, { cacheMissReason: "tools_changed" });
+  assert.equal(reasoned.occurrence.reason, "tools_changed");
+  assert.equal(reasoned.occurrence.cacheLifetimeInference, null);
+  assert.equal(refillAfter(previous, current, { cacheMissDiagnosticState: "inconclusive" }).occurrence.cacheLifetimeInference, null);
+  const minimum = refillAfter({ answer: 10, sent: secondsAt(0) }, { answer: 7_300, sent: secondsAt(7_200) }, { cacheLifetime: "30m+" });
+  assert.equal(minimum.occurrence.cacheLifetimeInference, null);
+  assert.equal(refillAfter({ answer: 10, sent: secondsAt(0) }, { answer: 7_300, sent: secondsAt(7_200) }, { cacheLifetime: null }).occurrence.cacheLifetimeInference, null);
+  const unavailable = refillAfter(previous, current, { cacheMissProviderStatus: "previous_cache_entry_unavailable", cacheMissDiagnosticState: "previous_cache_entry_unavailable" });
+  assert.equal(unavailable.occurrence.cacheLifetimeInference?.elapsedMs, 351_000);
 });
 
 test("evaluates refill and lifetime evidence independently for primary, subagent, and fork", () => {

@@ -163,10 +163,10 @@ checkpoints; aggregate feeds are derived from retained evidence after restore.
 Readiness stays `activityEvidence`; the Requests chart retains its separate
 `contextEvidence` gate. Cache-only GETs, last-known-good replacement, revisions,
 checkpoint cadence, and browser polling remain unchanged.
-Claude's `conversation-activity-v9` and Codex's `codex-activity-v4` source
+Claude's `conversation-activity-v10` and Codex's `codex-activity-v4` source
 fingerprints trigger rehydration of checkpoints produced before the current
-work-kind classification and Codex completed-item coverage; see the
-[provider tool inventory](tool-inventory.md).
+work-kind classification, Claude recorded request send times, and Codex
+completed-item coverage; see the [provider tool inventory](tool-inventory.md).
 Claude merges recorded tool IDs across fragments sharing one request identity,
 including live snapshot merges after a read window advances. The private
 ID-to-kind map is stripped before normalized evidence and checkpoints. Usage
@@ -887,13 +887,32 @@ comparable request; real missing or malformed usage remains a comparison boundar
 Compactions and model changes still prevent attribution. The exact recognition and
 metric semantics are defined in [Metrics](metrics.md#context-usage).
 
-The Claude source fingerprint includes normalization revision `conversation-activity-v9`.
+The Claude source fingerprint includes normalization revision `conversation-activity-v10`.
 Background hydration replays unchanged sources whose checkpoints predate this revision,
 then C replaces the evidence atomically after complete validation. Last-known-good
 evidence remains available while replay is pending or fails; subsequent unchanged
 observations do not churn revisions. Checkpoint schema version 1, original observation
 timestamps, cache-only GETs, readiness, UI polling, and privacy filtering are unchanged.
 Synthetic markers and raw usage never enter browser state or checkpoint fields.
+
+Claude U2 may also retain the optional, nullable, monitor-private `requestSentAt`
+on a usage observation: the timestamp of the latest provider-owned user or
+attachment record (tool result, user input, attachment) recorded after the previous
+assistant record and before the request's first assistant fragment, advanced by any
+later timestamped non-assistant record (a recorded retry, for example) that still
+precedes that fragment; such a record alone establishes no send time. A provider error
+record, a record without a valid timestamp, and a record that follows the answer it
+precedes all leave it absent; it is never a file time and never synthesized. The first
+fragment's value (or absence) is kept when fragments merge, including in a live-tail
+merge, because a later fragment follows records written while the request was still
+being answered. D uses it only in the cache-lifetime expiry inference, which compares
+the two requests' send times when both are recorded and consistent, and otherwise
+falls back to the response-time gap; see [Metrics](metrics.md#cache-events). The
+public `gapMs`, miss-refill rule, and every other inference requirement are unchanged,
+and the result stays an inference. The field is optional under checkpoint version 1: a
+checkpoint without it loads unchanged, the source fingerprint advance rehydrates
+retained sessions, and the field never reaches browser state, reports, or the paged
+history.
 
 ## Cache-lifetime policy normalization
 

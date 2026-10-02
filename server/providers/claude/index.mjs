@@ -668,7 +668,7 @@ export function createClaudeProvider(options = {}) {
     const entry = historical ? null : registry.get(localSessionId);
     return source ? {
       ...source,
-      identity: `${source.identity}:conversation-activity-v9:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
+      identity: `${source.identity}:conversation-activity-v10:${titleEnrichment.metadata(file, statSafe(file))}:${backgroundLifecycle.sourceState(file, entry)}`,
     } : null;
   }
 

@@ -11,7 +11,7 @@ export function mergeClaudeRequestFragments(previous, next) {
   for (const [, kind] of retained) counts.set(kind, (counts.get(kind) || 0) + 1);
   // Calls without a recorded ID cannot be deduplicated across fragments.
   for (const { kind, count } of [...(previous.issuedWork || []), ...(next.issuedWork || [])]) counts.set(kind, Math.max(counts.get(kind) || 0, count));
-  return {
+  const merged = {
     ...latest,
     precedingWork: previous.precedingWork?.length ? previous.precedingWork : next.precedingWork,
     issuedWork: normalizedRequestWork([...counts].map(([kind, count]) => ({ kind, count }))),
@@ -19,6 +19,11 @@ export function mergeClaudeRequestFragments(previous, next) {
     issuedToolUseKinds: retained.map(([id, kind]) => ({ id, kind })),
     precedingUserInputIds: [...new Set([...(previous.precedingUserInputIds || []), ...(next.precedingUserInputIds || [])])].slice(-64),
   };
+  // The first fragment recorded when the request was sent; a later fragment's preceding record is
+  // not that time, so its value (or absence) never replaces it, including in a live-tail merge.
+  if (previous.requestSentAt) merged.requestSentAt = previous.requestSentAt;
+  else delete merged.requestSentAt;
+  return merged;
 }
 
 /** Keep request correlation indexes inside the Claude adapter. */

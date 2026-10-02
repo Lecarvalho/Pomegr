@@ -1,4 +1,4 @@
-import { appendFile, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -13,6 +13,8 @@ import { claudeCacheRefillRecords } from "../../../helpers/claude-cache-refill.m
 import { claudeLifecycleSource } from "../../../../server/providers/claude/session-status.mjs";
 import { incrementalSourceSetDescriptor } from "../../../../server/providers/kernel/incremental-provider-observer.mjs";
 import { monitorStateFromProviderEvidence } from "../../../helpers/provider-fixtures.mjs";
+import { SESSION_OBSERVATION_CHECKPOINT_VERSION, SessionObservationCheckpointStore } from "../../../../server/sessions/checkpoints/session-observation-checkpoints.mjs";
+import { parseProviderSessionEvidence } from "../../../../server/providers/provider-contract.mjs";
 
 function assistant(id, timestamp, usage, model = "claude-test", diagnostics = undefined) {
   return { type: "assistant", timestamp, message: { id, model, usage, content: [], ...(diagnostics !== undefined ? { diagnostics } : {}) } };
@@ -571,4 +573,112 @@ test("Claude adapter supplies recognized actor compactions to request action cor
   const compacted = await provider.readSession("request-work", { historical: false });
   assert.deepEqual(compacted.usageSnapshots.at(-1).precedingWork, []);
   assert.deepEqual(compacted.usageSnapshots[0].issuedWork, [{ kind: "read", count: 1 }]);
+});
+
+const clock = (seconds) => new Date(Date.parse("2026-08-10T10:00:00.000Z") + seconds * 1_000).toISOString();
+const requestUsage = { input_tokens: 100, output_tokens: 10 };
+const inputRecord = (type, seconds, extra = {}) => ({
+  type, ...(seconds === null ? {} : { timestamp: clock(seconds) }), message: { content: "PRIVATE_INPUT_MUST_NOT_LEAK" }, ...extra,
+});
+const sentAt = (records, options) => parseClaudeContextRecords(records, options).map((snapshot) => snapshot.requestSentAt ?? null);
+
+test("records the latest input record before a request's first fragment as its send time", () => {
+  const snapshots = parseClaudeContextRecords([
+    inputRecord("user", 0), inputRecord("attachment", 2),
+    assistant("one", clock(10), requestUsage),
+    // A record between fragments is not when the request was sent.
+    inputRecord("user", 11), assistant("one", clock(12), requestUsage),
+    inputRecord("user", 20), assistant("two", clock(30), requestUsage),
+  ]);
+  assert.deepEqual(snapshots.map(({ requestSentAt }) => requestSentAt), [clock(2), clock(20)]);
+  assert.deepEqual(snapshots.map(({ timestamp }) => timestamp), [clock(12), clock(30)], "the response time is unchanged");
+  assert.doesNotMatch(JSON.stringify(snapshots), /PRIVATE_INPUT/);
+});
+
+test("leaves the send time absent without a usable preceding input record", () => {
+  const synthetic = assistant("error", clock(3), requestUsage, "<synthetic>");
+  const cases = [
+    ["no record before the first request", [assistant("a", clock(10), requestUsage)], [null]],
+    ["an input record without a timestamp", [inputRecord("user", 0), inputRecord("user", null), assistant("a", clock(10), requestUsage)], [null]],
+    ["no input after the previous request", [inputRecord("user", 0), assistant("a", clock(10), requestUsage), assistant("b", clock(20), requestUsage)], [clock(0), null]],
+    ["a provider error between the input and its retry", [inputRecord("user", 0), synthetic, assistant("c", clock(10), requestUsage)], [null]],
+    ["an input record after its own answer", [inputRecord("user", 50), assistant("a", clock(10), requestUsage)], [null]],
+    // A recorded retry after the input means the request was sent later; the older time would lengthen the gap.
+    ["a later record after the input advances it", [inputRecord("user", 0), { type: "system", subtype: "api_error", timestamp: clock(8) }, { type: "progress" }, assistant("a", clock(10), requestUsage)], [clock(8)]],
+    ["only a system record", [{ type: "system", subtype: "turn_duration", timestamp: clock(8) }, assistant("a", clock(10), requestUsage)], [null]],
+  ];
+  for (const [name, records, expected] of cases) assert.deepEqual(sentAt(records), expected, name);
+  // A filesystem fallback time is never a send time.
+  const fallback = parseClaudeContextRecords([inputRecord("user", 0), { type: "assistant", message: { id: "a", model: "claude-test", usage: requestUsage, content: [] } }], { fallbackTimestamp: clock(100) });
+  assert.equal(fallback[0].timestamp, clock(100));
+  assert.equal(Object.hasOwn(fallback[0], "requestSentAt"), false);
+});
+
+test("a request keeps its first fragment's send time across fragment and live-tail merges", () => {
+  const first = parseClaudeContextRecords([inputRecord("user", 0), assistant("r", clock(10), requestUsage)])[0];
+  // A later parse window can start after the first fragment, so its fragment follows a mid-request record.
+  const tail = parseClaudeContextRecords([inputRecord("user", 11), assistant("r", clock(12), requestUsage)])[0];
+  assert.equal(tail.requestSentAt, clock(11));
+  const merged = mergeClaudeRequestFragments(first, tail);
+  assert.equal(merged.requestSentAt, clock(0));
+  assert.equal(merged.timestamp, clock(12), "usage still comes from the latest fragment");
+  assert.equal(mergeClaudeRequestFragments(first, first).requestSentAt, clock(0));
+  // An unknown first send time is not replaced by a later fragment's record.
+  const unknown = parseClaudeContextRecords([assistant("r", clock(10), requestUsage)])[0];
+  assert.equal(Object.hasOwn(mergeClaudeRequestFragments(unknown, tail), "requestSentAt"), false);
+  assert.equal(mergeClaudeRequestFragments(undefined, tail).requestSentAt, clock(11));
+});
+
+test("a synthetic transcript with a slow answer yields the expiry inference through live-tail reads", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-send-time-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "projects", "fixture", "slow-answer.jsonl");
+  await mkdir(path.dirname(file), { recursive: true });
+  const lines = (records) => records.map((record) => JSON.stringify(record)).join("\n") + "\n";
+  const request = (id, seconds, usage, content = []) => {
+    const record = assistant(id, clock(seconds), { output_tokens: 10, ...usage });
+    record.message.content = content;
+    return record;
+  };
+  const reused = { input_tokens: 1_000, cache_read_input_tokens: 9_000, cache_creation_input_tokens: 500, cache_creation: { ephemeral_5m_input_tokens: 500, ephemeral_1h_input_tokens: 0 } };
+  const rewritten = { input_tokens: 2, cache_read_input_tokens: 0, cache_creation_input_tokens: 9_500, cache_creation: { ephemeral_5m_input_tokens: 9_500, ephemeral_1h_input_tokens: 0 } };
+  const toolResult = { type: "user", timestamp: clock(349), message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "PRIVATE_RESULT_MUST_NOT_LEAK" }] } };
+  const provider = createClaudeProvider({ homeDir: root, projectsRoot: path.join(root, "projects"), explicitSession: file });
+  await writeFile(file, lines([inputRecord("user", 0), request("slow", 348, reused, [{ type: "tool_use", id: "t1", name: "Read", input: {} }]), toolResult]));
+  const initial = await provider.readSession("slow-answer", { historical: false });
+  assert.equal(initial.usageSnapshots[0].requestSentAt, clock(0));
+  // The request answers again, then the next one is sent seconds after the first answer.
+  await appendFile(file, lines([request("slow", 350, reused), inputRecord("user", 351), request("next", 360, rewritten)]));
+  const tail = await provider.readSession("slow-answer", { historical: false });
+  assert.deepEqual(tail.usageSnapshots.map(({ requestSentAt }) => requestSentAt), [clock(0), clock(351)]);
+  const feed = buildCacheEvents({ agents: [{ id: "primary" }], usageSnapshots: tail.usageSnapshots, enabled: true });
+  assert.deepEqual(feed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, { cause: "cache_lifetime_elapsed", cacheLifetime: "5m", elapsedMs: 351_000 });
+  // Answered within five minutes, the same shape is not an expiry.
+  const quick = parseClaudeContextRecords([inputRecord("user", 0), request("quick", 200, reused), inputRecord("user", 203), request("next", 212, rewritten)]);
+  const quickFeed = buildCacheEvents({ agents: [{ id: "primary" }], usageSnapshots: quick, enabled: true });
+  assert.equal(quickFeed.possibleFullRefills[0].occurrences[0].cacheLifetimeInference, null);
+  // The browser-facing projection never carries the send time.
+  assert.doesNotMatch(JSON.stringify(monitorStateFromProviderEvidence("claude", tail)), /requestSentAt|PRIVATE_/);
+});
+
+test("checkpoint version 1 round-trips the optional send time and loads evidence without it", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-send-time-checkpoint-"));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const checkpoints = new SessionObservationCheckpointStore({ directory });
+  const evidence = parseProviderSessionEvidence(JSON.parse(await readFile(
+    new URL("../../../fixtures/providers/claude/expected-session-evidence.json", import.meta.url), "utf8",
+  )));
+  assert.equal(SESSION_OBSERVATION_CHECKPOINT_VERSION, 1);
+  const [legacy, recorded] = [evidence.usageSnapshots[0], { ...evidence.usageSnapshots[0], dedupeId: "recorded", requestSentAt: evidence.usageSnapshots[0].timestamp }];
+  assert.equal(Object.hasOwn(legacy, "requestSentAt"), false);
+  evidence.usageSnapshots = [legacy, recorded];
+  await checkpoints.write({
+    providerId: "claude", localSessionId: evidence.localId, evidence, readiness: { core: "ready", activityEvidence: "ready" }, revision: 2,
+    observedAt: "2026-08-28T12:00:00.000Z", source: { fingerprint: "safe-fingerprint", completeOffset: 1 }, publicState: {}, serializedState: "{}",
+  });
+  const loaded = await checkpoints.load();
+  assert.equal(loaded.ignored, 0);
+  const restored = parseProviderSessionEvidence(loaded.records[0].evidence);
+  assert.deepEqual(restored.usageSnapshots.map((item) => item.requestSentAt ?? null), [null, recorded.requestSentAt]);
+  assert.doesNotMatch(JSON.stringify(monitorStateFromProviderEvidence("claude", restored)), /requestSentAt/);
 });

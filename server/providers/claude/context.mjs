@@ -45,6 +45,11 @@ function assistantRecord(record) {
   return record?.type === "assistant";
 }
 
+/** Provider-owned records written before a request is sent: tool results, user input, attachments. */
+function requestInputRecord(record) {
+  return record?.type === "user" || record?.type === "attachment";
+}
+
 function usageRecord(record) {
   return assistantRecord(record)
     && record.message
@@ -370,8 +375,16 @@ export function parseClaudeContextRecords(records, options = {}) {
     if (inputChain.size > MAX_INPUT_CHAIN_RECORDS) inputChain.delete(inputChain.keys().next().value);
   };
 
+  // Recorded time of the latest record since the previous assistant record, once an input record is
+  // seen. An input record with no valid timestamp clears it rather than leaving an older time.
+  let inputRecordedAt = null;
+
   for (const record of Array.isArray(records) ? records : []) {
     if (!assistantRecord(record)) chainRecord(record, Boolean(userInputContentType(record, requestedInputIds)));
+    if (requestInputRecord(record)) inputRecordedAt = validTimestamp(record.timestamp ?? record.message?.timestamp);
+    // A later timestamped record (a recorded retry, say) means the request was sent no earlier than
+    // that; keeping the older input time would lengthen the gap. Alone it establishes no send time.
+    else if (inputRecordedAt && !assistantRecord(record)) inputRecordedAt = validTimestamp(record?.timestamp) || inputRecordedAt;
     if (record?.type === "user") {
       for (const block of structuredContent(record)) {
         if (!plainObject(block) || block.type !== "tool_result" || typeof block.tool_use_id !== "string" || !block.tool_use_id) continue;
@@ -380,6 +393,9 @@ export function parseClaudeContextRecords(records, options = {}) {
       }
     }
     if (!assistantRecord(record)) continue;
+    // Every assistant record, including a provider error that is retried, consumes the input time.
+    const recordedInputAt = inputRecordedAt;
+    inputRecordedAt = null;
     const issued = new Map();
     const issuedTools = [];
     for (const block of structuredContent(record)) {
@@ -410,6 +426,10 @@ export function parseClaudeContextRecords(records, options = {}) {
       continue;
     }
     if (!usage.cacheComparable || !observedTimestamp) comparisonGroup += 1;
+    // Recorded send time: the input record just before the first fragment. It is a record time, never a
+    // file time, and it cannot follow the answer it precedes. Absent when no such record is recorded.
+    const requestSentAt = recordedInputAt && observedTimestamp && Date.parse(recordedInputAt) <= assistantTime
+      ? recordedInputAt : null;
     const providerIdentity = boundedIdentity(record.message.id ?? record.requestId ?? record.uuid);
     const dedupeId = providerIdentity
       ? `${sourceKey}:message:${providerIdentity}`
@@ -432,6 +452,8 @@ export function parseClaudeContextRecords(records, options = {}) {
       cacheMissDiagnosticState: normalizedCacheMissDiagnosticState(record),
       cacheToolChangeCause: toolChangeCauses.get(providerIdentity) || null,
       cacheMessageChangeSequence: messageChangeSequences.get(providerIdentity) || null,
+      // Monitor-private, optional. Only the first fragment of a request records it.
+      ...(requestSentAt ? { requestSentAt } : {}),
       precedingWork: Array.isArray(record.message.content)
         ? normalizedRequestWork([...pendingResults].map(([kind, count]) => ({ kind, count }))) : [],
       issuedWork: normalizedRequestWork([...issued].map(([kind, count]) => ({ kind, count }))),
