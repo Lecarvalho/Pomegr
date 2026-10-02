@@ -167,7 +167,8 @@ toolbar, file tree, and the first history entries. `session-repository-tab.jpg` 
 recorded Claude Code session titled “Show recorded agents per file in session
 Repository tab” in the Pomegr repository, with the same file selected, cropped from the
 branch bar to the tree footer; it shows the Git glyph and the “Seen in Git · no
-recorded agent edit” panel. The Repositories index was not captured because it lists
+recorded agent edit” panel, wording and matching that predate the 2026-10-01 session-commit
+rule, so it needs recapturing. The Repositories index was not captured because it lists
 repositories outside the authorized set. Only displayed dashboard content was
 captured. Recapture both when either tab changes.
 

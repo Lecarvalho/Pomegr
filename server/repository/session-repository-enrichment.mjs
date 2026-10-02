@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readCommitsInWindow } from "./repository-snapshot.mjs";
+import { readCommitsInWindow, sessionGitCommandIntervals } from "./repository-snapshot.mjs";
 
 const MISMATCH_RETRY_MS = 2_500;
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -75,16 +75,16 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     try { pullRequests = await pullRequestReader([], { cwd: input.root, branch: repository.branch, historical: false, sessionCreations: input.sessionCreations }); }
     catch { pullRequests = unavailablePullRequests(); }
     const refreshedAt = now();
-    let commitsInSession = entry.commitsInSession ?? null; let committedPaths = null; let committedChanges = null; let commitTimes = null;
+    let commitsInSession = entry.commitsInSession ?? null; let sessionCommitPaths = null; let sessionCommitChanges = null; let commitTimes = null;
     if (repository.available && resolvedRoot) {
-      const windowRead = await readCommitsInWindow(resolvedRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString() });
-      if (windowRead) { commitsInSession = windowRead.count; committedPaths = windowRead.paths; committedChanges = windowRead.changes; commitTimes = windowRead.times; }
+      const windowRead = await readCommitsInWindow(resolvedRoot, { since: input.startedAt, until: new Date(refreshedAt).toISOString(), commandIntervals: input.gitCommandIntervals });
+      if (windowRead) { commitsInSession = windowRead.count; sessionCommitPaths = windowRead.paths; sessionCommitChanges = windowRead.changes; commitTimes = windowRead.times; }
     }
     if (commitsInSession !== null) repository = { ...repository, commitsInSession };
     if (entry.generation !== input.generation) return true;
     entry.value = { repository, pullRequests }; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
     entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true; entry.checked = true; entry.everAvailable = true; entry.unavailableReason = null;
-    onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, committedPaths, committedChanges, commitTimes, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
+    onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
     return true;
   }
 
@@ -111,7 +111,9 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     let enqueue = null;
     if (expired && !entry.refreshing) {
       entry.refreshing = true;
-      const input = { generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt };
+      const input = { generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
+        // Only commits made while one of this session's own Git commands ran list their paths.
+        gitCommandIntervals: sessionGitCommandIntervals(evidence.executionTasks) };
       enqueue = () => {
         try { schedule(() => {
           const work = refresh(entry, input).then((committed) => {

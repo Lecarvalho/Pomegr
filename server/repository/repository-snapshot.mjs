@@ -8,7 +8,7 @@ const COMMIT_HEADER_LINE = /^[0-9a-f]{40} (\S{1,64})$/iu;
 const MAX_FILES = 200;
 const MAX_PULL_REQUESTS = 10;
 const MAX_COUNT = 100_000;
-const SNAPSHOT_VERSION = 5;
+const SNAPSHOT_VERSION = 6;
 /** The newest sidecar version this build reads and writes. */
 export const REPOSITORY_SNAPSHOT_VERSION = SNAPSHOT_VERSION;
 // Newest in-window commit times one record keeps; matches the session-event feed cap.
@@ -17,10 +17,10 @@ const MAX_COMMIT_TIME_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
 const CANONICAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const WINDOW_TIMEOUT_MS = 3_000;
 const WINDOW_MAX_BUFFER = 256 * 1024;
-// Combined character budget for one git-observed path list (dirtyAtFirstCheck,
-// becameDirty or committedInWindow). Bounds the worst case of several 200-entry,
-// long-path lists in one record so a valid snapshot always fits the checkpoint
-// store's serialized-record byte cap alongside files/comparison/pullRequests.
+// Character budget for one Git-observed path list (sessionCommitPaths, and the
+// version 2 to 5 lists still validated on load). Bounds the worst case of a 200-entry,
+// long-path list so a valid snapshot always fits the checkpoint store's
+// serialized-record byte cap alongside files/comparison/pullRequests.
 const MAX_GIT_OBSERVED_LIST_CHARS = 6_000;
 
 // The version-1 shape, kept exact so an on-disk v1 record still validates and
@@ -34,9 +34,18 @@ const SNAPSHOT_KEYS_V2 = new Set([
 ]);
 const SNAPSHOT_KEYS_V3 = new Set([...SNAPSHOT_KEYS_V2, "committedChanges"]);
 const SNAPSHOT_KEYS_V4 = new Set([...SNAPSHOT_KEYS_V3, "repositoryId"]);
-const SNAPSHOT_KEYS = new Set([...SNAPSHOT_KEYS_V4, "commitTimesInWindow"]);
+const SNAPSHOT_KEYS_V5 = new Set([...SNAPSHOT_KEYS_V4, "commitTimesInWindow"]);
+// Version 6 drops the window-wide lists (dirtyAtFirstCheck, becameDirty, committedInWindow,
+// committedChanges, gitObservedTruncated) for the paths of this session's own commits.
+const SNAPSHOT_KEYS = new Set([
+  ...SNAPSHOT_KEYS_V1, "repositoryId", "commitTimesInWindow",
+  "sessionCommitPaths", "sessionCommitChanges", "sessionCommitsTruncated",
+]);
+// Execution-task work kinds whose command may have created a commit.
+const GIT_COMMAND_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
+const MAX_GIT_COMMAND_INTERVALS = 256;
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
-// Net Git change per window-committed path, aligned index-for-index with committedInWindow.
+// Net Git change per session-committed path, aligned index-for-index with sessionCommitPaths.
 const COMMITTED_CHANGES = new Set(["added", "modified", "deleted"]);
 const NAME_STATUS_LINE = /^([AMDT])\t(.+)$/u;
 const COMPARISON_KEYS = new Set(["branch", "kind", "ahead", "behind", "integrated"]);
@@ -164,12 +173,12 @@ function normalizeGitObservedPathList(value, { nullable }) {
 }
 
 /**
- * Validate the committed-change list: null (never measured, or a record from before version 3)
- * or exactly one fixed change per committedInWindow path. Undefined on any violation.
+ * Validate a committed-change list: null (never measured, or not recorded) or exactly one
+ * fixed change per path of its aligned path list. Undefined on any violation.
  */
-function normalizeCommittedChanges(value, committedInWindow) {
+function normalizeCommittedChanges(value, paths) {
   if (value === null) return null;
-  if (!Array.isArray(committedInWindow) || !Array.isArray(value) || value.length !== committedInWindow.length) return undefined;
+  if (!Array.isArray(paths) || !Array.isArray(value) || value.length !== paths.length) return undefined;
   return value.every((change) => COMMITTED_CHANGES.has(change)) ? [...value] : undefined;
 }
 
@@ -228,63 +237,48 @@ function normalizeSnapshotCore(value) {
  * that want lenient per-file/per-comparison fallback (the live-check path)
  * build their own candidate first and only call this as the final gate.
  *
- * A version-1 record (predating the Git-observed-files fields) is accepted
- * and transparently upgraded with empty/never-measured Git-observed fields,
- * and a version-2 record (predating committedChanges) is upgraded with
- * committedChanges null, a version-3 record (predating repositoryId) with a
- * null identity, and a version-4 record (predating commitTimesInWindow) with
- * commitTimesInWindow null, so existing on-disk snapshots survive the upgrade.
+ * A record from an earlier version is validated against its own exact key set
+ * and loaded as the current version, so existing on-disk snapshots survive the
+ * upgrade. Versions 2 to 5 carried window-wide Git-observed lists; those are
+ * validated and then dropped, never reinterpreted as this session's commits, so
+ * such a record loads with sessionCommitPaths null ("never measured"). Fields a
+ * version predates (repositoryId, commitTimesInWindow) load as null.
  */
 export function normalizeRepositorySnapshot(value) {
   if (!isPlainObject(value)) return null;
-  if (value.version === 1) {
-    if (!hasExactKeys(value, SNAPSHOT_KEYS_V1)) return null;
-    const core = normalizeSnapshotCore(value);
-    if (!core) return null;
-    return Object.freeze({
-      version: SNAPSHOT_VERSION,
-      ...core,
-      dirtyAtFirstCheck: null,
-      becameDirty: Object.freeze([]),
-      committedInWindow: null,
-      committedChanges: null,
-      gitObservedTruncated: false,
-      repositoryId: null,
-      commitTimesInWindow: null,
-    });
-  }
-  const upgradingV2 = value.version === 2;
-  const upgradingV3 = value.version === 3;
-  const upgradingV4 = value.version === 4;
-  if (upgradingV2 ? !hasExactKeys(value, SNAPSHOT_KEYS_V2)
-    : upgradingV3 ? !hasExactKeys(value, SNAPSHOT_KEYS_V3)
-      : upgradingV4 ? !hasExactKeys(value, SNAPSHOT_KEYS_V4)
-        : (value.version !== SNAPSHOT_VERSION || !hasExactKeys(value, SNAPSHOT_KEYS))) return null;
+  const legacyKeys = value.version === 1 ? SNAPSHOT_KEYS_V1
+    : value.version === 2 ? SNAPSHOT_KEYS_V2
+      : value.version === 3 ? SNAPSHOT_KEYS_V3
+        : value.version === 4 ? SNAPSHOT_KEYS_V4
+          : value.version === 5 ? SNAPSHOT_KEYS_V5 : null;
+  if (!hasExactKeys(value, legacyKeys || SNAPSHOT_KEYS) || (!legacyKeys && value.version !== SNAPSHOT_VERSION)) return null;
   const core = normalizeSnapshotCore(value);
   if (!core) return null;
-  const dirtyAtFirstCheck = normalizeGitObservedPathList(value.dirtyAtFirstCheck, { nullable: true });
-  if (dirtyAtFirstCheck === undefined) return null;
-  const becameDirty = normalizeGitObservedPathList(value.becameDirty, { nullable: false });
-  if (becameDirty === undefined) return null;
-  const committedInWindow = normalizeGitObservedPathList(value.committedInWindow, { nullable: true });
-  if (committedInWindow === undefined) return null;
-  const committedChanges = upgradingV2 ? null : normalizeCommittedChanges(value.committedChanges, committedInWindow);
-  if (committedChanges === undefined) return null;
-  if (typeof value.gitObservedTruncated !== "boolean") return null;
-  const repositoryId = upgradingV2 || upgradingV3 ? null : value.repositoryId;
+  if (legacyKeys && value.version >= 2) {
+    if (normalizeGitObservedPathList(value.dirtyAtFirstCheck, { nullable: true }) === undefined) return null;
+    if (normalizeGitObservedPathList(value.becameDirty, { nullable: false }) === undefined) return null;
+    const committedInWindow = normalizeGitObservedPathList(value.committedInWindow, { nullable: true });
+    if (committedInWindow === undefined) return null;
+    if (value.version >= 3 && normalizeCommittedChanges(value.committedChanges, committedInWindow) === undefined) return null;
+    if (typeof value.gitObservedTruncated !== "boolean") return null;
+  }
+  const repositoryId = legacyKeys && value.version < 4 ? null : value.repositoryId;
   if (repositoryId !== null && (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId))) return null;
-  const commitTimesInWindow = upgradingV2 || upgradingV3 || upgradingV4 ? null : normalizeCommitTimes(value.commitTimesInWindow);
+  const commitTimesInWindow = legacyKeys && value.version < 5 ? null : normalizeCommitTimes(value.commitTimesInWindow);
   if (commitTimesInWindow === undefined) return null;
+  const sessionCommitPaths = legacyKeys ? null : normalizeGitObservedPathList(value.sessionCommitPaths, { nullable: true });
+  if (sessionCommitPaths === undefined) return null;
+  const sessionCommitChanges = legacyKeys ? null : normalizeCommittedChanges(value.sessionCommitChanges, sessionCommitPaths);
+  if (sessionCommitChanges === undefined) return null;
+  if (!legacyKeys && typeof value.sessionCommitsTruncated !== "boolean") return null;
   return Object.freeze({
     version: SNAPSHOT_VERSION,
     ...core,
-    dirtyAtFirstCheck: dirtyAtFirstCheck === null ? null : Object.freeze(dirtyAtFirstCheck),
-    becameDirty: Object.freeze(becameDirty),
-    committedInWindow: committedInWindow === null ? null : Object.freeze(committedInWindow),
-    committedChanges: committedChanges === null ? null : Object.freeze(committedChanges),
-    gitObservedTruncated: value.gitObservedTruncated,
     repositoryId,
     commitTimesInWindow: commitTimesInWindow === null ? null : Object.freeze(commitTimesInWindow),
+    sessionCommitPaths: sessionCommitPaths === null ? null : Object.freeze(sessionCommitPaths),
+    sessionCommitChanges: sessionCommitChanges === null ? null : Object.freeze(sessionCommitChanges),
+    sessionCommitsTruncated: legacyKeys ? false : value.sessionCommitsTruncated,
   });
 }
 
@@ -336,71 +330,67 @@ function truncatePathList(paths) {
 }
 
 /**
- * Pure derivation of the next Git-observed tracking fields from the previous
- * recorded snapshot (or null) and one live check's current working-tree files
- * plus this check's window-committed paths (undefined/null when this check
- * did not measure the window). `dirtyAtFirstCheck` is captured once, from the
- * very first call with no prior baseline, and never replaced afterward.
- * `becameDirty` is a sticky union of every current-status path seen since
- * that baseline that was not already part of it. `committedInWindow` carries
- * the previous value forward whenever this particular check could not read
- * the window; `committedChanges` travels with it, aligned to the kept paths
- * (null when this check read paths without change kinds). `gitObservedTruncated`
- * is sticky once any list is truncated.
+ * Pure derivation of the next session-commit fields from the previous recorded
+ * snapshot (or null) and this check's read of the paths changed by this
+ * session's own commits (undefined/null when this check did not read them).
+ * Sticky: a path recorded once stays, so a later read that no longer matches
+ * its commit (an amend, a rebase, a task that left retained evidence) never
+ * withdraws it. A path this read lists takes this read's net change; any other
+ * keeps its recorded one. `sessionCommitChanges` is null when any kept path has
+ * no recorded change. `sessionCommitPaths` is null only while no check has ever
+ * read the commits, and `sessionCommitsTruncated` is sticky.
  */
-export function nextGitObserved(previous, { files, committedPaths, committedChanges } = {}) {
-  const currentPaths = (Array.isArray(files) ? files : [])
-    .map((file) => file?.path)
-    .filter((path) => isSafeRecordedRepositoryPath(path));
-  const hasBaseline = Array.isArray(previous?.dirtyAtFirstCheck);
-  const baseline = hasBaseline ? { list: previous.dirtyAtFirstCheck, truncated: false } : truncatePathList(currentPaths);
-  const baselineLookup = new Set(baseline.list);
-  const priorBecameDirty = Array.isArray(previous?.becameDirty) ? previous.becameDirty : [];
-  const newlyDirty = currentPaths.filter((path) => !baselineLookup.has(path));
-  const becameDirty = truncatePathList([...priorBecameDirty, ...newlyDirty]);
-  const measuredThisCheck = Array.isArray(committedPaths);
-  const committed = measuredThisCheck
-    ? truncatePathList(committedPaths)
-    : { list: Array.isArray(previous?.committedInWindow) ? previous.committedInWindow : null, truncated: false };
-  let changes = null;
-  if (measuredThisCheck) {
-    const changeByPath = new Map(Array.isArray(committedChanges) && committedChanges.length === committedPaths.length
-      ? committedPaths.map((path, index) => [path, committedChanges[index]]) : []);
-    const aligned = committed.list.map((path) => changeByPath.get(path));
-    changes = aligned.every((change) => COMMITTED_CHANGES.has(change)) ? aligned : null;
-  } else if (Array.isArray(previous?.committedChanges)) {
-    changes = previous.committedChanges;
-  }
+export function nextSessionCommits(previous, { paths, changes } = {}) {
+  const priorPaths = Array.isArray(previous?.sessionCommitPaths) ? previous.sessionCommitPaths : null;
+  const priorChanges = priorPaths && Array.isArray(previous.sessionCommitChanges)
+    && previous.sessionCommitChanges.length === priorPaths.length ? previous.sessionCommitChanges : null;
+  const priorTruncated = Boolean(previous?.sessionCommitsTruncated);
+  if (!Array.isArray(paths)) return { sessionCommitPaths: priorPaths, sessionCommitChanges: priorChanges, sessionCommitsTruncated: priorTruncated };
+  const changeByPath = new Map((priorPaths || []).map((path, index) => [path, priorChanges ? priorChanges[index] : null]));
+  const readChanges = Array.isArray(changes) && changes.length === paths.length ? changes : null;
+  paths.forEach((path, index) => {
+    if (isSafeRecordedRepositoryPath(path)) changeByPath.set(path, readChanges ? readChanges[index] : changeByPath.get(path) ?? null);
+  });
+  const kept = truncatePathList([...changeByPath.keys()]);
+  const aligned = kept.list.map((path) => changeByPath.get(path));
   return {
-    dirtyAtFirstCheck: baseline.list,
-    becameDirty: becameDirty.list,
-    committedInWindow: committed.list,
-    committedChanges: changes,
-    gitObservedTruncated: Boolean(previous?.gitObservedTruncated) || baseline.truncated || becameDirty.truncated || committed.truncated,
+    sessionCommitPaths: kept.list,
+    sessionCommitChanges: aligned.every((change) => COMMITTED_CHANGES.has(change)) ? aligned : null,
+    sessionCommitsTruncated: priorTruncated || kept.truncated,
   };
 }
 
 /**
- * Project a recorded snapshot's Git-observed tracking into the public
- * committed/uncommitted file list ("committed" wins when a path is both). A
- * committed path carries its net Git change when recorded; otherwise null.
- * Returns null only for a record that has never had a live check populate
- * its baseline (a version-1-upgraded record, or one with no live check yet).
+ * Project a recorded snapshot's session-commit paths into the public Git-observed
+ * file list. Every path carries its net Git change when recorded; otherwise null.
+ * Returns null for a record whose session commits were never read (one from before
+ * version 6, or one with no live check yet).
  */
 export function gitObservedFilesFromSnapshot(snapshot) {
-  if (!snapshot || !Array.isArray(snapshot.dirtyAtFirstCheck)) return null;
-  const committed = Array.isArray(snapshot.committedInWindow) ? snapshot.committedInWindow : [];
-  const becameDirty = Array.isArray(snapshot.becameDirty) ? snapshot.becameDirty : [];
-  const changes = Array.isArray(snapshot.committedChanges) && snapshot.committedChanges.length === committed.length ? snapshot.committedChanges : null;
-  const committedSet = new Set(committed);
-  const merged = [
-    ...committed.map((path, index) => ({ path, source: "committed", change: changes ? changes[index] : null })),
-    ...becameDirty.filter((path) => !committedSet.has(path)).map((path) => ({ path, source: "uncommitted", change: null })),
-  ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  if (!snapshot || !Array.isArray(snapshot.sessionCommitPaths)) return null;
+  const paths = snapshot.sessionCommitPaths;
+  const changes = Array.isArray(snapshot.sessionCommitChanges) && snapshot.sessionCommitChanges.length === paths.length ? snapshot.sessionCommitChanges : null;
   return {
-    files: merged.slice(0, MAX_FILES),
-    truncated: Boolean(snapshot.gitObservedTruncated) || merged.length > MAX_FILES,
+    files: paths.slice(0, MAX_FILES).map((path, index) => ({ path, source: "committed", change: changes ? changes[index] : null })),
+    truncated: Boolean(snapshot.sessionCommitsTruncated) || paths.length > MAX_FILES,
   };
+}
+
+/**
+ * The closed wall intervals of a session's finished Git commands, from its normalized
+ * execution tasks: [startedAt floored to its second, finishedAt] in epoch milliseconds,
+ * because a committer time has one-second resolution. A running task has no interval yet.
+ */
+export function sessionGitCommandIntervals(executionTasks) {
+  const intervals = [];
+  for (const task of Array.isArray(executionTasks) ? executionTasks : []) {
+    if (!GIT_COMMAND_WORK_KINDS.has(task?.workKind)) continue;
+    const startedAt = typeof task.startedAt === "string" ? Date.parse(task.startedAt) : Number.NaN;
+    const finishedAt = typeof task.finishedAt === "string" ? Date.parse(task.finishedAt) : Number.NaN;
+    if (!Number.isFinite(startedAt) || !Number.isFinite(finishedAt) || finishedAt < startedAt) continue;
+    intervals.push([Math.floor(startedAt / 1_000) * 1_000, finishedAt]);
+  }
+  return intervals.slice(-MAX_GIT_COMMAND_INTERVALS);
 }
 
 /**
@@ -409,11 +399,12 @@ export function gitObservedFilesFromSnapshot(snapshot) {
  * against the live root by git-state); comparison, pull requests, and
  * commitsInSession each independently carry the previous recorded value
  * forward when this particular check could not observe them, and the recorded
- * in-window commit times only ever accumulate (see nextCommitTimes). Returns null
+ * in-window commit times and session-commit paths only ever accumulate (see
+ * nextCommitTimes and nextSessionCommits). Returns null
  * (never a partial record) when the candidate fails final normalization; the
  * caller must keep whatever snapshot it already had.
  */
-export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, committedPaths, committedChanges, commitTimes, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
+export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt, repositoryId = null, previous = null, adoptsUnboundSidecar = false } = {}) {
   if (!repository || repository.available !== true || repository.historical !== false) return null;
   // A new bound identity begins a new repository timeline. In particular, an
   // old v3 (unbound) sidecar must not donate its carry-forward fields when a
@@ -446,8 +437,8 @@ export function snapshotFromLiveCheck({ repository, pullRequests, commitsInSessi
     commitsInSession: nextCommitsInSession,
     checkedAt,
     repositoryId,
-    ...nextGitObserved(prior, { files, committedPaths, committedChanges }),
     commitTimesInWindow: nextCommitTimes(prior?.commitTimesInWindow, commitTimes),
+    ...nextSessionCommits(prior, { paths: sessionCommitPaths, changes: sessionCommitChanges }),
   });
 }
 
@@ -543,8 +534,8 @@ export async function resolveHistoricalRepositoryAndPullRequests({ evidence, sna
 }
 
 /**
- * Net change for one path from its window statuses, newest first: deleted when the newest
- * change deleted it, added when any commit in the window added it, otherwise modified.
+ * Net change for one path from its matched commits' statuses, newest first: deleted when the
+ * newest change deleted it, added when any matched commit added it, otherwise modified.
  */
 function netCommittedChange(statusesNewestFirst) {
   if (statusesNewestFirst[0] === "D") return "deleted";
@@ -553,9 +544,12 @@ function netCommittedChange(statusesNewestFirst) {
 
 /**
  * Read commits on the current HEAD whose committer time falls inside
- * [since, until], with the distinct file paths they touched and each path's
- * net change (added/modified/deleted; a type change counts as modified), and those commits'
- * committer times (times only, the newest MAX_COMMIT_TIMES). Only meaningful
+ * [since, until]: their count and committer times (times only, the newest
+ * MAX_COMMIT_TIMES). Paths are kept only for a commit whose committer time also
+ * falls inside one of `commandIntervals` (see sessionGitCommandIntervals), a commit
+ * made while one of the session's own Git commands ran: the distinct paths those
+ * commits touched and each path's net change (added/modified/deleted; a type change
+ * counts as modified). With no intervals no path is kept. Only meaningful
  * when called on the live HEAD branch; a caller that knows the session's
  * recorded branch differs from HEAD should not call this at all. `git log
  * --name-status` reports paths relative to the repository's top level, the
@@ -565,13 +559,14 @@ function netCommittedChange(statusesNewestFirst) {
  * bad window, Git error, timeout, oversized output) resolves to null rather
  * than throwing.
  */
-export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
+export function readCommitsInWindow(repositoryRoot, { since, until, commandIntervals } = {}) {
   return new Promise((resolve) => {
     if (typeof repositoryRoot !== "string" || repositoryRoot.length === 0
       || !isIsoTimestamp(since) || !isIsoTimestamp(until)) {
       resolve(null);
       return;
     }
+    const intervals = Array.isArray(commandIntervals) ? commandIntervals : [];
     try {
       execFile("git", [
         "-c", "core.quotepath=false",
@@ -585,6 +580,7 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
       }, (error, stdout) => {
         if (error) { resolve(null); return; }
         let count = 0;
+        let ownCommit = false;
         const commitTimes = [];
         // git log lists commits newest first, so each path's statuses arrive newest first.
         const statusesByPath = new Map();
@@ -595,9 +591,10 @@ export function readCommitsInWindow(repositoryRoot, { since, until } = {}) {
             count += 1;
             const committedAt = Date.parse(header[1]);
             if (Number.isFinite(committedAt) && committedAt >= 0 && committedAt <= MAX_COMMIT_TIME_MS) commitTimes.push(committedAt);
+            ownCommit = intervals.some(([from, to]) => committedAt >= from && committedAt <= to);
             continue;
           }
-          const match = NAME_STATUS_LINE.exec(line);
+          const match = ownCommit ? NAME_STATUS_LINE.exec(line) : null;
           if (!match || !isSafeRecordedRepositoryPath(match[2])) continue;
           const statuses = statusesByPath.get(match[2]) || [];
           statuses.push(match[1]);
@@ -717,8 +714,8 @@ export function createRepositorySnapshotRecorder({ store, now = () => Date.now()
             repository: live?.repository,
             pullRequests: live?.pullRequests,
             commitsInSession: live?.commitsInSession,
-            committedPaths: live?.committedPaths,
-            committedChanges: live?.committedChanges,
+            sessionCommitPaths: live?.sessionCommitPaths,
+            sessionCommitChanges: live?.sessionCommitChanges,
             commitTimes: live?.commitTimes,
             checkedAt: live?.checkedAt,
             repositoryId: live?.repositoryId,

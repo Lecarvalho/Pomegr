@@ -333,16 +333,17 @@ describe("Pomegr visual contract", () => {
   it("marks a Git-observed touched row with a quiet, non-chip glyph and documents it", () => {
     expect(designContract).toMatch(/quiet 14px git glyph/);
     expect(designContract).toMatch(/muted text color, never amber/);
-    expect(designContract).toMatch(/Seen in Git during this session \(committed\) - not a recorded\s+tool edit/);
-    expect(designContract).toMatch(/Rows\s+with\s+the\s+Git\s+glyph\s+come\s+from\s+commits\s+and\s+working-tree\s+changes\s+during\s+the\s+session\s+window\./);
-    expect(designContract).toMatch(/have no agent or\s+request/);
+    expect(designContract).toMatch(/Committed by this session - not a recorded\s+tool edit/);
+    expect(designContract).toMatch(/Rows\s+with\s+the\s+Git\s+glyph\s+come\s+from\s+commits\s+made\s+while\s+this\s+session\s+ran\s+a\s+Git\s+command\./);
+    expect(designContract).toMatch(/Matched\s+by\s+time,\s+so\s+they\s+have\s+no\s+agent\s+or\s+request/);
+    expect(designContract).not.toMatch(/Seen in Git during this session|working-tree\s+changes\s+during\s+the\s+session\s+window/);
 
     expect(styles).toMatch(/\.fileTreeGitObservedGlyph\s*\{[^}]*color:\s*var\(--command-muted\)/);
     expect(styles).not.toMatch(/\.fileTreeGitObservedGlyph[^}]*(amber|#[0-9a-fA-F]{3,8})/);
 
     render(<FileTree scope="session" rootLabel="Pomegr" files={[{ path: "a.ts", fileId: null, status: null, gitObserved: "committed" }]} selectedPath={null} onSelect={() => {}} emptyText="No files." />);
-    const glyph = screen.getByRole("img", { name: "Seen in Git during this session (committed) - not a recorded tool edit" });
-    expect(glyph).toHaveAttribute("title", "Seen in Git during this session (committed) - not a recorded tool edit");
+    const glyph = screen.getByRole("img", { name: "Committed by this session - not a recorded tool edit" });
+    expect(glyph).toHaveAttribute("title", "Committed by this session - not a recorded tool edit");
     // No status chip renders alongside the glyph when the working tree reports no status.
     expect(document.querySelector(".fileTreeStatusLetter")).toBeNull();
     // The footer's quiet popover trigger appears only when a Git-observed row is visible.

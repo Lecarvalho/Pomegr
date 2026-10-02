@@ -48,15 +48,12 @@ function FileTreeStatusLetter({ file }: { file: FileTreeFile }) {
   return <span className={`fileTreeStatusLetter${info.tone ? ` ${info.tone}` : ""}`} role="img" aria-label={info.label} title={info.label}>{info.letter}</span>;
 }
 
-const GIT_OBSERVED_LABEL: Record<"committed" | "uncommitted", string> = {
-  committed: "Seen in Git during this session (committed) - not a recorded tool edit",
-  uncommitted: "Seen in Git during this session (uncommitted) - not a recorded tool edit",
-};
+const GIT_OBSERVED_LABEL = "Committed by this session - not a recorded tool edit";
 
-/** Quiet glyph-only marker (never a chip, never amber) for a row Git observed during the session
- * window but no recorded tool ever touched. Shown on historical rows too; see DESIGN.md. */
-function FileTreeGitObservedGlyph({ source }: { source: "committed" | "uncommitted" }) {
-  const label = GIT_OBSERVED_LABEL[source];
+/** Quiet glyph-only marker (never a chip, never amber) for a row one of the session's own Git
+ * commands committed but no recorded tool ever touched. Shown on historical rows too; see DESIGN.md. */
+function FileTreeGitObservedGlyph() {
+  const label = GIT_OBSERVED_LABEL;
   return <span className="fileTreeGitObservedGlyph" role="img" aria-label={label} title={label}>
     <CommandIcon name="git" size="small" />
   </span>;
@@ -79,7 +76,7 @@ function FileTreeFileRow({ scope, depth, name, file, selected, onSelect }: {
     onClick={() => onSelect(file)}
   >
     <span className="fileTreeFileName">{name}</span>
-    {file.gitObserved && <FileTreeGitObservedGlyph source={file.gitObserved} />}
+    {file.gitObserved && <FileTreeGitObservedGlyph />}
     {scope === "session" && <FileTreeStatusLetter file={file} />}
     {showCount && <span className="fileTreeCount">{file.sessionCount}</span>}
   </button>;
@@ -148,7 +145,7 @@ export function FileTree({ scope, rootLabel, files, elsewhere = [], folderCounts
       {scope === "session"
         ? <>
             <span>Status from the working tree · select a file for its history</span>
-            {hasGitObserved && <DottedInfoPopover ariaLabel="How Git-observed rows are chosen" className="fileTreeFooterInfo" content="Rows with the Git glyph come from commits and working-tree changes during the session window. They may include other people's or tools' changes and have no agent or request.">How to read this</DottedInfoPopover>}
+            {hasGitObserved && <DottedInfoPopover ariaLabel="How Git-observed rows are chosen" className="fileTreeFooterInfo" content="Rows with the Git glyph come from commits made while this session ran a Git command. Matched by time, so they have no agent or request.">How to read this</DottedInfoPopover>}
           </>
         : "Folders roll up distinct sessions"}
     </div>

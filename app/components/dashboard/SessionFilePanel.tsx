@@ -8,14 +8,13 @@ type RecordedFile = RepositoryDomain["fileHistory"]["files"][number];
 type GitObservedFile = NonNullable<RepositoryDomain["gitObservedFiles"]>["files"][number];
 
 const COMMITTED_CHANGE_TEXT = {
-  added: "Added in a commit on the session branch",
-  modified: "Modified in a commit on the session branch",
-  deleted: "Deleted in a commit on the session branch",
+  added: "Added in the commit",
+  modified: "Modified in the commit",
+  deleted: "Deleted in the commit",
 } as const;
 
 function gitObservedText(file: GitObservedFile): string {
-  if (file.source === "uncommitted") return "Became uncommitted during the session";
-  return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Committed on the session branch";
+  return file.change ? COMMITTED_CHANGE_TEXT[file.change] : "Net change not recorded";
 }
 
 /** Recorded agents for the file, one line each: the name (a visible agent opens in the Agents
@@ -83,11 +82,11 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
     : gitObserved
       ? <article className="fileHistoryEntry">
           <div className="fileHistoryEntryBody">
-            <span className="fileHistoryEntryTitle">Seen in Git · no recorded agent edit</span>
+            <span className="fileHistoryEntryTitle">Committed by this session · no recorded agent edit</span>
             <div className="fileHistoryEntryMeta">
               <span className="fileHistoryEntryMetaText">{gitObservedText(gitObserved)}</span>
             </div>
-            <p className="fileHistoryEntryNote">Could be the agent through a command Pomegr can&apos;t read, a build or generated file, or someone else.</p>
+            <p className="fileHistoryEntryNote">Matched by time to a Git command this session ran. Pomegr can&apos;t tell which agent changed the file.</p>
           </div>
         </article>
       : recordedReadiness === "loading"
@@ -101,7 +100,7 @@ export function SessionFilePanel({ repositoryId, repositoryLabel, path, workingT
       </Link>} />
     <div className="fileHistoryEntries">{body}</div>
     <div className="fileHistoryFooter">
-      <span>Agent edits come from Write and Edit tools only. Shell commands and builds show as seen in Git.</span>
+      <span>Agent edits come from Write and Edit tools only. Shell-written files appear once this session commits them.</span>
     </div>
   </section>;
 }

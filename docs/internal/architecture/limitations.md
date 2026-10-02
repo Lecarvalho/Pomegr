@@ -90,26 +90,24 @@ whether an incident affected one account, model, or session. See
 
 ### Session file scope and attribution
 
-The session Repository tab's **Touched here** list is broader than files proven to
-have been edited by that session. It combines recorded structured file-tool edits
-with separately marked **Git-observed** paths. A Git-observed path is a file
-committed on the recorded branch during the session window or one that became
-uncommitted after the session's first live Git check. This branch-and-time match
-cannot identify the actor: work by another session, a person, a script, or a
-background process can appear under **Touched here**. The Git glyph marks these
-paths; they have no session agent or request attribution and do not count as
-recorded edits. A Git-marked row proves only that Git saw the path during the
-session window. It does not prove that this session changed it. Changes already
-present at the first live check form a baseline and can be absent from the
-Git-observed portion. Pomegr cannot currently provide a complete, exclusive list
-of files changed by this session.
+The session Repository tab's **Touched here** list holds recorded structured
+file-tool edits plus separately marked **Git-observed** paths. A Git-observed path
+is a file changed by a commit on the recorded branch whose committer time falls
+inside one of the session's own finished Git commands. A file that merely changed
+or was committed while the session was open is not listed. The match is by time:
+another actor committing during the few seconds one of the session's Git commands
+ran would be listed, and a rebase the session runs rewrites committer times, so
+every rebased commit's files match. The Git glyph marks these paths; they have no
+session agent or request attribution and do not count as recorded edits. Files the
+session wrote through a shell command and never committed itself are absent.
+Pomegr cannot currently provide a complete list of files changed by this session.
 
 The adjacent **Uncommitted** and **Changed elsewhere** segments split the
 repository's working-tree changes so that no path appears in both. A live view
 reads the current working tree; a historical view uses its recorded snapshot.
 **Uncommitted** lists the paths also placed in **Touched here**, and **Changed
-elsewhere** lists the rest. A path changed by another actor can therefore appear
-under **Uncommitted** and make **Changed elsewhere** understate unrelated work. These are Pomegr scoping and presentation
+elsewhere** lists the rest. A file the session changed only through a shell command
+therefore appears under **Changed elsewhere** until the session commits it. These are Pomegr scoping and presentation
 limits, not proof that the provider attributed those files to the session. See
 [Git-observed files](metrics.md#git-observed-files) and the
 [Repository tab grouping](../../../app/components/dashboard/repository-files-view.ts).
@@ -120,8 +118,7 @@ matching success evidence. Shell commands, scripts, builds, and external editors
 can change files without a reliable session, agent, or request association. Git
 observations can add separately labeled paths, but cannot manufacture that
 attribution. Consequently, recorded session-attributed history can omit files the
-session actually changed, even while the broader Git-observed list can include
-unrelated work. See [File-change history](metrics.md#file-change-history).
+session actually changed. See [File-change history](metrics.md#file-change-history).
 
 ### Session status coverage
 

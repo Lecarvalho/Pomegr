@@ -2669,7 +2669,7 @@ and file-change items, including the rollout `item_completed` `FileChange` item 
 for a patch applied inside a code-mode `exec` cell (the wrapping `exec` call itself carries
 none). Claude `Bash`/`PowerShell` calls and Codex shell items never carry
 `fileChanges`: the files a command writes cannot be known reliably from its text, so those
-changes surface only through the Git-observed lists below. `assertCheckpointPayload` rejects any
+changes surface only through the Git-observed list below, once the session commits them. `assertCheckpointPayload` rejects any
 absolute, drive, UNC, device, traversal, backslash, control-character, provider-folder,
 or over-bound path.
 
@@ -2683,8 +2683,10 @@ observed only through asynchronous Git inspection may preserve repository-scoped
 time, kind, and opaque file continuity, but it cannot itself create a session file-change
 record, populate session, agent, or request identity, or contribute to session edit counts.
 Joining by time, path, branch, or nearby activity must not fill those fields. The single
-approved exception (product owner, 2026-09-23) is the separately labeled Git-observed
-category below: a session window and recorded-branch join may list paths as Git-observed,
+approved exception (product owner, 2026-10-01, superseding the 2026-09-23 session-window
+join) is the separately labeled Git-observed category below: a recorded-branch commit whose
+committer time falls inside one of the session's own Git commands may list its paths as
+Git-observed,
 but it never fills session, agent, or request identity, never creates a `file_changes`
 row, and never contributes to edit counts.
 
@@ -2922,26 +2924,29 @@ unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
 
-Snapshot version 2 adds the Git-observed lists. `dirtyAtFirstCheck` is set once, at the
-first live check under version 2, and never replaced or shown; it survives restarts in the
-sidecar. `becameDirty` is the sticky union of status paths absent from that baseline.
-`committedInWindow` is the latest successful `readCommitsInWindow` result (`git log
---format="%H %cI" --name-status --no-renames --since --until HEAD` with `core.quotepath=false`
-and an argument array, 3
-seconds, 256 KiB), read only when the live branch equals the recorded branch and carried
-forward when a read fails. `gitObservedTruncated` is sticky. Each list holds at most 200
-paths and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap. A
-version 1 record loads as version 5 with null sentinels, meaning "never measured". A
-session already in progress when it first meets version 2 takes its then-current dirty
-set as the baseline, so earlier edits are not Git-observed.
+Snapshot versions 2 to 5 carried window-wide Git-observed lists (`dirtyAtFirstCheck`,
+`becameDirty`, `committedInWindow`, `committedChanges`, `gitObservedTruncated`). They are
+no longer written or served. A record of one of those versions is still validated against
+its own exact key set, lists included, and then loads as version 6 with those lists
+dropped; they are never reinterpreted as session commits. A version 1 record loads the
+same way.
 
-Snapshot version 3 adds `committedChanges`: null, or one fixed `added`/`modified`/`deleted`
-per `committedInWindow` path, aligned index for index. Each path's net change comes from its
-name-status letters across the window's commits, newest first: `deleted` when the newest
-change deleted it, `added` when any commit in the window added it, otherwise `modified` (a
-type change counts as modified). It travels with `committedInWindow`: carried forward when a
-read fails, replaced on a successful read, and null when a read returned paths without
-change kinds. A version 2 record loads as version 5 with `committedChanges` null.
+Snapshot version 6 adds the session-commit list. `sessionCommitPaths` is null until a live
+check reads the window, then the paths changed by commits whose committer time falls inside
+one of the session's own finished Git commands. `readCommitsInWindow` (`git log
+--format="%H %cI" --name-status --no-renames --since --until HEAD` with
+`core.quotepath=false` and an argument array, 3 seconds, 256 KiB) still counts every commit
+in the session window, but keeps paths only for a commit matching one of the intervals
+`sessionGitCommandIntervals` derives from the session's normalized execution tasks (work
+kind `git`, `git_push`, or `pull_request`; start floored to the second; a running task has
+none). It is read only when the live branch equals the recorded branch. The list only
+accumulates within one bound repository identity: a failed read carries it forward and a
+read that no longer matches a commit does not remove its paths. `sessionCommitChanges` is
+null, or one fixed `added`/`modified`/`deleted` per path, aligned index for index: `deleted`
+when the newest matched change deleted the path, `added` when any matched commit added it,
+otherwise `modified` (a type change counts as modified). A path the latest read lists takes
+that read's change. `sessionCommitsTruncated` is sticky. The list holds at most 200 paths
+and 6,000 path characters, so a full record stays under the 64 KiB sidecar cap.
 Version 4 adds `repositoryId`. Earlier versions load with `repositoryId` null; for every provider, they can satisfy the
 repository-identity gate again only once the same session is re-observed and its evidence
 records a matching proven single-repository identity. `launch` evidence is served
@@ -2956,9 +2961,9 @@ accumulates within one bound repository identity: a successful read adds its tim
 failed read carries the list forward, and a read that no longer lists a commit does not
 remove its time. Commits that share a second are kept as many times as the fullest single
 read showed. Beyond 50 the oldest times leave. A version 4 record is validated against its
-own exact key set and loads as version 5 with `commitTimesInWindow` null, so no recorded
+own exact key set and loads as version 6 with `commitTimesInWindow` null, so no recorded
 repository history is discarded on upgrade; the next live check of that session writes
-version 5. `prune()` keeps, without loading, a sidecar whose snapshot version is higher
+version 6. `prune()` keeps, without loading, a sidecar whose snapshot version is higher
 than this build knows, so a downgrade does not destroy records written by a newer build.
 The list feeds only the session-event derivation, through the
 `repositoryRecordForSession` side channel. It is never placed on `/api/state`
@@ -2966,14 +2971,14 @@ The list feeds only the session-event derivation, through the
 its recorded list. See [Session events](metrics.md#session-events).
 
 The monitor derives `gitObservedFiles: { files: [{ path, source, change }], truncated } | null`
-from those lists. `source` is `committed` or `uncommitted`; committed wins for a path in
-both. `change` is the committed path's recorded net change, else null; the projection
-drops any other value, and an uncommitted path always carries null. It travels through the `repositoryRecordForSession` side channel (observation runtime to
+from `sessionCommitPaths`, and null while that list was never read. `source` is always
+`committed`. `change` is the path's recorded net change, else null; the projection
+drops any other value. It travels through the `repositoryRecordForSession` side channel (observation runtime to
 session-domain store to projection), like `fileHistory`, and the projection re-validates
 every path with the repository-path validator. It appears only in the `repository`
 domain, never on `/api/state` `session.repository`. The UI drops a path that already has
 a recorded `fileHistory` row. GETs never run Git for it, and a historical session serves
-only its recorded lists, never the current tree.
+only its recorded list, never the current tree.
 
 ## Monitor SQLite store
 

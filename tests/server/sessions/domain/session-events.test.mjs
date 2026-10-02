@@ -524,7 +524,7 @@ function liveCheck(overrides = {}) {
   return {
     repository: { available: true, branch: "feat/x", historical: false, isMain: false, files: [], comparison: null, remote: { status: "unavailable", checkedAt: null } },
     pullRequests: { status: "unavailable", checkedAt: null, items: [] },
-    commitsInSession: 2, committedPaths: [], committedChanges: [], commitTimes: [at(6), at(10)], checkedAt: at(21),
+    commitsInSession: 2, sessionCommitPaths: [], sessionCommitChanges: [], commitTimes: [at(6), at(10)], checkedAt: at(21),
     ...overrides,
   };
 }

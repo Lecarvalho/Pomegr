@@ -825,7 +825,7 @@ commands and patch-looking text embedded in `functions.exec` source do not prove
 successful file operation. Nested patches require separate structured success evidence;
 the outer wrapper's success alone cannot establish which nested calls ran. Shell
 commands never do, because the files a command writes cannot be known reliably from its
-text; those changes appear only as Git-observed files. Shell commands, scripts, builds,
+text; those changes appear only as Git-observed files, once the session commits them. Shell commands, scripts, builds,
 external editors, unrecognized tools, incomplete or
 invalid provider records, paths rejected by the repository-path policy, retention bounds,
 and observation gaps can leave changes missing. Git comparison can add repository-scoped
@@ -838,20 +838,25 @@ limits wherever totals or empty states are presented.
 ### Git-observed files
 
 A session's Touched here list also shows Git-observed files, marked with a Git glyph.
-A file is Git-observed when it was committed on the session's recorded branch during
-the session window, or when it became uncommitted after the session's first live Git
-check. Files already uncommitted at that first check form a baseline and are never
-shown. Commits are read only while the live branch matches the recorded branch. Paths
-that already have a recorded file-change row are not repeated. Git-observed files come
-from repository state, not provider evidence, so they may include changes made by
-other people, other sessions, or other tools during the window. A committed file carries
-Git's net change across the window's commits: added when any commit in the window added
-it, deleted when the newest change deleted it, otherwise modified. That describes what the
-commits did to the file, not who made the change. Git-observed files name no agent or
-request, are not recorded edits, and do not count toward edit totals or the repository
-file history. A file without a recorded edit is not evidence that someone else changed
-it: the agent may have written it through a command Pomegr cannot attribute, or a build
-or generator may have produced it.
+A file is Git-observed when a commit on the session's recorded branch changed it and that
+commit's committer time falls inside one of the session's own finished Git commands: an
+execution task with work kind `git`, `git_push`, or `pull_request`, from its start
+(floored to the second, because a committer time has one-second resolution) to its
+finish. A file that only changed or was committed while the session was open is never
+listed, and neither is a file that merely became uncommitted. Commits are read only while
+the live branch matches the recorded branch. Paths that already have a recorded
+file-change row are not repeated. A listed path stays listed: a later amend or rebase that
+moves its commit out of the match does not withdraw it.
+
+This is a time match, not authorship. It can miss a commit the session made through an
+unrecognized tool or a command still running, and it can include another actor's commit
+that landed while one of the session's Git commands ran, or every commit a session-run
+rebase rewrote. A file carries Git's net change across the matched commits: added when any
+of them added it, deleted when the newest change deleted it, otherwise modified.
+Git-observed files name no agent or request, are not recorded edits, and do not count
+toward edit totals or the repository file history. A file without a recorded edit is not
+evidence that someone else changed it: the agent may have written it through a command
+Pomegr cannot attribute, or a build or generator may have produced it.
 
 ## Pull-request associations
 

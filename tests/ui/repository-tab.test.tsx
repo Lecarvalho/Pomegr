@@ -159,7 +159,7 @@ describe("RepositoryTab", () => {
       pullRequests: { status: "unavailable", checkedAt: null, items: [] },
       commitsInSession: null,
       fileHistory: { readiness: "ready", files: [touchedFile()], truncated: false },
-      gitObservedFiles: { files: [{ path: "app/observed.ts", source: "uncommitted", change: null }], truncated: false },
+      gitObservedFiles: { files: [{ path: "app/observed.ts", source: "committed", change: "added" }], truncated: false },
     })));
     const { rerender } = renderTab({ sessionId: SESSION_ID, historical: false });
 
@@ -361,12 +361,20 @@ describe("RepositoryTab", () => {
     });
 
     describe("Git-observed files", () => {
-      it("merges a new Git-observed path into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
+      it("merges a path this session committed into Touched here, tags it, and removes it from Changed elsewhere/counts, without duplicating an already-recorded path", () => {
         useSessionDomain.mockReturnValue(result(domainWithFiles({
+          repository: repository({
+            files: [
+              { status: " M", path: "app/Dashboard.tsx" }, // touched, currently modified
+              { status: " M", path: "app/later-edit.ts" }, // committed by this session, edited again since
+              { status: "??", path: "app/new-file.ts" }, // uncommitted, not committed by this session
+            ],
+          }),
           gitObservedFiles: {
             files: [
+              { path: "app/committed-only.ts", source: "committed", change: "added" }, // not recorded and clean; gains the glyph
               { path: "app/Dashboard.tsx", source: "committed", change: "modified" }, // already recorded; stays a plain recorded row
-              { path: "app/new-file.ts", source: "uncommitted", change: null }, // not recorded; gains the glyph, moves out of elsewhere
+              { path: "app/later-edit.ts", source: "committed", change: "modified" }, // not recorded; gains the glyph, moves out of elsewhere
             ],
             truncated: false,
           },
@@ -374,16 +382,17 @@ describe("RepositoryTab", () => {
         renderTab({ sessionId: SESSION_ID, historical: false });
 
         const segment = screen.getByRole("group", { name: "File segment" });
-        expect(within(segment).getByRole("button", { name: "Touched here 2" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Touched here 3" })).toBeInTheDocument();
         expect(within(segment).getByRole("button", { name: "Uncommitted 2" })).toBeInTheDocument();
-        expect(within(segment).getByRole("button", { name: "Changed elsewhere 0" })).toBeInTheDocument();
+        expect(within(segment).getByRole("button", { name: "Changed elsewhere 1" })).toBeInTheDocument();
 
         const treeProps = FileTreeMock.mock.calls.at(-1)![0];
         expect(treeProps.files).toEqual([
+          { path: "app/committed-only.ts", fileId: null, status: null, gitObserved: "committed", gitChange: "added" },
           { path: "app/Dashboard.tsx", fileId: "f1", status: " M", recordedKind: "edited" },
-          { path: "app/new-file.ts", fileId: null, status: "??", gitObserved: "uncommitted", gitChange: null },
+          { path: "app/later-edit.ts", fileId: null, status: " M", gitObserved: "committed", gitChange: "modified" },
         ]);
-        expect(treeProps.elsewhere).toEqual([]);
+        expect(treeProps.elsewhere).toEqual([{ path: "app/new-file.ts", fileId: null, status: "??" }]);
       });
 
       it("ignores gitObservedFiles when null, matching prior behavior", () => {
