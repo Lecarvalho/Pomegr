@@ -8,6 +8,7 @@ const initial: DesktopState = {
   applicationVersion: "0.6.0",
   paused: false, launchAtLogin: false, launchAtLoginAvailable: true,
   closeBehavior: "ask", notifications: true, notificationQuietUntil: null,
+  notificationCategories: { attention: true, provider_news: false, model_news: false },
   displayPreferences: { estimatedCost: true },
   update: { status: "idle", version: null, lastCheckedAt: null },
 };
@@ -19,6 +20,8 @@ function setupDesktop(start = initial) {
     onDesktopStateChanged: () => () => {},
     setNotifications: vi.fn(async (value: boolean) => (state = { ...state, notifications: value, notificationQuietUntil: value ? state.notificationQuietUntil : null })),
     setNotificationQuiet: vi.fn(async (value: boolean) => (state = { ...state, notificationQuietUntil: value ? "2026-10-01T13:00:00.000Z" : null })),
+    setNotificationCategory: vi.fn(async (key: "attention" | "provider_news" | "model_news", value: boolean) =>
+      (state = { ...state, notificationCategories: { ...state.notificationCategories!, [key]: value } })),
     setCloseBehavior: vi.fn(async (value: DesktopState["closeBehavior"]): Promise<DesktopState | null> => (state = { ...state, closeBehavior: value })),
   };
   (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge;
@@ -41,17 +44,28 @@ describe("Settings desktop behavior", () => {
   it("keeps the browser on the desktop-managed label with no Desktop section", async () => {
     await open("Notifications");
     expect(screen.getByText("Desktop managed")).toBeInTheDocument();
-    expect(screen.queryByRole("switch", { name: /Needs-input alerts/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /Desktop notifications/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Desktop" })).not.toBeInTheDocument();
   });
 
-  it("switches needs-input alerts and the one-hour quiet mode through the desktop bridge", async () => {
+  it("preserves desktop enablement and quiet with fixed opt-in categories", async () => {
     const bridge = setupDesktop();
     const user = await open("Notifications");
-    const alerts = screen.getByRole("switch", { name: /Needs-input alerts/ });
+    const region = screen.getByTestId("notification-preferences");
+    expect(region).toBeInTheDocument();
+    const alerts = screen.getByRole("switch", { name: /Desktop notifications/ });
     const quiet = screen.getByRole("switch", { name: /Quiet for one hour/ });
     await waitFor(() => expect(alerts).toBeChecked());
     expect(quiet).not.toBeChecked();
+    const attention = screen.getByRole("switch", { name: /^Needs input/ });
+    const providerNews = screen.getByRole("switch", { name: /^Provider updates/ });
+    const modelNews = screen.getByRole("switch", { name: /^Model news/ });
+    expect(attention).toBeChecked();
+    expect(providerNews).not.toBeChecked();
+    expect(modelNews).not.toBeChecked();
+    await user.click(providerNews);
+    expect(bridge.setNotificationCategory).toHaveBeenCalledWith("provider_news", true);
+    await waitFor(() => expect(providerNews).toBeChecked());
     await user.click(quiet);
     expect(bridge.setNotificationQuiet).toHaveBeenCalledExactlyOnceWith(true);
     await waitFor(() => expect(quiet).toBeChecked());
@@ -61,6 +75,8 @@ describe("Settings desktop behavior", () => {
     await waitFor(() => expect(alerts).not.toBeChecked());
     expect(quiet).not.toBeChecked();
     expect(quiet).toBeDisabled();
+    expect(providerNews).toBeDisabled();
+    expect(providerNews).toBeChecked();
   });
 
   it("sets the close behavior and reports a failed save without raw details", async () => {

@@ -100,7 +100,8 @@ test("desktop settings persist only the bounded allowlist", async () => {
   const file = path.join(root, "Data With Spaces", "settings.json");
   try {
     const normalized = normalizeDesktopSettings({ version: 99, window: { width: 1400, height: 900, x: -20, y: 45, maximized: true, transcriptPath: "PRIVATE" }, launchAtLogin: true, notifications: false, updates: false, displayPreferences: { contextHistory: false, estimatedCost: true, arbitraryPanel: false, sessionId: "PRIVATE" }, oauthToken: "SECRET", providerPath: "PRIVATE", prompt: "PRIVATE", response: "PRIVATE", command: "PRIVATE" });
-    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "updates", "lanSharingAutoStart", "displayPreferences", "providerFolders", "storage", "homeUpdate"]);
+    assert.deepEqual(Object.keys(normalized), ["version", "window", "launchAtLogin", "closeBehavior", "notifications", "notificationCategories", "updates", "lanSharingAutoStart", "displayPreferences", "providerFolders", "storage", "homeUpdate"]);
+    assert.deepEqual(normalized.notificationCategories, { attention: true, provider_news: false, model_news: false });
     assert.deepEqual(normalizeDesktopSettings({ homeUpdate: { seenId: "release-notes-v1", dismissedId: "C:\\private\\path", prompt: "PRIVATE" } }).homeUpdate, { seenId: "release-notes-v1", dismissedId: null });
     assert.deepEqual(normalized.displayPreferences, { estimatedCost: true });
     const store = createDesktopSettingsStore(file);
@@ -231,6 +232,32 @@ test("version-six settings migrate with their storage choice and no Home update 
   assert.equal(loaded.settings.version, DESKTOP_SETTINGS_VERSION);
   assert.deepEqual(loaded.settings.storage, { retentionDays: 180, storeMaxMb: 1024 });
   assert.deepEqual(loaded.settings.homeUpdate, { seenId: null, dismissedId: null });
+});
+
+test("version-seven migration preserves enablement and Home markers while defaulting news off", async () => {
+  const versionSeven = { ...normalizeDesktopSettings({ notifications: false, homeUpdate: { seenId: "release-v1", dismissedId: null } }), version: 7 };
+  delete versionSeven.notificationCategories;
+  const store = createDesktopSettingsStore("C:\\Pomegr\\settings.json", { async readFile() { return JSON.stringify(versionSeven); } });
+  const loaded = await store.load();
+  assert.deepEqual({ status: loaded.status, canPersist: loaded.canPersist }, { status: "migrated", canPersist: true });
+  assert.equal(loaded.settings.notifications, false);
+  assert.deepEqual(loaded.settings.homeUpdate, { seenId: "release-v1", dismissedId: null });
+  assert.deepEqual(loaded.settings.notificationCategories, { attention: true, provider_news: false, model_news: false });
+});
+
+test("malformed v8 category settings cannot overwrite the source file", async () => {
+  const malformed = JSON.stringify({ ...normalizeDesktopSettings(), notificationCategories: { attention: true, provider_news: "yes", model_news: false } });
+  let writes = 0;
+  const store = createDesktopSettingsStore("C:\\Pomegr\\settings.json", {
+    async readFile() { return malformed; },
+    async writeFile() { writes += 1; },
+  });
+  const loaded = await store.load();
+  assert.deepEqual({ status: loaded.status, canPersist: loaded.canPersist }, { status: "invalid", canPersist: false });
+  await assert.rejects(store.save(loaded.settings), /DESKTOP_SETTINGS_RECOVERY_REQUIRED/);
+  assert.equal(writes, 0);
+  assert.deepEqual(normalizeDesktopSettings({ notificationCategories: { attention: false, provider_news: true, model_news: true, providerPath: "PRIVATE" } }).notificationCategories,
+    { attention: false, provider_news: true, model_news: true });
 });
 
 test("desktop report save is explicit, bounded, and rejects untrusted IPC", async () => {

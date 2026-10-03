@@ -1,13 +1,26 @@
 import { createNotificationLedger } from "../notifications/notification-ledger.mjs";
 
-/** Joins committed observation callbacks to the bounded, in-memory ledger. */
-export function createNotificationObservation({ now = Date.now } = {}) {
+/** Joins committed observation callbacks to the bounded, durable ledger. */
+export function createNotificationObservation({ now = Date.now, persistence = null, sourceScope } = {}) {
   const listeners = new Set();
-  const ledger = createNotificationLedger({ now, onUpdate: publish });
+  const ledger = createNotificationLedger({ now, onUpdate: publish,
+    onCommit: (state) => { if (persistence) void persistence.write(state); } });
   let unsubscribeCatalog = null;
   let stopped = false;
   let catalogScheduled = false;
   let serialized = JSON.stringify(ledger.readSnapshot());
+  let startPromise = null;
+
+  async function start() {
+    if (!persistence) return;
+    if (startPromise) return startPromise;
+    startPromise = (async () => {
+      const result = await persistence.load();
+      if (result.state) ledger.restore(result.state);
+      return result.status;
+    })();
+    return startPromise;
+  }
 
   function publish(snapshot) {
     serialized = JSON.stringify(snapshot);
@@ -25,6 +38,7 @@ export function createNotificationObservation({ now = Date.now } = {}) {
         readiness: value.readiness || "unavailable",
         sessions: value.sessions,
         activeSessionOverflow: value.activeSessionOverflow,
+        sourceScope,
       } });
     } catch { return ledger.readSnapshot(); /* Failed derivation retains last known-good. */ }
   }
@@ -36,6 +50,7 @@ export function createNotificationObservation({ now = Date.now } = {}) {
       return ledger.acceptFacts({ providerStatus: {
         revision: committed.revision,
         providers: committed.value.providers,
+        sourceScope,
       } });
     } catch { return ledger.readSnapshot(); /* Status polling remains independent. */ }
   }
@@ -78,13 +93,14 @@ export function createNotificationObservation({ now = Date.now } = {}) {
     return () => listeners.delete(listener);
   }
 
-  function stop() {
+  async function stop() {
     stopped = true;
     unsubscribeCatalog?.();
     unsubscribeCatalog = null;
     listeners.clear();
+    await persistence?.drain();
   }
 
-  return Object.freeze({ attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit,
+  return Object.freeze({ start, attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit,
     read, readSnapshot: ledger.readSnapshot, subscribeRevisionEvents, stop });
 }

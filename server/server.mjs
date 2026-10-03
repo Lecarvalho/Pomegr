@@ -12,6 +12,9 @@ import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
 import { createNotificationObservation } from "./runtime/notification-observation.mjs";
+import { createNotificationPersistence } from "./notifications/notification-persistence.mjs";
+import { catalogSourceScopeKey } from "./sessions/catalog/session-catalog-runtime.mjs";
+import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
 import { createPipelineOperationsSnapshot } from "./diagnostics/pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./diagnostics/pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./serving/request-handler.mjs";
@@ -99,7 +102,14 @@ export function createMonitorRuntime(options = {}) {
   const gitReader = options.readGitState || readGitStateAsync;
   const pullRequestReader = options.readPullRequests || readPullRequests;
   const now = options.now || (() => Date.now());
-  const notifications = createNotificationObservation({ now });
+  const notificationSourceScope = catalogSourceScopeKey(registry);
+  const notificationPersistence = options.notificationPersistence === false ? null
+    : options.notificationPersistence || (options.checkpointStore === false ? null : createNotificationPersistence({
+      directory: path.join(resolvePomegrDataRoot(options.pomegrPaths), "notifications-v1"),
+      profileScope: notificationSourceScope, now,
+    }));
+  const notifications = createNotificationObservation({ now, persistence: notificationPersistence,
+    sourceScope: notificationSourceScope });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
   const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
@@ -561,15 +571,16 @@ export function createMonitorRuntime(options = {}) {
   sessionRepositoryEnrichment.setOnRepositoryCheck(observation.onRepositoryCheck);
 
   async function startObservation() {
+    await notifications.start();
     notifications.attachCatalog({ subscribeRevisionEvents: observation.subscribeRevisionEvents,
       serveNotificationCatalog: observation.notificationCatalog });
     try { await observation.startObservation(); }
-    catch (error) { notifications.stop(); throw error; }
+    catch (error) { await notifications.stop(); throw error; }
   }
 
   async function stopObservation() {
-    notifications.stop();
-    await observation.stopObservation();
+    try { await observation.stopObservation(); }
+    finally { await notifications.stop(); }
   }
 
   function subscribeRevisionEvents(subscriber) {

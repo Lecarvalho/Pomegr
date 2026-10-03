@@ -773,7 +773,8 @@ The official source and component-filter details are documented in [provider sta
 
 ## Shared notifications
 
-`server/notifications/` owns pure rules and an in-memory occurrence ledger.
+`server/notifications/` owns pure rules, the occurrence ledger, and its private
+atomic sidecar.
 `server/runtime/notification-observation.mjs` accepts only committed catalog and
 public-provider-status facts, derives a bounded immutable response, and publishes its
 own revision. The catalog owner projects Needs input from complete normalized headers
@@ -805,8 +806,13 @@ for the client-local `client:` namespace; the monitor never emits it. No raw sou
 payload, source scope, provider-native identity, path, credential, prompt, command,
 error, or arbitrary URL is serialized. The monitor retains at most 200 occurrences,
 resolved events for 30 days, a 1 MiB serialized snapshot, and 100 active Needs input
-conditions plus bounded overflow. The ledger is ephemeral in this phase; durable
-baselines, read markers, and native delivery are later work.
+conditions plus bounded overflow. P persists only this normalized snapshot,
+bounded private comparison baselines and active keys, and a random identity seed
+with sequence. Restore validates the whole versioned record before observation;
+source-profile changes rebaseline without reusing old conditions, and producer
+revision clocks restart independently. The monitor retains the last good record
+on failed writes, protects malformed/newer files, and never persists raw source
+paths or account identities. The private sidecar has a 1 MiB whole-record cap.
 
 S serves `GET /api/notifications` from the serialized committed snapshot only.
 Numeric revision or matching `If-None-Match` yields `204`; an unwired or failing
@@ -815,12 +821,35 @@ runtime yields a bounded unavailable `503` response. A material revision publish
 same-origin proxy and authenticated paired-LAN gateway forward this read-only API;
 neither can start observation. F uses one tab-scoped store, revision invalidation,
 focus refresh, and a 30-second fallback. It retains last known-good data on a failed
-read and creates monitor-transport loss locally. Read acknowledgement is tab-memory
-state for now. Fixed actions resolve to safe local routes: `open_session` validates
+read and creates monitor-transport loss locally. Browser read acknowledgement
+persists at most 400 opaque occurrence IDs with times for 30 days in origin-local
+storage, capped at 32 KiB. Invalid/newer or denied storage falls back to memory
+without overwriting the source. Local `client:` transport markers are memory-only.
+Random occurrence identity prevents markers for an older source/profile generation
+from matching new occurrences without exposing a source fingerprint or generation
+to the browser. Reading does not resolve an active Needs input condition. The
+desktop renderer's browser origin changes across app launches, so its browser
+read markers can reset on restart. These markers never synchronize with native
+delivery claims. Fixed actions resolve to safe local routes: `open_session` validates
 the session route and falls back to Sessions; `open_sessions`, `open_providers`, and
 `open_workspace` resolve to fixed pages. The current `open_providers` destination is
 **Usage limits** (`/usage-limits`). No action approves, authenticates, installs,
 consumes a reset, or controls a provider.
+
+Electron main owns one poller of the committed notifications GET. Its reader is
+loopback-only, authenticated, bounded to 1 MiB, and rejects redirects. A private
+atomic desktop claim store holds at most 512 opaque IDs and claim times for 30
+days, with a 64 KiB whole-record cap and a private digest of the effective
+source profile. The first valid observation claims all retained occurrences as
+a baseline. Later transitions are claimed before OS dispatch; disabled, quiet,
+category-disabled, stale, coalesced, and rate-limited events are consumed without
+backlog. A failed claim write prevents dispatch, while a crash after claiming
+can lose the toast. Native delivery is at most once within claim retention, not
+exactly once. The desktop settings v8 allow only the `notifications` master
+boolean and `notificationCategories.{attention,provider_news,model_news}` booleans
+through fixed-key trusted-main-frame IPC. News defaults off, and the one-hour
+quiet timer is not persisted. Browser/LAN requests cannot mutate desktop
+preferences or trigger native dispatch.
 
 ## MCP agent-query projections
 

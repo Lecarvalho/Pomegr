@@ -5,6 +5,7 @@ export type DesktopState = {
   launchAtLoginAvailable: boolean;
   closeBehavior: "ask" | "tray" | "quit";
   notifications: boolean;
+  notificationCategories?: { attention: boolean; provider_news: boolean; model_news: boolean };
   notificationQuietUntil: string | null;
   displayPreferences: {
     estimatedCost: boolean;

@@ -5,6 +5,7 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
   setCloseBehavior: "pomegr:set-close-behavior",
   setNotifications: "pomegr:set-notifications",
   setNotificationQuiet: "pomegr:set-notification-quiet",
+  setNotificationCategory: "pomegr:set-notification-category",
   setDisplayPreference: "pomegr:set-display-preference",
   setHomeUpdate: "pomegr:set-home-update",
   checkForUpdates: "pomegr:check-for-updates",
@@ -17,6 +18,20 @@ export const DESKTOP_BEHAVIOR_CHANNELS = Object.freeze({
 export const CLOSE_BEHAVIORS = Object.freeze(["ask", "tray", "quit"]);
 export const DESKTOP_THEME_SOURCES = Object.freeze(["light", "dark", "system"]);
 export const DISPLAY_PREFERENCE_KEYS = Object.freeze(["estimatedCost"]);
+export const NOTIFICATION_CATEGORY_KEYS = Object.freeze(["attention", "provider_news", "model_news"]);
+export const DEFAULT_NOTIFICATION_CATEGORIES = Object.freeze({ attention: true, provider_news: false, model_news: false });
+
+export function normalizeNotificationCategories(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return Object.fromEntries(NOTIFICATION_CATEGORY_KEYS.map((key) => [key,
+    typeof source[key] === "boolean" ? source[key] : DEFAULT_NOTIFICATION_CATEGORIES[key]]));
+}
+
+export function validNotificationCategories(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).length === NOTIFICATION_CATEGORY_KEYS.length
+    && NOTIFICATION_CATEGORY_KEYS.every((key) => typeof value[key] === "boolean");
+}
 // The renderer's browser storage does not survive a desktop restart (in-memory session, per-launch
 // origin), so the Home announcement's seen and dismissed markers persist here instead.
 export const HOME_UPDATE_KEYS = Object.freeze(["seenId", "dismissedId"]);
@@ -114,6 +129,7 @@ export function createDesktopBehaviorController(options) {
     launchAtLoginAvailable: options.launchAtLoginAvailable !== false,
     closeBehavior: isCloseBehavior(settings.closeBehavior) ? settings.closeBehavior : "ask",
     notifications: Boolean(settings.notifications),
+    notificationCategories: Object.freeze(normalizeNotificationCategories(settings.notificationCategories)),
     displayPreferences: Object.freeze({
       estimatedCost: settings.displayPreferences?.estimatedCost !== false,
     }),
@@ -227,6 +243,13 @@ export function createDesktopBehaviorController(options) {
         if (!value) clearNotificationQuiet();
         options.updateTray?.(snapshot());
         broadcast();
+        return snapshot();
+      });
+    },
+    async setNotificationCategory(key, value) {
+      if (!NOTIFICATION_CATEGORY_KEYS.includes(key) || typeof value !== "boolean") return snapshot();
+      return enqueueMutation(async () => {
+        await persist({ notificationCategories: { ...normalizeNotificationCategories(settings.notificationCategories), [key]: value } });
         return snapshot();
       });
     },

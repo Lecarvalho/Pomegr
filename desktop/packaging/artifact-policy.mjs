@@ -42,6 +42,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/monitor-worker.mjs",
   "desktop/runtime/native-security.mjs",
   "desktop/runtime/notifications.mjs",
+  "desktop/runtime/notification-delivery-store.mjs",
   "desktop/runtime/paths.mjs",
   "desktop/runtime/preload.cjs",
   "desktop/runtime/quiet-console.mjs",

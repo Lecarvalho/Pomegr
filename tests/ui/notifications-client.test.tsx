@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationStore, normalizeNotificationSnapshot } from "../../app/notifications-client";
+import { NotificationReadStore } from "../../app/notification-read-state";
 import type { NotificationSnapshot } from "../../shared/notification-contract";
 
 const observedAt = "2026-10-03T12:00:00.000Z";
@@ -151,5 +152,57 @@ describe("notification client store", () => {
       next.resolve(new Response(JSON.stringify(snapshot(4)), { status: 200 }));
       await waitFor(() => expect(store.getSnapshot()).toMatchObject({ status: "ready", snapshot: { revision: 4 } }));
     } finally { unsubscribe(); }
+  });
+});
+
+describe("browser-local notification read markers", () => {
+  const first = "a".repeat(32);
+  const recurrence = "b".repeat(32);
+  const now = Date.parse("2026-10-03T12:00:00.000Z");
+
+  it("stores only opaque IDs and times, survives a second consumer, and leaves a recurrence unread", () => {
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+    const store = new NotificationReadStore({ storage, now: () => now });
+    const unsubscribe = store.subscribe(() => {});
+    store.markRead([first, "client:monitor_unreachable", "codex:private-session"]);
+    unsubscribe();
+    expect(store.getSnapshot().has(first)).toBe(true);
+    expect(store.getSnapshot().has(recurrence)).toBe(false);
+    const persisted = [...values.values()][0];
+    expect(JSON.parse(persisted)).toEqual({ version: 1, entries: [[first, now]] });
+    expect(persisted).not.toMatch(/session|title|provider|source|client:/i);
+    const second = new NotificationReadStore({ storage, now: () => now });
+    second.subscribe(() => {})();
+    expect(second.getSnapshot().has(first)).toBe(true);
+    expect(second.getSnapshot().has(recurrence)).toBe(false);
+  });
+
+  it("prunes after 30 days and caps the entire stored marker set", () => {
+    let clock = now;
+    const values = new Map<string, string>();
+    const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } };
+    const store = new NotificationReadStore({ storage, now: () => clock });
+    store.markRead([first]);
+    clock += 31 * 24 * 60 * 60_000;
+    store.markRead(Array.from({ length: 450 }, (_, index) => index.toString(16).padStart(32, "0")));
+    expect(store.getSnapshot().size).toBe(400);
+    expect(store.getSnapshot().has(first)).toBe(false);
+    expect(JSON.parse([...values.values()][0]).entries).toHaveLength(400);
+    expect([...values.values()][0].length).toBeLessThan(32 * 1024);
+  });
+
+  it("does not overwrite malformed or newer stores and works in memory when storage is denied", () => {
+    for (const initial of ["{bad", JSON.stringify({ version: 2, entries: [] }), JSON.stringify({ version: 1, entries: [[[first], now]] })]) {
+      let writes = 0;
+      const storage = { getItem: () => initial, setItem: () => { writes += 1; } };
+      const store = new NotificationReadStore({ storage, now: () => now });
+      store.markRead([first]);
+      expect(store.getSnapshot().has(first)).toBe(true);
+      expect(writes).toBe(0);
+    }
+    const denied = new NotificationReadStore({ storage: { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); } }, now: () => now });
+    denied.markRead([first]);
+    expect(denied.getSnapshot().has(first)).toBe(true);
   });
 });

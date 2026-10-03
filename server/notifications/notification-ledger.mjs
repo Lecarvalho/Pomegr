@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { NOTIFICATION_RULES, createNotificationRuleRegistry, opaqueNotificationId, sourceReadiness } from "./notification-rules.mjs";
 
 export const NOTIFICATION_MAX_OCCURRENCES = 200;
@@ -23,23 +24,24 @@ function providerReadiness(input) {
       : states.includes("stale") ? "stale" : states.includes("loading") ? "loading" : "unavailable";
 }
 function privateScope(value) {
-  if (value === undefined) return "default";
+  if (value === undefined) value = "default";
   if (typeof value !== "string" || value.length < 1 || value.length > 128 || /[\u0000-\u001f\u007f]/u.test(value)) throw new TypeError("Invalid private source scope");
-  return value;
+  return createHash("sha256").update(value).digest("hex");
 }
 
 /**
  * Accepts already committed normalized facts; it performs no acquisition.
  * One accepted batch is transactional. Exceptions preserve the prior snapshot.
- * Persistence is injected by the next part; this stage keeps state in memory.
+ * The runtime may persist its bounded exported comparison state after each commit.
  */
-export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_RULES, onUpdate = () => {} } = {}) {
+export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_RULES, onUpdate = () => {}, onCommit = () => {} } = {}) {
   const registry = createNotificationRuleRegistry(rules);
   let active = new Map(); // private rule/scope/key -> occurrence ID
   let baselines = new Set(); // private rule/scope
   let lastEvidence = new Map(); // private rule/scope/key -> observed timestamp
   let sourceVersions = new Map(); // private rule/scope -> committed revision
   let sequence = 0;
+  let identitySeed = randomBytes(16).toString("hex");
   let snapshot = freezeSnapshot({ version: 1, revision: 0, generatedAt: null,
     readiness: { catalog: "loading", providerStatus: "loading" }, occurrences: [], activeSessionOverflow: 0 });
   const listeners = new Set();
@@ -68,27 +70,23 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
       const derived = rule.derive(input);
       if (!Array.isArray(derived) || derived.length > 1000) throw new TypeError("Invalid derived notification facts");
       const ready = rule.source === "catalog" ? input.readiness === "ready" : derived.length > 0;
+      // A source/profile switch retires all of that producer's old history at
+      // once, including when the new source has no usable evidence yet.
+      for (const old of [...nextBaselines]) {
+        if (!old.startsWith(`${rule.kind}\0`) || old === group) continue;
+        nextBaselines.delete(old);
+        nextVersions.delete(old);
+        rows = rows.filter((row) => row.kind !== rule.kind && row.kind !== rule.recovery?.kind);
+        if (rule.source === "catalog") overflow = 0;
+        for (const key of [...nextActive.keys()]) if (key.startsWith(`${old}\0`)) nextActive.delete(key);
+        for (const key of [...nextEvidence.keys()]) if (key.startsWith(`${old}\0`)) nextEvidence.delete(key);
+      }
       // A failed or incomplete observation cannot establish a new private source.
       // Readiness still reaches clients for an already established source.
       if (!ready) {
         if (rule.source === "catalog") nextReadiness.catalog = sourceReadiness(input.readiness);
         else if (rule.source === "providerStatus") nextReadiness.providerStatus = providerReadiness(input);
         continue;
-      }
-      // A changed private credential/folder scope discards only that rule's comparison baseline.
-      for (const old of [...nextBaselines]) {
-        if (!old.startsWith(`${rule.kind}\0`) || old === group) continue;
-        nextBaselines.delete(old);
-        nextVersions.delete(old);
-        for (const key of [...nextActive.keys()]) {
-          if (!key.startsWith(`${old}\0`)) continue;
-          const id = nextActive.get(key);
-          const row = rows.find((item) => item.id === id);
-          if (row) row.lifecycle = "resolved";
-          nextActive.delete(key);
-          nextEvidence.delete(key);
-        }
-        for (const key of [...nextEvidence.keys()]) if (key.startsWith(`${old}\0`)) nextEvidence.delete(key);
       }
       if (rule.source === "catalog") {
         nextReadiness.catalog = sourceReadiness(input.readiness);
@@ -123,7 +121,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
             overflow = Math.min(1_000_000, overflow + 1);
             continue;
           }
-          const id = opaqueNotificationId(rule.kind, key, ++nextSequence);
+          const id = opaqueNotificationId(rule.kind, key, `${identitySeed}:${++nextSequence}`);
           rows.unshift({ id, kind: rule.kind, category: rule.category, severity: rule.severity,
             lifecycle: "active", priority: rule.priority, occurredAt: item.at || clockIso,
             timeBasis: item.at ? "recorded" : "observed", deliveryEligible: !baseline && rule.delivery === "native_eligible",
@@ -134,7 +132,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
           if (row) row.lifecycle = "resolved";
           nextActive.delete(key);
           if (rule.recovery) {
-            const id = opaqueNotificationId(rule.recovery.kind, key, ++nextSequence);
+            const id = opaqueNotificationId(rule.recovery.kind, key, `${identitySeed}:${++nextSequence}`);
             rows.unshift({ id, kind: rule.recovery.kind, category: rule.category, severity: rule.recovery.severity,
               lifecycle: "resolved", priority: rule.priority, occurredAt: item.at || clockIso,
               timeBasis: item.at ? "recorded" : "observed", deliveryEligible: !baseline && rule.delivery === "native_eligible",
@@ -168,14 +166,36 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     if (Buffer.byteLength(stable(candidate), "utf8") > NOTIFICATION_MAX_BYTES) throw new TypeError("Notification snapshot exceeds bound");
     const material = stable({ ...candidate, revision: 0, generatedAt: null }) !== stable({ ...snapshot, revision: 0, generatedAt: null });
     active = nextActive; baselines = nextBaselines; lastEvidence = nextEvidence; sourceVersions = nextVersions; sequence = nextSequence;
-    if (!material) return snapshot;
-    snapshot = freezeSnapshot(candidate);
-    try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break catalog observation. */ }
-    for (const listener of listeners) try { listener(snapshot); } catch { /* Independent consumers. */ }
+    if (material) {
+      snapshot = freezeSnapshot(candidate);
+      try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break catalog observation. */ }
+      for (const listener of listeners) try { listener(snapshot); } catch { /* Independent consumers. */ }
+    }
+    try { onCommit(exportState()); } catch { /* Persistence failure cannot break committed observation. */ }
     return snapshot;
   }
 
-  return Object.freeze({ acceptFacts, readSnapshot: () => snapshot,
+  function exportState() {
+    return { identitySeed, sequence, snapshot: structuredClone(snapshot),
+      baselines: [...baselines], active: [...active], evidence: [...lastEvidence] };
+  }
+
+  function restore(state) {
+    if (snapshot.revision !== 0 || baselines.size || active.size) throw new TypeError("Notification ledger already initialized");
+    identitySeed = state.identitySeed;
+    sequence = state.sequence;
+    baselines = new Set(state.baselines);
+    active = new Map(state.active);
+    lastEvidence = new Map(state.evidence);
+    // Producer revisions are process-local clocks. The first fresh commit after
+    // restart must compare against restored conditions regardless of its number.
+    sourceVersions = new Map();
+    snapshot = freezeSnapshot(state.snapshot);
+    try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break restore. */ }
+    return snapshot;
+  }
+
+  return Object.freeze({ acceptFacts, restore, exportState, readSnapshot: () => snapshot,
     subscribe(listener) {
       if (typeof listener !== "function") throw new TypeError("Invalid notification listener");
       listeners.add(listener);

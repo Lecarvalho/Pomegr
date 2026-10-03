@@ -118,6 +118,7 @@ test("pause changes only bounded UI state and login startup is opt-in and revers
     launchAtLoginAvailable: true,
     closeBehavior: "ask",
     notifications: true,
+    notificationCategories: { attention: true, provider_news: false, model_news: false },
     notificationQuietUntil: null,
     displayPreferences: { estimatedCost: true },
     homeUpdate: { seenId: null, dismissedId: null },
@@ -166,14 +167,17 @@ test("login registration rolls back when persistence fails and close still honor
 });
 
 test("desktop renderer contract is fixed, bounded, and contains no provider metadata", () => {
-  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["checkForUpdates", "getState", "installUpdate", "quit", "setCloseBehavior", "setDisplayPreference", "setHomeUpdate", "setLaunchAtLogin", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
+  assert.deepEqual(Object.keys(DESKTOP_BEHAVIOR_CHANNELS).sort(), ["checkForUpdates", "getState", "installUpdate", "quit", "setCloseBehavior", "setDisplayPreference", "setHomeUpdate", "setLaunchAtLogin", "setNotificationCategory", "setNotificationQuiet", "setNotifications", "setPaused", "setTheme", "stateChanged"].sort());
   const update = Object.freeze({ status: "ready", version: "1.2.3", lastCheckedAt: "2026-09-04T12:00:00.000Z" });
   const state = harness({ snapshotExtension: () => ({ update }) }).controller.snapshot();
-  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "homeUpdate", "launchAtLogin", "launchAtLoginAvailable", "notificationQuietUntil", "notifications", "paused", "update"].sort());
+  assert.deepEqual(Object.keys(state).sort(), ["closeBehavior", "displayPreferences", "homeUpdate", "launchAtLogin", "launchAtLoginAvailable", "notificationCategories", "notificationQuietUntil", "notifications", "paused", "update"].sort());
   assert.deepEqual(state.displayPreferences, { estimatedCost: true });
   assert.deepEqual(state.homeUpdate, { seenId: null, dismissedId: null });
+  assert.deepEqual(state.notificationCategories, { attention: true, provider_news: false, model_news: false });
   assert.deepEqual(state.update, update);
-  assert.doesNotMatch(JSON.stringify(state), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
+  const { notificationCategories, ...remainingState } = state;
+  assert.deepEqual(notificationCategories, { attention: true, provider_news: false, model_news: false });
+  assert.doesNotMatch(JSON.stringify(remainingState), /prompt|response|command|stdout|stderr|credential|oauth|provider|session|path/i);
 });
 
 test("update installation bypasses close prompts without invoking an early app quit", async () => {
@@ -211,6 +215,23 @@ test("notification preference persists while one-hour quiet mode is temporary an
   expiry();
   assert.equal(controller.snapshot().notificationQuietUntil, null);
   assert.ok(calls.some(([name]) => name === "broadcast"));
+});
+
+test("fixed notification categories persist independently of enablement and reject unknown values", async () => {
+  const { calls, controller, persisted } = harness({ settings: { notifications: false } });
+  await Promise.all([
+    controller.setNotificationCategory("provider_news", true),
+    controller.setNotificationCategory("model_news", true),
+  ]);
+  assert.deepEqual(persisted().notificationCategories, { attention: true, provider_news: true, model_news: true });
+  assert.equal(persisted().notifications, false);
+  const saves = calls.filter(([name]) => name === "save").length;
+  for (const [key, value] of [["provider_service", true], ["open_url", true], ["attention", "true"], [["attention"], true], ["model_news", 1]]) {
+    assert.deepEqual(await controller.setNotificationCategory(key, value), controller.snapshot());
+  }
+  assert.equal(calls.filter(([name]) => name === "save").length, saves);
+  await controller.setNotifications(true);
+  assert.equal(controller.snapshot().notificationCategories.model_news, true);
 });
 
 test("Home update markers persist only fixed keys with a bounded identifier", async () => {

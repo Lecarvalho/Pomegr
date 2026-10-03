@@ -11,7 +11,7 @@ import {
   assertReleasePublishPrivacy,
   inspectAsarPrivacyEntry,
 } from "../desktop/runtime/artifact-privacy.mjs";
-import { createNeedsInputNotificationController, createSessionNotificationPoller } from "../desktop/runtime/notifications.mjs";
+import { createNativeNotificationController, createNotificationPoller } from "../desktop/runtime/notifications.mjs";
 import { installWebContentsSecurity, secureBrowserWindowOptions } from "../desktop/runtime/security-policy.mjs";
 import { DESKTOP_BEHAVIOR_CHANNELS } from "../desktop/runtime/desktop-behavior.mjs";
 import {
@@ -116,6 +116,7 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
     "../desktop/runtime/preload.cjs",
     "../desktop/runtime/shell-main.mjs",
     "../desktop/runtime/notifications.mjs",
+    "../desktop/runtime/notification-delivery-store.mjs",
     "../desktop/runtime/quiet-console.mjs",
     "../desktop/runtime/shell-stage.mjs",
     "../desktop/runtime/startup-error.mjs",
@@ -128,7 +129,7 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
   for (const sentinel of PRIVATE_FIXTURE_SENTINELS) assert.equal(source.includes(`\"${sentinel}\"`), false);
   assert.match(source, /contextBridge\.exposeInMainWorld\("pomegrDesktop", Object\.freeze\(/);
   assert.doesNotMatch(await readFile(preloadPath, "utf8"), /node:(?:fs|child_process)|process\.|ipcRenderer\.(?:send|sendSync)|shell|webFrame/);
-  assert.match(source, /body: NEEDS_INPUT_NOTIFICATION_COPY/);
+  assert.match(source, /A coding-agent session needs input/);
   assert.match(source, /setToolTip\("Pomegr .* local read-only observer"\)/);
   assert.match(source, /installQuietConsole\(\)/);
   assert.match(source, /DESKTOP_START_FAILED/);
@@ -193,22 +194,29 @@ test("desktop monitor provider surface is observation-only", () => {
   }
 });
 
-test("notification failures and session-catalog failures remain isolated and bounded", async () => {
-  const controller = createNeedsInputNotificationController({
+test("notification failures and committed-feed failures remain isolated and bounded", async () => {
+  const controller = createNativeNotificationController({
+    store: { async load() { return "restored"; }, writable: () => true, initialized: () => true,
+      has: () => false, async claim() { return true; } },
+    getPreferences: () => ({ enabled: true }),
     notify() { throw new Error("PROMPT_MUST_NOT_LEAK"); },
     openTarget() { throw new Error("COMMAND_MUST_NOT_LEAK"); },
   });
-  assert.equal(controller.observe([{ id: "codex:safe", isLive: true, needsInput: true, title: "PRIVATE_PATH_MUST_NOT_LEAK" }], { enabled: true }), 0);
+  await controller.start();
+  assert.equal(await controller.observe({ version: 1, revision: 1,
+    readiness: { catalog: "ready", providerStatus: "loading" },
+    occurrences: [{ id: "a".repeat(32), kind: "needs_input", category: "attention", priority: 100,
+      occurredAt: new Date().toISOString(), deliveryEligible: true, lifecycle: "active", provider: "codex", action: "open_session",
+      data: { sessionId: "codex:safe", sessionTitle: "PRIVATE_PATH_MUST_NOT_LEAK" } }] }), 0);
 
   let scheduled = 0;
-  const poller = createSessionNotificationPoller({
+  const poller = createNotificationPoller({
     controller,
-    async loadSessions() { throw new Error("OAUTH_TOKEN_MUST_NOT_LEAK"); },
-    getMode: () => ({ enabled: true }),
+    async loadSnapshot() { throw new Error("OAUTH_TOKEN_MUST_NOT_LEAK"); },
     schedule() { scheduled += 1; return 1; },
     cancel() {},
   });
-  poller.start();
+  await poller.start();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(scheduled, 1);
   poller.stop();
@@ -259,6 +267,7 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     setCloseBehavior() { throw new Error("ARBITRARY_EXCEPTION_MUST_NOT_LEAK"); },
     setNotifications() { throw new Error("CREDENTIAL_MUST_NOT_LEAK"); },
     setNotificationQuiet() { throw new Error("ENV_SECRET_MUST_NOT_LEAK"); },
+    setNotificationCategory() { throw new Error("CATEGORY_SECRET_MUST_NOT_LEAK"); },
     setDisplayPreference() { throw new Error("SESSION_CONTENT_MUST_NOT_LEAK"); },
     setHomeUpdate() { throw new Error("IDENTIFIER_MUST_NOT_LEAK"); },
     quit() { throw new Error("COMMAND_MUST_NOT_LEAK"); },
@@ -272,13 +281,14 @@ test("tray and renderer failures are isolated while IPC rejections are normalize
     getUpdater: () => updater,
     themeHandler: () => false,
   });
-  assert.equal(registered.length, 12);
+  assert.equal(registered.length, 13);
   for (const channel of [
     DESKTOP_BEHAVIOR_CHANNELS.setPaused,
     DESKTOP_BEHAVIOR_CHANNELS.setLaunchAtLogin,
     DESKTOP_BEHAVIOR_CHANNELS.setCloseBehavior,
     DESKTOP_BEHAVIOR_CHANNELS.setNotifications,
     DESKTOP_BEHAVIOR_CHANNELS.setNotificationQuiet,
+    DESKTOP_BEHAVIOR_CHANNELS.setNotificationCategory,
     DESKTOP_BEHAVIOR_CHANNELS.setDisplayPreference,
     DESKTOP_BEHAVIOR_CHANNELS.setHomeUpdate,
   ]) {

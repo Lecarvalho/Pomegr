@@ -66,7 +66,7 @@ test("private source scope resets baseline without appearing in public snapshot"
   ledger.acceptFacts(catalog([session("one", true)], 1, "ready", "source-A"));
   const first = ledger.readSnapshot().occurrences[0].id;
   ledger.acceptFacts(catalog([], 1, "unavailable", "source-B"));
-  assert.equal(ledger.readSnapshot().occurrences[0].lifecycle, "active");
+  assert.equal(ledger.readSnapshot().occurrences.length, 0, "old profile conditions disappear before new evidence is ready");
   ledger.acceptFacts(catalog([session("one", true)], 1, "ready", "source-B"));
   assert.equal(ledger.readSnapshot().occurrences[0].deliveryEligible, false);
   assert.notEqual(ledger.readSnapshot().occurrences[0].id, first);

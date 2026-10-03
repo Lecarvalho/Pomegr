@@ -66,6 +66,10 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
   setNotificationQuiet(value) {
     return ipcRenderer.invoke("pomegr:set-notification-quiet", value);
   },
+  setNotificationCategory(key, enabled) {
+    if (!["attention", "provider_news", "model_news"].includes(key) || typeof enabled !== "boolean") return Promise.resolve(null);
+    return ipcRenderer.invoke("pomegr:set-notification-category", key, enabled);
+  },
   setDisplayPreference(key, visible) {
     return ipcRenderer.invoke("pomegr:set-display-preference", key, visible);
   },

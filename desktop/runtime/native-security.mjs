@@ -32,6 +32,7 @@ export function installDesktopBehaviorIpcHandlers(options) {
     channels.setCloseBehavior,
     channels.setNotifications,
     channels.setNotificationQuiet,
+    channels.setNotificationCategory,
     channels.setDisplayPreference,
     channels.setHomeUpdate,
     channels.checkForUpdates,
@@ -52,6 +53,8 @@ export function installDesktopBehaviorIpcHandlers(options) {
     ? boundedDesktopMutation(getController, (controller) => controller.setNotifications(value)) : null);
   ipcMain.handle(channels.setNotificationQuiet, (event, value) => trusted(event)
     ? boundedDesktopMutation(getController, (controller) => controller.setNotificationQuiet(value)) : null);
+  ipcMain.handle(channels.setNotificationCategory, (event, key, value) => trusted(event)
+    ? boundedDesktopMutation(getController, (controller) => controller.setNotificationCategory(key, value)) : null);
   ipcMain.handle(channels.setDisplayPreference, (event, key, visible) => trusted(event)
     ? boundedDesktopMutation(getController, (controller) => controller.setDisplayPreference(key, visible)) : null);
   ipcMain.handle(channels.setHomeUpdate, (event, key, id) => trusted(event)

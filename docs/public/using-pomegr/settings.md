@@ -23,7 +23,7 @@ captured on 2026-09-30.*
 | Tab | What it does | Available in |
 | --- | --- | --- |
 | **Appearance** | Switches the **Color theme** between dark and light. **Compact density** is marked **Coming soon**. | Desktop app and browser |
-| **Notifications** | Turns **Needs-input alerts** on or off and pauses them with **Quiet for one hour**. **Completed session updates** reads **Coming soon**. | Change in the desktop app; a browser reads **Desktop managed** |
+| **Notifications** | Turns **Desktop notifications** on or off, chooses **Needs input**, **Provider updates**, and **Model news**, and pauses delivery with **Quiet for one hour**. The two news choices start off. **Completed session updates** reads **Coming soon**. | Change in the desktop app; a browser reads **Desktop managed** |
 | **Desktop** | Chooses what happens **When closing the window**: **Ask**, **Keep in tray**, or **Quit**. | Desktop app only |
 | **Phone access** | Shares the dashboard, read-only, with a paired phone on your private network. See [Phone access](phone-access.md). | Desktop app only |
 | **Providers** | Chooses the Claude Code and Codex folders Pomegr observes. | Change in the desktop app; view in a browser |
@@ -92,16 +92,26 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   **Quit Pomegr** stops it. Change a remembered choice under
   **Settings → Desktop**.
 - When a live session starts needing your input, Pomegr shows a Windows
-  notification titled with the session's title that says "This live session is
-  waiting for input." A session without a title gets the title "Pomegr" and the
-  text "A coding-agent session needs input". The notification never includes the
+  notification titled with the session's title that says "Needs input. This live
+  session is waiting for your action." A session without a title gets the title
+  "Pomegr" and the text "A coding-agent session needs input." It never includes the
   question, a command, or any conversation content. Selecting it brings the
-  Pomegr window forward and opens that session. The alerts are on by default. Turn them off, or
-  pause them with **Quiet for one hour**, under **Settings → Notifications**;
+  Pomegr window forward and opens that session. **Desktop notifications** and
+  **Needs input** are on by default. Turn either off, or pause delivery with
+  **Quiet for one hour**, under **Settings → Notifications**;
   the pause is not saved and ends when Pomegr restarts. Windows notification
   settings or Focus Assist can also silence them.
-  Pomegr alerts once for each wait, and only for a live session it saw start
-  needing input.
+  The initial observation establishes a baseline without replaying old alerts.
+  Alerts observed while disabled or quiet are not queued for later. A durable
+  claim prevents normal restart replay, but a crash before Windows displays the
+  toast can suppress it; the occurrence remains in the notification tray.
+- **Provider updates** and **Model news** are off by default. Turn either on
+  under **Settings → Notifications** to allow supported news to use Windows
+  notifications. The notification tray can still show an occurrence while native
+  delivery is disabled or quiet. **Mark all read** clears its unread indicator;
+  it does not end an active Needs input condition. Read markers stay in this
+  browser's local storage for up to 30 days. The desktop app's browser read
+  markers can reset on restart, and they do not control Windows delivery.
 - **Settings → About** shows the installed version, **Check for updates**, and
   **Restart and install**. A portable build never checks for updates. See
   [Keep Pomegr up to date](../get-started/install.md#keep-pomegr-up-to-date).

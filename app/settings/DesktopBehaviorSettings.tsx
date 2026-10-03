@@ -9,6 +9,7 @@ type BehaviorBridge = {
   setCloseBehavior?(value: DesktopState["closeBehavior"]): Promise<DesktopState | null>;
   setNotifications?(value: boolean): Promise<DesktopState | null>;
   setNotificationQuiet?(value: boolean): Promise<DesktopState | null>;
+  setNotificationCategory?(key: "attention" | "provider_news" | "model_news", value: boolean): Promise<DesktopState | null>;
 };
 type Updates = ReturnType<typeof useDesktopUpdates>;
 
@@ -53,13 +54,17 @@ export function DesktopNotificationSettings({ updates }: { updates: Updates }) {
   const { busy, failed, mutate } = useBehaviorMutation(updates);
   const state = updates.state;
   const alerts = state?.notifications === true;
-  return <>
+  const categories = state?.notificationCategories;
+  return <div data-testid="notification-preferences">
     <div className="displayPreferenceList">
-      <PreferenceRow id="needs-input-alerts" label="Needs-input alerts" description="Notify once when a live session starts waiting for your input." checked={alerts} disabled={!state || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotifications?.(checked))} />
+      <PreferenceRow id="desktop-notifications" label="Desktop notifications" description="Show enabled categories as Windows notifications from this desktop app." checked={alerts} disabled={!state || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotifications?.(checked))} />
       <PreferenceRow id="needs-input-quiet" label="Quiet for one hour" description={quietDescription(alerts ? state?.notificationQuietUntil ?? null : null)} checked={alerts && Boolean(state?.notificationQuietUntil)} disabled={!alerts || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotificationQuiet?.(checked))} />
+      <PreferenceRow id="notification-attention" label="Needs input" description="Alert when a live session starts waiting for your input." checked={categories?.attention !== false} disabled={!alerts || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotificationCategory?.("attention", checked))} />
+      <PreferenceRow id="notification-provider-news" label="Provider updates" description="Alert about supported provider release news. Off until you enable it." checked={categories?.provider_news === true} disabled={!alerts || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotificationCategory?.("provider_news", checked))} />
+      <PreferenceRow id="notification-model-news" label="Model news" description="Alert about supported model announcements. Off until you enable it." checked={categories?.model_news === true} disabled={!alerts || busy} onChange={(checked) => void mutate((bridge) => bridge.setNotificationCategory?.("model_news", checked))} />
     </div>
     {failed && <p className="commandUnavailableNote" role="status">{FAILED}</p>}
-  </>;
+  </div>;
 }
 
 export function DesktopCloseSettings({ updates }: { updates: Updates }) {
