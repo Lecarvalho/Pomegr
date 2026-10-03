@@ -410,7 +410,7 @@ function ShellSection() {
     <div className="designSystemShellSample">
       <CommandPageHeader breadcrumb={<><a href="#shell">Repositories</a><CommandBreadcrumbSeparator /><span aria-current="page">pomegr</span></>} title="Repository activity" meta="Observed sessions and recorded setup." actions={<button type="button" className="commandSecondaryAction">View sessions</button>} tabs={<><button type="button" role="tab" aria-selected="true">Overview</button><button type="button" role="tab" aria-selected="false">Files</button><button type="button" role="tab" aria-selected="false">Context</button></>} />
     </div>
-    <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 5-hour</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · Weekly</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
+    <div className="designSystemSidebarLimits" aria-label="Sidebar limits sample"><header><span>Usage limits</span><a href="/usage-limits">View</a></header><a href="/usage-limits" className="commandSidebarLimit normal"><span>Claude Code</span><strong>42% · 3h left</strong><i aria-hidden="true"><b style={{ width: "42%" }} /></i></a><a href="/usage-limits" className="commandSidebarLimit warning"><span>Codex</span><strong>78% · 2d left</strong><i aria-hidden="true"><b style={{ width: "78%" }} /></i></a></div>
   </Section>;
 }
 

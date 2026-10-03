@@ -253,17 +253,17 @@ describe("Command Center app shell", () => {
     const providers = [
       { provider: "claude", source: "Claude Code", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
         { id: "five-hour", label: "Five hour", window: "5 hours", percent: 74, resetsAt: null, severity: "normal", active: true },
-        { id: "seven-day", label: "Seven day", window: "7 days", percent: 85, resetsAt: null, severity: "critical", active: false },
+        { id: "seven-day", label: "Seven day", window: "7 days", percent: 85, resetsAt: "2026-08-27T15:00:00.000Z", severity: "critical", active: false },
       ] } },
       { provider: "codex", source: "Codex", readiness: "ready", usageLimits: { available: true, fetchedAt: null, attemptedAt: null, limits: [
         { id: "codex-primary", label: "Codex", window: "5 hours", percent: 64, resetsAt: null, severity: "normal", active: false },
-        { id: "codex-secondary", label: "Codex", window: "7 days", percent: 78, resetsAt: null, severity: "warning", active: false },
+        { id: "codex-secondary", label: "Codex", window: "7 days", percent: 78, resetsAt: "2026-08-24T21:00:00.000Z", severity: "warning", active: false },
       ] } },
     ] satisfies HomeProviderUsageLimits[];
 
     expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
-      { provider: "Claude Code", percent: 85, label: "7 days", severity: "critical" },
-      { provider: "Codex", percent: 78, label: "7 days", severity: "warning" },
+      { provider: "Claude Code", percent: 85, label: "3d left", severity: "critical" },
+      { provider: "Codex", percent: 78, label: "8h left", severity: "warning" },
     ]);
     expect(sidebarLimitsForCatalog(recent, [{ ...providers[1], usageLimits: { ...providers[1].usageLimits, limits: [] } }], Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([]);
   });
@@ -279,7 +279,7 @@ describe("Command Center app shell", () => {
     ] satisfies HomeProviderUsageLimits[];
 
     expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
-      { provider: "Claude Code", percent: 90, label: "7 days", severity: "normal" },
+      { provider: "Claude Code", percent: 90, label: "Reset unknown", severity: "normal" },
     ]);
   });
 
@@ -292,7 +292,7 @@ describe("Command Center app shell", () => {
     ] satisfies HomeProviderUsageLimits[];
 
     expect(sidebarLimitsForCatalog(recent, providers, Date.parse("2026-08-24T13:00:00.000Z"))).toEqual([
-      { provider: "Claude Code", percent: 95, label: "7 days", severity: "normal" },
+      { provider: "Claude Code", percent: 95, label: "Reset unknown", severity: "normal" },
     ]);
   });
 
@@ -318,7 +318,7 @@ describe("Command Center app shell", () => {
       readiness: { claude: "ready", codex: "ready" },
     };
     render(<AppShell><main>Home content</main></AppShell>);
-    const strong = await screen.findByText("90% · 7 days");
+    const strong = await screen.findByText("90% · Reset unknown");
     const row = strong.closest(".commandSidebarLimit");
     expect(row).toHaveClass("normal");
     expect(row).not.toHaveClass("critical");
