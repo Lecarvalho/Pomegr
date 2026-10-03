@@ -5,7 +5,7 @@
 > Scope: provider updates, usage availability, model news, and the existing Needs input notifications through one notification subsystem.
 > Continuation owner: the Pomegr maintainer running the next ACOS part.
 > Authority: proposed implementation checklist; current runtime contracts still govern shipped behavior.
-> Next task: review and merge the part-1 PR, then execute part 2 for durable state and native delivery.
+> Next task: the coordinator validates the part-1 PR, then starts part 2 for durable state and native delivery on the accepted predecessor branch; the user owns every merge.
 > Completion criteria: all five parts pass their checks, independent review, and inspected UI evidence; unsupported sources remain explicitly unavailable.
 > Permanent destinations: observation-cache.md, overview.md, provider-status.md, agent-workflow.md, the public Settings and Usage limits guides, and DESIGN.md if shared controls change.
 > Lifetime: temporary; transfer enduring contracts and remaining obligations, repair references, then delete this plan and its temporary artifacts when completed, cancelled, or superseded.
