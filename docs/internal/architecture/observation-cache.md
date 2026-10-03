@@ -879,8 +879,10 @@ the affected window and says when another observed window remains exhausted; it
 never promises account-wide access. Claude local status-line data keeps its
 original time and provenance. Retained API model windows do not join a local pair.
 
-Unknown, stale, failed, or incomplete observations break comparisons. Old or
-duplicate observations cannot rewind a newer baseline. Private credential-source
+New unknown, stale, failed, or incomplete observations break comparisons. An
+unchanged cached reading aging past its freshness deadline emits nothing and
+preserves the previously accepted baseline for a fresh comparison. Old or duplicate
+observations cannot rewind a newer baseline. Private credential-source
 filesystem changes or API/local provenance switches establish a new baseline.
 Claude reuses its existing source fingerprint; Codex stats its local auth source
 without reading credential contents. Keyring-only or unrecognized Codex sources
@@ -905,8 +907,10 @@ Usage limits.
 An adapter-recognized `authentication_required` failure establishes a private
 baseline. A fresh later completed attempt on the same source, at or after the
 previous retry deadline, can emit one `usage_authentication_required` occurrence.
-Repeated/cached failures do not replay it; a successful or differently classified
-attempt clears the comparison. Claude's existing account observer recognizes this
+Repeated/cached failures do not replay it. An unchanged cached attempt aging out,
+including on another provider's commit, preserves the private pending/notified
+episode without emitting from stale evidence. A newer successful or differently
+classified attempt clears the comparison. Claude's existing account observer recognizes this
 state; Codex's generic failures do not qualify. Native delivery requires explicit
 **Provider updates** (`provider_news`) opt-in, which defaults off. The action only
 opens Usage limits; existing native confirmation owns sign-in. A transient status,

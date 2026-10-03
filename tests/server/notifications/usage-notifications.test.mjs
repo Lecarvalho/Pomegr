@@ -78,13 +78,23 @@ for (const variant of ["stale", "partial", "out-of-order", "source-switch", "ori
   });
 }
 
-test("an unknown/stale gap breaks comparison and old data cannot rewind a newer count", () => {
+test("an unknown count breaks comparison and old data cannot rewind a newer count", () => {
   const baseline = reduceUsageNotifications(facts(0, { provider: "codex", count: 0 }), null, START);
-  const stale = reduceUsageNotifications(facts(0, { provider: "codex", count: 0, freshness: "stale" }), baseline.state, START + 10_000);
-  const next = reduceUsageNotifications(facts(120_000, { provider: "codex", count: 2, percent: 0, reset: 300_000 }), stale.state, START + 120_000);
+  const unknown = reduceUsageNotifications(facts(10_000, { provider: "codex", count: null }), baseline.state, START + 10_000);
+  const next = reduceUsageNotifications(facts(120_000, { provider: "codex", count: 2 }), unknown.state, START + 120_000);
   assert.equal(next.items.length, 0);
   const old = reduceUsageNotifications(facts(0, { provider: "codex", count: 0 }), next.state, START + 120_000);
   assert.equal(old.state.codex.count, 2);
+});
+
+test("unchanged cached windows aging out do not erase the last accepted fresh baseline", () => {
+  const first = facts(0, { provider: "codex", count: 0 });
+  const baseline = reduceUsageNotifications(first, null, START);
+  const cached = structuredClone(first); cached.providers[0].usageLimits.freshness = "stale";
+  const stale = reduceUsageNotifications(cached, baseline.state, START + 300_001);
+  assert.equal(stale.items.length, 0);
+  const fresh = reduceUsageNotifications(facts(300_002, { provider: "codex", count: 1, percent: 0, reset: 600_000 }), stale.state, START + 300_002);
+  assert.deepEqual(fresh.items.map((item) => item.kind), ["usage_window_reset", "usage_reset_available"]);
 });
 
 test("reset count establishes a baseline; only known zero-to-positive or later increases emit", () => {
@@ -209,4 +219,26 @@ test("persistent recognized authentication needs a completed retry and emits onl
   assert.equal(restored.readSnapshot().occurrences.length, 1);
   assert.equal(restored.readSnapshot().occurrences[0].category, "provider_news");
   assert.ok(normalizeNativeNotificationSnapshot(restored.readSnapshot()));
+});
+
+test("another provider's commit with stale cached auth preserves pending and notified episodes", () => {
+  const failure = (at) => facts(at, { fetchedAt: null, available: false, limits: [],
+    failureKind: "authentication_required", retryAt: iso(at + 300_000) }).providers[0];
+  let clock = START;
+  const ledger = createNotificationLedger({ now: () => clock });
+  ledger.acceptFacts({ usage: { revision: 1, providers: [failure(0)] } });
+  clock += 300_001;
+  ledger.acceptFacts({ usage: { revision: 2, providers: [failure(0), ...facts(300_001, { provider: "codex" }).providers] } });
+  assert.equal(ledger.readSnapshot().occurrences.length, 0);
+  assert.equal(ledger.exportState().usageState.authentication.claude.retryAt, iso(300_000));
+  clock += 1;
+  ledger.acceptFacts({ usage: { revision: 3, providers: [failure(300_002)] } });
+  assert.equal(ledger.readSnapshot().occurrences.length, 1, "fresh failed retry is still recognized after cached evidence aged out");
+  const id = ledger.readSnapshot().occurrences[0].id;
+  clock = START + 600_003;
+  ledger.acceptFacts({ usage: { revision: 4, providers: [failure(300_002), ...facts(600_003, { provider: "codex" }).providers] } });
+  assert.equal(ledger.exportState().usageState.authentication.claude.notified, true);
+  clock += 1;
+  ledger.acceptFacts({ usage: { revision: 5, providers: [failure(600_004)] } });
+  assert.deepEqual(ledger.readSnapshot().occurrences.map((row) => row.id), [id], "stale cached commits do not re-arm an emitted episode");
 });

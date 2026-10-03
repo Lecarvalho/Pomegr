@@ -70,15 +70,16 @@ export function reduceUsageNotifications(input, previous = null, now = Date.now(
             notified: persistent ? true : auth?.scope === scope && auth.notified === true };
         } else state.authentication[provider] = { scope, attemptedAt: attempt, retryAt: null, notified: false };
       }
-    } else state.authentication[provider] = auth?.scope === scope ? { ...auth, retryAt: null, notified: false } : null;
+    } else if (!scope || auth?.scope !== scope) state.authentication[provider] = null;
     const origin = usage?.origin || "provider_api";
     const old = state[provider];
     if (!scope || (old && (old.scope !== scope || old.origin !== origin))) state[provider] = null;
     const prior = state[provider];
     const observedAt = usage?.fetchedAt;
     if (prior && iso(observedAt) && Date.parse(observedAt) <= Date.parse(prior.observedAt)) {
-      if (usage.freshness === "stale" || usage.failureKind || usage.error || source?.complete !== true
-        || now - Date.parse(observedAt) > MAX_AGE_MS) state[provider] = { ...prior, windows: [], count: null };
+      // Aging a previously accepted cached reading is not a new observation.
+      // Keep it for a later fresh comparison; never emit from this old copy.
+      if (usage.failureKind || usage.error || source?.complete !== true) state[provider] = { ...prior, windows: [], count: null };
       continue;
     }
     const limits = usage?.limits;

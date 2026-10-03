@@ -37,7 +37,7 @@ test("background usage commits drive notifications while GETs remain passive and
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads, 1);
   assert.equal(runtime.serveNotifications().snapshot.value.occurrences.length, 0);
-  context.mock.timers.tick(240_000);
+  context.mock.timers.tick(240_001); // Real timer jitter must not erase a cached baseline just before refresh completes.
   await new Promise((resolve) => setImmediate(resolve));
   context.mock.timers.tick(60_000); // Existing coordinator publishes its completed cached read on the next observation.
   await waitFor(() => runtime.serveNotifications().snapshot.value.occurrences.length === 1);
