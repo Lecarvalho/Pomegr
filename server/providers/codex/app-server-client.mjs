@@ -11,6 +11,10 @@ export const CODEX_APP_SERVER_TIMEOUT_MS = 8_000;
 export const CODEX_APP_SERVER_MAX_LINE_BYTES = 64 * 1024;
 export const CODEX_APP_SERVER_MAX_OUTPUT_BYTES = 256 * 1024;
 export const CODEX_APP_SERVER_UNAVAILABLE = "Codex usage limits are temporarily unavailable.";
+export const CODEX_MODEL_LIST_UNAVAILABLE = "Codex client model catalog is temporarily unavailable.";
+export const CODEX_MODEL_LIST_PAGE_LIMIT = 32;
+export const CODEX_MODEL_LIST_MAX_PAGES = 4;
+export const CODEX_MODEL_LIST_MAX_ITEMS = 128;
 
 const VERSION_TIMEOUT_MS = 2_000;
 const EXIT_GRACE_MS = 400;
@@ -19,6 +23,10 @@ const WINDOWS_DESKTOP_DIRECTORY = /[\\/]AppData[\\/]Local[\\/]Programs[\\/]Codex
 
 function unavailableError() {
   return new Error(CODEX_APP_SERVER_UNAVAILABLE);
+}
+
+function modelListUnavailableError() {
+  return new Error(CODEX_MODEL_LIST_UNAVAILABLE);
 }
 
 function environmentPath(environment) {
@@ -136,14 +144,14 @@ async function closeChild(child) {
   }
 }
 
-function spawnOptions(stdio) {
-  return { shell: false, windowsHide: true, stdio };
+function spawnOptions(stdio, env) {
+  return { shell: false, windowsHide: true, stdio, ...(env ? { env } : {}) };
 }
 
-async function verifyExecutable(executable, { spawnFn, timeoutMs = VERSION_TIMEOUT_MS }) {
+async function verifyExecutable(executable, { spawnFn, env, timeoutMs = VERSION_TIMEOUT_MS }) {
   let child;
   try {
-    child = spawnFn(executable, ["--version"], spawnOptions(["ignore", "pipe", "pipe"]));
+    child = spawnFn(executable, ["--version"], spawnOptions(["ignore", "pipe", "pipe"], env));
     let output = "";
     let total = 0;
     const result = await new Promise((resolve, reject) => {
@@ -181,18 +189,25 @@ function writeJson(child, value) {
   child.stdin.write(`${JSON.stringify(value)}\n`);
 }
 
-async function requestRateLimits(executable, {
+async function requestAccountRead(executable, {
   spawnFn,
+  env,
+  method = "account/rateLimits/read",
   timeoutMs = CODEX_APP_SERVER_TIMEOUT_MS,
   maximumLineBytes = CODEX_APP_SERVER_MAX_LINE_BYTES,
   maximumOutputBytes = CODEX_APP_SERVER_MAX_OUTPUT_BYTES,
 }) {
   let child;
   try {
-    child = spawnFn(executable, ["app-server", "--stdio"], spawnOptions(["pipe", "pipe", "pipe"]));
+    child = spawnFn(executable, ["app-server", "--stdio"], spawnOptions(["pipe", "pipe", "pipe"], env));
     return await new Promise((resolve, reject) => {
       let settled = false;
       let phase = "awaitInitialize";
+      let requestId = 2;
+      let cursor = null;
+      const seenCursors = new Set();
+      const pages = [];
+      let itemCount = 0;
       let buffer = "";
       let outputBytes = 0;
       const finish = (callback, value) => {
@@ -210,16 +225,34 @@ async function requestRateLimits(executable, {
         if (!message || typeof message !== "object" || Array.isArray(message)) return;
         if (message.id === 1 && phase === "awaitInitialize") {
           if (Object.hasOwn(message, "error") || !Object.hasOwn(message, "result")) { fail(); return; }
-          phase = "awaitRateLimits";
+          phase = "awaitRead";
           try {
             writeJson(child, { jsonrpc: "2.0", method: "initialized", params: {} });
-            writeJson(child, { jsonrpc: "2.0", id: 2, method: "account/rateLimits/read", params: {} });
+            writeJson(child, { jsonrpc: "2.0", id: requestId, method,
+              params: method === "model/list" ? { limit: CODEX_MODEL_LIST_PAGE_LIMIT, cursor, includeHidden: true } : {} });
           } catch { fail(); }
           return;
         }
-        if (message.id === 2 && phase === "awaitRateLimits") {
+        if (message.id === requestId && phase === "awaitRead") {
           if (Object.hasOwn(message, "error") || !Object.hasOwn(message, "result")) { fail(); return; }
-          finish(resolve, { result: message.result });
+          if (method !== "model/list") { finish(resolve, { result: message.result }); return; }
+          const result = message.result;
+          if (!result || typeof result !== "object" || Array.isArray(result)
+            || !Array.isArray(result.data) || result.data.length > CODEX_MODEL_LIST_PAGE_LIMIT
+            || !result.data.every((row) => row && typeof row === "object" && !Array.isArray(row))
+            || (result.nextCursor !== null && result.nextCursor !== undefined
+              && (typeof result.nextCursor !== "string" || !result.nextCursor || result.nextCursor.length > 256))) { fail(); return; }
+          itemCount += result.data.length;
+          if (itemCount > CODEX_MODEL_LIST_MAX_ITEMS) { fail(); return; }
+          pages.push(result);
+          cursor = result.nextCursor ?? null;
+          if (!cursor) { finish(resolve, { pages }); return; }
+          if (pages.length >= CODEX_MODEL_LIST_MAX_PAGES || seenCursors.has(cursor)) { fail(); return; }
+          seenCursors.add(cursor);
+          requestId += 1;
+          try { writeJson(child, { jsonrpc: "2.0", id: requestId, method,
+            params: { limit: CODEX_MODEL_LIST_PAGE_LIMIT, cursor, includeHidden: true } }); }
+          catch { fail(); }
         }
       };
       child.stdout?.on("data", (chunk) => {
@@ -275,7 +308,7 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
     if (!validation) validation = (async () => {
       try {
         const candidate = await resolver();
-        return candidate && await verifyExecutable(candidate, { spawnFn, timeoutMs: options.versionTimeoutMs })
+        return candidate && await verifyExecutable(candidate, { spawnFn, env: options.env, timeoutMs: options.versionTimeoutMs })
           ? candidate
           : null;
       } catch {
@@ -293,8 +326,9 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
       try {
         const candidate = await executable();
         if (!candidate) throw unavailableError();
-        return await requestRateLimits(candidate, {
+        return await requestAccountRead(candidate, {
           spawnFn,
+          env: options.env,
           timeoutMs: options.timeoutMs,
           maximumLineBytes: options.maximumLineBytes,
           maximumOutputBytes: options.maximumOutputBytes,
@@ -302,6 +336,35 @@ export function createCodexAppServerRateLimitsReader(options = {}) {
       } catch {
         throw unavailableError();
       }
+    },
+  };
+}
+
+/** One bounded, short-lived model/list interaction; never an entitlement read. */
+export function createCodexAppServerModelCatalogReader(options = {}) {
+  const spawnFn = options.spawnFn || spawn;
+  const resolver = options.resolveExecutable || (() => resolveCodexAppServerExecutable(options));
+  let validation = null;
+  async function executable() {
+    if (!validation) validation = (async () => {
+      try {
+        const candidate = await resolver();
+        return candidate && await verifyExecutable(candidate, { spawnFn, env: options.env, timeoutMs: options.versionTimeoutMs })
+          ? candidate : null;
+      } catch { return null; }
+    })();
+    return validation;
+  }
+  return {
+    async isAvailable() { return Boolean(await executable()); },
+    async readCatalog() {
+      try {
+        const candidate = await executable();
+        if (!candidate) throw modelListUnavailableError();
+        return await requestAccountRead(candidate, { spawnFn, env: options.env, method: "model/list",
+          timeoutMs: options.timeoutMs, maximumLineBytes: options.maximumLineBytes,
+          maximumOutputBytes: options.maximumOutputBytes });
+      } catch { throw modelListUnavailableError(); }
     },
   };
 }

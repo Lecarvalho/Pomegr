@@ -12,6 +12,7 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
   let serialized = JSON.stringify(ledger.readSnapshot());
   let startPromise = null;
   let releaseRevision = 0;
+  let modelRevision = 0;
   const published = new Map();
   const pluginSetups = new Map();
 
@@ -145,6 +146,22 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
       revision: value.revision, snapshot });
   }
 
+  function acceptModelObservations(values) {
+    if (stopped || !Array.isArray(values) || values.length > 4) return ledger.readSnapshot();
+    const catalogs = [];
+    const announcements = [];
+    for (const value of values) {
+      if (!value || !["claude", "codex"].includes(value.provider)) continue;
+      if (Array.isArray(value.models)) catalogs.push(value);
+      else if (Array.isArray(value.announcements)) announcements.push({ ...value,
+        announcements: value.announcements.map((entry) => ({ kind: entry.kind === "announced" ? "model_announced"
+          : entry.kind === "deprecated" ? "model_deprecated" : entry.kind,
+        modelId: entry.modelId, label: entry.label, publishedAt: entry.publishedAt })) });
+    }
+    try { return ledger.acceptFacts({ models: { revision: ++modelRevision, catalogs, announcements, sourceScope } }); }
+    catch { return ledger.readSnapshot(); }
+  }
+
   function subscribeRevisionEvents(listener) {
     if (typeof listener !== "function") throw new TypeError("Revision subscriber must be a function");
     if (stopped) return () => {};
@@ -163,6 +180,6 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
   }
 
   return Object.freeze({ start, attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit, acceptUsageCommit,
-    acceptReleaseObservations, acceptPluginSetupCommits,
+    acceptReleaseObservations, acceptPluginSetupCommits, acceptModelObservations,
     read, readSnapshot: ledger.readSnapshot, subscribeRevisionEvents, stop });
 }

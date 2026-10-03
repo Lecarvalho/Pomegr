@@ -1,6 +1,6 @@
 /** Public, bounded notification data. Upstream payloads and source scopes stay private. */
-export type NotificationKind = "needs_input" | "provider_incident" | "provider_recovery" | "monitor_unreachable" | "usage_window_reset" | "usage_capacity_restored" | "usage_reset_available" | "usage_authentication_required" | "release_published" | "installation_update_available";
-export type NotificationCategory = "attention" | "provider_service" | "system" | "usage" | "provider_news";
+export type NotificationKind = "needs_input" | "provider_incident" | "provider_recovery" | "monitor_unreachable" | "usage_window_reset" | "usage_capacity_restored" | "usage_reset_available" | "usage_authentication_required" | "release_published" | "installation_update_available" | "model_announced" | "model_deprecated" | "model_client_listed";
+export type NotificationCategory = "attention" | "provider_service" | "system" | "usage" | "provider_news" | "model_news";
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationAction = "open_session" | "open_sessions" | "open_providers" | "open_workspace" | "open_usage_limits";
 export type NotificationSourceReadiness = "loading" | "ready" | "partial" | "stale" | "unavailable";
@@ -22,6 +22,9 @@ export type NotificationBase = {
 };
 
 export type NotificationRecord =
+  | (NotificationBase & { kind: "model_announced" | "model_deprecated" | "model_client_listed"; provider: "claude" | "codex"; data: {
+    modelId: string; label: string; evidence: "official_announcement" | "client_catalog";
+  } })
   | (NotificationBase & { kind: "release_published" | "installation_update_available"; provider: "claude" | "codex" | null; data: {
     product: "claude_code" | "codex_cli" | "pomegr_plugin"; version: string; channel: "latest" | "main"; affectedRepositories?: number;
   } })

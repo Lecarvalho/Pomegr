@@ -1,10 +1,18 @@
+import { isSafeSessionId } from "./notification-rules.mjs";
+
 /** Bounded notification facts from normalized catalog commits, before shell truncation. */
-export function createNotificationCatalog({ projectVisibility }) {
+export function createNotificationCatalog({ projectVisibility, activeSessionIds = () => [] }) {
   const byProvider = new Map();
   const trackedActiveIds = new Set();
   let snapshot = null;
 
   function acceptProvider(providerId, normalized, readiness) {
+    // Restored conditions need an explicit false row even before this process
+    // has observed them active. Missing or partial evidence still cannot clear them.
+    for (const id of activeSessionIds().slice(0, 100)) {
+      if (trackedActiveIds.size >= 100) break;
+      if (isSafeSessionId(id)) trackedActiveIds.add(id);
+    }
     const previousActive = new Set([...trackedActiveIds].filter((id) => id.startsWith(`${providerId}:`)));
     const rows = [];
     let activeCount = 0;

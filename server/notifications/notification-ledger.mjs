@@ -42,6 +42,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
   let sourceVersions = new Map(); // private rule/scope -> committed revision
   let usageState = null;
   let releaseState = null;
+  let modelState = null;
   let sequence = 0;
   let identitySeed = randomBytes(16).toString("hex");
   let snapshot = freezeSnapshot({ version: 1, revision: 0, generatedAt: null,
@@ -59,6 +60,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     let nextSequence = sequence;
     let nextUsageState = usageState;
     let nextReleaseState = releaseState;
+    let nextModelState = modelState;
     let rows = snapshot.occurrences.map((row) => ({ ...row, data: { ...row.data } }));
     const nextReadiness = { ...snapshot.readiness };
     let overflow = snapshot.activeSessionOverflow;
@@ -71,10 +73,11 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
       const group = `${rule.kind}\0${scope}`;
       const revision = sourceRevision(input.revision);
       if (revision !== null && nextVersions.has(group) && revision <= nextVersions.get(group)) continue;
-      const result = rule.derive(input, rule.source === "usage" ? nextUsageState : rule.source === "releases" ? nextReleaseState : undefined, clockMs);
+      const result = rule.derive(input, rule.source === "usage" ? nextUsageState : rule.source === "releases" ? nextReleaseState : rule.source === "models" ? nextModelState : undefined, clockMs);
       const derived = rule.occurrence ? result.items : result;
       if (rule.source === "usage") nextUsageState = result.state;
       if (rule.source === "releases") nextReleaseState = result.state;
+      if (rule.source === "models") nextModelState = result.state;
       if (!Array.isArray(derived) || derived.length > 1000) throw new TypeError("Invalid derived notification facts");
       const ready = rule.occurrence || (rule.source === "catalog" ? input.readiness === "ready" : derived.length > 0);
       // A source/profile switch retires all of that producer's old history at
@@ -83,7 +86,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
         if (!old.startsWith(`${rule.kind}\0`) || old === group) continue;
         nextBaselines.delete(old);
         nextVersions.delete(old);
-        rows = rows.filter((row) => row.kind !== rule.kind && row.kind !== rule.recovery?.kind);
+        rows = rows.filter((row) => !(rule.kinds || [rule.kind, rule.recovery?.kind]).includes(row.kind));
         if (rule.source === "catalog") overflow = 0;
         for (const key of [...nextActive.keys()]) if (key.startsWith(`${old}\0`)) nextActive.delete(key);
         for (const key of [...nextEvidence.keys()]) if (key.startsWith(`${old}\0`)) nextEvidence.delete(key);
@@ -184,6 +187,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     active = nextActive; baselines = nextBaselines; lastEvidence = nextEvidence; sourceVersions = nextVersions; sequence = nextSequence;
     usageState = nextUsageState;
     releaseState = nextReleaseState;
+    modelState = nextModelState;
     if (material) {
       snapshot = freezeSnapshot(candidate);
       try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break catalog observation. */ }
@@ -195,7 +199,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
 
   function exportState() {
     return { identitySeed, sequence, snapshot: structuredClone(snapshot),
-      baselines: [...baselines], active: [...active], evidence: [...lastEvidence], usageState: structuredClone(usageState), releaseState: structuredClone(releaseState) };
+      baselines: [...baselines], active: [...active], evidence: [...lastEvidence], usageState: structuredClone(usageState), releaseState: structuredClone(releaseState), modelState: structuredClone(modelState) };
   }
 
   function restore(state) {
@@ -207,6 +211,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     lastEvidence = new Map(state.evidence);
     usageState = structuredClone(state.usageState ?? null);
     releaseState = structuredClone(state.releaseState ?? null);
+    modelState = structuredClone(state.modelState ?? null);
     // Producer revisions are process-local clocks. The first fresh commit after
     // restart must compare against restored conditions regardless of its number.
     sourceVersions = new Map();

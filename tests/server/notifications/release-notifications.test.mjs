@@ -80,7 +80,7 @@ test("scheduler coalesces reads, stops timers, and does not wait in GET paths", 
   let calls = 0;
   let callback = null;
   const read = () => { calls++; return new Promise((done) => { resolve = done; }); };
-  const scheduler = createReleaseObservation({ readers: [read], accept: () => {}, setTimer: (fn) => { callback = fn; return 1; }, clearTimer: () => {}, initialDelayMs: 1 });
+  const scheduler = createReleaseObservation({ readers: [read], modelReaders: { catalogs: [], announcements: [] }, accept: () => {}, setTimer: (fn) => { callback = fn; return 1; }, clearTimer: () => {}, initialDelayMs: 1 });
   scheduler.start();
   callback();
   const pending = scheduler.refresh();

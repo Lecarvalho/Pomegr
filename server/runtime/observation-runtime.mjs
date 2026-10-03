@@ -429,7 +429,7 @@ export function createObservationRuntime(options = {}) {
   }
 
   const observationCoordinator = createSessionObservationCoordinator({
-    registry,
+    registry, notificationActiveSessionIds: options.notificationActiveSessionIds,
     store: observationStore,
     monitorStoreRuntime,
     checkpointStore: checkpointStoreForCoordinator,

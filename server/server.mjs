@@ -112,7 +112,9 @@ export function createMonitorRuntime(options = {}) {
   const notifications = createNotificationObservation({ now, persistence: notificationPersistence,
     sourceScope: notificationSourceScope });
   const releases = options.releaseObservation || createReleaseObservation({
+    modelOptions: { codexHome: providerFolders.codexHome, now },
     ...(options.releaseObservationOptions || {}), accept: notifications.acceptReleaseObservations,
+    acceptModels: notifications.acceptModelObservations, now,
   });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
@@ -571,6 +573,9 @@ export function createMonitorRuntime(options = {}) {
     createEmptyUsageLimits,
     onProviderStatusCommitted: notifications.acceptProviderStatusCommit,
     onUsageCommitted: notifications.acceptUsageCommit,
+    notificationActiveSessionIds: () => notifications.readSnapshot().occurrences
+      .filter((entry) => entry.kind === "needs_input" && entry.lifecycle === "active")
+      .map((entry) => entry.data.sessionId),
     onSessionCommitted(qualifiedId) {
       for (const key of homeSummaryCache.keys()) {
         if (key.startsWith(`${qualifiedId}|`)) homeSummaryCache.delete(key);

@@ -4,6 +4,8 @@ import path from "node:path";
 import { isSafeSessionId } from "./notification-rules.mjs";
 import { USAGE_NOTIFICATION_KINDS, USAGE_NOTIFICATION_WINDOWS, validUsageNotificationState } from "./usage-notifications.mjs";
 import { RELEASE_KINDS, RELEASE_PRODUCTS, validReleaseNotificationState } from "./release-notifications.mjs";
+import { validModelNotificationState } from "./model-notifications.mjs";
+import { isModelNotificationKind, normalizeModelNotificationData, modelNotificationPolicy } from "../../shared/model-notification.mjs";
 import { NOTIFICATION_MAX_ACTIVE_SESSIONS, NOTIFICATION_MAX_BYTES, NOTIFICATION_MAX_OCCURRENCES, NOTIFICATION_RETENTION_MS } from "./notification-ledger.mjs";
 
 const VERSION = 1;
@@ -26,7 +28,7 @@ function iso(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 function group(value) {
-  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset|release_published)\u0000[a-f0-9]{64}$/u.test(value);
+  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset|release_published|model_announced)\u0000[a-f0-9]{64}$/u.test(value);
 }
 function evidenceKey(value) {
   if (typeof value !== "string" || value.length > MAX_KEY) return false;
@@ -34,6 +36,7 @@ function evidenceKey(value) {
   if (parts.length !== 3 || !group(`${parts[0]}\u0000${parts[1]}`)) return false;
   if (parts[0] === "usage_window_reset") return /^(?:claude:(?:five_hour|weekly|model_weekly|authentication)|codex:(?:[a-f0-9]{64}|credits|authentication))$/u.test(parts[2]);
   if (parts[0] === "release_published") return RELEASE_PRODUCTS.includes(parts[2]);
+  if (parts[0] === "model_announced") return /^(claude|codex):[a-f0-9]{64}$/u.test(parts[2]);
   return parts[0] === "needs_input" ? isSafeSessionId(parts[2]) : ["claude", "codex"].includes(parts[2]);
 }
 function validRow(row) {
@@ -42,6 +45,12 @@ function validRow(row) {
     || !Number.isSafeInteger(row.priority) || row.priority < 0 || row.priority > 100
     || !iso(row.occurredAt) || !["recorded", "observed"].includes(row.timeBasis)
     || typeof row.deliveryEligible !== "boolean" || !["claude", "codex", ...(RELEASE_KINDS.includes(row.kind) ? [null] : [])].includes(row.provider)) return false;
+  if (isModelNotificationKind(row.kind)) {
+    const policy = modelNotificationPolicy(row.kind);
+    return normalizeModelNotificationData(row.kind, row.provider, row.data) !== null
+      && row.category === policy.category && row.severity === policy.severity && row.action === policy.action
+      && row.priority === policy.priority && row.lifecycle === "resolved" && row.timeBasis === "observed";
+  }
   if (RELEASE_KINDS.includes(row.kind)) {
     const data = row.data;
     const product = data?.product;
@@ -89,13 +98,15 @@ export function normalizeNotificationPersistence(value, expectedProfile, now = D
   const keys = ["version", "profileScope", "identitySeed", "sequence", "snapshot", "baselines", "active", "evidence"];
   if (Object.hasOwn(value || {}, "usageState")) keys.push("usageState");
   if (Object.hasOwn(value || {}, "releaseState")) keys.push("releaseState");
+  if (Object.hasOwn(value || {}, "modelState")) keys.push("modelState");
   if (typeof expectedProfile !== "string" || !HASH.test(expectedProfile)
     || !exact(value, keys)
     || value.version !== VERSION || typeof value.profileScope !== "string" || !HASH.test(value.profileScope)
     || typeof value.identitySeed !== "string" || !SEED.test(value.identitySeed)
     || !Number.isSafeInteger(value.sequence) || value.sequence < 0
     || (value.usageState != null && !validUsageNotificationState(value.usageState, now))
-    || (value.releaseState != null && !validReleaseNotificationState(value.releaseState, now))) return null;
+    || (value.releaseState != null && !validReleaseNotificationState(value.releaseState, now))
+    || (value.modelState != null && !validModelNotificationState(value.modelState, now))) return null;
   const snapshot = value.snapshot;
   if (!exact(snapshot, ["version", "revision", "generatedAt", "readiness", "occurrences", "activeSessionOverflow"])
     || snapshot.version !== 1 || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
@@ -137,7 +148,7 @@ export function normalizeNotificationPersistence(value, expectedProfile, now = D
   const retained = snapshot.occurrences.filter((row) => row.lifecycle === "active" || Date.parse(row.occurredAt) >= cutoff);
   const normalized = { identitySeed: value.identitySeed, sequence: value.sequence,
     snapshot: { ...snapshot, occurrences: retained }, baselines: value.baselines,
-    active: value.active, evidence: value.evidence, usageState: value.usageState ?? null, releaseState: value.releaseState ?? null };
+    active: value.active, evidence: value.evidence, usageState: value.usageState ?? null, releaseState: value.releaseState ?? null, modelState: value.modelState ?? null };
   return { profileMatches: value.profileScope === expectedProfile, state: normalized };
 }
 
