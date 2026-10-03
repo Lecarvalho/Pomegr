@@ -45,7 +45,7 @@ function feed(items: SessionEvent[], fields: Partial<SessionEventFeed> = {}): Se
   return { readiness: "ready", items, total: items.length, ...fields };
 }
 function many(count: number) {
-  return Array.from({ length: count }, (_, index) => event(`bulk-${index}`, "commit_observed", { at: at(11, 59 - index) }));
+  return Array.from({ length: count }, (_, index) => event(`bulk-${index}`, index % 2 ? "user_message" : "commit_observed", { at: at(11, 59 - index) }));
 }
 function mount(events: SessionEventFeed, onNavigate = vi.fn()) {
   return { onNavigate, ...render(<SessionEventsPanel events={events} onNavigate={onNavigate} />) };
@@ -78,6 +78,42 @@ const KIND_CASES: KindCase[] = [
 ];
 
 describe("SessionEventsPanel", () => {
+  it("collapses only consecutive matches, keeping the newest link and the original total", async () => {
+    const { onNavigate } = mount(feed([
+      event("a", "user_message", { at: at(11, 30) }),
+      event("b", "user_message", { at: at(11, 29) }),
+      event("c", "commit_observed"),
+      event("d", "user_message"),
+    ]));
+    expect(rowButtons()).toHaveLength(3);
+    const grouped = screen.getByRole("button", { name: /User message, 2 consecutive events; newest shown, 11:30/ });
+    expect(within(grouped).getByText("×2")).toBeInTheDocument();
+    await userEvent.setup().click(grouped);
+    expect(onNavigate).toHaveBeenCalledWith({ tab: "activities", request: `at:${Date.parse(at(11, 30))}` });
+    expect(screen.getByText("4 events")).toBeInTheDocument();
+  });
+
+  it("keeps different agents and evidence kinds separate", () => {
+    mount(feed([
+      event("a", "cache_refill", { agentId: "a", agentLabel: "Agent", refill: "possible_full" }),
+      event("b", "cache_refill", { agentId: "b", agentLabel: "Agent", refill: "possible_full" }),
+      event("c", "cache_refill", { agentId: "b", agentLabel: "Agent", refill: "lifetime_elapsed" }),
+      event("d", "resource_peak", { resource: "cpu_cores" }),
+      event("e", "resource_peak", { resource: "memory_bytes" }),
+    ]));
+    expect(rowButtons()).toHaveLength(5);
+    expect(screen.queryByText(/×/)).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("groups before applying the row limit (phone: %s)", (phone) => {
+    if (phone) stubPhone();
+    mount(feed(Array.from({ length: 12 }, (_, index) => event(`repeat-${index}`, "commit_observed"))));
+    expect(rowButtons()).toHaveLength(1);
+    expect(screen.getByText("×12")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /earlier/ })).not.toBeInTheDocument();
+    expect(screen.getByText("12 events")).toBeInTheDocument();
+  });
+
   it("covers every event kind in the contract", () => {
     expect([...new Set(KIND_CASES.map(([kind]) => kind))].sort()).toEqual([...SESSION_EVENT_KINDS].sort());
   });

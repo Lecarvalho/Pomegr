@@ -18,6 +18,7 @@ import { buildCodexAgentTree, parseCodexAgentRecords } from "./agent-metadata.mj
 import { mergeCodexPullRequestCreations, parseCodexPullRequestRecords } from "./pull-requests.mjs";
 import { mergeCodexSignals, parseCodexSignalRecords, readCodexSignals } from "./session-signals.mjs";
 import { parseCodexSkillUsageRecords } from "./skill-usage.mjs";
+import { codexUserMessageTimes } from "./user-message-times.mjs";
 import { createCodexUsageLimitsCoordinator } from "./usage-limits.mjs";
 import { createCodexLivenessCoordinator } from "./liveness.mjs";
 import { createCodexWriterPresence } from "./writer-presence.mjs";
@@ -637,6 +638,8 @@ export function createCodexProvider(options = {}) {
       usageSnapshots,
       toolCalls,
       activity,
+      userMessageTimes: metadata.approvalReviewer ? [] : Array.isArray(readOptions.userMessageTimes)
+        ? readOptions.userMessageTimes : historical || completeStory ? codexUserMessageTimes(rootRecords) : undefined,
       planTasks: approvalPlan.planTasks,
       compactions,
       efficiencyRuleEvidence: {

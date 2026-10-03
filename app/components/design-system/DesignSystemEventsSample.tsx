@@ -12,6 +12,7 @@ function event(id: string, kind: SessionEvent["kind"], at: string, fields: Parti
 const ITEMS: SessionEvent[] = [
   event("e11", "estimate_updated", "2026-08-09T11:29:00.000Z", { progress: { percent: 45, phase: "implementing" } }),
   event("e10", "commit_observed", "2026-08-09T11:26:00.000Z"),
+  event("e10-repeat", "commit_observed", "2026-08-09T11:25:00.000Z"),
   event("e09", "agent_finished", "2026-08-09T11:21:00.000Z", { agentId: "explore-summary", agentLabel: "Explore: summary domain", durationMs: 240_000 }),
   event("e08", "agent_started", "2026-08-09T11:17:00.000Z", { agentId: "explore-feed", agentLabel: "Explore: activity feed" }),
   event("e07", "agent_started", "2026-08-09T11:17:00.000Z", { agentId: "explore-summary", agentLabel: "Explore: summary domain" }),

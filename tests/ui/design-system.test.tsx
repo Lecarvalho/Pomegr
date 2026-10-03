@@ -113,7 +113,8 @@ describe("Design-system reference page", () => {
     for (const label of ["Agent started", "Agent finished", "Agent stopped", "Signal reported", "Agent estimate updated", "User message", "Resource peak", "Commit observed", "Pull request opened", "Cache refill", "Context compacted"]) {
       expect(within(full).getAllByText(label, { selector: ".sessionEventLabel" }).length).toBeGreaterThan(0);
     }
-    expect(within(full).getByText("13 events")).toBeInTheDocument();
+    expect(within(full).getByText("×2")).toBeInTheDocument();
+    expect(within(full).getByText("14 events")).toBeInTheDocument();
     expect(within(empty).getByText("No events recorded.")).toBeInTheDocument();
     expect(within(loading).getByText("Loading Event evidence…")).toBeInTheDocument();
     expect(within(unavailable).getByText("Event evidence unavailable.")).toBeInTheDocument();

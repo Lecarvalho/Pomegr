@@ -996,8 +996,8 @@ Limits of each source:
   so earlier values never appear, and a newer report replaces the event instead of adding one.
   They are agent-reported and may be stale. A signal event carries only its label and tone,
   never its description.
-- **User messages** exist only for Claude, whose transcript records user input; Codex
-  sessions contribute none. The Claude adapter replays the whole main transcript once, then
+- **User messages** use the same `userMessageTimes` evidence interface for Claude and
+  Codex. The Claude adapter replays the whole main transcript once, then
   only appended bytes, in the same pass that finds the session's work start, and keeps the
   recorded time of each user message in the optional `userMessageTimes` evidence field:
   canonical UTC timestamps, oldest to newest, the newest 256. The field holds nothing else,
@@ -1013,6 +1013,14 @@ Limits of each source:
   existed loads unchanged and has no user-message events until the session is read again.
   An event carries only the time. It does not carry the message, its type, or a request
   number, and it is not linked to any request.
+  Codex collects the same bounded timestamp list in its existing incremental source
+  pass, independently of Activity and the display tail. It recognizes primary-thread
+  `user_message` deliveries and completed `UserMessage` items, excludes synthetic,
+  empty, untimed, delegated and approval-review deliveries and user-role context mirrors,
+  and keeps delivery deduplication identifiers only in bounded acquisition-private memory.
+  Complete-history reads use the same adapter reducer. Source replacement swaps the
+  list only when the replacement is complete; restarts replay recorded evidence.
+  Neither the shared event projection nor the Overview component branches by provider.
 - **Resource peaks** are the retained session high for each resource field (CPU cores,
   memory, read rate, write rate), taken from the retained peaks the resources domain serves.
   A session high always exists, so a field yields an event only when its high reaches a
