@@ -37,6 +37,11 @@ const sessionFilePanelSource = readFileSync(join(process.cwd(), "app", "componen
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({ selector: selector.trim(), body }));
 
 describe("Pomegr visual contract", () => {
+  it("keeps consecutive-event counts in a separate non-shrinking data column", () => {
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "session.css"), "utf8");
+    expect(styles).toMatch(/\.sessionEventRow\.isGrouped\s*\{\s*grid-template-columns: 40px 16px minmax\(0, 1fr\) auto 12px/);
+    expect(styles).toMatch(/\.sessionEventCount\s*\{[^}]*var\(--text-caption\)[^}]*var\(--font-data\)[^}]*white-space: nowrap/);
+  });
   it("reuses settings row geometry and standard chips for repository setup", () => {
     const { container } = render(<RepositoryRow title="Pomegr plugin" label="Enabled" tone="positive" detail="Project installation" actions={<button className="commandQuietAction">Recheck</button>} />);
     expect(container.firstChild).toHaveClass("commandSettingRow", "repositoryRow");

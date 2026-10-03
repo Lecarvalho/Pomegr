@@ -13,6 +13,7 @@ import { canonicalCodexSourcePath, codexSourcePathKey } from "./source-path.mjs"
 import { initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./recorded-lifecycle.mjs";
 import { mergeCodexContextSnapshot } from "./context.mjs";
 import { foldSessionEvidence } from "../kernel/session-fold.mjs";
+import { createCodexUserMessageTimeState, reduceCodexUserMessageTimes, codexUserMessageTimesFromState } from "./user-message-times.mjs";
 
 const MAX_USAGE_SNAPSHOTS = 4_096;
 const MAX_TOOL_CALLS = 4_096;
@@ -191,7 +192,7 @@ function createPart(descriptor, yieldControl, onCounter) {
     },
     parseRecord(line) { return JSON.parse(line.toString("utf8")); },
     maximumFragmentBytes: MAX_CODEX_RECORD_BYTES,
-    initialState: () => ({ completeRecords: 0, lifecycle: initialCodexRecordedLifecycle() }),
+    initialState: () => ({ completeRecords: 0, lifecycle: initialCodexRecordedLifecycle(), userMessages: createCodexUserMessageTimeState() }),
     onCounter,
     reduce(state, record) {
       if (part.capture) {
@@ -200,7 +201,8 @@ function createPart(descriptor, yieldControl, onCounter) {
       }
       part.tail.push(record);
       if (part.tail.length > 24) part.tail.splice(0, part.tail.length - 24);
-      return { completeRecords: state.completeRecords + 1, lifecycle: reduceCodexRecordedLifecycle(state.lifecycle, record) };
+      return { completeRecords: state.completeRecords + 1, lifecycle: reduceCodexRecordedLifecycle(state.lifecycle, record),
+        userMessages: reduceCodexUserMessageTimes(state.userMessages, record) };
     },
     yieldControl,
   });
@@ -479,7 +481,13 @@ export function createCodexIncrementalObserver(options = {}) {
         suffixDigest: part.descriptor.suffixDigest,
       }]),
     );
+    const primary = sourceSet.selectedMetadata.find((item) => item.localId === localSessionId);
+    const primaryPart = primary?.rolloutFile && [...session.parts.entries()]
+      .find(([file]) => sourceKey(file) === sourceKey(primary.rolloutFile))?.[1];
+    const userMessageState = primaryPart?.ingestor.snapshot()?.candidate?.userMessages;
     const next = await readEvidence(localSessionId, {
+      // Full-source state, never the lookbehind/delta or Activity display window.
+      userMessageTimes: userMessageState && !primary?.approvalReviewer ? codexUserMessageTimesFromState(userMessageState) : [],
       historical: Boolean(sourceSet.historical),
       completeStory,
       incrementalRecordsByFile,

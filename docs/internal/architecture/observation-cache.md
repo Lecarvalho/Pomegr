@@ -217,7 +217,7 @@ the committed retained-resource block, and the session's recorded refill and com
 times. D itself adds no acquisition or provider parsing, and a GET serves the committed
 value. Its only persistence is the session-event sidecar described below, written by P
 after a commit. Its two recorded lists are written
-upstream: U2 produces the optional `userMessageTimes` evidence field (Claude only, the
+upstream: both adapters produce the same optional `userMessageTimes` evidence field (the
 newest 256 recorded times, checkpointed with the evidence), and the live Git check records
 `commitTimesInWindow` in the sidecar (the newest 50 committer times). The commit times
 reach the projection through the monitor-private `repositoryRecordForSession` side

@@ -82,21 +82,50 @@ function clockTime(value: string) {
 // A newer monitor may record a kind this browser does not know; omit it rather than invent a label.
 const isKnownEvent = (event: SessionEvent) => Object.hasOwn(PRESENTATION, event.kind);
 
-function SessionEventRow({ event, onNavigate }: { event: SessionEvent; onNavigate: (changes: Partial<SessionRouteQuery>) => void }) {
+function groupConsecutiveEvents(items: SessionEvent[]) {
+  const groups: Array<{ event: SessionEvent; count: number }> = [];
+  let previousKey: string | null = null;
+  for (const event of items) {
+    if (!isKnownEvent(event)) { previousKey = null; continue; }
+    const presentation = PRESENTATION[event.kind];
+    const detail = presentation.detail(event);
+    // Missing or unrecognised evidence cannot establish that two detailed events match.
+    if (detail === null && event.kind !== "user_message") {
+      groups.push({ event, count: 1 });
+      previousKey = null;
+      continue;
+    }
+    const key = JSON.stringify([event.kind, detail,
+      presentation.destination === agentDestination ? plainText(event.agentId) : null,
+      event.kind === "signal_reported" ? event.signal?.tone : null]);
+    const previous = groups.at(-1);
+    if (previous && key === previousKey) previous.count++;
+    else groups.push({ event, count: 1 });
+    previousKey = key;
+  }
+  return groups;
+}
+
+function SessionEventRow({ event, count, onNavigate }: { event: SessionEvent; count: number; onNavigate: (changes: Partial<SessionRouteQuery>) => void }) {
   const presentation = PRESENTATION[event.kind];
   const detail = presentation.detail(event);
   const time = clockTime(event.at);
   const text = detail ? `${presentation.label} · ${detail}` : presentation.label;
   const destination = presentation.destination;
-  if (!destination) return <div className="sessionEventRow isStatic">
+  const countLabel = count > 1 ? `${count.toLocaleString("en-US")} consecutive events; newest shown` : null;
+  const countBadge = countLabel && <span className="sessionEventCount" aria-label={countLabel} title={countLabel}>×{count.toLocaleString("en-US")}</span>;
+  const groupedClass = count > 1 ? " isGrouped" : "";
+  if (!destination) return <div className={`sessionEventRow isStatic${groupedClass}`}>
     <time className="sessionEventTime" dateTime={event.at} suppressHydrationWarning>{time ?? "—"}</time>
     <svg className="sessionEventGlyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false" data-event-kind={event.kind}>{GLYPH_SHAPES[event.kind]}</svg>
     <span className="sessionEventText" title={text}><strong className="sessionEventLabel">{presentation.label}</strong>{detail && <span className="sessionEventDetail">{detail}</span>}</span>
+    {countBadge}
   </div>;
-  return <button type="button" className="commandQuietAction sessionEventRow" aria-label={[presentation.label, detail, time].filter(Boolean).join(", ")} onClick={() => onNavigate(destination(event))}>
+  return <button type="button" className={`commandQuietAction sessionEventRow${groupedClass}`} aria-label={[presentation.label, detail, countLabel, time].filter(Boolean).join(", ")} onClick={() => onNavigate(destination(event))}>
     <time className="sessionEventTime" dateTime={event.at} suppressHydrationWarning>{time ?? "—"}</time>
     <svg className="sessionEventGlyph" viewBox="0 0 16 16" aria-hidden="true" focusable="false" data-event-kind={event.kind}>{GLYPH_SHAPES[event.kind]}</svg>
     <span className="sessionEventText" title={text}><strong className="sessionEventLabel">{presentation.label}</strong>{detail && <span className="sessionEventDetail">{detail}</span>}</span>
+    {countBadge}
     <svg className="sessionEventChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg>
   </button>;
 }
@@ -110,7 +139,7 @@ export function SessionEventsPanel({ events, onNavigate, headingId = "session-ev
   const phone = usePhoneLayout();
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
-  const items = events.readiness === "ready" ? events.items.filter(isKnownEvent) : [];
+  const items = events.readiness === "ready" ? groupConsecutiveEvents(events.items) : [];
   const limit = phone ? PHONE_VISIBLE_EVENTS : DESKTOP_VISIBLE_EVENTS;
   const earlier = items.length - limit;
   const visible = expanded ? items : items.slice(0, limit);
@@ -120,7 +149,7 @@ export function SessionEventsPanel({ events, onNavigate, headingId = "session-ev
       ? <p className="sessionOverviewEmpty">No events recorded.</p>
       : <>
         {/* data-expanded lets the stylesheet scroll the list inside the collapsed height on desktop instead of growing the panel. */}
-        <ul id={listId} className="sessionEventList" data-expanded={expanded ? "true" : undefined}>{visible.map((event) => <li key={event.id}><SessionEventRow event={event} onNavigate={onNavigate} /></li>)}</ul>
+        <ul id={listId} className="sessionEventList" data-expanded={expanded ? "true" : undefined}>{visible.map(({ event, count }) => <li key={event.id}><SessionEventRow event={event} count={count} onNavigate={onNavigate} /></li>)}</ul>
         <div className="sessionEventsFooter">
           {earlier > 0 && <button type="button" className="commandTextLink" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((open) => !open)}>{expanded ? "Show fewer" : `Show ${earlier} earlier`}</button>}
           {/* The total counts events derivable from retained evidence, so it claims no complete session history. */}
