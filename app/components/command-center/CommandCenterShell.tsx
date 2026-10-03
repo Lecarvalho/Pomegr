@@ -133,6 +133,15 @@ function NavigationLink({ item, pathname, onNavigate }: { item: NavigationItem; 
 
 export type SidebarLimit = { provider: string; percent: number; label: string; severity: "normal" | "warning" | "critical" };
 
+function sidebarResetLabel(resetsAt: string | null, now: number) {
+  const remaining = resetsAt ? Date.parse(resetsAt) - now : NaN;
+  if (!Number.isFinite(remaining)) return "Reset unknown";
+  if (remaining <= 0) return "Reset due";
+  if (remaining >= 86_400_000) return `${Math.floor(remaining / 86_400_000)}d left`;
+  if (remaining < 3_600_000) return "<1h left";
+  return `${Math.floor(remaining / 3_600_000)}h left`;
+}
+
 export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: ReturnType<typeof useUsageLimits>["providers"], referenceTime: number): SidebarLimit[] {
   const after = referenceTime - 7 * 24 * 60 * 60 * 1000;
   const recentProviders = new Set(sessions.filter((session) => {
@@ -144,7 +153,7 @@ export function sidebarLimitsForCatalog(sessions: SessionSummary[], providers: R
     const tightest = [...(entry.usageLimits?.limits || [])].sort((left, right) => right.percent - left.percent)[0];
     // Severity is reconstructed monitor-side (see AGENTS.md); mirror the Usage limits page and
     // trust the provided value instead of re-deriving thresholds from the percent here.
-    return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: tightest.window || tightest.label, severity: tightest.severity ?? "normal" }] : [];
+    return tightest ? [{ provider: entry.source, percent: Math.max(0, Math.min(100, tightest.percent)), label: sidebarResetLabel(tightest.resetsAt, referenceTime), severity: tightest.severity ?? "normal" }] : [];
   });
 }
 
@@ -156,7 +165,11 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [markVariant, setMarkVariant] = useState<PomegrMarkVariant>("divided");
   const [query, setQuery] = useState("");
-  const [sidebarReferenceTime] = useState(() => Date.now());
+  const [sidebarReferenceTime, setSidebarReferenceTime] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setSidebarReferenceTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const shortcutHint = useSyncExternalStore(subscribeToPlatformHint, getClientShortcutHint, getServerShortcutHint);
   const notificationWrapRef = useRef<HTMLDivElement | null>(null);
   const notificationButtonRef = useRef<HTMLButtonElement | null>(null);
