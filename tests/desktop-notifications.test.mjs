@@ -52,6 +52,39 @@ function controller(store, options = {}) {
   return { instance, shown, opened };
 }
 
+test("usage occurrences deliver fixed copy once and clicks only open Usage limits", async (context) => {
+  const { store } = await fixture(context);
+  const native = controller(store());
+  await native.instance.start();
+  await native.instance.observe(snapshot([]));
+  const row = occurrence(101, { kind: "usage_reset_available", category: "usage", severity: "info", lifecycle: "resolved",
+    priority: 60, timeBasis: "observed", action: "open_usage_limits", data: { availableCount: 2, id: "PRIVATE_CREDIT_ID", description: "PRIVATE_BODY" } });
+  assert.equal(await native.instance.observe(snapshot([row], 2)), 1);
+  assert.equal(await native.instance.observe(snapshot([row], 3)), 0);
+  assert.equal(native.shown[0].payload.title, "Codex reset available");
+  assert.match(native.shown[0].payload.body, /no reset has been used/);
+  assert.doesNotMatch(JSON.stringify(native.shown[0].payload), /PRIVATE_/);
+  native.shown[0].onClick();
+  assert.deepEqual(native.opened, ["/usage-limits"]);
+  assert.equal(normalizeNativeNotificationSnapshot(snapshot([{ ...row, action: "open_session" }])), null);
+});
+
+test("persistent usage authentication alerts require Provider news opt-in without a backlog", async (context) => {
+  const { store } = await fixture(context);
+  let optedIn = false;
+  const native = controller(store(), { preferences: () => ({ enabled: true, categories: { provider_news: optedIn } }) });
+  await native.instance.start(); await native.instance.observe(snapshot([]));
+  const auth = (number) => occurrence(number, { kind: "usage_authentication_required", category: "provider_news", severity: "warning",
+    lifecycle: "resolved", priority: 75, timeBasis: "observed", action: "open_usage_limits", data: {} });
+  assert.equal(await native.instance.observe(snapshot([auth(102)], 2)), 0);
+  optedIn = true;
+  assert.equal(await native.instance.observe(snapshot([auth(102)], 3)), 0);
+  assert.equal(await native.instance.observe(snapshot([auth(103)], 4)), 1);
+  assert.match(native.shown[0].payload.body, /still requires sign-in after a retry/);
+  native.shown[0].onClick();
+  assert.deepEqual(native.opened, ["/usage-limits"]);
+});
+
 test("first valid observation consumes retained conditions; new recurrence claims before dispatch and survives restart", async (context) => {
   const { file, store } = await fixture(context);
   const first = controller(store());

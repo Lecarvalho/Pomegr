@@ -1,4 +1,5 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
+import { copyUsageNotificationSource } from "../normalize/usage-notification-facts.mjs";
 import { createProviderFoldersSnapshot } from "../normalize/provider-folders.mjs";
 import { createPipelineFailureRecorder } from "../diagnostics/pipeline-operations-failures.mjs";
 import {
@@ -464,7 +465,7 @@ export function createProviderRegistry(adapters, options = {}) {
           return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
         }
         try {
-          return parseProviderUsageLimits(value);
+          return copyUsageNotificationSource(value, parseProviderUsageLimits(value));
         } catch {
           recordDiagnostic(provider.id, "usageLimitEvidenceRejected");
           return createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });

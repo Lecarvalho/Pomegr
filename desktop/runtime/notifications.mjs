@@ -1,5 +1,6 @@
 import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
+import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPayload, usageNotificationPolicy } from "../../shared/usage-notification.mjs";
 
 export const NOTIFICATION_POLL_INTERVAL_MS = 2_000;
 export const NOTIFICATION_MAX_CATCHUP_MS = 15 * 60_000;
@@ -60,7 +61,7 @@ export function notificationTarget(record) {
       if (isAllowedNotificationTarget(target)) return target;
     } catch { /* A malformed identity falls back to the session list. */ }
   }
-  if (record?.action === "open_providers") return "/usage-limits";
+  if (["open_providers", "open_usage_limits"].includes(record?.action)) return "/usage-limits";
   if (record?.action === "open_workspace") return "/";
   return NOTIFICATION_FALLBACK_TARGET;
 }
@@ -90,9 +91,15 @@ export function normalizeNativeNotificationSnapshot(input) {
     seen.add(row.id);
     const normalized = { id: row.id, kind: row.kind, category: row.category, priority: row.priority,
       occurredAt: row.occurredAt, deliveryEligible: row.deliveryEligible, lifecycle: row.lifecycle,
-      provider: row.provider, action: ["open_session", "open_sessions", "open_providers", "open_workspace"].includes(row.action) ? row.action : null,
+      provider: row.provider, action: ["open_session", "open_sessions", "open_providers", "open_workspace", "open_usage_limits"].includes(row.action) ? row.action : null,
       data: {} };
-    if (row.kind === "needs_input") {
+    if (isUsageNotificationKind(row.kind)) {
+      const data = normalizeUsageNotificationData(row.kind, row.provider, row.data);
+      const policy = usageNotificationPolicy(row.kind);
+      if (!data || row.category !== policy.category || row.action !== "open_usage_limits" || row.priority !== policy.priority
+        || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+      normalized.data = data;
+    } else if (row.kind === "needs_input") {
       if (typeof row.data?.sessionId !== "string" || !SESSION_ID.test(row.data.sessionId)
         || !row.data.sessionId.startsWith(`${row.provider}:`)
         || typeof row.data.sessionTitle !== "string" || row.data.sessionTitle.length > 96
@@ -112,6 +119,7 @@ export function normalizeNativeNotificationSnapshot(input) {
 
 /** Static native copy; no provider-supplied description, URL, or command is read. */
 export function nativeNotificationPayload(record) {
+  if (isUsageNotificationKind(record.kind)) return usageNotificationPayload(record);
   if (record.kind === "needs_input" && record.lifecycle === "active") {
     const title = record.data.sessionTitle.replace(/\s+/gu, " ").trim().slice(0, 96);
     return Object.freeze(title

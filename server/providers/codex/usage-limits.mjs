@@ -1,4 +1,7 @@
 import { createCoordinatedUsageLimitsReader } from "../../normalize/usage-limits.mjs";
+import fs from "node:fs";
+import { createHash } from "node:crypto";
+import { withUsageNotificationSource } from "../../normalize/usage-notification-facts.mjs";
 import { clampUsageLimitPercent, usageLimitSeverity } from "../../../shared/usage-limit-severity.mjs";
 
 const MAX_BUCKETS = 12;
@@ -79,7 +82,7 @@ function rateLimitBuckets(value) {
     : null;
 }
 
-export function normalizeCodexRateLimits(response) {
+export function normalizeCodexRateLimits(response, comparisonWindows = []) {
   const value = responseValue(response);
   const buckets = rateLimitBuckets(value);
   if (buckets === null) return null;
@@ -90,20 +93,71 @@ export function normalizeCodexRateLimits(response) {
     usedIds.add(id);
     const label = safeLabel(snapshot.limitName) || (id === "codex" ? "Codex" : `Usage bucket ${index + 1}`);
     const reached = REACHED_TYPES.has(snapshot.rateLimitReachedType);
-    return [
+    const windows = [
       normalizedWindow(snapshot.primary, { id, label, kind: "primary", reached }),
       normalizedWindow(snapshot.secondary, { id, label, kind: "secondary", reached }),
     ].filter(Boolean);
+    for (const window of windows) {
+      const kind = window.id.endsWith("-primary") ? "primary" : "secondary";
+      const identity = key || snapshot.limitId || "legacy";
+      if (typeof identity !== "string" || identity.length > 256) continue;
+      comparisonWindows.push({ id: window.id, window: kind,
+        key: createHash("sha256").update(JSON.stringify([identity, kind])).digest("hex") });
+    }
+    return windows;
   }).slice(0, MAX_BUCKETS);
 }
 
-export function createCodexUsageLimitsCoordinator({ request, now = () => Date.now() }) {
+export function normalizeCodexResetCredits(response) {
+  const count = responseValue(response)?.rateLimitResetCredits?.availableCount;
+  return Number.isSafeInteger(count) && count >= 0 && count <= 1000
+    ? { status: "supported", availableCount: count }
+    : { status: "unknown", availableCount: null };
+}
+
+// Stat only, never credential contents. Keyring-only sources have no comparable
+// local identity and remain unavailable to transition notifications.
+export function codexUsageSourceScope(file) {
+  try {
+    const stat = fs.statSync(file, { bigint: true });
+    if (!stat.isFile() || stat.size > 1_048_576n) return null;
+    return createHash("sha256").update(`${file}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`).digest("hex");
+  } catch { return null; }
+}
+
+function completeRateLimits(response, limits) {
+  const value = responseValue(response);
+  const raw = value?.rateLimitsByLimitId;
+  if (raw != null && (typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).length > MAX_BUCKETS
+    || Object.values(raw).some((bucket) => !bucket || typeof bucket !== "object" || Array.isArray(bucket)))) return false;
+  const buckets = rateLimitBuckets(value);
+  if (!buckets?.length) return false;
+  let count = 0;
+  for (const [, bucket] of buckets) {
+    for (const window of [bucket.primary, bucket.secondary]) {
+      if (window == null) continue;
+      count += 1;
+      if (typeof window.usedPercent !== "number" || !Number.isFinite(window.usedPercent)
+        || window.usedPercent < 0 || window.usedPercent > 100 || !resetTimestamp(window.resetsAt)
+        || !Number.isInteger(window.windowDurationMins) || window.windowDurationMins <= 0
+        || window.windowDurationMins > MAX_WINDOW_MINUTES) return false;
+    }
+  }
+  return count === limits.length && count > 0;
+}
+
+export function createCodexUsageLimitsCoordinator({ request, now = () => Date.now(), sourceScope = () => null }) {
   return createCoordinatedUsageLimitsReader({
     now,
     async read() {
-      const limits = normalizeCodexRateLimits(await request());
+      const scope = sourceScope();
+      const response = await request();
+      const windows = [];
+      const limits = normalizeCodexRateLimits(response, windows);
       if (limits === null) throw new TypeError("Invalid Codex rate-limit response");
-      return limits;
+      return withUsageNotificationSource({ limits, resetCredits: normalizeCodexResetCredits(response) },
+        scope && scope === sourceScope() ? scope : null,
+        completeRateLimits(response, limits) && windows.length === limits.length, windows);
     },
     errorMessage: () => "Codex usage limits are temporarily unavailable.",
   });

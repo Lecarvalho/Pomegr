@@ -1,11 +1,11 @@
 # Provider observers and unified notifications
 
-> Status: active implementation; parts 1–2 are implemented and locally verified, with parts 3–5 assigned to subsequent sequential chats.
+> Status: active implementation; parts 1–3 are implemented, with phase-3 publication/acceptance in progress and parts 4–5 assigned to subsequent sequential chats.
 > Created: 2026-10-03.
 > Scope: provider updates, usage availability, model news, and the existing Needs input notifications through one notification subsystem.
 > Continuation owner: the Pomegr maintainer running the next ACOS part.
 > Authority: proposed implementation checklist; current runtime contracts still govern shipped behavior.
-> Next task: the coordinator validates the part-2 stacked PR, then starts part 3 for usage availability on the accepted predecessor branch; the user owns every merge.
+> Next task: the coordinator validates the part-3 stacked PR, then starts part 4 on its accepted predecessor; the user owns every merge.
 > Completion criteria: all five parts pass their checks, independent review, and inspected UI evidence; unsupported sources remain explicitly unavailable.
 > Permanent destinations: observation-cache.md, overview.md, provider-status.md, agent-workflow.md, the public Settings and Usage limits guides, and DESIGN.md if shared controls change.
 > Lifetime: temporary; transfer enduring contracts and remaining obligations, repair references, then delete this plan and its temporary artifacts when completed, cancelled, or superseded.
@@ -294,7 +294,7 @@ authorized behavior, measured usage, or a promise of implementation size.
 
 - [x] Part 1: pure-rule tests, cached-serving/revision/privacy tests, existing app-shell tests, boundary checks, and `npm run verify:fast` pass.
 - [x] Part 2: desktop notification/behavior/security tests and preference UI tests pass; no provider actions are reachable through a notification.
-- [ ] Part 3: usage fixtures cover deadline-only, real rollover, same-window recovery, other exhausted windows, source switches, stale data, repeated credit counts, and unsupported fields.
+- [x] Part 3: usage fixtures cover deadline-only, real rollover, same-window recovery, other exhausted windows, source switches, stale data, repeated credit counts, unsupported fields, legacy/multi-bucket Codex windows, and opt-in persistent authentication alerts.
 - [ ] Part 4: release fixtures cover channel changes, downgrades, equal versions, prereleases, unavailable installed versions, invalid payloads, redirects, timeouts, and duplicate repositories.
 - [ ] Part 5: model fixtures cover announcements, bundled catalogs, partial pagination, aliases, unavailable entitlement sources, and false deprecation prevention.
 - [ ] Final review covers all five parts, serialization/persistence boundaries, scheduler isolation, stale data, retention, multi-client delivery, and extension cost.
@@ -358,6 +358,16 @@ lose a toast; they are not an exactly-once OS guarantee. The isolated synthetic
 browser capture commands are in the part-1 and part-2 run artifacts. Part 5 must
 capture the P2 preferences and read-state selectors at 1280 and 390 px and build
 an isolated Electron-authenticated fixture before claiming native OS acceptance.
+
+Part-3 checkpoint (2026-10-03): existing committed account observations feed one
+usage rule. It distinguishes rollover, same-window recovery, earned-reset availability,
+and recognized authentication that persists after its normal retry. Codex legacy and
+multi-bucket identities stay private; only fixed window wording is public. Native
+authentication delivery requires Provider updates opt-in. The account-only protocol
+is unchanged, GETs remain cache-only, and no reset or sign-in is invoked. Part 5 owns
+P3-recovery and P3-reset-available captures, plus the count note and persistent-auth
+copy/opt-in evidence; runnable synthetic commands are in the part-3 capture artifact.
+No screenshots or native OS display/click acceptance are claimed in part 3.
 
 Part 2 supplies persistence, native delivery and durable read markers. Part 5 owns
 both retained part-1 visual claims at 1280 and 390 px: Needs input with safe

@@ -491,7 +491,6 @@ const providerUsageLimitSchema = z.object({
   severity: z.enum(["normal", "warning", "critical"]),
   active: z.boolean(),
 }).strict();
-
 export const providerUsageLimitsSchema = z.object({
   available: z.boolean(),
   fetchedAt: evidenceNullableTimestamp,
@@ -506,11 +505,12 @@ export const providerUsageLimitsSchema = z.object({
     fetchedAt: evidenceTimestamp,
     limits: z.array(providerUsageLimitSchema).min(1).max(16),
   }).strict().optional(),
+  resetCredits: z.object({ status: z.enum(["supported", "unknown"]), availableCount: z.number().int().min(0).max(1000).nullable(), observedAt: evidenceTimestamp }).strict()
+    .refine((value) => (value.status === "unknown") === (value.availableCount === null)).optional(),
 }).strict();
 
 /** @typedef {z.infer<typeof providerSessionEvidenceSchema>} ProviderSessionEvidence */
-
-/** @param {unknown} value @param {string | undefined} [expectedLocalId] */
+/** Parse evidence for the requested local session. @param {unknown} value @param {string | undefined} [expectedLocalId] */
 export function parseProviderSessionEvidence(value, expectedLocalId) {
   const evidence = providerSessionEvidenceSchema.parse(value);
   if (expectedLocalId !== undefined && evidence.localId !== expectedLocalId) {

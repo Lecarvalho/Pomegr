@@ -775,8 +775,8 @@ The official source and component-filter details are documented in [provider sta
 
 `server/notifications/` owns pure rules, the occurrence ledger, and its private
 atomic sidecar.
-`server/runtime/notification-observation.mjs` accepts only committed catalog and
-public-provider-status facts, derives a bounded immutable response, and publishes its
+`server/runtime/notification-observation.mjs` accepts only committed catalog,
+usage, and public-provider-status facts, derives a bounded immutable response, and publishes its
 own revision. The catalog owner projects Needs input from complete normalized headers
 before the 200-row browser shell cap, retaining at most 100 active session identities
 plus an overflow count. It does not hydrate sessions or acquire provider data for this
@@ -797,10 +797,20 @@ snapshot and does not block catalog publication.
 The version-1 public response is `{ version, revision, generatedAt, readiness:
 { catalog, providerStatus }, occurrences, activeSessionOverflow }`. Each occurrence
 has only an opaque `id`, fixed `kind` (`needs_input`, `provider_incident`,
-`provider_recovery`), `category`, `severity`, `lifecycle`, bounded `priority`,
+`provider_recovery`, `usage_window_reset`, `usage_capacity_restored`,
+`usage_reset_available`, `usage_authentication_required`), `category`, `severity`, `lifecycle`, bounded `priority`,
 `occurredAt`, fixed `timeBasis`, `deliveryEligible`, fixed `action`, normalized
 `provider`, and narrow `data`. Needs input carries a validated normalized session ID
 and bounded catalog title; provider conditions carry a fixed health status only.
+Usage reset/recovery records carry only a fixed window key (`five_hour`, `weekly`,
+`model_weekly`, `primary`, `secondary`), source origin (`provider_api` or Claude's
+`local_observation`), and `otherExhausted`. Reset availability carries only a
+positive integer `availableCount` at most 1000, for Codex. These resolved occurrences
+use category `usage`, priority 60, severity `info`, observed time, and the fixed
+`open_usage_limits` action. Browser and native delivery share the public allowlist
+and fixed copy; neither contains transition rules.
+Persistent usage authentication carries empty data, category `provider_news`,
+warning severity, and priority 75. It uses the same fixed Usage limits action.
 The shared type also reserves `monitor_unreachable` with null provider and empty data
 for the client-local `client:` namespace; the monitor never emits it. No raw source
 payload, source scope, provider-native identity, path, credential, prompt, command,
@@ -850,6 +860,67 @@ boolean and `notificationCategories.{attention,provider_news,model_news}` boolea
 through fixed-key trusted-main-frame IPC. News defaults off, and the one-hour
 quiet timer is not persisted. Browser/LAN requests cannot mutate desktop
 preferences or trigger native dispatch.
+
+### Usage transitions and source comparability
+
+The existing usage coordinator owns acquisition, its five-minute cooldown,
+Retry-After, and last-good retention. Background usage commits invoke the registered
+usage rule; GETs and reset deadlines never acquire data. The existing one-minute
+observation cadence checks overdue windows through that coordinator, so sleep/resume
+does not add a timer or bypass cooldown. A clock crossing alone emits nothing.
+
+The reducer requires a complete observation no more than five minutes old, a
+matching private source and origin, unchanged window membership/durations, and a
+strictly newer original observation time. A rollover needs the old deadline to
+have passed since the previous observation and a fresh, later future deadline.
+Same-window exhausted-to-available evidence emits capacity restored, without a
+reset claim. A rollover and recovery for one window coalesce. Copy always names
+the affected window and says when another observed window remains exhausted; it
+never promises account-wide access. Claude local status-line data keeps its
+original time and provenance. Retained API model windows do not join a local pair.
+
+Unknown, stale, failed, or incomplete observations break comparisons. Old or
+duplicate observations cannot rewind a newer baseline. Private credential-source
+filesystem changes or API/local provenance switches establish a new baseline.
+Claude reuses its existing source fingerprint; Codex stats its local auth source
+without reading credential contents. Keyring-only or unrecognized Codex sources
+cannot establish comparable notification evidence. Codex window notifications
+cover both the legacy response without a limit ID and complete multi-bucket maps.
+The adapter binds each window to a private digest of its bucket identity and slot;
+distinct primary windows never share comparison state. The response carries only
+the fixed primary/secondary key, with conservative "A Codex primary window" wording.
+All complete buckets contribute to the other-exhausted flag and comparison signature.
+
+The official [Codex account schema](https://learn.chatgpt.com/docs/app-server)
+provides `rateLimitResetCredits.availableCount`. The adapter keeps only
+`resetCredits: { status, availableCount, observedAt }`: an integer 0–1000 means
+supported; absent, null, or malformed means unknown with a null count. The time
+is the original successful observation, also on retained failures. The first known
+count is a baseline. Known zero-to-positive and later increases emit once;
+unknown gaps and repeated positives do not. A positive count does not establish
+redemption eligibility. Credit rows, IDs, titles, descriptions, and reset-consumption
+methods never enter persistence, notifications, or actions. The fixed action opens
+Usage limits.
+
+An adapter-recognized `authentication_required` failure establishes a private
+baseline. A fresh later completed attempt on the same source, at or after the
+previous retry deadline, can emit one `usage_authentication_required` occurrence.
+Repeated/cached failures do not replay it; a successful or differently classified
+attempt clears the comparison. Claude's existing account observer recognizes this
+state; Codex's generic failures do not qualify. Native delivery requires explicit
+**Provider updates** (`provider_news`) opt-in, which defaults off. The action only
+opens Usage limits; existing native confirmation owns sign-in. A transient status,
+generic failure, clock crossing, or source switch cannot create this alert.
+
+The version-1 private sidecar additionally permits `usageState` (absent in old
+records, migrated to null). It holds at most one baseline per provider: an opaque
+source digest, fixed origin, original observation time, opaque window-set digest,
+at most sixteen windows with a fixed display key, private stable identity,
+normalized percent/exhaustion/reset time, and a nullable bounded reset count.
+At most two authentication baselines hold only opaque scope, last attempt/retry
+times, and a notification flag. Whole-record validation rejects unknown fields
+or invalid state. Revisions remain process-local while this state prevents restart
+replay. Browser/native records never contain those private comparisons.
 
 ## MCP agent-query projections
 

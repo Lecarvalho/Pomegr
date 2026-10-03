@@ -6,6 +6,10 @@ import test from "node:test";
 import { createMonitorRuntime } from "../../server/server.mjs";
 import { createProviderRegistry } from "../../server/providers/registry.mjs";
 import { WORK_KINDS } from "../../server/normalize/work-kind.mjs";
+import { createCodexUsageLimitsCoordinator } from "../../server/providers/codex/usage-limits.mjs";
+import { parseProviderUsageLimits } from "../../server/providers/provider-contract.mjs";
+import { usageNotificationSource } from "../../server/normalize/usage-notification-facts.mjs";
+import { createNotificationObservation } from "../../server/runtime/notification-observation.mjs";
 import { assertRequestWork } from "../helpers/request-work.mjs";
 import { assertNoPrivateFixtureSentinels } from "../helpers/provider-fixtures.mjs";
 import {
@@ -14,6 +18,30 @@ import {
   startSyntheticMonitor,
   syntheticProviders,
 } from "../helpers/api-serialization-fixtures.mjs";
+
+test("usage reset notifications and account metadata exclude credit details and private comparison data", async (context) => {
+  let clock = Date.parse("2026-10-03T12:00:00.000Z");
+  let count = 0;
+  const coordinator = createCodexUsageLimitsCoordinator({ now: () => clock, sourceScope: () => "a".repeat(64),
+    request: async () => ({ rateLimits: { limitId: "codex", primary: { usedPercent: 0, windowDurationMins: 300, resetsAt: Math.floor(clock / 1000) + 3600 } },
+      rateLimitResetCredits: { availableCount: count, credits: [{ id: "PRIVATE_CREDIT_ID", title: "PRIVATE_CREDIT_TITLE", description: "PRIVATE_CREDIT_BODY" }] },
+      account: "PRIVATE_ACCOUNT", path: "PRIVATE_PATH", raw: "PRIVATE_PAYLOAD" }),
+  });
+  const observation = createNotificationObservation({ now: () => clock });
+  const commit = (value, revision) => observation.acceptUsageCommit({ revision, providers: [{ provider: "codex",
+    usageLimits: parseProviderUsageLimits(value), comparison: usageNotificationSource(value) }] });
+  commit(await coordinator.get(), 1);
+  clock += 5 * 60_000; count = 1;
+  await coordinator.get();
+  await new Promise((resolve) => setImmediate(resolve));
+  commit(coordinator.peek(), 2);
+  assert.equal(observation.readSnapshot().occurrences[0].kind, "usage_reset_available");
+  const origin = await startSyntheticMonitor(context, { runtime: { serveNotifications: observation.read } });
+  const serialized = await (await fetch(`${origin}/api/notifications`)).text();
+  assert.doesNotMatch(serialized, /PRIVATE_|sourceScope|comparison|signature/);
+  assert.doesNotMatch(JSON.stringify(parseProviderUsageLimits(coordinator.peek())), /PRIVATE_|sourceScope|comparison/);
+  assert.deepEqual(JSON.parse(serialized).occurrences[0].data, { availableCount: 1 });
+});
 
 test("/api/state and /api/sessions serialize only allowlisted Claude and Codex metadata", async (context) => {
   const { claude, codex, transcriptPaths } = await syntheticProviders(context);
@@ -129,7 +157,8 @@ test("/api/state and /api/sessions serialize only allowlisted Claude and Codex m
   assert.equal(claudeState.session.pullRequests.status, "unavailable");
   assert.equal(codexState.usageLimits.available, true);
   assert.doesNotMatch(JSON.stringify(codexState.usageLimits), /ACCOUNT_MUST_NOT_LEAK|WORKSPACE_MUST_NOT_LEAK|PLAN_MUST_NOT_LEAK|CREDIT_MUST_NOT_LEAK|RAW_RPC_MUST_NOT_LEAK|STDERR_MUST_NOT_LEAK/);
-  assert.deepEqual(Object.keys(codexState.usageLimits).sort(), ["attemptedAt", "available", "error", "failureKind", "fetchedAt", "limits", "retryAt"]);
+  assert.deepEqual(Object.keys(codexState.usageLimits).sort(), ["attemptedAt", "available", "error", "failureKind", "fetchedAt", "limits", "resetCredits", "retryAt"]);
+  assert.deepEqual(Object.keys(codexState.usageLimits.resetCredits).sort(), ["availableCount", "observedAt", "status"]);
   assert.equal(codexState.metrics.tokens.allAgents, 1_950);
   assert.equal(codexState.metrics.tokens.allAgents < 9_800, true, "cumulative total_token_usage is not exposed");
   assert.deepEqual(claudeState.metrics.tokens.contextHistory.boundaries.map(({ agentId, kind, preTokens }) => ({

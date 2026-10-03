@@ -29,6 +29,7 @@ import { createObservationStartupRepository } from "./observation-startup-reposi
 import { createCheckpointStateProjector } from "../sessions/checkpoints/checkpoint-state-projector.mjs";
 import { createPersistenceMaintenance } from "../persistence/persistence-maintenance.mjs";
 import { qualifiedSessionId } from "../normalize/primitives.mjs";
+import { committedUsageNotificationFacts } from "../normalize/usage-notification-facts.mjs";
 
 /**
  * Owns the monitor-side observation lifecycle, response caches, and
@@ -251,6 +252,9 @@ export function createObservationRuntime(options = {}) {
           return entry ? [entry] : [];
         }),
       });
+      try {
+        options.onUsageCommitted?.(committedUsageNotificationFacts(committed, usageByProvider));
+      } catch { /* Notification derivation cannot block usage observation. */ }
       agentQueryProjection?.refresh?.();
       return committed;
     };
@@ -262,9 +266,8 @@ export function createObservationRuntime(options = {}) {
         usageLimits = createEmptyUsageLimits({ error: "Usage limits are temporarily unavailable." });
       }
       // A provider task is recorded only after its read completes. A completed
-      // empty value therefore cannot remain loading: capability-disabled reads
-      // carry runtime_unavailable, while malformed/custom empty reads settle
-      // to unavailable as well. An actually pending read has no provider entry
+      // empty value cannot remain loading: disabled/malformed reads settle to
+      // unavailable. An actually pending read has no provider entry
       // yet and remains represented by the initial loading response.
       const readiness = usageLimits.available || usageLimits.fetchedAt
         ? "ready"
