@@ -476,15 +476,19 @@ describe("T04 session workspace", () => {
     expect(within(rail).getByText("Event evidence unavailable.")).toBeInTheDocument();
   });
 
-  it("shows five Events rows on phone with an expander for the rest", async () => {
+  it("shows five grouped Events rows on phone with an expander for the rest", async () => {
     vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     try {
       const at = new Date(2026, 8, 14, 11, 21).toISOString();
-      const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null }));
-      mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: 8 } }));
+      const items = Array.from({ length: 8 }, (_, index) => ({ id: `e${index}`, kind: index % 2 ? "user_message" as const : "commit_observed" as const, at, agentId: null, agentLabel: null, durationMs: null, signal: null, progress: null, resource: null, pullRequestNumber: null, refill: null, compaction: null }));
+      items.splice(1, 0, { ...items[0]!, id: "repeat-1" }, { ...items[0]!, id: "repeat-2" });
+      mount({ tab: "overview" }, sessionSummaryFixture({ events: { readiness: "ready", items, total: items.length } }));
       const rail = await screen.findByRole("region", { name: "Events · newest first" });
-      expect(within(rail).getAllByRole("button", { name: /^Commit observed/ })).toHaveLength(5);
-      expect(within(rail).getByRole("button", { name: "Show 3 earlier" })).toBeInTheDocument();
+      expect(within(within(rail).getByRole("list")).getAllByRole("button")).toHaveLength(5);
+      expect(within(rail).getByText("×3")).toBeInTheDocument();
+      expect(within(rail).getByText("10 events")).toBeInTheDocument();
+      await userEvent.setup().click(within(rail).getByRole("button", { name: "Show 3 earlier" }));
+      expect(within(within(rail).getByRole("list")).getAllByRole("button")).toHaveLength(8);
     } finally {
       vi.unstubAllGlobals();
     }
