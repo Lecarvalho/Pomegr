@@ -15,6 +15,7 @@ this document retains authority over acquisition, committed evidence, and servin
   [activity feed](#activity-feed), [session response domains](#session-response-domains),
   and [paged session evidence history](#paged-session-evidence-history)
 - [Agents analytics](#agents-analytics), [public provider service status](#public-provider-service-status),
+  [shared notifications](#shared-notifications),
   [MCP agent-query projections](#mcp-agent-query-projections), and
   [focused report evidence](#focused-report-evidence)
 - Cache evidence: [synthetic records and cache comparison](#synthetic-records-and-cache-comparison),
@@ -49,7 +50,7 @@ this document retains authority over acquisition, committed evidence, and servin
 - Provider acquisition and normalization run before and independently of browser GETs.
 - Background acquisition and normalization must yield between bounded chunks and session
   hydration units so the monitor's cache-serving event loop remains responsive.
-- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/repositories`, `/api/repository-inventory`, `/api/repository-files`, and `/api/storage` handlers
+- Production `/api/sessions`, `/api/state`, `/api/session-domain`, `/api/session-history`, `/api/home`, `/api/usage-limits`, `/api/agents`, `/api/provider-status`, `/api/notifications`, `/api/repositories`, `/api/repository-inventory`, `/api/repository-files`, and `/api/storage` handlers
   read only committed response caches. They never open, seek, or parse provider
   transcripts and never synchronously call a provider usage or session-status service.
 - A serving request may enqueue asynchronous hydration for a known uncached session, but
@@ -755,16 +756,10 @@ worker queue, session store, Home derivation, or checkpoint writer.
   historical views show no session notice. Dismissal is bounded tab-memory view state,
   keyed by a monitor-issued incident identity and severity. Recovery removes a notice;
   a new incident or material worsening can show it again.
-- The shell notification tray lists one current service issue per affected provider,
-  with an official incident/status link and the original last-check timestamp. The
-  bell indicates unread issues even when no session needs input. Read acknowledgement
-  lives only in bounded tab memory, survives closing the tray, ignores repeated polls,
-  and resets after recovery, a new incident, or material worsening. A failed refresh
-  may retain a fresh last-confirmed report with explicit delayed-refresh wording;
-  stale, unknown, loading, and healthy status do not create service notifications.
-  Sessions rows show the same status details only when `isLive` is true and the
-  normalized provider matches. Historical rows never acquire a current warning.
-  Both surfaces consume the existing shared store and never revise session evidence.
+- The shell notification tray consumes the separate committed
+  [notification projection](#shared-notifications). Sessions rows still show status
+  details only when `isLive` is true and the normalized provider matches. Historical
+  rows never acquire a current warning. Neither surface revises session evidence.
 
 Public serialization is limited to provider/source enums, health/readiness/freshness,
 last successful local check and provider update timestamps, a fixed official status-page
@@ -775,6 +770,57 @@ or transcript metadata cross this boundary. Public status reports can lag actual
 the normal UI label is **Reported healthy**, never a guarantee of availability.
 
 The official source and component-filter details are documented in [provider status](provider-status.md).
+
+## Shared notifications
+
+`server/notifications/` owns pure rules and an in-memory occurrence ledger.
+`server/runtime/notification-observation.mjs` accepts only committed catalog and
+public-provider-status facts, derives a bounded immutable response, and publishes its
+own revision. The catalog owner projects Needs input from complete normalized headers
+before the 200-row browser shell cap, retaining at most 100 active session identities
+plus an overflow count. It does not hydrate sessions or acquire provider data for this
+projection. Provider status keeps its existing independent acquisition cadence.
+
+An active condition is distinct from the occurrence created when it begins. The
+first complete observation establishes a baseline: already-active conditions appear
+in the tray with `deliveryEligible: false`. An explicit later false-to-true Needs input
+transition creates a new occurrence. A missing row, partial or stale source, failed
+refresh, or incomplete provider detail cannot resolve a retained condition. Fresh,
+ready operational provider evidence can resolve an incident and create one coalesced
+recovery occurrence. Updating an active session title or provider status preserves
+the occurrence ID, original time, and delivery eligibility. Source readiness is
+independent for catalog and provider status; private source scope and comparison keys
+never enter the response. Derivation failure retains the exact last known-good
+snapshot and does not block catalog publication.
+
+The version-1 public response is `{ version, revision, generatedAt, readiness:
+{ catalog, providerStatus }, occurrences, activeSessionOverflow }`. Each occurrence
+has only an opaque `id`, fixed `kind` (`needs_input`, `provider_incident`,
+`provider_recovery`), `category`, `severity`, `lifecycle`, bounded `priority`,
+`occurredAt`, fixed `timeBasis`, `deliveryEligible`, fixed `action`, normalized
+`provider`, and narrow `data`. Needs input carries a validated normalized session ID
+and bounded catalog title; provider conditions carry a fixed health status only.
+The shared type also reserves `monitor_unreachable` with null provider and empty data
+for the client-local `client:` namespace; the monitor never emits it. No raw source
+payload, source scope, provider-native identity, path, credential, prompt, command,
+error, or arbitrary URL is serialized. The monitor retains at most 200 occurrences,
+resolved events for 30 days, a 1 MiB serialized snapshot, and 100 active Needs input
+conditions plus bounded overflow. The ledger is ephemeral in this phase; durable
+baselines, read markers, and native delivery are later work.
+
+S serves `GET /api/notifications` from the serialized committed snapshot only.
+Numeric revision or matching `If-None-Match` yields `204`; an unwired or failing
+runtime yields a bounded unavailable `503` response. A material revision publishes
+`{ domain: "notifications", revision }` over the existing event stream. The
+same-origin proxy and authenticated paired-LAN gateway forward this read-only API;
+neither can start observation. F uses one tab-scoped store, revision invalidation,
+focus refresh, and a 30-second fallback. It retains last known-good data on a failed
+read and creates monitor-transport loss locally. Read acknowledgement is tab-memory
+state for now. Fixed actions resolve to safe local routes: `open_session` validates
+the session route and falls back to Sessions; `open_sessions`, `open_providers`, and
+`open_workspace` resolve to fixed pages. The current `open_providers` destination is
+**Usage limits** (`/usage-limits`). No action approves, authenticates, installs,
+consumes a reset, or controls a provider.
 
 ## MCP agent-query projections
 

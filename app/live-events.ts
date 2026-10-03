@@ -1,14 +1,14 @@
 "use client";
 
 /** One tab-scoped event stream. Consumers filter bounded revision publications locally. */
-export type LiveEventDomain = "sessions" | "repositories" | "history" | "session-summary" | "agents" | "agent" | "signals" | "repository" | "resources" | "details";
+export type LiveEventDomain = "sessions" | "notifications" | "repositories" | "history" | "session-summary" | "agents" | "agent" | "signals" | "repository" | "resources" | "details";
 export type LiveRevisionEvent = Readonly<{ type: "revision"; domain: LiveEventDomain; sessionId?: string; revision: number; total?: number; epoch: number }>;
 export type LiveConnectionEvent = Readonly<{ type: "connection"; state: "connected" | "reconnecting"; epoch: number }>;
 export type LiveEvent = LiveRevisionEvent | LiveConnectionEvent;
 
 const EVENT_STREAM = "/api/events";
 const EVENT_NAMES: ReadonlyArray<[string, LiveEventDomain]> = [
-  ["catalog", "sessions"], ["repositories", "repositories"], ["history", "history"],
+  ["catalog", "sessions"], ["notifications", "notifications"], ["repositories", "repositories"], ["history", "history"],
   ["session-summary", "session-summary"], ["agents", "agents"], ["agent", "agent"],
   ["signals", "signals"], ["repository", "repository"], ["resources", "resources"], ["details", "details"],
 ];

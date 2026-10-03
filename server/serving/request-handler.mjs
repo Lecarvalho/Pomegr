@@ -6,6 +6,7 @@ import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requ
 import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mjs";
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
+import { serveNotificationRoute } from "./notification-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -278,7 +279,7 @@ export function createRequestHandler({
       let closed = false;
       let unsubscribe = null;
       const writeRevision = (event) => {
-        if (closed || !["sessions", "repositories", "history", ...SESSION_DOMAIN_NAMES].includes(event?.domain)
+        if (closed || !["sessions", "notifications", "repositories", "history", ...SESSION_DOMAIN_NAMES].includes(event?.domain)
           || !Number.isSafeInteger(event.revision) || event.revision < 0) return;
         const sessionDomain = event.domain === "history" || SESSION_DOMAIN_SET.has(event.domain);
         if (sessionDomain && (typeof event.sessionId !== "string" || event.sessionId.length < 3 || event.sessionId.length > 640)) return;
@@ -515,6 +516,10 @@ export function createRequestHandler({
         response.writeHead(503, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(createEmptyProviderStatusSnapshot("unavailable")));
       }
+      return;
+    }
+    if (requestUrl.pathname === "/api/notifications") {
+      serveNotificationRoute({ request, response, runtime, requestedRevision, writeCommitted });
       return;
     }
     if (requestUrl.pathname === "/api/storage") {

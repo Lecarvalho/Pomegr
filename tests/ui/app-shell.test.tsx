@@ -30,12 +30,31 @@ import { AppShell } from "../../app/components/AppShell";
 import { ClientAccessProvider } from "../../app/hooks/ClientAccessContext";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { shortcutHintForPlatform, sidebarLimitsForCatalog } from "../../app/components/command-center/CommandCenterShell";
+import { adaptNotificationRecords, NOTIFICATION_PRESENTATION, NotificationCenter, type NotificationPresentationRule } from "../../app/components/command-center/NotificationCenter";
+import { normalizeNotificationSnapshot } from "../../app/notifications-client";
 import type { DesktopState } from "../../app/components/DesktopControls";
 import { useSessionCatalog } from "../../app/hooks/SessionCatalogContext";
 import type { HomeProviderUsageLimits, SessionSummary, UsageLimitsSnapshot } from "../../shared/monitor-contract";
+import type { NotificationRecord, NotificationSnapshot } from "../../shared/notification-contract";
 
 function response(body: object) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } }));
+}
+
+const notificationTime = "2026-08-24T11:59:00.000Z";
+function notification(kind: "needs_input" | "provider_incident" | "provider_recovery", id: string, provider: "claude" | "codex" = "codex"): NotificationRecord {
+  const base = { id, category: kind === "needs_input" ? "attention" as const : "provider_service" as const,
+    severity: kind === "provider_recovery" ? "info" as const : "warning" as const,
+    lifecycle: kind === "provider_recovery" ? "resolved" as const : "active" as const,
+    priority: kind === "needs_input" ? 100 : 70, occurredAt: notificationTime, timeBasis: "recorded" as const,
+    deliveryEligible: false };
+  if (kind === "needs_input") return { ...base, kind, provider, action: "open_session", data: { sessionId: "codex:input-1", sessionTitle: "Awaiting approval" } };
+  if (kind === "provider_incident") return { ...base, kind, provider, action: "open_providers", data: { status: "degraded" } };
+  return { ...base, kind, provider, action: "open_providers", data: { status: "operational" } };
+}
+function notificationSnapshot(occurrences: NotificationRecord[], revision = 1): NotificationSnapshot {
+  return { version: 1, revision, generatedAt: notificationTime,
+    readiness: { catalog: "ready", providerStatus: "ready" }, occurrences, activeSessionOverflow: 0 };
 }
 
 const sessions = [
@@ -126,15 +145,38 @@ describe("Command Center app shell", () => {
 
   it("opens a bounded notification tray and marks its entries read", async () => {
     const user = userEvent.setup();
-    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => String(input).startsWith("/api/notifications")
+      ? response(notificationSnapshot([notification("needs_input", "a".repeat(32))])) : response({ sessions }));
     render(<AppShell><main>Home content</main></AppShell>);
     await user.click(await screen.findByRole("button", { name: /Notifications/ }));
     const tray = screen.getByRole("complementary", { name: "Notifications" });
-    expect(tray).toHaveTextContent("Awaiting approval");
-    expect(tray).toHaveTextContent("Session-reported state may be stale");
+    expect(await screen.findByTestId("notification-needs_input")).toHaveTextContent("Awaiting approval");
+    expect(tray).toHaveTextContent("Needs input");
+    expect(screen.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/codex-input-1");
     expect(tray).not.toHaveTextContent(/prompt|response|command/i);
     await user.click(screen.getByRole("button", { name: "Mark all read" }));
     expect(tray).toHaveTextContent("You are all caught up");
+  });
+
+  it("normalizes only the bounded public envelope and rejects monitor-local transport kind", () => {
+    const raw = { ...notificationSnapshot([notification("provider_incident", "b".repeat(32))]), privateSourceScope: "secret",
+      occurrences: [{ ...notification("provider_incident", "b".repeat(32)), rawPayload: "secret", data: { status: "degraded", command: "secret" } }] };
+    const normalized = normalizeNotificationSnapshot(raw);
+    expect(normalized).toEqual(notificationSnapshot([notification("provider_incident", "b".repeat(32))]));
+    expect(JSON.stringify(normalized)).not.toContain("secret");
+    expect(normalizeNotificationSnapshot(notificationSnapshot([{ ...notification("needs_input", "a".repeat(32)), kind: "monitor_unreachable" } as NotificationRecord]))).toBeNull();
+  });
+
+  it("renders a synthetic producer through presentation metadata and the unchanged tray", () => {
+    const synthetic = { ...notification("provider_incident", "c".repeat(32)), kind: "test_signal", action: "open_workspace" } as unknown as NotificationRecord;
+    const rule: NotificationPresentationRule = { kind: "test_signal", present: () => ({
+      group: "System", title: "Synthetic signal", description: "Test-only producer", tone: "online",
+    }) };
+    const entries = adaptNotificationRecords([synthetic], [...NOTIFICATION_PRESENTATION, rule]);
+    render(<NotificationCenter entries={entries} isUnread={() => true} unreadCount={1} hasUnreadAttention={false} markAllRead={() => {}}
+      sourceStatus="ready" activeSessionOverflow={0} onClose={() => {}} />);
+    expect(screen.getByTestId("notification-test_signal")).toHaveTextContent("Synthetic signal");
+    expect(screen.getByRole("link", { name: "View workspace" })).toHaveAttribute("href", "/");
   });
 
   it("marks real application destinations from the current pathname", async () => {

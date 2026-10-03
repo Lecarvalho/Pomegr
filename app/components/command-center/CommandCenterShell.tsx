@@ -7,7 +7,6 @@ import type { SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import pomegrPackageManifest from "../../../package.json";
 import pomegrPluginManifest from "../../../plugins/pomegr/.codex-plugin/plugin.json";
-import { useProviderStatus } from "../../provider-status-client";
 import { NotificationCenter, useNotifications } from "./NotificationCenter";
 import { useDismissibleLayer } from "../../hooks/useDismissibleLayer";
 import { DesktopUpdateOffer } from "../DesktopUpdateOffer";
@@ -180,10 +179,9 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const searchRef = useRef<HTMLInputElement | null>(null);
   const liveSessionCount = sessions.filter((session) => session.isLive).length;
   const navigation = useMemo(() => primaryNavigation.map((item) => item.href === "/sessions" ? { ...item, count: liveSessionCount } : item), [liveSessionCount]);
-  const { providers } = useProviderStatus();
   const usageLimits = useUsageLimits();
   const { snapshot: repositorySnapshot } = useRepositoryInventory();
-  const notifications = useNotifications(sessions, providers, connected, loading);
+  const notifications = useNotifications(connected, loading);
   const hasAttention = notifications.hasUnreadAttention;
 
   const paletteResults = useMemo(() => {

@@ -101,6 +101,13 @@ manual website deployment ([website operations](operations/website.md#6-publish-
 
 ## Plans and temporary work
 
+The [provider observers and notifications plan](plans/provider-notifications.md)
+defines five approved sequential parts for one notification subsystem, including
+Needs input, usage availability, provider/plugin releases, and model news. It is
+in active implementation; each part has its own validated PR. Later source
+availability and notification contracts remain proposed until their implementation
+and checks pass.
+
 The progressive Activity/Request publication contract is maintained in
 [Observation cache](architecture/observation-cache.md). Continuous JSONL diagnostics and passive
 analysis are maintained in [Pipeline operations](operations/pipeline-diagnostics.md).
