@@ -776,7 +776,7 @@ The official source and component-filter details are documented in [provider sta
 `server/notifications/` owns pure rules, the occurrence ledger, and its private
 atomic sidecar.
 `server/runtime/notification-observation.mjs` accepts only committed catalog,
-usage, and public-provider-status facts, derives a bounded immutable response, and publishes its
+  usage, public-provider-status, and normalized release facts, derives a bounded immutable response, and publishes its
 own revision. The catalog owner projects Needs input from complete normalized headers
 before the 200-row browser shell cap, retaining at most 100 active session identities
 plus an overflow count. It does not hydrate sessions or acquire provider data for this
@@ -798,7 +798,8 @@ The version-1 public response is `{ version, revision, generatedAt, readiness:
 { catalog, providerStatus }, occurrences, activeSessionOverflow }`. Each occurrence
 has only an opaque `id`, fixed `kind` (`needs_input`, `provider_incident`,
 `provider_recovery`, `usage_window_reset`, `usage_capacity_restored`,
-`usage_reset_available`, `usage_authentication_required`), `category`, `severity`, `lifecycle`, bounded `priority`,
+  `usage_reset_available`, `usage_authentication_required`, `release_published`,
+  `installation_update_available`), `category`, `severity`, `lifecycle`, bounded `priority`,
 `occurredAt`, fixed `timeBasis`, `deliveryEligible`, fixed `action`, normalized
 `provider`, and narrow `data`. Needs input carries a validated normalized session ID
 and bounded catalog title; provider conditions carry a fixed health status only.
@@ -809,8 +810,33 @@ positive integer `availableCount` at most 1000, for Codex. These resolved occurr
 use category `usage`, priority 60, severity `info`, observed time, and the fixed
 `open_usage_limits` action. Browser and native delivery share the public allowlist
 and fixed copy; neither contains transition rules.
-Persistent usage authentication carries empty data, category `provider_news`,
-warning severity, and priority 75. It uses the same fixed Usage limits action.
+  Persistent usage authentication carries empty data, category `provider_news`,
+  warning severity, and priority 75. It uses the same fixed Usage limits action.
+Release news carries only fixed product (`claude_code`, `codex_cli`, or
+`pomegr_plugin`), validated three-component semantic version, fixed channel,
+and, for a plugin update, a bounded affected-repository count. Both release
+kinds use category `provider_news`, observed time, and fixed local navigation.
+Their private comparison state holds only one version, channel, and original
+observation time per product. Initial observations establish baselines; only
+a newer version on the same channel emits. Equal versions, downgrades,
+prereleases, unknown installations, and channel changes never claim an
+installation update. Current validated repository plugin setup can qualify an
+update message; session-observed plugin metadata never does. Plugin setup
+refreshes aggregate all current repositories before derivation so one release
+emits one occurrence with a bounded count.
+
+A single low-priority scheduler checks the official Claude Code GitHub releases
+and Codex CLI latest-channel metadata after startup and about every six hours
+with bounded jitter. Both adapter readers use fixed unauthenticated URLs,
+redirect denial, eight-second deadlines, a 1 MiB body cap, conditional ETags,
+and Retry-After or exponential backoff. Claude's list is limited to 30 releases;
+the Codex metadata is limited to 256 asset entries and retains none of them.
+Failures retain the last valid observation. Claude Code GitHub releases prove
+latest-channel publication, not stable eligibility. The Codex reader uses the
+official installer's `https://releases.openai.com/codex/channels/latest` metadata
+and accepts only a stable `rust-v` tag; it covers the CLI only. Desktop and IDE
+releases remain unsupported. No notification GET starts these jobs.
+
 The shared type also reserves `monitor_unreachable` with null provider and empty data
 for the client-local `client:` namespace; the monitor never emits it. No raw source
 payload, source scope, provider-native identity, path, credential, prompt, command,

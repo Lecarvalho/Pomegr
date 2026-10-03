@@ -1,6 +1,7 @@
 import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPayload, usageNotificationPolicy } from "../../shared/usage-notification.mjs";
+import { isReleaseNotificationKind, normalizeReleaseNotificationData, releaseNotificationPayload, releaseNotificationPolicy } from "../../shared/release-notification.mjs";
 
 export const NOTIFICATION_POLL_INTERVAL_MS = 2_000;
 export const NOTIFICATION_MAX_CATCHUP_MS = 15 * 60_000;
@@ -87,7 +88,7 @@ export function normalizeNativeNotificationSnapshot(input) {
       || typeof row.category !== "string" || !TERMINAL.test(row.category) || !iso(row.occurredAt)
       || !Number.isSafeInteger(row.priority) || row.priority < 0 || row.priority > 100
       || typeof row.deliveryEligible !== "boolean" || !["active", "resolved"].includes(row.lifecycle)
-      || !["claude", "codex"].includes(row.provider)) return null;
+      || !["claude", "codex", ...(isReleaseNotificationKind(row.kind) ? [null] : [])].includes(row.provider)) return null;
     seen.add(row.id);
     const normalized = { id: row.id, kind: row.kind, category: row.category, priority: row.priority,
       occurredAt: row.occurredAt, deliveryEligible: row.deliveryEligible, lifecycle: row.lifecycle,
@@ -97,6 +98,12 @@ export function normalizeNativeNotificationSnapshot(input) {
       const data = normalizeUsageNotificationData(row.kind, row.provider, row.data);
       const policy = usageNotificationPolicy(row.kind);
       if (!data || row.category !== policy.category || row.action !== "open_usage_limits" || row.priority !== policy.priority
+        || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+      normalized.data = data;
+    } else if (isReleaseNotificationKind(row.kind)) {
+      const data = normalizeReleaseNotificationData(row.kind, row.provider, row.data);
+      const policy = releaseNotificationPolicy(row.kind);
+      if (!data || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
         || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
       normalized.data = data;
     } else if (row.kind === "needs_input") {
@@ -120,6 +127,7 @@ export function normalizeNativeNotificationSnapshot(input) {
 /** Static native copy; no provider-supplied description, URL, or command is read. */
 export function nativeNotificationPayload(record) {
   if (isUsageNotificationKind(record.kind)) return usageNotificationPayload(record);
+  if (isReleaseNotificationKind(record.kind)) return releaseNotificationPayload(record);
   if (record.kind === "needs_input" && record.lifecycle === "active") {
     const title = record.data.sessionTitle.replace(/\s+/gu, " ").trim().slice(0, 96);
     return Object.freeze(title
