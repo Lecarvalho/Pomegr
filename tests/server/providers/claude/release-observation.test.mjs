@@ -50,8 +50,20 @@ test("reader honors Retry-After, rejects oversized bodies, and has a bounded dea
     fetch: async () => new Response("x".repeat(1_048_577)) });
   assert.equal(await oversized(), null);
   oversized.stop();
+  let deadlineAborted = false;
   const timed = createClaudeCodeReleaseReader({ now: () => at, timeoutMs: 5,
-    fetch: async (_url, { signal }) => new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true })) });
-  assert.equal(await timed(), null);
-  timed.stop();
+    fetch: async (_url, { signal }) => new Promise((_resolve, reject) => {
+      // A real pending request owns a socket. Model that active handle because
+      // AbortSignal.timeout alone does not keep Node 22's event loop alive.
+      const request = setTimeout(() => reject(new Error("Deadline did not abort")), 1_000);
+      signal.addEventListener("abort", () => {
+        deadlineAborted = true;
+        clearTimeout(request);
+        reject(signal.reason);
+      }, { once: true });
+    }) });
+  try {
+    assert.equal(await timed(), null);
+    assert.equal(deadlineAborted, true);
+  } finally { timed.stop(); }
 });
