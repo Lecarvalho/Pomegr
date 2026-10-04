@@ -65,7 +65,7 @@ export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] 
   ...["usage_window_reset", "usage_capacity_restored", "usage_reset_available", "usage_authentication_required"].map((kind): NotificationPresentationRule => ({
     kind, present: (record) => {
       const payload = usageNotificationPayload(record);
-      return payload ? { group: kind === "usage_authentication_required" ? "Needs attention" : "Usage limits",
+      return payload ? { group: "Usage limits",
         title: payload.title, description: payload.body, tone: kind === "usage_authentication_required" ? "attention" : "online" } : null;
     },
   })),

@@ -19,14 +19,18 @@ const snapshot: NotificationSnapshot = { version: 1, revision: 3, generatedAt: "
   readiness: { catalog: "ready", providerStatus: "ready" }, occurrences: records, activeSessionOverflow: 0 };
 
 describe("usage notification boundary and copy", () => {
-  it("renders the persistent sign-in observation with the opt-in category and safe action", () => {
+  it("renders the past sign-in failure as a usage event rather than a current attention condition", () => {
     const auth: NotificationRecord = { ...records[0], kind: "usage_authentication_required", provider: "claude",
       category: "provider_news", severity: "warning", priority: 75, data: {} };
     const normalized = normalizeNotificationSnapshot({ ...snapshot, occurrences: [auth] });
     expect(normalized?.occurrences).toEqual([auth]);
     const [entry] = adaptNotificationRecords(normalized!.occurrences);
-    expect(entry.group).toBe("Needs attention");
+    expect(entry.group).toBe("Usage limits");
+    expect(entry.title).toBe("Claude Code usage refresh required sign-in");
     expect(entry.description).toContain("after a retry");
+    expect(entry.description).toContain("Saved usage values may remain visible");
+    expect(entry.description).toContain("current status");
+    expect(entry.description).not.toMatch(/still requires|needs attention/);
     expect(entry.href).toBe("/usage-limits");
   });
   it("accepts all real kinds, rebuilds the allowlist, and displays fixed safe usage links", () => {

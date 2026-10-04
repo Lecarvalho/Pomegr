@@ -1,7 +1,11 @@
 # ACOS provider catalog: one entry per provider a stage may route to.
 # Tiers map to model families, not ids; the manifest records concrete ids.
-# Semantics: SKILL.md (tiers, aliases), references/adapters.md (invoke,
-# {{alias}}/{{effort}} substitution, effort_map).
+# Semantics: SKILL.md (tiers, aliases), references/adapters.md (harness,
+# invoke, {{alias}}/{{effort}} substitution, effort_map).
+#
+# `harness` names the harness whose sessions run the provider themselves.
+# `native` holds only there; from any other harness the provider is
+# reached through `external`, and from its own harness never.
 
 acos: "0.1"
 
@@ -9,6 +13,7 @@ providers:
 
   anthropic:
     label: Anthropic (Claude)
+    harness: claude-code
     invoke:
       inline: native
       subagent: native
@@ -26,10 +31,11 @@ providers:
 
   openai:
     label: OpenAI
+    harness: codex
     invoke:
-      inline: null
-      subagent: null
-      workflow: null
+      inline: native
+      subagent: native
+      workflow: null           # Codex has no workflow engine
       # Codex wants full ids: the generation lives here, the family below.
       external: "codex exec --model gpt-6-{{alias}} -c model_reasoning_effort={{effort}}"
     effort_map:

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { z } from "zod";
+import { copyInputNotificationTime } from "../normalize/input-notification-facts.mjs";
 /** @typedef {import("../../shared/monitor-contract").ProviderId} ProviderId */
 /** @typedef {import("../../shared/monitor-contract").ProviderSource} ProviderSource */
 /** @typedef {import("../../shared/monitor-contract").ProviderCapabilities} ProviderCapabilities */
@@ -640,9 +641,8 @@ export function assertProviderObserver(observer) {
   return /** @type {ProviderObserver} */ (value);
 }
 
-/** @param {unknown} value */
-export function parseProviderSessionReference(value) {
-  return providerSessionReferenceSchema.parse(value);
+/** @param {unknown} value */ export function parseProviderSessionReference(value) {
+  return copyInputNotificationTime(value, providerSessionReferenceSchema.parse(value));
 }
 
 /** @param {unknown} value */

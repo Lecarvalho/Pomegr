@@ -24,8 +24,8 @@ export function usageNotificationPayload(record) {
   const data = normalizeUsageNotificationData(record.kind, record.provider, record.data);
   if (!data) return null;
   if (record.kind === "usage_authentication_required") return {
-    title: `${record.provider === "claude" ? "Claude Code" : "Codex"} usage sign-in needs attention`,
-    body: "Account usage access still requires sign-in after a retry. Open Usage limits to review it.",
+    title: `${record.provider === "claude" ? "Claude Code" : "Codex"} usage refresh required sign-in`,
+    body: "A usage refresh required sign-in after a retry. Saved usage values may remain visible. Check Usage limits for the current status.",
   };
   if (record.kind === "usage_reset_available") return {
     title: "Codex reset available",

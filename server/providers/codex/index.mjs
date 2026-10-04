@@ -218,7 +218,7 @@ export function createCodexProvider(options = {}) {
     const topLevel = threads.filter(isTopLevelCodexSession);
     const identities = await Promise.all(topLevel.map((thread) => headerSessionIdentity(thread.localId, thread.cwd)));
     return topLevel
-      .map((thread, index) => ({ ...codexSessionReference(thread, sessions.get(thread.localId)), project: identities[index].project }))
+      .map((thread, index) => Object.assign(codexSessionReference(thread, sessions.get(thread.localId)), { project: identities[index].project }))
       .sort((left, right) => Number(right.isLive) - Number(left.isLive) || compareCodexMetadata(left, right))
       .slice(0, catalogLimit).sort(compareCodexMetadata);
   }

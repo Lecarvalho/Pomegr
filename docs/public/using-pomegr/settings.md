@@ -108,7 +108,8 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
 - **Provider updates** and **Model news** are off by default. Turn either on
   under **Settings → Notifications** to allow supported news to use Windows
   notifications. **Provider updates** also includes a recognized usage sign-in
-  problem that persists after a retry; opening it only shows Usage limits.
+  failure recorded after a retry. This is a past refresh event, not the current
+  sign-in status; saved usage values can remain visible. Opening it shows Usage limits.
   Release news covers published Claude Code latest releases and Codex CLI
   releases. It does not report Codex desktop or IDE releases, or claim that a
   CLI installation can update. A current Pomegr reporting-plugin setup can
@@ -124,6 +125,13 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   it does not end an active Needs input condition. Read markers stay in this
   browser's local storage for up to 30 days. The desktop app's browser read
   markers can reset on restart, and they do not control Windows delivery.
+- Codex asynchronous questions can show **Needs input** while the agent continues
+  working. An accepted question submission is not an answer. Codex's recorded
+  messages do not reliably identify which asynchronous question a later reply
+  answers, so a later user message changes that question's status to **Unknown**.
+  A recorded turn ending or a new turn ends its outstanding question scope. A
+  resolved tray item means the Needs input condition ended; it does not confirm
+  that you answered the question. Question text and answers are never included.
 - **Settings → About** shows the installed version, **Check for updates**, and
   **Restart and install**. A portable build never checks for updates. See
   [Keep Pomegr up to date](../get-started/install.md#keep-pomegr-up-to-date).

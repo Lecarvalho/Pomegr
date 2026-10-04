@@ -1,4 +1,5 @@
 import { isSafeSessionId } from "./notification-rules.mjs";
+import { copyInputNotificationTime } from "../normalize/input-notification-facts.mjs";
 
 /** Bounded notification facts from normalized catalog commits, before shell truncation. */
 export function createNotificationCatalog({ projectVisibility, activeSessionIds = () => [] }) {
@@ -39,7 +40,7 @@ export function createNotificationCatalog({ projectVisibility, activeSessionIds 
 
   function commit({ revision, readiness, checkedAt, incompleteSource }) {
     const candidates = [...byProvider.values()].flatMap((entry) => entry.rows)
-      .map((entry) => projectVisibility(entry, checkedAt));
+      .map((entry) => copyInputNotificationTime(entry, projectVisibility(entry, checkedAt)));
     const selected = new Map();
     for (const entry of candidates) {
       if (!trackedActiveIds.has(entry.id)) continue;

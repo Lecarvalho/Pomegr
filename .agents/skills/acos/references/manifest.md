@@ -34,6 +34,10 @@
 - `design` without a `contract` stage, or a visible stage not reading
   `design-contract`;
 - `provider`, `tier`, `model` or `effort` on an inline stage;
+- `adapter: external` on your harness's own provider (it is a
+  `subagent`), or `subagent`/`workflow` on another provider or where
+  `providers.yaml` has `null` (`adapters.md`, Which adapter a provider
+  allows);
 - an effort the tier does not list in `providers.yaml` (none = `inherit`),
   on a stage or an escalation entry;
 - a lane over its limit (re-cut per `sizing.md`);

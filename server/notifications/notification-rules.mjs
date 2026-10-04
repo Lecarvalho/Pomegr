@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { USAGE_NOTIFICATION_RULE } from "./usage-notifications.mjs";
 import { RELEASE_NOTIFICATION_RULE } from "./release-notifications.mjs";
 import { MODEL_NOTIFICATION_RULE } from "./model-notifications.mjs";
+import { inputNotificationTime } from "../normalize/input-notification-facts.mjs";
 
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_TEXT = /^[^<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]*$/u;
@@ -55,7 +56,7 @@ export function deriveNeedsInput(facts) {
     const provider = row.id.split(":", 1)[0];
     if (row.provider !== provider) return [];
     return [{ key: row.id, active: row.isLive && row.needsInput, provider,
-      at: validIso(row.updatedAt) ? row.updatedAt : null,
+      at: inputNotificationTime(row) ?? (validIso(row.updatedAt) ? row.updatedAt : null),
       data: { sessionId: row.id, sessionTitle: safeSessionTitle(row.title) } }];
   });
 }

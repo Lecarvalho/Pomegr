@@ -13,10 +13,11 @@ Never overwrite an existing `config.yaml` without asking. Shape:
 2. **shot.** `node <skill folder>/scripts/shot.mjs` for a web interface,
    the project's own capture command for another visible surface, no key
    when there is none.
-3. **provider.** The harness's native one. No model ids, no `stages`
-   overrides. Of the other providers, only those whose CLI (`claude`,
-   `codex`, `gemini`, `ollama`) exists are reachable. Say which alias
-   each tier maps to.
+3. **provider.** The one whose `harness` in `catalog/providers.yaml` is
+   the harness this session runs in. No model ids, no `stages`
+   overrides. The other providers are reachable only as `external`, and
+   only those whose CLI (`claude`, `codex`, `gemini`, `ollama`) exists.
+   Say which alias each tier maps to.
 4. **Defaults.** No `preset`. `gates.go: required`. `limits`:
    `orchestrator_tokens: 120000`, `worker_context_tokens: 300000`,
    unless the user gave others.
