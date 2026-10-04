@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { NotificationAction, NotificationRecord } from "../../../shared/notification-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { useNotificationSnapshot } from "../../notifications-client";
+import { useNotificationReadState } from "../../notification-read-state";
 import { CommandIcon } from "./CommandIcon";
 
 export type NotificationView = {
@@ -79,7 +80,8 @@ export function adaptNotificationRecords(records: readonly NotificationRecord[],
 
 export function useNotifications(connected: boolean, loading: boolean) {
   const { snapshot, status } = useNotificationSnapshot();
-  const [read, setRead] = useState<Set<string>>(() => new Set());
+  const { read, markRead } = useNotificationReadState();
+  const [localRead, setLocalRead] = useState<Set<string>>(() => new Set());
   const [offline, setOffline] = useState<{ active: boolean; occurredAt: string | null }>({ active: false, occurredAt: null });
   const offlineNow = !connected && !loading;
   if (offline.active !== offlineNow) setOffline({ active: offlineNow, occurredAt: offlineNow ? new Date().toISOString() : null });
@@ -91,13 +93,16 @@ export function useNotifications(connected: boolean, loading: boolean) {
   }] : [];
   const entries = adaptNotificationRecords([...snapshot.occurrences, ...local]);
   const visibleIds = new Set(entries.map((entry) => entry.id));
-  if ([...read].some((id) => !visibleIds.has(id))) setRead(new Set([...read].filter((id) => visibleIds.has(id))));
-  const isUnread = (entry: NotificationView) => !read.has(entry.id);
+  if ([...localRead].some((id) => !visibleIds.has(id))) setLocalRead(new Set([...localRead].filter((id) => visibleIds.has(id))));
+  const isUnread = (entry: NotificationView) => !read.has(entry.id) && !localRead.has(entry.id);
   const unreadCount = entries.filter(isUnread).length;
   return {
     entries, isUnread, unreadCount,
     hasUnreadAttention: entries.some((entry) => entry.group !== "System" && isUnread(entry)),
-    markAllRead: () => setRead(new Set(entries.map((entry) => entry.id))),
+    markAllRead: () => {
+      markRead(entries.map((entry) => entry.id));
+      setLocalRead(new Set(entries.filter((entry) => entry.id.startsWith("client:")).map((entry) => entry.id)));
+    },
     sourceStatus: status, activeSessionOverflow: snapshot.activeSessionOverflow,
   };
 }

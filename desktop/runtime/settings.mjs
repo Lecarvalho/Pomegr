@@ -1,17 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { normalizeHomeUpdate } from "./desktop-behavior.mjs";
+import { DEFAULT_NOTIFICATION_CATEGORIES, normalizeHomeUpdate, normalizeNotificationCategories, validNotificationCategories } from "./desktop-behavior.mjs";
 import { normalizeProviderFolders, validPersistedProviderFolders } from "./provider-settings.mjs";
 import { normalizeStorageSettings, validPersistedStorageSettings } from "./storage-settings.mjs";
 
-export const DESKTOP_SETTINGS_VERSION = 7;
+export const DESKTOP_SETTINGS_VERSION = 8;
 export const DEFAULT_DESKTOP_SETTINGS = Object.freeze({
   version: DESKTOP_SETTINGS_VERSION,
   window: Object.freeze({ width: 1280, height: 800, x: null, y: null, maximized: false }),
   launchAtLogin: false,
   closeBehavior: "ask",
   notifications: true,
+  notificationCategories: DEFAULT_NOTIFICATION_CATEGORIES,
   updates: true,
   lanSharingAutoStart: false,
   displayPreferences: Object.freeze({ estimatedCost: true }),
@@ -50,6 +51,7 @@ function isPersistedSettings(value, version = DESKTOP_SETTINGS_VERSION) {
     && typeof value.launchAtLogin === "boolean"
     && (version === 1 || ["ask", "tray", "quit"].includes(value.closeBehavior))
     && typeof value.notifications === "boolean"
+    && (version < 8 || validNotificationCategories(value.notificationCategories))
     && typeof value.updates === "boolean"
     && (version < 4 || typeof value.lanSharingAutoStart === "boolean")
     && (version < 5 || validPersistedProviderFolders(value.providerFolders))
@@ -80,6 +82,7 @@ export function normalizeDesktopSettings(input) {
     launchAtLogin: typeof source.launchAtLogin === "boolean" ? source.launchAtLogin : false,
     closeBehavior: ["ask", "tray", "quit"].includes(source.closeBehavior) ? source.closeBehavior : "ask",
     notifications: typeof source.notifications === "boolean" ? source.notifications : true,
+    notificationCategories: normalizeNotificationCategories(source.notificationCategories),
     updates: typeof source.updates === "boolean" ? source.updates : true,
     lanSharingAutoStart: typeof source.lanSharingAutoStart === "boolean" ? source.lanSharingAutoStart : false,
     displayPreferences: {
@@ -136,14 +139,15 @@ export function createDesktopSettingsStore(settingsFile, io = {}) {
           state = "future-version";
           return loadResult(normalizeDesktopSettings(), state, false);
         }
-        if ([1, 2, 3, 4, 5, 6].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
+        if ([1, 2, 3, 4, 5, 6, 7].includes(parsed?.version) && isPersistedSettings(parsed, parsed.version)) {
           state = "loaded";
           return loadResult(normalizeDesktopSettings({
             ...parsed,
             lanSharingAutoStart: parsed.version < 4 ? false : parsed.lanSharingAutoStart,
             providerFolders: parsed.version < 5 ? null : parsed.providerFolders,
             storage: parsed.version < 6 ? null : parsed.storage,
-            homeUpdate: null,
+            homeUpdate: parsed.version < 7 ? null : parsed.homeUpdate,
+            notificationCategories: DEFAULT_NOTIFICATION_CATEGORIES,
           }), "migrated", true);
         }
         if (!isPersistedSettings(parsed)) {

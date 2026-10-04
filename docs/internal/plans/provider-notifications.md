@@ -1,11 +1,11 @@
 # Provider observers and unified notifications
 
-> Status: active implementation; part 1 is implemented and verified, with parts 2–5 assigned to subsequent sequential chats.
+> Status: active implementation; parts 1–2 are implemented and locally verified, with parts 3–5 assigned to subsequent sequential chats.
 > Created: 2026-10-03.
 > Scope: provider updates, usage availability, model news, and the existing Needs input notifications through one notification subsystem.
 > Continuation owner: the Pomegr maintainer running the next ACOS part.
 > Authority: proposed implementation checklist; current runtime contracts still govern shipped behavior.
-> Next task: the coordinator validates the part-1 PR, then starts part 2 for durable state and native delivery on the accepted predecessor branch; the user owns every merge.
+> Next task: the coordinator validates the part-2 stacked PR, then starts part 3 for usage availability on the accepted predecessor branch; the user owns every merge.
 > Completion criteria: all five parts pass their checks, independent review, and inspected UI evidence; unsupported sources remain explicitly unavailable.
 > Permanent destinations: observation-cache.md, overview.md, provider-status.md, agent-workflow.md, the public Settings and Usage limits guides, and DESIGN.md if shared controls change.
 > Lifetime: temporary; transfer enduring contracts and remaining obligations, repair references, then delete this plan and its temporary artifacts when completed, cancelled, or superseded.
@@ -293,7 +293,7 @@ authorized behavior, measured usage, or a promise of implementation size.
 ### Checks and closeout
 
 - [x] Part 1: pure-rule tests, cached-serving/revision/privacy tests, existing app-shell tests, boundary checks, and `npm run verify:fast` pass.
-- [ ] Part 2: desktop notification/behavior/security tests and preference UI tests pass; no provider actions are reachable through a notification.
+- [x] Part 2: desktop notification/behavior/security tests and preference UI tests pass; no provider actions are reachable through a notification.
 - [ ] Part 3: usage fixtures cover deadline-only, real rollover, same-window recovery, other exhausted windows, source switches, stale data, repeated credit counts, and unsupported fields.
 - [ ] Part 4: release fixtures cover channel changes, downgrades, equal versions, prereleases, unavailable installed versions, invalid payloads, redirects, timeouts, and duplicate repositories.
 - [ ] Part 5: model fixtures cover announcements, bundled catalogs, partial pagination, aliases, unavailable entitlement sources, and false deprecation prevention.
@@ -347,7 +347,19 @@ resume, delayed prior-epoch responses, and malformed record rejection. The
 existing platform/opt-in tests remain explicitly skipped by their test gates.
 Current behavior belongs to the enduring contracts linked above.
 
-Part 2 owns persistence, native delivery and durable read markers. Part 5 owns
+Part-2 implementation checkpoint (2026-10-03): the private notification sidecar,
+desktop delivery claims, fixed-category preferences, and origin-local opaque read
+markers are implemented. The 98 focused Node and 38 focused UI checks, `verify:fast`,
+production build, and full tests (1,981 Node and 981 UI passes; four existing
+platform/opt-in skips) passed. Interactive OS display/click evidence remains open.
+The desktop read markers can reset across app launches as its
+browser origin changes. Native claims are written before dispatch, so a crash can
+lose a toast; they are not an exactly-once OS guarantee. The isolated synthetic
+browser capture commands are in the part-1 and part-2 run artifacts. Part 5 must
+capture the P2 preferences and read-state selectors at 1280 and 390 px and build
+an isolated Electron-authenticated fixture before claiming native OS acceptance.
+
+Part 2 supplies persistence, native delivery and durable read markers. Part 5 owns
 both retained part-1 visual claims at 1280 and 390 px: Needs input with safe
 session navigation, and distinct provider incident/recovery and client-local
 monitor-offline states. Exact synthetic capture commands live in the part-1

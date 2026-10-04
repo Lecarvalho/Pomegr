@@ -4,7 +4,6 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, screen, session, shell, Tray } from "electron";
-import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import {
   createAgentQueryCapability,
   resolveAgentQueryDescriptorPath,
@@ -44,10 +43,12 @@ import { createProviderSettingsController, installProviderSettingsIpc, providerS
 import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
-  createNeedsInputNotificationController,
-  createSessionNotificationPoller,
+  createNativeNotificationController,
+  createNotificationPoller,
   isAllowedNotificationTarget,
+  loadCommittedNotificationSnapshot,
 } from "./notifications.mjs";
+import { createNotificationDeliveryStore, notificationDeliveryProfile } from "./notification-delivery-store.mjs";
 import { createReportSaveHandler, DESKTOP_REPORT_CHANNEL } from "./report-save.mjs";
 import { recordShellStage } from "./shell-stage.mjs";
 import { installQuietConsole } from "./quiet-console.mjs";
@@ -176,7 +177,7 @@ function persistCurrentWindowState() {
 }
 
 function trustedDesktopEvent(event) {
-  if (!mainWindow || event.sender !== mainWindow.webContents || !webHandle?.origin) return false;
+  if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || !webHandle?.origin) return false;
   try { return new URL(event.senderFrame.url).origin === webHandle.origin; } catch { return false; }
 }
 
@@ -202,8 +203,8 @@ function openNotificationTarget(target) {
   void mainWindow.loadURL(url).then(showShellWindow, showShellWindow);
 }
 
-function showNeedsInputNotification(payload, onClick) {
-  if (!Notification.isSupported()) return false;
+function showNativeNotification(payload, onClick) {
+  if (!mainWindow || mainWindow.isDestroyed() || !Notification.isSupported()) return false;
   const notification = new Notification({ ...payload, icon: shellIconPath() });
   const release = () => { nativeNotifications.delete(notification); };
   notification.once("click", () => {
@@ -216,33 +217,31 @@ function showNeedsInputNotification(payload, onClick) {
   return true;
 }
 
-async function loadNotificationSessions(signal) {
-  if (!webHandle?.origin) return null;
-  const combinedSignal = AbortSignal.any([signal, AbortSignal.timeout(4_000)]);
-  const response = await fetch(`${webHandle.origin}/api/sessions`, {
-    cache: "no-store",
-    headers: { [DESKTOP_AUTH_HEADER]: authorizationToken },
-    signal: combinedSignal,
-  });
-  if (!response.ok) return null;
-  const body = await response.json();
-  return Array.isArray(body?.sessions) ? body.sessions : null;
+async function loadNotificationSnapshot(signal) {
+  return loadCommittedNotificationSnapshot({ origin: webHandle?.origin, authorizationToken, signal });
 }
 
-function startNotificationPolling() {
-  const controller = createNeedsInputNotificationController({
-    notify: showNeedsInputNotification,
-    openTarget: openNotificationTarget,
-  });
-  notificationPoller = createSessionNotificationPoller({
-    controller,
-    loadSessions: loadNotificationSessions,
-    getMode: () => {
-      const state = behaviorController?.snapshot();
-      return { enabled: state?.notifications === true, quietUntil: state?.notificationQuietUntil };
-    },
-  });
-  notificationPoller.start();
+function startNotificationPolling(providerEnvironment) {
+  try {
+    const profileScope = notificationDeliveryProfile({
+      claudeConfigDir: environmentValue(providerEnvironment, "CLAUDE_CONFIG_DIR"),
+      claudeProjectsDir: environmentValue(providerEnvironment, "CLAUDE_PROJECTS_DIR"),
+      codexHome: environmentValue(providerEnvironment, "CODEX_HOME"),
+    });
+    const store = createNotificationDeliveryStore({
+      file: path.join(desktopPaths.dataRoot, "notification-delivery-v1.json"), profileScope,
+    });
+    const controller = createNativeNotificationController({
+      store, notify: showNativeNotification, openTarget: openNotificationTarget,
+      getPreferences: () => {
+        const state = behaviorController?.snapshot();
+        return { enabled: state?.notifications === true, quietUntil: state?.notificationQuietUntil,
+          categories: state?.notificationCategories };
+      },
+    });
+    notificationPoller = createNotificationPoller({ controller, loadSnapshot: loadNotificationSnapshot });
+    void notificationPoller.start();
+  } catch { /* Native delivery degrades without affecting the observer. */ }
 }
 
 async function startDesktopUpdates() {
@@ -730,7 +729,7 @@ async function startDesktop() {
     runtimeState = "running";
     recordStage("SHELL_RUNTIME_READY");
     void phoneAccess.initialize().catch(() => {});
-    startNotificationPolling();
+    startNotificationPolling(providerEnvironment);
     void startDesktopUpdates();
     if (!mainWindow.isVisible()) mainWindow.show();
   } catch {

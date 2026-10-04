@@ -156,6 +156,7 @@ describe("Command Center app shell", () => {
     expect(tray).not.toHaveTextContent(/prompt|response|command/i);
     await user.click(screen.getByRole("button", { name: "Mark all read" }));
     expect(tray).toHaveTextContent("You are all caught up");
+    expect(screen.getByTestId("notification-needs_input")).toHaveTextContent("Awaiting approval");
   });
 
   it("normalizes only the bounded public envelope and rejects monitor-local transport kind", () => {
