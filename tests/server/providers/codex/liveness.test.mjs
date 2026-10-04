@@ -134,6 +134,50 @@ function thread(localId = "live-root", options = {}) {
   };
 }
 
+test("async tail uncertainty preserves writer release and owning-runtime precedence", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-async-precedence-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "rollout.jsonl");
+  const records = [boundary(0, "task_started", "async-turn"),
+    { timestamp: new Date(START + 1_000).toISOString(), type: "response_item", payload: {
+      type: "function_call", name: "request_user_input_async", call_id: "async", turn_id: "async-turn" } },
+    { timestamp: new Date(START + 2_000).toISOString(), type: "response_item", payload: {
+      type: "function_call_output", call_id: "async", output: '{"accepted":true}', turn_id: "async-turn" } }];
+  await writeFile(file, records.map(JSON.stringify).join("\n") + "\n");
+  const settings = { now: () => START + 8_000, cacheMs: 0 };
+  const threads = [thread("async-root", { rolloutFile: file, sourceKind: "vscode" })];
+  assert.equal(createCodexLivenessCoordinator(settings).observe(threads).threads[0].liveStatus, "needs_input");
+  const released = createCodexLivenessCoordinator({ ...settings, writerLockState: () => "released" }).observe(threads).threads[0];
+  assert.equal(released.liveStatus, "unknown");
+  assert.equal(released.livenessLive, false);
+  assert.equal(released.liveness.reason, "writer_released");
+  const owned = createCodexLivenessCoordinator({ ...settings, writerLockState: () => "released",
+    currentWriterOwner: () => ({ pid: 4242, processStartIdentity: "134000000000000000" }) }).observe(threads).threads[0];
+  assert.equal(owned.liveStatus, "needs_input");
+  const runtime = createCodexLivenessCoordinator(settings).observe([
+    thread("async-root", { rolloutFile: file, runtimeStatus: { type: "idle" } })]).threads[0];
+  assert.equal(runtime.liveStatus, "idle");
+  assert.equal(runtime.liveness.source, "owning_app_server");
+  await appendFile(file, JSON.stringify({ timestamp: new Date(START + 3_000).toISOString(), type: "response_item",
+    payload: { type: "message", role: "user", content: [{ type: "input_text", text: "PRIVATE_ANSWER" }],
+      internal_chat_message_metadata_passthrough: { turn_id: "async-turn", content_item_kinds: ["user.text"] } } }) + "\n");
+  const uncertain = createCodexLivenessCoordinator(settings).observe(threads).threads[0];
+  assert.equal(uncertain.liveStatus, "unknown", "open-turn evidence cannot claim generic text answered the question");
+  assert.equal(uncertain.liveness.evidence, "unavailable");
+  assert.doesNotMatch(JSON.stringify(uncertain), /PRIVATE_ANSWER/);
+  const userArrival = { timestamp: new Date(START + 3_000).toISOString(), type: "event_msg",
+    payload: { type: "user_message" } };
+  const work = Array.from({ length: 20 }, (_, n) => ({ timestamp: new Date(START + 4_000 + n).toISOString(),
+    type: "response_item", payload: { type: "function_call", name: "exec", call_id: `work-${n}` } }));
+  await appendFile(file, work.map(JSON.stringify).join("\n") + "\n");
+  const retainedUncertain = createCodexLivenessCoordinator({ ...settings, maximumTailBytes: 1200,
+    maximumOwnerTailBytes: 1200, currentWriterOwner: () => ({ pid: 4242, processStartIdentity: "134000000000000000" }) });
+  retainedUncertain.observeLifecycleSources([{ file, generation: incrementalSourceDescriptor(file), complete: true,
+    state: [...records, userArrival, ...work].reduce(reduceCodexRecordedLifecycle, initialCodexRecordedLifecycle()) }]);
+  assert.equal(retainedUncertain.observe(threads).threads[0].liveStatus, "unknown",
+    "native presence cannot replace retained pending-input uncertainty with bounded-tail activity");
+});
+
 test("owning app-server status outranks native presence and maps waiting and system errors", () => {
   const owner = { pid: 4242, processStartIdentity: "134000000000000000" };
   const coordinator = createCodexLivenessCoordinator({

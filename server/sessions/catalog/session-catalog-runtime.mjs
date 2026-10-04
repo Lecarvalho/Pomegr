@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { copyInputNotificationTime } from "../../normalize/input-notification-facts.mjs";
 
 export const MAX_CATALOG_SHELL_ROWS = 200;
 
@@ -29,13 +30,13 @@ export function compareCatalogEntries(left, right) {
 export function publicCatalogEntry(providerId, source, entry) {
   const localId = String(entry?.localId || "");
   if (!localId) return null;
-  return Object.freeze({
+  return copyInputNotificationTime(entry, Object.freeze({
     id: `${providerId}:${localId}`, provider: providerId, source,
     title: String(entry.title || "Untitled session"), project: String(entry.project || "Unknown project"),
     createdAt: entry.createdAt || entry.updatedAt || null, updatedAt: entry.updatedAt || null,
     isLive: Boolean(entry.isLive), needsInput: Boolean(entry.needsInput), activityStatus: entry.activityStatus || "unknown",
     detailReadiness: entry?.detailReadiness === "unavailable" ? "unavailable" : null,
-  });
+  }));
 }
 
 export function catalogStructure(entries = []) {

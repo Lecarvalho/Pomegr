@@ -80,7 +80,9 @@ test("persistent usage authentication alerts require Provider news opt-in withou
   optedIn = true;
   assert.equal(await native.instance.observe(snapshot([auth(102)], 3)), 0);
   assert.equal(await native.instance.observe(snapshot([auth(103)], 4)), 1);
-  assert.match(native.shown[0].payload.body, /still requires sign-in after a retry/);
+  assert.match(native.shown[0].payload.title, /usage refresh required sign-in/);
+  assert.match(native.shown[0].payload.body, /A usage refresh required sign-in after a retry/);
+  assert.match(native.shown[0].payload.body, /Saved usage values may remain visible/);
   native.shown[0].onClick();
   assert.deepEqual(native.opened, ["/usage-limits"]);
 });

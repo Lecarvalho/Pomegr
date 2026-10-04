@@ -23,7 +23,8 @@ function recordTimestamp(record) {
 }
 
 function recordTurnId(record) {
-  const value = record?.turn_id ?? record?.turnId ?? record?.payload?.turn_id ?? record?.payload?.turnId ?? record?.payload?.turn?.id;
+  const value = record?.turn_id ?? record?.turnId ?? record?.payload?.turn_id ?? record?.payload?.turnId ?? record?.payload?.turn?.id
+    ?? record?.payload?.internal_chat_message_metadata_passthrough?.turn_id;
   return typeof value === "string" && SAFE_ID.test(value) ? value : null;
 }
 
@@ -36,9 +37,25 @@ function normalizedToolName(value) {
   return typeof value === "string" ? value.split(/[.:/]/).at(-1).trim().toLowerCase() : "";
 }
 
-function isPendingInput(payload) {
-  return ["function_call", "custom_tool_call"].includes(payload?.type)
-    && normalizedToolName(payload.name) === "request_user_input";
+function inputKind(payload) {
+  if (!["function_call", "custom_tool_call"].includes(payload?.type)) return null;
+  const name = normalizedToolName(payload.name);
+  return name === "request_user_input" ? "sync" : name === "request_user_input_async" ? "async" : null;
+}
+
+function asyncAcceptance(payload) {
+  let output = payload.output;
+  if (typeof output === "string") {
+    if (output.length > 65_536) return null;
+    try { output = JSON.parse(output); } catch { return null; }
+  }
+  return output && typeof output === "object" && !Array.isArray(output)
+    && typeof output.accepted === "boolean" ? output.accepted : null;
+}
+
+function isUserArrival(record, payload) {
+  return (record.type === "event_msg" && ["user_message", "user_prompt"].includes(payload?.type))
+    || (record.type === "response_item" && payload?.type === "message" && payload.role === "user");
 }
 
 function isCallOutput(payload) {
@@ -70,16 +87,20 @@ function validState(state) {
   return {
     turn: normalizedTurn(state.turn),
     latestActivityAt: codexTimestamp(state.latestActivityAt),
+    inputOverflow: state.inputOverflow === true,
     pendingInputs: Array.isArray(state.pendingInputs) ? state.pendingInputs
       .filter((item) => item && SAFE_ID.test(item.callId || "") && codexTimestamp(item.observedAt))
       .slice(-MAX_PENDING_INPUTS)
-      .map((item) => ({ callId: item.callId, turnId: typeof item.turnId === "string" && SAFE_ID.test(item.turnId) ? item.turnId : null, observedAt: codexTimestamp(item.observedAt) })) : [],
+      .map((item) => ({ callId: item.callId, turnId: typeof item.turnId === "string" && SAFE_ID.test(item.turnId) ? item.turnId : null,
+        observedAt: codexTimestamp(item.observedAt), kind: item.kind === "async" ? "async" : "sync",
+        state: item.kind === "async" && ["submitted", "accepted", "uncertain"].includes(item.state) ? item.state
+          : item.kind === "async" ? "uncertain" : "accepted" })) : [],
   };
 }
 
 /** Bounded provider-private state suitable for retained complete-record observation. */
 export function initialCodexRecordedLifecycle() {
-  return { turn: null, latestActivityAt: null, pendingInputs: [] };
+  return { turn: null, latestActivityAt: null, pendingInputs: [], inputOverflow: false };
 }
 
 /** Reduce one complete provider record without retaining provider text or payloads. */
@@ -89,13 +110,15 @@ export function reduceCodexRecordedLifecycle(previous, record) {
   const timestamp = recordTimestamp(record);
   if (!timestamp) return state;
 
-  const nextTurn = reduceCodexTurnLifecycle([record], state.turn);
+  const currentOrNewer = !state.latestActivityAt || timestampValue(timestamp) >= timestampValue(state.latestActivityAt);
+  // A boundary must follow the newest accepted activity, not just the last
+  // boundary. Delayed provider records cannot cancel newer user obligations.
+  const nextTurn = currentOrNewer ? reduceCodexTurnLifecycle([record], state.turn) : state.turn;
   const turnChanged = nextTurn !== state.turn;
   const payload = record.payload;
   const turnId = recordTurnId(record);
   const currentTurnId = nextTurn?.turnId ?? null;
   const belongsToCurrentTurn = !turnId || !currentTurnId || turnId === currentTurnId;
-  const currentOrNewer = !state.latestActivityAt || timestampValue(timestamp) >= timestampValue(state.latestActivityAt);
   const acceptedActivity = currentOrNewer && isProviderActivity(record, payload, {
     acceptedBoundary: turnChanged,
     turnId,
@@ -103,29 +126,50 @@ export function reduceCodexRecordedLifecycle(previous, record) {
   });
   const latestActivityAt = acceptedActivity ? timestamp : state.latestActivityAt;
   let pendingInputs = state.pendingInputs;
+  let inputOverflow = state.inputOverflow;
   if (turnChanged && nextTurn?.kind === "start") {
     pendingInputs = [];
+    inputOverflow = false;
   } else if (turnChanged && nextTurn?.kind === "end") {
     pendingInputs = [];
-  } else if (acceptedActivity && belongsToCurrentTurn) {
-    if (nextTurn?.kind !== "end" && isPendingInput(payload)) {
+    inputOverflow = false;
+  } else if (currentOrNewer && belongsToCurrentTurn && nextTurn?.kind !== "end") {
+    const kind = record.type === "response_item" ? inputKind(payload) : null;
+    if (kind && acceptedActivity) {
       const id = callId(payload);
-      if (id) {
-        pendingInputs = [...pendingInputs.filter((item) => item.callId !== id), {
+      if (id && !pendingInputs.some((item) => item.callId === id)) {
+        if (pendingInputs.length >= MAX_PENDING_INPUTS) inputOverflow = true;
+        else pendingInputs = [...pendingInputs, {
           callId: id,
           turnId: turnId ?? currentTurnId,
           observedAt: timestamp,
-        }].slice(-MAX_PENDING_INPUTS);
+          kind, state: kind === "async" ? "submitted" : "accepted",
+        }];
       }
-    } else if (isCallOutput(payload)) {
+    } else if (record.type === "response_item" && isCallOutput(payload) && acceptedActivity) {
       const id = callId(payload);
-      if (id && pendingInputs.some((item) => item.callId === id)) {
-        pendingInputs = pendingInputs.filter((item) => item.callId !== id);
+      const pending = pendingInputs.find((item) => item.callId === id);
+      if (pending && (!turnId || !pending.turnId || pending.turnId === turnId)) {
+        if (pending.kind === "sync") pendingInputs = pendingInputs.filter((item) => item !== pending);
+        else {
+          const accepted = asyncAcceptance(payload);
+          if (accepted === false) pendingInputs = pendingInputs.filter((item) => item !== pending);
+          // Duplicate acknowledgements cannot undo uncertainty or renew time.
+          else if (pending.state === "submitted") pendingInputs = pendingInputs.map((item) => item === pending
+            ? { ...item, state: accepted === true ? "accepted" : "uncertain" } : item);
+        }
       }
+    } else if (isUserArrival(record, payload)) {
+      // Ordinary user text carries no async-call correlation. It can be an
+      // answer, cancellation, or unrelated steering; never claim resolution.
+      pendingInputs = pendingInputs.map((item) => item.kind === "async" && item.state !== "uncertain"
+        && timestampValue(timestamp) >= timestampValue(item.observedAt)
+        ? { ...item, state: "uncertain" } : item);
     }
   }
-  if (nextTurn === state.turn && latestActivityAt === state.latestActivityAt && pendingInputs === state.pendingInputs) return state;
-  return { turn: nextTurn, latestActivityAt, pendingInputs };
+  if (nextTurn === state.turn && latestActivityAt === state.latestActivityAt && pendingInputs === state.pendingInputs
+    && inputOverflow === state.inputOverflow) return state;
+  return { turn: nextTurn, latestActivityAt, pendingInputs, inputOverflow };
 }
 
 function unknownLiveness(state, nowMs, { freshness = "stale" } = {}) {
@@ -170,7 +214,7 @@ export function codexRecordedLiveness(previous, { now = Date.now(), complete = t
   // Silence is not a lifecycle event. Retain a validated turn or structured wait
   // until matching provider evidence resolves it; never manufacture a heartbeat.
   if (!state.turn && !state.pendingInputs.length) return unknownLiveness(state, nowMs);
-  const pending = state.pendingInputs.at(-1);
+  const pending = state.pendingInputs.find((item) => item.state === "accepted");
   if (pending) return {
     live: true,
     status: "needs_input",
@@ -181,6 +225,7 @@ export function codexRecordedLiveness(previous, { now = Date.now(), complete = t
     evidence: "observed",
     freshness: "current",
   };
+  if (state.pendingInputs.length || state.inputOverflow) return unknownLiveness(state, nowMs, { freshness: "current" });
   if (!state.turn) return unknownLiveness(state, nowMs, { freshness: "current" });
   return {
     live: true,

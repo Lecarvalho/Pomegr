@@ -1,5 +1,6 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 import { copyUsageNotificationSource } from "../normalize/usage-notification-facts.mjs";
+import { copyInputNotificationTime } from "../normalize/input-notification-facts.mjs";
 import { createProviderFoldersSnapshot } from "../normalize/provider-folders.mjs";
 import { createPipelineFailureRecorder } from "../diagnostics/pipeline-operations-failures.mjs";
 import {
@@ -47,7 +48,7 @@ function normalizedSessionActivityStatus(entry) {
 }
 
 function publicCatalogEntry(entry) {
-  return {
+  return copyInputNotificationTime(entry, {
     id: entry.id,
     provider: entry.provider.id,
     source: entry.provider.source,
@@ -59,7 +60,7 @@ function publicCatalogEntry(entry) {
     needsInput: Boolean(entry.needsInput),
     activityStatus: normalizedSessionActivityStatus(entry),
     ...(entry.detailReadiness === "unavailable" ? { summaryReadiness: "unavailable" } : {}),
-  };
+  });
 }
 
 function normalizedResourceOwner(value) {
@@ -251,12 +252,12 @@ export function createProviderRegistry(adapters, options = {}) {
           try {
             const reference = parseProviderSessionReference(session);
             const id = qualifyProviderSessionId(provider.id, reference.localId);
-            return [{
+            return [copyInputNotificationTime(reference, {
               ...reference,
               id,
               provider,
               providerIndex,
-            }];
+            })];
           } catch (error) {
             recordDiagnostic(provider.id, "catalogEntriesRejected", error);
             return [];

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createCodexProvider } from "../../../../server/providers/codex/index.mjs";
+import { inputNotificationTime } from "../../../../server/normalize/input-notification-facts.mjs";
 
 // Keep fixtures well outside the real-clock working set: eager hydration must
 // use the provider's injected clock, including after a cold observer restart.
@@ -21,6 +22,64 @@ async function waitFor(predicate, timeoutMs = 3_000) {
 function record(timestamp, type, payload) {
   return JSON.stringify({ timestamp: iso(timestamp), type, payload });
 }
+
+test("accepted async input reconstructs after cold restart, remains through work, and ends only as uncertain or turn-scoped", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-async-pipeline-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const sessions = path.join(root, "sessions", "2000", "01", "01");
+  await mkdir(sessions, { recursive: true });
+  const rollout = path.join(sessions, "rollout-async-root.jsonl");
+  let now = NOW + 5_000;
+  const pendingAt = NOW + 1_000;
+  const call = { type: "function_call", name: "request_user_input_async", call_id: "PRIVATE_CALL",
+    arguments: JSON.stringify({ questions: [{ title: "PRIVATE_QUESTION", options: ["PRIVATE_OPTION"] }] }),
+    internal_chat_message_metadata_passthrough: { turn_id: "async-turn" } };
+  await writeFile(rollout, [
+    record(NOW, "session_meta", { id: "async-root", source: "vscode", cwd: "C:\\synthetic\\pomegr" }),
+    record(NOW, "event_msg", { type: "task_started", turn_id: "async-turn" }),
+    record(pendingAt, "response_item", call),
+    record(NOW + 2_000, "response_item", { type: "function_call_output", call_id: "PRIVATE_CALL", output: '{"accepted":true}' }),
+    record(NOW + 3_000, "response_item", { type: "function_call", name: "exec", call_id: "work", arguments: "{}" }),
+  ].join("\n") + "\n");
+  const start = async () => {
+    const candidates = []; const catalogs = [];
+    const provider = createCodexProvider({ codexHome: root, includeArchived: false, cacheMs: 0,
+      now: () => now, observerIntervalMs: 60_000, maximumTailBytes: 256,
+      observerWatchSource: () => ({ close() {} }) });
+    const observer = provider.createObserver();
+    const controller = new AbortController();
+    context.after(() => controller.abort());
+    await observer.start({ publishCatalog: (rows) => catalogs.push(rows),
+      publishSession: (_id, candidate) => candidates.push(candidate), invalidateSession() {} }, controller.signal);
+    await waitFor(() => candidates.length > 0);
+    return { observer, candidates, catalogs };
+  };
+  let run = await start();
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
+  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "needs_input");
+  const pendingRow = run.catalogs.at(-1).find((row) => row.localId === "async-root");
+  assert.equal(inputNotificationTime(pendingRow), iso(pendingAt), "private occurrence clock stays at the question through continued work");
+  assert.ok(pendingRow.updatedAt > iso(pendingAt), "public activity clock still reflects newer work");
+  assert.doesNotMatch(JSON.stringify([run.candidates, run.catalogs]), /PRIVATE_/);
+  run.observer.stop();
+  now += 3 * 60 * 60_000;
+  run = await start();
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").status, "needs_input");
+  assert.equal(run.candidates.at(-1).agents.find((agent) => agent.id === "primary").liveness.observedAt, iso(pendingAt));
+  assert.equal(inputNotificationTime(run.catalogs.at(-1).find((row) => row.localId === "async-root")), iso(pendingAt));
+  now += 1_000;
+  await appendFile(rollout, record(now, "response_item", { type: "message", role: "user",
+    content: [{ type: "input_text", text: "PRIVATE_ANSWER" }],
+    internal_chat_message_metadata_passthrough: { turn_id: "async-turn", content_item_kinds: ["user.text"] } }) + "\n");
+  await run.observer.hydrate("async-root");
+  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "unknown");
+  now += 1_000;
+  await appendFile(rollout, record(now, "event_msg", { type: "task_complete", turn_id: "async-turn" }) + "\n");
+  await run.observer.hydrate("async-root");
+  assert.equal(run.catalogs.at(-1).find((row) => row.localId === "async-root").activityStatus, "idle");
+  assert.doesNotMatch(JSON.stringify([run.candidates, run.catalogs]), /PRIVATE_/);
+  run.observer.stop();
+});
 
 test("real Codex observer publishes lifecycle state without transcript growth and retains it across restart", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-codex-lifecycle-pipeline-"));

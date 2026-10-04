@@ -1710,6 +1710,38 @@ gapped, unstable, older, or mismatched candidates retain the accepted lifecycle.
 This terminal-only path retains normalized evidence in bounded private memory; it
 does not acquire detail or history, change checkpoints, or run from a GET. Writer
 ownership can retain presence but cannot turn the terminal into working execution.
+
+Codex recognizes only the exact `request_user_input` and `request_user_input_async`
+tool identities after its existing namespace normalization. Matching synchronous
+output closes only that call's wait. Async calls begin as unconfirmed submissions;
+a bounded transient parse of their matching output confirms outstanding user action
+only for a structured boolean `accepted: true`. That acknowledgement is never an
+answer. `accepted: false` rejects the submission; other result shapes leave it
+unknown, without retaining output text. Accepted action can coexist with continued
+agent work and keeps the original call observation time through duplicate calls,
+acknowledgements and polling.
+
+The supported async recording contains no verified per-question answer or cancellation
+identity. Generic later user messages can be answers, cancellation or unrelated
+steering. They make same-turn async submissions uncertain, never answered; synchronous
+waits remain intact. Known wrong-turn and older arrivals are ignored. A validated turn
+completion, interruption or new turn ends the old turn's question scope; it does not
+prove an individual question was answered. Same-turn context does not end it. The
+private reducer holds at most sixteen safe call identities, turn identities, original
+times and fixed kind/state values, plus a bounded overflow flag. Overflow cannot turn
+forgotten questions into confirmed resolution. Cold source replay reconstructs this
+state; no question state enters checkpoints or public responses. Complete retained
+and tail input reduction share these rules, while incomplete acquisition, writer
+release and owning-runtime precedence keep the contracts above. Existing notifications
+follow committed Needs input facts; a resolved tray occurrence means that condition
+ended, including a transition to Unknown, not proof of an answer. Questions, options,
+answers and result contents never enter browser or native payloads.
+The original question time travels as an out-of-band, monitor-private catalog fact
+through validation and notification projection. It never replaces the public
+`updatedAt` activity clock or enters serialized catalogs or checkpoints. Continuous
+complete tail appends retain the bounded normalized question state even when its
+source call leaves the acquisition window; gaps remain Unknown.
+
 Before a full live-body hydration finishes, ordinary Codex catalog candidates inspect
 at most a 128 KiB/256-record lifecycle tail. A session with a confirmed native writer
 owner may inspect at most a 4 MiB/2,048-record lifecycle tail so an explicit current-turn

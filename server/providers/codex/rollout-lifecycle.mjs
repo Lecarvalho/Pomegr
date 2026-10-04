@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import { codexTimestamp } from "./session-metadata.mjs";
 import { reduceCodexTurnLifecycle } from "./turn-lifecycle.mjs";
+import { codexRecordedLiveness, initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./recorded-lifecycle.mjs";
 import { CODEX_ACTIVE_WINDOW_MS, CODEX_ROLLOUT_LIVE_WINDOW_MS, CODEX_NEEDS_INPUT_MAX_MS, CODEX_LIVENESS_MAX_TAIL_RECORDS } from "./lifecycle-constants.mjs";
 function timestampValue(value) { return Date.parse(value || "") || 0; }
 function safeTurnId(value) { return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/.test(value) ? value : null; }
-function normalizedToolName(value) { return typeof value === "string" ? value.split(/[.:/]/).at(-1).trim().toLowerCase() : ""; }
 export function readCodexLivenessTail(file, maximumBytes, maximumRecords = CODEX_LIVENESS_MAX_TAIL_RECORDS) {
   let stat;
   try { stat = fs.statSync(file); } catch { return { key: null, records: [], complete: false }; }
@@ -66,11 +66,6 @@ function recordTurnId(record) {
   return safeTurnId(record?.turn_id ?? record?.turnId ?? record?.payload?.turn_id ?? record?.payload?.turnId);
 }
 
-function callId(payload) {
-  const value = payload?.call_id ?? payload?.callId ?? payload?.id;
-  return typeof value === "string" && value.length <= 192 ? value : null;
-}
-
 function isAssistantFinalMessage(payload) {
   return payload?.type === "message" && payload.role === "assistant" && payload.phase === "final_answer";
 }
@@ -104,13 +99,14 @@ function rolloutTerminalStatus(record) {
 
 export function parseCodexRolloutLiveness(records, options = {}) {
   const nowMs = Number.isFinite(options.now) ? options.now : Date.now();
-  const pending = new Map();
+  let inputState = initialCodexRecordedLifecycle();
   let planModeTurn = false;
   let planConfirmation = null;
   let latest = null;
   let terminal = null;
   let turn = null;
   for (const record of Array.isArray(records) ? records : []) {
+    inputState = reduceCodexRecordedLifecycle(inputState, record);
     const timestamp = recordTimestamp(record);
     if (!timestamp) continue;
     const payload = record?.payload;
@@ -124,48 +120,31 @@ export function parseCodexRolloutLiveness(records, options = {}) {
       ? turn.status : !turn ? rolloutTerminalStatus(record) : null;
     if (observedTerminal) {
       terminal = { status: observedTerminal, timestamp };
-      pending.clear();
     }
     if (turnChanged && turn?.kind === "start") {
-      pending.clear();
       planConfirmation = null;
       terminal = null;
     }
     if (record.type === "turn_context") {
       if (!recordTurnId(record) || turnChanged) {
         planConfirmation = null;
-        pending.clear();
       }
       planModeTurn = isPlanModeTurn(payload);
     } else if (record.type === "event_msg" && ["user_message", "user_prompt"].includes(payload?.type)) {
       planConfirmation = null;
-      pending.clear();
     }
     if (record.type !== "response_item" || !payload || typeof payload !== "object") continue;
     if (payload.type === "message" && payload.role === "user") {
       planConfirmation = null;
-      pending.clear();
     }
     if (isAssistantFinalMessage(payload) && (planModeTurn || isWrappedProposedPlan(payload))) {
       planConfirmation = { timestamp, turnId: recordTurnId(record) };
     }
-    if (["function_call", "custom_tool_call"].includes(payload.type)
-      && normalizedToolName(payload.name) === "request_user_input") {
-      const id = callId(payload);
-      if (id) pending.set(id, { timestamp, turnId: recordTurnId(record) });
-    }
-    if (["function_call_output", "custom_tool_call_output"].includes(payload.type)) {
-      const id = callId(payload);
-      if (id) {
-        pending.delete(id);
-      }
-    }
   }
   if (!latest) return null;
-  const waiting = [...pending.values()].sort((left, right) => timestampValue(right.timestamp) - timestampValue(left.timestamp))[0];
-  const waitingAge = waiting ? nowMs - timestampValue(waiting.timestamp) : null;
-  if (waitingAge !== null && waitingAge >= 0 && waitingAge <= CODEX_ROLLOUT_LIVE_WINDOW_MS) {
-    return { live: true, status: "needs_input", needsInput: true, needsInputKind: "user_input", source: "rollout_activity_heuristic", observedAt: waiting.timestamp };
+  const inputLiveness = codexRecordedLiveness(inputState, { now: nowMs });
+  if (inputState.pendingInputs.length || inputState.inputOverflow) {
+    return inputLiveness;
   }
   const planConfirmationAge = planConfirmation ? nowMs - timestampValue(planConfirmation.timestamp) : null;
   if (planConfirmationAge !== null && planConfirmationAge >= 0 && planConfirmationAge <= CODEX_NEEDS_INPUT_MAX_MS) {

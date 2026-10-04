@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { inputNotificationTime, withInputNotificationTime } from "../../normalize/input-notification-facts.mjs";
 import { isSafeCodexSessionId, readCodexRolloutHeader } from "./session-metadata.mjs";
 
 export function timestampValue(value) {
@@ -14,7 +15,7 @@ export function compareCodexMetadata(left, right) {
 }
 
 export function codexSessionReference(thread, state = {}) {
-  return {
+  return withInputNotificationTime({
     localId: thread.localId,
     title: thread.title,
     project: thread.project,
@@ -24,7 +25,7 @@ export function codexSessionReference(thread, state = {}) {
     needsInput: Boolean(state.needsInput),
     activityStatus: state.activityStatus || "unknown",
     resourceOwner: state.resourceOwner || null,
-  };
+  }, state.needsInput ? inputNotificationTime(state) ?? state.observedAt : null);
 }
 
 export function boundedInteger(value, fallback, maximum) {

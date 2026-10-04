@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { withInputNotificationTime } from "../../normalize/input-notification-facts.mjs";
 import { priorSourceSuffixMatches } from "../kernel/source-generation.mjs";
 import path from "node:path";
 import { applyWaitingStatus } from "../../normalize/agent-metadata.mjs";
@@ -10,7 +11,7 @@ import { readCodexWriterLock } from "./writer-presence.mjs";
 import { createCodexSourceRouter, codexInferenceEligible } from "./source-routing.mjs";
 import { canonicalCodexSourcePath } from "./source-path.mjs";
 import { incrementalSourceDescriptor } from "../kernel/incremental-provider-observer.mjs";
-import { codexRecordedLiveness, reduceCodexRecordedLifecycle } from "./recorded-lifecycle.mjs";
+import { codexRecordedLiveness, initialCodexRecordedLifecycle, reduceCodexRecordedLifecycle } from "./recorded-lifecycle.mjs";
 import { aggregateCodexSessionLifecycle } from "./session-lifecycle.mjs";
 import {
   CODEX_ROLLOUT_LIVE_WINDOW_MS,
@@ -185,7 +186,8 @@ export function createCodexLivenessCoordinator(options = {}) {
         // confirmed owner plus fresh structured activity may refine that one
         // unresolved case through the bounded tail below; ownership alone still
         // cannot establish execution.
-        if (retained && (!ownerConfirmed || retained.status !== "unknown")) return retained;
+        if (retained && (!ownerConfirmed || retained.status !== "unknown"
+          || successor.state.turn || successor.state.pendingInputs.length || successor.state.inputOverflow)) return retained;
       }
     }
     const key = `${current.identity}:${current.size}:${current.mtimeMs}:${current.suffixDigest}:${tailBytes}:${tailRecords}`;
@@ -206,7 +208,14 @@ export function createCodexLivenessCoordinator(options = {}) {
         && (!read.complete || !stable)
         && (stable || compatibleAppend(file, current, confirmed));
       if (!pendingAppend) {
+        // Acquisition bounds must not expire previously normalized questions.
+        // Borrow state only from a complete, continuous compatible append.
+        const inputState = read.records.reduce(reduceCodexRecordedLifecycle,
+          cached && (sameGeneration(current, cached.generation) || appended)
+            && cached.complete && cached.continuous && cached.generation.size >= read.startOffset
+            ? cached.inputState : initialCodexRecordedLifecycle());
         cached = { key, records: read.records, generation: current,
+          inputState,
           complete: read.complete && Boolean(stable),
           continuous: Boolean(tailBoundary) || continuous,
           boundary: observedCodexRolloutLifecycle(read.records, { now: nowMs, previous: previousBoundary }).boundary };
@@ -223,7 +232,12 @@ export function createCodexLivenessCoordinator(options = {}) {
       return last ? { ...last, status: "unknown", needsInput: false, evidence: "unavailable",
         freshness: "stale", reason: "observation_gap" } : null;
     }
+    const retainedInput = codexRecordedLiveness(cached.inputState, { now: nowMs });
+    if (cached.inputState?.pendingInputs.length || cached.inputState?.inputOverflow) return retainedInput;
     if (inferred?.needsInputKind === "user_input" && (!explicit || inferred.observedAt >= explicit.observedAt)) return { ...inferred, source: "structured_lifecycle", evidence: "observed", freshness: "current" };
+    // A generic user arrival cannot confirm resolution of an accepted async
+    // question. Do not let an older open-turn boundary erase this uncertainty.
+    if (inferred?.status === "unknown" && inferred?.source === "structured_lifecycle") return inferred;
     if (explicit?.evidence === "observed") return explicit;
     if (inferred && (ownerConfirmed
       || (!unavailableReason && codexInferenceEligible(options.deterministicAvailability)))) {
@@ -310,14 +324,17 @@ export function createCodexLivenessCoordinator(options = {}) {
       // recorded activity and must not advance the catalog's activity clock.
       const newest = related.map((thread) => thread.liveness).filter((value) => value && value.source !== "owning_app_server")
         .sort((left, right) => timestampValue(right.observedAt) - timestampValue(left.observedAt))[0];
+      const waiting = live.filter((thread) => thread.liveStatus === "needs_input" && thread.liveness?.source !== "owning_app_server")
+        .map((thread) => thread.liveness).filter(Boolean)
+        .sort((left, right) => timestampValue(left.observedAt) - timestampValue(right.observedAt))[0];
       const owners = new Map(live.map((thread) => resourceOwnersByThreadId.get(thread.localId)).filter(Boolean)
         .map((owner) => [`${owner.pid}\0${owner.processStartIdentity}`, owner]));
       const resourceOwner = owners.size === 1 ? [...owners.values()][0] : null;
-      sessions.set(rootThread.localId, {
+      sessions.set(rootThread.localId, withInputNotificationTime({
         ...aggregateCodexSessionLifecycle(rootThread, related),
         observedAt: newest?.observedAt || null,
         resourceOwner,
-      });
+      }, waiting?.observedAt));
     }
     const value = { threads: observedThreads, sessions };
     cache = { input: threads, checkedAt, expiresAt: checkedAt + cacheMs, presenceKey, value };
