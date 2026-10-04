@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { USAGE_NOTIFICATION_RULE } from "./usage-notifications.mjs";
+import { RELEASE_NOTIFICATION_RULE } from "./release-notifications.mjs";
 
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const SAFE_TEXT = /^[^<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]*$/u;
@@ -20,6 +21,7 @@ export function sourceReadiness(value) { return READINESS.has(value) ? value : "
 /** Each rule declares the policy consumed by the occurrence ledger. */
 export const NOTIFICATION_RULES = Object.freeze([
   USAGE_NOTIFICATION_RULE,
+  RELEASE_NOTIFICATION_RULE,
   Object.freeze({
     kind: "needs_input", source: "catalog", capability: "session_catalog", scope: "session",
     identity: "normalized_session_id", freshness: "ready_row", transition: "false_to_true",

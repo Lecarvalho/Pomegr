@@ -8,11 +8,12 @@ import { useNotificationSnapshot } from "../../notifications-client";
 import { useNotificationReadState } from "../../notification-read-state";
 import { CommandIcon } from "./CommandIcon";
 import { usageNotificationPayload } from "../../../shared/usage-notification.mjs";
+import { releaseNotificationPayload } from "../../../shared/release-notification.mjs";
 
 export type NotificationView = {
   id: string;
   kind: string;
-  group: "Needs attention" | "Provider service" | "Usage limits" | "System";
+  group: "Needs attention" | "Provider service" | "Usage limits" | "Provider updates" | "System";
   title: string;
   description: string;
   href: string;
@@ -28,7 +29,7 @@ export type NotificationPresentationRule = {
 };
 
 const PROVIDER_LABEL = { claude: "Claude Code", codex: "Codex" } as const;
-const GROUP_ORDER: NotificationView["group"][] = ["Needs attention", "Provider service", "Usage limits", "System"];
+const GROUP_ORDER: NotificationView["group"][] = ["Needs attention", "Provider service", "Usage limits", "Provider updates", "System"];
 
 /** Fixed destinations. A malformed session identity falls back to the Sessions page. */
 export function notificationDestination(action: NotificationAction, record: NotificationRecord): { href: string; label: string } {
@@ -48,6 +49,12 @@ export function notificationDestination(action: NotificationAction, record: Noti
 }
 
 export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] = [
+  ...["release_published", "installation_update_available"].map((kind): NotificationPresentationRule => ({
+    kind, present: (record) => {
+      const payload = releaseNotificationPayload(record);
+      return payload ? { group: "Provider updates", title: payload.title, description: payload.body, tone: "online" } : null;
+    },
+  })),
   ...["usage_window_reset", "usage_capacity_restored", "usage_reset_available", "usage_authentication_required"].map((kind): NotificationPresentationRule => ({
     kind, present: (record) => {
       const payload = usageNotificationPayload(record);

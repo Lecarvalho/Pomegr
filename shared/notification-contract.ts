@@ -1,5 +1,5 @@
 /** Public, bounded notification data. Upstream payloads and source scopes stay private. */
-export type NotificationKind = "needs_input" | "provider_incident" | "provider_recovery" | "monitor_unreachable" | "usage_window_reset" | "usage_capacity_restored" | "usage_reset_available" | "usage_authentication_required";
+export type NotificationKind = "needs_input" | "provider_incident" | "provider_recovery" | "monitor_unreachable" | "usage_window_reset" | "usage_capacity_restored" | "usage_reset_available" | "usage_authentication_required" | "release_published" | "installation_update_available";
 export type NotificationCategory = "attention" | "provider_service" | "system" | "usage" | "provider_news";
 export type NotificationSeverity = "info" | "warning" | "critical";
 export type NotificationAction = "open_session" | "open_sessions" | "open_providers" | "open_workspace" | "open_usage_limits";
@@ -22,6 +22,9 @@ export type NotificationBase = {
 };
 
 export type NotificationRecord =
+  | (NotificationBase & { kind: "release_published" | "installation_update_available"; provider: "claude" | "codex" | null; data: {
+    product: "claude_code" | "codex_cli" | "pomegr_plugin"; version: string; channel: "latest" | "main"; affectedRepositories?: number;
+  } })
   | (NotificationBase & { kind: "usage_authentication_required"; provider: "claude" | "codex"; data: Record<string, never> })
   | (NotificationBase & { kind: "usage_window_reset" | "usage_capacity_restored"; provider: "claude" | "codex"; data: {
     window: "five_hour" | "weekly" | "model_weekly" | "primary" | "secondary";

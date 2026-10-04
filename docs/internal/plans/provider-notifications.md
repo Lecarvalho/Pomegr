@@ -295,7 +295,7 @@ authorized behavior, measured usage, or a promise of implementation size.
 - [x] Part 1: pure-rule tests, cached-serving/revision/privacy tests, existing app-shell tests, boundary checks, and `npm run verify:fast` pass.
 - [x] Part 2: desktop notification/behavior/security tests and preference UI tests pass; no provider actions are reachable through a notification.
 - [x] Part 3: usage fixtures cover deadline-only, real rollover, same-window recovery, other exhausted windows, source switches, stale data, repeated credit counts, unsupported fields, legacy/multi-bucket Codex windows, and opt-in persistent authentication alerts.
-- [ ] Part 4: release fixtures cover channel changes, downgrades, equal versions, prereleases, unavailable installed versions, invalid payloads, redirects, timeouts, and duplicate repositories.
+- [x] Part 4: release fixtures cover channel changes, downgrades, equal versions, prereleases, unavailable installed versions, invalid payloads, redirects, timeouts, and duplicate repositories.
 - [ ] Part 5: model fixtures cover announcements, bundled catalogs, partial pagination, aliases, unavailable entitlement sources, and false deprecation prevention.
 - [ ] Final review covers all five parts, serialization/persistence boundaries, scheduler isolation, stale data, retention, multi-client delivery, and extension cost.
 - [ ] Inspected captures show Needs input, quiet/disabled preferences, usage recovery/reset availability, release news, and separately labeled model announcement/catalog evidence at desktop and phone widths.
@@ -368,6 +368,21 @@ is unchanged, GETs remain cache-only, and no reset or sign-in is invoked. Part 5
 P3-recovery and P3-reset-available captures, plus the count note and persistent-auth
 copy/opt-in evidence; runnable synthetic commands are in the part-3 capture artifact.
 No screenshots or native OS display/click acceptance are claimed in part 3.
+
+Part-4 implementation checkpoint (2026-10-03): official Claude Code GitHub
+releases provide latest-channel publication news. The Codex CLI reader uses
+OpenAI's installer-selected `channels/latest` metadata and accepts only stable
+`rust-v` tags; Codex desktop and IDE extension releases remain unsupported.
+No current CLI installation version is observed, so CLI news never claims an
+installed update is available. Current Pomegr reporting-plugin setup reuses its
+official manifest reader, aggregates comparable unpinned repository installs,
+and emits one release occurrence with a bounded affected-repository count.
+Sources have bounded deadlines, bodies and items, conditional ETags, redirect
+denial, Retry-After/backoff, and one low-priority six-hour scheduler. The
+notification GET stays cache-only. Phase 5 owns P4-release and P4-plugin
+desktop/phone captures and native OS display/click acceptance; part-4 capture
+instructions are in its ACOS artifacts. Publication/PR bookkeeping remains
+with the phase owner after full verification.
 
 Part 2 supplies persistence, native delivery and durable read markers. Part 5 owns
 both retained part-1 visual claims at 1280 and 390 px: Needs input with safe

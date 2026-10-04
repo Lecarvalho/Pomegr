@@ -12,6 +12,7 @@ import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
 import { createNotificationObservation } from "./runtime/notification-observation.mjs";
+import { createReleaseObservation } from "./runtime/release-observation.mjs";
 import { createNotificationPersistence } from "./notifications/notification-persistence.mjs";
 import { catalogSourceScopeKey } from "./sessions/catalog/session-catalog-runtime.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
@@ -110,6 +111,9 @@ export function createMonitorRuntime(options = {}) {
     }));
   const notifications = createNotificationObservation({ now, persistence: notificationPersistence,
     sourceScope: notificationSourceScope });
+  const releases = options.releaseObservation || createReleaseObservation({
+    ...(options.releaseObservationOptions || {}), accept: notifications.acceptReleaseObservations,
+  });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
   const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
@@ -543,6 +547,11 @@ export function createMonitorRuntime(options = {}) {
 
   const observation = createObservationRuntime({
     ...options,
+    repositoryInventoryOptions: {
+      ...(options.repositoryInventoryOptions || {}),
+      pluginSetupOptions: { ...(options.repositoryInventoryOptions?.pluginSetupOptions || {}),
+        onReleaseFacts: notifications.acceptPluginSetupCommits },
+    },
     registry,
     resourceUsageSampler,
     pullRequestReader,
@@ -573,15 +582,16 @@ export function createMonitorRuntime(options = {}) {
 
   async function startObservation() {
     await notifications.start();
+    releases.start();
     notifications.attachCatalog({ subscribeRevisionEvents: observation.subscribeRevisionEvents,
       serveNotificationCatalog: observation.notificationCatalog });
     try { await observation.startObservation(); }
-    catch (error) { await notifications.stop(); throw error; }
+    catch (error) { await releases.stop(); await notifications.stop(); throw error; }
   }
 
   async function stopObservation() {
     try { await observation.stopObservation(); }
-    finally { await notifications.stop(); }
+    finally { await releases.stop(); await notifications.stop(); }
   }
 
   function subscribeRevisionEvents(subscriber) {

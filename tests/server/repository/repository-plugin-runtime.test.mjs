@@ -35,6 +35,17 @@ test("plugin snapshots are explicitly projected; private provenance and paths ne
   assert.equal(plan.root, root); assert.equal(plan.scope, "user"); assert.equal(plan.targetVersion, "0.6.0");
   assert.equal(await runtime.prepare("repo-ffffffffffffffffffffffff", "claude", "update"), null);
 });
+test("completed setup refresh forwards only current bounded setup facts once", async () => {
+  const facts = [];
+  const runtime = fixture({ onReleaseFacts: (rows) => facts.push(rows) });
+  await runtime.refresh(id, "claude");
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].length, 1);
+  assert.equal(facts[0][0].repositoryId, id);
+  assert.equal(facts[0][0].pinned, false);
+  assert.equal(facts[0][0].setup.update.status, "available");
+  assert.doesNotMatch(JSON.stringify(facts), /private|\\\\private\\\\project|marketplaceRegistered/);
+});
 
 test("failed or incomplete replacement retains the last known version and observation time but disables actions", async () => {
   let fail = false; let tick = Date.parse(stamp);

@@ -5,7 +5,7 @@ import { NOTIFICATION_RULES, createNotificationRuleRegistry, deriveNeedsInput, d
 const at = "2026-10-03T12:00:00.000Z";
 
 test("registry declares identity, freshness, transition, resolution and fixed action", () => {
-  assert.deepEqual(NOTIFICATION_RULES.map((rule) => rule.kind), ["usage_window_reset", "needs_input", "provider_incident"]);
+  assert.deepEqual(NOTIFICATION_RULES.map((rule) => rule.kind), ["usage_window_reset", "release_published", "needs_input", "provider_incident"]);
   for (const rule of NOTIFICATION_RULES) for (const key of ["capability", "scope", "identity", "freshness", "transition", "resolution", "retentionDays", "category", "delivery", "action"]) assert.ok(rule[key]);
   assert.throws(() => createNotificationRuleRegistry([...NOTIFICATION_RULES, NOTIFICATION_RULES[0]]));
 });

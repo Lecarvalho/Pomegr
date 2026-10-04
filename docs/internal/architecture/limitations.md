@@ -94,6 +94,24 @@ whether an incident affected one account, model, or session. See
 
 ## Pomegr-specific limitations
 
+### Release news
+
+The notification tray observes published Claude Code releases on the official
+latest feed and the official Codex CLI latest-channel `rust-v` release metadata.
+The Codex desktop app and IDE
+extension have separate release paths and are not covered. Claude Code's delayed
+stable channel is not established by the GitHub publication feed. Pomegr does not
+read a current CLI installation version, so these sources report a release
+published; they do not claim your CLI can update. A version in a recorded session
+is historical evidence, not current installation proof.
+
+Pomegr reporting-plugin news reuses the current repository setup check and its
+official plugin manifest. Comparable installed plugin versions can qualify an
+update message. Repositories with a pinned source do not enter the main-release
+comparison. Public news omits repository identities and release bodies, and
+the notification action never installs an update. Public source failures retain
+the last known-good observation and may delay news.
+
 ### Session file scope and attribution
 
 The session Repository tab's **Touched here** list holds recorded structured
