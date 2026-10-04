@@ -4,6 +4,7 @@ import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { NotificationRecord, NotificationSnapshot, NotificationSourceReadiness } from "../shared/notification-contract";
 import { subscribeLiveEvents } from "./live-events";
 import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPolicy } from "../shared/usage-notification.mjs";
+import { isReleaseNotificationKind, normalizeReleaseNotificationData, releaseNotificationPolicy } from "../shared/release-notification.mjs";
 
 const POLL_MS = 30_000;
 const MAX_RESPONSE_BYTES = 1_048_576;
@@ -66,6 +67,13 @@ function normalizeRecord(value: unknown): NotificationRecord | null {
     if (!usageData || row.category !== policy.category || row.action !== "open_usage_limits" || row.priority !== policy.priority
       || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
     return { ...base, kind: row.kind, provider: row.provider, data: usageData } as NotificationRecord;
+  }
+  if (isReleaseNotificationKind(row.kind)) {
+    const releaseData = normalizeReleaseNotificationData(row.kind, row.provider, data);
+    const policy = releaseNotificationPolicy(row.kind);
+    if (!releaseData || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
+      || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+    return { ...base, kind: row.kind, provider: row.provider, data: releaseData } as NotificationRecord;
   }
   if (row.kind === "needs_input" && (row.provider === "claude" || row.provider === "codex")
     && typeof data.sessionId === "string" && SESSION_ID.test(data.sessionId) && bounded(data.sessionTitle, 96)) {

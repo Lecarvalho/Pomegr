@@ -109,6 +109,11 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   under **Settings → Notifications** to allow supported news to use Windows
   notifications. **Provider updates** also includes a recognized usage sign-in
   problem that persists after a retry; opening it only shows Usage limits.
+  Release news covers published Claude Code latest releases and Codex CLI
+  releases. It does not report Codex desktop or IDE releases, or claim that a
+  CLI installation can update. A current Pomegr reporting-plugin setup can
+  show an update when its installed version is behind the official release.
+  Opening release news only navigates inside Pomegr; it never installs software.
   The notification tray can still show an occurrence while native
   delivery is disabled or quiet. **Mark all read** clears its unread indicator;
   it does not end an active Needs input condition. Read markers stay in this

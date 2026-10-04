@@ -31,11 +31,20 @@ export function createRepositoryPluginRuntime(options = {}) {
   const now = options.now || Date.now;
   const release = options.readRelease || createRepositoryPluginReleaseReader({ now, fetch: options.fetch });
   const readPolicy = options.readReporting || readReporting;
-  const entries = new Map(); const policies = new Map(); const actionPlans = new Map(); const inFlight = new Map();
+  const entries = new Map(); const policies = new Map(); const actionPlans = new Map(); const inFlight = new Map(); const releasePins = new Map();
   let targets = new Map(); let timer = null; let active = false; let fullRefresh = null; let refreshRequested = false;
   let stopping = false;
   const keyFor = (id, provider) => `${id}:${provider}`;
   const notify = () => options.onChange?.();
+  function publishReleaseFacts() {
+    try {
+      options.onReleaseFacts?.([...entries].flatMap(([key, setup]) => {
+        const separator = key.lastIndexOf(":");
+        return setup.readiness === "ready" && separator > 0 ? [{ repositoryId: key.slice(0, separator),
+          provider: key.slice(separator + 1), pinned: releasePins.get(key) === true, setup }] : [];
+      }));
+    } catch { /* News cannot delay repository setup. */ }
+  }
 
   async function inspect(target, providerId) {
     const key = keyFor(target.id, providerId);
@@ -43,6 +52,7 @@ export function createRepositoryPluginRuntime(options = {}) {
     const operation = (async () => {
       const previous = entries.get(key);
       let next;
+      let releasePinned = true;
       try {
         const provider = options.registry.providers.find((entry) => entry.id === providerId);
         const result = await provider?.readRepositoryPluginSetup?.({ cwd: target.root });
@@ -54,6 +64,7 @@ export function createRepositoryPluginRuntime(options = {}) {
         const trusted = result.privateAction?.sourceTrusted === true;
         const ref = result.privateAction?.ref || "main";
         const pinned = ref !== "main";
+        releasePinned = pinned;
         const published = trusted && safeRef(ref) ? await release(providerId, ref) : { status: "unavailable", version: null, checkedAt: null };
         const latest = published.version && pluginVersionSchema.safeParse(published.version).success ? published.version : null;
         const comparison = version && latest ? comparePluginVersions(version, latest) : null;
@@ -74,7 +85,9 @@ export function createRepositoryPluginRuntime(options = {}) {
         actionPlans.delete(key);
       }
       if (targets.get(target.id)?.root !== target.root) return "unavailable";
-      entries.set(key, Object.freeze(next)); notify();
+      entries.set(key, Object.freeze(next));
+      releasePins.set(key, releasePinned);
+      notify();
       return next.readiness === "ready" ? "completed" : "unavailable";
     })();
     inFlight.set(key, operation);
@@ -95,6 +108,7 @@ export function createRepositoryPluginRuntime(options = {}) {
     const target = targets.get(repositoryId);
     if (!target || !target.providers.includes(providerId)) return "unavailable";
     const [status] = await Promise.all([inspect(target, providerId), inspectPolicy(target)]);
+    publishReleaseFacts();
     return status;
   }
 
@@ -108,6 +122,7 @@ export function createRepositoryPluginRuntime(options = {}) {
           if (!active) return;
           await Promise.allSettled([inspectPolicy(target), ...target.providers.map((provider) => inspect(target, provider))]);
         }
+        publishReleaseFacts();
       }
     })().finally(() => { fullRefresh = null; });
     return fullRefresh;
@@ -116,7 +131,7 @@ export function createRepositoryPluginRuntime(options = {}) {
   function syncTargets(values) {
     const previous = targets;
     targets = new Map(values.slice(0, MAX_TARGETS).map((entry) => [entry.id, entry]));
-    for (const key of entries.keys()) if (![...targets.values()].some((target) => target.providers.some((provider) => keyFor(target.id, provider) === key))) { entries.delete(key); actionPlans.delete(key); }
+    for (const key of entries.keys()) if (![...targets.values()].some((target) => target.providers.some((provider) => keyFor(target.id, provider) === key))) { entries.delete(key); actionPlans.delete(key); releasePins.delete(key); }
     for (const id of policies.keys()) if (!targets.has(id)) policies.delete(id);
     if (active && [...targets.values()].some((target) => !previous.has(target.id)
       || target.providers.some((provider) => !previous.get(target.id).providers.includes(provider)))) void refreshAll();

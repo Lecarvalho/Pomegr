@@ -3,6 +3,13 @@ import { createCodexProvider } from "./codex/index.mjs";
 import { createCodexAppServerRateLimitsReader } from "./codex/app-server-client.mjs";
 import { createProviderRegistry } from "./registry.mjs";
 import { readProviderServiceStatus } from "./kernel/provider-service-status.mjs";
+import { createClaudeCodeReleaseReader } from "./claude/release-observation.mjs";
+import { createCodexCliReleaseReader } from "./codex/release-observation.mjs";
+
+/** Public adapter seam for bounded official release publication reads. */
+export function createOfficialProviderReleaseReaders(options = {}) {
+  return Object.freeze([createClaudeCodeReleaseReader(options), createCodexCliReleaseReader(options)]);
+}
 
 function defaultCodexOptions(options = {}) {
   const codexOptions = { ...(options.codexOptions || {}) };

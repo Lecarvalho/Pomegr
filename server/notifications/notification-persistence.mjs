@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import path from "node:path";
 import { isSafeSessionId } from "./notification-rules.mjs";
 import { USAGE_NOTIFICATION_KINDS, USAGE_NOTIFICATION_WINDOWS, validUsageNotificationState } from "./usage-notifications.mjs";
+import { RELEASE_KINDS, RELEASE_PRODUCTS, validReleaseNotificationState } from "./release-notifications.mjs";
 import { NOTIFICATION_MAX_ACTIVE_SESSIONS, NOTIFICATION_MAX_BYTES, NOTIFICATION_MAX_OCCURRENCES, NOTIFICATION_RETENTION_MS } from "./notification-ledger.mjs";
 
 const VERSION = 1;
@@ -25,13 +26,14 @@ function iso(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 function group(value) {
-  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset)\u0000[a-f0-9]{64}$/u.test(value);
+  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset|release_published)\u0000[a-f0-9]{64}$/u.test(value);
 }
 function evidenceKey(value) {
   if (typeof value !== "string" || value.length > MAX_KEY) return false;
   const parts = value.split("\u0000");
   if (parts.length !== 3 || !group(`${parts[0]}\u0000${parts[1]}`)) return false;
   if (parts[0] === "usage_window_reset") return /^(?:claude:(?:five_hour|weekly|model_weekly|authentication)|codex:(?:[a-f0-9]{64}|credits|authentication))$/u.test(parts[2]);
+  if (parts[0] === "release_published") return RELEASE_PRODUCTS.includes(parts[2]);
   return parts[0] === "needs_input" ? isSafeSessionId(parts[2]) : ["claude", "codex"].includes(parts[2]);
 }
 function validRow(row) {
@@ -39,7 +41,22 @@ function validRow(row) {
   if (!exact(row, keys) || typeof row.id !== "string" || !ID.test(row.id) || !["active", "resolved"].includes(row.lifecycle)
     || !Number.isSafeInteger(row.priority) || row.priority < 0 || row.priority > 100
     || !iso(row.occurredAt) || !["recorded", "observed"].includes(row.timeBasis)
-    || typeof row.deliveryEligible !== "boolean" || !["claude", "codex"].includes(row.provider)) return false;
+    || typeof row.deliveryEligible !== "boolean" || !["claude", "codex", ...(RELEASE_KINDS.includes(row.kind) ? [null] : [])].includes(row.provider)) return false;
+  if (RELEASE_KINDS.includes(row.kind)) {
+    const data = row.data;
+    const product = data?.product;
+    const keys = product === "pomegr_plugin" && data && Object.hasOwn(data, "affectedRepositories")
+      ? ["product", "version", "channel", "affectedRepositories"] : ["product", "version", "channel"];
+    return row.category === "provider_news" && row.severity === "info" && row.action === "open_providers"
+      && row.priority === (row.kind === "release_published" ? 30 : 35)
+      && row.lifecycle === "resolved" && row.timeBasis === "observed"
+      && RELEASE_PRODUCTS.includes(product) && exact(data, keys)
+      && typeof data.version === "string" && /^\d{1,4}\.\d{1,4}\.\d{1,4}$/u.test(data.version)
+      && data.channel === (product === "pomegr_plugin" ? "main" : "latest")
+      && row.provider === (product === "claude_code" ? "claude" : product === "codex_cli" ? "codex" : null)
+      && (!Object.hasOwn(data, "affectedRepositories") || (row.kind === "installation_update_available"
+        && Number.isSafeInteger(data.affectedRepositories) && data.affectedRepositories >= 1 && data.affectedRepositories <= 200));
+  }
   if (row.kind === "needs_input") return row.category === "attention" && row.severity === "warning"
     && row.action === "open_session" && row.priority === 100
     && exact(row.data, ["sessionId", "sessionTitle"]) && isSafeSessionId(row.data.sessionId)
@@ -71,12 +88,14 @@ function validRow(row) {
 export function normalizeNotificationPersistence(value, expectedProfile, now = Date.now()) {
   const keys = ["version", "profileScope", "identitySeed", "sequence", "snapshot", "baselines", "active", "evidence"];
   if (Object.hasOwn(value || {}, "usageState")) keys.push("usageState");
+  if (Object.hasOwn(value || {}, "releaseState")) keys.push("releaseState");
   if (typeof expectedProfile !== "string" || !HASH.test(expectedProfile)
     || !exact(value, keys)
     || value.version !== VERSION || typeof value.profileScope !== "string" || !HASH.test(value.profileScope)
     || typeof value.identitySeed !== "string" || !SEED.test(value.identitySeed)
     || !Number.isSafeInteger(value.sequence) || value.sequence < 0
-    || (value.usageState != null && !validUsageNotificationState(value.usageState, now))) return null;
+    || (value.usageState != null && !validUsageNotificationState(value.usageState, now))
+    || (value.releaseState != null && !validReleaseNotificationState(value.releaseState, now))) return null;
   const snapshot = value.snapshot;
   if (!exact(snapshot, ["version", "revision", "generatedAt", "readiness", "occurrences", "activeSessionOverflow"])
     || snapshot.version !== 1 || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
@@ -118,7 +137,7 @@ export function normalizeNotificationPersistence(value, expectedProfile, now = D
   const retained = snapshot.occurrences.filter((row) => row.lifecycle === "active" || Date.parse(row.occurredAt) >= cutoff);
   const normalized = { identitySeed: value.identitySeed, sequence: value.sequence,
     snapshot: { ...snapshot, occurrences: retained }, baselines: value.baselines,
-    active: value.active, evidence: value.evidence, usageState: value.usageState ?? null };
+    active: value.active, evidence: value.evidence, usageState: value.usageState ?? null, releaseState: value.releaseState ?? null };
   return { profileMatches: value.profileScope === expectedProfile, state: normalized };
 }
 
