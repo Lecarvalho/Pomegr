@@ -68,8 +68,12 @@ export function createObservationRuntime(options = {}) {
   const providerStatus = createProviderStatusObservation({
     readStatus: (providerId, requestOptions) => registry.readServiceStatus(providerId, requestOptions),
     now,
-    onUpdate: () => agentQueryProjection?.refresh?.(),
     ...options.providerStatusObservationOptions,
+    onUpdate: (committed) => {
+      agentQueryProjection?.refresh?.();
+      try { options.providerStatusObservationOptions?.onUpdate?.(committed); } catch { /* Independent observer. */ }
+      try { options.onProviderStatusCommitted?.(committed); } catch { /* Notifications cannot interrupt status observation. */ }
+    },
   });
   const usageByProvider = new Map();
   const homeResponseCache = createCommittedResponseCache({ includeRevision: true, now });
@@ -719,6 +723,7 @@ export function createObservationRuntime(options = {}) {
     stopObservation,
     observationActive: () => observationServingActive,
     serveCatalog: (revision) => observationCoordinator.catalog(revision),
+    notificationCatalog: () => observationCoordinator.notificationCatalog(),
     serveCatalogShell: (selection) => observationCoordinator.shell(selection),
     serveSessionDirectory: (query) => observationCoordinator.directory(query),
     serveSession(sessionId, revision) {

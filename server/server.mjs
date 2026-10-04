@@ -11,6 +11,7 @@ import { createResourceUsageSampler } from "./resources/resource-usage.mjs";
 import { providerRegistry } from "./providers/index.mjs";
 import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monitor-state.mjs";
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
+import { createNotificationObservation } from "./runtime/notification-observation.mjs";
 import { createPipelineOperationsSnapshot } from "./diagnostics/pipeline-operations.mjs";
 import { startPipelineOperationsTransport } from "./diagnostics/pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./serving/request-handler.mjs";
@@ -98,6 +99,7 @@ export function createMonitorRuntime(options = {}) {
   const gitReader = options.readGitState || readGitStateAsync;
   const pullRequestReader = options.readPullRequests || readPullRequests;
   const now = options.now || (() => Date.now());
+  const notifications = createNotificationObservation({ now });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
   const enrichmentCacheMs = Math.max(0, Number(options.enrichmentCacheMs ?? 2500));
@@ -548,6 +550,7 @@ export function createMonitorRuntime(options = {}) {
     unavailableResourceUsage,
     createEmptyMonitorState,
     createEmptyUsageLimits,
+    onProviderStatusCommitted: notifications.acceptProviderStatusCommit,
     onSessionCommitted(qualifiedId) {
       for (const key of homeSummaryCache.keys()) {
         if (key.startsWith(`${qualifiedId}|`)) homeSummaryCache.delete(key);
@@ -557,6 +560,26 @@ export function createMonitorRuntime(options = {}) {
   });
   sessionRepositoryEnrichment.setOnRepositoryCheck(observation.onRepositoryCheck);
 
+  async function startObservation() {
+    notifications.attachCatalog({ subscribeRevisionEvents: observation.subscribeRevisionEvents,
+      serveNotificationCatalog: observation.notificationCatalog });
+    try { await observation.startObservation(); }
+    catch (error) { notifications.stop(); throw error; }
+  }
+
+  async function stopObservation() {
+    notifications.stop();
+    await observation.stopObservation();
+  }
+
+  function subscribeRevisionEvents(subscriber) {
+    const unsubscribeObservation = observation.subscribeRevisionEvents(subscriber);
+    let unsubscribeNotifications;
+    try { unsubscribeNotifications = notifications.subscribeRevisionEvents(subscriber); }
+    catch (error) { unsubscribeObservation(); throw error; }
+    return () => { unsubscribeObservation(); unsubscribeNotifications(); };
+  }
+
   return Object.freeze({
     providerFolders: () => providerFolders,
     analyze,
@@ -565,8 +588,8 @@ export function createMonitorRuntime(options = {}) {
     sessionFeed,
     homeSnapshot,
     transcriptPath,
-    startObservation: observation.startObservation,
-    stopObservation: observation.stopObservation,
+    startObservation,
+    stopObservation,
     observationActive: observation.observationActive,
     serveCatalog: observation.serveCatalog,
     serveCatalogShell: observation.serveCatalogShell,
@@ -579,6 +602,7 @@ export function createMonitorRuntime(options = {}) {
     serveSessionHistory: observation.serveSessionHistory,
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
+    serveNotifications: notifications.read,
     serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
     serveRepositoryFiles: observation.serveRepositoryFiles,
@@ -588,7 +612,7 @@ export function createMonitorRuntime(options = {}) {
     readRepositoryPluginSetup: observation.readRepositoryPluginSetup,
     prepareRepositoryPluginAction: observation.prepareRepositoryPluginAction,
     serveAgentQuery: observation.serveAgentQuery,
-    subscribeRevisionEvents: observation.subscribeRevisionEvents,
+    subscribeRevisionEvents,
     observationDiagnostics: observation.diagnostics,
   });
 }

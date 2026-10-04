@@ -1,3 +1,4 @@
+import { createNotificationCatalog } from "../notifications/notification-catalog.mjs";
 import { createCommittedResponseCache } from "../persistence/committed-response-cache.mjs";
 import { createCheckpointRestore } from "../sessions/checkpoints/session-checkpoint-restore.mjs";
 import { createDurationSeries } from "../diagnostics/pipeline-operations.mjs";
@@ -62,6 +63,7 @@ export function createSessionObservationCoordinator(options = {}) {
     } catch { return null; }
   }
   const catalogsByProvider = new Map();
+  const notificationCatalog = createNotificationCatalog({ projectVisibility: projectOpenVisibility });
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
   const scheduledSessions = new Map();
@@ -204,6 +206,8 @@ export function createSessionObservationCoordinator(options = {}) {
       sessions,
       coverage: catalogInventory.coverage(),
     });
+    notificationCatalog.commit({ revision: committed.revision, readiness: catalogReadiness, checkedAt,
+      incompleteSource: providerStates.some((state) => state !== "ready") });
     notify({ type: "catalog", revision: committed.revision });
     if (Number.isFinite(nextOpenExpiry)) {
       const expiryGeneration = generation;
@@ -374,6 +378,7 @@ export function createSessionObservationCoordinator(options = {}) {
       const normalized = Array.isArray(entries)
         ? entries.map((entry) => publicCatalogEntry(providerId, provider?.source || entry?.source || "", entry)).filter(Boolean)
         : [];
+      notificationCatalog.acceptProvider(providerId, normalized, readiness);
       // Retain only the current shell. Historical directory pages are served
       // from the inventory index, so a large provider scan cannot become a
       // resident browser-facing catalog array.
@@ -675,6 +680,7 @@ export function createSessionObservationCoordinator(options = {}) {
       return pendingSessions.size > 0 || scheduledSessions.size > 0 || Boolean(pending?.pending || pending?.active);
     },
     catalog: (revision) => catalogCache.read(revision),
+    notificationCatalog: notificationCatalog.read,
     directory: (query) => catalogInventory.directory(query),
     shell: ({ selected = "", pinned = [] } = {}) => {
       const current = catalogCache.current();

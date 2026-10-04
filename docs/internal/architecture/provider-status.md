@@ -38,6 +38,14 @@ The frontend's single shared store supplies compact status on Home and Usage lim
 and a conditional notice in live session details. No status is added to the global
 header, historical session evidence, quota errors, or exported session reports.
 
+The shell tray receives provider incident and recovery occurrences from the separate
+[shared notification projection](observation-cache.md#shared-notifications). Its rules
+consume committed normalized status, retain an active issue through incomplete or stale
+updates, and require fresh ready operational evidence for recovery. A recovery is a
+reported service-status transition, not proof that a session failure was caused or
+fixed by that provider. The tray's fixed `open_providers` action currently opens
+**Usage limits**; it never follows an incident URL or starts a provider action.
+
 Focused checks:
 
 ```powershell

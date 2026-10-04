@@ -11,6 +11,7 @@ import { SessionCatalogProvider } from "../hooks/SessionCatalogContext";
 import type { DesktopState } from "./DesktopControls";
 import { useUsageLimitsPollingPause } from "../usage-limits-client";
 import { useProviderStatusPollingPause } from "../provider-status-client";
+import { useNotificationPollingPause } from "../notifications-client";
 import { useRepositoryInventoryPollingPause } from "../repository-inventory-client";
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
 import { PhoneAccessExpiredNotice, useClientAccess } from "../hooks/ClientAccessContext";
@@ -41,6 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { mode: clientAccessMode, markAccessExpired, refreshAccess } = useClientAccess();
   useUsageLimitsPollingPause(Boolean(desktopState?.paused));
   useProviderStatusPollingPause(Boolean(desktopState?.paused));
+  useNotificationPollingPause(Boolean(desktopState?.paused));
   useRepositoryInventoryPollingPause(Boolean(desktopState?.paused));
   const { ready: homePreferencesReady, rememberSession, pins } = useHomePreferences();
   const selectedSessionId = pathname.startsWith("/sessions/")

@@ -180,6 +180,13 @@ module.exports = {
       to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]serving[/\\\\]","^server[/\\\\]normalize[/\\\\]","^server[/\\\\]persistence[/\\\\]","^server[/\\\\]repository[/\\\\]","^server[/\\\\]sessions[/\\\\]domain[/\\\\]","^server[/\\\\]providers[/\\\\]provider-contract[.]mjs$"] },
     },
     {
+      name: "server-notifications-layer",
+      comment: "Notification rules and ledger derive from committed normalized facts only.",
+      severity: "error",
+      from: { path: "^server[/\\\\]notifications[/\\\\]" },
+      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]notifications[/\\\\]", "^server[/\\\\]normalize[/\\\\]"] },
+    },
+    {
       name: "only-entry-points-import-runtime-and-serving",
       comment: "The runtime and HTTP serving are composed only by the server entry points.",
       severity: "error",

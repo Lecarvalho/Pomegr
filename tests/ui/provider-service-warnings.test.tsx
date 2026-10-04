@@ -1,15 +1,21 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderServiceStatus, ProviderStatusSnapshot, SessionSummary } from "../../shared/monitor-contract";
+import type { NotificationRecord, NotificationSnapshot } from "../../shared/notification-contract";
 
 const providerState = vi.hoisted(() => ({ current: { revision: 1, generatedAt: null, providers: [] } as ProviderStatusSnapshot }));
+const notificationState = vi.hoisted(() => ({ current: { snapshot: { version: 1, revision: 0, generatedAt: null,
+  readiness: { catalog: "ready", providerStatus: "ready" }, occurrences: [], activeSessionOverflow: 0 }, status: "ready" } as {
+    snapshot: NotificationSnapshot; status: "ready" | "loading" | "unavailable";
+  } }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("../../app/provider-status-client", async () => ({
   ...(await vi.importActual<typeof import("../../app/provider-status-client")>("../../app/provider-status-client")),
   useProviderStatus: () => providerState.current,
 }));
+vi.mock("../../app/notifications-client", () => ({ useNotificationSnapshot: () => notificationState.current }));
 
 import { CommandCenterShell } from "../../app/components/command-center/CommandCenterShell";
 import { SessionsView } from "../../app/components/command-center/CommandViews";
@@ -17,6 +23,17 @@ import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import { installDirectoryFixture } from "./session-directory-test-fixture";
 
 const checkedAt = "2026-09-02T12:00:00.000Z";
+function occurrence(kind: "provider_incident" | "provider_recovery", providerId: "claude" | "codex", id: string): NotificationRecord {
+  const common = { id, category: "provider_service" as const, severity: kind === "provider_recovery" ? "info" as const : "warning" as const,
+    lifecycle: kind === "provider_recovery" ? "resolved" as const : "active" as const, priority: 70,
+    occurredAt: checkedAt, timeBasis: "observed" as const, deliveryEligible: true, action: "open_providers" as const };
+  return kind === "provider_incident" ? { ...common, kind, provider: providerId, data: { status: "degraded" } }
+    : { ...common, kind, provider: providerId, data: { status: "operational" } };
+}
+function setNotifications(occurrences: NotificationRecord[], revision = 1, status: "ready" | "loading" | "unavailable" = "ready") {
+  notificationState.current = { status, snapshot: { version: 1, revision, generatedAt: checkedAt,
+    readiness: { catalog: "ready", providerStatus: "ready" }, occurrences, activeSessionOverflow: 0 } };
+}
 
 function provider(provider: "claude" | "codex", overrides: Partial<ProviderServiceStatus> = {}): ProviderServiceStatus {
   const isClaude = provider === "claude";
@@ -54,6 +71,7 @@ function shell(sessions: SessionSummary[] = []) {
 
 afterEach(() => {
   providerState.current = { revision: 1, generatedAt: null, providers: [] };
+  setNotifications([], 0);
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -95,59 +113,48 @@ describe("provider service warnings", () => {
     expect(screen.getByRole("button", { name: "Notifications" })).not.toHaveAccessibleName(/attention available/);
   });
 
-  it("shows a fresh last-known unavailable report with delayed-refresh wording", async () => {
-    providerState.current = snapshot([provider("codex", { readiness: "unavailable" }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })]);
+  it("keeps the last committed issue visible while notification refresh is delayed", async () => {
+    setNotifications([occurrence("provider_incident", "codex", "a".repeat(32))], 1, "unavailable");
     const user = userEvent.setup();
     render(shell([session("codex")]));
     await user.click(screen.getByRole("button", { name: "Notifications, attention available" }));
-    const tray = screen.getByRole("complementary", { name: "Notifications" });
-    expect(tray).toHaveTextContent("Status refresh is delayed; this is the last confirmed report.");
+    const tray = screen.getByTestId("notification-center");
+    expect(tray).toHaveTextContent("Notification updates are delayed. Showing last known state.");
+    expect(tray).toHaveTextContent("Codex reports service issues");
   });
 
-  it("shows one independently linked notification for each affected provider", async () => {
+  it("shows independent normalized provider incidents with only a fixed internal action", async () => {
     const user = userEvent.setup();
     providerState.current = snapshot([provider("codex"), provider("claude")]);
+    setNotifications([occurrence("provider_incident", "codex", "a".repeat(32)), occurrence("provider_incident", "claude", "b".repeat(32))]);
     render(shell([session("codex"), session("claude")]));
     await user.click(screen.getByRole("button", { name: "Notifications, attention available" }));
     const group = screen.getByRole("region", { name: "Provider service" });
     expect(within(group).getAllByText(/reports service issues/)).toHaveLength(2);
-    const links = within(group).getAllByRole("link", { name: "View incident (opens in a new tab)" });
-    expect(links).toHaveLength(2);
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(expect.arrayContaining(["https://status.openai.com/incidents/codex-incident-1", "https://status.claude.com/incidents/claude-incident-1"]));
+    expect(within(group).getAllByRole("link", { name: "View providers" }).map((link) => link.getAttribute("href"))).toEqual(["/usage-limits", "/usage-limits"]);
+    expect(group).not.toHaveTextContent("Elevated errors");
   });
 
-  it("deduplicates repeated snapshots, preserves acknowledgement across close/reopen, and reopens for recurrence or worsening", async () => {
+  it("keeps acknowledgement for one occurrence and shows recovery and recurrence separately", async () => {
     const user = userEvent.setup();
-    providerState.current = snapshot([provider("codex"), provider("claude", { status: "operational", incidentKey: null, incidents: [] })]);
+    setNotifications([occurrence("provider_incident", "codex", "a".repeat(32))]);
     const view = render(shell([session("codex")]));
     const open = () => user.click(screen.getByRole("button", { name: /Notifications/ }));
     await open();
-    expect(screen.getByRole("region", { name: "Provider service" })).toHaveTextContent("Codex reports service issues");
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("2 unread notifications");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent("1 unread notification");
     await user.click(screen.getByRole("button", { name: "Mark all read" }));
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("You are all caught up");
     await user.click(screen.getByRole("button", { name: "Close notifications" }));
     await open();
     expect(screen.getByRole("contentinfo")).toHaveTextContent("You are all caught up");
-    providerState.current = snapshot([provider("codex", { checkedAt: "2026-09-02T12:01:00.000Z" }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 2);
-    view.rerender(shell([session("codex")]));
-    expect(screen.getByRole("region", { name: "Provider service" })).toHaveTextContent("Codex reports service issues");
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("You are all caught up");
-    providerState.current = snapshot([provider("codex", { incidentKey: "codex-incident-2" }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 3);
-    view.rerender(shell([session("codex")]));
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("1 unread notification");
-    await user.click(screen.getByRole("button", { name: "Mark all read" }));
-    providerState.current = snapshot([provider("codex", { status: "outage", incidentKey: "codex-incident-2", incidents: [{ ...provider("codex").incidents[0], id: "codex-incident-2", impact: "major" }] }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 4);
-    view.rerender(shell([session("codex")]));
-    expect(screen.getByRole("contentinfo")).toHaveTextContent("1 unread notification");
-    await user.click(screen.getByRole("button", { name: "Mark all read" }));
-    providerState.current = snapshot([provider("codex", { status: "degraded", incidentKey: "codex-incident-2", incidents: [{ ...provider("codex").incidents[0], id: "codex-incident-2", impact: "minor" }] }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 5);
+    setNotifications([occurrence("provider_incident", "codex", "a".repeat(32))], 2);
     view.rerender(shell([session("codex")]));
     expect(screen.getByRole("contentinfo")).toHaveTextContent("You are all caught up");
-    providerState.current = snapshot([provider("codex", { status: "operational", incidentKey: null, incidents: [] }), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 6);
+    setNotifications([occurrence("provider_recovery", "codex", "b".repeat(32))], 3);
     view.rerender(shell([session("codex")]));
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Provider service" })).toBeNull());
-    providerState.current = snapshot([provider("codex"), provider("claude", { status: "operational", incidentKey: null, incidents: [] })], 7);
+    expect(screen.getByTestId("notification-provider_recovery")).toHaveTextContent("service restored");
+    expect(screen.getByRole("contentinfo")).toHaveTextContent("1 unread notification");
+    await user.click(screen.getByRole("button", { name: "Mark all read" }));
+    setNotifications([occurrence("provider_recovery", "codex", "b".repeat(32)), occurrence("provider_incident", "codex", "c".repeat(32))], 4);
     view.rerender(shell([session("codex")]));
     expect(screen.getByRole("contentinfo")).toHaveTextContent("1 unread notification");
   });

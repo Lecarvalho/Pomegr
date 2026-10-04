@@ -104,6 +104,7 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     const domainPath = "/api/session-domain?sessionId=claude%3Afixture&domain=agents&revision=7";
     assert.equal((await fetch(`${gateway.origin}${domainPath}`)).status, 401);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`)).status, 401);
+    assert.equal((await fetch(`${gateway.origin}/api/notifications`)).status, 401);
     assert.equal((await fetch(`${gateway.origin}/api/repositories`)).status, 401);
     const redirect = await fetch(gateway.origin, { redirect: "manual" });
     assert.equal(redirect.status, 302);
@@ -130,6 +131,10 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
       path: "/api/provider-folders", headers: { Cookie: cookie, "Content-Length": "1" }, body: "x",
     }), 403);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { headers: { Origin: "http://127.0.0.1:1", Cookie: cookie } })).status, 403);
+    const notifications = await fetch(`${gateway.origin}/api/notifications`, { headers: { Cookie: cookie } });
+    assert.equal(notifications.status, 200);
+    assert.equal(observed.at(-1).url, "/api/notifications");
+    assert.equal((await fetch(`${gateway.origin}/api/notifications`, { method: "POST", headers: { Cookie: cookie } })).status, 405);
     assert.equal((await fetch(`${gateway.origin}/api/state`, { headers: { Cookie: cookie, Origin: "http://127.0.0.1:1" } })).status, 403);
 
     await pair(gateway);
