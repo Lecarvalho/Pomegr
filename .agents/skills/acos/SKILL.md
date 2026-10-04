@@ -150,6 +150,10 @@ Models and effort
   (`calibration.md` says when it needs `strong`). Command stages: no
   model. `config.yaml` `stages` may move a block to another tier or
   effort.
+- **Your own provider is never `external`.** A delegated stage on the
+  provider of the harness you run in is a `subagent` of this session.
+  `external` is a shell call to another provider's CLI.
+  `references/adapters.md`.
 - **Inline stages carry no provider, tier, model or effort.** The
   session's are fixed for its whole life. A stage that needs other ones
   is delegated (an escalated retry too), or is a part the user starts in
