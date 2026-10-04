@@ -2,9 +2,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UsageLimitsView } from "../../app/components/command-center/CommandViews";
 
-import type { ProviderServiceStatus } from "../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, ProviderServiceStatus } from "../../shared/monitor-contract";
 
-const providerState = vi.hoisted(() => ({ providers: [] as ProviderServiceStatus[] }));
+const providerState = vi.hoisted(() => ({ providers: [] as ProviderServiceStatus[], usage: [] as HomeProviderUsageLimits[] }));
 vi.mock("../../app/provider-status-client", () => ({
   useProviderStatus: () => ({ revision: 1, generatedAt: null, providers: providerState.providers }),
 }));
@@ -21,19 +21,30 @@ function service(provider: "claude" | "codex", overrides: Partial<ProviderServic
   };
 }
 
-beforeEach(() => { providerState.providers = []; });
+beforeEach(() => { providerState.providers = []; providerState.usage = []; });
 
 vi.mock("../../app/usage-limits-client", () => ({
   useUsageLimits: () => ({
     revision: null,
     generatedAt: null,
-    providers: [],
+    providers: providerState.usage,
     readiness: { claude: "loading", codex: "loading" },
   }),
 }));
 
 
 describe("usage limits service notices", () => {
+  it.each([0, 2, null])("shows one bounded earned-reset observation (%s) without a consumption action", (count) => {
+    providerState.usage = [{ provider: "codex", source: "Codex", readiness: "ready", usageLimits: {
+      available: true, fetchedAt: "2026-10-03T12:00:00.000Z", attemptedAt: "2026-10-03T12:00:00.000Z", limits: [],
+      resetCredits: { status: count === null ? "unknown" : "supported", availableCount: count, observedAt: "2026-10-03T12:00:00.000Z" },
+    } }];
+    render(<UsageLimitsView />);
+    const note = screen.getByTestId("usage-reset-credits");
+    expect(note).toHaveTextContent(count === null ? "availability is unknown" : `${count} earned resets reported available`);
+    expect(note).toHaveTextContent("Observed");
+    expect(within(note).queryByRole("button")).not.toBeInTheDocument();
+  });
   it("shows and dismisses each provider warning independently even while usage is loading", () => {
     providerState.providers = [service("claude"), service("codex")];
     render(<UsageLimitsView />);

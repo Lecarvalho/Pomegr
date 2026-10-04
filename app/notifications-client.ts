@@ -3,12 +3,13 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { NotificationRecord, NotificationSnapshot, NotificationSourceReadiness } from "../shared/notification-contract";
 import { subscribeLiveEvents } from "./live-events";
+import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPolicy } from "../shared/usage-notification.mjs";
 
 const POLL_MS = 30_000;
 const MAX_RESPONSE_BYTES = 1_048_576;
 const READINESS = new Set<NotificationSourceReadiness>(["loading", "ready", "partial", "stale", "unavailable"]);
-const ACTIONS = new Set(["open_session", "open_sessions", "open_providers", "open_workspace"]);
-const CATEGORIES = new Set(["attention", "provider_service", "system"]);
+const ACTIONS = new Set(["open_session", "open_sessions", "open_providers", "open_workspace", "open_usage_limits"]);
+const CATEGORIES = new Set(["attention", "provider_service", "system", "usage", "provider_news"]);
 const SEVERITIES = new Set(["info", "warning", "critical"]);
 const ID = /^[a-f0-9]{32}$/u;
 const SESSION_ID = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
@@ -59,6 +60,13 @@ function normalizeRecord(value: unknown): NotificationRecord | null {
     deliveryEligible: row.deliveryEligible as boolean,
     action: row.action as NotificationRecord["action"],
   };
+  if (isUsageNotificationKind(row.kind)) {
+    const usageData = normalizeUsageNotificationData(row.kind, row.provider, data);
+    const policy = usageNotificationPolicy(row.kind);
+    if (!usageData || row.category !== policy.category || row.action !== "open_usage_limits" || row.priority !== policy.priority
+      || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+    return { ...base, kind: row.kind, provider: row.provider, data: usageData } as NotificationRecord;
+  }
   if (row.kind === "needs_input" && (row.provider === "claude" || row.provider === "codex")
     && typeof data.sessionId === "string" && SESSION_ID.test(data.sessionId) && bounded(data.sessionTitle, 96)) {
     return { ...base, kind: "needs_input", provider: row.provider, data: { sessionId: data.sessionId as string, sessionTitle: data.sessionTitle } };

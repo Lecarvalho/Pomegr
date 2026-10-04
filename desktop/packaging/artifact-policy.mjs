@@ -67,6 +67,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "shared/local-service.mjs",
   "shared/pomegr-paths.mjs",
   "shared/session-route.mjs",
+  "shared/usage-notification.mjs",
   "server/web/server.mjs",
 ]);
 

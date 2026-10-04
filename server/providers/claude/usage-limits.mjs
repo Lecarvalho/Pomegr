@@ -4,6 +4,7 @@ import path from "node:path";
 import { createClaudeUsageApiCache } from "./usage-api-cache.mjs";
 import { createEmptyUsageLimits } from "../../../shared/monitor-state.mjs";
 import { createUsageLimitsCoordinator } from "../../normalize/usage-limits.mjs";
+import { withUsageNotificationSource } from "../../normalize/usage-notification-facts.mjs";
 import { claudeUsageLimitsFromSnapshot, claudeUsageSnapshotsRoot, readClaudeUsageSnapshot } from "./usage-feed.mjs";
 import { resolveClaudeProfileRoots } from "./profile-roots.mjs";
 
@@ -132,7 +133,7 @@ export function createClaudeUsageLimitsReader(options = {}) {
     return retainedLocal;
   }
 
-  return async function readUsageLimits({ afterSignIn = false } = {}) {
+  async function readUsageLimits({ afterSignIn = false } = {}) {
     const activeRemote = coordinatedRemote();
     const localUsage = local();
     // Keep model-specific windows current on the existing shared API cooldown.
@@ -171,6 +172,10 @@ export function createClaudeUsageLimitsReader(options = {}) {
       });
     }
     return { ...remoteUsage, origin: "provider_api", freshness: "stale" };
+  }
+  return async (options) => {
+    const value = await readUsageLimits(options);
+    return withUsageNotificationSource(value, sourceFingerprint && apiCache.fingerprint() === sourceFingerprint ? sourceFingerprint : null);
   };
 }
 

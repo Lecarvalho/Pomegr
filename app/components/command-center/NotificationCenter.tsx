@@ -7,11 +7,12 @@ import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { useNotificationSnapshot } from "../../notifications-client";
 import { useNotificationReadState } from "../../notification-read-state";
 import { CommandIcon } from "./CommandIcon";
+import { usageNotificationPayload } from "../../../shared/usage-notification.mjs";
 
 export type NotificationView = {
   id: string;
   kind: string;
-  group: "Needs attention" | "Provider service" | "System";
+  group: "Needs attention" | "Provider service" | "Usage limits" | "System";
   title: string;
   description: string;
   href: string;
@@ -27,7 +28,7 @@ export type NotificationPresentationRule = {
 };
 
 const PROVIDER_LABEL = { claude: "Claude Code", codex: "Codex" } as const;
-const GROUP_ORDER: NotificationView["group"][] = ["Needs attention", "Provider service", "System"];
+const GROUP_ORDER: NotificationView["group"][] = ["Needs attention", "Provider service", "Usage limits", "System"];
 
 /** Fixed destinations. A malformed session identity falls back to the Sessions page. */
 export function notificationDestination(action: NotificationAction, record: NotificationRecord): { href: string; label: string } {
@@ -41,11 +42,19 @@ export function notificationDestination(action: NotificationAction, record: Noti
     }
     case "open_sessions": return { href: "/sessions", label: "View sessions" };
     case "open_providers": return { href: "/usage-limits", label: "View providers" };
+    case "open_usage_limits": return { href: "/usage-limits", label: "View usage limits" };
     case "open_workspace": return { href: "/", label: "View workspace" };
   }
 }
 
 export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] = [
+  ...["usage_window_reset", "usage_capacity_restored", "usage_reset_available", "usage_authentication_required"].map((kind): NotificationPresentationRule => ({
+    kind, present: (record) => {
+      const payload = usageNotificationPayload(record);
+      return payload ? { group: kind === "usage_authentication_required" ? "Needs attention" : "Usage limits",
+        title: payload.title, description: payload.body, tone: kind === "usage_authentication_required" ? "attention" : "online" } : null;
+    },
+  })),
   { kind: "needs_input", present: (record) => record.kind === "needs_input" && record.lifecycle === "active" ? {
     group: "Needs attention", title: record.data.sessionTitle,
     description: "Needs input. This live session is waiting for your action; recorded state may be stale.", tone: "attention",

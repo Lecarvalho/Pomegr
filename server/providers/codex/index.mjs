@@ -19,7 +19,7 @@ import { mergeCodexPullRequestCreations, parseCodexPullRequestRecords } from "./
 import { mergeCodexSignals, parseCodexSignalRecords, readCodexSignals } from "./session-signals.mjs";
 import { parseCodexSkillUsageRecords } from "./skill-usage.mjs";
 import { codexUserMessageTimes } from "./user-message-times.mjs";
-import { createCodexUsageLimitsCoordinator } from "./usage-limits.mjs";
+import { createCodexUsageLimitsCoordinator, codexUsageSourceScope } from "./usage-limits.mjs";
 import { createCodexLivenessCoordinator } from "./liveness.mjs";
 import { createCodexWriterPresence } from "./writer-presence.mjs";
 import { createCodexOwningRuntime } from "./owning-runtime.mjs";
@@ -79,8 +79,7 @@ export function createCodexProvider(options = {}) {
   const indexFile = options.indexFile || path.join(codexHome, "session_index.jsonl");
   const writerLocksRoot = path.join(codexHome, "thread-writer-locks");
   const appServer = options.appServer || null;
-  // This reader is intentionally account-only. Unlike `appServer`, it must
-  // never supply session, catalog, liveness, or canonical-turn evidence.
+  // Account-only: never supplies session, catalog, liveness, or turn evidence.
   const rateLimitsReader = options.rateLimitsReader || null;
   const now = options.now || (() => Date.now());
   let repositoryResolver = null;
@@ -111,6 +110,7 @@ export function createCodexProvider(options = {}) {
   });
   const usageLimits = createCodexUsageLimitsCoordinator({
     now,
+    sourceScope: () => codexUsageSourceScope(path.join(codexHome, "auth.json")),
     request: async () => {
       if (rateLimitsReader) {
         if (typeof rateLimitsReader.readRateLimits !== "function") {

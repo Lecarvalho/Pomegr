@@ -319,6 +319,12 @@ function UsageProvider({ entry, providerStatus }: { entry: HomeProviderUsageLimi
     </article>)}{displayedLimits.localFable?.kind === "retained" && <article className={`commandUsageWindow ${displayedLimits.localFable.limit.severity}`} key="retained-model-fable"><header><strong>{displayedLimits.localFable.limit.label}</strong><b>{Math.round(displayedLimits.localFable.limit.percent)}%</b></header><div className="commandUsageTrack"><i style={{ width: `${Math.max(0, Math.min(100, displayedLimits.localFable.limit.percent))}%` }} /></div><footer><span>{usageResetLabel(displayedLimits.localFable.limit.resetsAt)}</span><span>Last API value {relativeTime(displayedLimits.localFable.fetchedAt)}</span></footer></article>}{displayedLimits.localFable?.kind === "unavailable" && <article className="commandUsageWindow" key="unavailable-model-fable"><header><strong>Fable</strong><span className="commandUsageStatus">{displayedLimits.localFable.label}</span></header><footer><span>{displayedLimits.localFable.detail}</span></footer></article>}</div>{failureKind && <p className="commandUsageRefreshNote" role="status">{usageLimitFailureMessage(entry.source, limits)}{limits.retryAt && <> <RetryCountdownText value={limits.retryAt} />.</>}</p>}</> : <div className="commandUsageUnavailable"><p>No provider windows were reported.</p></div>}
     {entry.provider === "claude" && <ClaudeUsageControls usageLimits={limits} showObservationNote={false} />}
     {entry.provider === "codex" && <CodexUsageHelp usageLimits={limits} />}
+    {entry.provider === "codex" && limits.resetCredits && <p className="commandUsageRefreshNote" data-testid="usage-reset-credits">
+      {limits.resetCredits.status === "supported"
+        ? `${limits.resetCredits.availableCount} earned ${limits.resetCredits.availableCount === 1 ? "reset" : "resets"} reported available. Eligibility depends on Codex; Pomegr never uses a reset.`
+        : "Earned reset availability is unknown for this observation."}
+      {" "}Observed {relativeTime(limits.resetCredits.observedAt)}.
+    </p>}
   </section>;
 }
 

@@ -40,6 +40,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
   let baselines = new Set(); // private rule/scope
   let lastEvidence = new Map(); // private rule/scope/key -> observed timestamp
   let sourceVersions = new Map(); // private rule/scope -> committed revision
+  let usageState = null;
   let sequence = 0;
   let identitySeed = randomBytes(16).toString("hex");
   let snapshot = freezeSnapshot({ version: 1, revision: 0, generatedAt: null,
@@ -55,6 +56,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     const nextEvidence = new Map(lastEvidence);
     const nextVersions = new Map(sourceVersions);
     let nextSequence = sequence;
+    let nextUsageState = usageState;
     let rows = snapshot.occurrences.map((row) => ({ ...row, data: { ...row.data } }));
     const nextReadiness = { ...snapshot.readiness };
     let overflow = snapshot.activeSessionOverflow;
@@ -67,9 +69,11 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
       const group = `${rule.kind}\0${scope}`;
       const revision = sourceRevision(input.revision);
       if (revision !== null && nextVersions.has(group) && revision <= nextVersions.get(group)) continue;
-      const derived = rule.derive(input);
+      const result = rule.derive(input, rule.source === "usage" ? nextUsageState : undefined, clockMs);
+      const derived = rule.occurrence ? result.items : result;
+      if (rule.source === "usage") nextUsageState = result.state;
       if (!Array.isArray(derived) || derived.length > 1000) throw new TypeError("Invalid derived notification facts");
-      const ready = rule.source === "catalog" ? input.readiness === "ready" : derived.length > 0;
+      const ready = rule.occurrence || (rule.source === "catalog" ? input.readiness === "ready" : derived.length > 0);
       // A source/profile switch retires all of that producer's old history at
       // once, including when the new source has no usable evidence yet.
       for (const old of [...nextBaselines]) {
@@ -110,6 +114,15 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
         if (!Number.isFinite(observedMs) || observedMs > clockMs + 60_000) continue;
         if (nextEvidence.has(key) && observedMs < nextEvidence.get(key)) continue;
         nextEvidence.set(key, observedMs);
+        if (rule.occurrence) {
+          if (!rule.kinds.includes(item.kind)) throw new TypeError("Invalid occurrence kind");
+          const policy = rule.policies?.[item.kind] || rule;
+          const id = opaqueNotificationId(item.kind, key, `${identitySeed}:${++nextSequence}`);
+          rows.unshift({ id, kind: item.kind, category: policy.category, severity: policy.severity,
+            lifecycle: "resolved", priority: policy.priority, occurredAt: item.at, timeBasis: "observed",
+            deliveryEligible: true, action: policy.action, provider: item.provider, data: { ...item.data } });
+          continue;
+        }
         const previousId = nextActive.get(key);
         if (item.active) {
           if (previousId) {
@@ -166,6 +179,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     if (Buffer.byteLength(stable(candidate), "utf8") > NOTIFICATION_MAX_BYTES) throw new TypeError("Notification snapshot exceeds bound");
     const material = stable({ ...candidate, revision: 0, generatedAt: null }) !== stable({ ...snapshot, revision: 0, generatedAt: null });
     active = nextActive; baselines = nextBaselines; lastEvidence = nextEvidence; sourceVersions = nextVersions; sequence = nextSequence;
+    usageState = nextUsageState;
     if (material) {
       snapshot = freezeSnapshot(candidate);
       try { onUpdate(snapshot); } catch { /* Subscriber failure cannot break catalog observation. */ }
@@ -177,7 +191,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
 
   function exportState() {
     return { identitySeed, sequence, snapshot: structuredClone(snapshot),
-      baselines: [...baselines], active: [...active], evidence: [...lastEvidence] };
+      baselines: [...baselines], active: [...active], evidence: [...lastEvidence], usageState: structuredClone(usageState) };
   }
 
   function restore(state) {
@@ -187,6 +201,7 @@ export function createNotificationLedger({ now = Date.now, rules = NOTIFICATION_
     baselines = new Set(state.baselines);
     active = new Map(state.active);
     lastEvidence = new Map(state.evidence);
+    usageState = structuredClone(state.usageState ?? null);
     // Producer revisions are process-local clocks. The first fresh commit after
     // restart must compare against restored conditions regardless of its number.
     sourceVersions = new Map();

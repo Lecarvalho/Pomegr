@@ -3,9 +3,58 @@ import test from "node:test";
 import { createMonitorRuntime, createMonitorServer } from "../../../server/server.mjs";
 import { createEmptyProviderCapabilities, createEmptyUsageLimits } from "../../../shared/monitor-state.mjs";
 import { createNotificationObservation } from "../../../server/runtime/notification-observation.mjs";
+import { withUsageNotificationSource } from "../../../server/normalize/usage-notification-facts.mjs";
+import { createCoordinatedUsageLimitsReader } from "../../../server/normalize/usage-limits.mjs";
 
 const NOW = Date.parse("2026-10-03T12:00:00.000Z");
 const timestamp = new Date(NOW).toISOString();
+
+test("background usage commits drive notifications while GETs remain passive and deadlines obey cooldown", async (context) => {
+  context.mock.timers.enable({ apis: ["setInterval", "Date"], now: NOW });
+  let reads = 0;
+  const coordinator = createCoordinatedUsageLimitsReader({ read: async () => {
+    reads += 1;
+    return [
+      { id: "current-session", label: "Current session", window: "5 hours", percent: reads === 1 ? 100 : 0,
+        active: reads === 1, severity: reads === 1 ? "critical" : "normal", resetsAt: new Date(NOW + (reads === 1 ? 60_000 : 1000_000)).toISOString() },
+      { id: "all-models", label: "All models", window: "7 days", percent: 100, active: true, severity: "critical", resetsAt: new Date(NOW + 7 * 86400_000).toISOString() },
+    ];
+  } });
+  const provider = { id: "claude", source: "Claude Code", capabilities: createEmptyProviderCapabilities() };
+  const registry = { providers: [provider], defaultProvider: provider,
+    async readUsageLimits() { return withUsageNotificationSource(await coordinator.get(), "a".repeat(64)); },
+    async readServiceStatus() { return { status: "operational", updatedAt: timestamp, incidents: [] }; },
+    async inspectSessions() { return { sessions: [], resourceTargets: [] }; },
+    async startObservers() { return { async stop() {} }; },
+  };
+  const runtime = createMonitorRuntime({ providerRegistry: registry, monitorStore: false, checkpointStore: false,
+    resourceUsageSampler: { async sample() {}, get() { return null; } } });
+  context.after(() => runtime.stopObservation());
+  await runtime.startObservation();
+  await waitFor(() => runtime.serveUsageLimits().snapshot.value.providers.length === 1);
+  assert.equal(reads, 1);
+  context.mock.timers.tick(60_000);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads, 1);
+  assert.equal(runtime.serveNotifications().snapshot.value.occurrences.length, 0);
+  context.mock.timers.tick(240_001); // Real timer jitter must not erase a cached baseline just before refresh completes.
+  await new Promise((resolve) => setImmediate(resolve));
+  context.mock.timers.tick(60_000); // Existing coordinator publishes its completed cached read on the next observation.
+  await waitFor(() => runtime.serveNotifications().snapshot.value.occurrences.length === 1);
+  const server = createMonitorServer({ runtime });
+  server.listen(0, "127.0.0.1");
+  await new Promise((resolve) => server.once("listening", resolve));
+  context.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}/api/notifications`;
+  const response = await fetch(url);
+  const body = await response.json();
+  assert.equal(body.occurrences[0].kind, "usage_window_reset");
+  assert.equal(body.occurrences[0].data.otherExhausted, true);
+  const before = reads;
+  for (let index = 0; index < 5; index += 1) assert.deepEqual(await (await fetch(url)).json(), body);
+  assert.equal(reads, before);
+  assert.doesNotMatch(JSON.stringify(body), /sourceScope|comparison|percent|resetsAt/);
+});
 
 test("failed notification derivation retains serialized cache and shutdown rejects new commits", () => {
   let clock = NOW;

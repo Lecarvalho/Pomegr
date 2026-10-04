@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import path from "node:path";
 import { isSafeSessionId } from "./notification-rules.mjs";
+import { USAGE_NOTIFICATION_KINDS, USAGE_NOTIFICATION_WINDOWS, validUsageNotificationState } from "./usage-notifications.mjs";
 import { NOTIFICATION_MAX_ACTIVE_SESSIONS, NOTIFICATION_MAX_BYTES, NOTIFICATION_MAX_OCCURRENCES, NOTIFICATION_RETENTION_MS } from "./notification-ledger.mjs";
 
 const VERSION = 1;
@@ -24,12 +25,13 @@ function iso(value) {
     && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 }
 function group(value) {
-  return typeof value === "string" && /^(needs_input|provider_incident)\u0000[a-f0-9]{64}$/u.test(value);
+  return typeof value === "string" && /^(needs_input|provider_incident|usage_window_reset)\u0000[a-f0-9]{64}$/u.test(value);
 }
 function evidenceKey(value) {
   if (typeof value !== "string" || value.length > MAX_KEY) return false;
   const parts = value.split("\u0000");
   if (parts.length !== 3 || !group(`${parts[0]}\u0000${parts[1]}`)) return false;
+  if (parts[0] === "usage_window_reset") return /^(?:claude:(?:five_hour|weekly|model_weekly|authentication)|codex:(?:[a-f0-9]{64}|credits|authentication))$/u.test(parts[2]);
   return parts[0] === "needs_input" ? isSafeSessionId(parts[2]) : ["claude", "codex"].includes(parts[2]);
 }
 function validRow(row) {
@@ -44,6 +46,19 @@ function validRow(row) {
     && row.data.sessionId.startsWith(`${row.provider}:`)
     && typeof row.data.sessionTitle === "string" && row.data.sessionTitle.length <= 96
     && !/[<>\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(row.data.sessionTitle);
+  if (USAGE_NOTIFICATION_KINDS.includes(row.kind)) {
+    if (row.kind === "usage_authentication_required") return row.category === "provider_news" && row.severity === "warning"
+      && row.action === "open_usage_limits" && row.priority === 75 && row.lifecycle === "resolved"
+      && row.timeBasis === "observed" && exact(row.data, []);
+    if (row.category !== "usage" || row.severity !== "info" || row.action !== "open_usage_limits"
+      || row.priority !== 60 || row.lifecycle !== "resolved" || row.timeBasis !== "observed") return false;
+    if (row.kind === "usage_reset_available") return row.provider === "codex" && exact(row.data, ["availableCount"])
+      && Number.isSafeInteger(row.data.availableCount) && row.data.availableCount > 0 && row.data.availableCount <= 1000;
+    return exact(row.data, ["window", "origin", "otherExhausted"]) && USAGE_NOTIFICATION_WINDOWS.includes(row.data.window)
+      && (row.provider === "claude" ? ["five_hour", "weekly", "model_weekly"].includes(row.data.window) : ["primary", "secondary"].includes(row.data.window))
+      && (row.provider === "claude" ? ["local_observation", "provider_api"] : ["provider_api"]).includes(row.data.origin)
+      && typeof row.data.otherExhausted === "boolean";
+  }
   return ["provider_incident", "provider_recovery"].includes(row.kind)
     && row.category === "provider_service" && row.action === "open_providers" && row.priority === 70
     && row.severity === (row.kind === "provider_incident" ? "warning" : "info")
@@ -54,11 +69,14 @@ function validRow(row) {
 
 /** Full-record validation. No partial salvage: a bad record cannot supply comparison state. */
 export function normalizeNotificationPersistence(value, expectedProfile, now = Date.now()) {
+  const keys = ["version", "profileScope", "identitySeed", "sequence", "snapshot", "baselines", "active", "evidence"];
+  if (Object.hasOwn(value || {}, "usageState")) keys.push("usageState");
   if (typeof expectedProfile !== "string" || !HASH.test(expectedProfile)
-    || !exact(value, ["version", "profileScope", "identitySeed", "sequence", "snapshot", "baselines", "active", "evidence"])
+    || !exact(value, keys)
     || value.version !== VERSION || typeof value.profileScope !== "string" || !HASH.test(value.profileScope)
     || typeof value.identitySeed !== "string" || !SEED.test(value.identitySeed)
-    || !Number.isSafeInteger(value.sequence) || value.sequence < 0) return null;
+    || !Number.isSafeInteger(value.sequence) || value.sequence < 0
+    || (value.usageState != null && !validUsageNotificationState(value.usageState, now))) return null;
   const snapshot = value.snapshot;
   if (!exact(snapshot, ["version", "revision", "generatedAt", "readiness", "occurrences", "activeSessionOverflow"])
     || snapshot.version !== 1 || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0
@@ -100,7 +118,7 @@ export function normalizeNotificationPersistence(value, expectedProfile, now = D
   const retained = snapshot.occurrences.filter((row) => row.lifecycle === "active" || Date.parse(row.occurredAt) >= cutoff);
   const normalized = { identitySeed: value.identitySeed, sequence: value.sequence,
     snapshot: { ...snapshot, occurrences: retained }, baselines: value.baselines,
-    active: value.active, evidence: value.evidence };
+    active: value.active, evidence: value.evidence, usageState: value.usageState ?? null };
   return { profileMatches: value.profileScope === expectedProfile, state: normalized };
 }
 

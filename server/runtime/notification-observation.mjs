@@ -77,6 +77,12 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
     acceptLatest();
   }
 
+  function acceptUsageCommit(committed) {
+    if (stopped || !Number.isSafeInteger(committed?.revision) || !Array.isArray(committed.providers)) return ledger.readSnapshot();
+    try { return ledger.acceptFacts({ usage: { ...committed, sourceScope } }); }
+    catch { return ledger.readSnapshot(); }
+  }
+
   function read(revision = null) {
     const value = ledger.readSnapshot();
     const snapshot = Object.freeze({ revision: value.revision, value, serialized });
@@ -101,6 +107,6 @@ export function createNotificationObservation({ now = Date.now, persistence = nu
     await persistence?.drain();
   }
 
-  return Object.freeze({ start, attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit,
+  return Object.freeze({ start, attachCatalog, acceptCatalogCommit, acceptProviderStatusCommit, acceptUsageCommit,
     read, readSnapshot: ledger.readSnapshot, subscribeRevisionEvents, stop });
 }

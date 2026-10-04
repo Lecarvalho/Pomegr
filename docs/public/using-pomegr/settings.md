@@ -107,7 +107,9 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   toast can suppress it; the occurrence remains in the notification tray.
 - **Provider updates** and **Model news** are off by default. Turn either on
   under **Settings → Notifications** to allow supported news to use Windows
-  notifications. The notification tray can still show an occurrence while native
+  notifications. **Provider updates** also includes a recognized usage sign-in
+  problem that persists after a retry; opening it only shows Usage limits.
+  The notification tray can still show an occurrence while native
   delivery is disabled or quiet. **Mark all read** clears its unread indicator;
   it does not end an active Needs input condition. Read markers stay in this
   browser's local storage for up to 30 days. The desktop app's browser read

@@ -668,10 +668,10 @@ export type SessionApprovalMode = {
 };
 
 export type UsageLimits = {
+  resetCredits?: { status: "supported" | "unknown"; availableCount: number | null; observedAt: string };
   available: boolean;
   fetchedAt: string | null;
   attemptedAt: string | null;
-  /** Where the complete normalized account observation came from. */
   origin?: "local_observation" | "provider_api";
   /** Freshness of the complete observation at monitor read time. */
   freshness?: "fresh" | "stale";

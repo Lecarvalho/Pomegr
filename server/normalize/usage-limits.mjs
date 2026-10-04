@@ -1,6 +1,7 @@
 import { createEmptyUsageLimits } from "../../shared/monitor-state.mjs";
 import { clampUsageLimitPercent, usageLimitSeverity } from "../../shared/usage-limit-severity.mjs";
 import { isoTimestampFromDateInput } from "./primitives.mjs";
+import { copyUsageNotificationSource } from "./usage-notification-facts.mjs";
 
 export const USAGE_REFRESH_INTERVAL_MS = 5 * 60_000;
 
@@ -28,6 +29,10 @@ function sanitizedUsageError(error) {
 function normalizedUsageLimits(body) {
   if (!Array.isArray(body?.limits)) throw new TypeError("Usage response has no complete limits array");
   const normalized = body.limits.flatMap((limit) => {
+    if (["session", "weekly_all", "weekly_scoped"].includes(limit.kind)
+      && (typeof limit.percent !== "number" || !Number.isFinite(limit.percent) || limit.percent < 0 || limit.percent > 100)) {
+      throw new TypeError("Invalid usage percentage");
+    }
     const percent = clampUsageLimitPercent(limit.percent);
     if (limit.kind === "session") return [{
       id: "current-session", label: "Current session", window: "5 hours",
@@ -53,7 +58,7 @@ function normalizedUsageLimits(body) {
 
 /**
  * @param {{
- *   read: () => Promise<any[]>,
+ *   read: () => Promise<any[] | { limits: any[], resetCredits?: any }>,
  *   errorMessage?: (error: any) => string,
  *   failureKind?: (error: any) => "authentication_required" | "rate_limited" | "unavailable" | "runtime_unavailable",
  *   retryDelay?: (error: any, currentTime: number) => number,
@@ -81,7 +86,8 @@ export function createCoordinatedUsageLimitsReader({
     let nextAttemptAt = 0;
     cache.pending = (async () => {
       try {
-        const limits = await read();
+        const result = await read();
+        const limits = Array.isArray(result) ? result : result?.limits;
         if (!Array.isArray(limits)) throw new TypeError("Usage limit reader returned an invalid value");
         const checkedAtMs = now();
         const checkedAt = new Date(checkedAtMs).toISOString();
@@ -94,7 +100,11 @@ export function createCoordinatedUsageLimitsReader({
           retryAt: null,
           limits,
           error: "",
+          ...(!Array.isArray(result) && result?.resetCredits ? { resetCredits: {
+            ...result.resetCredits, observedAt: checkedAt,
+          } } : {}),
         };
+        copyUsageNotificationSource(result, value);
         cache.value = value;
         return value;
       } catch (error) {
@@ -110,6 +120,7 @@ export function createCoordinatedUsageLimitsReader({
         const value = cache.value
           ? { ...cache.value, attemptedAt, failureKind: safeFailureKind, retryAt: isoTimestampFromDateInput(nextAttemptAt), error: safeError }
           : { ...emptyUsageLimits(safeError), attemptedAt, failureKind: safeFailureKind, retryAt: isoTimestampFromDateInput(nextAttemptAt) };
+        if (cache.value) copyUsageNotificationSource(cache.value, value);
         cache.value = value;
         return value;
       } finally {

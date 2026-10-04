@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { USAGE_REFRESH_INTERVAL_MS } from "../../../../server/normalize/usage-limits.mjs";
 import { createMonitorRuntime, createMonitorServer } from "../../../../server/server.mjs";
 import { createCodexProvider } from "../../../../server/providers/codex/index.mjs";
-import { normalizeCodexRateLimits } from "../../../../server/providers/codex/usage-limits.mjs";
+import { normalizeCodexRateLimits, normalizeCodexResetCredits, createCodexUsageLimitsCoordinator } from "../../../../server/providers/codex/usage-limits.mjs";
+import { usageNotificationSource } from "../../../../server/normalize/usage-notification-facts.mjs";
 import { createDefaultProviderRegistry } from "../../../../server/providers/index.mjs";
 import { createProviderRegistry } from "../../../../server/providers/registry.mjs";
 import { defineProvider, PROVIDER_CAPABILITY_KEYS } from "../../../../server/providers/provider-contract.mjs";
@@ -14,6 +15,51 @@ import { createEmptyUsageLimits } from "../../../../shared/monitor-state.mjs";
 const RESET_A = Date.parse("2026-08-11T18:00:00.000Z") / 1000;
 const RESET_B = Date.parse("2026-08-18T13:00:00.000Z") / 1000;
 const MISSING_CODEX_HOME = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "fixtures", "providers", "codex", "missing-home");
+
+test("reset-credit normalization uses only bounded explicit counts, never detail rows", () => {
+  for (const availableCount of [undefined, null, -1, 1.5, "2", Infinity, 1001]) {
+    assert.deepEqual(normalizeCodexResetCredits({ rateLimitResetCredits: { availableCount, credits: [{ id: "PRIVATE", status: "available" }] } }),
+      { status: "unknown", availableCount: null });
+  }
+  for (const availableCount of [0, 1, 1000]) {
+    assert.deepEqual(normalizeCodexResetCredits({ rateLimitResetCredits: { availableCount, credits: [] } }),
+      { status: "supported", availableCount });
+  }
+  assert.deepEqual(normalizeCodexResetCredits({ rateLimitResetCredits: null }), { status: "unknown", availableCount: null });
+});
+
+test("reset count shares the account cooldown, original time, private scope, and last-good failure retention", async () => {
+  let time = Date.parse("2026-08-11T13:00:00.000Z");
+  let calls = 0;
+  const coordinator = createCodexUsageLimitsCoordinator({ now: () => time, sourceScope: () => "a".repeat(64), request: async () => {
+    calls += 1;
+    if (calls > 1) throw new Error("PRIVATE_RAW_ERROR");
+    return rateLimitResponse();
+  } });
+  const first = await coordinator.get();
+  assert.deepEqual(first.resetCredits, { status: "supported", availableCount: 4, observedAt: first.fetchedAt });
+  assert.equal(usageNotificationSource(first).sourceScope, "a".repeat(64));
+  assert.doesNotMatch(JSON.stringify(first), /MUST_NOT_LEAK|sourceScope|PRIVATE|credits"/);
+  time += 60_000;
+  assert.equal((await coordinator.get()).resetCredits.observedAt, first.fetchedAt);
+  assert.equal(calls, 1);
+  time += USAGE_REFRESH_INTERVAL_MS;
+  await coordinator.get();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(coordinator.peek().resetCredits.observedAt, first.fetchedAt);
+  assert.equal(coordinator.peek().failureKind, "unavailable");
+});
+
+test("malformed/truncated source windows cannot serve as complete notification evidence", async () => {
+  const response = rateLimitResponse();
+  response.result.rateLimitsByLimitId.review.secondary = { usedPercent: "unknown" };
+  const coordinator = createCodexUsageLimitsCoordinator({ request: async () => response, sourceScope: () => "a".repeat(64) });
+  const value = await coordinator.get();
+  assert.equal(usageNotificationSource(value).complete, false);
+  response.result.rateLimitsByLimitId.review = null;
+  const partial = createCodexUsageLimitsCoordinator({ request: async () => response, sourceScope: () => "a".repeat(64) });
+  assert.equal(usageNotificationSource(await partial.get()).complete, false);
+});
 
 function rateLimitResponse() {
   return {

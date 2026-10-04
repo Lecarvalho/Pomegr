@@ -48,6 +48,33 @@ access interrupted**, **Refresh rate-limited**, or **Refresh delayed**, with a
 retry countdown when the provider gives one. A reading can lag activity
 elsewhere on your account. Historical sessions never show current limits.
 
+## Usage notifications
+
+The notification tray distinguishes a **window rolled over** from a window that
+**has capacity again** within the same reset period. Both require a fresh usage
+observation; the clock passing a displayed reset time is not confirmation.
+The message names the affected window and says when another window remains
+exhausted. It does not promise that the whole account can run requests. Claude
+status-line observations are labeled as local observations.
+
+When Codex supplies an earned-reset count, Usage limits shows that count and its
+observation time. Missing or unsupported metadata shows availability as unknown.
+A newly increased count can produce **Codex reset available** after an initial
+baseline. Repeated counts do not generate new notifications. Availability does
+not establish that a particular window is eligible: Pomegr never uses a reset.
+**View usage limits** opens this page only.
+
+When Claude's account usage observer still reports a sign-in problem after its
+normal retry, the tray can show one **usage sign-in needs attention** event.
+Native alerts for this event require **Settings → Notifications → Provider updates**
+to be enabled. Opening it only shows Usage limits; signing in remains a separate,
+confirmed action. A single failed check or generic network error does not qualify.
+
+Notification comparisons need a recognized local source and complete, fresh
+windows. Switching sources or encountering stale or partial evidence establishes
+a new baseline. Some Codex installations, including keyring-only sources, cannot
+provide that comparison evidence even when current usage is visible.
+
 ## Provider differences
 
 | | Claude Code | Codex |

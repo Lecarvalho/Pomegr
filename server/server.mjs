@@ -561,6 +561,7 @@ export function createMonitorRuntime(options = {}) {
     createEmptyMonitorState,
     createEmptyUsageLimits,
     onProviderStatusCommitted: notifications.acceptProviderStatusCommit,
+    onUsageCommitted: notifications.acceptUsageCommit,
     onSessionCommitted(qualifiedId) {
       for (const key of homeSummaryCache.keys()) {
         if (key.startsWith(`${qualifiedId}|`)) homeSummaryCache.delete(key);
