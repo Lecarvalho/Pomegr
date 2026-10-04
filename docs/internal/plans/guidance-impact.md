@@ -322,7 +322,7 @@ text arrive as hook context rather than as a file.
       for Claude Code and Codex, binding record written to Pomegr's data directory,
       monitor record recognition and session binding, `pomegr:doctor` support,
       `AGENTS.md` boundary sentence, plugin policy version bump. Verify:
-      `npm run test:plugin`, `npm run test:node`, tests that the injected context
+      `npm run test:node`, `claude plugin test ./plugins/claude-code`, tests that the injected context
       contains only the arm text, that the control arm emits nothing, and that
       unknown or hash-mismatched binding records are ignored.
 - [ ] Task 2c — Composer and install: preset catalog (six Pomegr-authored samples

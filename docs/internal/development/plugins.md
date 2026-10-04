@@ -299,7 +299,7 @@ Claude and Codex share one plugin release version. Prepare both marketplace pack
 ./scripts/release-plugin.sh patch
 ```
 
-Replace `patch` with `minor` or `major` as appropriate. The helper rejects version drift, updates every Claude and Codex plugin manifest and MCP identity to the same version, rebuilds both packages, and restores all affected files if either build fails. Run `npm run test:plugin`, review the complete generated diff, then commit and push all release changes together. The helper prints the provider-specific client upgrade commands. The desktop application retains its own independent release version.
+Replace `patch` with `minor` or `major` as appropriate. The helper rejects version drift, updates every Claude and Codex plugin manifest and MCP identity to the same version, rebuilds both packages, and restores all affected files if either build fails. Run `npm run test:node` and `claude plugin test ./plugins/claude-code`, review the complete generated diff, then commit and push all release changes together. The helper prints the provider-specific client upgrade commands. The desktop application retains its own independent release version.
 
 Node.js 22.13 or newer must be available for local MCP and hook processes.
 
