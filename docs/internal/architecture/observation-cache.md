@@ -776,7 +776,7 @@ The official source and component-filter details are documented in [provider sta
 `server/notifications/` owns pure rules, the occurrence ledger, and its private
 atomic sidecar.
 `server/runtime/notification-observation.mjs` accepts only committed catalog,
-  usage, public-provider-status, and normalized release facts, derives a bounded immutable response, and publishes its
+usage, public-provider-status, normalized release and model facts, derives a bounded immutable response, and publishes its
 own revision. The catalog owner projects Needs input from complete normalized headers
 before the 200-row browser shell cap, retaining at most 100 active session identities
 plus an overflow count. It does not hydrate sessions or acquire provider data for this
@@ -799,7 +799,8 @@ The version-1 public response is `{ version, revision, generatedAt, readiness:
 has only an opaque `id`, fixed `kind` (`needs_input`, `provider_incident`,
 `provider_recovery`, `usage_window_reset`, `usage_capacity_restored`,
   `usage_reset_available`, `usage_authentication_required`, `release_published`,
-  `installation_update_available`), `category`, `severity`, `lifecycle`, bounded `priority`,
+  `installation_update_available`, `model_announced`, `model_deprecated`,
+  `model_client_listed`), `category`, `severity`, `lifecycle`, bounded `priority`,
 `occurredAt`, fixed `timeBasis`, `deliveryEligible`, fixed `action`, normalized
 `provider`, and narrow `data`. Needs input carries a validated normalized session ID
 and bounded catalog title; provider conditions carry a fixed health status only.
@@ -836,6 +837,46 @@ latest-channel publication, not stable eligibility. The Codex reader uses the
 official installer's `https://releases.openai.com/codex/channels/latest` metadata
 and accepts only a stable `rust-v` tag; it covers the CLI only. Desktop and IDE
 releases remain unsupported. No notification GET starts these jobs.
+
+That same scheduler owns hourly Codex client-catalog reads and six-hour OpenAI
+model-announcement reads. There is one timer and one pending source batch, with
+per-source deadlines and cooldowns; no news source runs in a session hydration or
+history lane. `model/list` uses a separate short-lived native app-server process,
+with the effective `CODEX_HOME`, four pages of at most 32 rows, a 128-row total,
+eight-second deadline, 64 KiB JSONL lines and 256 KiB total output. Only initialize,
+initialized and model/list are allowed; no threads, turns, inference or control.
+All pages validate before a candidate commits. Hidden and alias identities remain
+in a private known-ID set, so becoming visible or changing an alias does not
+manufacture a new model. Listings may be bundled or cached by Codex, and are
+labeled **listed in your client**, never account availability.
+
+The public OpenAI RSS reader uses only `https://openai.com/news/rss.xml`, without
+credentials or redirects. It caps the feed at 1 MiB and 1,500 entries, validates
+XML content type, denies entity declarations, and requires one explicit title,
+first-party article link and publication date. Only exact **Introducing GPT-…**
+and **Retiring GPT-…** titles within its bounded grammar qualify; other titles
+are outside coverage. It never fetches article bodies. Conditional responses
+preserve original observation time; hard fetch/body deadlines and bounded
+Retry-After/backoff apply. A retirement announcement is never derived from a
+missing catalog row. Claude model sources and both providers' account entitlement
+remain explicitly unavailable; no subscription credential is reused elsewhere.
+
+Model occurrences carry only validated `modelId` (at most 120 identifier
+characters), `label` (at most 64 safe label characters), and fixed `evidence`
+(`official_announcement` or `client_catalog`). Their category is `model_news`,
+severity is info, action is `open_providers`, and priority is 25 (40 for retirement).
+Their timestamp is the official publication time or original catalog observation.
+Private comparison state holds at most one catalog and announcement baseline per
+provider: an opaque source scope, original observation time, and up to 256 known
+identifiers or opaque publication digests. Catalog scope joins effective home and
+auth/config filesystem identities privately. First observations, source changes,
+incomplete/stale evidence, and bounds overflow establish a new baseline without
+notifications. Out-of-order cached callbacks cannot rewind a newer baseline.
+Accepted identities survive catalog disappearance; absence never becomes removal
+or retirement. No raw XML, source URL, configuration, credential, or provider
+payload enters the sidecar. Older sidecars without model comparison state load
+with a null baseline. Browser, persistence and native validation share the exact
+allowlist and static copy in `shared/model-notification.mjs`.
 
 The shared type also reserves `monitor_unreachable` with null provider and empty data
 for the client-local `client:` namespace; the monitor never emits it. No raw source

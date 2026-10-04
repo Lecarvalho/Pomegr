@@ -1,11 +1,11 @@
 # Provider observers and unified notifications
 
-> Status: active implementation; parts 1–3 are implemented, with phase-3 publication/acceptance in progress and parts 4–5 assigned to subsequent sequential chats.
+> Status: parts 1–5 are implemented; final publication and native OS display/click/focus acceptance remain open.
 > Created: 2026-10-03.
 > Scope: provider updates, usage availability, model news, and the existing Needs input notifications through one notification subsystem.
-> Continuation owner: the Pomegr maintainer running the next ACOS part.
+> Continuation owner: the Pomegr maintainer, with the product owner providing interactive native OS acceptance.
 > Authority: proposed implementation checklist; current runtime contracts still govern shipped behavior.
-> Next task: the coordinator validates the part-3 stacked PR, then starts part 4 on its accepted predecessor; the user owns every merge.
+> Next task: validate the part-5 stacked PR and its exact-head Windows workflow, then complete native OS display/click/focus acceptance. The user owns every merge.
 > Completion criteria: all five parts pass their checks, independent review, and inspected UI evidence; unsupported sources remain explicitly unavailable.
 > Permanent destinations: observation-cache.md, overview.md, provider-status.md, agent-workflow.md, the public Settings and Usage limits guides, and DESIGN.md if shared controls change.
 > Lifetime: temporary; transfer enduring contracts and remaining obligations, repair references, then delete this plan and its temporary artifacts when completed, cancelled, or superseded.
@@ -296,11 +296,13 @@ authorized behavior, measured usage, or a promise of implementation size.
 - [x] Part 2: desktop notification/behavior/security tests and preference UI tests pass; no provider actions are reachable through a notification.
 - [x] Part 3: usage fixtures cover deadline-only, real rollover, same-window recovery, other exhausted windows, source switches, stale data, repeated credit counts, unsupported fields, legacy/multi-bucket Codex windows, and opt-in persistent authentication alerts.
 - [x] Part 4: release fixtures cover channel changes, downgrades, equal versions, prereleases, unavailable installed versions, invalid payloads, redirects, timeouts, and duplicate repositories.
-- [ ] Part 5: model fixtures cover announcements, bundled catalogs, partial pagination, aliases, unavailable entitlement sources, and false deprecation prevention.
-- [ ] Final review covers all five parts, serialization/persistence boundaries, scheduler isolation, stale data, retention, multi-client delivery, and extension cost.
-- [ ] Inspected captures show Needs input, quiet/disabled preferences, usage recovery/reset availability, release news, and separately labeled model announcement/catalog evidence at desktop and phone widths.
-- [ ] Run the canonical full verifier and focused desktop security checks for the completed implementation; record results without claiming OS toast acceptance from unit tests alone.
-- [ ] Transfer enduring rules into current contracts/public guides, assign evidence-gated unsupported sources explicitly, repair links, and delete temporary planning artifacts under the maintenance workflow.
+- [x] Part 5: model fixtures cover announcements, bundled catalogs, partial pagination, aliases, unavailable entitlement sources, and false deprecation prevention.
+- [x] Final review covers all five parts, serialization/persistence boundaries, scheduler isolation, stale data, retention, multi-client delivery, and extension cost. Its restart blocker has a passing catalog-to-restored-ledger regression.
+- [x] Inspected captures show Needs input, quiet/disabled preferences, usage recovery/reset availability, release news, and separately labeled model announcement/catalog evidence at desktop and phone widths.
+- [x] Run the canonical full verifier and focused desktop security checks for the completed implementation; record results without claiming OS toast acceptance from unit tests alone.
+- [x] Transfer enduring rules into current contracts/public guides and assign evidence-gated unsupported sources explicitly.
+- [ ] Retire this plan and unneeded temporary attachments under the maintenance workflow after the remaining native acceptance and publication checks close.
+- [ ] Interactive native OS display/click/focus acceptance. The isolated Electron fixture confirms dispatch attempts and durable suppression, but the OS toast was not exposed to computer-use and no user-observed click result has been recorded.
 
 Use synthetic facts and injected clocks for durable tests. Test deadlines across
 sleep/resume and clock jumps, complete/incomplete catalog pages, stale transitions,
@@ -328,7 +330,7 @@ Each manifest embeds its intent, acceptance, safety boundaries, scope, input
 paths, checks, and estimates. It has `mode: sequential` and `gates.go: required`.
 Complete one part, read its handoff in the next session, and run the next index.
 Each phase-owning chat records implementation outcomes, commits and pushes its
-validated changes, and opens a PR against main. Delegated implementation workers
+validated changes, and opens a stacked PR against its predecessor (part 1 targets main). Delegated implementation workers
 must not commit or push. No phase merges its PR or starts the next phase.
 
 The provider catalog specifies the external Codex adapter. Manifests
@@ -389,3 +391,31 @@ both retained part-1 visual claims at 1280 and 390 px: Needs input with safe
 session navigation, and distinct provider incident/recovery and client-local
 monitor-offline states. Exact synthetic capture commands live in the part-1
 handoff artifacts; no production fixture route or provider probe was added.
+
+Part-5 checkpoint (2026-10-03): the Codex client catalog uses complete bounded
+`model/list` pagination including hidden identities, without interpreting its
+bundled or cached listing as account entitlement. A bounded official OpenAI RSS
+reader recognizes narrow explicit announcement/retirement titles. Claude model
+sources and account entitlement remain explicitly unavailable. Unknown sources,
+partial pages, aliases, stale observations, and removed catalog rows cannot
+manufacture availability or retirement. Model events use the common ledger,
+persistence, tray, native policy, and one existing low-priority scheduler.
+Enduring contracts and public Settings guidance have been updated.
+
+All 36 running synthetic browser captures were inspected at 1280×800 and
+390×844, including read/reload behavior, preferences, keyboard focus and safe
+navigation. The independent final review found a restart projection omission;
+the catalog now seeds its bounded tracking from restored active conditions.
+The real catalog-to-restored-ledger regression covers partial/missing evidence,
+explicit resolution and a subsequent eligible recurrence. The review's model
+source-gap finding also has an adapter-to-reducer regression.
+
+The isolated authenticated Electron fixture attempted a native toast on this
+supported host. Quiet consumes new transitions; ending quiet, a second client,
+poller restart and real process restart do not replay claimed occurrences; a new
+recurrence dispatches once. These are dispatch/claim observations, not proof of
+OS display. The OS toast was not exposed by the available automation surface and
+its click/focus result remains unconfirmed. The product owner and maintainer own
+that remaining acceptance check. Keep this plan until that evidence is recorded,
+final verification/publication are accepted, and its remaining obligations can
+be retired; do not declare all-part acceptance complete from automated tests.

@@ -2,6 +2,7 @@ import { encodeSessionRoute } from "../../shared/session-route.mjs";
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { isUsageNotificationKind, normalizeUsageNotificationData, usageNotificationPayload, usageNotificationPolicy } from "../../shared/usage-notification.mjs";
 import { isReleaseNotificationKind, normalizeReleaseNotificationData, releaseNotificationPayload, releaseNotificationPolicy } from "../../shared/release-notification.mjs";
+import { isModelNotificationKind, normalizeModelNotificationData, modelNotificationPayload, modelNotificationPolicy } from "../../shared/model-notification.mjs";
 
 export const NOTIFICATION_POLL_INTERVAL_MS = 2_000;
 export const NOTIFICATION_MAX_CATCHUP_MS = 15 * 60_000;
@@ -106,6 +107,12 @@ export function normalizeNativeNotificationSnapshot(input) {
       if (!data || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
         || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
       normalized.data = data;
+    } else if (isModelNotificationKind(row.kind)) {
+      const data = normalizeModelNotificationData(row.kind, row.provider, row.data);
+      const policy = modelNotificationPolicy(row.kind);
+      if (!data || row.category !== policy.category || row.action !== policy.action || row.priority !== policy.priority
+        || row.lifecycle !== "resolved" || row.severity !== policy.severity || row.timeBasis !== "observed") return null;
+      normalized.data = data;
     } else if (row.kind === "needs_input") {
       if (typeof row.data?.sessionId !== "string" || !SESSION_ID.test(row.data.sessionId)
         || !row.data.sessionId.startsWith(`${row.provider}:`)
@@ -126,6 +133,7 @@ export function normalizeNativeNotificationSnapshot(input) {
 
 /** Static native copy; no provider-supplied description, URL, or command is read. */
 export function nativeNotificationPayload(record) {
+  if (isModelNotificationKind(record.kind)) return modelNotificationPayload(record);
   if (isUsageNotificationKind(record.kind)) return usageNotificationPayload(record);
   if (isReleaseNotificationKind(record.kind)) return releaseNotificationPayload(record);
   if (record.kind === "needs_input" && record.lifecycle === "active") {

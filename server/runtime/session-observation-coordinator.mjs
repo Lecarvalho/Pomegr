@@ -63,7 +63,8 @@ export function createSessionObservationCoordinator(options = {}) {
     } catch { return null; }
   }
   const catalogsByProvider = new Map();
-  const notificationCatalog = createNotificationCatalog({ projectVisibility: projectOpenVisibility });
+  const notificationCatalog = createNotificationCatalog({ projectVisibility: projectOpenVisibility,
+    activeSessionIds: options.notificationActiveSessionIds });
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
   const scheduledSessions = new Map();

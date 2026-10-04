@@ -114,6 +114,11 @@ The desktop app puts an icon in the Windows notification area. Its menu offers
   CLI installation can update. A current Pomegr reporting-plugin setup can
   show an update when its installed version is behind the official release.
   Opening release news only navigates inside Pomegr; it never installs software.
+  Model news distinguishes an official OpenAI announcement from a model
+  **listed in your client**. Codex can return a bundled or cached catalog, so
+  neither means your account has access. Only narrowly recognized OpenAI
+  introduction or retirement headlines are covered; missing catalog rows never
+  mean retirement. Claude model news and account-access checks are unavailable.
   The notification tray can still show an occurrence while native
   delivery is disabled or quiet. **Mark all read** clears its unread indicator;
   it does not end an active Needs input condition. Read markers stay in this
