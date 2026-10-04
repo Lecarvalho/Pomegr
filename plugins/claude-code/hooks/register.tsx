@@ -2,8 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { AgentRow, Place, Reading, Recorded, Usage } from '../types'
-import { REQUESTS_KEPT, SECONDS_BELOW_MS, agentLabel, agentsLine, cacheState, detectRefill, line, span, tokens } from './hud'
-import type { Style } from './hud'
+import { REQUESTS_KEPT, SECONDS_BELOW_MS, agentLabel, agentsLine, cacheState, detectRefill, line, shouldProbe, span, tokens, toolName } from './hud'
+import type { Link, Style } from './hud'
 
 const main = atom({ plugin: 'pomegr', key: 'main' } as const, null)
 const usage = atom({ plugin: 'pomegr', key: 'usage' } as const, null)
@@ -25,9 +25,8 @@ const COLOR: Partial<Record<Style, string>> = {
   error: 'error',
 }
 
-// The Pomegr plugin's MCP server, as /mcp lists it and as a bare install names it.
-const POMEGR_SERVERS = ['plugin:pomegr:pomegr', 'pomegr']
-const PROBE_RETRY_MS = 5 * 60_000
+// The Pomegr MCP server's key in this plugin's manifest.
+const POMEGR_SERVER = 'pomegr'
 const LIMIT_STEPS = [80, 95]
 const RECORDED: readonly string[] = ['5m', '1h', 'mixed', '30m+']
 const OWN_PROMPTS: readonly string[] = ['composer', 'bridge', 'sdk']
@@ -45,9 +44,8 @@ function recordedLifetime(result: unknown): Recorded | null | undefined {
 }
 
 let isTurnRunning = false
-let isPomegrLinked = false
+const link: Link = { isLinked: false, isRefused: false, probedAt: 0 }
 let shownBucket = 0
-let probedAt = 0
 let ticks = 0
 // Subagents seen running since the last prompt, and each loop's latest prompt size.
 const tracked = new Map<string, AgentRow>()
@@ -55,25 +53,32 @@ const agentTokens = new Map<string, number>()
 const limitSteps = new Map<string, number>()
 
 // Optional: a running Pomegr monitor knows the lifetime the provider recorded.
+// One server, under the name the engine runs it; a refusal is never asked twice.
+// The call names no session: the plugin's PreToolUse hook binds it to the current one
+// and grants that one read, so it needs no rule of the person's. A rule that denies
+// the tool is honored without calling.
 async function probe($: EngineInterface): Promise<void> {
   const at = await $.clock.now()
-  if (!isPomegrLinked && at - probedAt < PROBE_RETRY_MS && probedAt > 0) return
-  probedAt = at
-  const sessionRef = `claude:${await $.session.id()}`
-  for (const server of POMEGR_SERVERS) {
-    try {
-      const result = await $.mcp.call(server, 'get_agent_context', { session_ref: sessionRef })
-      const lifetime = result.isError ? undefined : recordedLifetime(result.structuredContent)
-      if (lifetime === undefined) continue
-      isPomegrLinked = true
-      await update($, recorded, () => lifetime)
-      return
-    } catch {
-      // Not installed or not connected under this name.
+  if (!shouldProbe(link, at)) return
+  link.probedAt = at
+  let lifetime: Recorded | null | undefined
+  try {
+    const found = await $.mcp.connect(POMEGR_SERVER)
+    if (found.isConnected) {
+      const { decision } = await $.tool.check({ tool: toolName(found.server, 'get_agent_context'), input: {} })
+      const result = decision === 'deny' ? null : await $.mcp.call(found.server, 'get_agent_context')
+      // A monitor that is not running answers without an error: worth asking again
+      // later. An error is the engine refusing the call.
+      if (result === null || result.isError) link.isRefused = true
+      else lifetime = recordedLifetime(result.structuredContent)
+    } else {
+      link.isRefused = true
     }
+  } catch {
+    link.isRefused = true
   }
-  isPomegrLinked = false
-  await update($, recorded, () => null)
+  link.isLinked = lifetime !== undefined
+  await update($, recorded, () => lifetime ?? null)
 }
 
 async function takeUsage($: EngineInterface, next: Usage, isFirst: boolean): Promise<void> {
@@ -171,7 +176,6 @@ export const register: Register = on => {
     } catch {
       // No figures yet; session.measure brings them.
     }
-    void probe($).catch(() => undefined)
     $.clock.every(1000, () => void tick($).catch(() => undefined))
 
     return next(e)

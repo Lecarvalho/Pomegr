@@ -115,7 +115,10 @@ test("Claude query hook binds only recognized defaults and keeps explicit select
     for (const tool of ["get_session_report", "list_session_agents", "get_agent_context", "get_recent_failures"]) {
       const payload = { hook_event_name: "PreToolUse", tool_name: prefix + tool, tool_input: {},
         transcript_path: path.resolve("private", id, "subagents", "agent-child.jsonl") };
-      assert.deepEqual(bindClaudeQuerySession(payload).hookSpecificOutput.updatedInput, { session_ref: `claude:${id}` });
+      const bound = bindClaudeQuerySession(payload).hookSpecificOutput;
+      assert.deepEqual(bound.updatedInput, { session_ref: `claude:${id}` });
+      // Only the current session's own context read is granted; the rest stays with the host.
+      assert.equal(bound.permissionDecision, tool === "get_agent_context" ? "allow" : undefined);
       assert.equal(bindClaudeQuerySession({ ...payload, tool_input: { session_ref: "claude:explicit" } }), null);
       assert.equal(bindClaudeQuerySession({ ...payload, transcript_path: "private-path-sentinel" }), null);
       assert.equal(bindClaudeQuerySession({ ...payload, tool_name: prefix + tool + "_lookalike" }), null);

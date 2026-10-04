@@ -26,6 +26,26 @@ export const NOTABLE_PROMPT = 20_000
 export const SECONDS_BELOW_MS = 10 * MINUTE
 /** How many recent requests the bars keep: a miniature of Pomegr's Requests chart. */
 export const REQUESTS_KEPT = 8
+/** How long a probe that found no running monitor waits before the next. */
+export const PROBE_RETRY_MS = 5 * MINUTE
+
+/** Where the probes of Pomegr's own MCP server stand. */
+export type Link = { isLinked: boolean; isRefused: boolean; probedAt: number }
+
+/**
+ * Whether to probe now. A refusal ends probing: asking again only repeats it.
+ * A monitor that was not running is asked again after a while, a linked one
+ * every time, since the lifetime it records can change.
+ */
+export function shouldProbe(link: Link, now: number): boolean {
+  if (link.isRefused) return false
+  return link.isLinked || link.probedAt === 0 || now - link.probedAt >= PROBE_RETRY_MS
+}
+
+/** An MCP tool's name as permission rules spell it: `plugin:pomegr:pomegr` as `mcp__plugin_pomegr_pomegr__<tool>`. */
+export function toolName(server: string, tool: string): string {
+  return `mcp__${server.replace(/[^a-zA-Z0-9_-]/g, '_')}__${tool}`
+}
 
 /**
  * Where the main agent's cache lifetime stands. A lifetime Pomegr recorded is

@@ -22,6 +22,9 @@ repository directory, recency, or process activity.
 `session_ref` selectors for delegated or historical inspection. `get_agent_context`
 also accepts an optional `agent_id` and otherwise selects `primary`.
 Omit `session_ref` for the current session; no discovery call or manual ID is required.
+Claude's per-call hook makes one permission decision: it allows `get_agent_context` when it
+bound the call to the current session itself. Explicit selectors and every other tool keep
+the host's normal authorization.
 Claude's subprocess launch ID is never used as a fallback because it can remain tied
 to the previous session. See the
 [Claude Code environment reference](https://code.claude.com/docs/en/env-vars).

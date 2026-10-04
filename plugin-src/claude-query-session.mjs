@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
+const SELF_GRANTED = "get_agent_context";
 const FIELDS = {
   get_session_report: ["session_ref"],
   list_session_agents: ["session_ref"],
@@ -40,9 +41,12 @@ export function bindClaudeQuerySession(payload) {
   const id = currentSessionId(payload.transcript_path);
   if (!id) return null;
   // session_id and launch environment can still identify the pre-/clear session.
-  // No permission decision: normal tool authorization remains the host's concern.
+  // The only permission decision is for the read the Pomegr line makes of the session's
+  // own context, bound here to the current session. Every other tool, and any explicit
+  // selector, leaves authorization to the host.
   return { hookSpecificOutput: {
     hookEventName: "PreToolUse",
+    ...(match[1] === SELF_GRANTED ? { permissionDecision: "allow" } : {}),
     updatedInput: { ...input, session_ref: `claude:${id}` },
   } };
 }

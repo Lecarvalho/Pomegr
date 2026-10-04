@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { Reading } from '../types'
 import type { Section } from '../hooks/hud'
-import { agentLabel, agentsLine, cacheState, detectRefill, line, meter, requestsSection, span, tokens } from '../hooks/hud'
+import { PROBE_RETRY_MS, agentLabel, agentsLine, cacheState, detectRefill, line, meter, requestsSection, shouldProbe, span, tokens, toolName } from '../hooks/hud'
 
 const MINUTE = 60_000
 const warm: Reading = { at: 0, prompt: 110_000, read: 100_000, written: 9_000, model: 'claude-opus-5-5' }
@@ -119,4 +119,18 @@ test('the agents row counts the running ones and marks finished and failed', () 
   expect(text(agentsLine(crew, 44))).toEqual(['╰ 1 agent running', '● Explore 42k', '+2'])
   expect(text(agentsLine(crew.map(agent => ({ ...agent, status: 'completed' })), 120))[0]).toBe('╰ agents done')
   expect(agentLabel('caveman:cavecrew-investigator')).toBe('cavecrew-invest…')
+})
+
+test('a refused probe is never repeated; a monitor that was not running is asked again later', () => {
+  const fresh = { isLinked: false, isRefused: false, probedAt: 0 }
+  expect(shouldProbe(fresh, 1)).toBe(true)
+  expect(shouldProbe({ ...fresh, probedAt: MINUTE }, 2 * MINUTE)).toBe(false)
+  expect(shouldProbe({ ...fresh, probedAt: MINUTE }, MINUTE + PROBE_RETRY_MS)).toBe(true)
+  expect(shouldProbe({ ...fresh, isLinked: true, probedAt: MINUTE }, MINUTE + 1)).toBe(true)
+  expect(shouldProbe({ isLinked: false, isRefused: true, probedAt: MINUTE }, MINUTE + 10 * PROBE_RETRY_MS)).toBe(false)
+})
+
+test('an MCP tool is named the way permission rules spell it', () => {
+  expect(toolName('plugin:pomegr:pomegr', 'get_agent_context')).toBe('mcp__plugin_pomegr_pomegr__get_agent_context')
+  expect(toolName('pomegr', 'get_agent_context')).toBe('mcp__pomegr__get_agent_context')
 })
