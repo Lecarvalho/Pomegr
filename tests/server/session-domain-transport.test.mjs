@@ -52,6 +52,10 @@ test("session domains and history use revision ETags with bodyless 204 responses
   const unassociated = await fetch(`${origin}/api/session-history?sessionId=codex%3Atransport&kind=activity&scope=primary&unassociated=1`);
   assert.equal(unassociated.status, 200);
   assert.equal((await unassociated.json()).unassociated, "1", "the validated flag reaches the store query");
+  // Requests pages ignore the activity-only flag instead of rejecting it.
+  for (const query of ["unassociated=0", "unassociated=1&requestId=request-0123456789abcdef"]) {
+    assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3Atransport&kind=requests&${query}`)).status, 200);
+  }
 });
 
 test("session-domain and range-history requests reject invalid methods, identities, and paging values", async (context) => {

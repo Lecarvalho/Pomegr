@@ -255,7 +255,7 @@ describe("unassociated activity", () => {
     expect(Object.fromEntries(flatReads(server).at(-1)!)).toMatchObject({ scope: "worker-1", offset: "latest" });
   });
 
-  it("refetches rows on a served revision change and drops a late reply from another revision", async () => {
+  it("lists a reply committed after the feed's page and refetches rows on a served revision change", async () => {
     const { all, calls } = orphanFixture();
     const state: HistoryServerState = { requests: all, calls, revision: "1" };
     const { server, result, rerender } = await opened(state);
@@ -265,7 +265,9 @@ describe("unassociated activity", () => {
     // The monitor moved on before the feed noticed: this reply names revision 2 while the feed shows 1.
     state.revision = "2";
     await act(async () => { server.deferred[0].resolve(); });
-    expect(result.current.unassociated).toMatchObject({ status: "loading", calls: [] });
+    // A recorded session's feed never follows, so the newer reply is listed instead of waited on.
+    expect(result.current.unassociated.status).toBe("ready");
+    expect(ids(result).length).toBeGreaterThan(0);
     server.holdWhen(null);
     state.calls = [...calls, historyCall("call-newest", null, "write", 200)];
     rerender({ selected: 3, historyRevision: "r2" });

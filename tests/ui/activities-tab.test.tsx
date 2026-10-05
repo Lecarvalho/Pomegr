@@ -647,7 +647,7 @@ describe("Actions without a recorded request", () => {
     const section = await sectionReady(container);
     await user.click(section.getByRole("button", { name: toggleName }));
     await waitFor(() => expect(rowCount(container)).toBe(6));
-    expect(section.getByText(/the provider recorded no request for them/u)).toBeInTheDocument();
+    expect(section.getByText(/have no recorded request in the retained history/u)).toBeInTheDocument();
     const failed = section.getByRole("button", { name: "Editing, 74 scopes, 1.5s, failed" });
     await user.click(failed);
     expect(failed).toHaveAttribute("aria-expanded", "true");
@@ -722,6 +722,18 @@ describe("Actions without a recorded request", () => {
     expect(root).toHaveTextContent("14 tool calls");
     expect(rows()).toEqual(before);
     expect(flatReads(server)).toHaveLength(reads);
+  });
+
+  it("lists calls committed after the feed's page instead of loading forever", async () => {
+    const user = userEvent.setup();
+    const { container, serverState } = fixture({ extraCalls: orphanCalls() });
+    await ready();
+    const section = await sectionReady(container);
+    // A later revision with no history event: a recorded session's feed never reads it.
+    serverState.revision = "2";
+    await user.click(section.getByRole("button", { name: toggleName }));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+    expect(section.queryByText("Loading calls…")).toBeNull();
   });
 
   it("says when its calls are unavailable and loads them on Retry", async () => {
