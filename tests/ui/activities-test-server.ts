@@ -38,6 +38,8 @@ export type HistoryServerState = {
   /** Per-request-number field overrides applied only to a group's own `request`, for exercising the
    * defensive "truly absent" token-count path without disturbing the chart's own request page. */
   requestGroupOverrides?: Record<number, Partial<HistoryRequest>>;
+  /** Flat `unassociated=1` answers only (the grouped feed keeps serving): a hydrating body, an HTTP status failure or a network failure. */
+  unassociatedStatus?: "loading" | "network" | number;
 };
 
 export function historyServer(state: HistoryServerState) {
@@ -83,8 +85,21 @@ export function historyServer(state: HistoryServerState) {
       return { request: override ? { ...request, ...override } : request, calls: shown.map((call) => ({ ...call, ...state.extra })), noMatchingCalls: matched.length === 0,
         continuation: remaining > 0 ? { cursor: `${request.number}:${offset + shown.length}`, remaining } : null };
     });
+    // Calls with no recorded request: counted on every ready answer, paged flat when asked for like the monitor
+    // (oldest first, at most 8 per page, `offset=latest` selecting the aligned final page of the filtered set).
+    const orphans = scopedCalls.filter((item) => item.requestId === null)
+      .sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp) || left.id.localeCompare(right.id));
+    let flat: Record<string, unknown> = { total: 0, offset: 0, items: [] };
+    if (params.get("unassociated") === "1") {
+      if (state.unassociatedStatus === "loading") return json({ kind: "activity", status: "loading", revision: state.revision, total: 0, offset: 0, linkedCount: 0, items: [] });
+      if (typeof state.unassociatedStatus === "number") return new Response(null, { status: state.unassociatedStatus });
+      const size = Math.min(8, Number(params.get("limit")) || 8);
+      const first = params.get("offset") === "latest" ? Math.floor(Math.max(0, orphans.length - 1) / size) * size
+        : Math.min(Math.max(0, Number(params.get("offset")) || 0), Math.max(0, orphans.length - 1));
+      flat = { total: orphans.length, offset: first, items: orphans.slice(first, first + size).map((call) => ({ ...call, ...state.extra })) };
+    }
     const kinds = [...new Set(scopedCalls.map((item) => item.workKind))];
-    return json({ kind: "activity", status: "ready", revision: state.revision, total: 0, offset: 0, linkedCount: 0, items: [],
+    return json({ kind: "activity", status: "ready", revision: state.revision, linkedCount: 0, ...flat, unassociatedTotal: orphans.length,
       requestGroups, range: { from: headers[0]?.number ?? 0, to: headers.at(-1)?.number ?? 0 },
       requestTotal: requests.length, callTotal: requestGroups.reduce((sum, group) => sum + group.calls.length, 0),
       byKind: kinds.map((kind) => ({ kind, count: scopedCalls.filter((item) => item.workKind === kind).length, medianDurationMs: 1_500 })),
@@ -95,7 +110,7 @@ export function historyServer(state: HistoryServerState) {
     if (url.pathname !== "/api/session-history") return Promise.resolve(new Response(null, { status: 404 }));
     const params = url.searchParams;
     calls.push(params);
-    if (params.get("kind") !== "requests" && state.activity === "network") return Promise.reject(new TypeError("Failed to fetch"));
+    if (params.get("kind") !== "requests" && (state.activity === "network" || (params.has("unassociated") && state.unassociatedStatus === "network"))) return Promise.reject(new TypeError("Failed to fetch"));
     if (hold?.(params)) {
       return new Promise((resolve, reject) => {
         const entry = { params, resolve: () => resolve(respond(params)) };

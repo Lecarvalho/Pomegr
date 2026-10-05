@@ -5,6 +5,7 @@ import type { SessionRequestSelection } from "../requests-actions/useSessionRequ
 import { useStableHistoryStatus } from "../requests-actions/useStableHistoryStatus";
 import { ActivityKindRail } from "./ActivityKindRail";
 import { ActivityRequestList } from "./ActivityRequestList";
+import { ActivityUnassociatedSection } from "./ActivityUnassociatedSection";
 import type { ActivityFeedView } from "./useActivityFeed";
 
 /** One activity feed grouped by request: a left rail of kind/shell aggregates and the request list. */
@@ -47,7 +48,12 @@ export function ActivityFeedPanel({ selection, feed, agents, busy, cacheWriteAva
     }
   }
   const rail = <ActivityKindRail feed={feed} tasks={tasks} selectedKinds={selectedKinds} />;
-  const list = <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} onSelectRequest={onSelectRequest} />;
+  // The unassociated section follows the request list in the same column. It reads the feed's own
+  // scope and revision, never the selection, so choosing a request leaves it exactly as it was.
+  const list = <div className="activityFeedColumn">
+    <ActivityRequestList selection={selection} feed={feed} agents={agents} busy={busy} cacheWriteAvailable={cacheWriteAvailable} onOpenAgent={onOpenAgent} onSelectRequest={onSelectRequest} />
+    <ActivityUnassociatedSection unassociated={feed.unassociated} agents={agents} busy={busy} />
+  </div>;
   return <section className="panel activityPanel" aria-label="Activity feed" aria-busy={busy || undefined}>
     <header className="activityPanelHeader">
       <div><h2>Activity feed</h2><p>{[

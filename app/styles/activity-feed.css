@@ -123,6 +123,23 @@
 .activityLayout.isPhone .activityPagination { flex-direction: column; align-items: stretch; padding: 12px; }
 .activityLayout.isPhone .activityPagination nav { gap: 8px; }
 .activityLayout.isPhone .activityPagination nav > button { flex: 1; min-height: 44px; }
+/* Tool calls with no recorded request: one disclosure section under the request groups, ruled apart from them. Its rows are the shared call line with a leading time column, so it carries its own gutter. */
+.activityFeedColumn { min-width: 0; }
+.activityUnassociated { --activity-unassociated-gutter: 20px; min-width: 0; border-top: 1px solid var(--line); }
+.activityLayout.isPhone .activityUnassociated { --activity-unassociated-gutter: 12px; }
+.activityUnassociatedHeading { margin: 0; font-size: var(--text-xs); font-weight: 400; }
+.activityUnassociatedToggle.commandQuietAction { display: flex; justify-content: flex-start; width: 100%; padding: 8px var(--activity-unassociated-gutter); border-radius: 0; text-align: left; gap: 8px; }
+.activityUnassociatedTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-text); font-weight: 600; }
+.activityUnassociatedCount { flex: 0 0 auto; color: var(--muted); font-family: var(--font-data); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.activityUnassociatedChevron { margin-left: auto; color: var(--color-control); }
+.activityUnassociatedToggle[aria-expanded="true"] .activityUnassociatedChevron { transform: rotate(90deg); }
+.activityUnassociatedNote, .activityUnassociatedState { margin: 0; padding: 0 var(--activity-unassociated-gutter) 8px; color: var(--muted); font-size: var(--text-xs); line-height: 1.5; }
+.activityUnassociated .activityHistoryError { padding: 4px var(--activity-unassociated-gutter) 8px; }
+.activityUnassociatedList { margin: 0; padding: 0; list-style: none; }
+.activityUnassociated .activityUnassociatedList .activityCallLine.commandQuietAction { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; align-items: center; column-gap: 8px; width: 100%; padding: 0 var(--activity-unassociated-gutter); border: 0; border-radius: 0; text-align: left; color: var(--color-text); font-size: var(--text-xs); font-weight: 400; }
+.activityUnassociatedList .activityCallDetail { padding-inline: var(--activity-unassociated-gutter); }
+.activityCallTime { color: var(--muted); font-family: var(--font-data); font-size: var(--text-caption); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.activityUnassociatedFooter { padding: 0 var(--activity-unassociated-gutter) 8px; }
 @media (min-width: 641px) and (max-width: 1200px) {
   .activityLayout { grid-template-columns: minmax(0, 1fr); }
   .activityBreakdown { border-right: 0; border-bottom: 1px solid var(--line); }
