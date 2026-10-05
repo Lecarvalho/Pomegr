@@ -16,7 +16,7 @@ test("session domains and history use revision ETags with bodyless 204 responses
         : { status: "ready", revision: 7, snapshot: { revision: 7, serialized: JSON.stringify(domainValue), value: domainValue } };
     },
     async serveSessionHistory(_sessionId, query) {
-      return { status: "ready", kind: query.kind, revision: "9", total: 0, offset: 0, items: [], linkedCount: 0,
+      return { status: "ready", kind: query.kind, revision: "9", total: 0, offset: 0, items: [], linkedCount: 0, unassociated: query.unassociated,
         ...(query.kind === "activity" ? { requestGroups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, byKind: [], shellTasks: { total: 0, failed: 0 } } : {}) };
     },
   };
@@ -48,6 +48,10 @@ test("session domains and history use revision ETags with bodyless 204 responses
   assert.equal(history.headers.get("etag"), '"9"');
   assert.equal(history.headers.get("x-pomegr-revision"), "9");
   assert.equal(await history.text(), "");
+
+  const unassociated = await fetch(`${origin}/api/session-history?sessionId=codex%3Atransport&kind=activity&scope=primary&unassociated=1`);
+  assert.equal(unassociated.status, 200);
+  assert.equal((await unassociated.json()).unassociated, "1", "the validated flag reaches the store query");
 });
 
 test("session-domain and range-history requests reject invalid methods, identities, and paging values", async (context) => {
@@ -72,6 +76,13 @@ test("session-domain and range-history requests reject invalid methods, identiti
     "from=1&to=65",
     "from=1&to=2&workKind=shell",
     "from=1&to=2&continuation=..%2Fprivate",
+    "unassociated=0",
+    "unassociated=true",
+    "unassociated=",
+    "unassociated=1&unassociated=1",
+    "unassociated=1&filterRequestId=request-0123456789abcdef",
+    "unassociated=1&requestId=request-0123456789abcdef",
+    "unassociated=1&anchor=call-1",
   ]) assert.equal((await fetch(`${origin}/api/session-history?sessionId=codex%3Ax&kind=activity&${query}`)).status, 400);
 });
 

@@ -1,5 +1,5 @@
 import { opendir, readFile, rm, rmdir } from "node:fs/promises";
-import { activityGroupPlan, emptyActivityGroups, isToolCallRow, scopeMatches } from "./session-history-groups.mjs";
+import { activityGroupPlan, emptyActivityGroups, isToolCallRow, isUnassociatedCall, scopeMatches } from "./session-history-groups.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import crypto from "node:crypto";
@@ -207,6 +207,7 @@ export function readCommittedHistoryIndex(query, index, load, { safeRequest, saf
     let refs = index[kind].filter((item) => isObject(item) && typeof item.id === "string" && typeof item.page === "string" && Number.isSafeInteger(item.slot) && scopeMatches(item, scope));
     if (kind === "activity") refs = [...refs].reverse();
     if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) refs = refs.filter((item) => item.requestId === query.filterRequestId);
+    if (kind === "activity" && query.unassociated === "1") refs = refs.filter(isUnassociatedCall);
     const total = refs.length; const maximum = kind === "activity" ? 8 : 60; const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
     let offset = kind === "activity" && (query.offset === "latest" || query.offset === "last")
       ? Math.floor(Math.max(0, total - 1) / limit) * limit

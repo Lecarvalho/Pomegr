@@ -325,7 +325,7 @@ page carries at most 200; remaining calls use explicit continuation. A continuat
 reserves budget for its target group before other groups, so dense preceding groups
 cannot prevent progress. Nested calls retain chronological order. Stable request
 numbers do not change across agent scopes. Calls without a recorded request association stay
-in the legacy flat feed but never enter a request group. Agent scope is applied
+in the legacy flat feed, where `unassociated=1` pages them, but never enter a request group. Agent scope is applied
 consistently to request headers, nested calls, work-kind counts, median wall durations,
 and shell-task totals. A request-linked call with no normalized actor participates only
 in `scope=all`.
@@ -339,6 +339,23 @@ before the marker existed is classified by its monitor-authored label when it is
 normalized or, for a block-store ref, when the index is read; a GET never rewrites it. A
 legacy JSON index ref has no label, so it keeps counting as a call until the next
 publication replaces that index.
+
+An unassociated call is a tool call whose committed `requestId` is `null`. User input,
+assistant replies, background-task notices, and failed-shell outcome rows are never
+unassociated, although their request is also `null`. Activity history accepts
+`unassociated=1`, which pages only the scoped unassociated calls through the same flat
+pager, with the same chronological order, eight-row bound, `offset`, and `offset=latest`
+alignment. The agent scope applies first, `total` is the filtered count, and failed calls
+stay listed. Any other value is rejected, `requestId`, `filterRequestId`, and `anchor`
+cannot accompany it, and Requests pages ignore it. Every ready Activity response, with or
+without the parameter, carries `unassociatedTotal`: the number of scoped unassociated
+calls. For any scope, request-linked calls plus `unassociatedTotal` equal the tool calls
+that the work-kind counts total. Request groups, `callTotal` (the calls in the served
+groups), work-kind counts, shell-task totals, `byKind`, and the revision do not change.
+The filter reads only the `requestId` and `call` fields that every committed index ref
+already carries, so it needs no index version change or rebuild, and no new evidence
+crosses the boundary: these rows are already served in the flat page, with no request
+number, token attribution, or inferred owner added.
 
 Activity rows and offsets are chronological, earliest first, matching Requests.
 Page 1 contains the earliest scoped events. Activity `latest` and `last` select

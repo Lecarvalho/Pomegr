@@ -5,7 +5,7 @@ import path from "node:path";
 import { normalizedRequestModel } from "../../normalize/request-snapshots.mjs";
 import { normalizedRequestWork } from "../../normalize/request-work.mjs";
 import { normalizedWorkKind, toolWorkKind, WORK_KINDS } from "../../normalize/work-kind.mjs";
-import { activityGroupPlan, emptyActivityGroups, isToolCallRow, scopeMatches, servedActivityGroups, servedActivityRow } from "./session-history-groups.mjs";
+import { activityGroupPlan, emptyActivityGroups, isToolCallRow, isUnassociatedCall, scopeMatches, servedActivityGroups, servedActivityRow } from "./session-history-groups.mjs";
 
 const MAX_SESSIONS = 24;
 const MAX_RESIDENT = 1;
@@ -513,7 +513,7 @@ export class SessionHistoryStore {
     }
     let rows = kind === "activity" ? [...record.activity].reverse() : record[kind]; const scope = query.scope || "all";
     rows = rows.filter((item) => scopeMatches(item, scope));
-    if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) rows = rows.filter((item) => item.requestId === query.filterRequestId);
+    if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) rows = rows.filter((item) => item.requestId === query.filterRequestId); if (kind === "activity" && query.unassociated === "1") rows = rows.filter(isUnassociatedCall);
     const total = rows.length; const maximum = kind === "activity" ? 8 : 60;
     const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
     let offset = kind === "activity" && (query.offset === "latest" || query.offset === "last")
@@ -724,7 +724,7 @@ export class SessionHistoryStore {
     const scope = query.scope || "all";
     let refs = index[kind].filter((item) => isObject(item) && typeof item.id === "string" && Number.isSafeInteger(item.page) && Number.isSafeInteger(item.slot) && scopeMatches(item, scope));
     if (kind === "activity") refs = [...refs].reverse();
-    if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) refs = refs.filter((item) => item.requestId === query.filterRequestId);
+    if (kind === "activity" && REQUEST_ID.test(query.filterRequestId || "")) refs = refs.filter((item) => item.requestId === query.filterRequestId); if (kind === "activity" && query.unassociated === "1") refs = refs.filter(isUnassociatedCall);
     const total = refs.length; const maximum = kind === "activity" ? 8 : 60; const limit = Math.max(1, Math.min(maximum, Number.parseInt(query.limit, 10) || maximum));
     let offset = kind === "activity" && (query.offset === "latest" || query.offset === "last")
       ? Math.floor(Math.max(0, total - 1) / limit) * limit
