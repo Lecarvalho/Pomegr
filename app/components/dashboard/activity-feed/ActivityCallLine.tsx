@@ -31,8 +31,10 @@ function resultTime(call: HistoryActivity) {
  * discloses in place beneath it. Only bounded activity metadata renders here; commands, output,
  * per-call tokens and cost never do.
  */
-export function ActivityCallLine({ call, agent, open, busy, onToggle }: {
+export function ActivityCallLine({ call, agent, open, busy, onToggle, showTime = false }: {
   call: HistoryActivity; agent: Agent | undefined; open: boolean; busy: boolean; onToggle: () => void;
+  /** Prints the recorded call time first, for lists whose lines have no request header to carry it. */
+  showTime?: boolean;
 }) {
   const status = callStatus(call);
   const kindLabel = WORK_LABELS[call.workKind];
@@ -44,8 +46,9 @@ export function ActivityCallLine({ call, agent, open, busy, onToggle }: {
   return <li className="activityCallItem">
     <button type="button" className={`commandQuietAction activityCallLine${open ? " isOpen" : ""}`}
       aria-expanded={open} aria-controls={detailId} aria-disabled={busy || undefined}
-      aria-label={`${kindLabel}, ${target}, ${duration}`}
+      aria-label={`${kindLabel}, ${target}, ${duration}${call.status === "failed" ? ", failed" : ""}`}
       onClick={() => { if (busy) return; onToggle(); }}>
+      {showTime && <time className="activityCallTime" dateTime={call.timestamp}>{shortTime(call.timestamp)}</time>}
       <WorkKindIcon kind={call.workKind} />
       <span className="activityCallTarget">{target}</span>
       {/* A failed call tints its duration text alone; the line keeps the neutral feed tone. */}

@@ -9,8 +9,21 @@ export type ActivityFeedPage = {
   range: { from: number; to: number };
   requestTotal: number;
   callTotal: number;
+  /** Scoped tool calls with no recorded request; 0 when the monitor does not report it. */
+  unassociatedTotal: number;
   byKind: ActivityFeed["byKind"];
   shellTasks: { total: number; failed: number };
+};
+
+/** One flat `unassociated=1` page: the scoped calls with no recorded request, oldest first. */
+export type UnassociatedPage = {
+  status: "ready" | "loading" | "unavailable";
+  revision: string;
+  /** Size of the whole filtered set, not of this page. */
+  total: number;
+  /** Position of this page's first call in the filtered set. */
+  offset: number;
+  calls: HistoryActivity[];
 };
 
 const EMPTY_SHELL = { total: 0, failed: 0 };
@@ -38,7 +51,7 @@ function isGroup(value: unknown): value is ActivityRequestGroup {
 }
 
 function empty(status: ActivityFeedPage["status"], revision: string): ActivityFeedPage {
-  return { status, revision, groups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, byKind: [], shellTasks: EMPTY_SHELL };
+  return { status, revision, groups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, unassociatedTotal: 0, byKind: [], shellTasks: EMPTY_SHELL };
 }
 
 /** Validate the grouped fields; a ready body without them is an unavailable (older) index. */
@@ -55,8 +68,23 @@ export function parseActivityFeedPage(value: unknown): ActivityFeedPage | null {
     || !record(shellTasks) || !count(shellTasks.total) || !count(shellTasks.failed)) return empty("unavailable", revision);
   return {
     status, revision, groups: requestGroups, range: { from: range.from, to: range.to }, requestTotal, callTotal,
+    // Optional on the wire: an older monitor omits it, and a malformed value is never a reason to hide the feed.
+    unassociatedTotal: count(value.unassociatedTotal) ? value.unassociatedTotal : 0,
     byKind: byKind as ActivityFeed["byKind"], shellTasks: { total: shellTasks.total, failed: shellTasks.failed },
   };
+}
+
+/** Validate one flat unassociated page; a ready body with malformed rows or counts is unavailable. */
+export function parseUnassociatedPage(value: unknown): UnassociatedPage | null {
+  if (!record(value) || value.kind !== "activity") return null;
+  const status = value.status;
+  if (status !== "ready" && status !== "loading" && status !== "unavailable") return null;
+  const revision = typeof value.revision === "string" ? value.revision : "";
+  const none = (next: UnassociatedPage["status"]): UnassociatedPage => ({ status: next, revision, total: 0, offset: 0, calls: [] });
+  if (status !== "ready") return none(status);
+  const { items, total, offset } = value;
+  if (!Array.isArray(items) || !items.every(isCall) || !count(total) || !count(offset)) return none("unavailable");
+  return { status, revision, total, offset, calls: items };
 }
 
 /** Merge continuation calls into a group: deduped by call id, chronological. */

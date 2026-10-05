@@ -12,9 +12,11 @@ vi.mock("../../app/live-events", () => ({
 import { ActivitiesTab } from "../../app/components/dashboard/ActivitiesTab";
 import { ActivityFeedPanel } from "../../app/components/dashboard/activity-feed/ActivityFeedPanel";
 import type { ActivityFeedView } from "../../app/components/dashboard/activity-feed/useActivityFeed";
+import { IDLE_UNASSOCIATED } from "../../app/components/dashboard/activity-feed/useUnassociatedActivity";
 import { LiveClockProvider } from "../../app/hooks/LiveClockContext";
 import { createEmptyMonitorState } from "../../shared/monitor-state.mjs";
 import type { Agent, ExecutionTask, MonitorState } from "../../shared/monitor-contract";
+import type { HistoryActivity } from "../../shared/session-history-contract";
 import { agent, repositorySession, task } from "./dashboard-test-fixtures";
 import { compactNumber, shortTime } from "../../app/dashboard-utils";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
@@ -35,7 +37,7 @@ function monitorState(cacheWriteAvailable = true, primaryTasks?: ExecutionTask[]
   };
 }
 
-function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, primaryTasks, requestAgent, requestModel, noCallsRequest }: {
+function fixture({ extra, count = 40, overview = true, route = { agent: null, request: null }, strict = false, historical = false, requestsStatus, activity, cacheWriteAvailable = true, requestGroupOverrides, primaryTasks, requestAgent, requestModel, noCallsRequest, extraCalls = [], unassociatedStatus }: {
   extra?: Record<string, unknown>; count?: number; overview?: boolean; route?: RequestSelectionRoute; strict?: boolean; historical?: boolean;
   requestsStatus?: HistoryServerState["requestsStatus"]; activity?: HistoryServerState["activity"]; cacheWriteAvailable?: boolean;
   requestGroupOverrides?: HistoryServerState["requestGroupOverrides"];
@@ -45,14 +47,16 @@ function fixture({ extra, count = 40, overview = true, route = { agent: null, re
   requestAgent?: (number: number) => string;
   requestModel?: (number: number) => string | null;
   noCallsRequest?: number;
+  /** Calls appended to the generated ones; a null `requestId` makes one unassociated. */
+  extraCalls?: HistoryActivity[]; unassociatedStatus?: HistoryServerState["unassociatedStatus"];
 } = {}) {
   const requests = Array.from({ length: count }, (_, index) => historyRequest(index + 1,
     requestAgent ? requestAgent(index + 1) : (index + 1) % 2 ? "child" : "primary",
     requestModel ? requestModel(index + 1) : undefined));
   const calls = requests.filter((request) => request.number !== noCallsRequest).flatMap((request) => request.agentId === "child"
     ? [historyCall(`call-${request.number}-shell`, request, "shell", 1, { actor: "Builder" })]
-    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]);
-  const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides };
+    : [historyCall(`call-${request.number}-read`, request, "read", 1), historyCall(`call-${request.number}-edit`, request, "write", 2)]).concat(extraCalls);
+  const serverState: HistoryServerState = { requests, calls, revision: "1", extra, overview, requestsStatus, activity, requestGroupOverrides, unassociatedStatus };
   const server = historyServer(serverState);
   const state = monitorState(cacheWriteAvailable, primaryTasks);
   vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith("/api/state")
@@ -592,12 +596,160 @@ describe("Activities tab", () => {
   });
 });
 
+const UNASSOCIATED = "Actions without a recorded request";
+const toggleName = new RegExp(`^${UNASSOCIATED}`, "u");
+
+/** Fourteen tool calls with no recorded request, two pages of eight: odd gaps belong to the child agent and the newest call failed. */
+function orphanCalls(): HistoryActivity[] {
+  return [
+    ...Array.from({ length: 13 }, (_, index) => historyCall(`call-gap-${index}`, null, "write", 10 + index, { agentId: index % 2 ? "child" : "primary" })),
+    historyCall("call-patch-74", null, "write", 40, { tool: "FileChange", detail: "74 scopes", status: "failed" }),
+  ];
+}
+
+const flatReads = (server: ReturnType<typeof historyServer>) => server.calls.filter((params) => params.get("unassociated") === "1");
+const rowCount = (container: HTMLElement) => container.querySelectorAll(".activityUnassociatedList > li").length;
+
+async function sectionReady(container: HTMLElement) {
+  await waitFor(() => expect(container.querySelector(".activityUnassociated")).not.toBeNull());
+  return within(container.querySelector<HTMLElement>(".activityUnassociated")!);
+}
+
+describe("Actions without a recorded request", () => {
+  it("is absent when no tool call lacks a request", async () => {
+    const { container, server } = fixture();
+    await ready();
+    expect(container.querySelector(".activityUnassociated")).toBeNull();
+    expect(screen.queryByText(UNASSOCIATED)).toBeNull();
+    expect(flatReads(server)).toHaveLength(0);
+  });
+
+  it.each([false, true])("reads only its label and call count while closed, below the request groups (phone %s)", async (phone) => {
+    setPhone(phone);
+    const { container, server } = fixture({ extraCalls: orphanCalls() });
+    const feed = await ready();
+    const section = await sectionReady(container);
+    expect(section.getByRole("button", { name: `${UNASSOCIATED} 14 tool calls` })).toHaveAttribute("aria-expanded", "false");
+    const root = container.querySelector(".activityUnassociated")!;
+    // Label and count and nothing else: no explanation, rows or controls until it is opened.
+    expect(root.textContent).toBe(`${UNASSOCIATED} 14 tool calls`);
+    expect(container.querySelector(".activityUnassociatedList")).toBeNull();
+    expect(root.previousElementSibling).toBe(within(feed).getAllByRole("article")[0].closest(".activityFeed"));
+    // Counting needs no row read: nothing is requested until the section is opened.
+    expect(flatReads(server)).toHaveLength(0);
+  });
+
+  it.each([false, true])("lists its calls, the failed one included, with no request number or token text (phone %s)", async (phone) => {
+    setPhone(phone);
+    const user = userEvent.setup();
+    const { container } = fixture({ extraCalls: orphanCalls() });
+    await ready();
+    const section = await sectionReady(container);
+    await user.click(section.getByRole("button", { name: toggleName }));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+    expect(section.getByText(/the provider recorded no request for them/u)).toBeInTheDocument();
+    const failed = section.getByRole("button", { name: "Editing, 74 scopes, 1.5s, failed" });
+    await user.click(failed);
+    expect(failed).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(failed.getAttribute("aria-controls") || "")).toHaveTextContent("Failed");
+    const root = container.querySelector<HTMLElement>(".activityUnassociated")!;
+    expect(root.textContent).not.toMatch(/#\d|request #|uncached|cache write|output/iu);
+    expect(root.querySelector(".requestsActionsNumber, .activityTokenValue, .activityRequestTokens, [data-request]")).toBeNull();
+    // Escape closes the open call without closing the section.
+    await user.keyboard("{Escape}");
+    expect(failed).toHaveAttribute("aria-expanded", "false");
+    expect(root.querySelector(".activityUnassociatedList")).not.toBeNull();
+  });
+
+  it("shows more until every call has been listed exactly once, disabled while an older page loads", async () => {
+    const user = userEvent.setup();
+    const { container, server } = fixture({ extraCalls: orphanCalls() });
+    await ready();
+    const section = await sectionReady(container);
+    server.holdWhen((params) => params.get("unassociated") === "1");
+    await user.click(section.getByRole("button", { name: toggleName }));
+    expect(await section.findByRole("status")).toHaveTextContent("Loading calls…");
+    expect(container.querySelector(".activityUnassociated")).toHaveTextContent("14 tool calls");
+    await waitFor(() => expect(server.deferred).toHaveLength(1));
+    server.holdWhen(null);
+    await act(async () => { server.deferred[0].resolve(); });
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+
+    server.holdWhen((params) => params.get("unassociated") === "1");
+    await user.click(section.getByRole("button", { name: "Show 8 more calls" }));
+    expect(section.getByRole("button", { name: "Loading calls…" })).toBeDisabled();
+    await waitFor(() => expect(server.deferred).toHaveLength(2));
+    server.holdWhen(null);
+    await act(async () => { server.deferred[1].resolve(); });
+    await waitFor(() => expect(rowCount(container)).toBe(14));
+    const ids = Array.from(container.querySelectorAll(".activityUnassociatedList button"), (line) => line.getAttribute("aria-controls"));
+    expect(new Set(ids).size).toBe(14);
+    expect(section.queryByRole("button", { name: /^Show \d+ more calls$/u })).toBeNull();
+    expect(flatReads(server).map((params) => params.get("offset"))).toEqual(["latest", "0"]);
+  });
+
+  it("follows the agent scope in its count and rows", async () => {
+    const user = userEvent.setup();
+    const { container, server } = fixture({ extraCalls: orphanCalls() });
+    await ready();
+    await user.click((await sectionReady(container)).getByRole("button", { name: toggleName }));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+
+    chooseCommandOption(screen.getByLabelText("Agent scope"), "child");
+    // Child agent: six odd gaps. The disclosure stays open and the rows are those of the new scope.
+    await waitFor(() => expect(container.querySelector(".activityUnassociatedCount")).toHaveTextContent("6 tool calls"));
+    await waitFor(() => expect(container.querySelector(".activityUnassociated")).not.toHaveTextContent("74 scopes"));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+    expect(flatReads(server).at(-1)?.get("scope")).toBe("child");
+  });
+
+  it("is left as it was when another request is selected", async () => {
+    const user = userEvent.setup();
+    const { container, server } = fixture({ extraCalls: orphanCalls() });
+    const feed = await ready();
+    await user.click((await sectionReady(container)).getByRole("button", { name: toggleName }));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+    const root = container.querySelector(".activityUnassociated")!;
+    const rows = () => Array.from(root.querySelectorAll(".activityUnassociatedList button"), (line) => line.getAttribute("aria-controls"));
+    const before = rows();
+    const reads = flatReads(server).length;
+
+    await user.click(within(feed).getByRole("button", { name: /^Request #38,/u }));
+    await waitFor(() => expect(selectedRequest()).toBe("#38"));
+    await waitFor(() => expect(feed).not.toHaveAttribute("aria-busy"));
+    expect(container.querySelector(".activityUnassociated")).toBe(root);
+    expect(root.querySelector(".activityUnassociatedToggle")).toHaveAttribute("aria-expanded", "true");
+    expect(root).toHaveTextContent("14 tool calls");
+    expect(rows()).toEqual(before);
+    expect(flatReads(server)).toHaveLength(reads);
+  });
+
+  it("says when its calls are unavailable and loads them on Retry", async () => {
+    const user = userEvent.setup();
+    const { container, serverState } = fixture({ extraCalls: orphanCalls(), unassociatedStatus: 503 });
+    await ready();
+    const section = await sectionReady(container);
+    await user.click(section.getByRole("button", { name: toggleName }));
+    expect(await section.findByText(`${UNASSOCIATED} are unavailable.`)).toBeInTheDocument();
+    // The committed count stays: a read failure never withdraws or replaces it.
+    expect(container.querySelector(".activityUnassociated")).toHaveTextContent("14 tool calls");
+    expect(container.querySelector(".activityUnassociatedList")).toBeNull();
+    expect(section.queryByRole("button", { name: /^Show \d+ more calls$/u })).toBeNull();
+
+    serverState.unassociatedStatus = undefined;
+    await user.click(section.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(rowCount(container)).toBe(6));
+    expect(section.queryByText(`${UNASSOCIATED} are unavailable.`)).toBeNull();
+    expect(container.querySelector(".activityUnassociated")).toHaveTextContent("14 tool calls");
+  });
+});
+
 /** The feed's no-body branch reads only these fields, so a stub drives the status text directly. */
 function statusPanel(status: "loading" | "ready" | "unavailable") {
   const selection = { phone: false, history: { preview: true, status } } as unknown as SessionRequestSelection;
   const feed: ActivityFeedView = {
     status: "idle", correlated: false, groups: [], byKind: [], shellTasks: { total: 0, failed: 0 },
-    requestTotal: 0, callTotal: 0, revision: "", loadMore: () => {}, loadingMore: null, retry: () => {},
+    requestTotal: 0, callTotal: 0, revision: "", loadMore: () => {}, loadingMore: null, retry: () => {}, unassociated: IDLE_UNASSOCIATED,
   };
   return <ActivityFeedPanel selection={selection} feed={feed} agents={[]} busy cacheWriteAvailable onOpenAgent={() => {}} />;
 }

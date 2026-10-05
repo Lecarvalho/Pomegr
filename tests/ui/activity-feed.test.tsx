@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseActivityFeedPage, targetBasename } from "../../app/components/dashboard/activity-feed/feed-model";
+import { parseActivityFeedPage, parseUnassociatedPage, targetBasename } from "../../app/components/dashboard/activity-feed/feed-model";
 import { useActivityFeed, type ActivityFeedQuery } from "../../app/components/dashboard/activity-feed/useActivityFeed";
+import type { HistoryActivity } from "../../shared/session-history-contract";
 import { historyCall, historyRequest, historyServer, type HistoryServerState } from "./activities-test-server";
 
 const SESSION = "claude:feed";
@@ -148,7 +149,185 @@ describe("grouped activity feed", () => {
   });
 });
 
+const pad = (index: number) => String(index).padStart(2, "0");
+
+/**
+ * Three retained requests. Twenty calls have no recorded request: a failed 74-scope FileChange, 18 more
+ * and a late one. The exec wrapper that issued the patch and the calls after it are linked.
+ */
+function orphanFixture() {
+  const all = requests(3);
+  const orphan = (id: string, second: number, overrides: Partial<HistoryActivity> = {}) => historyCall(id, null, "write", second, { tool: "FileChange", ...overrides });
+  const calls = [
+    historyCall("call-wrapper", all[0], "shell", 1, { tool: "exec", detail: "Run the patch cell" }),
+    orphan("call-patch-74", 2, { detail: "74 scopes", status: "failed" }),
+    ...Array.from({ length: 18 }, (_, index) => orphan(`call-gap-${pad(index + 1)}`, 10 + index)),
+    orphan("call-late", 100),
+    historyCall("call-after-1", all[1], "read", 1),
+    historyCall("call-after-2", all[2], "shell", 1),
+  ];
+  return { all, calls, ids: calls.filter((call) => call.requestId === null).map((call) => call.id) };
+}
+
+const flatReads = (server: ReturnType<typeof historyServer>) => server.calls.filter((params) => params.get("unassociated") === "1");
+const ids = (result: { current: { unassociated: { calls: HistoryActivity[] } } }) => result.current.unassociated.calls.map((call) => call.id);
+
+describe("unassociated activity", () => {
+  async function opened(state: HistoryServerState, initial: Parameters<typeof mount>[1] = { selected: 3 }) {
+    const server = historyServer(state);
+    const view = mount(server, initial);
+    await waitFor(() => expect(view.result.current.correlated).toBe(true));
+    return { server, ...view };
+  }
+
+  it("counts from the feed page, reads nothing while closed, and pages every call exactly once", async () => {
+    const { all, calls, ids: expected } = orphanFixture();
+    const { server, result } = await opened({ requests: all, calls, revision: "1" });
+    expect(result.current.unassociated).toMatchObject({ total: 20, status: "idle", calls: [], remaining: 20, open: false });
+    expect(flatReads(server)).toHaveLength(0);
+    act(() => result.current.unassociated.setOpen(true));
+    expect(result.current.unassociated).toMatchObject({ open: true, status: "loading", calls: [] });
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    // The newest page first: the aligned final page, without the feed's selected number.
+    expect(Object.fromEntries(flatReads(server)[0])).toEqual({ sessionId: SESSION, kind: "activity", scope: "all", unassociated: "1", limit: "8", offset: "latest" });
+    expect(ids(result)).toEqual(["call-gap-16", "call-gap-17", "call-gap-18", "call-late"]);
+    expect(result.current.unassociated.remaining).toBe(16);
+    act(() => result.current.unassociated.loadMore());
+    expect(result.current.unassociated.status).toBe("loading");
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    expect(result.current.unassociated.remaining).toBe(8);
+    act(() => result.current.unassociated.loadMore());
+    await waitFor(() => expect(result.current.unassociated.remaining).toBe(0));
+    expect(flatReads(server).map((params) => params.get("offset"))).toEqual(["latest", "8", "0"]);
+    expect(ids(result)).toEqual(expected);
+    expect(result.current.unassociated.calls.find((call) => call.id === "call-patch-74")).toMatchObject({ status: "failed", requestId: null });
+    // The wrapper and the later calls stay linked; the feed's groups are untouched.
+    expect(ids(result)).not.toContain("call-wrapper");
+    expect(result.current.groups.flatMap((group) => group.calls.map((call) => call.id)).sort()).toEqual(["call-after-1", "call-after-2", "call-wrapper"]);
+    act(() => result.current.unassociated.loadMore());
+    expect(flatReads(server)).toHaveLength(3);
+    act(() => result.current.unassociated.setOpen(false));
+    expect(result.current.unassociated).toMatchObject({ open: false, status: "idle" });
+    act(() => result.current.unassociated.setOpen(true));
+    expect(result.current.unassociated).toMatchObject({ status: "ready", remaining: 0 });
+    expect(flatReads(server)).toHaveLength(3);
+  });
+
+  it("shows no section for an older monitor and never reads a feed without unassociated calls", async () => {
+    const body = { kind: "activity", status: "ready", revision: "1", requestGroups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, byKind: [], shellTasks: { total: 0, failed: 0 } };
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })));
+    const old = renderHook(() => useActivityFeed({ enabled: true, query: { sessionId: SESSION, scope: "all", selected: 1 }, historyRevision: "r1" }));
+    await waitFor(() => expect(old.result.current.status).toBe("ready"));
+    act(() => old.result.current.unassociated.setOpen(true));
+    expect(old.result.current.unassociated).toMatchObject({ total: 0, status: "idle", calls: [] });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const all = requests(3);
+    const { server, result } = await opened({ requests: all, calls: [historyCall("call-1", all[1], "read", 1)], revision: "1" });
+    act(() => result.current.unassociated.setOpen(true));
+    expect(result.current.unassociated).toMatchObject({ total: 0, status: "idle" });
+    expect(flatReads(server)).toHaveLength(0);
+  });
+
+  it("replaces count and rows when the scope changes, and keeps them when only the selection changes", async () => {
+    const all = [...requests(3), historyRequest(4, "worker-1")];
+    const calls = [
+      ...Array.from({ length: 10 }, (_, index) => historyCall(`call-main-${pad(index + 1)}`, null, "write", index + 1)),
+      ...[1, 2, 3].map((second) => historyCall(`call-worker-${second}`, null, "write", 40 + second, { agentId: "worker-1" })),
+    ];
+    const { server, result, rerender } = await opened({ requests: all, calls, revision: "1" });
+    expect(result.current.unassociated.total).toBe(13);
+    act(() => result.current.unassociated.setOpen(true));
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    const before = ids(result);
+    expect(before).toHaveLength(5);
+    // Selecting another request moves only the five-group window.
+    rerender({ selected: 1 });
+    expect(result.current.unassociated).toMatchObject({ status: "ready", total: 13 });
+    await waitFor(() => expect(result.current.correlated).toBe(true));
+    expect(ids(result)).toEqual(before);
+    expect(flatReads(server)).toHaveLength(1);
+    // Another scope drops the rows at once and counts and reads its own.
+    rerender({ selected: 1, scope: "worker-1" });
+    expect(result.current.unassociated).toMatchObject({ total: 0, calls: [], status: "idle" });
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    expect(result.current.unassociated).toMatchObject({ total: 3, open: true, remaining: 0 });
+    expect(ids(result)).toEqual(["call-worker-1", "call-worker-2", "call-worker-3"]);
+    expect(Object.fromEntries(flatReads(server).at(-1)!)).toMatchObject({ scope: "worker-1", offset: "latest" });
+  });
+
+  it("refetches rows on a served revision change and drops a late reply from another revision", async () => {
+    const { all, calls } = orphanFixture();
+    const state: HistoryServerState = { requests: all, calls, revision: "1" };
+    const { server, result, rerender } = await opened(state);
+    server.holdWhen((params) => params.get("unassociated") === "1");
+    act(() => result.current.unassociated.setOpen(true));
+    await waitFor(() => expect(server.deferred).toHaveLength(1));
+    // The monitor moved on before the feed noticed: this reply names revision 2 while the feed shows 1.
+    state.revision = "2";
+    await act(async () => { server.deferred[0].resolve(); });
+    expect(result.current.unassociated).toMatchObject({ status: "loading", calls: [] });
+    server.holdWhen(null);
+    state.calls = [...calls, historyCall("call-newest", null, "write", 200)];
+    rerender({ selected: 3, historyRevision: "r2" });
+    await waitFor(() => expect(result.current.unassociated).toMatchObject({ status: "ready", total: 21 }));
+    expect(ids(result).at(-1)).toBe("call-newest");
+    expect(flatReads(server)).toHaveLength(2);
+    // Revision 3 drops what was loaded and reads again.
+    state.revision = "3";
+    rerender({ selected: 3, historyRevision: "r3" });
+    await waitFor(() => expect(result.current.revision).toBe("3"));
+    await waitFor(() => expect(flatReads(server)).toHaveLength(3));
+  });
+
+  it("recovers from a failed first read and a failed older page with retry, and aborts on unmount", async () => {
+    const { all, calls, ids: expected } = orphanFixture();
+    const state: HistoryServerState = { requests: all, calls, revision: "1", unassociatedStatus: 503 };
+    const { server, result, unmount } = await opened(state);
+    act(() => result.current.unassociated.setOpen(true));
+    await waitFor(() => expect(result.current.unassociated.status).toBe("unavailable"));
+    // The grouped feed does not share the failure.
+    expect(result.current.status).toBe("ready");
+    state.unassociatedStatus = undefined;
+    act(() => result.current.unassociated.retry());
+    expect(result.current.unassociated.status).toBe("loading");
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    expect(flatReads(server).map((params) => params.get("offset"))).toEqual(["latest", "latest"]);
+    state.unassociatedStatus = "network";
+    act(() => result.current.unassociated.loadMore());
+    await waitFor(() => expect(result.current.unassociated.status).toBe("unavailable"));
+    expect(ids(result)).toHaveLength(4);
+    expect(result.current.unassociated.remaining).toBe(16);
+    state.unassociatedStatus = undefined;
+    act(() => result.current.unassociated.retry());
+    await waitFor(() => expect(result.current.unassociated.status).toBe("ready"));
+    expect(ids(result)).toEqual(expected.slice(8));
+    server.holdWhen((params) => params.get("unassociated") === "1");
+    act(() => result.current.unassociated.loadMore());
+    await waitFor(() => expect(server.deferred).toHaveLength(1));
+    const signal = vi.mocked(fetch).mock.calls.at(-1)?.[1]?.signal;
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
 describe("feed model", () => {
+  it("reads the optional unassociated total as 0 when absent or malformed and parses one flat page", () => {
+    const ready = { kind: "activity", status: "ready", revision: "7", requestGroups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0, byKind: [], shellTasks: { total: 0, failed: 0 } };
+    expect(parseActivityFeedPage(ready)).toMatchObject({ status: "ready", unassociatedTotal: 0 });
+    expect(parseActivityFeedPage({ ...ready, unassociatedTotal: 12 })?.unassociatedTotal).toBe(12);
+    for (const bad of [-1, 1.5, "3", null, Number.NaN, {}]) expect(parseActivityFeedPage({ ...ready, unassociatedTotal: bad })).toMatchObject({ status: "ready", unassociatedTotal: 0 });
+    expect(parseActivityFeedPage({ kind: "activity", status: "loading", revision: "1" })?.unassociatedTotal).toBe(0);
+    const call = historyCall("call-1", null, "write", 1);
+    const flat = { kind: "activity", status: "ready", revision: "7", total: 9, offset: 8, linkedCount: 0, items: [call] };
+    expect(parseUnassociatedPage(flat)).toEqual({ status: "ready", revision: "7", total: 9, offset: 8, calls: [call] });
+    expect(parseUnassociatedPage({ ...flat, status: "loading" })).toEqual({ status: "loading", revision: "7", total: 0, offset: 0, calls: [] });
+    for (const bad of [{ items: [{ id: "x" }] }, { items: "none" }, { total: -1 }, { offset: "0" }]) expect(parseUnassociatedPage({ ...flat, ...bad })?.status).toBe("unavailable");
+    expect(parseUnassociatedPage({ ...flat, kind: "requests" })).toBeNull();
+    expect(parseUnassociatedPage({ ...flat, status: "stale" })).toBeNull();
+    expect(parseUnassociatedPage(null)).toBeNull();
+  });
+
   it("rejects malformed grouped fields and keeps target basenames", () => {
     expect(parseActivityFeedPage({ kind: "requests", status: "ready" })).toBeNull();
     expect(parseActivityFeedPage({ kind: "activity", status: "ready", revision: "1", requestGroups: [{ request: { id: "x", number: 0 } }] })?.status).toBe("unavailable");

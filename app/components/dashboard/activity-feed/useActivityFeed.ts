@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ActivityFeed } from "../../../../shared/monitor-contract";
 import type { ActivityRequestGroup, HistoryActivity } from "../../../../shared/session-history-contract";
 import { mergeCalls, parseActivityFeedPage, type ActivityFeedPage } from "./feed-model";
+import { useUnassociatedActivity, type UnassociatedActivity } from "./useUnassociatedActivity";
 
 export type ActivityFeedQuery = {
   sessionId: string;
@@ -25,6 +26,8 @@ export type ActivityFeedView = {
   loadMore: (requestNumber: number) => void;
   loadingMore: number | null;
   retry: () => void;
+  /** Tool calls with no recorded request, in the feed's scope and independent of the selected request. */
+  unassociated: UnassociatedActivity;
 };
 
 type Body = { queryKey: string; scopeKey: string; historyRevision: string; page: ActivityFeedPage };
@@ -119,6 +122,10 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
     return extra ? { ...group, calls: extra.calls, continuation: extra.continuation } : group;
   }) : [];
 
+  const unassociated = useUnassociatedActivity({
+    enabled, sessionId, scope, revision: shown?.page.revision ?? "", total: shown?.page.unassociatedTotal ?? 0,
+  });
+
   const loadMore = (requestNumber: number) => {
     const retained = bodyRef.current;
     if (!enabled || !retained || retained.queryKey !== queryKey) return;
@@ -181,5 +188,6 @@ export function useActivityFeed({ enabled, query, historyRevision }: { enabled: 
     loadMore,
     loadingMore: loadingMore?.queryKey === queryKey ? loadingMore.number : null,
     retry: () => setRetryVersion((value) => value + 1),
+    unassociated,
   };
 }
