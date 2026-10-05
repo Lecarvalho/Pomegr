@@ -52,6 +52,10 @@ let ticks = 0
 const tracked = new Map<string, AgentRow>()
 const agentTokens = new Map<string, number>()
 const limitSteps = new Map<string, number>()
+// A `/clear` or a resume ends the session and starts another in this process: no
+// `session.start` fires for it, and the host's named values start over.
+let endedSession: string | null = null
+let keptPlace: Place = 'above'
 
 // Optional: a running Pomegr monitor knows the lifetime the provider recorded.
 // One server, under the name the engine runs it; a refusal is never asked twice.
@@ -111,7 +115,31 @@ async function refreshAgents($: EngineInterface): Promise<void> {
   if (JSON.stringify(rows) !== JSON.stringify(await read($, agents))) await update($, agents, () => rows)
 }
 
+// What the line shows before the first turn: the repository and the account's limits.
+async function seed($: EngineInterface): Promise<void> {
+  await nameRepo($).catch(() => undefined)
+  try {
+    const measured = await $.session.usage()
+    await takeUsage($, { ...measured.context, limits: measured.rateLimits }, true)
+  } catch {
+    // No figures yet; session.measure brings them.
+  }
+}
+
+// The session that took an ended one's place: nothing of the old one's work carries
+// over, the line's place does.
+async function reseed($: EngineInterface): Promise<void> {
+  if (endedSession === null || (await $.session.id()) === endedSession) return
+  endedSession = null
+  isTurnRunning = false
+  tracked.clear()
+  agentTokens.clear()
+  if (keptPlace !== (await read($, place))) await update($, place, () => keptPlace)
+  await seed($)
+}
+
 async function tick($: EngineInterface): Promise<void> {
+  await reseed($)
   const at = await $.clock.now()
   ticks += 1
   const hasRunning = [...tracked.values()].some(agent => agent.status === 'running')
@@ -180,14 +208,15 @@ async function draw(
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pomegr-hud', description: 'Move the Pomegr line: above the prompt, below it, hidden' })
-    await nameRepo($).catch(() => undefined)
-    try {
-      const measured = await $.session.usage()
-      await takeUsage($, { ...measured.context, limits: measured.rateLimits }, true)
-    } catch {
-      // No figures yet; session.measure brings them.
-    }
+    await seed($)
     $.clock.every(1000, () => void tick($).catch(() => undefined))
+
+    return next(e)
+  })
+
+  on('session.end', async ($, e, next) => {
+    keptPlace = await read($, place).catch(() => keptPlace)
+    endedSession = e.sessionId
 
     return next(e)
   })
