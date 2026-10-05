@@ -732,11 +732,13 @@ change above. The grouped Activities feed omits it from every request group and
 lists it in its own **Actions without a recorded request** section below them, in
 the agent scope the feed reads and independent of the selected request. The scope's
 tool-call count already includes these calls, so request-linked calls plus the
-section's count equal it. A row shows only the call's recorded time, kind, target,
-status, and wall duration, with no request number, token value, or inferred owner,
-so listing a call never attributes it to a request. The
+section's count equal it. A row shows the call's recorded time, kind, target,
+status, and wall duration, and its open detail adds the tool name and agent. Neither
+carries a request number, token value, or inferred owner, so listing a call never
+attributes it to a request. The
 [paged history contract](observation-cache.md#paged-session-evidence-history)
 defines how the section is read.
+
 All tool-call fragments of the same Claude request contribute their distinct
 recorded tool IDs and work-kind counts, even when its final fragment is text.
 Only fragments with that proven association can appear nested in the grouped

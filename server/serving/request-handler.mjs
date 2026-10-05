@@ -444,7 +444,7 @@ export function createRequestHandler({
         && Number(from) <= Number(to) && Number(to) - Number(from) < 64;
       const validSelected = !selected || /^(?:[1-9]\d{0,6})$/u.test(selected);
       const validContinuation = !continuation || /^[A-Za-z0-9_-]{1,96}$/u.test(continuation);
-      const validUnassociated = !requestUrl.searchParams.has("unassociated")
+      const validUnassociated = kind !== "activity" || !requestUrl.searchParams.has("unassociated")
         || unassociated === "1" && !filterRequestId && !requestId && !anchor;
       if (!oneEach || !/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionId)
         || !["activity", "requests"].includes(kind) || !validScope || !validOffset || !validLimit || !validRequest || !validFilter || !validAnchor || !validOverview

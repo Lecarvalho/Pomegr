@@ -37,7 +37,8 @@ type Older = Marker & { from: number };
  * The calls of one session scope that have no recorded request, read on demand through the flat
  * pager (`unassociated=1`, oldest first). The newest page (`offset=latest`) loads first and each
  * further read is the page just before the loaded ones, so every call arrives exactly once.
- * Rows belong to one session, scope and served feed revision: another value drops them, and the
+ * Rows belong to one session, scope and served feed revision (or one committed after it, when the
+ * feed has not followed yet): another value drops them, and the
  * selected request never enters the query. `total` and `revision` come from the feed page.
  */
 export function useUnassociatedActivity({ enabled, sessionId, scope, revision, total }: {
@@ -70,9 +71,10 @@ export function useUnassociatedActivity({ enabled, sessionId, scope, revision, t
       .then((page) => {
         if (controller.signal.aborted) return;
         if (!page || page.status !== "ready") return fail();
-        // A reply from another revision would mix evidence. Drop it: the feed's next page for the
-        // new revision changes `revision` and starts the read again.
-        if (page.revision !== revision) return;
+        // A reply committed after the feed's page is shown: a recorded session's feed never follows
+        // later revisions, so waiting for one would load forever. When a live feed does move on,
+        // `revision` changes and the read starts again. An older reply cannot belong to this feed.
+        if (page.revision !== revision && !(Number(page.revision) > Number(revision))) return fail();
         // An older page must start before the loaded ones, or reading again would never finish.
         if (lowest !== null && page.offset >= lowest) return fail();
         setFailure(null);

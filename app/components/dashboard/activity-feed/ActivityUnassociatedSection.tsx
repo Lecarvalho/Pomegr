@@ -8,7 +8,7 @@ import type { UnassociatedActivity } from "./useUnassociatedActivity";
 const TITLE = "Actions without a recorded request";
 
 /**
- * Tool calls the provider recorded no request for, kept apart from the request groups. It renders
+ * Tool calls with no recorded request in the retained history, kept apart from the request groups. It renders
  * only what the view object holds (no fetching here) and implies no owner: rows carry the recorded
  * time, kind, target, status and wall duration, never a request number or a token value. The count
  * is the committed feed's own scoped tool-call total, so it is shown whether or not rows are loaded
@@ -34,7 +34,7 @@ export function ActivityUnassociatedSection({ unassociated, agents, busy }: {
       </button>
     </h3>
     {open && <div className="activityUnassociatedBody" id={bodyId}>
-      <p className="activityUnassociatedNote">These tool calls ran, but the provider recorded no request for them, so none is attributed.</p>
+      <p className="activityUnassociatedNote">These tool calls have no recorded request in the retained history, so none is attributed.</p>
       {calls.length > 0 && <ul className="activityUnassociatedList">
         {calls.map((call) => <ActivityCallLine key={call.id} call={call} showTime busy={busy} open={openCall === call.id}
           agent={agents.find((item) => item.id === call.agentId)}
