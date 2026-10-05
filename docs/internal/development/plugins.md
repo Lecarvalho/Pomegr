@@ -232,8 +232,9 @@ The module is read-only and stays inside the session. It never blocks, rewrites,
 
 | Section | Source | Rule |
 | --- | --- | --- |
+| Name | Claude Code's repository root for the session, else its project root | The folder's own name only, at most 24 cells; the mark alone when there is none. Never the product name, and never the path. |
 | Context | Claude Code's own session measurement | Latest snapshot against the window; amber from 75%, red from 90%. |
-| Requests | Each main-agent request's reported usage | The last 8 requests, each bar that request's cache write + uncached input + output. Nothing is summed, carried, or subtracted between requests. |
+| Requests | Each main-agent request's reported usage | The last 5 requests, each bar that request's cache write + uncached input + output. Nothing is summed, carried, or subtracted between requests. |
 | Progress | The main agent's `report_session_progress` and `clear_session_progress` calls | Percent, phase, and paired ETA bounds only; agent-reported. A completed estimate clears on the person's next prompt. |
 | Cache | Time since the main agent's last request | Shown only inside the last five minutes of a one-hour lifetime, the last minute of a five-minute lifetime, or after it. Elapsed is an inference. |
 | Limits | Claude Code's rate-limit windows | Amber from 80%, red from 95%; a toast when a window crosses either step. |

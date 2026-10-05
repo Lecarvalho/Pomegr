@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { AgentRow, Place, Reading, Recorded, Usage } from '../types'
-import { REQUESTS_KEPT, SECONDS_BELOW_MS, agentLabel, agentsLine, cacheState, detectRefill, line, shouldProbe, span, tokens, toolName } from './hud'
+import { REQUESTS_KEPT, SECONDS_BELOW_MS, agentLabel, agentsLine, cacheState, detectRefill, line, repoName, shouldProbe, span, tokens, toolName } from './hud'
 import type { Link, Style } from './hud'
 
 const main = atom({ plugin: 'pomegr', key: 'main' } as const, null)
@@ -13,6 +13,7 @@ const agents = atom({ plugin: 'pomegr', key: 'agents' } as const, [])
 const progress = atom({ plugin: 'pomegr', key: 'progress' } as const, null)
 const requests = atom({ plugin: 'pomegr', key: 'requests' } as const, [])
 const place = atom({ plugin: 'pomegr', key: 'place' } as const, 'above')
+const repo = atom({ plugin: 'pomegr', key: 'repo' } as const, null)
 
 const NEXT_PLACE: Record<Place, Place> = { above: 'below', below: 'hidden', hidden: 'above' }
 
@@ -81,6 +82,14 @@ async function probe($: EngineInterface): Promise<void> {
   await update($, recorded, () => lifetime ?? null)
 }
 
+// The line leads with the repository's folder name: the main working tree's for a
+// worktree, the project root's outside a repository.
+async function nameRepo($: EngineInterface): Promise<void> {
+  const found = await $.session.repo()
+  const name = repoName(found?.root ?? (await $.session.root()))
+  if (name !== (await read($, repo))) await update($, repo, () => name)
+}
+
 async function takeUsage($: EngineInterface, next: Usage, isFirst: boolean): Promise<void> {
   await update($, usage, () => next)
   for (const limit of next.limits) {
@@ -132,6 +141,7 @@ async function draw(
     recorded: await read($, recorded),
     progress: await read($, progress),
     requests: await read($, requests),
+    repo: await read($, repo),
     now: Math.max(await read($, now), reading?.at ?? 0),
     isWorking,
     columns,
@@ -170,6 +180,7 @@ async function draw(
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pomegr-hud', description: 'Move the Pomegr line: above the prompt, below it, hidden' })
+    await nameRepo($).catch(() => undefined)
     try {
       const measured = await $.session.usage()
       await takeUsage($, { ...measured.context, limits: measured.rateLimits }, true)
@@ -265,6 +276,8 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       isTurnRunning = false
       void probe($).catch(() => undefined)
+      // A `/cd` or a worktree move may have changed the project.
+      void nameRepo($).catch(() => undefined)
     }
 
     return next(e)

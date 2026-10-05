@@ -45,6 +45,8 @@ declare module 'claude-code' {
       /** Fresh tokens of each recent main-agent request (cache write + uncached input + output), oldest first. */
       requests: number[]
       place: Place
+      /** The repository folder's name the line leads with, or null when there is none. */
+      repo: string | null
     }
   }
 }
