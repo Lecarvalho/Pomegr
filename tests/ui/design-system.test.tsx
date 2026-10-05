@@ -134,6 +134,38 @@ describe("Design-system reference page", () => {
     expect(within(sample).getByText(/Documented exceptions:/)).toBeInTheDocument();
   });
 
+  it("renders the shipped section for actions without a recorded request closed and open from static props", () => {
+    const { container } = render(<DesignSystemView />);
+    const wrapper = (selector: string) => container.querySelector<HTMLElement>(selector) as HTMLElement;
+    const title = "Actions without a recorded request";
+
+    const closed = within(wrapper(".designSystemUnassociatedClosed")).getByRole("region", { name: `${title} 14 tool calls` });
+    expect(closed).toHaveClass("activityUnassociated");
+    expect(closed.textContent).toBe(`${title} 14 tool calls`);
+    expect(within(closed).getByRole("button", { name: `${title} 14 tool calls` })).toHaveAttribute("aria-expanded", "false");
+    expect(closed.querySelector("li, .activityUnassociatedMore, .activityUnassociatedBody")).toBeNull();
+
+    const frame = wrapper(".designSystemUnassociatedOpen");
+    const section = within(frame).getByRole("region", { name: `${title} 14 tool calls` });
+    expect(within(section).getByRole("button", { name: `${title} 14 tool calls` })).toHaveAttribute("aria-expanded", "true");
+    expect(section.querySelectorAll(".activityUnassociatedList > li.activityCallItem")).toHaveLength(6);
+    expect(within(section).getByRole("button", { name: /Run the focused tests, 12\.8s, failed$/ })).toHaveClass("activityCallLine");
+    expect(within(section).getByRole("button", { name: /Check the architecture, —$/ })).toBeInTheDocument();
+    const more = within(section).getByRole("button", { name: "Show 8 more calls" });
+    expect(more).toHaveClass("commandTextLink", "activityUnassociatedMore");
+    expect(more).toBeEnabled();
+
+    // The static request group sits above the section, which stays ruled apart from it and carries no
+    // request number and no token value on any of its rows.
+    const request = within(frame).getByLabelText("Request #12");
+    expect(request.querySelector(".activityTokenValue")).not.toBeNull();
+    expect(request.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(request.contains(section)).toBe(false);
+    expect(section.querySelector(".activityTokenValue, .requestsActionsNumber, .activityRequestLine")).toBeNull();
+    expect(section.textContent).not.toMatch(/#\d/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("renders the shipped agent roster, inspector, command table, and settings rail from static data", async () => {
     const user = userEvent.setup();
     render(<DesignSystemView />);

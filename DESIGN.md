@@ -366,7 +366,11 @@ under a local neutral veil and announced loading status. The chart and feed neve
 mix selections, and failed or loading work retains last-known-good evidence rather
 than inventing counts. Historical sessions do not follow live appends. Request
 links are recorded associations, not token or cost attribution; activity without
-a proven request association is omitted from this grouped presentation.
+a proven request association is omitted from this grouped presentation. Its tool calls
+are listed in a separate "Actions without a recorded request" section below the request
+groups, ruled apart from them and never attributed to a request, with no request number or
+token value; it is built from existing roles and tokens, with its static samples on
+`/design-system`.
 
 On phone, request-group targets remain at least 44px. A disclosed call line is
 the documented 32px exception: its icon, target, and wall duration form one

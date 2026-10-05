@@ -16,7 +16,11 @@ import { FileTree, type FileTreeFile } from "../repositories/FileTree";
 import { RepositoryRow } from "../repositories/RepositoryRow";
 import { StorageUsageBar } from "../../settings/StorageSettings";
 import { DashboardDisclosurePanel } from "../dashboard/DashboardDisclosurePanel";
+import type { HistoryActivity } from "../../../shared/session-history-contract";
+import type { WorkKind } from "../../../shared/request-snapshot-contract";
 import { WorkKindIcon } from "../WorkKindIcon";
+import { ActivityUnassociatedSection } from "../dashboard/activity-feed/ActivityUnassociatedSection";
+import { IDLE_UNASSOCIATED } from "../dashboard/activity-feed/useUnassociatedActivity";
 import { buildRequestLanes } from "../dashboard/requests-actions/lane-model";
 import { scaleMax, type RequestRow } from "../dashboard/requests-actions/model";
 import { RequestBarsChart } from "../dashboard/requests-actions/RequestBarsChart";
@@ -494,6 +498,22 @@ const SAMPLE_LANES = buildRequestLanes(SAMPLE_ROWS, SAMPLE_AGENTS, "fresh", true
 const SAMPLE_PANEL_STYLE = { marginTop: "var(--space-4)" };
 function ignoreFocus() {}
 
+// Static calls for the unrecorded-request section: oldest first, as the flat pager serves them, none with
+// a request number or a token value. Fourteen exist in the scope and six are loaded, so the load-more shows.
+function unrecorded(id: number, minute: number, tool: string, workKind: WorkKind, detail: string, overrides: Partial<HistoryActivity> = {}): HistoryActivity {
+  return { id: `sample-unrecorded-${id}`, timestamp: new Date(SAMPLE_TIME + minute * 60_000).toISOString(), actor: "Primary agent", tool, workKind, detail, status: null, durationMs: 1_500, requestId: null, agentId: "primary", requestNumber: null, ...overrides };
+}
+const UNRECORDED_CALLS: HistoryActivity[] = [
+  unrecorded(9, 21, "Bash", "shell", "Check the docs", { durationMs: 4_200 }),
+  unrecorded(10, 23, "Read", "read", "docs/internal/architecture/metrics.md", { durationMs: 300 }),
+  unrecorded(11, 25, "Edit", "write", "app/styles/activity-feed.css", { agentId: "worker-1", actor: "Lane model tests" }),
+  unrecorded(12, 27, "Bash", "test", "Run the focused tests", { status: "failed", durationMs: 12_800 }),
+  unrecorded(13, 29, "Bash", "shell", "Check the architecture", { durationMs: null }),
+  unrecorded(14, 31, "Edit", "write", "DESIGN.md"),
+];
+const UNRECORDED_CLOSED = { ...IDLE_UNASSOCIATED, total: 14 };
+const UNRECORDED_OPEN = { ...IDLE_UNASSOCIATED, total: 14, open: true, status: "ready" as const, remaining: 8, calls: UNRECORDED_CALLS };
+
 function RequestChartsSection() {
   const [windowStart, setWindowStart] = useState(SAMPLE_ROWS.length - SAMPLE_WINDOW + 1);
   const [selectedIndex, setSelectedIndex] = useState(33);
@@ -550,6 +570,28 @@ function RequestChartsSection() {
         </div>
       </div>
     </section>
+    <section className="activityPanel" aria-label="Closed actions without a recorded request sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="activityLayout isPhone designSystemActivityPhoneSample designSystemUnassociatedClosed">
+        <div className="activityFeedColumn"><ActivityUnassociatedSection unassociated={UNRECORDED_CLOSED} agents={SAMPLE_AGENTS} busy={false} /></div>
+      </div>
+    </section>
+    <p className="designSystemNote">Closed, the section reads &ldquo;Actions without a recorded request&rdquo; with its call count and nothing else. It is absent when the committed feed counts no such calls, so it never appears and then disappears.</p>
+    <section className="activityPanel" aria-label="Open actions without a recorded request sample" style={SAMPLE_PANEL_STYLE}>
+      <div className="activityLayout isPhone designSystemActivityPhoneSample designSystemUnassociatedOpen">
+        <div className="activityFeedColumn">
+          <div className="activityFeed">
+            <article className="activityTableFrame" aria-label="Request #12">
+              <button type="button" className="commandQuietAction activityRow activityRequestLine" aria-pressed="false" aria-label="Request #12, Primary agent, orchestrator, model claude-opus-5, uncached input 9,860, cache write 410, output 1,260, 12:34 PM, 1 call">
+                <span className="requestsActionsNumber">#12</span><span className="activityRequestWho"><strong>Primary agent</strong> <span>orchestrator</span> <span className="activityRequestModel">claude-opus-5</span></span><span className="activityRequestMeta"><span className="activityRequestTokens"><span className="activityTokenValue uncached">9.9k</span><span className="activityTokenValue write">410</span><span className="activityTokenValue output">1,260</span></span><time dateTime="2026-08-09T12:34:00.000Z">12:34 PM</time></span>
+              </button>
+              <ul className="activityTable"><li><button type="button" className="commandQuietAction activityCallLine" aria-expanded="false" aria-label="Read, metrics.md, 0.3s"><WorkKindIcon kind="read" /><span className="activityCallTarget">metrics.md</span><span className="activityCallDuration">0.3s</span><svg className="activityCallChevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6 3l5 5-5 5" /></svg></button></li></ul>
+            </article>
+          </div>
+          <ActivityUnassociatedSection unassociated={UNRECORDED_OPEN} agents={SAMPLE_AGENTS} busy={false} />
+        </div>
+      </div>
+    </section>
+    <p className="designSystemNote">Open, the section lists its calls oldest first with the recorded time, kind icon, target and wall duration, a failed call included, under the request group it is ruled apart from. Listed apart, never attributed to a request: no row carries a request number or a token value, and the rows are tool calls, not successful edits. Show more loads the calls just older than those listed.</p>
   </Section>;
 }
 

@@ -68,9 +68,11 @@ export function isToolCallRow(row) {
 /**
  * A tool call with no recorded request: the `unassociated=1` activity filter and `unassociatedTotal`
  * select exactly these rows. Strict null, so a ref that lacks `requestId` is never one, and non-call
- * rows (user input, replies, notices) are excluded although their request is also null.
+ * rows (user input, replies, notices) are excluded although their request is also null. A legacy index
+ * ref with neither the marker nor a label cannot be told from a non-call row, so it is never one either.
  */
 export function isUnassociatedCall(row) {
+  if (typeof row?.call !== "boolean" && typeof row?.tool !== "string") return false;
   return isToolCallRow(row) && row.requestId === null;
 }
 

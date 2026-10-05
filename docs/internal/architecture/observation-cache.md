@@ -352,8 +352,10 @@ without the parameter, carries `unassociatedTotal`: the number of scoped unassoc
 calls. For any scope, request-linked calls plus `unassociatedTotal` equal the tool calls
 that the work-kind counts total. Request groups, `callTotal` (the calls in the served
 groups), work-kind counts, shell-task totals, `byKind`, and the revision do not change.
-The filter reads only the `requestId` and `call` fields that every committed index ref
-already carries, so it needs no index version change or rebuild, and no new evidence
+The filter reads only the `requestId` and `call` fields that a committed index ref
+carries, so it needs no index version change or rebuild. A file-index ref written before
+the `call` marker cannot be told from a non-call row, so it is never unassociated and is
+not counted until the session's history is next published. No new evidence
 crosses the boundary: these rows are already served in the flat page, with no request
 number, token attribution, or inferred owner added.
 

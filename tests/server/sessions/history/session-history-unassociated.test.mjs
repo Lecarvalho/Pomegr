@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -127,4 +127,23 @@ test("an index committed before the filter serves it without a rebuild", async (
   const sqlite = await readFile(location);
   await assertUnassociatedHistory(new SessionHistoryStore({ directory }), "codex:legacy-blocks");
   assert.ok(sqlite.equals(await readFile(location)), "reads never rewrite the committed rows");
+});
+
+test("a disk index ref written before the tool-call marker is never unassociated", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-unassociated-unmarked-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await new SessionHistoryStore({ directory }).publish("codex:unmarked-disk-index", { requests: REQUESTS, activity: ROWS, complete: true });
+  const location = path.join(directory, (await readdir(directory)).find((name) => name.endsWith(".index.json")));
+  const index = JSON.parse(await readFile(location, "utf8"));
+  assert.ok(index.activity.length === ROWS.length && index.activity.every((ref) => typeof ref.call === "boolean"));
+  // The pre-marker shape: the ref keeps its request but cannot say whether the row is a tool call.
+  for (const ref of index.activity) delete ref.call;
+  await writeFile(location, JSON.stringify(index), "utf8");
+  const reader = new SessionHistoryStore({ directory });
+  const page = await reader.read("codex:unmarked-disk-index", { kind: "activity", unassociated: "1" });
+  assert.equal(page.status, "ready");
+  assert.deepEqual(page.items, [], "user input, replies and notices never page as unassociated calls");
+  assert.equal(page.total, 0); assert.equal(page.unassociatedTotal, 0);
+  const plain = await reader.read("codex:unmarked-disk-index", { kind: "activity" });
+  assert.equal(plain.unassociatedTotal, 0); assert.equal(plain.total, ROWS.length, "the unfiltered feed still lists every row");
 });
