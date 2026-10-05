@@ -416,7 +416,7 @@ export function createRequestHandler({
     if (requestUrl.pathname === "/api/session-history") {
       if (request.method !== "GET") { response.writeHead(405, { Allow: "GET" }); response.end(); return; }
       const allowed = new Set(["sessionId", "kind", "scope", "offset", "limit", "requestId", "filterRequestId", "anchor", "overview",
-        "revision", "from", "to", "selected", "continuation"]);
+        "revision", "from", "to", "selected", "continuation", "unassociated"]);
       const sessionId = requestUrl.searchParams.get("sessionId") || "";
       const kind = requestUrl.searchParams.get("kind") || "activity";
       const scope = requestUrl.searchParams.get("scope") || "all";
@@ -430,6 +430,7 @@ export function createRequestHandler({
       const to = requestUrl.searchParams.get("to") || "";
       const selected = requestUrl.searchParams.get("selected") || "";
       const continuation = requestUrl.searchParams.get("continuation") || "";
+      const unassociated = requestUrl.searchParams.get("unassociated") || "";
       const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
       const validScope = scope === "all" || scope === "primary" || scope === "subagents" || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(scope);
       const validOffset = /^(?:0|[1-9]\d*|latest|last)$/.test(offset);
@@ -443,15 +444,17 @@ export function createRequestHandler({
         && Number(from) <= Number(to) && Number(to) - Number(from) < 64;
       const validSelected = !selected || /^(?:[1-9]\d{0,6})$/u.test(selected);
       const validContinuation = !continuation || /^[A-Za-z0-9_-]{1,96}$/u.test(continuation);
+      const validUnassociated = !requestUrl.searchParams.has("unassociated")
+        || unassociated === "1" && !filterRequestId && !requestId && !anchor;
       if (!oneEach || !/^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._:-]{0,511}$/.test(sessionId)
         || !["activity", "requests"].includes(kind) || !validScope || !validOffset || !validLimit || !validRequest || !validFilter || !validAnchor || !validOverview
-        || !validRange || !validSelected || !validContinuation) {
+        || !validRange || !validSelected || !validContinuation || !validUnassociated) {
         response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" }); response.end(JSON.stringify({ error: "Invalid session history query" })); return;
       }
       try {
         const page = await runtime.serveSessionHistory?.(sessionId, {
           kind, scope, offset, limit, requestId, filterRequestId, anchor, overview,
-          from, to, selected, continuation,
+          from, to, selected, continuation, unassociated,
         });
         const pageRevision = /^\d+$/u.test(page?.revision || "") ? Number(page.revision) : null;
         const historyHeaders = Number.isSafeInteger(pageRevision) ? {

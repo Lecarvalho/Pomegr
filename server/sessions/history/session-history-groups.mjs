@@ -65,6 +65,15 @@ export function isToolCallRow(row) {
   return typeof row?.tool !== "string" || !(LEGACY_NON_CALL_TOOLS.has(row.tool) || row.tool.startsWith("Task "));
 }
 
+/**
+ * A tool call with no recorded request: the `unassociated=1` activity filter and `unassociatedTotal`
+ * select exactly these rows. Strict null, so a ref that lacks `requestId` is never one, and non-call
+ * rows (user input, replies, notices) are excluded although their request is also null.
+ */
+export function isUnassociatedCall(row) {
+  return isToolCallRow(row) && row.requestId === null;
+}
+
 /** The `call` marker is monitor-private; served rows keep the existing browser shape. */
 export function servedActivityRow(row) {
   if (!row) return row;
@@ -116,6 +125,8 @@ export function activityGroupPlan(requests, activity, query) {
     range: { from: headers[0]?.number || 0, to: headers.at(-1)?.number || 0 },
     requestTotal: scopedRequests.length,
     callTotal: scopedCalls.length,
+    // Scoped tool calls with no recorded request; unlike callTotal it ignores the five-request window.
+    unassociatedTotal: toolCalls.filter(isUnassociatedCall).length,
     byKind,
     shellTasks: {
       total: toolCalls.filter((item) => item.workKind === "shell").length,
@@ -126,7 +137,7 @@ export function activityGroupPlan(requests, activity, query) {
 
 export function emptyActivityGroups() {
   return { requestGroups: [], range: { from: 0, to: 0 }, requestTotal: 0, callTotal: 0,
-    byKind: [], shellTasks: { total: 0, failed: 0 } };
+    unassociatedTotal: 0, byKind: [], shellTasks: { total: 0, failed: 0 } };
 }
 
 export function servedActivityGroups(plan) {

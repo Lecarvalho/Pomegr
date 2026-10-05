@@ -33,6 +33,8 @@ export type ActivityHistoryPage = HistoryPageBase & {
   range?: { from: number; to: number };
   requestTotal?: number;
   callTotal?: number;
+  /** Scoped tool calls whose recorded request is null, whatever page `unassociated=1` selects; linked calls plus this equal the scope's tool calls. */
+  unassociatedTotal?: number;
   byKind?: ActivityFeed["byKind"];
   shellTasks?: { total: number; failed: number };
 };
