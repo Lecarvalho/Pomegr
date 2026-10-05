@@ -422,6 +422,31 @@ test("items run inside a code-mode exec cell are the actions, and the wrapper is
   assert.doesNotMatch(JSON.stringify(calls), /PRIVATE/u);
 });
 
+test("a nested file change is never reported nested, however late, yielded or crowded, even failed with 74 scopes", () => {
+  const record = (second, type, payload) => ({ type, timestamp: `2026-10-01T13:00:${String(second).padStart(2, "0")}.000Z`, payload });
+  const call = (id, second, wait) => record(second, "response_item", wait
+    ? { type: "function_call", call_id: id, name: "wait", arguments: '{"cell_id":"PRIVATE_CELL"}' }
+    : { type: "custom_tool_call", call_id: id, name: "exec", input: "PRIVATE_PROGRAM" });
+  const out = (id, second, wait) => record(second, "response_item", { type: wait ? "function_call_output" : "custom_tool_call_output", call_id: id, output: "PRIVATE_OUTPUT" });
+  const item = (second, value) => record(second, "event_msg", { type: "item_completed", item: value });
+  const command = { type: "CommandExecution", id: "command", command: ["pwsh", "-Command", "npm run test"], status: "completed", exit_code: 0 };
+  const patch = { type: "FileChange", id: "patch", status: "failed", changes: Object.fromEntries(Array.from({ length: 74 }, (_, index) => [`src/file-${index}.ts`, { type: "update" }])) };
+  // Only the command is ever enclosed. Which call is open when the patch completes changes nothing.
+  for (const [name, records, enclosed] of [
+    ["one open cell", [call("cell", 1), item(2, command), item(3, patch), out("cell", 4)], ["Shell"]],
+    ["a later cell", [call("cell-1", 1), out("cell-1", 2), call("cell-2", 3), item(4, patch), out("cell-2", 5)], []],
+    ["a yielded cell", [call("cell", 1), out("cell", 2), call("wait", 3, true), item(4, patch), out("wait", 5, true)], []],
+    ["two open cells", [call("cell-1", 1), call("cell-2", 2), item(3, patch), out("cell-1", 4), out("cell-2", 5)], []],
+  ]) {
+    const nested = [];
+    const calls = parseCodexActivityRecords(records, { actor: ACTOR, sourceKey: "nested-patch", onNested: (id) => nested.push(id) });
+    const change = calls.find((row) => row.tool === "File change");
+    assert.deepEqual(nested.map((id) => calls.find((row) => row.id === id).tool), enclosed, name);
+    assert.deepEqual([change.status, change.requestId, change.mutation.scopes.length, change.fileChanges], ["failed", null, 74, null], name);
+    assert.equal(providerSessionEvidenceSchema.shape.toolCalls.safeParse(calls).success, true, name);
+  }
+});
+
 test("a native call's own completed item is the same row, not a nested action", () => {
   const records = [
     { type: "response_item", timestamp: "2026-10-01T10:00:01.000Z", payload: { type: "function_call", call_id: "call-js", name: "mcp__cua_repl__js", arguments: "{}" } },

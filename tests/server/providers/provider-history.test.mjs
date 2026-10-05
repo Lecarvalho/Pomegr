@@ -25,12 +25,34 @@ function codexResponse(index) {
   ];
 }
 
-function linkedCodex(records, actorId = "primary") {
-  const parsed = parseCodexRequestActivityEvidence(records, { actor: { id: actorId, label: "Agent" }, actorId, sourceKey: actorId, unlimited: true, stableFallbackIdentity: true });
+function stampedCodex(records, actorId = "primary", options = {}) {
+  const parsed = parseCodexRequestActivityEvidence(records, { actor: { id: actorId, label: "Agent" }, actorId, sourceKey: actorId, unlimited: true, stableFallbackIdentity: true, ...options });
   const evidence = { agents: [{ id: actorId, label: "Agent" }], usageSnapshots: parsed.usageSnapshots, toolCalls: parsed.toolCalls, activity: [...parsed.replies, ...parsed.inputs] };
   stampCodexActivityRequestIds({ sessionId: "test", ...evidence, linkGroups: [parsed.links], unlimited: true });
-  return normalizedSessionHistory("codex", "test", evidence);
+  return evidence;
 }
+
+function linkedCodex(records, actorId = "primary") {
+  return normalizedSessionHistory("codex", "test", stampedCodex(records, actorId));
+}
+
+const EXEC_USAGE = { input_tokens: 10, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 2 };
+
+/** Code-mode exec cells issued by one response: the request seal, `between`, nested completed items, outputs, then the receipt. */
+function execCell(items, { ids = ["PRIVATE_CELL"], second = 1, usage = EXEC_USAGE, receipt = usage, between = [] } = {}) {
+  const at = (type, payload) => ({ timestamp: stamp(second), type, payload });
+  return [
+    ...ids.map((id) => at("response_item", { type: "custom_tool_call", call_id: id, name: "exec", input: "PRIVATE_PROGRAM" })),
+    at("token_usage_record", { response_id: `PRIVATE_RESPONSE-${second}`, usage }),
+    ...between,
+    ...items.map((item) => at("event_msg", { type: "item_completed", item })),
+    ...ids.map((id) => at("response_item", { type: "custom_tool_call_output", call_id: id, output: "PRIVATE_OUTPUT" })),
+    at("event_msg", { type: "token_count", info: { last_token_usage: receipt } }),
+  ];
+}
+
+const patchItem = (status = "completed", count = 1) => ({ type: "FileChange", id: "PRIVATE_PATCH", status,
+  changes: Object.fromEntries(Array.from({ length: count }, (_, index) => [`src/file-${index}.ts`, { type: "update" }])) });
 
 test("three incremental calls remain stable before usage and enrich after separate results", () => {
   const records = [{ timestamp: stamp(0), type: "turn_context", payload: { turn_id: "PRIVATE_TURN", model: "gpt-6-astra" } }];
@@ -99,6 +121,73 @@ test("Codex request links fail closed at mismatched usage, missing receipts and 
   assert.ok(linkedCodex([...source.slice(0, -1), ...codexResponse(1).slice(1, 3), source.at(-1)])
     .activity.every((item) => item.requestId === null), "a new response before the prior receipt is ambiguous");
   assert.ok(linkedCodex([source.at(-1), ...source.slice(0, -1)]).activity.every((item) => item.requestId === null), "earlier usage cannot be assigned to later output");
+});
+
+test("a nested completion keeps the sealed exec request link and a nested file change never gains a request", () => {
+  for (const [status, count] of [["completed", 1], ["failed", 74]]) {
+    const evidence = stampedCodex(execCell([patchItem(status, count)]), "primary", { cwd: os.tmpdir() });
+    const history = normalizedSessionHistory("codex", "test", evidence);
+    const [cell, change] = ["Dynamic tool", "File change"].map((tool) => evidence.toolCalls.find((call) => call.tool === tool));
+    assert.equal(history.requests.length, 1);
+    assert.equal(cell.requestId, history.requests[0].id, `${status}: the wrapper keeps its recorded request`);
+    assert.equal(change.requestId, null);
+    assert.equal(change.mutation.scopes.length, count);
+    assert.deepEqual(change.fileChanges, status === "completed" ? [{ path: "src/file-0.ts", kind: "edited", previousPath: null }] : null);
+    assert.deepEqual(history.activity.filter((row) => row.tool === "File change").map((row) => row.requestId), [null]);
+    assert.equal(JSON.stringify(history).includes("PRIVATE"), false);
+  }
+});
+
+test("a file change completing late, from a yielded cell or amid open cells stays unassociated", () => {
+  const next = { ...EXEC_USAGE, input_tokens: 12 };
+  const wait = (type, payload) => ({ timestamp: stamp(2), type, payload });
+  const scenarios = {
+    // The later cell is the only open call, so only source order could tie the patch to it.
+    late: [...execCell([]), ...execCell([patchItem()], { ids: ["PRIVATE_CELL-2"], second: 2, usage: next })],
+    yielded: [...execCell([]),
+      wait("response_item", { type: "function_call", call_id: "PRIVATE_WAIT", name: "wait", arguments: '{"cell_id":"PRIVATE_CELL"}' }),
+      wait("token_usage_record", { response_id: "PRIVATE_RESPONSE-2", usage: next }),
+      wait("event_msg", { type: "item_completed", item: patchItem() }),
+      wait("response_item", { type: "function_call_output", call_id: "PRIVATE_WAIT", output: "PRIVATE_OUTPUT" }),
+      wait("event_msg", { type: "token_count", info: { last_token_usage: next } })],
+    open: execCell([patchItem()], { ids: ["PRIVATE_CELL-A", "PRIVATE_CELL-B"] }),
+  };
+  for (const [name, records] of Object.entries(scenarios)) {
+    const evidence = stampedCodex(records, "primary", { cwd: os.tmpdir() });
+    const requests = new Set(normalizedSessionHistory("codex", "test", evidence).requests.map((request) => request.id));
+    const others = evidence.toolCalls.filter((call) => call.tool !== "File change");
+    assert.equal(evidence.toolCalls.find((call) => call.tool === "File change").requestId, null, `${name}: no request from enclosure, order or time`);
+    assert.ok(others.length >= 2 && others.every((call) => requests.has(call.requestId)), `${name}: the other calls keep their own requests`);
+    assert.equal(new Set(others.map((call) => call.requestId)).size, name === "open" ? 1 : 2, `${name}: no cross-link between requests`);
+  }
+});
+
+test("Codex nested file changes fail closed exactly like other outputs at mismatched usage, conflicts and boundaries", () => {
+  const patch = [patchItem()];
+  const unlinked = (records) => assert.ok(linkedCodex(records).activity.every((row) => row.requestId === null));
+  unlinked(execCell(patch, { receipt: { ...EXEC_USAGE, input_tokens: 9 } }));
+  for (const boundary of [
+    { type: "turn_context", payload: {} },
+    { type: "event_msg", payload: { type: "task_complete" } },
+    { type: "response_item", payload: { type: "message", role: "user", content: [] } },
+  ]) unlinked(execCell(patch, { between: [{ timestamp: stamp(1), ...boundary }] }));
+  const cell = execCell(patch);
+  const history = linkedCodex(cell);
+  assert.deepEqual(history.activity.map((row) => [row.tool, row.requestId === history.requests[0].id]).sort(), [["Dynamic tool", true], ["File change", false]].sort());
+  assert.deepEqual(linkedCodex([...cell, ...cell, cell.at(-1)]), history, "repeated mirrors cannot inflate links");
+  unlinked([...cell, ...execCell(patch, { usage: { ...EXEC_USAGE, input_tokens: 12 } })]);
+});
+
+test("commands and MCP calls inside one open exec cell still list under its request, unlike its file change", () => {
+  const evidence = stampedCodex(execCell([
+    { type: "CommandExecution", id: "PRIVATE_COMMAND", command: ["pwsh", "-Command", "npm run test"], status: "completed", exit_code: 0 },
+    { type: "McpToolCall", id: "PRIVATE_MCP", server: "pomegr", tool: "report_session_signal", status: "completed" },
+    patchItem(),
+  ]));
+  const history = normalizedSessionHistory("codex", "test", evidence);
+  const request = history.requests[0].id;
+  assert.deepEqual(Object.fromEntries(evidence.toolCalls.map((call) => [call.tool, call.requestId])), { "Dynamic tool": request, Shell: request, MCP: request, "File change": null });
+  assert.deepEqual(history.requests[0].issuedWork.map((work) => work.kind).sort(), ["report", "test"], "the tally counts the command and the MCP call, never the file change");
 });
 
 test("Codex legacy closing token counts link outputs but missing usage cannot bridge tool-result boundaries", () => {
