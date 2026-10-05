@@ -694,9 +694,10 @@ recorded none for commands) is the only evidence of its work and counts as
 before, as **Integration**. A native call's own completed item shares its id and
 is the same row. A command or MCP call recorded inside one open wrapper is listed
 under the request that issued the wrapper and counts in that request's issued
-work; the wrapper itself does not. A nested file change never inherits a request,
-because file-change attribution requires recorded proof and enclosure is only
-source order.
+work; the wrapper itself does not. That enclosure links a command or MCP call to
+the wrapper's request for display only. It is never used for a file change or for
+file-history attribution: a nested file change never inherits a request, because
+file-change attribution requires recorded proof and enclosure is only source order.
 
 The Overview **Tool calls by kind** panel shows the six largest kinds of
 `activity.byKind`. Its counts use `workKindCounts` for agents that carry it and
@@ -716,14 +717,26 @@ median uses resolved durations only. Failed-shell durations use the execution
 task's recorded start and finish.
 
 Request links are exact recorded associations, never timestamp guesses. The
-grouped presentation omits unlinked user input, provider task notifications,
-replies, and calls even when supported normalized history retains those event
-types. Stable request numbers are session-scoped labels, not provider IDs or
+request groups omit unlinked user input, provider task notifications, replies,
+and calls even when supported normalized history retains those event types; an
+unlinked call is listed apart, as described below. Stable request numbers are session-scoped labels, not provider IDs or
 filter positions; they survive paging, scope changes, and restart. The request
 chart and grouped feed use the same committed history, so a selected request can
 load its matching window without fabricating a relationship. Explicit selection
 anchors live history; historical sessions never follow. No token value or cost is
 attributed to an individual action.
+
+An **action without a recorded request** is a retained tool call whose request the
+provider did not record or that is no longer retained, such as the nested file
+change above. The grouped Activities feed omits it from every request group and
+lists it in its own **Actions without a recorded request** section below them, in
+the agent scope the feed reads and independent of the selected request. The scope's
+tool-call count already includes these calls, so request-linked calls plus the
+section's count equal it. A row shows only the call's recorded time, kind, target,
+status, and wall duration, with no request number, token value, or inferred owner,
+so listing a call never attributes it to a request. The
+[paged history contract](observation-cache.md#paged-session-evidence-history)
+defines how the section is read.
 All tool-call fragments of the same Claude request contribute their distinct
 recorded tool IDs and work-kind counts, even when its final fragment is text.
 Only fragments with that proven association can appear nested in the grouped
