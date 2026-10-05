@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { Reading } from '../types'
 import type { Section } from '../hooks/hud'
-import { PROBE_RETRY_MS, agentLabel, agentsLine, cacheState, detectRefill, line, meter, requestsSection, shouldProbe, span, tokens, toolName } from '../hooks/hud'
+import { PROBE_RETRY_MS, agentLabel, agentsLine, cacheState, detectRefill, line, meter, repoName, requestsSection, shouldProbe, span, tokens, toolName } from '../hooks/hud'
 
 const MINUTE = 60_000
 const warm: Reading = { at: 0, prompt: 110_000, read: 100_000, written: 9_000, model: 'claude-opus-5-5' }
@@ -20,6 +20,7 @@ const view = {
   recorded: null,
   progress: null,
   requests: [],
+  repo: 'shop-api',
   now: 8 * MINUTE,
   isWorking: false,
   columns: 140,
@@ -53,7 +54,7 @@ test('formats tokens and spans', () => {
   expect(span(4 * MINUTE + 12_000)).toBe('4:12')
   expect(span(52 * MINUTE)).toBe('52m')
   expect(span(150 * MINUTE)).toBe('2h30')
-  expect(span((3 * 24 + 9) * 60 * MINUTE)).toBe('3d09h')
+  expect(span((3 * 24 + 9) * 60 * MINUTE)).toBe('3d')
 })
 
 test('a meter fills in its style and leaves the rest dim', () => {
@@ -66,14 +67,14 @@ test('request bars scale to the largest request and mark the newest', () => {
   expect(requestsSection([4_000])).toBe(null)
   expect(requestsSection([1_000, 50_000, 0, 100_000])).toEqual([
     { text: 'requests ', style: 'plain' },
-    { text: '⡀⡄⡀', style: 'dim' },
-    { text: '⡇', style: 'accent' },
+    { text: '⣀⣤⣀', style: 'dim' },
+    { text: '⣿', style: 'accent' },
   ])
-  expect(text(line({ ...view, requests: [2_000, 9_000, 3_000] }))[2]).toBe('requests ⡀⡇⡄')
+  expect(text(line({ ...view, requests: [2_000, 9_000, 3_000] }))[2]).toBe('requests ⣀⣿⣤')
 })
 
-test('the line lists brand, context and limits, and drops the tail when narrow', () => {
-  expect(text(line(view))).toEqual(['◆ Pomegr', 'context ━━━━━━━━ 11% · 110k/1M', '5h ━━━━━━━━ 62% · 2h30', '7d ━━━━━━━━ 96%'])
+test('the line lists the repository, context and limits, and drops the tail when narrow', () => {
+  expect(text(line(view))).toEqual(['◆ shop-api', 'context ━━━━━━━━ 11% · 110k/1M', '5h ━━━━━━━━ 62% · 2h30', '7d ━━━━━━━━ 96%'])
   expect(line(view)[2]).toEqual([
     { text: '5h ', style: 'plain' },
     { text: '━━━━━', style: 'ok' },
@@ -88,8 +89,17 @@ test('the line lists brand, context and limits, and drops the tail when narrow',
     { text: '━━━━━━━', style: 'dim' },
   ])
   expect(line({ ...view, usage: { ...view.usage, tokens: 800_000, percent: 80 } })[1]?.[1]).toEqual({ text: '━━━━━━', style: 'warning' })
-  expect(text(line({ ...view, columns: 48 }))).toEqual(['◆ Pomegr', 'context ━━━━━━━━ 11% · 110k/1M'])
-  expect(text(line({ ...view, main: null, usage: null }))).toEqual(['◆ Pomegr'])
+  expect(text(line({ ...view, columns: 48 }))).toEqual(['◆ shop-api', 'context ━━━━━━━━ 11% · 110k/1M'])
+  expect(text(line({ ...view, main: null, usage: null }))).toEqual(['◆ shop-api'])
+  expect(text(line({ ...view, main: null, usage: null, repo: null }))).toEqual(['◆'])
+})
+
+test('the repository name is the folder itself, kept short', () => {
+  expect(repoName('C:\\Workspace\\repos\\shop-api')).toBe('shop-api')
+  expect(repoName('/home/dev/shop-api/')).toBe('shop-api')
+  expect(repoName('C:\\')).toBe(null)
+  expect(repoName('/')).toBe(null)
+  expect(repoName('/srv/a-very-long-repository-name-indeed')).toBe('a-very-long-repository-…')
 })
 
 test('the cache section shows only as the lifetime runs out, and after', () => {

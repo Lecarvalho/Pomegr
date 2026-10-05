@@ -13,7 +13,7 @@ The plugin does not send transcript contents, source code, prompts, responses, c
 
 ## Session line
 
-On Claude Code 2.1.288 or newer the plugin draws one quiet line above the prompt: the main agent's context, its last 8 requests, the agent's own progress estimate, account usage windows, and the subagents of the current prompt. It reads only the figures Claude Code already has for the session, works without the Pomegr app, and never blocks or changes a prompt or tool call. Run `/pomegr-hud` to move or hide it.
+On Claude Code 2.1.288 or newer the plugin draws one quiet line above the prompt, led by the repository's folder name: the main agent's context, its last 5 requests, the agent's own progress estimate, account usage windows, and the subagents of the current prompt. It reads only the figures Claude Code already has for the session, works without the Pomegr app, and never blocks or changes a prompt or tool call. Run `/pomegr-hud` to move or hide it.
 
 Documentation and source are available in the [Pomegr repository](https://github.com/Lecarvalho/pomegr). Report problems through [GitHub Issues](https://github.com/Lecarvalho/pomegr/issues).
 

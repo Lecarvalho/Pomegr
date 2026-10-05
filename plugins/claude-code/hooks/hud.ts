@@ -12,6 +12,8 @@ export type View = {
   recorded: Recorded | null
   progress: Progress | null
   requests: number[]
+  /** The repository folder's name, or null outside one. */
+  repo: string | null
   now: number
   isWorking: boolean
   columns: number
@@ -25,7 +27,7 @@ export const NOTABLE_PROMPT = 20_000
 /** Under this much lifetime left the countdown shows seconds. */
 export const SECONDS_BELOW_MS = 10 * MINUTE
 /** How many recent requests the bars keep: a miniature of Pomegr's Requests chart. */
-export const REQUESTS_KEPT = 8
+export const REQUESTS_KEPT = 5
 /** How long a probe that found no running monitor waits before the next. */
 export const PROBE_RETRY_MS = 5 * MINUTE
 
@@ -96,11 +98,11 @@ export function tokens(count: number): string {
   return String(count)
 }
 
-/** `4:12` under ten minutes, then `52m`, `2h30`, `3d09h`. */
+/** `4:12` under ten minutes, then `52m`, `2h30`, and whole days alone: `3d`. */
 export function span(ms: number): string {
   const minutes = Math.floor(ms / MINUTE)
   const pad = (count: number) => String(count).padStart(2, '0')
-  if (minutes >= 24 * 60) return `${Math.floor(minutes / 1440)}d${pad(Math.floor((minutes % 1440) / 60))}h`
+  if (minutes >= 24 * 60) return `${Math.floor(minutes / 1440)}d`
   if (minutes >= 60) return `${Math.floor(minutes / 60)}h${pad(minutes % 60)}`
   if (ms >= SECONDS_BELOW_MS) return `${minutes}m`
   return `${minutes}:${pad(Math.floor(ms / 1000) % 60)}`
@@ -117,8 +119,8 @@ export type Part = { text: string; style: Style }
 export type Section = Part[]
 
 const BAR_CELLS = 8
-// Braille, left column only: a thin bar with a gap to the next, in four heights.
-const SPARKS = '⡀⡄⡆⡇'
+// Braille, both columns: a bar the cell's full width, so only the cell spacing parts it from the next, in four heights.
+const SPARKS = '⣀⣤⣶⣿'
 
 function level(percent: number, warnAt: number, errorAt: number, calm: Style): Style {
   return percent >= errorAt ? 'error' : percent >= warnAt ? 'warning' : calm
@@ -142,7 +144,7 @@ export function meter(fraction: number, style: Style): Part[] {
 export function requestsSection(requests: number[]): Section | null {
   if (requests.length < 2) return null
   const top = Math.max(...requests, 1)
-  const bars = requests.map(value => SPARKS[Math.min(SPARKS.length - 1, Math.floor((value / top) * (SPARKS.length - 1)))] ?? '⡀')
+  const bars = requests.map(value => SPARKS[Math.min(SPARKS.length - 1, Math.floor((value / top) * (SPARKS.length - 1)))] ?? '⣀')
   return [
     { text: 'requests ', style: 'plain' },
     { text: bars.slice(0, -1).join(''), style: 'dim' },
@@ -221,9 +223,20 @@ function fit(list: Section[], columns: number): { shown: Section[]; dropped: num
   return { shown, dropped: list.length - shown.length }
 }
 
+const REPO_NAME_CELLS = 24
+
+/** `C:\repos\shop-api` as `shop-api`: the folder's own name, kept short; null when the path has none. */
+export function repoName(path: string): string | null {
+  const name = path.split(/[\\/]/).filter(segment => segment !== '').at(-1)
+  if (name === undefined || /^[a-zA-Z]:$/.test(name)) return null
+  return name.length > REPO_NAME_CELLS ? `${name.slice(0, REPO_NAME_CELLS - 1)}…` : name
+}
+
 /** The line's sections in order; a narrow line drops the tail. */
 export function line(view: View): Section[] {
-  const list: Section[] = [[{ text: '◆ ', style: 'brand' }, { text: 'Pomegr', style: 'plain' }]]
+  // The mark alone outside a repository: the line never spends cells on its own name.
+  const head: Section = view.repo === null ? [{ text: '◆', style: 'brand' }] : [{ text: '◆ ', style: 'brand' }, { text: view.repo, style: 'plain' }]
+  const list: Section[] = [head]
   const context = contextSection(view)
   if (context !== null) list.push(context)
   const requests = requestsSection(view.requests)

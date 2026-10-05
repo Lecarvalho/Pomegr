@@ -102,7 +102,7 @@ running, because it reads only the figures Claude Code already has for the
 session you are in.
 
 ```text
-◆ Pomegr │ context ━━━━━━━━ 32% · 319k/1M │ requests ⡀⡄⡀⡆⡀⡄⡇⡆ │ verifying ━━━━━━━━ 90% · 5m–15m │ 5h ━━━━━━━━ 8% · 3h15
+◆ shop-api │ context ━━━━━━━━ 32% · 319k/1M │ requests ⣀⣤⣀⣿⣶ │ verifying ━━━━━━━━ 90% · 5m–15m │ 5h ━━━━━━━━ 8% · 3h15
 ╰ 2 agents running │ ● Explore 42k │ reviewer 18k ✓
 ```
 
@@ -110,8 +110,9 @@ session you are in.
 
 | Section | Meaning |
 | --- | --- |
+| Name | The repository's folder name, so the line never spends space on Pomegr's own. Outside a repository it is the project folder. |
 | **context** | The main agent's latest context snapshot against its window. |
-| **requests** | One bar for each of the last 8 main-agent requests: that request's cache write, uncached input, and output tokens. |
+| **requests** | One bar for each of the last 5 main-agent requests: that request's cache write, uncached input, and output tokens. |
 | Progress | The agent's own estimate, shown only after it reports progress through the plugin. |
 | **cache** | Appears only when the cache lifetime is about to end or has ended. Elapsed is an inference, not proof the provider dropped the entry. |
 | **5h**, **7d** | Account usage windows and the time until each resets. |
