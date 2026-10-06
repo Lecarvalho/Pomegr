@@ -9,9 +9,13 @@ import {
   slugifyHeading,
   validateManifest,
 } from "../../scripts/docs-content.mjs";
-import { MAX_JPEG_APP_SEGMENT_BYTES, imageMetadataProblem } from "../../scripts/docs-images.mjs";
+import { MAX_JPEG_APP_SEGMENT_BYTES, imageDimensions, imageMetadataProblem } from "../../scripts/docs-images.mjs";
 import {
   FENCE,
+  GIF,
+  IHDR,
+  IMAGE_HEIGHT,
+  IMAGE_WIDTH,
   JPG,
   PNG,
   PNG_SIGNATURE,
@@ -232,7 +236,7 @@ describe("page structure", () => {
         { type: "text", text: ", a " },
         { type: "link", href: "/docs/get-started/beta", external: false, children: [{ type: "text", text: "link" }] },
         { type: "text", text: ", and " },
-        { type: "image", src: "/docs/images/topic/shot.jpg", alt: "Alt text" },
+        { type: "image", src: "/docs/images/topic/shot.jpg", width: IMAGE_WIDTH, height: IMAGE_HEIGHT, alt: "Alt text" },
         { type: "text", text: "." },
       ],
     });
@@ -471,7 +475,7 @@ describe("images", () => {
 // metadata blocks that could carry a private path or user name (docs-images.mjs).
 describe("image metadata", () => {
   const exif = (payloadBytes: number) => jpegSegment(0xe1, Buffer.concat([Buffer.from("Exif  ", "latin1"), Buffer.alloc(payloadBytes)]));
-  const ihdr = pngChunk("IHDR", Buffer.alloc(13));
+  const ihdr = IHDR;
   const png = (...chunks: Buffer[]) => Buffer.concat([PNG_SIGNATURE, ihdr, ...chunks, pngChunk("IEND")]);
   const text = Buffer.from("Author C:\Users\leandro\\", "latin1");
 
@@ -481,7 +485,7 @@ describe("image metadata", () => {
     ["a JPEG with an APP segment of exactly the bound", "jpeg", jpegWith(jpegSegment(0xe2, Buffer.alloc(MAX_JPEG_APP_SEGMENT_BYTES - 2)))],
     ["a PNG with only structural chunks", "png", png(pngChunk("pHYs", Buffer.alloc(9)))],
     ["a WebP with only its image chunk", "webp", webpWith()],
-    ["a GIF, which is not parsed", "gif", Buffer.from("GIF89a")],
+    ["a GIF, whose metadata is not parsed", "gif", GIF],
   ];
   const refused: Array<[string, string, Buffer, string]> = [
     ["JPEG XMP", "jpg", jpegWith(jpegSegment(0xe1, Buffer.from("http://ns.adobe.com/xap/1.0/ <x:xmpmeta/>", "latin1"))), "carries XMP metadata"],
@@ -521,6 +525,68 @@ describe("image metadata", () => {
   it("never echoes the metadata itself in a message", () => {
     const leaky = jpegWith(jpegSegment(0xfe, text));
     expect(rejected(standard({ ...alphaWith("![Shot](../images/topic/a.jpg)"), "images/topic/a.jpg": leaky }))).not.toContain("leandro");
+  });
+});
+
+// The page reserves each image's box from its pixel size, so the loader reads it from the file's
+// header and refuses a file that states none (docs-images.mjs).
+describe("image dimensions", () => {
+  const size = { width: IMAGE_WIDTH, height: IMAGE_HEIGHT };
+  const riff = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from("WEBP", "latin1"), riffChunk(type, data)]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32LE(body.length);
+    return Buffer.concat([Buffer.from("RIFF", "latin1"), length, body]);
+  };
+  // Lossless: the 0x2f signature, then 14 bits of width - 1 and 14 bits of height - 1.
+  const lossless = Buffer.alloc(10);
+  lossless[0] = 0x2f;
+  lossless.writeUInt32LE((IMAGE_WIDTH - 1) | ((IMAGE_HEIGHT - 1) << 14), 1);
+  // Extended: four flag bytes, then 24 bits of width - 1 and 24 bits of height - 1.
+  const extended = Buffer.from([0, 0, 0, 0, IMAGE_WIDTH - 1, 0, 0, IMAGE_HEIGHT - 1, 0, 0]);
+
+  it.each<[string, string, Buffer]>([
+    ["a JPEG frame header", "jpg", JPG],
+    ["a JPEG frame header after other segments", "jpeg", jpegWith(jpegSegment(0xdb, Buffer.alloc(65)))],
+    ["a PNG header chunk", "png", PNG],
+    ["a GIF logical screen", "gif", GIF],
+    ["a lossy WebP frame", "webp", webpWith()],
+    ["a lossless WebP header", "webp", riff("VP8L", lossless)],
+    ["an extended WebP header", "webp", riff("VP8X", extended)],
+  ])("reads %s", (_name, extension, bytes) => {
+    expect(imageDimensions(extension, bytes)).toEqual(size);
+  });
+
+  it.each<[string, string, Buffer]>([
+    ["a JPEG whose scan starts without a frame header", "jpg", Buffer.from([0xff, 0xd8, 0xff, 0xda, 0, 2, 0xff, 0xd9])],
+    ["a PNG that states a zero width", "png", Buffer.concat([PNG_SIGNATURE, pngChunk("IHDR", Buffer.alloc(13)), pngChunk("IEND")])],
+    ["a GIF cut off after its signature", "gif", Buffer.from("GIF89a", "latin1")],
+    ["a WebP whose first chunk is not image data", "webp", riff("ICCP", Buffer.alloc(10))],
+  ])("finds no size in %s", (_name, extension, bytes) => {
+    expect(imageDimensions(extension, bytes)).toBeNull();
+  });
+
+  it("carries the size on every reference to the image and not in the image list", () => {
+    const content = loaded(standard({ ...alphaWith("![One](../images/topic/a.png) ![Two](../images/topic/a.png)"), "images/topic/a.png": PNG }));
+    const images = content.pages.flatMap((page) => [...inlinesOf(page.blocks)].filter((node) => node.type === "image"));
+    expect(images).toHaveLength(2);
+    for (const node of images) expect(node).toMatchObject({ src: "/docs/images/topic/a.png", ...size });
+    expect(content.images).toEqual([{ route: "/docs/images/topic/a.png", bytes: PNG.length, sha256: sha256(PNG) }]);
+  });
+
+  it("refuses an image that states no pixel size", () => {
+    const sizeless = Buffer.concat([PNG_SIGNATURE, pngChunk("IHDR", Buffer.alloc(13)), pngChunk("IEND")]);
+    const text = rejected(standard({ ...alphaWith("![Shot](../images/topic/a.png)"), "images/topic/a.png": sizeless }));
+    expect(text).toContain("does not state its pixel dimensions");
+    expect(text).toContain("../images/topic/a.png");
+  });
+
+  it("gives every image of the real pages a pixel size", () => {
+    const { content } = loadDocsContent();
+    for (const page of content.pages) for (const node of inlinesOf(page.blocks)) if (node.type === "image") {
+      expect(Number.isInteger(node.width) && node.width > 0, node.src).toBe(true);
+      expect(Number.isInteger(node.height) && node.height > 0, node.src).toBe(true);
+    }
   });
 });
 

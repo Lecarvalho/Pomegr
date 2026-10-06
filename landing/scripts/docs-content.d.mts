@@ -10,8 +10,8 @@ export type DocsInline =
   | { type: "br" }
   /** `href` is an absolute `/docs/...` route (optionally with `#anchor`), a bare `#anchor`, or an http(s)/mailto URL when `external`. */
   | { type: "link"; href: string; external: boolean; children: DocsInline[] }
-  /** `src` is a `/docs/images/<topic>/<file>` route; `alt` is non-empty plain text. */
-  | { type: "image"; src: string; alt: string };
+  /** `src` is a `/docs/images/<topic>/<file>` route; `width` and `height` are the file's pixel size; `alt` is non-empty plain text. */
+  | { type: "image"; src: string; width: number; height: number; alt: string };
 
 export type DocsBlock =
   | { type: "heading"; depth: 1 | 2 | 3 | 4; id: string; children: DocsInline[] }
@@ -77,6 +77,9 @@ export interface DocsContent {
 export interface DocsAsset extends DocsImage {
   /** Path beneath `public/docs/images/`, such as `topic/file.jpg`. */
   relativePath: string;
+  /** Pixel size read from the file's header. */
+  width: number;
+  height: number;
   data: Buffer;
 }
 

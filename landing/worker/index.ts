@@ -1,4 +1,5 @@
 import handler from "vinext/server/app-router-entry";
+import { SECURITY_HEADERS } from "./security-headers";
 
 interface WorkerEnv {
   ASSETS: {
@@ -37,10 +38,7 @@ function isPublicPath(pathname: string): boolean {
 
 function harden(response: Response, isApi: boolean): Response {
   const headers = new Headers(response.headers);
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  headers.set("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=()");
-  headers.set("X-Frame-Options", "DENY");
+  for (const [name, value] of SECURITY_HEADERS) headers.set(name, value);
 
   if (isApi) {
     headers.delete("Access-Control-Allow-Credentials");

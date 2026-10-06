@@ -355,6 +355,16 @@ describe("artifact boundary audit of the content inputs", () => {
       }
     });
 
+    it("rejects a stylesheet address the build does not contain", () => {
+      const sheet = "dist/client/_next/static/css/page.css";
+      const font = { "dist/client/fonts/a.ttf": "font" };
+      expect(audit(landing(dist({ ...font, [sheet]: '@font-face{src:url("/fonts/a.ttf")}.x{background:url(/docs/images/topic/a.png?v=1),url(data:image/png;base64,AA)}' })), true).ok).toBe(true);
+      // The address vinext 1.0.0-beta.6 writes for a public file once a deployment ID is set.
+      const moved = audit(landing(dist({ ...font, [sheet]: '@font-face{src:url("/_next/static/fonts/a.ttf?dpl=abc")}' })), true);
+      expect(moved.ok).toBe(false);
+      expect(moved.output).toContain(`${sheet} refers to /_next/static/fonts/a.ttf, which the build does not contain`);
+    });
+
     it("requires the built client to carry the complete search index within its bound", () => {
       const chunk = "dist/client/_next/static/chunks/docs-search-x.js";
       const missing = audit(landing(dist({}, [chunk])), true);

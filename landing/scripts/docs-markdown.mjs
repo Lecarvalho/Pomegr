@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { marked } from "marked";
-import { imageMetadataProblem } from "./docs-images.mjs";
+import { imageDimensions, imageMetadataProblem } from "./docs-images.mjs";
 
 // ---------------------------------------------------------------------------
 // Shared constants and primitives
@@ -342,9 +342,16 @@ export function createConverter(state) {
         fail(`image ${quote(href)} ${metadataProblem}`);
         return null;
       }
-      imagesByRoute.set(route, { route, relativePath: target.source.slice("images/".length), bytes: data.length, sha256: sha256(data), data });
+      // The renderer reserves the image's box from its pixel size, so a file that states none is refused.
+      const size = imageDimensions(match[3], data);
+      if (!size) {
+        fail(`image ${quote(href)} does not state its pixel dimensions`);
+        return null;
+      }
+      imagesByRoute.set(route, { route, relativePath: target.source.slice("images/".length), bytes: data.length, sha256: sha256(data), width: size.width, height: size.height, data });
     }
-    return route;
+    const { width, height } = imagesByRoute.get(route);
+    return { src: route, width, height };
   }
 
   function pushText(out, text) {
@@ -394,8 +401,8 @@ export function createConverter(state) {
           if (token.title) fail("image titles are not supported; describe the image in its alt text");
           const alt = softBreaks(inlineText(token.tokens?.length ? token.tokens : [{ type: "text", text: token.text }])).trim();
           if (alt === "" || alt.length > MAX_ALT_CHARS) fail(`an image needs alt text of 1 to ${MAX_ALT_CHARS} characters`);
-          const src = resolveImage(token.href);
-          if (src && alt !== "" && alt.length <= MAX_ALT_CHARS) out.push({ type: "image", src, alt });
+          const image = resolveImage(token.href);
+          if (image && alt !== "" && alt.length <= MAX_ALT_CHARS) out.push({ type: "image", ...image, alt });
           break;
         }
         case "html":
