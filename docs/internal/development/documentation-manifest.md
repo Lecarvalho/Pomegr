@@ -89,7 +89,13 @@ segment over 64 bytes (the tiny resolution-only EXIF some tools write passes),
 PNG `tEXt`, `iTXt`, `zTXt`, and `eXIf` chunks, and WebP EXIF and XMP chunks,
 and refuses a truncated or damaged structure. The audit also scans every image's
 bytes as text for home-directory and repository paths. Convert screenshots with
-a tool that writes no metadata, as the capture procedure does. Copy only images
+a tool that writes no metadata, as the capture procedure does. The loader also
+reads each image's pixel width and height from the header its format requires
+(the JPEG frame header, PNG `IHDR`, GIF logical screen, or WebP `VP8`, `VP8L`, or
+`VP8X` chunk) and refuses a file that states none. Each image reference in the
+generated blocks carries that size, and the page renders it as the `width` and
+`height` attributes, so the box is reserved before the bytes arrive and the text
+below does not move. Copy only images
 referenced by selected pages, preserving their path beneath
 `/docs/images/`. Reject remote images, data URLs, missing files, and image URLs
 with queries or fragments. Do not copy the whole images directory.
@@ -138,7 +144,7 @@ as `file:line`, and nothing is emitted.
 - **Callouts:** A blockquote starting `**Note:**` or `**Caution:**` becomes a callout block; any other leading `**Label:**` is an error.
 - **Anchors:** `slugifyHeading` and `createSlugger` in the loader are the one GitHub-style implementation; the renderer and `check:docs` import them. Named character references (`&amp;`, `&copy;`, and a short fixed list) are decoded; unknown names stay literal.
 - **Links:** As described above, plus: external links must be `https:`, `http:` without credentials, or `mailto:`; every fragment must match a heading of its target; a link needs visible text.
-- **Images:** Alt text of 1 to 600 characters; route `/docs/images/<topic>/<file>`; only referenced files are copied, and stale files in the output directory are deleted.
+- **Images:** Alt text of 1 to 600 characters; route `/docs/images/<topic>/<file>`; a positive pixel width and height read from the file; only referenced files are copied, and stale files in the output directory are deleted.
 
 The generated JSON holds `schema`, `revision`, `entry` (the first page's route,
 or `null`), `navigation`, `pages`, and `images`. Each page carries its route,

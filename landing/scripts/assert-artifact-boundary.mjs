@@ -409,6 +409,21 @@ function auditDistDocsImages(docsContent, files, client) {
   }
 }
 
+/**
+ * Every root-relative `url()` in a built stylesheet must name a file the assets binding serves.
+ * A wrong address would only show as a missing font or background in a browser.
+ */
+function auditDistStylesheetUrls(files, client) {
+  for (const file of files) {
+    if (extname(file) !== ".css" || !isInsideRoot(client, file)) continue;
+    for (const match of readFileSync(file, "utf8").matchAll(/url\(\s*["']?(\/[^"')?#\s]*)/g)) {
+      if (match[1].startsWith("//")) continue;
+      const target = join(client, ...decodeURIComponent(match[1]).split("/"));
+      if (!isInsideRoot(client, target) || !existsSync(target)) failures.push(`dist/client/${relative(client, file).split(sep).join("/")} refers to ${match[1]}, which the build does not contain`);
+    }
+  }
+}
+
 function isInsideRoot(root, path) {
   const rel = relative(root, path);
   return rel !== "" && !rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel);
@@ -442,6 +457,7 @@ function auditArtifact(docsContent, searchIndex) {
     for (const match of forbiddenMatches(contents, { allowExamples: carriesRevision })) failures.push(`${rel} contains ${match.label}`);
   }
   auditDistDocsImages(docsContent, files, client);
+  auditDistStylesheetUrls(files, client);
   auditDistSearchIndex(docsContent, searchIndex, files, client);
   auditStaticSiteIndexes(docsContent, files, client);
 
@@ -470,8 +486,15 @@ function auditArtifact(docsContent, searchIndex) {
       sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
     }))
     .sort((a, b) => a.path.localeCompare(b.path));
-  const digest = createHash("sha256").update(JSON.stringify(inventory)).digest("hex");
-  if (!failures.length) console.log(`landing/dist boundary verified: ${inventory.length} files, sha256 ${digest}`);
+  const digestOf = (entries) => createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+  // The whole-artifact digest identifies this one build: the server bundle carries secrets vinext
+  // draws for every build. The client digest covers what browsers receive and is equal for two
+  // builds of one commit, so it is the one to compare between audits.
+  const clientInventory = inventory.filter((entry) => entry.path.startsWith("client/"));
+  if (!failures.length) {
+    console.log(`landing/dist boundary verified: ${inventory.length} files, sha256 ${digestOf(inventory)}`);
+    console.log(`landing/dist/client: ${clientInventory.length} files, sha256 ${digestOf(clientInventory)}`);
+  }
 }
 
 auditSourceImports();

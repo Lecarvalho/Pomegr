@@ -16,13 +16,14 @@ const scriptPath = join(repositoryRoot, "scripts", "check-docs.mjs");
 const landingReady = existsSync(join(repositoryRoot, "landing", "node_modules", "marked", "package.json"));
 const needsLanding = { skip: landingReady ? false : "landing dependencies are not installed (npm ci --prefix landing)" };
 
-// A minimal well-formed PNG (signature, IHDR, IEND): the loader walks image chunks to refuse metadata.
+// A minimal well-formed 3x2 PNG (signature, IHDR, IEND): the loader walks image chunks to refuse
+// metadata and reads the pixel size from IHDR.
 const pngChunk = (type, data = Buffer.alloc(0)) => {
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);
   return Buffer.concat([length, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]);
 };
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk("IHDR", Buffer.alloc(13)), pngChunk("IEND")]);
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk("IHDR", Buffer.from([0, 0, 0, 3, 0, 0, 0, 2, 8, 2, 0, 0, 0])), pngChunk("IEND")]);
 const FENCE = "```";
 const scratch = [];
 after(() => {

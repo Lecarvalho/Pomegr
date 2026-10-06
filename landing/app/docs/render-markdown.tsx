@@ -107,14 +107,16 @@ function renderLink(node: Extract<DocsInline, { type: "link" }>, context: Contex
   return children;
 }
 
+const isPixelSize = (value: unknown): value is number => Number.isInteger(value) && (value as number) > 0;
+
 function renderImage(node: Extract<DocsInline, { type: "image" }>, context: Context): ReactNode {
-  if (typeof node.alt !== "string" || node.alt.trim() === "" || !IMAGE_ROUTE.test(String(node.src))) {
+  if (typeof node.alt !== "string" || node.alt.trim() === "" || !IMAGE_ROUTE.test(String(node.src)) || !isPixelSize(node.width) || !isPixelSize(node.height)) {
     return unsupported(context, "image");
   }
-  // The generated data carries no pixel dimensions, so the image keeps its intrinsic ratio through CSS.
-  // next/image needs dimensions and an image loader the Worker does not provide; these are static assets.
+  // The file's pixel size reserves the box before the bytes arrive; CSS scales it to the column.
+  // next/image needs an image loader the Worker does not provide; these are static assets.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img className={styles.image} src={node.src} alt={node.alt} loading="lazy" decoding="async" />;
+  return <img className={styles.image} src={node.src} alt={node.alt} width={node.width} height={node.height} loading="lazy" decoding="async" />;
 }
 
 function renderInline(node: DocsInline, context: Context): ReactNode {

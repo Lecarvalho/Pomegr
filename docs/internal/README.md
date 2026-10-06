@@ -16,7 +16,7 @@ readable in the repository and must not contain secrets or private session data.
 | [`development/`](development/agent-workflow.md) | Contributor workflow, configuration, tooling, and verification: see [Development](#development) |
 | [`operations/`](operations/desktop-releases.md) | Release, acceptance, diagnostics, and website runbooks: see [Operations and decisions](#operations-and-decisions) |
 | [`decisions/`](decisions/license-history.md) | Accepted rationale with continuing relevance; it never overrides a contract |
-| [`plans/`](plans/migration-follow-ups.md) | Temporary checklists and proposals, each with an owner and a deletion rule: see [Plans and temporary work](#plans-and-temporary-work) |
+| [`plans/`](plans/provider-notifications.md) | Temporary checklists and proposals, each with an owner and a deletion rule: see [Plans and temporary work](#plans-and-temporary-work) |
 
 Public user guides live in [`docs/public/`](../public/get-started/introduction.md) and are
 indexed in the [documentation index](../README.md).
@@ -112,11 +112,7 @@ The progressive Activity/Request publication contract is maintained in
 [Observation cache](architecture/observation-cache.md). Continuous JSONL diagnostics and passive
 analysis are maintained in [Pipeline operations](operations/pipeline-diagnostics.md).
 
-The [migration follow-ups plan](plans/migration-follow-ups.md) owns what the
-completed documentation migration left open: publishing the documentation site,
-the owner decisions found during the migration (app defects, missing settings
-controls, release-evidence ownership, and accepted link breakage), and website
-hardening. Root entrypoints, legal files, package entrypoints, and tool-required
+Root entrypoints, legal files, package entrypoints, and tool-required
 files retain their existing homes.
 
 The [session Activity panel plan](plans/session-activity-panel.md) is implemented and

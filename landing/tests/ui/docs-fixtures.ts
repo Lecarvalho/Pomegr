@@ -11,14 +11,18 @@ import type { DocsBlock, DocsContent, DocsInline, DocsPage } from "../../scripts
 // Shared fixtures for the documentation loader tests: a throwaway repository with landing/
 // beside docs/site.json and docs/public/.
 
-// Minimal well-formed images: the loader walks their structure to refuse metadata blocks.
+// Minimal well-formed images: the loader walks their structure to refuse metadata blocks and reads
+// their pixel size. Every fixture image is IMAGE_WIDTH by IMAGE_HEIGHT.
+export const IMAGE_WIDTH = 3;
+export const IMAGE_HEIGHT = 2;
 export function pngChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);
   return Buffer.concat([length, Buffer.from(type, "latin1"), data, Buffer.alloc(4)]); // the CRC is not read
 }
 export const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-export const PNG = Buffer.concat([PNG_SIGNATURE, pngChunk("IHDR", Buffer.alloc(13)), pngChunk("IEND")]);
+export const IHDR = pngChunk("IHDR", Buffer.from([0, 0, 0, IMAGE_WIDTH, 0, 0, 0, IMAGE_HEIGHT, 8, 2, 0, 0, 0]));
+export const PNG = Buffer.concat([PNG_SIGNATURE, IHDR, pngChunk("IEND")]);
 /** A JPEG segment: marker, then a length that counts its own two bytes. */
 export function jpegSegment(marker: number, payload: Buffer): Buffer {
   const length = Buffer.alloc(2);
@@ -26,9 +30,11 @@ export function jpegSegment(marker: number, payload: Buffer): Buffer {
   return Buffer.concat([Buffer.from([0xff, marker]), length, payload]);
 }
 const JFIF = Buffer.concat([Buffer.from("JFIF\0", "latin1"), Buffer.from([1, 1, 0, 0, 1, 0, 1, 0, 0])]);
-/** SOI, a 16-byte JFIF segment, the start of scan, and EOI. */
+/** A baseline frame header: 8-bit precision, height, width, one component. */
+const SOF0 = jpegSegment(0xc0, Buffer.from([8, 0, IMAGE_HEIGHT, 0, IMAGE_WIDTH, 1, 1, 0x11, 0]));
+/** SOI, a 16-byte JFIF segment, the given segments, the frame header, the start of scan, and EOI. */
 export const jpegWith = (...segments: Buffer[]) =>
-  Buffer.concat([Buffer.from([0xff, 0xd8]), jpegSegment(0xe0, JFIF), ...segments, Buffer.from([0xff, 0xda, 0x00, 0x02, 1, 2, 3, 4, 0xff, 0xd9])]);
+  Buffer.concat([Buffer.from([0xff, 0xd8]), jpegSegment(0xe0, JFIF), ...segments, SOF0, Buffer.from([0xff, 0xda, 0x00, 0x02, 1, 2, 3, 4, 0xff, 0xd9])]);
 export const JPG = jpegWith();
 /** A RIFF chunk, padded to an even size. */
 export function riffChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
@@ -36,12 +42,16 @@ export function riffChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer 
   size.writeUInt32LE(data.length);
   return Buffer.concat([Buffer.from(type, "latin1"), size, data, Buffer.alloc(data.length % 2)]);
 }
+/** A lossy frame header: three tag bytes, the start code, then the 14-bit width and height. */
+const VP8_FRAME = Buffer.from([0, 0, 0, 0x9d, 0x01, 0x2a, IMAGE_WIDTH, 0, IMAGE_HEIGHT, 0]);
 export const webpWith = (...chunks: Buffer[]) => {
-  const body = Buffer.concat([Buffer.from("WEBP", "latin1"), riffChunk("VP8 ", Buffer.alloc(10)), ...chunks]);
+  const body = Buffer.concat([Buffer.from("WEBP", "latin1"), riffChunk("VP8 ", VP8_FRAME), ...chunks]);
   const size = Buffer.alloc(4);
   size.writeUInt32LE(body.length);
   return Buffer.concat([Buffer.from("RIFF", "latin1"), size, body]);
 };
+/** The signature and the logical screen size; the loader reads nothing else of a GIF. */
+export const GIF = Buffer.concat([Buffer.from("GIF89a", "latin1"), Buffer.from([IMAGE_WIDTH, 0, IMAGE_HEIGHT, 0])]);
 export const FENCE = "```";
 export const sha256 = (data: Buffer | string) => createHash("sha256").update(data).digest("hex");
 

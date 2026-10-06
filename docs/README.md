@@ -89,6 +89,4 @@ routes, and local links/images. The build-time loader, the `/docs` site, and
 [website operations](internal/operations/website.md#6-publish-documentation)). This
 index does not publish content.
 
-The [migration follow-ups plan](internal/plans/migration-follow-ups.md) tracks the
-first publication of this site and the open owner decisions. The maintainer index
-lists the current technical authorities.
+The maintainer index lists the current technical authorities.

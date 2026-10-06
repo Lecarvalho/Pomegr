@@ -1,5 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { SECURITY_HEADERS } from "../../worker/security-headers";
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
@@ -72,5 +73,15 @@ describe("public landing surfaces", () => {
     expect(footer).toContain("THIRD_PARTY_NOTICES.md");
     expect(footer).not.toContain("Local-first · read-only");
     expect(chrome).toContain("width: min(1500px, calc(100% - 64px))");
+  });
+
+  it("repeats the Worker's security headers for the files the assets binding serves", () => {
+    const rules = read("public/_headers").replace(/\r\n/g, "\n").split(/\n(?=\S)/).filter((rule) => !rule.startsWith("#"));
+    const everyFile = rules.find((rule) => rule.startsWith("/*\n"));
+    const sent = (everyFile ?? "").split("\n").slice(1).map((line) => line.trim()).filter(Boolean);
+    expect(sent).toEqual(SECURITY_HEADERS.map(([name, value]) => `${name}: ${value}`));
+    // vinext adds this rule only when the package ships no _headers file, so the file keeps it.
+    expect(rules.map((rule) => rule.trimEnd())).toContain("/_next/static/*\n  Cache-Control: public, max-age=31536000, immutable");
+    expect(read("worker/index.ts")).toContain("for (const [name, value] of SECURITY_HEADERS) headers.set(name, value);");
   });
 });

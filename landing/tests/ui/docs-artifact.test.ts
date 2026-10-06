@@ -51,6 +51,7 @@ describe("the artifact built from a fixture repository", () => {
     expect(build.output).toMatch(/docs content prepared: 3 pages, 1 images/);
     expect(build.output).toContain("landing/ source import and content-input boundary verified");
     expect(build.output).toMatch(/landing\/dist boundary verified: \d+ files/);
+    expect(build.output).toMatch(/landing\/dist\/client: \d+ files, sha256 [0-9a-f]{64}/);
     expect(existsSync(at("dist", "client"))).toBe(true);
   }, BUILD_TIMEOUT);
 

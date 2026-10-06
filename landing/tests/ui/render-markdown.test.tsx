@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { DocsMarkdown } from "../../app/docs/render-markdown";
 import type { DocsBlock, DocsContent, DocsInline } from "../../scripts/docs-content.mjs";
-import { FENCE, alphaWith, cleanupScratch, loaded, pageOf, rejected, standard } from "./docs-fixtures";
+import { FENCE, IMAGE_HEIGHT, IMAGE_WIDTH, alphaWith, cleanupScratch, loaded, pageOf, rejected, standard } from "./docs-fixtures";
 
 afterEach(cleanupScratch);
 
@@ -227,11 +227,10 @@ describe("links", () => {
 });
 
 describe("images", () => {
-  it("renders an image with alt text, lazy loading, and async decoding", () => {
-    const html = render([paragraph({ type: "image", src: "/docs/images/cache-reuse/refill.jpg", alt: 'Cache "reads" drop after <compaction>' }), paragraph({ type: "em", children: [text("Figure: a caption.")] })]);
-    expect(html).toMatch(/<p class="[^"]*imageBlock[^"]*"><img class="[^"]*" src="\/docs\/images\/cache-reuse\/refill\.jpg" alt="Cache &quot;reads&quot; drop after &lt;compaction&gt;" loading="lazy" decoding="async"\/><\/p>/);
+  it("renders an image with alt text, its pixel size, lazy loading, and async decoding", () => {
+    const html = render([paragraph({ type: "image", src: "/docs/images/cache-reuse/refill.jpg", width: 1200, height: 675, alt: 'Cache "reads" drop after <compaction>' }), paragraph({ type: "em", children: [text("Figure: a caption.")] })]);
+    expect(html).toMatch(/<p class="[^"]*imageBlock[^"]*"><img class="[^"]*" src="\/docs\/images\/cache-reuse\/refill\.jpg" alt="Cache &quot;reads&quot; drop after &lt;compaction&gt;" width="1200" height="675" loading="lazy" decoding="async"\/><\/p>/);
     expect(html).toContain("<p><em>Figure: a caption.</em></p>");
-    expect(html).not.toMatch(/ (?:width|height)=/);
   });
 
   it.each([
@@ -240,13 +239,24 @@ describe("images", () => {
     ["a traversal", "/docs/images/topic/../../secret.png"],
     ["a non-image file", "/docs/images/topic/file.svg"],
   ])("rejects %s as an image source", (_name, src) => {
-    const block = paragraph({ type: "image", src, alt: "Alt" });
+    const block = paragraph({ type: "image", src, width: 3, height: 2, alt: "Alt" });
     expect(render([block], false)).not.toContain("<img");
     expect(() => render([block])).toThrow(/image/);
   });
 
   it("rejects an image without alt text", () => {
-    expect(() => render([paragraph({ type: "image", src: "/docs/images/topic/a.jpg", alt: " " })])).toThrow(/image/);
+    expect(() => render([paragraph({ type: "image", src: "/docs/images/topic/a.jpg", width: 3, height: 2, alt: " " })])).toThrow(/image/);
+  });
+
+  it.each([
+    ["a missing size", undefined, undefined],
+    ["a zero width", 0, 2],
+    ["a fractional height", 3, 1.5],
+    ["a size given as text", "3", "2"],
+  ])("rejects an image with %s", (_name, width, height) => {
+    const block = paragraph(unknownInline({ type: "image", src: "/docs/images/topic/a.jpg", width, height, alt: "Alt" }));
+    expect(render([block], false)).not.toContain("<img");
+    expect(() => render([block])).toThrow(/image/);
   });
 });
 
@@ -365,6 +375,8 @@ describe("Markdown converted by the real loader", () => {
     expect(attributesOf(tagsOf(html, "img")[0] ?? "")).toMatchObject({
       src: "/docs/images/topic/shot.jpg",
       alt: "Shot alt text",
+      width: String(IMAGE_WIDTH),
+      height: String(IMAGE_HEIGHT),
       loading: "lazy",
       decoding: "async",
     });
@@ -419,6 +431,8 @@ describe("the real generated pages", () => {
       expect(imageRoutes.has(attributes.src ?? ""), tag).toBe(true);
       expect(attributes.alt?.trim(), tag).toBeTruthy();
       expect(attributes).toMatchObject({ loading: "lazy", decoding: "async" });
+      expect(attributes.width, tag).toMatch(/^[1-9]\d*$/);
+      expect(attributes.height, tag).toMatch(/^[1-9]\d*$/);
     }
 
     // Tables live in a named region; nothing executable or inline-styled is emitted.
