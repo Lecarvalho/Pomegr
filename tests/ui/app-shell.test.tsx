@@ -368,6 +368,41 @@ describe("Command Center app shell", () => {
     expect(row).not.toHaveClass("warning");
   });
 
+  it("closes the foldable primary menu when the sidebar usage-limits link is followed", async () => {
+    const user = userEvent.setup();
+    const recentSession = { ...sessions[0], createdAt: new Date().toISOString() };
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [recentSession] }));
+    usageLimitsState.snapshot = {
+      revision: 1,
+      generatedAt: null,
+      providers: [{
+        provider: "claude",
+        source: "Claude Code",
+        readiness: "ready",
+        usageLimits: {
+          available: true,
+          fetchedAt: null,
+          attemptedAt: null,
+          limits: [{ id: "seven-day", label: "Seven day", window: "7 days", percent: 40, resetsAt: null, severity: "normal", active: true }],
+        },
+      }],
+      readiness: { claude: "ready", codex: "ready" },
+    };
+    render(<AppShell><main>Home content</main></AppShell>);
+
+    const sidebar = screen.getByRole("complementary", { name: "Primary navigation" });
+    const view = await screen.findByRole("link", { name: "View" });
+    expect(view).toHaveAttribute("href", "/usage-limits");
+    // The drawer is only a phone affordance; a jsdom click would otherwise try to navigate.
+    view.addEventListener("click", (event) => event.preventDefault());
+    await user.click(screen.getByRole("button", { name: "Open primary menu" }));
+    expect(sidebar).toHaveClass("isOpen");
+
+    await user.click(view);
+    expect(sidebar).not.toHaveClass("isOpen");
+    expect(screen.getByRole("button", { name: "Open primary menu" })).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("keeps the desktop update offer in the persistent rail", async () => {
     const user = userEvent.setup();
     const state: DesktopState = { paused: false, launchAtLogin: false, launchAtLoginAvailable: true, closeBehavior: "ask", notifications: true, notificationQuietUntil: null, displayPreferences: { estimatedCost: true }, update: { status: "ready", version: "1.2.3" } };
