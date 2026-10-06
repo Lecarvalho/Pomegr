@@ -304,7 +304,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
         <div className="commandSidebarFoot">
           <div className="commandNavDivider" aria-hidden="true" />
           {update?.version && (update.status === "ready" || update.status === "installing") ? <DesktopUpdateOffer version={update.version} installing={update.status === "installing"} onInstall={onInstallUpdate} /> : null}
-          {sidebarLimits.length > 0 && <section className="commandSidebarLimits" aria-label="Usage limits"><header><span>Usage limits</span><Link href="/usage-limits">View</Link></header>{sidebarLimits.map((limit) => <div key={limit.provider} className={`commandSidebarLimit ${limit.severity}`}><span>{limit.provider}</span><strong>{Math.round(limit.percent)}% · {limit.label}</strong><i aria-hidden="true"><b style={{ width: `${limit.percent}%` }} /></i></div>)}</section>}
+          {sidebarLimits.length > 0 && <section className="commandSidebarLimits" aria-label="Usage limits"><header><span>Usage limits</span><Link href="/usage-limits" onClick={() => closeMobileNavigation(false)}>View</Link></header>{sidebarLimits.map((limit) => <div key={limit.provider} className={`commandSidebarLimit ${limit.severity}`}><span>{limit.provider}</span><strong>{Math.round(limit.percent)}% · {limit.label}</strong><i aria-hidden="true"><b style={{ width: `${limit.percent}%` }} /></i></div>)}</section>}
           <span>{loading ? "Connecting to the local observer." : connected ? "Session data remains on this machine." : "Local observer unavailable. Showing last known-good state."}</span>
           <strong>Pomegr v{pomegrPackageManifest.version}</strong>
           <small>MCP v{pomegrPluginManifest.version}</small>
