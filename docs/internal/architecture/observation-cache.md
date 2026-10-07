@@ -2311,10 +2311,10 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Safety reconciliation | Backend adapter / U1 | Repairs missed notifications and feeds normalization | Every 10 seconds for observed sources; reconciliation work has lower priority than notification-driven work |
 | Provider normalization | Backend adapter / U2 | Builds a private candidate | Immediately after complete records are acquired |
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | Activity/Requests demand only, with one foreground and one background slot in its separate scheduler; matching source keys do not replay, and state polling never enqueues work |
-| Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
+| Session publication | Backend store / C | Writes a new immutable L1 evidence revision | New evidence for a session with no derivation start in the last 500 ms publishes in the next event-loop turn; otherwise its derivation starts 500 ms after that session's previous one. See [Session publication spacing](#session-publication-spacing). |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
 | Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions whose projection inputs changed, and asynchronously after a known evicted session is requested |
-| Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
+| Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, with no added delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
 | Routine checkpoint | Backend bounded owner / P | Coalesces committed L1 evidence and atomically replaces L2 JSON | Eligible five seconds after quiet or after 60 seconds of continuous activity; queue service and failures can delay durability |
@@ -2326,6 +2326,45 @@ Checkpoint files use temporary-file creation followed by atomic replacement. A m
 corrupt, oversized, unknown-version, invalid, or source-incompatible checkpoint is ignored
 and rebuilt in the background. Checkpoints are an optimization; provider-owned sources
 remain the source of truth.
+
+### Session publication spacing
+
+The coordinator schedules each session's publication separately, through
+`server/runtime/session-publication-schedule.mjs`. The spacing is 500 ms between two
+derivation starts of one session. It counts from every start, whatever the outcome: a
+commit, an unchanged or rejected commit, a failure, or a result dropped because a newer
+candidate replaced it.
+
+- **Quiet session.** New provider evidence for a session with no derivation start in the
+  last 500 ms is derived and committed in the next event-loop turn. Nothing waits for a
+  gathering window.
+- **Session that just derived.** Its next derivation starts 500 ms after the previous
+  start. Candidates that arrive meanwhile replace the pending evidence without moving that
+  deadline, so continuous work cannot postpone publication. Two candidates less than
+  500 ms apart therefore publish twice: the first at once, the second 500 ms after it.
+- **What the spacing guarantees.** Derivation starts of one session are never less than
+  500 ms apart. A publication follows its derivation, so publications are normally 500 ms
+  apart as well, but that is not absolute: a slow derivation followed by a faster one
+  publishes closer together, and a derivation that runs longer than 500 ms can overlap the
+  next one.
+- **Candidate replaced during derivation.** The older result is dropped. The newer
+  candidate keeps the deadline its arrival set, 500 ms after the dropped derivation
+  started, and the end of that derivation moves nothing forward. While every derivation of
+  a burst is replaced before it finishes, the burst publishes once, after its last
+  candidate.
+- **Rederivation without new evidence.** A restored checkpoint and a downstream
+  dependency refresh (resource observation, repository association) wait 500 ms from the
+  first pending one, so a startup restore or a refresh of every live session publishes as
+  one batch followed by one catalog commit. New evidence publishes ahead of a pending
+  refresh and carries it. Behind a pending restore it joins the restore's batch. Each of
+  these rederivations is a derivation start: a live session's resource observation runs
+  every five seconds, so new evidence that arrives within 500 ms after one waits out the
+  remainder. That costs latency only.
+- **Failed derivation.** The previous committed revision is retained. The candidate
+  retries after 1, 2, 4, 8, and 16 seconds and is then dropped. New provider evidence moves
+  the retry forward, but not inside the 500 ms after the failed derivation started.
+  Nothing else moves a retry: a derivation of a candidate that was already replaced
+  schedules nothing and moves no deadline, whether it fails or succeeds.
 
 ### Bounded persistence ownership
 
@@ -3047,6 +3086,25 @@ fields per row between commits and reuses them while the row's snapshot, `isLive
 `activityStatus`, and restored-activity flag are unchanged; the walk reads nothing else
 from the catalog entry. The memo holds one record for each resident row of the last commit
 and holds its snapshot weakly, so a record outlives neither the snapshot nor the catalog row.
+
+A session commit announces its `session` event before the catalog commit that it schedules
+has rebuilt the session's row. Until that catalog commit runs, D projects the session's
+domains against the committed row with `currentActivity` and this fallback derived from the
+evidence that just committed, under the row's committed `isLive` and `activityStatus`. The
+derivation goes through the same memo, so the catalog commit reuses it and each evidence
+publication walks its row once. One evidence publication therefore produces one
+`session-summary` revision that already carries current activity, and the catalog commit
+that follows finds the session's projection inputs unchanged.
+
+This view (`server/sessions/catalog/session-row-evidence.mjs`) applies only while the row
+the provider last published agrees with the committed row in `isLive`, `needsInput`, and
+`activityStatus`. When a lifecycle change or the row's removal is accepted but not yet
+committed, D projects against the committed row unchanged and the pending catalog commit
+delivers the lifecycle and the activity together. New evidence is therefore never shown
+under a lifecycle that is about to be replaced, such as a running task on a session that
+is already idle, and lifecycle fields are never taken ahead of the catalog. The view keeps
+only the IDs of sessions whose evidence committed since the last catalog commit, and
+clears them at every catalog commit and on stop.
 
 Catalog idle, stopped, open, unknown, or non-live transitions immediately replace a
 running fallback with last-observed evidence, without new acquisition or changing the

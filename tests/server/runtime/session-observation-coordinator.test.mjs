@@ -48,7 +48,7 @@ function deadlineScheduler() {
   };
 }
 
-test("continuous source candidates publish at the first deadline and update the catalog without a second delay", async () => {
+test("continuous source candidates publish at once, then once per spacing, and update the catalog without a second delay", async () => {
   const scheduler = deadlineScheduler();
   const store = memoryStore();
   let publisher;
@@ -66,7 +66,7 @@ test("continuous source candidates publish at the first deadline and update the 
       currentActivity: { label: `Step ${version}`, observedAt: "2026-08-30T12:00:00.000Z" },
     }] });
     await scheduler.advance(100);
-    if (version % 5 === 0) {
+    if (version === 1 || version % 5 === 0) {
       assert.equal(store.getByQualifiedId("codex:one").publicState.version, version);
       assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity.label, `Step ${version}`);
     }
@@ -74,7 +74,7 @@ test("continuous source candidates publish at the first deadline and update the 
   publisher.publishSession("codex", "one", { version: 11, session: {}, agents: [{ id: "primary", status: "idle", currentActivity: null }] });
   await scheduler.advance(500);
   assert.equal(coordinator.catalog().snapshot.value.sessions[0].currentActivity, null);
-  assert.equal(coordinator.diagnostics().sessionCommits, 3);
+  assert.equal(coordinator.diagnostics().sessionCommits, 4);
   await coordinator.stop();
 });
 
@@ -104,7 +104,7 @@ test("fresh source evidence preempts a delayed derivation retry", async () => {
   let publisher;
   const coordinator = createSessionObservationCoordinator({
     registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
-    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel, monotonicNow: scheduler.now,
     deriveSession: async ({ evidence }) => {
       if (evidence.version === 1) throw new Error("Synthetic derivation failure");
       return { readiness: {}, publicState: evidence };
@@ -119,7 +119,7 @@ test("fresh source evidence preempts a delayed derivation retry", async () => {
   await coordinator.stop();
 });
 
-test("an obsolete in-flight failure cannot restart a fresh candidate's deadline", async () => {
+test("an obsolete in-flight failure cannot move a fresh candidate's deadline", async () => {
   const scheduler = deadlineScheduler();
   const store = memoryStore();
   let publisher;
@@ -127,19 +127,19 @@ test("an obsolete in-flight failure cannot restart a fresh candidate's deadline"
   const obsoleteDerivation = new Promise((resolve, reject) => { rejectObsolete = reject; });
   const coordinator = createSessionObservationCoordinator({
     registry: { providers: [{ id: "codex", source: "Codex" }], async startObservers(value) { publisher = value; return { async stop() {} }; } },
-    store, schedule: scheduler.schedule, cancel: scheduler.cancel,
+    store, schedule: scheduler.schedule, cancel: scheduler.cancel, monotonicNow: scheduler.now,
     deriveSession: ({ evidence }) => evidence.version === 1
       ? obsoleteDerivation
       : Promise.resolve({ readiness: {}, publicState: evidence }),
   });
   await coordinator.start();
   publisher.publishSession("codex", "one", { version: 1, session: {} });
-  await scheduler.advance(500);
+  await scheduler.advance(100);
   publisher.publishSession("codex", "one", { version: 2, session: {} });
   rejectObsolete(new Error("Synthetic obsolete derivation failure"));
   await scheduler.advance(100);
   publisher.publishSession("codex", "one", { version: 3, session: {} });
-  await scheduler.advance(399);
+  await scheduler.advance(299);
   assert.equal(store.getByQualifiedId("codex:one"), null);
   await scheduler.advance(1);
   assert.equal(store.getByQualifiedId("codex:one")?.publicState.version, 3);

@@ -3,8 +3,10 @@ import { createCommittedResponseCache } from "../persistence/committed-response-
 import { createCheckpointRestore } from "../sessions/checkpoints/session-checkpoint-restore.mjs";
 import { createDurationSeries } from "../diagnostics/pipeline-operations.mjs";
 import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
+import { createSessionPublicationSchedule } from "./session-publication-schedule.mjs";
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { catalogShellRow, createRowActivityMemo, createRowSummaryWriter } from "../sessions/catalog/session-catalog-row.mjs";
+import { createRowEvidenceView } from "../sessions/catalog/session-row-evidence.mjs";
 import { createSessionCatalogInventory } from "../sessions/catalog/session-catalog-inventory.mjs";
 import { scanProviderHeaders } from "../sessions/catalog/session-header-scan.mjs";
 import { MAX_CATALOG_SHELL_ROWS, catalogSourceScopeKey, catalogStructure, compareCatalogEntries, downgradeRestoredLifecycle, openLiveDeadline, publicCatalogEntry, qualifiedSessionId } from "../sessions/catalog/session-catalog-runtime.mjs";
@@ -68,11 +70,20 @@ export function createSessionObservationCoordinator(options = {}) {
     activeSessionIds: options.notificationActiveSessionIds });
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
-  const scheduledSessions = new Map();
+  // `commitDelayMs` is the minimum spacing between two derivation starts of one session, and
+  // the gathering delay of a rederivation that carries no new provider evidence.
+  const publication = createSessionPublicationSchedule({ schedule, cancel, now: monotonicNow, spacingMs: commitDelayMs,
+    publish: (qualifiedId) => { void commitSession(qualifiedId); } });
   const sessionRetryAttempts = new Map();
   const deferredProjectionRefreshes = new Set();
   let persistenceQueue = null;
   const restoredActivitySessions = new Set();
+  // The row D projects against between a session commit and the catalog commit it schedules.
+  const rowEvidence = createRowEvidenceView({ store, memo: rowActivity, isRestored: (id) => restoredActivitySessions.has(id),
+    pendingEntry(row) {
+      const entry = catalogsByProvider.get(row.provider)?.find((candidate) => candidate.id === row.id);
+      return entry ? projectOpenVisibility(entry, now()) : null;
+    } });
   const restoredHydrations = new Map();
   const subscribers = new Set();
   let catalogTimer = null;
@@ -195,6 +206,7 @@ export function createSessionObservationCoordinator(options = {}) {
         activity: snapshot ? rowActivity.activity(entry, snapshot, restoredActivity) : null });
     });
     rowActivity.settle();
+    rowEvidence.clear();
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
     // One provider's empty result cannot establish that the combined catalog is
     // empty while another is still discovering sessions. Available rows can be
@@ -241,7 +253,6 @@ export function createSessionObservationCoordinator(options = {}) {
 
   async function commitSession(qualifiedId) {
     const workGeneration = generation;
-    scheduledSessions.delete(qualifiedId);
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
     const flow = candidate.traceFlow;
@@ -251,6 +262,7 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope });
       const derivationStartedAt = monotonicNow();
       const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow, scope });
+      publication.started(qualifiedId);
       let derived;
       try {
         derived = await deriveSession(candidate);
@@ -268,7 +280,8 @@ export function createSessionObservationCoordinator(options = {}) {
       if (pendingSessions.get(qualifiedId) !== candidate) {
         trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope, outcome: "superseded" });
         trace?.finishFlow(flow, { outcome: "superseded" });
-        scheduleSessionCommit(qualifiedId);
+        // The pending candidate keeps the timer its arrival set. This arms one only if none is left.
+        if (pendingSessions.has(qualifiedId)) publication.gathered(qualifiedId);
         return;
       }
       const storeStartedAt = monotonicNow();
@@ -313,6 +326,7 @@ export function createSessionObservationCoordinator(options = {}) {
         qa.sessionCommits += 1;
         // Evidence is already committed: don't add a second summary delay before
         // publishing current activity and notifying the catalog's consumers.
+        rowEvidence.mark(qualifiedId);
         scheduleCatalogCommit(catalogStructuralDelayMs);
         notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision,
           freshObservation: candidate.freshObservation === true });
@@ -332,7 +346,7 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.finishFlow(flow, { outcome: "failed" });
       // D failures retain the previous committed revision. Retry this candidate
       // only while it is current; an obsolete failure must not mark newer work
-      // as a retry and reset its already-scheduled publication deadline.
+      // as a retry or move its already-scheduled publication deadline.
       qa.rejectedCandidates += 1;
       if (pendingSessions.get(qualifiedId) === candidate) scheduleSessionRetry(qualifiedId);
     }
@@ -347,13 +361,7 @@ export function createSessionObservationCoordinator(options = {}) {
       sessionRetryAttempts.delete(qualifiedId);
       return;
     }
-    scheduleSessionCommit(qualifiedId, Math.min(30_000, Math.max(1_000, commitDelayMs) * (2 ** Math.min(attempt - 1, 5))));
-  }
-
-  function scheduleSessionCommit(qualifiedId, delay = commitDelayMs) {
-    if (scheduledSessions.has(qualifiedId)) return;
-    const timer = schedule(() => { void commitSession(qualifiedId); }, delay);
-    scheduledSessions.set(qualifiedId, timer);
+    publication.retry(qualifiedId, Math.min(30_000, Math.max(1_000, commitDelayMs) * (2 ** Math.min(attempt - 1, 5))));
   }
 
   const publisher = Object.freeze({
@@ -409,14 +417,6 @@ export function createSessionObservationCoordinator(options = {}) {
       // skips restoration rather than risking an older replacement.
       if (restoreFreshSessions && restoreFreshSessions.size < 4096) restoreFreshSessions.add(qualifiedId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
-      const scheduled = scheduledSessions.get(qualifiedId);
-      // Coalesce at the first candidate's deadline. Restarting this timer for
-      // every append can starve publication indefinitely during continuous work.
-      // Fresh evidence may still preempt a delayed failure retry.
-      if (scheduled && sessionRetryAttempts.has(qualifiedId)) {
-        cancel(scheduled);
-        scheduledSessions.delete(qualifiedId);
-      }
       const scope = traceScope(providerId, localSessionId);
       pendingSessions.set(qualifiedId, Object.freeze({
         providerId,
@@ -432,7 +432,11 @@ export function createSessionObservationCoordinator(options = {}) {
         traceFlow: trace?.createFlow({ scope }),
       }));
       sessionRetryAttempts.delete(qualifiedId);
-      scheduleSessionCommit(qualifiedId);
+      // A quiet session derives in the next turn. One that derived within the spacing waits it
+      // out, and later candidates replace this one without moving that deadline, so continuous
+      // work cannot starve publication. Fresh evidence still moves a delayed failure retry or a
+      // gathered refresh forward; behind a pending restore it joins that batch.
+      publication.fresh(qualifiedId);
     },
 
     invalidateSession(providerId, localSessionId, reason) {
@@ -481,7 +485,8 @@ export function createSessionObservationCoordinator(options = {}) {
       pinned: Boolean(record.evidence?.historical === false), queuedAt: monotonicNow(),
       traceScope: scope, traceFlow: trace?.createFlow({ scope }),
     }));
-    scheduleSessionCommit(restored.snapshot.qualifiedId);
+    // The restored revision is already served. Its rederivation gathers, so a whole restore keeps one deadline.
+    publication.restored(restored.snapshot.qualifiedId);
     return true;
   }
 
@@ -638,7 +643,7 @@ export function createSessionObservationCoordinator(options = {}) {
       traceFlow: trace?.createFlow({ scope }),
     }));
     sessionRetryAttempts.delete(qualifiedId);
-    scheduleSessionCommit(qualifiedId);
+    publication.gathered(qualifiedId);
     return true;
   }
 
@@ -656,8 +661,8 @@ export function createSessionObservationCoordinator(options = {}) {
     catalogTimer = null;
     catalogTimerDueAt = null;
     catalogDirtyAt = null;
-    for (const timer of scheduledSessions.values()) cancel(timer);
-    scheduledSessions.clear();
+    publication.clear();
+    rowEvidence.clear();
     pendingSessions.clear();
     sessionRetryAttempts.clear();
     deferredProjectionRefreshes.clear();
@@ -683,7 +688,7 @@ export function createSessionObservationCoordinator(options = {}) {
     refreshProjection,
     persistenceBusy: () => {
       const pending = persistenceQueue?.stats();
-      return pendingSessions.size > 0 || scheduledSessions.size > 0 || Boolean(pending?.pending || pending?.active);
+      return pendingSessions.size > 0 || publication.pending() || Boolean(pending?.pending || pending?.active);
     },
     catalog: (revision) => catalogCache.read(revision),
     notificationCatalog: notificationCatalog.read,
@@ -703,6 +708,7 @@ export function createSessionObservationCoordinator(options = {}) {
       return { revision: current?.revision ?? 0, value: { ...base, sessions: [...requested, ...baseRows.values()].slice(0, MAX_CATALOG_SHELL_ROWS), coverage: catalogInventory.coverage() } };
     },
     catalogIdentity: (sessionId) => catalogInventory.get(sessionId),
+    rowWithCommittedEvidence: (row) => rowEvidence.row(row),
     catalogReadiness: () => Object.freeze(Object.fromEntries((registry.providers || []).map((provider) => [
       provider.id,
       catalogReadinessByProvider.get(provider.id) || "loading",
