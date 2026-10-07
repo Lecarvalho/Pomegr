@@ -78,8 +78,7 @@ itself show how stale the dashboard was. The baseline measures live latency dire
 
 `candidate_to_commit` sits just above 500 ms in every period. `commitDelayMs` defaults to
 500 in the coordinator, so part of live latency is a fixed delay that none of the three
-fixes changes. The baseline itemizes it; changing it is a separate decision for the product
-owner.
+fixes changes. The baseline itemizes it, and Fix 4 below removes it.
 
 ## Baseline to capture before any fix
 
@@ -380,6 +379,45 @@ has a pooled writable connection still see committed data.
 
 Evidence it worked: `history_contribution` median and the `#publishDiskContribution` share
 of a CPU profile, against 49 to 85 ms and 10.6% above.
+
+## Follow-on fixes decided after the baseline
+
+The product owner approved both on 2026-10-07, after reading the baseline. Each is its own
+branch and pull request and keeps the same contracts as the three fixes above.
+
+### Fix 4: remove the fixed commit wait from live updates
+
+Where: `scheduleSessionCommit` and `commitSession` in
+`server/runtime/session-observation-coordinator.mjs`. The first pending candidate for a
+session starts a `commitDelayMs` timer (500 ms); later candidates replace the pending evidence
+without restarting it; a candidate replaced during derivation is dropped and waits another
+full delay. The baseline's `candidate_to_commit` median was 517 ms of a 687 ms median
+write-to-served wait.
+
+Change: publish the first candidate of a quiet session promptly and keep a minimum spacing
+between two publications of the same session, so a burst still coalesces and the publication
+rate per session stays bounded. A candidate superseded during derivation publishes at the next
+permitted time, not after another full delay. Build this on Fix 2, because every session
+publication is followed by a catalog commit and its cost sets how often publishing is
+affordable.
+
+Must hold: the publication rate per session under a continuous burst is no higher than today.
+A failed derivation still retains the previous committed revision and backs off as today.
+Fresh evidence still preempts a delayed failure retry. Restored-checkpoint sessions and
+startup recovery, where many sessions publish at once, must not turn into a commit storm:
+count publications and catalog commits in a test for N sessions arriving together.
+
+Evidence it worked: B3 median and 95th percentile, `candidate_to_commit`, and B6 idle cost,
+which must not rise.
+
+### Fix 5: historical Codex sessions that never finish loading
+
+The baseline found 4 of 6 historical Codex sessions whose summary stayed `loading` for 60 s
+because the `repository` section never became ready, while the `core` section was ready in
+about a second. The cause is under investigation; this section is completed when it is
+confirmed.
+
+Evidence it worked: B5 for Codex, with fresh sessions (`--b5-skip`), reaches top-level `ready`.
 
 ## Comparison after the fixes
 
