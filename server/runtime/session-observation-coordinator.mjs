@@ -3,6 +3,7 @@ import { createCommittedResponseCache } from "../persistence/committed-response-
 import { createCheckpointRestore } from "../sessions/checkpoints/session-checkpoint-restore.mjs";
 import { createDurationSeries } from "../diagnostics/pipeline-operations.mjs";
 import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
+import { createSessionPublicationSchedule } from "./session-publication-schedule.mjs";
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { catalogShellRow, createRowActivityMemo, createRowSummaryWriter } from "../sessions/catalog/session-catalog-row.mjs";
 import { createSessionCatalogInventory } from "../sessions/catalog/session-catalog-inventory.mjs";
@@ -68,7 +69,10 @@ export function createSessionObservationCoordinator(options = {}) {
     activeSessionIds: options.notificationActiveSessionIds });
   const catalogReadinessByProvider = new Map();
   const pendingSessions = new Map();
-  const scheduledSessions = new Map();
+  // `commitDelayMs` is the minimum spacing between two publications of one session, and the
+  // gathering delay of a rederivation that carries no new provider evidence.
+  const publication = createSessionPublicationSchedule({ schedule, cancel, now: monotonicNow, spacingMs: commitDelayMs,
+    publish: (qualifiedId) => { void commitSession(qualifiedId); } });
   const sessionRetryAttempts = new Map();
   const deferredProjectionRefreshes = new Set();
   let persistenceQueue = null;
@@ -241,7 +245,6 @@ export function createSessionObservationCoordinator(options = {}) {
 
   async function commitSession(qualifiedId) {
     const workGeneration = generation;
-    scheduledSessions.delete(qualifiedId);
     const candidate = pendingSessions.get(qualifiedId);
     if (!candidate || stopped) return;
     const flow = candidate.traceFlow;
@@ -251,6 +254,7 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.recordDuration({ stage: "session_commit_wait", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope });
       const derivationStartedAt = monotonicNow();
       const derivationSpan = trace?.begin({ stage: "session_derivation", domain: "derivation", flow, scope });
+      const derivationEnded = publication.derivationStarted(qualifiedId);
       let derived;
       try {
         derived = await deriveSession(candidate);
@@ -259,6 +263,7 @@ export function createSessionObservationCoordinator(options = {}) {
         trace?.end(derivationSpan, { outcome: "failed" });
         throw error;
       } finally {
+        derivationEnded();
         timings.sessionDerivation.record(monotonicNow() - derivationStartedAt);
       }
       if (stopped || workGeneration !== generation) {
@@ -268,9 +273,11 @@ export function createSessionObservationCoordinator(options = {}) {
       if (pendingSessions.get(qualifiedId) !== candidate) {
         trace?.recordDuration({ stage: "candidate_to_commit", domain: "commit", durationMs: monotonicNow() - candidate.queuedAt, flow, scope, outcome: "superseded" });
         trace?.finishFlow(flow, { outcome: "superseded" });
-        scheduleSessionCommit(qualifiedId);
+        // The newer candidate publishes at the next permitted time, not after another full delay.
+        if (pendingSessions.has(qualifiedId)) publication.fresh(qualifiedId);
         return;
       }
+      publication.settled(qualifiedId);
       const storeStartedAt = monotonicNow();
       const storeSpan = trace?.begin({ stage: "normalized_store_commit", domain: "commit", flow, scope });
       let snapshot;
@@ -332,9 +339,11 @@ export function createSessionObservationCoordinator(options = {}) {
       trace?.finishFlow(flow, { outcome: "failed" });
       // D failures retain the previous committed revision. Retry this candidate
       // only while it is current; an obsolete failure must not mark newer work
-      // as a retry and reset its already-scheduled publication deadline.
+      // as a retry or move its already-scheduled publication deadline.
       qa.rejectedCandidates += 1;
-      if (pendingSessions.get(qualifiedId) === candidate) scheduleSessionRetry(qualifiedId);
+      if (pendingSessions.get(qualifiedId) !== candidate) return;
+      publication.settled(qualifiedId);
+      scheduleSessionRetry(qualifiedId);
     }
   }
 
@@ -347,13 +356,7 @@ export function createSessionObservationCoordinator(options = {}) {
       sessionRetryAttempts.delete(qualifiedId);
       return;
     }
-    scheduleSessionCommit(qualifiedId, Math.min(30_000, Math.max(1_000, commitDelayMs) * (2 ** Math.min(attempt - 1, 5))));
-  }
-
-  function scheduleSessionCommit(qualifiedId, delay = commitDelayMs) {
-    if (scheduledSessions.has(qualifiedId)) return;
-    const timer = schedule(() => { void commitSession(qualifiedId); }, delay);
-    scheduledSessions.set(qualifiedId, timer);
+    publication.retry(qualifiedId, Math.min(30_000, Math.max(1_000, commitDelayMs) * (2 ** Math.min(attempt - 1, 5))));
   }
 
   const publisher = Object.freeze({
@@ -409,14 +412,6 @@ export function createSessionObservationCoordinator(options = {}) {
       // skips restoration rather than risking an older replacement.
       if (restoreFreshSessions && restoreFreshSessions.size < 4096) restoreFreshSessions.add(qualifiedId);
       const provider = registry.providers?.find((candidate) => candidate.id === providerId);
-      const scheduled = scheduledSessions.get(qualifiedId);
-      // Coalesce at the first candidate's deadline. Restarting this timer for
-      // every append can starve publication indefinitely during continuous work.
-      // Fresh evidence may still preempt a delayed failure retry.
-      if (scheduled && sessionRetryAttempts.has(qualifiedId)) {
-        cancel(scheduled);
-        scheduledSessions.delete(qualifiedId);
-      }
       const scope = traceScope(providerId, localSessionId);
       pendingSessions.set(qualifiedId, Object.freeze({
         providerId,
@@ -432,7 +427,11 @@ export function createSessionObservationCoordinator(options = {}) {
         traceFlow: trace?.createFlow({ scope }),
       }));
       sessionRetryAttempts.delete(qualifiedId);
-      scheduleSessionCommit(qualifiedId);
+      // A quiet session publishes in the next turn. One that just published waits out its
+      // spacing, and later candidates replace this one without moving that deadline, so
+      // continuous work cannot starve publication. Fresh evidence still moves a delayed
+      // failure retry or a gathered refresh forward; behind a pending restore it joins that batch.
+      publication.fresh(qualifiedId);
     },
 
     invalidateSession(providerId, localSessionId, reason) {
@@ -481,7 +480,8 @@ export function createSessionObservationCoordinator(options = {}) {
       pinned: Boolean(record.evidence?.historical === false), queuedAt: monotonicNow(),
       traceScope: scope, traceFlow: trace?.createFlow({ scope }),
     }));
-    scheduleSessionCommit(restored.snapshot.qualifiedId);
+    // The restored revision is already served. Its rederivation gathers, so a whole restore keeps one deadline.
+    publication.restored(restored.snapshot.qualifiedId);
     return true;
   }
 
@@ -638,7 +638,7 @@ export function createSessionObservationCoordinator(options = {}) {
       traceFlow: trace?.createFlow({ scope }),
     }));
     sessionRetryAttempts.delete(qualifiedId);
-    scheduleSessionCommit(qualifiedId);
+    publication.gathered(qualifiedId);
     return true;
   }
 
@@ -656,8 +656,7 @@ export function createSessionObservationCoordinator(options = {}) {
     catalogTimer = null;
     catalogTimerDueAt = null;
     catalogDirtyAt = null;
-    for (const timer of scheduledSessions.values()) cancel(timer);
-    scheduledSessions.clear();
+    publication.clear();
     pendingSessions.clear();
     sessionRetryAttempts.clear();
     deferredProjectionRefreshes.clear();
@@ -683,7 +682,7 @@ export function createSessionObservationCoordinator(options = {}) {
     refreshProjection,
     persistenceBusy: () => {
       const pending = persistenceQueue?.stats();
-      return pendingSessions.size > 0 || scheduledSessions.size > 0 || Boolean(pending?.pending || pending?.active);
+      return pendingSessions.size > 0 || publication.pending() || Boolean(pending?.pending || pending?.active);
     },
     catalog: (revision) => catalogCache.read(revision),
     notificationCatalog: notificationCatalog.read,
