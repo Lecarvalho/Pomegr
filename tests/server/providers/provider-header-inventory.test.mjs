@@ -37,7 +37,23 @@ test("Claude enumerates every top-level header in bounded batches without transc
   assert.equal(rows.every((row) => !row.isLive && row.activityStatus === "idle"), true, "Claude headers carry the adapter non-live fallback");
 });
 
-test("Claude keeps enumerating past an empty transcript but reports the scan incomplete", async (context) => {
+test("Claude treats a settled empty transcript as a non-candidate so the scan stays complete", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-settled-empty-header-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const project = path.join(root, "projects", "project");
+  await mkdir(project, { recursive: true });
+  await writeFile(path.join(project, "empty-session.jsonl"), "");
+  await writeFile(path.join(project, "later-session.jsonl"), `${JSON.stringify({ sessionId: "later-session", type: "user" })}\n`);
+  const provider = createClaudeProvider({
+    claudeProjectsDir: path.join(root, "projects"), claudeConfigDir: root, registryRoot: path.join(root, "registry"),
+    now: () => Date.now() + 5 * 60_000,
+  });
+  const { result, rows } = await collect(provider);
+  assert.deepEqual(result, { complete: true }, "a stale empty file cannot block pruning forever");
+  assert.deepEqual(rows.map((row) => row.localId), ["later-session"]);
+});
+
+test("Claude keeps enumerating past a fresh empty transcript but reports the scan incomplete", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-claude-empty-header-"));
   context.after(() => rm(root, { recursive: true, force: true }));
   const first = path.join(root, "projects", "a-project"), later = path.join(root, "projects", "b-project");
