@@ -332,7 +332,7 @@ test("snapshotFromLiveCheck starts a fresh timeline when a newly bound repositor
 
 test("sessionRepositorySnapshot resolves through the recorded single-repository identity (provider-neutral: no providerId argument), rejecting unbound, ambiguous, and mismatched sidecars", () => {
   const snapshot = normalizeRepositorySnapshot(validSnapshot({ repositoryId: "repo-0123456789abcdef01234567" }));
-  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot), snapshot);
+  assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567", updatedAt: "2026-09-20T12:00:00.000Z" } }, snapshot), snapshot);
   assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "single", repositoryId: "repo-fedcba9876543210fedcba98" } }, snapshot), null);
   assert.equal(sessionRepositorySnapshot({ session: { repositoryAttribution: "multiple", repositoryId: "repo-0123456789abcdef01234567" } }, snapshot), null);
   assert.equal(sessionRepositorySnapshot({ session: {} }, snapshot), null);
@@ -360,7 +360,7 @@ test("resolveCheckpointRepository and resolveHistoricalRepositoryAndPullRequests
     pullRequestReader: async () => assert.fail("must not call the pull-request reader when a snapshot exists"),
   };
   const evidence = { session: {
-    cwd: "C:\\synthetic", recordedGitBranch: "feat/example",
+    cwd: "C:\\synthetic", recordedGitBranch: "feat/example", updatedAt: "2026-09-20T12:00:00.000Z",
     repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567",
   }, pullRequestCreations: [] };
 

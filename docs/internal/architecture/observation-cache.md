@@ -422,6 +422,38 @@ an interrupted writer, a hot rollback journal can temporarily make read-only his
 unavailable until background publication or scheduled maintenance opens it for recovery.
 The previous complete transaction survives; ordinary GETs do not repair it.
 
+While the monitor runs, the history store keeps a bounded pool of open SQLite connections
+instead of opening a database for every call, and prepares each statement once per
+connection. `SessionHistoryStore.start()` begins retention and `stop()` ends it; a store
+that was never started, or a call that arrives after `stop()`, opens and closes its own
+connection as before. The pool holds at most eight connections
+(`MAX_POOLED_CONNECTIONS`), keyed by database file and access mode, and closes the least
+recently used idle connection to make room. One unreferenced timer closes a connection
+idle for 30 seconds (`POOLED_CONNECTION_IDLE_MS`), which is longer than the usual gap
+between contributions to a live session. Both constants live in
+`server/sessions/history/session-history-connection-pool.mjs`.
+
+Reads and transactions use separate connections to the same file. A read-only connection
+serves GETs and reads, so a read still never creates a database, opens it for writing, or
+rolls back another writer's journal; a read-write connection serves transactions. A new
+connection applies the same settings as before: `journal_mode=DELETE`, `synchronous=FULL`,
+and one `BEGIN IMMEDIATE` transaction per contribution, so a crash loses nothing more than
+before.
+Every store operation is synchronous and ends its transaction before returning, so an idle
+connection holds no SQLite lock and scheduled maintenance, which keeps its own short-lived
+connection, contends exactly as before. A nested request for a connection already in use
+gets a separate one that closes on release.
+
+Any exception from a connection closes it instead of returning it to the pool: an
+unreadable or malformed database, unexpected metadata, a busy timeout, or a failed commit.
+The next call opens a fresh connection, so recovery of a killed writer's journal and the
+unavailable result for unreadable history are unchanged. A connection is also discarded when
+its file was removed or replaced after it opened. Windows cannot delete or move a database
+while a handle is open, so `stop()` closes every pooled connection after the last accepted
+write drains, before a desktop runtime releases its data root. No other code deletes,
+renames, or replaces a session database; maintenance reclaims free pages in place. Add an
+explicit per-file release to the pool before adding such a path.
+
 Free database pages are reused. Explicit low-priority maintenance reclaims at most one
 free page per visited database, within the shared maintenance batch budget. Legacy
 generation cleanup keeps the current and preceding generation and deletes only
@@ -1930,6 +1962,17 @@ React, persisted checkpoints, or browser API fields.
 - Selecting any known uncached historical row queues hydration for that one session. The
   API immediately returns its safe catalog identity with loading readiness, and the UI
   shows the session skeleton until a committed revision is ready.
+- The Codex observer reads a hydrated session as live or historical from its own latest
+  catalog pass. That catalog lists live sessions first and then the newest sessions, up to
+  `catalogLimit` (50) rows; the larger rollout scan only feeds it. A session the catalog
+  does not list is therefore not live, so it is read as historical: it keeps its recorded
+  branch, runs no live Git check, and is not pinned in L1 once its selection moves on. A
+  hydration that arrives before the observer's first catalog pass completes waits for that
+  pass, because an unknown session must not be published as either class and then re-read as
+  the other. If that pass fails, the hydration publishes nothing and the next request asks
+  for a new pass. The lifecycle repair described above applies the same rule to the catalog
+  it has just read. With more than 50 sessions live at once, the sessions past the limit are
+  not live in the catalog and are read the same way.
 - A known selection is pinned before hydration so its first committed snapshot survives
   competing background commits until the browser can receive it. Switching selections
   releases the previous historical pin, including a selection still awaiting hydration.
@@ -2113,6 +2156,24 @@ reachability.
   tool's candidate target paths, unvalidated, so they can be revalidated on every read; like the
   parsed-tail records they are monitor-private memory, never persisted, logged or exposed, and
   they can outlive that file's parsed-tail entry until the scan's own bound evicts them.
+- Parsed Codex rollout records are acquisition scratch, never evidence. The Codex adapter may
+  keep the records of one read so that an unchanged rollout is not parsed again. A hit requires
+  the same file identity, size, modification time and read window, and a matching 256-byte
+  suffix digest. The cache is in memory only, never persisted or exposed, and bounded to 32 MiB
+  of source bytes and the adapter's scan limit of files (500 by default), least recently used
+  first. A read larger than the byte bound is never retained. Once a session's evidence is
+  built, the adapter releases the records of every rollout in that session's family unless its
+  latest catalog pass lists the session as live, so a settled session holds none. Before the
+  first catalog pass, only a live read keeps its records. A live session's family keeps its
+  records under the bound, so while they fit a complete-history replay parses only the
+  rollouts that changed. A replay of a settled session, and a requested rebuild of one whose
+  committed evidence was evicted, each read every rollout in its family once; the history
+  scheduler runs one replay per source key on demand. Evicting or releasing records never
+  removes per-file normalized state. Context snapshots and compactions, execution tasks,
+  current activity, approval mode, plan tasks, and agent runtime and assignments each keep
+  their own bound of the scan limit of files and their own generation check. They are cleared
+  by that bound, by a failed generation check, when the rollout leaves the discovery cache, or
+  when the source is missing, empty, unreadable, replaced, or changed during a read.
 - Codex folds each bounded live delta into its complete normalized story through the shared,
   provider-neutral `session-fold.mjs`. The provider declares a per-field policy: keyed unions
   (usage snapshots, tool calls, activity, compactions, pull-request creations) with a bound
@@ -3333,7 +3394,12 @@ snapshot. These reads run in projection and commit work, never in a GET. The rec
 keeps at most 512 answers in memory (a snapshot, or a known absence) by recency.
 Each live Git check calls `onRepositoryCheck` once observation serving is
 active; until that load settles the check queues behind it, so a live write cannot replace
-an older sidecar baseline before it is restored. The recorder writes a changed
+an older sidecar baseline before it is restored. A check is recorded only while the
+committed catalog lists its session as live, and that is decided again just before the
+write. A session the catalog does not list, or lists as not live, including an expired Open
+row, is never recorded: a session that just ended, or live-mode evidence restored for a
+session that ended while the monitor was down, would otherwise store today's working tree,
+pull requests, and commits as that session's history. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
 or commit count was not observed carries the previous recorded value forward only within
 the same bound repository identity, and an
@@ -3355,6 +3421,31 @@ GETs never inspect Git or GitHub, and a recorded snapshot is never refreshed fro
 unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
+
+As decided by the product owner on 2026-10-07, a historical session does not use a recorded
+snapshot whose check time is more than 24 hours later than the session's last recorded
+evidence. The check time is the snapshot's own `checkedAt`; its branch-comparison and
+pull-request check times are taken before it, or carried forward from an earlier check, so
+one comparison decides. The last recorded
+evidence is `session.updatedAt` of the session's committed normalized evidence, not a file
+time and not the clock. A check exactly 24 hours after is used; a millisecond later it is
+not. When either time is missing or unreadable the comparison cannot be made and the
+snapshot is not used. An unused snapshot behaves exactly as an absent one: the session
+shows its recorded branch, pull requests stay unavailable, and the repository section is
+ready. The decision lives in `sessionRepositorySnapshot`, which every reader of a recorded
+snapshot goes through: the repository domain, `/api/state` `session.repository`, the
+`touchedFiles` committed entries, the session-event commit times, and the checkpoint
+restore projection. It is a pure function of the stored snapshot and the committed
+evidence, so it gives the same answer on every read and after a restart. The file is never
+deleted or rewritten, and the reason stays monitor-private. Live-mode evidence is exempt, so
+a live session never loses what it shows to this rule; a resumed session's new live check
+is recorded over the old snapshot as usual. The rule exists because snapshots recorded for
+sessions the catalog did not list as live were written from the checkout at the time of the
+check. The recording rule above stops new ones. A session can stay catalog-live without new
+evidence for longer than 24 hours only while its owner stays present and it is working or
+waiting for input, since an idle Open row ends five minutes after its last activity and a
+rollout-only live classification ends after two minutes; the snapshot such a session leaves
+is not used.
 
 Snapshot versions 2 to 5 carried window-wide Git-observed lists (`dirtyAtFirstCheck`,
 `becameDirty`, `committedInWindow`, `committedChanges`, `gitObservedTruncated`). They are

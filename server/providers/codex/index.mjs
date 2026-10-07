@@ -132,6 +132,7 @@ export function createCodexProvider(options = {}) {
     scanLimit,
     maximumLiveTailBytes,
     maximumLiveTaskHistoryBytes,
+    maximumRetainedRecordBytes: options.maximumRetainedRecordBytes,
     yieldControl: options.yieldControl,
   });
   const transcriptPathsBySessionId = new Map();
@@ -141,7 +142,6 @@ export function createCodexProvider(options = {}) {
     hydrateLiveApprovalMode,
     hydrateLiveStateEvidence,
     hasLiveContextContinuity,
-    liveAgentAssignmentCache,
     liveApprovalModeCache,
     liveContextUsageCache,
     liveCurrentActivityCache,
@@ -150,6 +150,7 @@ export function createCodexProvider(options = {}) {
     mergeLiveContextEvidence,
     pruneKnownFiles,
     readRolloutRecords,
+    rememberLiveAgentAssignments,
     resolveLiveAgentRuntime,
     reusableLiveAgentAssignments,
     reusableLiveApprovalMode,
@@ -216,6 +217,7 @@ export function createCodexProvider(options = {}) {
     rolloutDiscovery.retain(liveIds);
     sourceLedger.markLive(liveIds);
     const topLevel = threads.filter(isTopLevelCodexSession);
+    liveState.retainRecordsForSessions(topLevel.filter((thread) => sessions.get(thread.localId)?.isLive).map((thread) => thread.localId));
     const identities = await Promise.all(topLevel.map((thread) => headerSessionIdentity(thread.localId, thread.cwd)));
     return topLevel
       .map((thread, index) => Object.assign(codexSessionReference(thread, sessions.get(thread.localId)), { project: identities[index].project }))
@@ -310,11 +312,7 @@ export function createCodexProvider(options = {}) {
             ?? hydrateLiveAgentAssignments(thread.rolloutFile, generation, thread);
           const collaborations = assignmentCollaborations([...retained, ...summary.collaborations]);
           summary = { ...summary, collaborations: [...collaborations, ...summary.collaborations] };
-          liveAgentAssignmentCache.delete(thread.rolloutFile);
-          liveAgentAssignmentCache.set(thread.rolloutFile, { threadId: thread.localId, generation, collaborations });
-          while (liveAgentAssignmentCache.size > scanLimit) {
-            liveAgentAssignmentCache.delete(liveAgentAssignmentCache.keys().next().value);
-          }
+          rememberLiveAgentAssignments(thread.rolloutFile, thread.localId, generation, collaborations);
         }
         if (summary.localId) summaries.set(summary.localId, summary);
         for (const collaboration of summary.collaborations || []) {
@@ -612,6 +610,8 @@ export function createCodexProvider(options = {}) {
     ));
     compactions.sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
     publishNormalizedHistoryRequests(readOptions.onHistoryRequests, "codex", metadata.localId, { agents, activity: historyOwnership.project(activity), toolCalls, usageSnapshots });
+    // The evidence is built: a session the catalog does not list as live keeps no parsed records.
+    liveState.releaseSettledRecords(metadata.localId, historical, allMetadata.map((thread) => thread.rolloutFile));
     return {
       localId: metadata.localId,
       historical,

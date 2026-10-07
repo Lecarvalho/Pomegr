@@ -127,6 +127,10 @@ export function createNormalizedPollingObserver(options) {
   // rule below, so a restart with many recently created sessions cannot flood
   // the interactive lanes; only a session that genuinely appears later is new.
   let startupCatalogIds = null;
+  // Hydrations that arrived for a session this observer's catalog does not list, before any
+  // catalog pass completed. Whether such a session is live is unknown until a pass has run;
+  // each waiter resolves true once one has, and false when none can (a failed pass or a stop).
+  let catalogWaiters = [];
   const failures = createPipelineFailureRecorder({ now });
   const timings = Object.freeze({
     catalogDiscovery: createDurationSeries(),
@@ -181,6 +185,28 @@ export function createNormalizedPollingObserver(options) {
     } catch { return null; }
   }
 
+  function settleCatalogWaiters() {
+    const waiters = catalogWaiters;
+    catalogWaiters = [];
+    const known = startupCatalogIds !== null && !stopped;
+    for (const resolve of waiters) resolve(known);
+  }
+
+  /**
+   * Resolves true once a catalog pass has completed, so a session absent from the catalog is
+   * known to be absent. It never waits on a hydration slot: catalog passes do not use one, so
+   * the wait ends with the pass whether that succeeds (true) or fails or is stopped (false).
+   */
+  function awaitCatalogPass() {
+    if (startupCatalogIds !== null) return Promise.resolve(true);
+    if (stopped || signal?.aborted) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      catalogWaiters.push(resolve);
+      // With no pass in flight the previous one failed: ask for the next pass now.
+      if (!refreshPending) void refresh();
+    });
+  }
+
   async function runHydration(localSessionId, prepared, requested, flow = null, scope = null, priority = BACKGROUND) {
     if (stopped || !publisher) return false;
     qa.hydrationAttempts += 1;
@@ -193,10 +219,21 @@ export function createNormalizedPollingObserver(options) {
       let context = prepared;
       if (prepared === undefined && prepare) {
         failureStage = "source_preparation";
+        // The catalog lists live sessions first and is bounded, so a session it does not list is
+        // not live. That conclusion needs a completed pass: before one, liveness is unknown and
+        // neither answer may be published, because a state is decided at first observation.
+        let entry = latestEntries.get(localSessionId);
+        if (!entry) {
+          if (!await awaitCatalogPass()) {
+            trace?.finishFlow?.(flow, { outcome: "rejected" });
+            return false;
+          }
+          entry = latestEntries.get(localSessionId) || { localId: localSessionId, isLive: false };
+        }
         const preparationStartedAt = monotonicNow();
         const preparationSpan = trace?.begin({ stage: "source_preparation", domain: "acquisition", flow, scope, provider: observerProviderId, priorityLane: laneName });
         try {
-          context = await prepare([latestEntries.get(localSessionId) || { localId: localSessionId }]);
+          context = await prepare([entry]);
           trace?.end(preparationSpan, { outcome: "completed" });
         } catch (error) {
           trace?.end(preparationSpan, { outcome: "failed" });
@@ -496,6 +533,7 @@ export function createNormalizedPollingObserver(options) {
       // catalog or publish an incomplete replacement here.
     } finally {
       refreshPending = false;
+      settleCatalogWaiters();
       if (refreshQueued && !stopped && !signal?.aborted) {
         const queuedFresh = refreshQueuedFresh;
         refreshQueued = false;
@@ -602,6 +640,7 @@ export function createNormalizedPollingObserver(options) {
     catalogHydrations.clear();
     hydratedSessions.clear();
     pendingEagerEntries = null;
+    settleCatalogWaiters();
   }
 
   return Object.freeze({

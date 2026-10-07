@@ -11,6 +11,8 @@ import { parseCodexExecutionTaskStateRecords } from "./execution-tasks.mjs";
 const MAX_LIVE_USAGE_SNAPSHOTS = 1_000;
 const MAX_LIVE_COMPACTIONS = 100;
 const CODEX_LIVE_EXECUTION_TASK_CACHE_SCHEMA = 2;
+/** Source bytes whose parsed records one adapter may keep between reads. */
+export const CODEX_ROLLOUT_RECORD_CACHE_MAX_BYTES = 32 * 1024 * 1024;
 const defaultYield = () => new Promise((resolve) => setImmediate(resolve));
 
 /** Owns bounded live-rollout reads, hydration, and cache reuse for one adapter. */
@@ -18,9 +20,17 @@ export function createCodexLiveState({
   scanLimit,
   maximumLiveTailBytes,
   maximumLiveTaskHistoryBytes,
+  maximumRetainedRecordBytes,
   yieldControl = defaultYield,
 }) {
+  const recordByteLimit = Number.isSafeInteger(maximumRetainedRecordBytes) && maximumRetainedRecordBytes >= 0
+    ? maximumRetainedRecordBytes
+    : CODEX_ROLLOUT_RECORD_CACHE_MAX_BYTES;
+  // Parsed rollout records are acquisition scratch, never evidence: this cache only
+  // spares an unchanged file a second parse. It is bounded by source bytes and files.
   const rolloutCache = new Map();
+  let retainedRecordBytes = 0;
+  let liveSessionIds = null;
   const liveAgentAssignmentCache = new Map();
   const liveAgentRuntimeCache = new Map();
   const liveContextUsageCache = new Map();
@@ -36,6 +46,7 @@ export function createCodexLiveState({
     taskHydrationBytes: 0,
     approvalHydrationReads: 0,
     approvalHydrationBytes: 0,
+    recordReleases: 0,
   };
 
   const rolloutIdentity = (stat) => {
@@ -47,9 +58,19 @@ export function createCodexLiveState({
   };
   const digest = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
-
-  function invalidateRolloutFile(file, { clearContext = false } = {}) {
+  // Dropping records leaves the per-file normalized state below untouched. Each of
+  // those caches keeps its own file bound and its own generation check.
+  function dropRolloutRecords(file) {
+    const cached = rolloutCache.get(file);
+    if (!cached) return false;
     rolloutCache.delete(file);
+    retainedRecordBytes -= cached.bytes;
+    return true;
+  }
+
+  /** Source loss or replacement: the file's records and its derived state both go. */
+  function invalidateRolloutFile(file, { clearContext = false } = {}) {
+    dropRolloutRecords(file);
     liveAgentAssignmentCache.delete(file);
     liveAgentRuntimeCache.delete(file);
     if (clearContext) liveContextUsageCache.delete(file);
@@ -133,6 +154,12 @@ export function createCodexLiveState({
   function hydrateLiveAgentAssignments(file, generation, fallback) {
     const hydrated = parseHydrationRecords(file, generation);
     return hydrated ? assignmentCollaborations(parseCodexAgentRecords(hydrated.records, fallback).collaborations) : [];
+  }
+
+  function rememberLiveAgentAssignments(file, threadId, generation, collaborations) {
+    liveAgentAssignmentCache.delete(file);
+    liveAgentAssignmentCache.set(file, { threadId, generation, collaborations });
+    while (liveAgentAssignmentCache.size > scanLimit) liveAgentAssignmentCache.delete(liveAgentAssignmentCache.keys().next().value);
   }
 
   function reusableLiveAgentRuntime(file, threadId, generation) {
@@ -254,7 +281,11 @@ export function createCodexLiveState({
       if (!existing || compactionStrength(compaction) > compactionStrength(existing) || (compactionStrength(compaction) === compactionStrength(existing) && existing.preTokens === null && compaction.preTokens !== null)) compactionsById.set(key, compaction);
     }
     const mergedCompactions = [...compactionsById.values()].sort((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp)).slice(-MAX_LIVE_COMPACTIONS);
+    // Bounded on its own, least recently merged first: the lifetime of normalized
+    // context never depends on how long the raw records behind it are retained.
+    liveContextUsageCache.delete(file);
     liveContextUsageCache.set(file, { identity: generation.identity, size: generation.size, mtimeMs: generation.mtimeMs, suffixBytes: generation.suffixBytes, suffixDigest: generation.suffixDigest, snapshots: merged, compactions: mergedCompactions });
+    while (liveContextUsageCache.size > scanLimit) liveContextUsageCache.delete(liveContextUsageCache.keys().next().value);
     return { snapshots: merged, compactions: mergedCompactions };
   }
 
@@ -275,6 +306,8 @@ export function createCodexLiveState({
     if (cached?.key === key && (!strict || cached.complete === true)) {
       if (priorSourceSuffixMatches(file, cached.generation)) {
         rolloutStats.cacheHits += 1;
+        rolloutCache.delete(file);
+        rolloutCache.set(file, cached);
         return { records: cached.records, generation: cached.generation };
       }
       invalidateRolloutFile(file, { clearContext: true });
@@ -335,13 +368,34 @@ export function createCodexLiveState({
     rolloutStats.bytes += bytes;
     const suffixBytes = suffix.length;
     const generation = { identity, size: stat.size, mtimeMs: stat.mtimeMs, suffixBytes, suffixDigest: digest(suffix) };
-    rolloutCache.delete(file);
-    rolloutCache.set(file, { key, records, generation, complete: !malformed });
-    while (rolloutCache.size > scanLimit) {
-      const evictedFile = rolloutCache.keys().next().value;
-      invalidateRolloutFile(evictedFile, { clearContext: true });
+    dropRolloutRecords(file);
+    // A read larger than the whole bound is handed to its caller and never retained.
+    if (bytes <= recordByteLimit) {
+      rolloutCache.set(file, { key, records, generation, complete: !malformed, bytes });
+      retainedRecordBytes += bytes;
+      while (retainedRecordBytes > recordByteLimit || rolloutCache.size > scanLimit) {
+        dropRolloutRecords(rolloutCache.keys().next().value);
+      }
     }
     return { records, generation };
+  }
+
+  /** The sessions the latest catalog pass lists as live; only their families keep records. */
+  function retainRecordsForSessions(localSessionIds) {
+    liveSessionIds = new Set(localSessionIds);
+  }
+
+  /**
+   * Call once a session's normalized evidence is built. Nothing reads a settled session's
+   * unchanged files again on a routine path, so its family holds no parsed records. A
+   * live family keeps them under the byte bound: a complete-history replay rereads the
+   * appended file and reuses the unchanged ones. The latest catalog pass decides which
+   * sessions are live; before the first pass, only the reader's own view is available.
+   */
+  function releaseSettledRecords(localSessionId, historical, files) {
+    const settled = liveSessionIds ? !liveSessionIds.has(localSessionId) : historical;
+    if (!settled) return;
+    for (const file of files) if (file && dropRolloutRecords(file)) rolloutStats.recordReleases += 1;
   }
 
   function pruneKnownFiles(knownRolloutFiles) {
@@ -354,13 +408,15 @@ export function createCodexLiveState({
     const value = {
       ...rolloutStats,
       cacheEntries: rolloutCache.size,
+      retainedRecordBytes,
+      liveContextUsageEntries: liveContextUsageCache.size,
       liveExecutionTaskEntries: liveExecutionTaskCache.size,
       liveAgentRuntimeEntries: liveAgentRuntimeCache.size,
       liveCurrentActivityEntries: liveCurrentActivityCache.size,
       liveApprovalModeEntries: liveApprovalModeCache.size,
       livePlanTaskEntries: livePlanTaskCache.size,
     };
-    if (reset) Object.assign(rolloutStats, { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0, approvalHydrationReads: 0, approvalHydrationBytes: 0 });
+    if (reset) Object.assign(rolloutStats, { reads: 0, bytes: 0, cacheHits: 0, taskHydrationReads: 0, taskHydrationBytes: 0, approvalHydrationReads: 0, approvalHydrationBytes: 0, recordReleases: 0 });
     return value;
   }
 
@@ -379,7 +435,10 @@ export function createCodexLiveState({
     mergeLiveContextEvidence,
     pruneKnownFiles,
     readRolloutRecords,
+    releaseSettledRecords,
+    rememberLiveAgentAssignments,
     resolveLiveAgentRuntime,
+    retainRecordsForSessions,
     reusableLiveAgentAssignments,
     reusableLiveApprovalMode,
     reusableLiveCurrentActivity,

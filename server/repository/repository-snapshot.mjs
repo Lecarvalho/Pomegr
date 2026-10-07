@@ -11,6 +11,13 @@ const MAX_COUNT = 100_000;
 const SNAPSHOT_VERSION = 6;
 /** The newest sidecar version this build reads and writes. */
 export const REPOSITORY_SNAPSHOT_VERSION = SNAPSHOT_VERSION;
+/**
+ * The longest a recorded snapshot's check may follow its session's last recorded evidence and
+ * still be used (product-owner decision, 2026-10-07). A snapshot is the repository state while
+ * its session was live, so a check made more than this long after the evidence stopped was
+ * taken later, from whatever the checkout then held. A check exactly at the bound is used.
+ */
+export const MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS = 24 * 60 * 60 * 1000;
 // Newest in-window commit times one record keeps; matches the session-event feed cap.
 export const MAX_COMMIT_TIMES = 50;
 const MAX_COMMIT_TIME_MS = Date.UTC(9999, 11, 31, 23, 59, 59, 999);
@@ -457,6 +464,25 @@ export function withLegacyRepositoryAttribution(evidence, legacyAttribution) {
 }
 
 /**
+ * Whether a recorded snapshot's check is close enough to its session's last recorded evidence
+ * to be used. It compares the snapshot's `checkedAt`, the time of the live check that wrote
+ * it and never earlier than its comparison or pull-request check times, with the committed
+ * evidence's `session.updatedAt`. A pure function of those two stored values, so every read and
+ * every restart gives the same answer, and the stored file is never touched. When either time
+ * is missing or unparseable the comparison cannot be made and the snapshot is not used, so a
+ * snapshot is never trusted by default. Live-mode evidence is exempt: a live session's check
+ * keeps following its evidence and is governed by the live check and the recording rule in
+ * observation-startup-repository.mjs, so this rule never withdraws what a live session shows.
+ */
+function checkedWithinEvidenceBound(evidence, snapshot) {
+  if (evidence?.historical === false) return true;
+  const checkedAt = Date.parse(snapshot.checkedAt);
+  const evidenceAt = Date.parse(evidence?.session?.updatedAt);
+  return Number.isFinite(checkedAt) && Number.isFinite(evidenceAt)
+    && checkedAt - evidenceAt <= MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS;
+}
+
+/**
  * Return only a sidecar whose repository identity matches its session, for
  * every provider: a session's recorded snapshot is trusted only when the
  * shared session-identity rule (server/normalize/session-identity.mjs) resolved that
@@ -467,9 +493,13 @@ export function withLegacyRepositoryAttribution(evidence, legacyAttribution) {
  * for a provider that declares launch-bound legacy evidence (provider contract
  * `legacyRepositoryAttribution`): its sidecars without a repository ID were
  * recorded from the launch directory, so a proven single identity adopts them.
+ * A snapshot checked more than MAX_SNAPSHOT_CHECK_AFTER_EVIDENCE_MS after the historical
+ * evidence's last update is not used (see checkedWithinEvidenceBound); the caller then
+ * sees exactly what it sees for a session with no snapshot. This is the one function every
+ * reader of a recorded snapshot goes through.
  */
 export function sessionRepositorySnapshot(evidence, snapshot, { adoptsUnboundSidecar = false } = {}) {
-  if (!snapshot) return null;
+  if (!snapshot || !checkedWithinEvidenceBound(evidence, snapshot)) return null;
   if (evidence?.session?.repositoryAttribution === "launch") return snapshot;
   const repositoryId = evidence?.session?.repositoryId;
   if (evidence?.session?.repositoryAttribution !== "single" || !REPOSITORY_ID.test(repositoryId || "")) return null;
