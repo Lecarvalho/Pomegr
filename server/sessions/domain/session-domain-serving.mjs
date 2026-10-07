@@ -57,8 +57,17 @@ export function createSessionDomainServing({
   const MAX_UNCATALOGUED_PROBE_RECORDS = 128;
   const MAX_PENDING_UNCATALOGUED_PROBES = 4;
 
+  // The row a projection reads. A session event arrives before the catalog commit that rebuilds
+  // the session's row from the same evidence, so until then the coordinator supplies the row's
+  // activity from the committed evidence. The summary is then complete in one revision, and the
+  // catalog commit that follows finds its inputs unchanged.
+  function projectionCatalogEntry(sessionId) {
+    const row = indexedCatalog().get(sessionId);
+    return row ? coordinator.rowWithCommittedEvidence?.(row) ?? row : domainCatalogEntry(sessionId);
+  }
+
   function commitSessionDomains(sessionId, snapshot = observationStore.getByQualifiedId(sessionId)) {
-    if (snapshot) return sessionDomains.commit(sessionId, snapshot, domainCatalogEntry(sessionId));
+    if (snapshot) return sessionDomains.commit(sessionId, snapshot, projectionCatalogEntry(sessionId));
     const catalogEntry = domainCatalogEntry(sessionId);
     // A hydratable row has no placeholder: it stays loading until evidence
     // commits, and any retained projection remains last-known-good.

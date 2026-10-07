@@ -3016,6 +3016,17 @@ fields per row between commits and reuses them while the row's snapshot, `isLive
 from the catalog entry. The memo holds one record for each resident row of the last commit
 and holds its snapshot weakly, so a record outlives neither the snapshot nor the catalog row.
 
+A session commit announces its `session` event before the catalog commit that it schedules
+has rebuilt the session's row. Until that catalog commit runs, D projects the session's
+domains against the committed row with `currentActivity` and this fallback derived from the
+evidence that just committed. It uses the same row derivation and the row's committed
+`isLive` and `activityStatus`. One evidence publication therefore produces one
+`session-summary` revision that already carries current activity, and the catalog commit
+that follows finds the session's projection inputs unchanged. Lifecycle fields are never
+taken ahead of the catalog: a lifecycle change reaches the summary with the catalog commit
+that commits it. The coordinator keeps only the IDs of sessions whose evidence committed
+since the last catalog commit, and clears them at every catalog commit and on stop.
+
 Catalog idle, stopped, open, unknown, or non-live transitions immediately replace a
 running fallback with last-observed evidence, without new acquisition or changing the
 retained session evidence. Failed candidates preserve the previous committed revision.

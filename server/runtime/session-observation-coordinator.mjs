@@ -75,6 +75,8 @@ export function createSessionObservationCoordinator(options = {}) {
     publish: (qualifiedId) => { void commitSession(qualifiedId); } });
   const sessionRetryAttempts = new Map();
   const deferredProjectionRefreshes = new Set();
+  // Sessions whose evidence committed after the last catalog commit built their row.
+  const rowsBehindEvidence = new Set();
   let persistenceQueue = null;
   const restoredActivitySessions = new Set();
   const restoredHydrations = new Map();
@@ -199,6 +201,7 @@ export function createSessionObservationCoordinator(options = {}) {
         activity: snapshot ? rowActivity.activity(entry, snapshot, restoredActivity) : null });
     });
     rowActivity.settle();
+    rowsBehindEvidence.clear();
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
     // One provider's empty result cannot establish that the combined catalog is
     // empty while another is still discovering sessions. Available rows can be
@@ -320,6 +323,7 @@ export function createSessionObservationCoordinator(options = {}) {
         qa.sessionCommits += 1;
         // Evidence is already committed: don't add a second summary delay before
         // publishing current activity and notifying the catalog's consumers.
+        rowsBehindEvidence.add(qualifiedId);
         scheduleCatalogCommit(catalogStructuralDelayMs);
         notify({ type: "session", qualifiedId, revision: snapshot.snapshot.revision,
           freshObservation: candidate.freshObservation === true });
@@ -657,6 +661,7 @@ export function createSessionObservationCoordinator(options = {}) {
     catalogTimerDueAt = null;
     catalogDirtyAt = null;
     publication.clear();
+    rowsBehindEvidence.clear();
     pendingSessions.clear();
     sessionRetryAttempts.clear();
     deferredProjectionRefreshes.clear();
@@ -702,6 +707,15 @@ export function createSessionObservationCoordinator(options = {}) {
       return { revision: current?.revision ?? 0, value: { ...base, sessions: [...requested, ...baseRows.values()].slice(0, MAX_CATALOG_SHELL_ROWS), coverage: catalogInventory.coverage() } };
     },
     catalogIdentity: (sessionId) => catalogInventory.get(sessionId),
+    // Between a session commit and the catalog commit it schedules, the committed row still carries
+    // the previous evidence revision's activity. D projects against this view instead: that row with
+    // the two activity fields the catalog commit will derive. The lifecycle stays the committed one.
+    rowWithCommittedEvidence(row) {
+      const snapshot = rowsBehindEvidence.has(row?.id) ? store.getByQualifiedId(row.id) : null;
+      if (!snapshot) return row;
+      const { currentActivity, activityFallback } = catalogShellRow(row, { snapshot, restoredActivity: restoredActivitySessions.has(row.id) });
+      return { ...row, currentActivity, activityFallback };
+    },
     catalogReadiness: () => Object.freeze(Object.fromEntries((registry.providers || []).map((provider) => [
       provider.id,
       catalogReadinessByProvider.get(provider.id) || "loading",
