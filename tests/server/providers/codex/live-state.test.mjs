@@ -180,9 +180,17 @@ test("a rollout cache hit performs no read and still requires identity, size, mo
 
   // Same bytes, size, and modification time in a different file at the same path.
   const current = await stat(file);
-  const replacement = path.join(root, "rollout-replacement.jsonl");
-  await writeFile(replacement, sizedLine(600, "a") + sizedLine(600, "c") + sizedLine(100), "utf8");
-  await utimes(replacement, new Date(AT + 5_000), new Date(AT + 5_000));
+  // File identities above 2^53 lose their low bits as a JavaScript number, so two files
+  // created back to back can report the same one. Candidates stay on disk while the next
+  // is created, so one of them is certain to report an identity that differs.
+  let replacement = null;
+  for (let attempt = 0; attempt < 16 && replacement === null; attempt += 1) {
+    const candidate = path.join(root, `rollout-replacement-${attempt}.jsonl`);
+    await writeFile(candidate, sizedLine(600, "a") + sizedLine(600, "c") + sizedLine(100), "utf8");
+    await utimes(candidate, new Date(AT + 5_000), new Date(AT + 5_000));
+    if ((await stat(candidate)).ino !== current.ino) replacement = candidate;
+  }
+  assert.ok(replacement, "the fixture needs a filesystem that reports file identity");
   await rename(replacement, file);
   const replaced = await stat(file);
   assert.deepEqual({ size: replaced.size, mtimeMs: replaced.mtimeMs }, { size: current.size, mtimeMs: current.mtimeMs });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -178,6 +178,23 @@ describe("Command Center app shell", () => {
       sourceStatus="ready" activeSessionOverflow={0} onClose={() => {}} />);
     expect(screen.getByTestId("notification-test_signal")).toHaveTextContent("Synthetic signal");
     expect(screen.getByRole("link", { name: "View workspace" })).toHaveAttribute("href", "/");
+  });
+
+  it("lists the newest notification first with its category line and mutes read entries", () => {
+    const older = notification("needs_input", "a".repeat(32));
+    const newer = { ...notification("provider_recovery", "b".repeat(32)), occurredAt: "2026-08-24T12:30:00.000Z" };
+    const entries = adaptNotificationRecords([older, newer]);
+    expect(entries.map((entry) => entry.kind)).toEqual(["provider_recovery", "needs_input"]);
+    render(<NotificationCenter entries={entries} isUnread={(entry) => entry.kind === "provider_recovery"} unreadCount={1} hasUnreadAttention markAllRead={() => {}}
+      sourceStatus="ready" activeSessionOverflow={0} onClose={() => {}} />);
+    const rows = within(screen.getByTestId("notification-center")).getAllByRole("article");
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual(["notification-provider_recovery", "notification-needs_input"]);
+    expect(rows[0]).toHaveTextContent("Provider service");
+    expect(rows[0]).not.toHaveClass("isRead");
+    expect(rows[0]).toHaveAccessibleName(/, unread$/);
+    expect(rows[1]).toHaveTextContent("Needs attention");
+    expect(rows[1]).toHaveClass("isRead");
+    expect(rows[1]).toHaveAccessibleName(/, read$/);
   });
 
   it("marks real application destinations from the current pathname", async () => {

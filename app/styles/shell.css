@@ -122,10 +122,12 @@ html[data-theme="dark"] body { background: var(--paper); }
 .commandNotificationTray header p { margin: 5px 0 0; color: var(--command-muted); font-size: var(--text-xs); }
 .commandNotificationActions { display: flex; align-items: center; gap: 4px; }
 .commandNotificationGroup { min-height: 30px; padding: 0 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--command-line); color: var(--command-faint); font: var(--text-xs)/1 var(--font-ui); text-transform: none; letter-spacing: 0; }
-.commandNotificationGroup b { min-width: 17px; padding: 3px 5px; border-radius: var(--control-radius); background: var(--command-panel-3); color: var(--command-muted); font: inherit; text-align: center; }
-.commandNotificationEntry { min-height: 98px; padding: 13px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 10px; border-bottom: 1px solid var(--command-line); transition: opacity .16s ease; }
-.commandNotificationEntry.isRead { opacity: 1; color: var(--command-muted); }
+.commandNotificationEntry { min-height: 98px; padding: 13px; display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 10px; border-bottom: 1px solid var(--command-line); }
+.commandNotificationCategory { display: block; margin-bottom: 5px; color: var(--command-faint); font: var(--text-caption)/1 var(--font-ui); }
 .commandNotificationEntry strong { display: block; font-size: var(--text-xs); }
+.commandNotificationEntry.isRead strong { color: var(--command-muted); font-weight: 400; }
+.commandNotificationEntry.isRead a { color: var(--command-muted); }
+.commandNotificationEntry.isRead .commandStatusDot { background: var(--command-faint); box-shadow: none; }
 .commandNotificationEntry p { margin: 6px 0 8px; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.5; }
 .commandNotificationEntry a { color: var(--command-amber); font-size: var(--text-xs); text-underline-offset: 3px; }
 .commandNotificationEntry time { color: var(--command-faint); font: var(--text-xs)/1 var(--font-geist-mono), Consolas, monospace; }
