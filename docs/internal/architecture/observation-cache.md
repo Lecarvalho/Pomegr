@@ -1928,6 +1928,17 @@ React, persisted checkpoints, or browser API fields.
 - Selecting any known uncached historical row queues hydration for that one session. The
   API immediately returns its safe catalog identity with loading readiness, and the UI
   shows the session skeleton until a committed revision is ready.
+- The Codex observer reads a hydrated session as live or historical from its own latest
+  catalog pass. That catalog lists live sessions first and then the newest sessions, up to
+  `catalogLimit` (50) rows; the larger rollout scan only feeds it. A session the catalog
+  does not list is therefore not live, so it is read as historical: it keeps its recorded
+  branch, runs no live Git check, and is not pinned in L1 once its selection moves on. A
+  hydration that arrives before the observer's first catalog pass completes waits for that
+  pass, because an unknown session must not be published as either class and then re-read as
+  the other. If that pass fails, the hydration publishes nothing and the next request asks
+  for a new pass. The lifecycle repair described above applies the same rule to the catalog
+  it has just read. With more than 50 sessions live at once, the sessions past the limit are
+  not live in the catalog and are read the same way.
 - A known selection is pinned before hydration so its first committed snapshot survives
   competing background commits until the browser can receive it. Switching selections
   releases the previous historical pin, including a selection still awaiting hydration.
@@ -3231,7 +3242,12 @@ snapshot. These reads run in projection and commit work, never in a GET. The rec
 keeps at most 512 answers in memory (a snapshot, or a known absence) by recency.
 Each live Git check calls `onRepositoryCheck` once observation serving is
 active; until that load settles the check queues behind it, so a live write cannot replace
-an older sidecar baseline before it is restored. The recorder writes a changed
+an older sidecar baseline before it is restored. A check is recorded only while the
+committed catalog lists its session as live, and that is decided again just before the
+write. A session the catalog does not list, or lists as not live, including an expired Open
+row, is never recorded: a session that just ended, or live-mode evidence restored for a
+session that ended while the monitor was down, would otherwise store today's working tree,
+pull requests, and commits as that session's history. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
 or commit count was not observed carries the previous recorded value forward only within
 the same bound repository identity, and an

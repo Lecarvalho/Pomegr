@@ -57,12 +57,25 @@ export function createObservationStartupRepository({
     return ready.then(() => repositorySnapshotRecorder.ensure(sessionId)).then(() => {}, () => {});
   }
 
+  /**
+   * A live check may be recorded only while the committed catalog lists the session as live.
+   * The snapshot is the repository state at the time the session was live; a check made after
+   * the catalog stopped listing it as live (a just-ended session, or restored live evidence of
+   * a session that ended while the monitor was down) would record today's tree and today's
+   * commits as that session's history. A session the catalog does not list is not live, and
+   * an expired Open row is not live either.
+   */
+  function catalogListsLive(sessionId) {
+    return catalog().some((entry) => entry?.id === sessionId && entry.isLive === true);
+  }
+
   function record(sessionId, live) {
-    if (!isActive() || !repositorySnapshotRecorder) return;
+    if (!isActive() || !repositorySnapshotRecorder || !catalogListsLive(sessionId)) return;
     const ready = sidecarsReady;
     if (!ready) return;
     void ready.then(() => {
-      if (!isActive() || sidecarsReady !== ready) return false;
+      // The sidecar load can outlast the catalog row; decide again just before writing.
+      if (!isActive() || sidecarsReady !== ready || !catalogListsLive(sessionId)) return false;
       return repositorySnapshotRecorder.record(sessionId, live);
     }).then((changed) => {
       if (changed && isActive() && sidecarsReady === ready) onRecorded(sessionId);

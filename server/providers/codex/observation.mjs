@@ -454,8 +454,10 @@ export function createCodexIncrementalObserver(options = {}) {
         // including when startup initially classified a mid-turn source as history.
         const entries = await list();
         publisher.publishCatalog(entries);
-        const entry = entries.find((item) => item.localId === localSessionId) || sourceSet.entry;
-        sourceSet.historical = entry?.isLive === false;
+        // The catalog was just read and lists live sessions first, so a session it omits is not
+        // live: the earlier entry is no longer evidence, and an unknown entry is not "live".
+        const entry = entries.find((item) => item.localId === localSessionId) || { localId: localSessionId, isLive: false };
+        sourceSet.historical = entry.isLive === false;
         sourceSet.observationKey = privateObservationKey(localSessionId, sourceSet.selectedMetadata, entry);
       }
     }
