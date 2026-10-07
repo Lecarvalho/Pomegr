@@ -165,6 +165,13 @@ backend, relay, or mobile app implemented; the only shipped phone feature is the
 same-network [phone access](../public/using-pomegr/phone-access.md). Each plan
 declares its owner, next decision, exit criteria, and deletion rule.
 
+The [monitor performance plan](plans/monitor-performance.md) records a measured baseline
+of monitor startup, opening a session, live-update latency, and background cost, three
+planned fixes that target them, and the comparison to make after the fixes. Its
+[measurement script](plans/monitor-performance/measure.mjs) is passive and is repeated
+unchanged. The plan is working evidence, not runtime authority; the
+[observation cache](architecture/observation-cache.md) owns the contracts.
+
 The [design system gaps plan](plans/design-system-gaps.md) lists the accepted
 reusable patterns that still have no static sample on `/design-system`, and two
 critique findings carried over from the retired Impeccable reports. The HTML

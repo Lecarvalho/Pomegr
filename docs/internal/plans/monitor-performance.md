@@ -106,7 +106,196 @@ after-fix numbers.
 
 ### Baseline results
 
-Not yet captured.
+Captured on 2026-10-07 between 10:48 and 11:13 local time (UTC-4), one run of each
+measurement. B2, B3, B5, and B6 ran with `measure.mjs` at commit `3a5a2b13`. B1 and B4 ran with
+the same script before the fix in `a505a285`, which only affects how the chosen live session's
+summary is timed (see [What the baseline could not measure](#what-the-baseline-could-not-measure)).
+The full JSON of each run, including the raw B3 timeline, was kept outside the repository.
+
+#### Conditions
+
+- **Machine.** Windows 11, 16 logical processors, 31 GB of memory, Node 24.14.
+- **Monitor under test.** A fresh `npm run dev` start through the `restart-pomegr` script at
+  10:48:38, running the main checkout at `3c3e20ee` on `main` with a clean working tree at the
+  start and at the end of the run. The checkout had been on another branch earlier that
+  morning, so the previous monitor, used only for trial runs, ran different code.
+- **Catalog.** 1,705 session headers: 515 top-level Claude transcripts (0.87 GB) with 615
+  subagent transcripts, and 3,985 Codex rollouts (6.2 GB).
+- **Live sessions.** One live Claude session during B2, B3, and B6. The subagent that ran
+  these measurements was writing its transcript, which gave B3 a steady signal (107 writes in
+  200 s). A second Claude session that was live before the restart was no longer live when B2
+  ran. The dashboard may have been open: the log shows one `selected`-lane read about 50 s
+  after start.
+- **Unrelated load.** At 10:47 and 10:54 five `python.exe` processes each used 95 to 100% of
+  one core, a WSL VM (`vmmemwsl`) used 35 to 42%, and Defender up to 17%. At 11:15 none of them
+  was busy. The load was not sampled during B6 or B3, so whether the `python.exe` processes were
+  running then is unknown. The web dev server was running. No build, test, or lint ran during B1,
+  B6, or B3. The continuous pipeline log was on, as it is in every development run.
+
+#### Results
+
+Elapsed times for B1 and B4 are from monitor process creation. "Evidence" means the
+normalized session evidence in the committed store. "p95" is the nearest-rank 95th percentile.
+
+| ID | Measurement | Result | Unit |
+| --- | --- | --- | --- |
+| B1 | First HTTP response | 975 | ms |
+| B1 | First session-list row with a ready summary (catalog readiness `ready`) | 6,855 | ms |
+| B1 | Catalog coverage first `complete` (it returns to `discovering` at each 60 s header rescan) | 134,593 | ms |
+| B1 | Live session A summary `ready` | not captured; see below | |
+| B1 | Live session A evidence from a checkpoint restore (from the log) | 12,679 | ms |
+| B1 | Live session A first fresh read ended / evidence committed (from the log) | 46,537 / 47,113 | ms |
+| B1 | CPU seconds consumed at 60 / 180 / 300 s | 57.3 / 158.5 / 194.4 | s |
+| B1 | RSS at 60 / 180 / 300 s | 924 / 1,092 / 1,218 | MB |
+| B2 | Live session A first request to `ready` (answered `ready` at once) | 0.8 | ms |
+| B2 | Repeated full-body request, monitor: median / p95 / max (n=100) | 0.6 / 58.6 / 246.6 | ms |
+| B2 | Repeated full-body request, web proxy: median / p95 / max (n=100) | 7.4 / 10.1 / 154.7 | ms |
+| B3 | Write to served revision, every write: median / p95 / max (n=107) | 687 / 867 / 1,012 | ms |
+| B3 | Oldest write behind each revision: median / p95 / max (n=83) | 730 / 871 / 1,012 | ms |
+| B4 | First directory page with a row | 2,360 | ms |
+| B4 | Rows served from 5 s onward; coverage until 134.6 s | 1,705; `discovering` | rows |
+| B6 | CPU, one quiet 300 s window from uptime 601 s (process counters; log counter) | 22.0; 22.0 | % of one core |
+| B6 | RSS at start / middle / end of the window | 1,214 / 1,294 / 1,162 | MB |
+| B6 | `event_loop_ms`: median / p95 / max (n=1,128 samples of 250 ms) | 32 / 181 / 811 | ms |
+| B6 | `catalog_projection`: median / p95 (n=169, 33.8 per minute) | 53.7 / 78.6 | ms |
+| B6 | `revision_notify`: median / p95 (n=227, 45.3 per minute) | 19.4 / 26.7 | ms |
+| B6 | `history_contribution`: median / p95 (n=22, 4.4 per minute) | 57.7 / 380.5 | ms |
+| B6 | `candidate_to_commit`: median / p95 (n=100, 20.0 per minute) | 526 / 593 | ms |
+
+B5 times are from the first domain request to the summary domain's top-level `readiness:
+ready`, for sessions that answered `loading` to that first request. Two samples per size
+class: the nearest sessions to 100 KB, 1 MB, and 10 MB of transcript, then the next nearest.
+"Core" is the first answer whose `core` section was ready.
+
+| Provider | Class | First sample | Second sample |
+| --- | --- | --- | --- |
+| Codex | Small | 100.8 KB: not ready in 60 s; core 812 ms | 101.1 KB: ready 880 ms |
+| Codex | Medium | 1,025.9 KB: not ready in 60 s; core 1,288 ms | 1,021.8 KB: not ready in 60 s; core 1,125 ms |
+| Codex | Large | 10,343.7 KB: ready 112 ms (restore) | 10,021.1 KB: not ready in 60 s; core 1,580 ms |
+| Claude | Small | 137.4 KB: ready 1,096 ms | 146.0 KB: ready 726 ms |
+| Claude | Medium | 1,023.6 KB: ready 887 ms | 1,025.3 KB plus 840 KB in 1 subagent file: ready 929 ms |
+| Claude | Large | 10,295.4 KB plus 839 KB in 3 subagent files: ready 1,247 ms | 9,727.5 KB: ready 110 ms (restore) |
+
+An entry marked "restore" took about 110 ms in two polls, with no 500 ms commit wait. It is
+inferred to be a checkpoint restore of a session that an earlier monitor run had already
+opened; the monitor does not report which path it took. Those two entries are not cold opens.
+
+#### How B3 paired writes with revisions
+
+A write is one 50 ms stat poll that saw a watched transcript file grow, timed by the file's
+modification time. A revision counter cannot identify the reflecting revision: it advances for
+resource samples, history publications, and a catalog-driven second summary, and several
+writes share one revision. In 200 s the summary was published 163 times for 107 writes.
+
+Each write was therefore paired with the first published `session-summary` revision whose
+served `session.updatedAt` is within 400 ms of the write. A transcript record carries its own
+timestamp, which preceded the file write by a median 102.7 ms (95th percentile 105.3 ms) in the
+baseline run, so the revision that holds a write can be recognized. Publication time is the
+revision's event on the monitor's `/api/events` stream, and a conditional GET could read the new
+body a median 0.7 ms later (95th percentile 3.1 ms, maximum 41.7 ms).
+
+All 107 writes were paired and none were dropped. The "oldest write behind each revision" row
+keeps only the longest wait in each burst of writes that one revision absorbed (83 bursts).
+Writes that create a new subagent file are paired but excluded from both rows because the
+script finds the file up to 250 ms late; there were none. All 107 writes in the baseline were to
+subagent files. Writes to the main transcript appeared only in trial runs, where they paired
+normally. Of the 107 pairs, 82 have a record lead of 95 to 110 ms; the other 25 are the earlier
+of two writes 220 to 370 ms apart that one revision absorbed. A write that changed no
+timestamped record would pair with a later revision and overstate its wait; none shows in the
+baseline, where the longest wait is 1,012 ms.
+
+Stage durations from the pipeline log during the same 200 s (all sessions together):
+
+| Stage | Median | 95th percentile | Meaning |
+| --- | ---: | ---: | --- |
+| `source_queue`, Claude `source_update` lane | 0.1 ms | 198 ms | Watcher event to the start of the read |
+| `acquisition_normalization`, same lane | 122.6 ms | 211.7 ms | The read and normalization |
+| `candidate_to_commit` | 516.9 ms | 551.6 ms | Candidate published to store commit |
+| `session_derivation` | 4.6 ms | 6.9 ms | Public-state projection |
+| `catalog_projection` | 65.8 ms | 80.2 ms | Catalog commit that follows |
+
+The first three medians add to about 640 ms of the 687 ms median wait (derivation happens inside
+`candidate_to_commit`, and the catalog projection follows the evidence revision). The rest is
+file-watch delivery and publication, which the log does not time.
+
+For context only, the same script on the previous monitor, 56 minutes after its start with two
+live sessions being written, gave n=68 with a median of 1,041 ms, a 95th percentile of 3,147 ms,
+and a maximum of 5,738 ms over 90 s. Its median acquisition was 270 ms.
+
+#### Configured fixed delays
+
+These come from the code at the commit the monitor ran. Only the first is a floor on live
+latency.
+
+| Delay | Value | Owner |
+| --- | --- | --- |
+| Session publication coalescing | 500 ms from the first pending candidate; later candidates replace it without restarting the timer; a candidate replaced during derivation is dropped and costs another 500 ms; a failure retries after at least 1 s, up to five times | `commitDelayMs` in `server/runtime/session-observation-coordinator.mjs`, no override in `server/dev-cli.mjs` |
+| Catalog commit after a session commit | 0 ms (`catalogStructuralDelayMs`); it costs a `catalog_projection` of about 66 ms and produces the second summary revision a median 83 ms after the evidence revision (n=38, 95th percentile 219 ms) | same file |
+| File-watch handling | none: `fs.watch` events enqueue the read at once; at most two Claude source updates run at a time | `server/providers/kernel/normalized-polling-observer.mjs` |
+| Catalog pass after a source event | at least 1,000 ms apart; affects catalog rows, not session evidence | `SOURCE_CATALOG_INTERVAL_MS` in the same file |
+| Observer reconciliation poll | 10,000 ms, a safety net for missed watch events | `server/providers/claude/index.mjs`, `server/providers/codex/index.mjs` |
+| Checkpoint and row-summary persistence | 5 s quiet, 60 s maximum; not on the serving path | `checkpointDelayMs` and `checkpointMaxDelayMs` in the coordinator |
+| Browser: revision events | pushed over `/api/events`; the domain store refetches at once; the composed state poll settles for 100 ms | `app/session-domain-store.ts`, `app/components/dashboard/useTransitionalSessionState.ts` |
+| Browser: fallback and retry | 30 s while connected, 5 s while reconnecting, 1 s while a live domain is loading, 5 s for a loading historical one | same files |
+| Domain hydration request | one queued read per session per 30 s | `DOMAIN_HYDRATION_RETRY_MS` in `server/sessions/domain/session-domain-serving.mjs` |
+
+#### What the baseline shows
+
+- **Floor.** The 500 ms commit coalescing is about three quarters of the median write-to-served
+  wait in a quiet monitor (`candidate_to_commit` median 517 ms of 687 ms). None of the three
+  fixes changes it. Most of the rest is the read, which took 123 ms at the median here, and 270
+  ms (1.7 s at the 95th percentile) on the loaded previous monitor.
+- **Idle cost.** With one live session and no request, the monitor used 22% of a core.
+  `catalog_projection`, `revision_notify`, and `history_contribution` together used about 5
+  percentage points of that (33.8 × 53.7 ms, 45.3 × 19.4 ms, and 4.4 × 57.7 ms per minute).
+  The log does not attribute the rest, so on this evidence Fixes 2 and 3 address about a fifth
+  of the idle cost.
+- **Startup.** The monitor used 95% of a core for the first 60 s, 84% over the next 120 s, and
+  30% over the next 120 s. The live session's first fresh read took 39.5 s, during that load;
+  its restored checkpoint was served from 12.7 s.
+- **Historical Codex sessions.** In 4 of the 6 Codex samples the summary stayed `loading` for
+  the whole 60 s because its `repository` section stayed `loading`, although the `core`
+  section was ready within 0.8 to 1.6 s. A trial run on the previous monitor waited 3 minutes with
+  no change, and four cold Codex sessions there all reported `view: live` while the catalog
+  showed them not live. `server/providers/codex/observation.mjs` sets
+  `historical: entry?.isLive === false` (lines 316 and 458), which is false for a session the
+  observer's list does not contain, so such a session would be read as live and wait for a
+  Git check. That cause is inferred from the code and not tested. It affects outcome 4 and none
+  of the three fixes addresses it.
+- **Memory.** The baseline monitor held 1.16 to 1.32 GB during the quiet B6 window, and 1.47
+  GB at 11:15, after the two B5 passes had opened twelve historical sessions, six of them Codex
+  rollouts of 0.1 to 10 MB. In the trial runs the previous monitor rose from 1.18 GB to
+  1.80 GB within 7 minutes of opening seven Codex sessions of 22 KB to 28 MB. This is
+  consistent with Fix 1 but was not profiled, and RSS can stay high after memory is no longer used.
+
+#### What the baseline could not measure
+
+- **B1, live session A summary `ready`.** The startup run stopped polling that domain after
+  the previous monitor, which was still answering when the script started, had reported it
+  `ready`. Commit `a505a285` fixes this and adds the log-based milestones above, which are
+  commit times of the evidence, not served readiness: the summary also waits for its
+  `repository` section. `measure.mjs startup-logs --created 2026-10-07T14:48:38.694Z`
+  re-derives them. The restart could not be repeated.
+- **B2 as defined.** A live session is committed by the monitor before anyone asks for it, so
+  its first domain request answers `ready` at once. B2 reduces to the repeated-request
+  latency; the cost of opening a live session after a restart is the B1 log milestones.
+- **B3 coverage.** One live session, subagent writes only, a quiet machine for the monitor
+  (the other live session had ended), and 200 s. The loaded previous monitor was worse.
+- **B5 cold opens.** The monitor does not say whether an open used a checkpoint; two
+  entries are probably restores. Cold Claude opens were 0.7 to 1.2 s, almost all of it the
+  500 ms commit wait plus the read.
+
+#### How to repeat
+
+From the repository root, with no dependencies installed, run `node
+docs/internal/plans/monitor-performance/measure.mjs startup --label after --out <file>`, then
+restart the dev app once with the `restart-pomegr` script within 180 s. After the 300 s window
+ends, run it with `steady --label after --b5-skip 2 --out <file>`, which waits for 10 minutes of
+uptime before B6 and takes about 20 minutes, then with `steady --only b5 --b5-skip 3 --label
+after-b5-second --out <file>` for the second B5 sample. The baseline opened the sessions at skip
+0 and 1, and their checkpoints remain on disk, so reuse of those values would measure restores.
+Keep a session being written for B3, avoid other heavy work while it runs, and record the
+conditions listed above.
 
 ## The three fixes
 
