@@ -104,6 +104,35 @@ endpoint. Browser presentation timing and renderer telemetry are not collected. 
 desktop builds exclude the continuous writer and its development composition; browser and LAN
 traffic cannot start, stop, configure, or read diagnostic facilities.
 
+## Reading monitor performance
+
+These points come from the monitor performance measurements of 2026-10-07. They describe what
+the logs can and cannot show, so check them before comparing two runs.
+
+- `source_queue` is recorded by two queues: the acquisition queue (domain `acquisition`) and the
+  checkpoint persistence queue (domain `persistence`). Split it by domain before reading it as
+  the wait before a read. Neither alone shows how stale the dashboard was.
+- A revision handle cannot identify the revision that reflects one transcript write: several
+  writes share a revision, and revisions also advance for resource samples and history
+  publications. To time a write to its served revision, pair it with the first published
+  `session-summary` revision whose served `session.updatedAt` is close to the write.
+- The monitor does not record whether opening a session used a checkpoint restore or a cold
+  read. A read in the `selected` lane for that open is the only sign of a cold read, and the
+  absence of one is inferred, not shown.
+- A live session is committed before anyone asks for it, so its first domain request answers
+  `ready` at once. The cost of opening a live session after a restart shows in the startup
+  milestones of the log, not in request latency.
+- Directory coverage returns to `discovering` at each periodic header pass, so the first
+  `complete` is the comparable milestone.
+- One run per monitor is noisy at the tail. Compare medians, and treat a 95th-percentile or
+  maximum difference from a single run as unconfirmed. Record the live session count, catalog
+  size, and unrelated machine load with each run.
+
+To attach a CPU or heap profiler to the running development monitor: port 9229 is taken by
+the web dev server's worker inspector. Start the dev app with
+`NODE_OPTIONS=--inspect-port=9330`, run `node -e "process._debugProcess(<monitor pid>)"`, and
+connect to `http://127.0.0.1:9330/json/list`. Relaunch the dev app normally afterwards.
+
 ## Verification
 
 Use focused checks after changing diagnostics:
