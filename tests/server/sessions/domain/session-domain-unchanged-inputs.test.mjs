@@ -459,11 +459,18 @@ test("an unfrozen snapshot or side-channel value is never taken as unchanged", (
   assert.equal(served(side, "resources").retained.readiness, "unavailable");
 });
 
-test("eviction forgets the remembered inputs with the session", () => {
+test("eviction and clear forget the remembered inputs with the session", () => {
   let clock = 0;
   const store = createSessionDomainStore({ now: () => clock, idleMs: 60_000 });
   const snapshot = committed();
-  settle(store, snapshot, row());
+  // Three commits: the third is skipped, which shows the inputs are remembered at this point.
+  const remember = () => {
+    settle(store, snapshot, row());
+    const skipped = store.stats().unchangedInputs;
+    assert.deepEqual(store.commit(SESSION_ID, snapshot, row()), []);
+    assert.equal(store.stats().unchangedInputs, skipped + 1, "the inputs are remembered");
+  };
+  remember();
   const before = { projections: store.stats().projections, revision: store.read(SESSION_ID, "session-summary").revision };
   clock += 60_001;
   assert.deepEqual(store.evictIdle(), [SESSION_ID]);
@@ -471,65 +478,113 @@ test("eviction forgets the remembered inputs with the session", () => {
   assert.equal(store.stats().projections, before.projections + 1, "an evicted session is projected again");
   assert.equal(published.length, SESSION_DOMAIN_NAMES.length);
   assert.ok(store.read(SESSION_ID, "session-summary").revision > before.revision, "its revision moves past the evicted one");
+
+  remember();
   store.clear();
-  assert.equal(store.commit(SESSION_ID, snapshot, row()).length, SESSION_DOMAIN_NAMES.length, "clear forgets it too");
+  assert.equal(store.read(SESSION_ID, "session-summary").status, "empty");
+  assert.equal(store.commit(SESSION_ID, snapshot, row()).length, SESSION_DOMAIN_NAMES.length, "clear forgets the inputs with the domains");
+  assert.equal(store.read(SESSION_ID, "session-summary").status, "ready");
 });
 
-// A scripted run over two stores that receive the same commits, requests, and clock. One is given
-// frozen snapshots and so skips unchanged inputs; the other is given equal unfrozen copies and so
-// projects every commit, as the store did before. Everything observable must match at every step.
-test("skipping unchanged inputs changes no event, revision, retention order, or eviction", () => {
-  let clock = 0;
-  let seed = 20_261_007;
-  const random = (bound) => { seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648; return seed % bound; };
-  const protectedIds = new Set(["codex:run-00", "codex:run-01"]);
-  const create = () => createSessionDomainStore({ now: () => clock, maxSessions: 4, idleMs: 5_000, isProtected: (id) => protectedIds.has(id) });
-  const skipping = create();
-  const projecting = create();
-  const events = { skipping: [], projecting: [] };
-  skipping.subscribe((event) => events.skipping.push(event));
-  projecting.subscribe((event) => events.projecting.push(event));
-  const ids = Array.from({ length: 9 }, (_, index) => `codex:run-${String(index).padStart(2, "0")}`);
-  const versions = new Map(ids.map((id) => [id, 0]));
-  const frozen = new Map();
-  const snapshotFor = (id) => {
-    const key = `${id}#${versions.get(id)}`;
-    if (!frozen.has(key)) frozen.set(key, committed(state({ session: { ...state().session, id, title: `Title ${versions.get(id)}` } })));
-    return frozen.get(key);
-  };
-  const statuses = ["working", "idle", "needs_input", "stopped"];
-  const rowStatus = new Map(ids.map((id) => [id, 0]));
-  const rowFor = (id) => row({ id, activityStatus: statuses[rowStatus.get(id)], isLive: rowStatus.get(id) !== 3, needsInput: rowStatus.get(id) === 2 });
+test("a projecting commit that does not settle forgets the inputs remembered before it", () => {
+  let recorded = null;
+  const store = createSessionDomainStore({ eventRecordForSession: () => recorded });
+  const snapshot = committed();
+  settle(store, snapshot, row());
+  assert.deepEqual(store.commit(SESSION_ID, snapshot, row()), [], "remembered: a working row and no event sidecar");
 
-  for (let step = 0; step < 1_500; step += 1) {
-    const id = ids[random(ids.length)];
-    const action = random(20);
-    if (action < 11) {
-      // A catalog pass: every retained session recommits with its current row.
-      for (const retained of skipping.sessionIds()) {
-        assert.deepEqual(skipping.commit(retained, snapshotFor(retained), rowFor(retained)), projecting.commit(retained, structuredClone(snapshotFor(retained)), rowFor(retained)), `step ${step}`);
-      }
-    } else if (action < 14) {
-      versions.set(id, versions.get(id) + 1);
-      assert.deepEqual(skipping.commit(id, snapshotFor(id), rowFor(id)), projecting.commit(id, structuredClone(snapshotFor(id)), rowFor(id)), `step ${step}`);
-    } else if (action < 16) {
-      rowStatus.set(id, random(statuses.length));
-    } else if (action < 18) {
-      const domain = SESSION_DOMAIN_NAMES[random(SESSION_DOMAIN_NAMES.length)];
-      const left = skipping.read(id, domain, "primary");
-      const right = projecting.read(id, domain, "primary");
-      assert.deepEqual([left.status, left.revision, left.snapshot?.serialized], [right.status, right.revision, right.snapshot?.serialized], `step ${step}`);
-    } else if (action < 19) {
-      clock += random(4_000);
-    } else {
-      assert.deepEqual(skipping.commitUnavailable(id, rowFor(id), "Codex", {}), projecting.commitUnavailable(id, rowFor(id), "Codex", {}), `step ${step}`);
+  // The row turns idle while the event sidecar appears. This commit moves the kept event record,
+  // so its own inputs are not remembered, and the earlier ones must not stay remembered either.
+  recorded = normalizeSessionEventRecord({ version: 1, refills: [], compactions: [{ at: OBSERVED_AT, agentId: "primary", trigger: "manual" }] });
+  assert.ok(store.commit(SESSION_ID, snapshot, row({ activityStatus: "idle" })).some((event) => event.domain === "session-summary"));
+  assert.equal(served(store, "session-summary").lifecycle.activityStatus, "idle");
+
+  // The row and the sidecar answer return to their earlier values: the inputs of the commit
+  // before last, not of the retained domains.
+  recorded = null;
+  const before = store.stats().projections;
+  const published = store.commit(SESSION_ID, snapshot, row());
+  assert.equal(store.stats().projections, before + 1, "the commit is projected, not skipped");
+  assert.deepEqual(published.map((event) => event.domain), ["session-summary"]);
+  assert.equal(served(store, "session-summary").lifecycle.activityStatus, "working");
+  assert.ok(served(store, "session-summary").events.items.some((item) => item.kind === "context_compacted"), "the recorded compaction stays");
+});
+
+test("a placeholder that is displaced at once is not remembered, so a later request can admit it", () => {
+  let clock = 0;
+  const live = "codex:live-session";
+  const id = "codex:registry-only";
+  const store = createSessionDomainStore({ now: () => clock, maxSessions: 1, isProtected: (sessionId) => sessionId === live });
+  store.read(live, "session-summary");
+  store.commit(live, committed(state({ session: { ...state().session, id: live } })), row({ id: live }));
+  clock += 1;
+  const placeholder = row({ id, summaryReadiness: "unavailable", activityStatus: "open" });
+  assert.deepEqual(store.commitUnavailable(id, placeholder, "Codex", {}), [], "the soft bound displaces a never-requested placeholder at once");
+  assert.equal(store.has(id), false);
+
+  clock += 1;
+  assert.equal(store.read(id, "session-summary").status, "empty", "a request records demand for it");
+  const before = store.stats();
+  const published = store.commitUnavailable(id, placeholder, "Codex", {});
+  assert.equal(store.stats().projections, before.projections + 1, "the same row is projected again: nothing is remembered for a session the store did not keep");
+  assert.equal(store.stats().unchangedInputs, before.unchangedInputs);
+  assert.ok(published.some((event) => event.domain === "session-summary"));
+  const admitted = store.read(id, "session-summary");
+  assert.equal(admitted.status, "ready");
+  assert.equal(admitted.snapshot.value.readiness, "unavailable");
+  assert.equal(store.has(live), true, "the protected live session stays");
+  assert.deepEqual(store.commitUnavailable(id, placeholder, "Codex", {}), [], "now that it is kept, the unchanged placeholder is skipped");
+  assert.equal(store.stats().unchangedInputs, before.unchangedInputs + 1);
+});
+
+test("a missing snapshot is never taken as unchanged, even after the remembered one was collected", () => {
+  // The store holds the snapshot weakly. This stand-in lets the test collect it on demand,
+  // which a real collection would do at a time no test can choose.
+  const RealWeakRef = globalThis.WeakRef;
+  let collected = false;
+  globalThis.WeakRef = class { #target; constructor(target) { this.#target = target; } deref() { return collected ? undefined : this.#target; } };
+  try {
+    const store = createSessionDomainStore();
+    const snapshot = committed();
+    settle(store, snapshot, row());
+    assert.deepEqual(store.commit(SESSION_ID, snapshot, row()), []);
+    assert.equal(store.stats().unchangedInputs, 1, "the snapshot is remembered through the weak reference");
+    const serialized = store.read(SESSION_ID, "session-summary").snapshot.serialized;
+
+    collected = true;
+    for (const missing of [undefined, null]) {
+      assert.throws(() => store.commit(SESSION_ID, missing, row()), /requires committed public state/u);
     }
-    clock += 1;
-    assert.deepEqual(skipping.sessionIds(), projecting.sessionIds(), `step ${step}: retention order`);
-    assert.deepEqual(events.skipping, events.projecting, `step ${step}: events`);
-    events.skipping.length = 0;
-    events.projecting.length = 0;
+    assert.equal(store.stats().unchangedInputs, 1);
+    assert.equal(store.read(SESSION_ID, "session-summary").snapshot.serialized, serialized, "the retained domains are untouched");
+    const before = store.stats().projections;
+    assert.deepEqual(store.commit(SESSION_ID, snapshot, row()), [], "the same evidence is projected again and changes nothing");
+    assert.equal(store.stats().projections, before + 1);
+  } finally {
+    globalThis.WeakRef = RealWeakRef;
   }
-  assert.ok(skipping.stats().unchangedInputs > 1_000, "the scripted run exercises the skip");
-  assert.ok(skipping.stats().projections * 4 < projecting.stats().projections, "and skips most of the projections the other store ran");
+});
+
+test("a skipped commit neither evicts an idle session nor enforces the session bound", () => {
+  let clock = 0;
+  const kept = "codex:kept-until-a-change";
+  const committedTwice = "codex:committed-again";
+  const protectedIds = new Set([kept, committedTwice]);
+  const store = createSessionDomainStore({ now: () => clock, maxSessions: 1, idleMs: 1_000, isProtected: (id) => protectedIds.has(id) });
+  const snapshots = new Map([kept, committedTwice].map((id) => [id, committed(state({ session: { ...state().session, id } }))]));
+  // Neither session is ever requested, so both are retained only by their protection.
+  for (const id of [kept, committedTwice]) settle(store, snapshots.get(id), row({ id }), id);
+  assert.deepEqual(store.sessionIds(), [kept, committedTwice]);
+
+  // Both sat idle past the idle window, and one lost its protection above the soft bound.
+  clock += 5_000;
+  protectedIds.delete(kept);
+  const before = store.stats();
+  assert.deepEqual(store.commit(committedTwice, snapshots.get(committedTwice), row({ id: committedTwice })), []);
+  assert.equal(store.stats().unchangedInputs, before.unchangedInputs + 1, "the commit was skipped");
+  assert.deepEqual(store.sessionIds(), [kept, committedTwice], "a skipped commit runs neither idle eviction nor the bound, like the no-op it replaces");
+
+  // A real change does both, as before.
+  assert.ok(store.commit(committedTwice, snapshots.get(committedTwice), row({ id: committedTwice, activityStatus: "idle" })).length > 0);
+  assert.deepEqual(store.sessionIds(), [committedTwice]);
 });
