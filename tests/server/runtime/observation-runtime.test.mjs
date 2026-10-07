@@ -190,11 +190,11 @@ test("an unavailable placeholder is rebuilt only when its catalog row changes, i
   assert.equal(JSON.parse(state.unavailableSnapshot.serialized).view, "history");
 });
 
-test("new evidence reaches the summary's catalog lifecycle through the catalog commit that follows it", async (context) => {
-  // Characterizes the second summary revision after an evidence commit. The session event
-  // projects with the row committed before it; the following catalog commit rebuilds the row
-  // from the same new evidence, and only its activity fields differ.
-  const id = "two-step";
+test("new evidence reaches the summary with its current last activity in one revision", async (context) => {
+  // The session event arrives before the catalog commit that rebuilds the session's row. The
+  // summary takes the row's activity from the evidence it announces, so that catalog commit
+  // finds the same inputs and publishes no second summary revision.
+  const id = "one-step";
   const monitor = await startMonitor(context, { rows: [liveRow(id)] });
   monitor.publish(sessionEvidence(id));
   assert.ok(await until(() => monitor.summary(id)));
@@ -210,15 +210,44 @@ test("new evidence reaches the summary's catalog lifecycle through the catalog c
   const before = monitor.counts().projections;
 
   const laterFinish = "2026-08-10T13:05:00.000Z";
+  assert.notEqual(firstFinish, laterFinish);
   monitor.publish(sessionEvidence(id, (evidence) => {
     evidence.session.updatedAt = laterFinish;
     evidence.agents[0].executionTasks.push({ ...evidence.agents[0].executionTasks[0], id: "command-2", startedAt: "2026-08-10T13:04:00.000Z", finishedAt: laterFinish });
   }));
-  assert.ok(await until(() => observed.length >= 2), "the evidence commit and the catalog commit each publish a summary revision");
+  assert.ok(await until(() => observed.length >= 1), "the evidence commit publishes a summary revision");
+  // The catalog commit that the evidence commit scheduled, and one more after it.
   await monitor.catalogEvent([liveRow(id)]);
-  assert.deepEqual(observed, [
-    { updatedAt: laterFinish, lastActivity: firstFinish },
-    { updatedAt: laterFinish, lastActivity: laterFinish },
-  ]);
-  assert.equal(monitor.counts().projections, before + 2, "one projection per step, and none for the unchanged catalog event after them");
+  await monitor.catalogEvent([liveRow(id)]);
+  assert.deepEqual(observed, [{ updatedAt: laterFinish, lastActivity: laterFinish }]);
+  assert.equal(monitor.counts().projections, before + 1, "one projection for the write, and none for the catalog commits after it");
+  assert.equal(monitor.runtime.serveCatalog().snapshot.value.sessions[0].activityFallback.observedAt, laterFinish, "the catalog row derived the same activity");
+});
+
+test("a lifecycle change still reaches the summary through its own catalog commit, never ahead of it", async (context) => {
+  const id = "lifecycle-step";
+  const monitor = await startMonitor(context, { rows: [liveRow(id)] });
+  monitor.publish(sessionEvidence(id));
+  assert.ok(await until(() => monitor.summary(id)));
+  await monitor.quiesce([liveRow(id)]);
+  const observed = [];
+  context.after(monitor.runtime.subscribeRevisionEvents((event) => {
+    if (event.domain !== "session-summary" || event.sessionId !== `codex:${id}`) return;
+    const lifecycle = monitor.summary(id).snapshot.value.lifecycle;
+    const row = monitor.runtime.serveCatalog().snapshot.value.sessions[0];
+    observed.push({ summary: lifecycle.activityStatus, catalog: row.activityStatus, lastActivity: lifecycle.activityFallback.observedAt });
+  }));
+  observed.length = 0;
+
+  // New evidence and a lifecycle change of the same session, published in one turn.
+  const laterFinish = "2026-08-10T13:05:00.000Z";
+  monitor.publish(sessionEvidence(id, (evidence) => {
+    evidence.session.updatedAt = laterFinish;
+    evidence.agents[0].executionTasks.push({ ...evidence.agents[0].executionTasks[0], id: "command-2", startedAt: "2026-08-10T13:04:00.000Z", finishedAt: laterFinish });
+  }));
+  await monitor.catalogEvent([liveRow(id, { activityStatus: "idle" })]);
+  assert.ok(await until(() => observed.at(-1)?.summary === "idle" && observed.at(-1)?.lastActivity === laterFinish));
+  await monitor.catalogEvent([liveRow(id, { activityStatus: "idle" })]);
+  for (const revision of observed) assert.equal(revision.summary, revision.catalog, "the summary's lifecycle is the committed catalog row's");
+  assert.equal(observed.length, 2, "one revision for the evidence and one for the lifecycle change");
 });
