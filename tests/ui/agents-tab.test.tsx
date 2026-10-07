@@ -85,6 +85,48 @@ describe("Agents tab", () => {
     expect(select).not.toHaveBeenCalledWith(null);
   });
 
+  describe("choosing an agent while the link lags", () => {
+    const child = { ...primary, id: "child", parentId: "primary", label: "Child agent", status: "idle" as const };
+    const tab = (selectedAgentId: string | null, select = vi.fn()) => <LiveClockProvider running={false}><AgentsTab sessionId="codex:test" historical={false} selectedAgentId={selectedAgentId} onSelectAgent={select} onOpenActivities={vi.fn()} /></LiveClockProvider>;
+    beforeEach(() => {
+      useSessionDomain.mockImplementation((query: { domain: string; agentId?: string }) => query.domain === "agents"
+        ? domain("agents", { agents: [primary, child], workflows: [], insights: [], loops: [], cacheRefills: [], cacheReadDrops: [], contextBoundaries: [] })
+        : domain("agent", { agentId: query.agentId, agent: query.agentId === "child" ? child : primary, ancestors: [], descendants: [], workflow: null, contextBoundaries: [], requestSnapshots: { status: "unavailable", items: [] }, insights: [], cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] }, cacheReadDrops: { status: "unavailable", items: [] }, planTasks: [], sectionReadiness: { agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" } }));
+    });
+
+    it("selects the chosen agent before the link changes, then follows a later link", async () => {
+      const user = userEvent.setup();
+      const select = vi.fn();
+      const view = render(tab(null, select));
+      await user.click(await screen.findByRole("button", { name: /Direct subagents/ }));
+      await user.click(screen.getByRole("button", { name: "Select Child agent" }));
+      expect(select).toHaveBeenCalledWith("child");
+      // The link is still unset: the choice alone selects the agent and loads its inspector.
+      expect(screen.getByRole("button", { name: "Select Child agent" })).toHaveAttribute("aria-pressed", "true");
+      expect(useSessionDomain).toHaveBeenLastCalledWith({ sessionId: "codex:test", domain: "agent", agentId: "child" }, { historical: false, enabled: true });
+      view.rerender(tab("child", select));
+      expect(screen.getByRole("button", { name: "Select Child agent" })).toHaveAttribute("aria-pressed", "true");
+      // A link written by another navigation replaces the choice.
+      view.rerender(tab("primary", select));
+      expect(screen.getByRole("button", { name: "Select Primary agent" })).toHaveAttribute("aria-pressed", "true");
+      expect(useSessionDomain).toHaveBeenLastCalledWith({ sessionId: "codex:test", domain: "agent", agentId: "primary" }, { historical: false, enabled: true });
+    });
+
+    it("opens the phone inspector for the chosen subagent, never the primary agent", async () => {
+      const user = userEvent.setup();
+      vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+      try {
+        render(tab(null));
+        await user.click(await screen.findByRole("button", { name: /Direct subagents/ }));
+        await user.click(screen.getByRole("button", { name: "Select Child agent" }));
+        expect(screen.getByRole("dialog", { name: /Child agent/ })).toBeInTheDocument();
+        expect(screen.queryByRole("dialog", { name: /Primary/ })).not.toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
   it("marks roster rows with the agents domain's per-agent history", async () => {
     useSessionDomain.mockImplementation((query: { domain: string; agentId?: string }) => query.domain === "agents"
       ? domain("agents", { agents: [primary], workflows: [], insights: [], cacheRefills: [], cacheReadDrops: [], contextBoundaries: [],
