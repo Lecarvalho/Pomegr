@@ -422,6 +422,38 @@ an interrupted writer, a hot rollback journal can temporarily make read-only his
 unavailable until background publication or scheduled maintenance opens it for recovery.
 The previous complete transaction survives; ordinary GETs do not repair it.
 
+While the monitor runs, the history store keeps a bounded pool of open SQLite connections
+instead of opening a database for every call, and prepares each statement once per
+connection. `SessionHistoryStore.start()` begins retention and `stop()` ends it; a store
+that was never started, or a call that arrives after `stop()`, opens and closes its own
+connection as before. The pool holds at most eight connections
+(`MAX_POOLED_CONNECTIONS`), keyed by database file and access mode, and closes the least
+recently used idle connection to make room. One unreferenced timer closes a connection
+idle for 30 seconds (`POOLED_CONNECTION_IDLE_MS`), which is longer than the usual gap
+between contributions to a live session. Both constants live in
+`server/sessions/history/session-history-connection-pool.mjs`.
+
+Reads and transactions use separate connections to the same file. A read-only connection
+serves GETs and reads, so a read still never creates a database, opens it for writing, or
+rolls back another writer's journal; a read-write connection serves transactions. A new
+connection applies the same settings as before: `journal_mode=DELETE`, `synchronous=FULL`,
+and one `BEGIN IMMEDIATE` transaction per contribution, so a crash loses nothing more than
+before.
+Every store operation is synchronous and ends its transaction before returning, so an idle
+connection holds no SQLite lock and scheduled maintenance, which keeps its own short-lived
+connection, contends exactly as before. A nested request for a connection already in use
+gets a separate one that closes on release.
+
+Any exception from a connection closes it instead of returning it to the pool: an
+unreadable or malformed database, unexpected metadata, a busy timeout, or a failed commit.
+The next call opens a fresh connection, so recovery of a killed writer's journal and the
+unavailable result for unreadable history are unchanged. A connection is also discarded when
+its file was removed or replaced after it opened. Windows cannot delete or move a database
+while a handle is open, so `stop()` closes every pooled connection after the last accepted
+write drains, before a desktop runtime releases its data root. No other code deletes,
+renames, or replaces a session database; maintenance reclaims free pages in place. Add an
+explicit per-file release to the pool before adding such a path.
+
 Free database pages are reused. Explicit low-priority maintenance reclaims at most one
 free page per visited database, within the shared maintenance batch budget. Legacy
 generation cleanup keeps the current and preceding generation and deletes only

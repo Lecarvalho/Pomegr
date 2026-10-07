@@ -2,6 +2,7 @@ import { opendir, readFile, rm, rmdir } from "node:fs/promises";
 import { activityGroupPlan, emptyActivityGroups, isToolCallRow, isUnassociatedCall, scopeMatches } from "./session-history-groups.mjs";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
+import { HistoryConnectionPool } from "./session-history-connection-pool.mjs";
 import crypto from "node:crypto";
 import path from "node:path";
 
@@ -10,17 +11,30 @@ import path from "node:path";
 // pages; unchanged history is neither deserialized nor rewritten. DELETE mode
 // has no growing WAL or replay chain. Freed pages are reused; reclamation is an
 // explicit, cooperative incremental_vacuum operation, never part of serving.
+//
+// Connections are pooled (see session-history-connection-pool.mjs) once the owner
+// calls resume(): a read-only connection serves reads and a separate read-write
+// connection serves transactions, so a read never gains write access, never creates
+// a file, and never rolls back another writer's hot journal. Neither holds a SQLite
+// lock between calls, and every operation here is synchronous.
 export class SessionHistoryBlockStore {
-  constructor(directory, validators, { beforeCommit = null } = {}) {
+  constructor(directory, validators, { beforeCommit = null, connections = {} } = {}) {
     this.directory = directory; this.validators = validators; this.beforeCommit = beforeCommit;
     this.runtime = crypto.randomBytes(16).toString("hex");
-    this.io = { detailReads: 0, detailWrites: 0, writtenBytes: 0, transactions: 0, maintenancePages: 0 };
+    this.io = { detailReads: 0, detailWrites: 0, writtenBytes: 0, transactions: 0, maintenancePages: 0, opens: 0, prepares: 0 };
+    this.pool = new HistoryConnectionPool({ ...connections,
+      open: (location, writable) => this.#openDatabase(location, writable),
+      onPrepare: () => { this.io.prepares += 1; } });
   }
   location(id) { return path.join(this.directory, `${crypto.createHash("sha256").update(id).digest("hex")}.history.sqlite`); }
-  open(id, writable = false) {
-    const location = this.location(id);
-    if (!writable && !existsSync(location)) return null;
+  /** Begin retaining pooled connections between calls. */
+  resume() { this.pool.resume(); }
+  /** Close every pooled connection and stop retaining new ones; later calls open and close their own. */
+  close() { this.pool.closeAll(); }
+  connectionCount() { return this.pool.size; }
+  #openDatabase(location, writable) {
     const db = new DatabaseSync(location, { readOnly: !writable });
+    this.io.opens += 1;
     try {
       db.exec("PRAGMA busy_timeout=1000; PRAGMA cache_size=-2048");
       if (writable) {
@@ -34,6 +48,12 @@ export class SessionHistoryBlockStore {
       return db;
     } catch (error) { db.close(); throw error; }
   }
+  // A read never creates a file: a missing database is simply absent.
+  #withReader(id, work) {
+    const location = this.location(id);
+    return existsSync(location) ? this.pool.use(location, false, work) : null;
+  }
+  #withWriter(id, work) { return this.pool.use(this.location(id), true, work); }
   metadata(db) {
     const raw = db.prepare("SELECT value FROM meta WHERE id=1").get();
     if (!raw) return null;
@@ -41,13 +61,11 @@ export class SessionHistoryBlockStore {
     if (value.version !== 5 || !Number.isSafeInteger(value.revision) || value.revision < 1) throw new Error("Invalid history metadata");
     return value;
   }
-  meta(id) {
-    const db = this.open(id); if (!db) return null;
-    try { return this.metadata(db); } finally { db.close(); }
-  }
+  meta(id) { return this.#withReader(id, (db) => this.metadata(db)); }
+  // Opening read-write rolls back a hot journal left by a killed writer, and validates the metadata.
   recover(id) {
-    if (!existsSync(this.location(id))) return;
-    const db = this.open(id, true); try { this.metadata(db); } finally { db.close(); }
+    if (!existsSync(this.location(id))) return null;
+    return this.#withWriter(id, (db) => this.metadata(db));
   }
   get(db, kind, id) {
     const raw = db.prepare("SELECT data,version FROM rows WHERE kind=? AND id=?").get(kind, id);
@@ -67,16 +85,17 @@ export class SessionHistoryBlockStore {
       .run(kind, value.id, value.observedAt || value.timestamp, index, data, version);
     this.io.detailWrites += 1; this.io.writtenBytes += Buffer.byteLength(data) + Buffer.byteLength(index);
   }
+  // Any exception evicts the connection, so a failed transaction never leaves a handle in an unknown state.
   transaction(id, body) {
-    const db = this.open(id, true);
-    try {
-      db.exec("BEGIN IMMEDIATE");
-      const result = body(db);
-      this.beforeCommit?.();
-      db.exec("COMMIT"); this.io.transactions += 1;
-      return result;
-    } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
-    finally { db.close(); }
+    return this.#withWriter(id, (db) => {
+      try {
+        db.exec("BEGIN IMMEDIATE");
+        const result = body(db);
+        this.beforeCommit?.();
+        db.exec("COMMIT"); this.io.transactions += 1;
+        return result;
+      } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
+    });
   }
   saveMeta(db, meta) {
     db.prepare("INSERT INTO meta(id,value) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value").run(JSON.stringify(meta));
@@ -105,8 +124,7 @@ export class SessionHistoryBlockStore {
     });
   }
   load(id) {
-    const db = this.open(id); if (!db) return null;
-    try {
+    return this.#withReader(id, (db) => {
       const meta = this.metadata(db); if (!meta) return null;
       const requests = db.prepare("SELECT data FROM rows WHERE kind='requests' ORDER BY time,id").all().map((row) => JSON.parse(row.data));
       const activityRows = db.prepare("SELECT data,version FROM rows WHERE kind='activity' ORDER BY time DESC,id").all();
@@ -114,7 +132,7 @@ export class SessionHistoryBlockStore {
       return { ...meta, version: 1, requests, activity: activityRows.map((row) => JSON.parse(row.data)),
         activityVersions: Object.fromEntries(activityRows.map((row) => [JSON.parse(row.data).id, row.version])),
         numberRegistry: Object.fromEntries(db.prepare("SELECT id,number FROM numbers").all().map((row) => [row.id, row.number])) };
-    } finally { db.close(); }
+    });
   }
   contribute(id, contribution, domain) {
     return this.transaction(id, (db) => {
@@ -171,22 +189,31 @@ export class SessionHistoryBlockStore {
   // Callback is synchronous, so all compact indexes and selected details come
   // from the same read transaction, with no asynchronous writer/reader race.
   read(id, callback) {
-    const db = this.open(id); if (!db) return null;
-    try {
-      db.exec("BEGIN"); const meta = this.metadata(db); if (!meta) return null;
-      const index = { ...meta, version: 3 };
-      // An activity ref written before the tool-call marker existed lacks `call`; only then is the
-      // row's label read so the ref can be classified without deserializing the row.
-      for (const kind of ["requests", "activity"]) index[kind] = db.prepare(`SELECT ref, CASE WHEN kind='activity' AND json_type(ref,'$.call') IS NULL
-          THEN json_extract(data,'$.tool') END AS legacyTool FROM rows WHERE kind=? ORDER BY time ${kind === "activity" ? "DESC" : "ASC"},id`).all(kind)
-        .map((row) => { const value = JSON.parse(row.ref);
-          return { ...value, ...(typeof row.legacyTool === "string" ? { call: isToolCallRow({ tool: row.legacyTool }) } : {}), page: value.id, slot: 0 }; });
-      return callback(index, (kind, key) => { const value = this.get(db, kind, key); return value ? [value] : []; });
-    } finally { try { db.exec("ROLLBACK"); } catch {} db.close(); }
+    return this.#withReader(id, (db) => {
+      db.exec("BEGIN");
+      try {
+        const meta = this.metadata(db); if (!meta) return null;
+        const index = { ...meta, version: 3 };
+        // An activity ref written before the tool-call marker existed lacks `call`; only then is the
+        // row's label read so the ref can be classified without deserializing the row.
+        for (const kind of ["requests", "activity"]) index[kind] = db.prepare(`SELECT ref, CASE WHEN kind='activity' AND json_type(ref,'$.call') IS NULL
+            THEN json_extract(data,'$.tool') END AS legacyTool FROM rows WHERE kind=? ORDER BY time ${kind === "activity" ? "DESC" : "ASC"},id`).all(kind)
+          .map((row) => { const value = JSON.parse(row.ref);
+            return { ...value, ...(typeof row.legacyTool === "string" ? { call: isToolCallRow({ tool: row.legacyTool }) } : {}), page: value.id, slot: 0 }; });
+        return callback(index, (kind, key) => { const value = this.get(db, kind, key); return value ? [value] : []; });
+      } finally {
+        // A connection that cannot end its read transaction is closed instead of returning to the pool.
+        try { db.exec("ROLLBACK"); } catch { db.broken = true; }
+      }
+    });
   }
+  // Maintenance keeps its own short-lived connection on purpose: it visits every database in
+  // the directory, so pooling it would evict the connections of the sessions in use. The pool
+  // holds no SQLite lock between calls, so the two never contend.
   maintenanceFile(location, budget) {
     // Caller obtained this exact allowlisted entry from the owned directory.
     const db = new DatabaseSync(location);
+    this.io.opens += 1;
     try {
       const before = db.prepare("PRAGMA freelist_count").get().freelist_count;
       let reclaimed = 0;
