@@ -866,7 +866,10 @@ Accepted live branch metadata comes from read-only Git commands against the sess
 
 A historical session shows the last complete snapshot recorded while it was live: recorded
 uncommitted files, branch comparison, and pull-request state at their original check
-times. A session with no recorded snapshot keeps only the transcript branch. Missing
+times. A session with no recorded snapshot keeps only the transcript branch, as does one
+whose snapshot was checked more than 24 hours after the session's last recorded evidence
+(product-owner decision, 2026-10-07; see
+[observation-cache.md](observation-cache.md)). Missing
 recorded fields remain unavailable rather than being filled from the current working tree
 or current branch.
 
@@ -1066,8 +1069,8 @@ Limits of each source:
   drops a commit lowers the count and leaves its time. Each event means a commit with that
   time was observed at some check, not that the commit is still on the branch. Beyond 50
   recorded times the oldest leave. A sidecar written before the list existed has none until
-  the session's next live check, and a session whose recorded snapshot is not served for
-  its repository identity has none at all. Commits by anyone on that branch are included,
+  the session's next live check, and a session whose recorded snapshot is not served, for its repository identity or because it was checked more than 24 hours after
+  the session's last recorded evidence, has none at all. Commits by anyone on that branch are included,
   none is attributed to an agent or request, and neither hash nor subject is exposed.
 - **Pull request opened** is the recorded creation time of a creation made in the session,
   from a recognized tool result with a canonical GitHub URL. The number is attached only when

@@ -517,3 +517,103 @@ test("a source wake invalidates an earlier prepared batch even without catalog g
   await settle(() => observer.diagnostics().activeHydrations === 0);
   assert.deepEqual(hydrated, ["new"], "late eager work must self-prepare instead of reusing the pre-event source snapshot");
 });
+
+function catalogObserver({ list, prepared = [], published = [] }) {
+  return createNormalizedPollingObserver({
+    list,
+    shouldEagerHydrate: () => false,
+    async prepare(batch) { prepared.push(...batch); return new Map(batch.map((entry) => [entry.localId, entry])); },
+    async ingest(id) { published.push(id); return null; },
+    intervalMs: 60_000,
+    async yieldControl() {},
+  });
+}
+
+test("a hydrated session the completed catalog does not list is prepared as not live, and a listed one keeps its entry", async (context) => {
+  const controller = new AbortController();
+  const prepared = [];
+  const observer = catalogObserver({ list: async () => [{ localId: "listed", isLive: true, activityStatus: "working" }], prepared });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await settle(() => observer.diagnostics().reconciliationRuns === 1 && observer.diagnostics().activeHydrations === 0);
+  await observer.hydrate("unlisted");
+  await observer.hydrate("listed");
+  assert.deepEqual(prepared, [
+    { localId: "unlisted", isLive: false },
+    { localId: "listed", isLive: true, activityStatus: "working" },
+  ]);
+});
+
+test("hydrations that arrive before the first catalog pass wait for it and then see its answer, live or not", async (context) => {
+  const controller = new AbortController();
+  const firstPass = deferred();
+  const prepared = [];
+  let reads = 0;
+  const observer = catalogObserver({
+    list: async () => { reads += 1; return firstPass.promise; }, prepared,
+  });
+  context.after(() => { controller.abort(); firstPass.resolve([]); });
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await settle(() => reads === 1);
+  const live = observer.hydrate("live-in-first-pass");
+  const history = observer.hydrate("absent-from-first-pass");
+  for (let index = 0; index < 5; index += 1) await turn();
+  assert.deepEqual(prepared, [], "neither a live nor a historical answer is decided before the catalog is known");
+  assert.equal(observer.diagnostics().activeHydrations, 2);
+  assert.equal(reads, 1, "waiting does not start another catalog pass while one is in flight");
+  firstPass.resolve([{ localId: "live-in-first-pass", isLive: true, activityStatus: "working" }]);
+  await Promise.all([live, history]);
+  assert.deepEqual(prepared.sort((left, right) => left.localId.localeCompare(right.localId)), [
+    { localId: "absent-from-first-pass", isLive: false },
+    { localId: "live-in-first-pass", isLive: true, activityStatus: "working" },
+  ]);
+  assert.equal(observer.diagnostics().acquisitionFailures, 0);
+});
+
+test("a waiting hydration is rejected, not guessed, when the catalog pass fails, and a later request retries the catalog", async (context) => {
+  const controller = new AbortController();
+  const firstPass = deferred();
+  const prepared = [];
+  const published = [];
+  let reads = 0;
+  const observer = catalogObserver({
+    list: async () => {
+      reads += 1;
+      if (reads > 1) return [];
+      await firstPass.promise;
+      throw new Error("catalog unavailable");
+    }, prepared, published,
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await settle(() => reads === 1);
+  const waiting = observer.hydrate("session");
+  await turn();
+  firstPass.resolve();
+  assert.equal(await waiting, false, "an unknown liveness publishes nothing");
+  assert.deepEqual(prepared, []);
+  assert.deepEqual(published, []);
+  await settle(() => observer.diagnostics().activeHydrations === 0);
+  assert.equal(observer.diagnostics().acquisitionFailures, 0, "an unavailable catalog is not an acquisition failure");
+
+  await observer.hydrate("session");
+  assert.equal(reads, 2, "a request after the failed pass asks for a new catalog pass");
+  assert.deepEqual(prepared, [{ localId: "session", isLive: false }]);
+  assert.deepEqual(published, ["session"]);
+});
+
+test("a hydration waiting for the first catalog pass settles when the observer stops", async (context) => {
+  const controller = new AbortController();
+  const firstPass = deferred();
+  const prepared = [];
+  let reads = 0;
+  const observer = catalogObserver({ list: async () => { reads += 1; return firstPass.promise; }, prepared });
+  context.after(() => { controller.abort(); firstPass.resolve([]); });
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await settle(() => reads === 1);
+  const waiting = observer.hydrate("session");
+  await turn();
+  controller.abort();
+  assert.equal(await waiting, false);
+  assert.deepEqual(prepared, []);
+});

@@ -1960,6 +1960,17 @@ React, persisted checkpoints, or browser API fields.
 - Selecting any known uncached historical row queues hydration for that one session. The
   API immediately returns its safe catalog identity with loading readiness, and the UI
   shows the session skeleton until a committed revision is ready.
+- The Codex observer reads a hydrated session as live or historical from its own latest
+  catalog pass. That catalog lists live sessions first and then the newest sessions, up to
+  `catalogLimit` (50) rows; the larger rollout scan only feeds it. A session the catalog
+  does not list is therefore not live, so it is read as historical: it keeps its recorded
+  branch, runs no live Git check, and is not pinned in L1 once its selection moves on. A
+  hydration that arrives before the observer's first catalog pass completes waits for that
+  pass, because an unknown session must not be published as either class and then re-read as
+  the other. If that pass fails, the hydration publishes nothing and the next request asks
+  for a new pass. The lifecycle repair described above applies the same rule to the catalog
+  it has just read. With more than 50 sessions live at once, the sessions past the limit are
+  not live in the catalog and are read the same way.
 - A known selection is pinned before hydration so its first committed snapshot survives
   competing background commits until the browser can receive it. Switching selections
   releases the previous historical pin, including a selection still awaiting hydration.
@@ -3281,7 +3292,12 @@ snapshot. These reads run in projection and commit work, never in a GET. The rec
 keeps at most 512 answers in memory (a snapshot, or a known absence) by recency.
 Each live Git check calls `onRepositoryCheck` once observation serving is
 active; until that load settles the check queues behind it, so a live write cannot replace
-an older sidecar baseline before it is restored. The recorder writes a changed
+an older sidecar baseline before it is restored. A check is recorded only while the
+committed catalog lists its session as live, and that is decided again just before the
+write. A session the catalog does not list, or lists as not live, including an expired Open
+row, is never recorded: a session that just ended, or live-mode evidence restored for a
+session that ended while the monitor was down, would otherwise store today's working tree,
+pull requests, and commits as that session's history. The recorder writes a changed
 snapshot atomically and the session domains recommit. A check whose remote, pull-request,
 or commit count was not observed carries the previous recorded value forward only within
 the same bound repository identity, and an
@@ -3303,6 +3319,31 @@ GETs never inspect Git or GitHub, and a recorded snapshot is never refreshed fro
 unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
+
+As decided by the product owner on 2026-10-07, a historical session does not use a recorded
+snapshot whose check time is more than 24 hours later than the session's last recorded
+evidence. The check time is the snapshot's own `checkedAt`; its branch-comparison and
+pull-request check times are taken before it, or carried forward from an earlier check, so
+one comparison decides. The last recorded
+evidence is `session.updatedAt` of the session's committed normalized evidence, not a file
+time and not the clock. A check exactly 24 hours after is used; a millisecond later it is
+not. When either time is missing or unreadable the comparison cannot be made and the
+snapshot is not used. An unused snapshot behaves exactly as an absent one: the session
+shows its recorded branch, pull requests stay unavailable, and the repository section is
+ready. The decision lives in `sessionRepositorySnapshot`, which every reader of a recorded
+snapshot goes through: the repository domain, `/api/state` `session.repository`, the
+`touchedFiles` committed entries, the session-event commit times, and the checkpoint
+restore projection. It is a pure function of the stored snapshot and the committed
+evidence, so it gives the same answer on every read and after a restart. The file is never
+deleted or rewritten, and the reason stays monitor-private. Live-mode evidence is exempt, so
+a live session never loses what it shows to this rule; a resumed session's new live check
+is recorded over the old snapshot as usual. The rule exists because snapshots recorded for
+sessions the catalog did not list as live were written from the checkout at the time of the
+check. The recording rule above stops new ones. A session can stay catalog-live without new
+evidence for longer than 24 hours only while its owner stays present and it is working or
+waiting for input, since an idle Open row ends five minutes after its last activity and a
+rollout-only live classification ends after two minutes; the snapshot such a session leaves
+is not used.
 
 Snapshot versions 2 to 5 carried window-wide Git-observed lists (`dirtyAtFirstCheck`,
 `becameDirty`, `committedInWindow`, `committedChanges`, `gitObservedTruncated`). They are
