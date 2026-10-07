@@ -18,6 +18,9 @@
  *                                          exactly once (the restart-pomegr skill script). It
  *                                          detects the new monitor process, takes its creation time
  *                                          as t0 and records milestones for 300 s after t0.
+ *   node measure.mjs startup-logs --created <ISO time>
+ *                                          Re-derive the pipeline-log startup milestones of a start that
+ *                                          has already happened (the monitor creation time is in B1).
  *   node measure.mjs steady [--only b2,b6,b5,b3]
  *                                          B2, B6, B5 and B3, in that order by default. B6 waits
  *                                          until the monitor has run 10 minutes, then watches
@@ -307,10 +310,10 @@ async function readPipelineWindow(fromMs, toMs) {
       records += 1;
       runs.add(record.run);
       if (record.kind === "span" && Number.isFinite(record.durationMs)) {
-        spans.push({ stage: record.stage, domain: record.domain, provider: record.provider, lane: record.priorityLane, outcome: record.outcome, durationMs: record.durationMs });
+        spans.push({ stage: record.stage, domain: record.domain, provider: record.provider, lane: record.priorityLane, outcome: record.outcome, durationMs: record.durationMs, scope: record.scope, endAt: at });
       } else if (record.kind === "counter" && Number.isFinite(record.value)) {
         if (!counters.has(record.counter)) counters.set(record.counter, []);
-        counters.get(record.counter).push({ at, value: record.value });
+        counters.get(record.counter).push({ at, value: record.value, startMs: record.startMs });
       }
     }
   }
@@ -320,6 +323,39 @@ async function readPipelineWindow(fromMs, toMs) {
 function stageStats(window, stage, narrow = () => true, windowMs = null) {
   const durations = window.spans.filter((span) => span.stage === stage && narrow(span)).map((span) => span.durationMs);
   return { ...summarize(durations), ...(windowMs ? { perMinute: r1((durations.length / windowMs) * 60_000) } : {}) };
+}
+
+/**
+ * Startup milestones that the pipeline log records for sessions that were live when the monitor
+ * started (acquisition lane `urgent`), as elapsed milliseconds from process creation. The log
+ * clock starts a little after process creation (`logOriginAfterCreationMs`). A session is
+ * identified only by the log's opaque scope handle. These are commit times of the normalized
+ * evidence, not served-readiness times: the summary domain can also wait for its repository
+ * section, which this log does not show.
+ */
+async function startupFromLogs(createdMs, windowMs) {
+  const window = await readPipelineWindow(createdMs, createdMs + windowMs);
+  const counter = [...window.counters.values()].flat().find((item) => Number.isFinite(item.startMs));
+  if (!counter) return { error: "no pipeline log records in the window" };
+  const origin = counter.at - counter.startMs;
+  const since = (value) => r1(value - createdMs);
+  const accepted = window.spans.filter((span) => span.stage === "candidate_to_commit" && span.outcome === "accepted").sort((a, b) => a.endAt - b.endAt);
+  const live = window.spans.filter((span) => span.stage === "acquisition_normalization" && span.lane === "urgent")
+    .map((span) => {
+      const commit = accepted.find((item) => item.scope === span.scope && item.endAt >= span.endAt);
+      const earlier = accepted.find((item) => item.scope === span.scope && item.endAt < span.endAt);
+      return {
+        provider: span.provider, acquisitionMs: r1(span.durationMs), acquisitionEndedMs: since(span.endAt), acquisitionOutcome: span.outcome,
+        evidenceCommittedMs: commit ? since(commit.endAt) : null, restoredCommitBeforeMs: earlier ? since(earlier.endAt) : null,
+      };
+    });
+  const acquisitions = {};
+  for (const span of window.spans) if (span.stage === "acquisition_normalization") { const key = `${span.provider}:${span.lane}`; acquisitions[key] = (acquisitions[key] || 0) + 1; }
+  return {
+    logOriginAfterCreationMs: since(origin), firstSessionCommitMs: accepted[0] ? since(accepted[0].endAt) : null,
+    sessionsLiveAtStart: live, acquisitionsByProviderAndLane: acquisitions, records: window.records,
+    note: "urgent-lane acquisitions are the first reads of sessions that were live at start; restoredCommitBeforeMs is a checkpoint-restored evidence commit of the same session",
+  };
 }
 
 // ---------------------------------------------------------------- conditions
@@ -410,7 +446,8 @@ async function measureStartup() {
       if (dom?.ok) {
         const body = json(dom);
         sample.dom = { status: dom.status, readiness: body?.readiness ?? null, core: body?.sectionReadiness?.core ?? null };
-        if (body?.readiness === "ready" && !domainReady) { domainReady = true; domainReadyAt = dom.end; }
+        // Only an answer from the new monitor ends the polling; the old one may already have answered ready.
+        if (body?.readiness === "ready" && !domainReady && t0 !== null && dom.end >= t0) { domainReady = true; domainReadyAt = dom.end; }
       }
       samples.push(sample);
       await sleepUntil(tick + cfg.pollMs);
@@ -478,6 +515,7 @@ async function measureStartup() {
     rowsAtOffsets: rowsAt, finalDirectory, coverageTimeline,
     note: "directory rows come from the persisted header inventory; coverage complete needs a finished header scan of every provider",
   };
+  b1.fromPipelineLog = await startupFromLogs(t0, windowMs);
   return { b1, b4, polls: after.length };
 }
 
@@ -850,11 +888,12 @@ function markdown(result) {
   const lines = [`## Monitor measurements: ${result.label} (${result.takenAt})`, "", "| ID | Measurement | Value | Unit |", "| --- | --- | --- | --- |"];
   const { b1, b2, b3, b4, b5, b6 } = result;
   if (b1?.error) lines.push(`| B1 | startup | ${b1.error} | |`);
-  if (b1 && !b1.error) {
+  if (b1 && !b1.error && b1.firstAnyResponseMs !== undefined) {
     lines.push(`| B1 | first response after process creation | ${fmt(b1.firstAnyResponseMs)} | ms |`);
     lines.push(`| B1 | first session-list row with a ready summary | ${fmt(b1.firstReadyCatalogRowMs)} | ms |`);
     lines.push(`| B1 | catalog coverage complete | ${fmt(b1.coverageCompleteMs)} | ms |`);
     lines.push(`| B1 | live session A summary ready (core section ready) | ${fmt(b1.liveSessionASummaryReadyMs)} (${fmt(b1.liveSessionACoreReadyMs)}) | ms |`);
+    for (const live of b1.fromPipelineLog?.sessionsLiveAtStart || []) lines.push(`| B1 | live-at-start ${live.provider} session, first read ended / evidence committed (from log) | ${fmt(live.acquisitionEndedMs)} / ${fmt(live.evidenceCommittedMs)} | ms |`);
     for (const sample of b1.processAtOffsets || []) lines.push(`| B1 | CPU seconds / RSS at ${sample.targetOffsetS} s | ${sample.cpuSeconds} / ${sample.rssMb} | s / MB |`);
   }
   if (b4 && !b4.error) {
@@ -920,6 +959,15 @@ async function main() {
     const outcome = await measureStartup();
     if (outcome.error) { result.b1 = outcome; result.b4 = outcome; } else { result.b1 = outcome.b1; result.b4 = outcome.b4; result.pollsAfterCreation = outcome.polls; }
     result.conditionsAfter = { mainCheckout: await checkoutFacts() };
+  } else if (command === "startup-logs") {
+    // Re-derive the log-based startup milestones for a start that has already happened.
+    const created = Date.parse(String(options.created));
+    if (!Number.isFinite(created)) {
+      process.stderr.write("startup-logs needs --created <ISO time of monitor process creation>\n");
+      process.exitCode = 2;
+      return;
+    }
+    result.b1 = { monitorCreatedAt: new Date(created).toISOString(), fromPipelineLog: await startupFromLogs(created, num("startup-s", 300) * 1000) };
   } else if (command === "steady") {
     const steps = String(options.only || "b2,b6,b5,b3").split(",").map((part) => part.trim().toLowerCase());
     result.conditions = await collectConditions();
