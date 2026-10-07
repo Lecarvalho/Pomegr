@@ -251,3 +251,47 @@ test("a lifecycle change still reaches the summary through its own catalog commi
   for (const revision of observed) assert.equal(revision.summary, revision.catalog, "the summary's lifecycle is the committed catalog row's");
   assert.equal(observed.length, 2, "one revision for the evidence and one for the lifecycle change");
 });
+
+test("a running task published together with an idle transition is never shown as current", async (context) => {
+  // The session's 0 ms publication timer fires before the catalog commit that turns the row
+  // idle. The summary must not derive the new evidence under the old lifecycle: it would show
+  // the task as running and withdraw it when the catalog commit lands.
+  const id = "running-then-idle";
+  const monitor = await startMonitor(context, { rows: [liveRow(id)] });
+  monitor.publish(sessionEvidence(id));
+  assert.ok(await until(() => monitor.summary(id)));
+  await monitor.quiesce([liveRow(id)]);
+  assert.equal(monitor.summary(id).snapshot.value.lifecycle.activityFallback.state, "last_observed");
+  const observed = [];
+  context.after(monitor.runtime.subscribeRevisionEvents((event) => {
+    if (event.domain !== "session-summary" || event.sessionId !== `codex:${id}`) return;
+    const lifecycle = monitor.summary(id).snapshot.value.lifecycle;
+    observed.push([lifecycle.activityStatus, lifecycle.activityFallback.state, lifecycle.activityFallback.label]);
+  }));
+  observed.length = 0;
+
+  const startedAt = "2026-08-10T13:04:00.000Z";
+  monitor.publish(sessionEvidence(id, (evidence) => {
+    evidence.session.updatedAt = startedAt;
+    evidence.agents[0].status = "active";
+    evidence.agents[0].executionTasks.push({ ...evidence.agents[0].executionTasks[0], id: "command-2", workKind: "test", status: "running", startedAt, finishedAt: null, exitCode: null });
+  }));
+  await monitor.catalogEvent([liveRow(id, { activityStatus: "idle" })]);
+  assert.ok(await until(() => observed.at(-1)?.[0] === "idle" && observed.at(-1)?.[2] === "test run"));
+  await monitor.catalogEvent([liveRow(id, { activityStatus: "idle" })]);
+  assert.deepEqual(observed.filter(([, state]) => state === "current"), [], "the task was never shown as running");
+  assert.deepEqual(observed.at(-1), ["idle", "last_observed", "test run"]);
+  // Under a lifecycle that stays working, the same evidence is shown as running at once.
+  const working = "running-while-working";
+  const control = await startMonitor(context, { rows: [liveRow(working)] });
+  control.publish(sessionEvidence(working));
+  assert.ok(await until(() => control.summary(working)));
+  await control.quiesce([liveRow(working)]);
+  control.publish(sessionEvidence(working, (evidence) => {
+    evidence.session.updatedAt = startedAt;
+    evidence.agents[0].status = "active";
+    evidence.agents[0].executionTasks.push({ ...evidence.agents[0].executionTasks[0], id: "command-2", workKind: "test", status: "running", startedAt, finishedAt: null, exitCode: null });
+  }));
+  assert.ok(await until(() => control.summary(working).snapshot.value.lifecycle.activityFallback.label === "Running tests"));
+  assert.equal(control.summary(working).snapshot.value.lifecycle.activityFallback.state, "current");
+});
