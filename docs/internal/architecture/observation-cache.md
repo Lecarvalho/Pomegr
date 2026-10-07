@@ -2111,6 +2111,24 @@ reachability.
   tool's candidate target paths, unvalidated, so they can be revalidated on every read; like the
   parsed-tail records they are monitor-private memory, never persisted, logged or exposed, and
   they can outlive that file's parsed-tail entry until the scan's own bound evicts them.
+- Parsed Codex rollout records are acquisition scratch, never evidence. The Codex adapter may
+  keep the records of one read so that an unchanged rollout is not parsed again. A hit requires
+  the same file identity, size, modification time and read window, and a matching 256-byte
+  suffix digest. The cache is in memory only, never persisted or exposed, and bounded to 32 MiB
+  of source bytes and the adapter's scan limit of files (500 by default), least recently used
+  first. A read larger than the byte bound is never retained. Once a session's evidence is
+  built, the adapter releases the records of every rollout in that session's family unless its
+  latest catalog pass lists the session as live, so a settled session holds none. Before the
+  first catalog pass, only a live read keeps its records. A live session's family keeps its
+  records under the bound, so while they fit a complete-history replay parses only the
+  rollouts that changed. A replay of a settled session, and a requested rebuild of one whose
+  committed evidence was evicted, each read every rollout in its family once; the history
+  scheduler runs one replay per source key on demand. Evicting or releasing records never
+  removes per-file normalized state. Context snapshots and compactions, execution tasks,
+  current activity, approval mode, plan tasks, and agent runtime and assignments each keep
+  their own bound of the scan limit of files and their own generation check. They are cleared
+  by that bound, by a failed generation check, when the rollout leaves the discovery cache, or
+  when the source is missing, empty, unreadable, replaced, or changed during a read.
 - Codex folds each bounded live delta into its complete normalized story through the shared,
   provider-neutral `session-fold.mjs`. The provider declares a per-field policy: keyed unions
   (usage snapshots, tool calls, activity, compactions, pull-request creations) with a bound
