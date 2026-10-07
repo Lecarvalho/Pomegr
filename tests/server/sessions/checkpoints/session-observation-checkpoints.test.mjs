@@ -639,7 +639,7 @@ const LEGACY_SIDECAR = {
 
 test("legacy launch-bound evidence keeps its pre-rule sidecar trust and recorded branch; other legacy evidence stays unbound", async () => {
   const { normalizeRepositorySnapshot, resolveCheckpointRepository, sessionRepositorySnapshot, withLegacyRepositoryAttribution } = await import("../../../../server/repository/repository-snapshot.mjs");
-  const legacy = { session: { project: "Clapline", recordedGitBranch: "feat/clapline" } };
+  const legacy = { session: { project: "Clapline", recordedGitBranch: "feat/clapline", updatedAt: "2026-09-20T12:00:00.000Z" } };
   assert.equal(withLegacyRepositoryAttribution(legacy, null), legacy, "an undeclared provider's legacy evidence is untouched");
   const proven = { session: { ...legacy.session, repositoryAttribution: "unknown" } };
   assert.equal(withLegacyRepositoryAttribution(proven, "launch"), proven, "a recorded attribution is never overridden");
@@ -661,7 +661,7 @@ test("a launch-declaring provider's proven session adopts its unbound pre-rule s
   const { normalizeRepositorySnapshot, resolveCheckpointRepository, sessionRepositorySnapshot, snapshotFromLiveCheck } = await import("../../../../server/repository/repository-snapshot.mjs");
   const unbound = normalizeRepositorySnapshot({ ...LEGACY_SIDECAR, repositoryId: null, commitsInSession: 7 });
   assert.ok(unbound, "fixture sidecar is valid");
-  const proven = { session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567", recordedGitBranch: "feat/example" } };
+  const proven = { session: { repositoryAttribution: "single", repositoryId: "repo-0123456789abcdef01234567", recordedGitBranch: "feat/example", updatedAt: "2026-09-20T12:00:00.000Z" } };
   assert.equal(sessionRepositorySnapshot(proven, unbound, { adoptsUnboundSidecar: true }), unbound);
   assert.equal(sessionRepositorySnapshot(proven, unbound), null);
   const options = { historical: true, evidence: proven, snapshot: unbound, recordedGitState: (branch) => ({ available: Boolean(branch), branch, fallback: true }), unavailablePullRequests: () => ({ items: [] }) };

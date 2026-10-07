@@ -3320,6 +3320,31 @@ unavailable rather than asking through the current checkout. Nothing
 substitutes the current branch, working tree, comparison, files, commits,
 or pull-request state for recorded evidence.
 
+As decided by the product owner on 2026-10-07, a historical session does not use a recorded
+snapshot whose check time is more than 24 hours later than the session's last recorded
+evidence. The check time is the snapshot's own `checkedAt`; its branch-comparison and
+pull-request check times are taken before it, or carried forward from an earlier check, so
+one comparison decides. The last recorded
+evidence is `session.updatedAt` of the session's committed normalized evidence, not a file
+time and not the clock. A check exactly 24 hours after is used; a millisecond later it is
+not. When either time is missing or unreadable the comparison cannot be made and the
+snapshot is not used. An unused snapshot behaves exactly as an absent one: the session
+shows its recorded branch, pull requests stay unavailable, and the repository section is
+ready. The decision lives in `sessionRepositorySnapshot`, which every reader of a recorded
+snapshot goes through: the repository domain, `/api/state` `session.repository`, the
+`touchedFiles` committed entries, the session-event commit times, and the checkpoint
+restore projection. It is a pure function of the stored snapshot and the committed
+evidence, so it gives the same answer on every read and after a restart. The file is never
+deleted or rewritten, and the reason stays monitor-private. Live-mode evidence is exempt, so
+a live session never loses what it shows to this rule; a resumed session's new live check
+is recorded over the old snapshot as usual. The rule exists because snapshots recorded for
+sessions the catalog did not list as live were written from the checkout at the time of the
+check. The recording rule above stops new ones. A session can stay catalog-live without new
+evidence for longer than 24 hours only while its owner stays present and it is working or
+waiting for input, since an idle Open row ends five minutes after its last activity and a
+rollout-only live classification ends after two minutes; the snapshot such a session leaves
+is not used.
+
 Snapshot versions 2 to 5 carried window-wide Git-observed lists (`dirtyAtFirstCheck`,
 `becameDirty`, `committedInWindow`, `committedChanges`, `gitObservedTruncated`). They are
 no longer written or served. A record of one of those versions is still validated against

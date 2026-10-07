@@ -9,12 +9,13 @@ import { SessionHistoryStore } from "../../../server/sessions/history/session-hi
 
 const evidence = JSON.parse(await readFile(new URL("../../fixtures/providers/codex/expected-session-evidence.json", import.meta.url), "utf8"));
 
-async function waitFor(predicate, message, attempts = 400) {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (await predicate()) return;
+// Settling depends on I/O and child processes, so a deadline rather than a turn count bounds each wait.
+async function waitFor(predicate, message, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await predicate())) {
+    if (Date.now() >= deadline) assert.fail(`Timed out waiting for ${message}`);
     await new Promise((resolve) => setTimeout(resolve, 2));
   }
-  assert.fail(`Timed out waiting for ${message}`);
 }
 
 const flush = async (turns = 10) => { for (let turn = 0; turn < turns; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
