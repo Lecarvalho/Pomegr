@@ -1,7 +1,7 @@
 "use client";
 
 import type { ResourceUsageUnavailableReason } from "../../../shared/monitor-contract";
-import type { ResourceField, ResourceMinute, ResourceMinuteAggregate } from "../../../shared/session-domain-contract";
+import type { ResourceField, ResourceMinute, ResourceMinuteAggregate, ResourcePeak } from "../../../shared/session-domain-contract";
 import { timelineTime } from "../../dashboard-utils";
 
 /** Human labels for the four fields peaks, curves, and cards share. */
@@ -61,19 +61,21 @@ export function formatRate(value: number | null | undefined) {
   return formatted === "Unavailable" ? formatted : `${formatted}/s`;
 }
 
-/** The one formatter per `ResourceField`: cores render as a percent of one core. */
+/** The one formatter per `ResourceField`. CPU takes the whole-machine percentage (0–100), never cores. */
 export function formatResourceFieldValue(field: ResourceField, value: number | null | undefined) {
-  if (field === "cpu_cores") {
-    const finite = finiteMetric(value);
-    return formatCpuPercent(finite === null ? null : finite * 100);
-  }
+  if (field === "cpu_cores") return formatCpuPercent(value);
   if (field === "memory_bytes") return formatBytes(value);
   return formatRate(value);
 }
 
+/** The value a peak is presented in: CPU as its whole-machine percentage, other fields as recorded. */
+export function resourcePeakDisplayValue(peak: ResourcePeak): number | null {
+  return peak.field === "cpu_cores" ? peak.cpuMachinePercent : peak.value;
+}
+
 /** The stored minute aggregate for one display field; the only field-to-column mapping. */
 export function resourceMinuteAggregate(minute: ResourceMinute, field: ResourceField): ResourceMinuteAggregate | null {
-  if (field === "cpu_cores") return minute.cpuCores;
+  if (field === "cpu_cores") return minute.cpuMachinePercent;
   if (field === "memory_bytes") return minute.memoryBytes;
   if (field === "read_bps") return minute.readBytesPerSecond;
   return minute.writeBytesPerSecond;

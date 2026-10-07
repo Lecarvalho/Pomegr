@@ -281,6 +281,10 @@ reads the same cycle's committed rows. For each demanded session (at most 32 per
 reads the newest 1,440 minute rows (`minutesTruncated` marks a longer curve), the
 `resource_curve_removals` record, and the top three peaks per display field with their
 sample windows and matched execution-task IDs, then keeps the normalized block in memory.
+CPU keeps the `cpu_cores` display field, and the block also carries the value the Resources
+tab presents it in: each minute holds the machine-percent aggregate beside the occupied-core
+one, and a `cpu_cores` peak holds the machine-percent peak recorded for its minute (null when
+that row is absent). Machine percent is never a peak or a display field of its own.
 An explicit retained-resource request is scheduled before the ordinary demanded sessions,
 so a selected session is not delayed behind older retained sessions when the cycle bound
 applies. When more newly requested sessions remain after that bound, the contributor queues

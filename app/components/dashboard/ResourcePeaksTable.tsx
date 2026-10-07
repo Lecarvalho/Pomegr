@@ -6,7 +6,7 @@ import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { formatDuration } from "../../dashboard-utils";
 import { WORK_LABELS } from "../agents/agent-presentation";
 import { DottedInfoPopover } from "../DottedInfoPopover";
-import { RESOURCE_FIELD_CLASS, RESOURCE_FIELD_LABEL, formatResourceFieldValue, resourceClockTime, resourceMinuteAggregate } from "./ResourceSparklineCard";
+import { RESOURCE_FIELD_CLASS, RESOURCE_FIELD_LABEL, formatResourceFieldValue, resourceClockTime, resourceMinuteAggregate, resourcePeakDisplayValue } from "./ResourceSparklineCard";
 
 function activitiesHref(sessionId: string) {
   try { return `/sessions/${encodeSessionRoute(sessionId)}?tab=activities`; } catch { return "/sessions"; }
@@ -74,7 +74,7 @@ export function ResourcePeakZoomPanel({ sessionId, peak }: { sessionId: string; 
     <div className="resourcePeakZoomHeader">
       <div className="resourcePeakZoomTitle">
         <h2 id="resource-peak-zoom-heading" className="resourcesPanelHeading">Peak {resourceClockTime(peak.observedAt)}</h2>
-        <span className="commandChip">{RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, peak.value)}</span>
+        <span className="commandChip">{RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, resourcePeakDisplayValue(peak))}</span>
       </div>
       {peak.window.status === "retained" && <span className="resourcePeakZoomCaption">full resolution · 2 min before and after</span>}
     </div>
@@ -123,7 +123,7 @@ export function ResourcePeaksTable({ sessionId, peaks, selectedPeakId, onSelect 
         return <div className={`resourcePeaksRow${selected ? " isSelected" : ""}`} key={peak.id}>
           <button type="button" className="resourcePeaksRowSelect" aria-pressed={selected} onClick={() => onSelect(peak.id)}>
             <span className="resourcePeaksRowTime">{resourceClockTime(peak.observedAt)}</span>
-            <span className="resourcePeaksRowMetric">{RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, peak.value)}</span>
+            <span className="resourcePeaksRowMetric">{RESOURCE_FIELD_LABEL[peak.field]} {formatResourceFieldValue(peak.field, resourcePeakDisplayValue(peak))}</span>
             <span className="resourcePeaksRowSummary">
               {primaryTask && <><span className="resourcePeaksRowTask">{primaryTask.label}</span>{peak.tasks.length > 1 && <span className="resourcePeaksRowMore" title={`${peak.tasks.length - 1} more overlapping tasks`}>+{peak.tasks.length - 1}</span>}</>}
             </span>

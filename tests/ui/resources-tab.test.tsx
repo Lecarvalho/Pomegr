@@ -24,14 +24,14 @@ function domain(overrides: Partial<ResourcesDomain> = {}): ResourcesDomain {
     retained: {
       readiness: "ready",
       minutes: [
-        { minuteStart: "2026-09-20T11:00:00.000Z", cpuCores: { min: 0.01, avg: 0.03, max: 0.06, maxAt: "2026-09-20T11:00:30.000Z" }, memoryBytes: { min: 400 * mebibyte, avg: 420 * mebibyte, max: 450 * mebibyte, maxAt: "2026-09-20T11:00:40.000Z" }, readBytesPerSecond: { min: 0, avg: 1024, max: 2048, maxAt: "2026-09-20T11:00:20.000Z" }, writeBytesPerSecond: { min: 0, avg: 512, max: 1024, maxAt: "2026-09-20T11:00:20.000Z" } },
-        { minuteStart: "2026-09-20T11:01:00.000Z", cpuCores: { min: 0.02, avg: 0.1, max: 0.18, maxAt: "2026-09-20T11:01:04.000Z" }, memoryBytes: { min: 450 * mebibyte, avg: 500 * mebibyte, max: 611 * mebibyte, maxAt: "2026-09-20T11:01:04.000Z" }, readBytesPerSecond: { min: 512, avg: 2048, max: 4300 * 1024, maxAt: "2026-09-20T11:01:04.000Z" }, writeBytesPerSecond: { min: 256, avg: 1024, max: 2100 * 1024, maxAt: "2026-09-20T11:01:04.000Z" } },
+        { minuteStart: "2026-09-20T11:00:00.000Z", cpuCores: { min: 0.01, avg: 0.03, max: 0.06, maxAt: "2026-09-20T11:00:30.000Z" }, cpuMachinePercent: { min: 0.1, avg: 0.4, max: 0.7, maxAt: "2026-09-20T11:00:30.000Z" }, memoryBytes: { min: 400 * mebibyte, avg: 420 * mebibyte, max: 450 * mebibyte, maxAt: "2026-09-20T11:00:40.000Z" }, readBytesPerSecond: { min: 0, avg: 1024, max: 2048, maxAt: "2026-09-20T11:00:20.000Z" }, writeBytesPerSecond: { min: 0, avg: 512, max: 1024, maxAt: "2026-09-20T11:00:20.000Z" } },
+        { minuteStart: "2026-09-20T11:01:00.000Z", cpuCores: { min: 0.02, avg: 0.1, max: 0.18, maxAt: "2026-09-20T11:01:04.000Z" }, cpuMachinePercent: { min: 0.2, avg: 1.2, max: 2.2, maxAt: "2026-09-20T11:01:04.000Z" }, memoryBytes: { min: 450 * mebibyte, avg: 500 * mebibyte, max: 611 * mebibyte, maxAt: "2026-09-20T11:01:04.000Z" }, readBytesPerSecond: { min: 512, avg: 2048, max: 4300 * 1024, maxAt: "2026-09-20T11:01:04.000Z" }, writeBytesPerSecond: { min: 256, avg: 1024, max: 2100 * 1024, maxAt: "2026-09-20T11:01:04.000Z" } },
       ],
       minutesTruncated: false,
       curveRemoval: null,
       peaks: [
         {
-          id: "p1", field: "cpu_cores", observedAt: "2026-09-20T12:25:00.000Z", value: 0.18,
+          id: "p1", field: "cpu_cores", observedAt: "2026-09-20T12:25:00.000Z", value: 0.18, cpuMachinePercent: 2.2,
           tasks: [{ id: "task-1", workKind: "build", label: "npm run build", startedAt: "2026-09-20T12:21:00.000Z", finishedAt: "2026-09-20T12:24:10.000Z", durationMs: 190_000 }],
           matchedTaskCount: 1, request: null,
           window: { status: "retained", samples: [
@@ -41,10 +41,10 @@ function domain(overrides: Partial<ResourcesDomain> = {}): ResourcesDomain {
           ], minute: null },
         },
         {
-          id: "p2", field: "memory_bytes", observedAt: "2026-09-20T11:01:04.000Z", value: 611 * mebibyte,
+          id: "p2", field: "memory_bytes", observedAt: "2026-09-20T11:01:04.000Z", value: 611 * mebibyte, cpuMachinePercent: null,
           tasks: [], matchedTaskCount: 0, request: { number: 42, uncachedInputTokens: 24 },
           window: { status: "not_retained", samples: [], minute: {
-            minuteStart: "2026-09-20T11:01:00.000Z", cpuCores: null,
+            minuteStart: "2026-09-20T11:01:00.000Z", cpuCores: null, cpuMachinePercent: null,
             memoryBytes: { min: 450 * mebibyte, avg: 500 * mebibyte, max: 611 * mebibyte, maxAt: "2026-09-20T11:01:04.000Z" },
             readBytesPerSecond: null, writeBytesPerSecond: null,
           } },
@@ -70,6 +70,30 @@ describe("ResourcesTab", () => {
     const segmented = screen.getByRole("group", { name: "Resource window" });
     expect(within(segmented).getByRole("button", { name: "30 min" })).toHaveAttribute("aria-pressed", "true");
     expect(within(segmented).getByRole("button", { name: "5 min" })).not.toBeDisabled();
+  });
+
+  it("presents CPU as a share of the whole machine in the live card and the peaks, never as cores", () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    render(<ResourcesTab sessionId="claude:resources" historical={false} />);
+
+    const card = screen.getByText("of all cores").closest("article")!;
+    expect(within(card).getByText("1.1%")).toBeInTheDocument();
+    expect(within(card).getByText(/^peak 2\.2% at /)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /CPU 2\.2%.*npm run build/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /^Peak / })).toHaveTextContent("CPU 2.2%");
+    // Occupied cores would read 9% now and 18% at the peak.
+    expect(screen.queryByText(/\b(?:9|18)%/)).not.toBeInTheDocument();
+  });
+
+  it("reads the Session card's CPU from the stored machine-percent minute aggregates", async () => {
+    useSessionDomain.mockReturnValue(result(domain()));
+    const user = userEvent.setup();
+    render(<ResourcesTab sessionId="claude:resources" historical={false} />);
+    await user.click(screen.getByRole("button", { name: "Session" }));
+
+    const card = screen.getByText("of all cores").closest("article")!;
+    expect(within(card).getByText("2.2%")).toBeInTheDocument();
+    expect(within(card).getByText(/^peak 2\.2% at /)).toBeInTheDocument();
   });
 
   it("switches to the Session window and shows stored minute aggregates", async () => {
