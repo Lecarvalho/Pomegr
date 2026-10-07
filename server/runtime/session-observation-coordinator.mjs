@@ -4,7 +4,7 @@ import { createCheckpointRestore } from "../sessions/checkpoints/session-checkpo
 import { createDurationSeries } from "../diagnostics/pipeline-operations.mjs";
 import { createObservationPersistenceQueue, checkpointFailureStage } from "./observation-persistence-queue.mjs";
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
-import { catalogShellRow, createRowSummaryWriter } from "../sessions/catalog/session-catalog-row.mjs";
+import { catalogShellRow, createRowActivityMemo, createRowSummaryWriter } from "../sessions/catalog/session-catalog-row.mjs";
 import { createSessionCatalogInventory } from "../sessions/catalog/session-catalog-inventory.mjs";
 import { scanProviderHeaders } from "../sessions/catalog/session-header-scan.mjs";
 import { MAX_CATALOG_SHELL_ROWS, catalogSourceScopeKey, catalogStructure, compareCatalogEntries, downgradeRestoredLifecycle, openLiveDeadline, publicCatalogEntry, qualifiedSessionId } from "../sessions/catalog/session-catalog-runtime.mjs";
@@ -50,6 +50,7 @@ export function createSessionObservationCoordinator(options = {}) {
   const checkpointMaxDelayMs = Math.max(checkpointDelayMs, Number(options.checkpointMaxDelayMs ?? 60_000));
   const rowSummaries = createRowSummaryWriter({ store, inventory: catalogInventory, schedule, cancel, now,
     quietMs: checkpointDelayMs, maxMs: checkpointMaxDelayMs, isStopped: () => stopped });
+  const rowActivity = createRowActivityMemo();
   const monotonicNow = options.monotonicNow || (() => performance.now());
   const trace = options.pipelineTrace;
   const traceScopeForSession = typeof options.traceScopeForSession === "function"
@@ -188,9 +189,12 @@ export function createSessionObservationCoordinator(options = {}) {
     rowSummaries.settle(entries.filter((entry) => entry.isLive).map((entry) => entry.id));
     const sessions = entries.slice(0, MAX_CATALOG_SHELL_ROWS).map((entry) => {
       const snapshot = store.getByQualifiedId(entry.id);
-      return catalogShellRow(entry, { snapshot, restoredActivity: restoredActivitySessions.has(entry.id),
-        persisted: snapshot ? null : catalogInventory.get(entry.id) });
+      const restoredActivity = restoredActivitySessions.has(entry.id);
+      // A resident row walks its evidence again only when its snapshot or lifecycle changed.
+      return catalogShellRow(entry, { snapshot, restoredActivity, persisted: snapshot ? null : catalogInventory.get(entry.id),
+        activity: snapshot ? rowActivity.activity(entry, snapshot, restoredActivity) : null });
     });
+    rowActivity.settle();
     const providerStates = (registry.providers || []).map((provider) => catalogReadinessByProvider.get(provider.id) || "loading");
     // One provider's empty result cannot establish that the combined catalog is
     // empty while another is still discovering sessions. Available rows can be
@@ -641,6 +645,7 @@ export function createSessionObservationCoordinator(options = {}) {
   async function stop() {
     stopped = true;
     rowSummaries.stop();
+    rowActivity.clear();
     if (headerScanTimer !== null) cancel(headerScanTimer);
     headerScanTimer = null;
     generation += 1;
@@ -766,6 +771,7 @@ export function createSessionObservationCoordinator(options = {}) {
           ? Math.round(qa.catalogCommitDelayTotalMs / qa.catalogCommitDelaySamples)
           : 0,
         store: store.stats?.() || null,
+        catalogRowActivity: rowActivity.stats(),
         checkpoints: checkpointStore?.stats?.() || null,
         persistence: persistenceQueue?.stats() || null,
         observers: lifecycle?.diagnostics?.() || {},

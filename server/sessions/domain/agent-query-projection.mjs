@@ -293,7 +293,13 @@ function publicFailure(item) {
   };
 }
 
-function recentFailures(entry, now) {
+// Every normalized failure of one committed snapshot, before the time window and the
+// task-over-call preference are applied. Walking the tool calls and execution tasks depends
+// only on the snapshot, so an unchanged snapshot reuses the list.
+function failureCandidates(entry, failureTemplates) {
+  let template = null;
+  if (failureTemplates && entry && typeof entry === "object") template = failureTemplates.get(entry) || null;
+  if (template && template.revision === entry.revision) return template.values;
   const publicAgents = entry?.publicState?.agents || [];
   const evidence = entry?.evidence || {};
   const values = [];
@@ -309,6 +315,13 @@ function recentFailures(entry, now) {
       if (item) values.push(item);
     }
   }
+  Object.freeze(values);
+  if (failureTemplates && entry && typeof entry === "object") failureTemplates.set(entry, Object.freeze({ revision: entry.revision, values }));
+  return values;
+}
+
+function recentFailures(entry, now, failureTemplates) {
+  const values = failureCandidates(entry, failureTemplates);
   const cutoff = now - MAX_FAILURE_WINDOW_MINUTES * 60_000;
   const deduped = new Map();
   for (const item of values) {
@@ -386,7 +399,7 @@ function stableAgentDetails(entry, agentDetailTemplates) {
 }
 
 /** Build all agent-query views from committed monitor projections only. */
-export function buildAgentQueryProjection({ catalog = [], entries = [], providerStatus, usageLimits, now = Date.now, reportTemplates = null, agentDetailTemplates = null } = {}) {
+export function buildAgentQueryProjection({ catalog = [], entries = [], providerStatus, usageLimits, now = Date.now, reportTemplates = null, agentDetailTemplates = null, failureTemplates = null } = {}) {
   const catalogValue = Array.isArray(catalog) ? { sessions: catalog, readiness: null } : (catalog || {});
   const catalogSessions = Array.isArray(catalogValue.sessions) ? catalogValue.sessions : [];
   const retainedEntries = Array.isArray(entries) ? entries : [];
@@ -402,7 +415,7 @@ export function buildAgentQueryProjection({ catalog = [], entries = [], provider
   const sessionDetails = new Map();
   for (const entry of retainedEntries) {
     const agentDetails = stableAgentDetails(entry, agentDetailTemplates);
-    const failureProjection = recentFailures(entry, projectionTime);
+    const failureProjection = recentFailures(entry, projectionTime, failureTemplates);
     const report = renderedReport(entry, new Date(projectionTime), reportTemplates);
     sessionDetails.set(entry.qualifiedId, Object.freeze({
       agentReadiness: readiness(entry.readiness?.agentEvidence, "ready"),
@@ -502,10 +515,12 @@ export function createAgentQueryProjectionCache({ sources = {}, now = Date.now }
   // committed state and release evicted snapshots without another retention owner.
   const reportTemplates = new WeakMap();
   const agentDetailTemplates = new WeakMap();
+  const failureTemplates = new WeakMap();
+  const templates = { reportTemplates, agentDetailTemplates, failureTemplates };
   const materialize = () => Object.fromEntries(Object.entries(sources).map(([key, value]) => [key, typeof value === "function" ? value() : value]));
-  let projection = buildAgentQueryProjection({ ...materialize(), now, reportTemplates, agentDetailTemplates });
+  let projection = buildAgentQueryProjection({ ...materialize(), now, ...templates });
   function refresh() {
-    projection = buildAgentQueryProjection({ ...materialize(), now, reportTemplates, agentDetailTemplates });
+    projection = buildAgentQueryProjection({ ...materialize(), now, ...templates });
     revision += 1;
     serialized = new Map();
     return projection;

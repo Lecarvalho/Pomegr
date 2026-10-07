@@ -322,6 +322,12 @@ test("query cache reuses an immutable report template but derives its timestamp 
   entry.publicState.metrics = { get tokens() { reportRenderReads += 1; return {}; } };
   const usageSnapshots = entry.evidence.usageSnapshots;
   Object.defineProperty(entry.evidence, "usageSnapshots", { enumerable: true, get() { contextDetailReads += 1; return usageSnapshots; } });
+  let failureWalks = 0;
+  const countFailureWalks = (value) => {
+    const toolCalls = value.evidence.toolCalls;
+    Object.defineProperty(value.evidence, "toolCalls", { enumerable: true, get() { failureWalks += 1; return toolCalls; } });
+  };
+  countFailureWalks(entry);
   let entries = [entry];
   const cache = createAgentQueryProjectionCache({ now: () => clock, sources: {
     catalog: () => [{ id: entry.qualifiedId, provider: "codex", isLive: true }],
@@ -329,10 +335,13 @@ test("query cache reuses an immutable report template but derives its timestamp 
   } });
   const coldReportRenderReads = reportRenderReads;
   const coldContextDetailReads = contextDetailReads;
+  const coldFailureWalks = failureWalks;
+  assert.ok(coldFailureWalks > 0, "the first projection walks the snapshot's tool calls");
   cache.refresh();
   cache.refresh();
   assert.equal(reportRenderReads, coldReportRenderReads, "unchanged committed snapshots must skip the report renderer");
   assert.equal(contextDetailReads, coldContextDetailReads, "unchanged committed snapshots must skip latest-context normalization");
+  assert.equal(failureWalks, coldFailureWalks, "unchanged committed snapshots must skip the failure walk");
   const first = cache.read("getSessionReport", { sessionRef: entry.qualifiedId }).snapshot.value;
   const firstFailures = cache.read("getRecentFailures", { sessionRef: entry.qualifiedId, withinMinutes: 1_440, limit: 10 }).snapshot.value;
   assert.match(first.report, /\*\*Recorded interval:\*\* 2000-01-01T00:00:00\.000Z/u);
@@ -358,8 +367,11 @@ test("query cache reuses an immutable report template but derives its timestamp 
   replacement.publicState.metrics = { get tokens() { reportRenderReads += 1; return {}; } };
   const replacementUsageSnapshots = replacement.evidence.usageSnapshots;
   Object.defineProperty(replacement.evidence, "usageSnapshots", { enumerable: true, get() { contextDetailReads += 1; return replacementUsageSnapshots; } });
+  countFailureWalks(replacement);
+  assert.equal(failureWalks, coldFailureWalks, "the failure window moved twice above without another walk");
   entries = [replacement];
   cache.refresh();
+  assert.equal(failureWalks, coldFailureWalks * 2, "a new committed snapshot identity must walk its failures");
   assert.equal(reportRenderReads, coldReportRenderReads + 1, "a new committed snapshot identity must render a new report");
   assert.ok(contextDetailReads > coldContextDetailReads, "a new committed snapshot identity must normalize latest context");
   assert.match(cache.read("getSessionReport", { sessionRef: replacement.qualifiedId }).snapshot.value.report, /gpt-6-sol/u, "a different committed snapshot must not reuse a prior report");
@@ -368,7 +380,20 @@ test("query cache reuses an immutable report template but derives its timestamp 
   const replacementContextDetailReads = contextDetailReads;
   cache.refresh();
   assert.equal(reportRenderReads, coldReportRenderReads + 2, "a new committed revision must render a new report");
+  assert.equal(failureWalks, coldFailureWalks * 3, "a new committed revision must walk its failures");
   assert.ok(contextDetailReads > replacementContextDetailReads, "a new committed revision must normalize latest context");
+});
+
+test("a reused failure walk selects the same recent failures as a fresh one at every projection time", () => {
+  const entry = retained();
+  const failureTemplates = new WeakMap();
+  const query = { sessionRef: entry.qualifiedId, withinMinutes: 1_440, limit: 10 };
+  for (const offset of [0, 60_000, 1_440 * 60_000 - 75, 1_440 * 60_000 - 25, 1_440 * 60_000]) {
+    const reused = buildAgentQueryProjection({ entries: [entry], now: () => NOW + offset, failureTemplates }).getRecentFailures(query);
+    const fresh = buildAgentQueryProjection({ entries: [entry], now: () => NOW + offset }).getRecentFailures(query);
+    assert.deepEqual(reused, fresh, `offset ${offset}`);
+  }
+  assert.ok(failureTemplates.has(entry));
 });
 
 test("usage refreshes retain committed catalog observation time and last known-good local activity", () => {

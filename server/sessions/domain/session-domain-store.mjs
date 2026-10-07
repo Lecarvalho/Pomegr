@@ -1,5 +1,8 @@
 import { mergeSessionEventRecord, sessionEventRecordIsEmpty } from "./session-event-record.mjs";
-import { projectSessionDomains, unavailableSessionDomains } from "./session-domain-projection.mjs";
+import {
+  liveRepositoryFiles, projectSessionDomains, sessionDomainCatalogInputs, unavailableSessionDomains,
+  UNAVAILABLE_SESSION_DOMAIN_CATALOG_FIELDS,
+} from "./session-domain-projection.mjs";
 
 export const SESSION_DOMAIN_NAMES = Object.freeze([
   "session-summary", "agents", "agent", "signals", "repository", "resources", "details",
@@ -32,6 +35,36 @@ function semanticValue(value) {
   return semantic;
 }
 
+// A value whose identity stands for its content: a primitive, or an object its owner froze and
+// replaces instead of mutating. Anything else is compared by projecting, as before.
+function immutable(value) {
+  return value === null || value === undefined || typeof value !== "object" || Object.isFrozen(value);
+}
+function immutableSnapshot(snapshot) {
+  return Boolean(snapshot) && typeof snapshot === "object" && Object.isFrozen(snapshot)
+    && Boolean(snapshot.publicState) && typeof snapshot.publicState === "object" && Object.isFrozen(snapshot.publicState)
+    && immutable(snapshot.evidence) && immutable(snapshot.readiness);
+}
+// The inputs of one evidence projection, held only by identity or as short strings. The
+// snapshot is held weakly so this record never keeps evicted evidence alive.
+const EVIDENCE_INPUT_NAMES = Object.freeze([
+  "catalogKey", "repositoryRoot", "repositoryUnavailableReason", "retainedResources", "fileHistory",
+  "gitObserved", "commitTimes", "recordedEvents", "liveFilesKey",
+]);
+// A value that cannot be serialized has no key, so it is never taken as unchanged.
+function comparableKey(value) {
+  try { return JSON.stringify(value); } catch { return null; }
+}
+function evidenceInputs(snapshot, values) {
+  if (!immutableSnapshot(snapshot) || typeof values.catalogKey !== "string") return null;
+  for (const name of EVIDENCE_INPUT_NAMES) if (!immutable(values[name])) return null;
+  return { kind: "evidence", snapshot: new WeakRef(snapshot), ...values };
+}
+function sameEvidenceInputs(previous, next, snapshot) {
+  if (!previous || !next || previous.kind !== "evidence" || previous.snapshot.deref() !== snapshot) return false;
+  return EVIDENCE_INPUT_NAMES.every((name) => previous[name] === next[name]);
+}
+
 /**
  * Independently revisioned D projections. S reads exact committed JSON only.
  *
@@ -43,6 +76,13 @@ function semanticValue(value) {
  * requested session are exempt from the soft session bound, up to a hard
  * ceiling. Otherwise never-requested sessions evict first, then the least
  * recently used.
+ *
+ * A commit whose inputs are the ones this session last projected from skips the projection: it
+ * is the same no-op, decided before deriving and serializing seven domains. The inputs are the
+ * immutable committed snapshot, the compared view of the catalog row, and every side-channel
+ * value read below. The live repository file list is validated against the filesystem on each
+ * commit, as before, and compared with the last validated list, so a path that stops being
+ * safely contained is still withdrawn by the next commit.
  */
 export function createSessionDomainStore(options = {}) {
   const now = options.now || Date.now;
@@ -66,6 +106,11 @@ export function createSessionDomainStore(options = {}) {
   // sessionId -> the recorded refill and compaction times of its last evidence commit, kept for
   // the same reason: the event recorder may not hold the session's record at a projection.
   const lastEventRecords = new Map();
+  // sessionId -> the inputs of the projection its retained records were last committed from.
+  // Present only while a re-projection from the same inputs would change nothing, including the
+  // records above. Bounded by `sessions`.
+  const lastInputs = new Map();
+  const counts = { projections: 0, unchangedInputs: 0, liveRepositoryValidations: 0 };
   const subscribers = new Set();
 
   function key(sessionId, domain) { return `${sessionId}\u0000${domain}`; }
@@ -94,6 +139,7 @@ export function createSessionDomainStore(options = {}) {
     sessions.delete(sessionId);
     lastCommitTimes.delete(sessionId);
     lastEventRecords.delete(sessionId);
+    lastInputs.delete(sessionId);
   }
   function evictIdle(at = now()) {
     const evicted = [];
@@ -201,9 +247,11 @@ export function createSessionDomainStore(options = {}) {
       const recorded = options.repositoryRecordForSession?.(sessionId) ?? null;
       const commitTimes = Array.isArray(recorded?.commitTimes) ? recorded.commitTimes : lastCommitTimes.get(sessionId) ?? null;
       const lastEventRecord = lastEventRecords.get(sessionId) ?? null;
-      const eventRecord = mergeSessionEventRecord(lastEventRecord, options.eventRecordForSession?.(sessionId) ?? null);
-      const projection = projectSessionDomains(sessionId, snapshot, {
-        catalogEntry,
+      const recordedEvents = options.eventRecordForSession?.(sessionId) ?? null;
+      // Every hook is still read on every commit: a source may change its answer without
+      // announcing it (a store that became available, a live check that found another branch).
+      const projectionOptions = {
+        catalogEntry: sessionDomainCatalogInputs(catalogEntry),
         forbiddenRoots: options.forbiddenRoots || [],
         repositoryRoot: options.repositoryRootForSession?.(sessionId) || null,
         repositoryUnavailableReason: options.repositoryUnavailableReasonForSession?.(sessionId) || null,
@@ -211,20 +259,57 @@ export function createSessionDomainStore(options = {}) {
         fileHistory: options.fileHistoryForSession?.(sessionId) ?? null,
         gitObserved: recorded?.gitObserved ?? null,
         commitTimes,
-        eventRecord,
-      });
+      };
+      // The filesystem is not a committed input, so its answer is read again and compared.
+      const liveFiles = liveRepositoryFiles(snapshot, projectionOptions);
+      if (liveFiles) counts.liveRepositoryValidations += 1;
+      const inputs = {
+        catalogKey: comparableKey(projectionOptions.catalogEntry),
+        repositoryRoot: projectionOptions.repositoryRoot,
+        repositoryUnavailableReason: projectionOptions.repositoryUnavailableReason,
+        retainedResources: projectionOptions.retainedResources,
+        fileHistory: projectionOptions.fileHistory,
+        gitObserved: projectionOptions.gitObserved,
+        commitTimes,
+        recordedEvents,
+        liveFilesKey: liveFiles ? JSON.stringify(liveFiles) : null,
+      };
+      if (sameEvidenceInputs(lastInputs.get(sessionId), inputs, snapshot)) {
+        counts.unchangedInputs += 1;
+        return Object.freeze([]);
+      }
+      const eventRecord = mergeSessionEventRecord(lastEventRecord, recordedEvents);
+      counts.projections += 1;
+      const projection = projectSessionDomains(sessionId, snapshot, { ...projectionOptions, liveRepositoryFiles: liveFiles, eventRecord });
       const published = commitProjection(sessionId, projection, "evidence");
-      if (sessions.has(sessionId) && Array.isArray(commitTimes)) lastCommitTimes.set(sessionId, commitTimes);
-      if (sessions.has(sessionId)) lastEventRecords.set(sessionId, projection.eventRecord);
+      const retained = sessions.has(sessionId);
+      if (retained && Array.isArray(commitTimes)) lastCommitTimes.set(sessionId, commitTimes);
+      if (retained) lastEventRecords.set(sessionId, projection.eventRecord);
+      // Remembered only once the event record stopped moving: a commit that changed it hands it
+      // to the recorder below, and the next commit must still do what it did before.
+      const settled = retained && projection.eventRecord === lastEventRecord ? evidenceInputs(snapshot, inputs) : null;
+      if (settled) lastInputs.set(sessionId, settled);
+      else lastInputs.delete(sessionId);
       // Hands a changed union to the recorder, which merges it into the session's sidecar.
       if (projection.eventRecord !== lastEventRecord && !sessionEventRecordIsEmpty(projection.eventRecord)) options.onEventRecord?.(sessionId, projection.eventRecord);
       return published;
     },
     commitUnavailable(sessionId, catalogEntry, source, capabilities) {
       if (sessions.get(sessionId)?.kind === "evidence") return Object.freeze([]);
-      return commitProjection(sessionId, unavailableSessionDomains(sessionId, catalogEntry, source, capabilities, {
+      // The placeholder derives from the row, the provider's label, and its capabilities only.
+      const key = comparableKey([sessionDomainCatalogInputs(catalogEntry, UNAVAILABLE_SESSION_DOMAIN_CATALOG_FIELDS), source ?? null, capabilities ?? null]);
+      const previous = lastInputs.get(sessionId);
+      if (key !== null && previous?.kind === "unavailable" && previous.key === key) {
+        counts.unchangedInputs += 1;
+        return Object.freeze([]);
+      }
+      counts.projections += 1;
+      const published = commitProjection(sessionId, unavailableSessionDomains(sessionId, catalogEntry, source, capabilities, {
         forbiddenRoots: options.forbiddenRoots || [],
       }), "unavailable");
+      if (sessions.get(sessionId)?.kind === "unavailable") lastInputs.set(sessionId, { kind: "unavailable", key });
+      else lastInputs.delete(sessionId);
+      return published;
     },
     read(sessionId, domain, agentId, revision) {
       if (!SESSION_DOMAIN_SET.has(domain)) return Object.freeze({ status: "invalid", revision: 0, snapshot: null });
@@ -273,6 +358,9 @@ export function createSessionDomainStore(options = {}) {
     has(sessionId) { return sessions.has(sessionId); },
     sessionIds() { return Object.freeze([...sessions.keys()]); },
     size() { return sessions.size; },
-    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); lastEventRecords.clear(); },
+    /** Monitor-private work counters: projections run, commits skipped on unchanged inputs, and
+     * live repository file lists validated against the filesystem. */
+    stats() { return Object.freeze({ ...counts }); },
+    clear() { records.clear(); sessions.clear(); pendingDemand.clear(); lastCommitTimes.clear(); lastEventRecords.clear(); lastInputs.clear(); },
   });
 }
