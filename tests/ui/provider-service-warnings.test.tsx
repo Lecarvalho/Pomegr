@@ -129,8 +129,9 @@ describe("provider service warnings", () => {
     setNotifications([occurrence("provider_incident", "codex", "a".repeat(32)), occurrence("provider_incident", "claude", "b".repeat(32))]);
     render(shell([session("codex"), session("claude")]));
     await user.click(screen.getByRole("button", { name: "Notifications, attention available" }));
-    const group = screen.getByRole("region", { name: "Provider service" });
+    const group = screen.getByTestId("notification-center");
     expect(within(group).getAllByText(/reports service issues/)).toHaveLength(2);
+    expect(within(group).getAllByText("Provider service")).toHaveLength(2);
     expect(within(group).getAllByRole("link", { name: "View providers" }).map((link) => link.getAttribute("href"))).toEqual(["/usage-limits", "/usage-limits"]);
     expect(group).not.toHaveTextContent("Elevated errors");
   });

@@ -959,7 +959,10 @@ storage, capped at 32 KiB. Invalid/newer or denied storage falls back to memory
 without overwriting the source. Local `client:` transport markers are memory-only.
 Random occurrence identity prevents markers for an older source/profile generation
 from matching new occurrences without exposing a source fingerprint or generation
-to the browser. Reading does not resolve an active Needs input condition. The
+to the browser. Reading does not resolve an active Needs input condition. The tray
+lists occurrences in one list, newest original occurrence time first (priority only
+breaks a tie), names each occurrence's fixed category on its own line, and mutes
+entries with a read marker; none of this changes occurrence identity or delivery. The
 desktop renderer's browser origin changes across app launches, so its browser
 read markers can reset on restart. These markers never synchronize with native
 delivery claims. Fixed actions resolve to safe local routes: `open_session` validates

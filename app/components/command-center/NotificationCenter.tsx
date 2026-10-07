@@ -30,7 +30,6 @@ export type NotificationPresentationRule = {
 };
 
 const PROVIDER_LABEL = { claude: "Claude Code", codex: "Codex" } as const;
-const GROUP_ORDER: NotificationView["group"][] = ["Needs attention", "Provider service", "Usage limits", "Provider updates", "Model news", "System"];
 
 /** Fixed destinations. A malformed session identity falls back to the Sessions page. */
 export function notificationDestination(action: NotificationAction, record: NotificationRecord): { href: string; label: string } {
@@ -89,7 +88,8 @@ export const NOTIFICATION_PRESENTATION: readonly NotificationPresentationRule[] 
   } : null },
 ];
 
-/** Presentation registration is separate from tray rendering. Tests can add a producer here. */
+/** Presentation registration is separate from tray rendering. Tests can add a producer here.
+ * Entries are ordered newest first; priority only breaks a tie between equal times. */
 export function adaptNotificationRecords(records: readonly NotificationRecord[], rules: readonly NotificationPresentationRule[] = NOTIFICATION_PRESENTATION): NotificationView[] {
   const byKind = new Map(rules.map((rule) => [rule.kind, rule]));
   return records.flatMap((record) => {
@@ -98,7 +98,7 @@ export function adaptNotificationRecords(records: readonly NotificationRecord[],
     const destination = notificationDestination(record.action, record);
     return [{ id: record.id, kind: record.kind, occurredAt: record.occurredAt, priority: record.priority,
       ...presentation, href: destination.href, linkLabel: destination.label }];
-  }).sort((left, right) => right.priority - left.priority || right.occurredAt.localeCompare(left.occurredAt));
+  }).sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.priority - left.priority || left.id.localeCompare(right.id));
 }
 
 export function useNotifications(connected: boolean, loading: boolean) {
@@ -141,19 +141,15 @@ export function NotificationCenter({ entries, isUnread, unreadCount, markAllRead
     </header>
     {sourceStatus !== "ready" && <div className="commandNotificationGroup" role="status">{sourceStatus === "loading" ? "Loading notifications…" : "Notification updates are delayed. Showing last known state."}</div>}
     {!entries.some((entry) => entry.group !== "System") && sourceStatus === "ready" && <div className="commandNotificationEmpty"><CommandIcon name="bell" /><strong>No session needs attention</strong><p>Pomegr will keep observing local session state.</p></div>}
-    {GROUP_ORDER.map((group) => {
-      const groupEntries = entries.filter((entry) => entry.group === group);
-      if (!groupEntries.length) return null;
-      return <section key={group} aria-label={group}>
-        <div className="commandNotificationGroup"><span>{group}</span><b>{groupEntries.filter(isUnread).length}</b></div>
-        {groupEntries.map((entry) => <article className={`commandNotificationEntry${isUnread(entry) ? "" : " isRead"}`} key={entry.id} data-testid={`notification-${entry.kind}`} aria-label={`${entry.title}, ${entry.kind.replaceAll("_", " ")}`}>
-          <i className={`commandStatusDot ${entry.tone}`} aria-hidden="true" />
-          <div><strong>{entry.title}</strong><p>{entry.description}</p>
-            <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
-          </div>
-          <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time>
-        </article>)}
-      </section>;
+    {entries.map((entry) => {
+      const unread = isUnread(entry);
+      return <article className={`commandNotificationEntry${unread ? "" : " isRead"}`} key={entry.id} data-testid={`notification-${entry.kind}`} aria-label={`${entry.title}, ${entry.kind.replaceAll("_", " ")}, ${unread ? "unread" : "read"}`}>
+        <i className={`commandStatusDot ${entry.tone}`} aria-hidden="true" />
+        <div><span className="commandNotificationCategory">{entry.group}</span><strong>{entry.title}</strong><p>{entry.description}</p>
+          <Link href={entry.href} onClick={() => onClose(false)}>{entry.linkLabel}</Link>
+        </div>
+        <time dateTime={entry.occurredAt}>{new Date(entry.occurredAt).toLocaleString()}</time>
+      </article>;
     })}
     {activeSessionOverflow > 0 && <div className="commandNotificationGroup"><span>{activeSessionOverflow} more sessions need input</span><Link href="/sessions" onClick={() => onClose(false)}>View sessions</Link></div>}
     <footer aria-live="polite">{unreadCount ? `${unreadCount} unread ${unreadCount === 1 ? "notification" : "notifications"}` : "You are all caught up"}</footer>
