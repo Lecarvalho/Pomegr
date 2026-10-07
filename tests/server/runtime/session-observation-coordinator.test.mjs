@@ -119,7 +119,7 @@ test("fresh source evidence preempts a delayed derivation retry", async () => {
   await coordinator.stop();
 });
 
-test("an obsolete in-flight failure neither retries nor moves a fresh candidate's deadline", async () => {
+test("an obsolete in-flight failure cannot move a fresh candidate's deadline", async () => {
   const scheduler = deadlineScheduler();
   const store = memoryStore();
   let publisher;
@@ -135,15 +135,15 @@ test("an obsolete in-flight failure neither retries nor moves a fresh candidate'
   await coordinator.start();
   publisher.publishSession("codex", "one", { version: 1, session: {} });
   await scheduler.advance(100);
-  // The first candidate is still deriving, so the second keeps a full spacing as its deadline.
   publisher.publishSession("codex", "one", { version: 2, session: {} });
   rejectObsolete(new Error("Synthetic obsolete derivation failure"));
-  await scheduler.advance(499);
+  await scheduler.advance(100);
+  publisher.publishSession("codex", "one", { version: 3, session: {} });
+  await scheduler.advance(299);
   assert.equal(store.getByQualifiedId("codex:one"), null);
   await scheduler.advance(1);
-  assert.equal(store.getByQualifiedId("codex:one")?.publicState.version, 2);
-  await scheduler.advance(60_000);
-  assert.deepEqual([coordinator.diagnostics().sessionCommits, coordinator.diagnostics().rejectedCandidates], [1, 1]);
+  assert.equal(store.getByQualifiedId("codex:one")?.publicState.version, 3);
+  assert.equal(coordinator.diagnostics().sessionCommits, 1);
   await coordinator.stop();
 });
 

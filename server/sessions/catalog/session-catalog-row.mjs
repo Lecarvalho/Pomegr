@@ -110,6 +110,17 @@ export function createRowActivityMemo() {
       else if (frozenSnapshot(snapshot)) building.set(entry.id, { snapshot: new WeakRef(snapshot), ...lifecycle, restoredActivity, activity });
       return activity;
     },
+    /**
+     * The same fields between catalog commits, for a row whose snapshot the next commit will read.
+     * The record goes where that commit looks for it, so the commit reuses this walk.
+     */
+    preview(entry, snapshot, restoredActivity = false) {
+      const activity = this.activity(entry, snapshot, restoredActivity);
+      const record = building.get(entry.id);
+      if (record) committed.set(entry.id, record);
+      building.delete(entry.id);
+      return activity;
+    },
     /** Ends one catalog commit: rows it did not build are forgotten. */
     settle() { committed = building; building = new Map(); },
     clear() { committed = new Map(); building = new Map(); },

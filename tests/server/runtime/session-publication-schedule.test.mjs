@@ -31,10 +31,10 @@ function manualClock() {
 function harness(spacingMs = 500) {
   const clock = manualClock();
   const published = [];
-  // The owner settles each publication when it reaches the store; these tests settle at once.
+  // The owner records a derivation start when a timer fires and it still has a candidate.
   const schedule = createSessionPublicationSchedule({
     schedule: clock.schedule, cancel: clock.cancel, now: clock.now, spacingMs,
-    publish(id) { published.push([id, clock.now()]); schedule.settled(id); },
+    publish(id) { published.push([id, clock.now()]); schedule.started(id); },
   });
   return { clock, published, schedule };
 }
@@ -48,12 +48,12 @@ test("a quiet session's fresh candidate is scheduled with no delay", () => {
   assert.equal(schedule.pending(), false);
 });
 
-test("a fresh candidate after a publication waits the rest of the spacing, and later ones join it", () => {
+test("a fresh candidate after a derivation start waits the rest of the spacing, and later ones join it", () => {
   const { clock, published, schedule } = harness();
   schedule.fresh("a");
   clock.advance(120);
   schedule.fresh("a");
-  assert.deepEqual(clock.timers(), [[380, 500]], "500 ms after the publication at 0");
+  assert.deepEqual(clock.timers(), [[380, 500]], "500 ms after the derivation start at 0");
   clock.advance(200);
   schedule.fresh("a");
   schedule.fresh("a");
@@ -99,7 +99,7 @@ test("a gathered rederivation waits the full spacing and a fresh candidate moves
   assert.deepEqual(published, [["a", 200]], "the replaced timer never fires");
 });
 
-test("a gathered rederivation right after a publication still waits the full spacing", () => {
+test("a gathered rederivation right after a derivation start still waits the full spacing", () => {
   const { clock, schedule } = harness();
   schedule.fresh("a");
   clock.advance(100);
@@ -138,58 +138,63 @@ test("a retry never replaces a timer that is already set", () => {
   assert.deepEqual(clock.timers(), [[500, 500]]);
 });
 
-test("a fresh candidate behind a derivation in flight keeps the full spacing until that derivation ends", () => {
-  const clock = manualClock();
-  const started = [];
-  const schedule = createSessionPublicationSchedule({
-    schedule: clock.schedule, cancel: clock.cancel, now: clock.now, spacingMs: 500,
-    publish(id) { started.push([id, clock.now()]); },
-  });
+test("a candidate that arrives while a derivation runs waits the spacing from that derivation's start", () => {
+  const { clock, published, schedule } = harness();
   schedule.fresh("a");
-  clock.advance(0);
-  const ended = schedule.derivationStarted("a");
   clock.advance(3);
   schedule.fresh("a");
-  assert.deepEqual(clock.timers(), [[500, 503]], "no second derivation starts beside the first");
+  assert.deepEqual(clock.timers(), [[497, 500]], "the derivation that started at 0 is still running");
   clock.advance(4);
-  ended();
-  // The owner found the older candidate superseded and asks again for the newer one.
+  // The derivation ended and its result was dropped. Nothing may move the newer candidate forward.
+  schedule.gathered("a");
   schedule.fresh("a");
-  assert.deepEqual(clock.timers(), [[0, 7]], "nothing was published, so the newer candidate may go at once");
-  clock.advance(0);
-  assert.deepEqual(started, [["a", 0], ["a", 7]]);
+  assert.deepEqual(clock.timers(), [[497, 500]]);
+  clock.advance(493);
+  assert.deepEqual(published, [["a", 0], ["a", 500]]);
 });
 
-test("clearing cancels every timer and forgets derivations that are still in flight", () => {
+test("a timer that fires without a recorded start does not space the next request", () => {
+  const clock = manualClock();
+  const fired = [];
+  // The owner found no candidate when the timer fired, so no derivation started.
+  const schedule = createSessionPublicationSchedule({
+    schedule: clock.schedule, cancel: clock.cancel, now: clock.now, spacingMs: 500, publish(id) { fired.push(id); },
+  });
+  schedule.fresh("a");
+  clock.advance(100);
+  schedule.fresh("a");
+  assert.deepEqual(clock.timers(), [[0, 100]]);
+  assert.deepEqual(fired, ["a"]);
+});
+
+test("clearing cancels every timer and forgets every derivation start", () => {
   const { clock, published, schedule } = harness();
-  const ended = schedule.derivationStarted("a");
+  schedule.fresh("a");
+  clock.advance(100);
   schedule.gathered("a");
   schedule.fresh("b");
+  assert.deepEqual(schedule.retained(), { timers: 2, started: 1 });
   schedule.clear();
   assert.equal(schedule.pending(), false);
-  assert.deepEqual(schedule.retained(), { timers: 0, settled: 0, deriving: 0 });
-  // A derivation that began before the clear ends after it and must not count against new work.
-  const next = schedule.derivationStarted("a");
-  ended();
-  assert.equal(schedule.retained().deriving, 1);
-  next();
-  assert.equal(schedule.retained().deriving, 0);
+  assert.deepEqual(schedule.retained(), { timers: 0, started: 0 });
+  schedule.fresh("a");
+  assert.deepEqual(clock.timers(), [[0, 100]], "the start before the clear no longer spaces new work");
   clock.advance(1_000);
-  assert.deepEqual(published, []);
+  assert.deepEqual(published, [["a", 0], ["a", 100]]);
 });
 
-test("only sessions that published within the spacing are retained", () => {
+test("only sessions that started a derivation within the spacing are retained", () => {
   const { clock, schedule } = harness();
   for (let index = 0; index < 1_000; index += 1) {
     schedule.fresh(`session-${index}`);
     clock.advance(1);
   }
-  assert.equal(schedule.retained().settled, 500);
+  assert.equal(schedule.retained().started, 500);
   assert.equal(schedule.retained().timers, 0);
   clock.advance(500);
   schedule.fresh("one-more");
   clock.advance(0);
-  assert.equal(schedule.retained().settled, 1);
+  assert.equal(schedule.retained().started, 1);
 });
 
 test("a zero spacing schedules everything at once and retains nothing", () => {
@@ -203,5 +208,5 @@ test("a zero spacing schedules everything at once and retains nothing", () => {
   assert.deepEqual(clock.timers(), [[0, 0]]);
   clock.advance(0);
   assert.equal(published.length, 4);
-  assert.equal(schedule.retained().settled, 0);
+  assert.equal(schedule.retained().started, 0);
 });

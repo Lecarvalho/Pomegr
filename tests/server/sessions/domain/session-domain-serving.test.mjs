@@ -3,7 +3,7 @@ import test from "node:test";
 import { createSessionDomainServing } from "../../../../server/sessions/domain/session-domain-serving.mjs";
 
 // Which catalog row a session-domain commit hands to the domain store.
-function harness({ rows = [], identity = null, rowWithCommittedEvidence } = {}) {
+function harness({ rows = [], identity = null, rowWithCommittedEvidence, committed = null } = {}) {
   const commits = [];
   const asked = [];
   const catalog = { snapshot: { value: { sessions: rows } } };
@@ -13,7 +13,7 @@ function harness({ rows = [], identity = null, rowWithCommittedEvidence } = {}) 
       commit(sessionId, snapshot, catalogEntry) { commits.push({ sessionId, snapshot, catalogEntry }); return []; },
       commitUnavailable() { throw new Error("no placeholder is committed for a session with evidence"); },
     },
-    observationStore: { getByQualifiedId: () => null },
+    observationStore: { getByQualifiedId: () => committed },
     coordinator: {
       catalog: () => catalog,
       catalogIdentity: () => identity,
@@ -36,6 +36,16 @@ test("every commit of a session reads the row through the coordinator's evidence
   serving.commit("codex:one", snapshot);
   assert.deepEqual(asked, [row, row]);
   assert.deepEqual(commits.map((commit) => commit.catalogEntry), [ahead, ahead], "a later commit cannot bring the previous activity back");
+});
+
+test("a commit that names no snapshot reads the same view for the committed one", () => {
+  // Commits from other sources (a recorded repository snapshot, retained resources, file
+  // history, the catalog event) pass only the session ID.
+  const ahead = { ...row, currentActivity: { label: "Step 2" } };
+  const { serving, commits, asked } = harness({ rows: [row], committed: snapshot, rowWithCommittedEvidence: () => ahead });
+  serving.commit("codex:one");
+  assert.deepEqual(asked, [row]);
+  assert.deepEqual(commits, [{ sessionId: "codex:one", snapshot, catalogEntry: ahead }]);
 });
 
 test("a row the catalog already built is passed on unchanged", () => {

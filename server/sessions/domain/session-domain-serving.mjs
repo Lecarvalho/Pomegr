@@ -59,8 +59,9 @@ export function createSessionDomainServing({
 
   // The row a projection reads. A session event arrives before the catalog commit that rebuilds
   // the session's row from the same evidence, so until then the coordinator supplies the row's
-  // activity from the committed evidence. The summary is then complete in one revision, and the
-  // catalog commit that follows finds its inputs unchanged.
+  // activity from the committed evidence, unless a lifecycle change of the row is waiting for
+  // that commit. The summary is then complete in one revision, and the catalog commit that
+  // follows finds its inputs unchanged. Every commit of the session reads this same view.
   function projectionCatalogEntry(sessionId) {
     const row = indexedCatalog().get(sessionId);
     return row ? coordinator.rowWithCommittedEvidence?.(row) ?? row : domainCatalogEntry(sessionId);

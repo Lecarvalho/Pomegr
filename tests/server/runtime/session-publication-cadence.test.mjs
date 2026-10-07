@@ -103,7 +103,7 @@ test("a quiet session's candidate is scheduled with no delay and the next one wa
   assert.deepEqual(monitor.publications.map(({ at, version }) => [at, version]), [[0, 1]]);
 
   await monitor.clock.advance(120);
-  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [380], "500 ms after the publication at 0");
+  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [380], "500 ms after the derivation start at 0");
   await monitor.clock.advance(200);
   assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 3)), [], "a later candidate joins the pending publication");
   await monitor.clock.advance(180);
@@ -272,7 +272,7 @@ test("a fresh candidate just after a gathered publication waits out the same spa
   await monitor.coordinator.stop();
 });
 
-test("a candidate superseded during derivation is followed at once by the newer one, without overlap", async () => {
+test("a candidate superseded during derivation is followed by the newer one a spacing after that derivation started", async () => {
   const gates = [];
   const monitor = await startCoordinator({
     derive: ({ evidence }) => new Promise((resolve) => {
@@ -285,17 +285,19 @@ test("a candidate superseded during derivation is followed at once by the newer 
   assert.equal(monitor.derivations.length, 1, "the first candidate is deriving");
 
   await monitor.clock.advance(3);
-  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [SPACING_MS], "no second derivation beside the first");
+  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [497], "500 ms after the derivation that started at 0");
   await monitor.clock.advance(4);
   const moved = monitor.clock.scheduledBy(() => gates.shift()());
   await settle();
   assert.deepEqual(moved, [], "the release itself schedules nothing");
   assert.equal(monitor.publications.length, 0, "the superseded result is not published");
-  await monitor.clock.advance(0);
-  assert.deepEqual(monitor.derivations.map((entry) => entry.at), [0, 7], "the newer candidate derives when the older one ends, not 500 ms later");
+  await monitor.clock.advance(492);
+  assert.equal(monitor.derivations.length, 1, "a dropped derivation does not let the next one start early");
+  await monitor.clock.advance(1);
+  assert.deepEqual(monitor.derivations.map((entry) => entry.at), [0, 500]);
   gates.shift()();
   await settle();
-  assert.deepEqual(monitor.publications.map(({ at, version }) => [at, version]), [[7, 2]]);
+  assert.deepEqual(monitor.publications.map(({ at, version }) => [at, version]), [[500, 2]]);
   await monitor.clock.advance(5_000);
   assert.equal(monitor.derivations.length, 2);
   await monitor.coordinator.stop();
@@ -334,7 +336,7 @@ test("fresh evidence moves a failure retry forward, but not inside the spacing a
   monitor.publish("one", 1);
   await monitor.clock.advance(100);
   failing = false;
-  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [400], "ahead of the retry at 1,000 ms");
+  assert.deepEqual(monitor.clock.scheduledBy(() => monitor.publish("one", 2)), [400], "ahead of the retry at 1,000 ms, 500 ms after the failed start");
   await monitor.clock.advance(400);
   assert.deepEqual(monitor.publications.map(({ at, version }) => [at, version]), [[500, 2]]);
   await monitor.clock.advance(60_000);
@@ -363,7 +365,7 @@ test("candidate_to_commit still measures from the queued candidate to its store 
   await monitor.clock.advance(95);
   monitor.publish("one", 2);
   await monitor.clock.advance(SPACING_MS);
-  // Queued 100 ms after start, 95 ms after the commit at 5: it waits out the remaining 405 ms.
-  assert.deepEqual(stages, [["session_commit_wait", 405, undefined], ["candidate_to_commit", 410, "accepted"]]);
+  // Queued 100 ms after the derivation that started at 0: it waits out the remaining 400 ms.
+  assert.deepEqual(stages, [["session_commit_wait", 400, undefined], ["candidate_to_commit", 405, "accepted"]]);
   await monitor.coordinator.stop();
 });
