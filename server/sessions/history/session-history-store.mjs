@@ -143,9 +143,9 @@ export class SessionHistoryStore {
   #admissionRuntime = crypto.randomBytes(16).toString("hex");
   #maintenance = null; #maintenanceStopped = false;
   constructor({ directory = null, maxSessions = MAX_SESSIONS, maxResident = MAX_RESIDENT,
-    maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES, beforeHistoryCommit = null } = {}) {
+    maxIndexResident = MAX_INDEX_RESIDENT, maxIndexBytes = MAX_INDEX_BYTES, beforeHistoryCommit = null, connections = {} } = {}) {
     this.directory = directory;
-    if (directory) this.#blocks = new SessionHistoryBlockStore(directory, { request: safeRequest, activity: safeActivity }, { beforeCommit: beforeHistoryCommit });
+    if (directory) this.#blocks = new SessionHistoryBlockStore(directory, { request: safeRequest, activity: safeActivity }, { beforeCommit: beforeHistoryCommit, connections });
     // This bounds private source-admission bookkeeping only. Normalized history
     // remains available through its durable manifest and page generations.
     this.maxSessions = Number.isSafeInteger(maxSessions) ? Math.max(1, Math.min(MAX_SESSIONS, maxSessions)) : MAX_SESSIONS;
@@ -232,7 +232,7 @@ export class SessionHistoryStore {
     return () => this.#revisionSubscribers.delete(subscriber);
   }
   persistenceBusy() { return this.#writes.size > 0 || this.#pendingContributions.size > 0 || this.#pendingRequests.size > 0; }
-  persistenceStats() { return { active: this.#writes.size, pending: this.#pendingContributions.size + this.#pendingRequests.size, ...(this.#blocks?.io || {}) }; }
+  persistenceStats() { return { active: this.#writes.size, pending: this.#pendingContributions.size + this.#pendingRequests.size, ...(this.#blocks ? { ...this.#blocks.io, connections: this.#blocks.connectionCount() } : {}) }; }
   async publish(sessionId, candidate, { activityFence = null } = {}) {
     if (typeof sessionId !== "string" || sessionId.length < 3 || sessionId.length > 640) return null;
     return this.#serialized(sessionId, () => this.#publish(sessionId, candidate, activityFence));
@@ -249,9 +249,9 @@ export class SessionHistoryStore {
     await Promise.allSettled([...this.#pendingContributions.values(), ...this.#pendingRequests.values()].map((entry) => entry.promise));
     await Promise.allSettled([...this.#writes.values()]);
     this.#maintenanceStopped = true;
-    await this.#maintenance?.stop();
+    await this.#maintenance?.stop(); this.#blocks?.close(); // writes drained: release the files, which Windows cannot delete while open
   }
-  start() { this.#maintenanceStopped = false; this.#maintenance?.start(); }
+  start() { this.#maintenanceStopped = false; this.#maintenance?.start(); this.#blocks?.resume(); }
   #markCommitted(sessionId) {
     this.#committedHistory.delete(sessionId);
     this.#committedHistory.set(sessionId, true);
@@ -384,8 +384,7 @@ export class SessionHistoryStore {
   }
   async #publishDiskContribution(sessionId, contribution, domain) {
     await mkdir(this.directory, { recursive: true });
-    this.#blocks.recover(sessionId);
-    if (!this.#blocks.meta(sessionId)) {
+    if (!this.#blocks.recover(sessionId)) {
       const legacy = await this.#load(sessionId);
       if (legacy) this.#blocks.replace(sessionId, legacy);
     }
