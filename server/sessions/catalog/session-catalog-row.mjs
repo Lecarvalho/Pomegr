@@ -64,11 +64,64 @@ export function rowSummaryFields(summaryJson, isLive) {
     activityFallback: summary.lastObserved ? { ...summary.lastObserved, state: "last_observed" } : null };
 }
 
+/**
+ * The row fields that walk a resident snapshot: every agent, execution task, tool call, and
+ * request snapshot. `lifecycle` is the only part of the catalog entry they read, and it carries
+ * exactly `isLive` and `activityStatus`, the two fields the memo below compares.
+ */
+function projectRowActivity(lifecycle, snapshot, restoredActivity) {
+  const state = snapshot?.publicState;
+  const primaryAgent = Array.isArray(state?.agents) ? state.agents.find((agent) => agent.id === "primary") : null;
+  return {
+    currentActivity: projectSessionCurrentActivity(lifecycle, primaryAgent),
+    activityFallback: projectSessionActivityFallback(restoredActivity ? { ...lifecycle, isLive: false } : lifecycle, state?.agents, snapshot?.evidence?.toolCalls),
+    cacheTiming: snapshot ? projectSessionCacheTiming(state?.agents, state?.metrics?.tokens?.requestSnapshots) : null,
+  };
+}
+const rowLifecycle = (entry) => ({ isLive: entry.isLive, activityStatus: entry.activityStatus });
+function frozenActivity(activity) {
+  for (const value of Object.values(activity)) if (value) Object.freeze(value);
+  return Object.freeze(activity);
+}
+// The store's snapshots are deep-frozen and replaced, never changed. Any other snapshot is walked every time.
+const frozenSnapshot = (snapshot) => Object.isFrozen(snapshot) && Object.isFrozen(snapshot.publicState)
+  && (snapshot.evidence == null || Object.isFrozen(snapshot.evidence));
+
+/**
+ * Remembers each resident shell row's activity fields between catalog commits, so a row whose
+ * snapshot, `isLive`, `activityStatus`, and restored flag are unchanged costs a lookup. The memo
+ * holds one record per row of the last commit and holds its snapshot weakly: a record never
+ * outlives the snapshot or the catalog row it describes.
+ */
+export function createRowActivityMemo() {
+  let committed = new Map();
+  let building = new Map();
+  const counts = { walks: 0, reuses: 0 };
+  return Object.freeze({
+    activity(entry, snapshot, restoredActivity = false) {
+      const lifecycle = rowLifecycle(entry);
+      const previous = committed.get(entry.id);
+      const reusable = previous && previous.snapshot.deref() === snapshot && previous.isLive === lifecycle.isLive
+        && previous.activityStatus === lifecycle.activityStatus && previous.restoredActivity === restoredActivity;
+      if (reusable) counts.reuses += 1;
+      else counts.walks += 1;
+      const activity = reusable ? previous.activity : frozenActivity(projectRowActivity(lifecycle, snapshot, restoredActivity));
+      if (reusable) building.set(entry.id, previous);
+      else if (frozenSnapshot(snapshot)) building.set(entry.id, { snapshot: new WeakRef(snapshot), ...lifecycle, restoredActivity, activity });
+      return activity;
+    },
+    /** Ends one catalog commit: rows it did not build are forgotten. */
+    settle() { committed = building; building = new Map(); },
+    clear() { committed = new Map(); building = new Map(); },
+    stats: () => Object.freeze({ ...counts, rows: committed.size }),
+  });
+}
+
 /** One shell row: committed snapshot when resident, otherwise the persisted summary read through `persisted`. */
-export function catalogShellRow(entry, { snapshot = null, persisted = null, restoredActivity = false } = {}) {
+export function catalogShellRow(entry, { snapshot = null, persisted = null, restoredActivity = false, activity = null } = {}) {
   const state = snapshot?.publicState;
   const stored = !snapshot && persisted?.summaryReadiness === "ready" ? persisted : null;
-  const primaryAgent = Array.isArray(state?.agents) ? state.agents.find((agent) => agent.id === "primary") : null;
+  const derived = stored ? null : activity || projectRowActivity(rowLifecycle(entry), snapshot, restoredActivity);
   const publicEntry = { ...entry };
   delete publicEntry.detailReadiness;
   return {
@@ -80,10 +133,9 @@ export function catalogShellRow(entry, { snapshot = null, persisted = null, rest
       : Number.isFinite(state?.metrics?.activeAgents) ? state.metrics.activeAgents : null,
     latestContextTotal: Number.isFinite(state?.metrics?.tokens?.allAgents) ? state.metrics.tokens.allAgents : stored?.latestContextTotal ?? null,
     progress: state?.session?.progress || stored?.progress || null,
-    currentActivity: projectSessionCurrentActivity(entry, primaryAgent),
-    activityFallback: stored ? reconcileSessionActivityFallback(entry, stored.activityFallback)
-      : projectSessionActivityFallback(restoredActivity ? { ...entry, isLive: false } : entry, state?.agents, snapshot?.evidence?.toolCalls),
-    cacheTiming: snapshot ? projectSessionCacheTiming(state?.agents, state?.metrics?.tokens?.requestSnapshots) : null,
+    currentActivity: derived ? derived.currentActivity : null,
+    activityFallback: stored ? reconcileSessionActivityFallback(entry, stored.activityFallback) : derived.activityFallback,
+    cacheTiming: derived ? derived.cacheTiming : null,
     repositoryId: state?.session ? state.session.repositoryId ?? null : stored?.repositoryId ?? null,
     contextInventoryRef: state?.session ? state.session.contextInventoryRef ?? null : null,
   };
