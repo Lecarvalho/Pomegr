@@ -61,7 +61,8 @@ function evidenceInputs(snapshot, values) {
   return { kind: "evidence", snapshot: new WeakRef(snapshot), ...values };
 }
 function sameEvidenceInputs(previous, next, snapshot) {
-  if (!previous || !next || previous.kind !== "evidence" || previous.snapshot.deref() !== snapshot) return false;
+  // A collected snapshot dereferences to undefined, which must never match a missing argument.
+  if (!snapshot || !previous || !next || previous.kind !== "evidence" || previous.snapshot.deref() !== snapshot) return false;
   return EVIDENCE_INPUT_NAMES.every((name) => previous[name] === next[name]);
 }
 

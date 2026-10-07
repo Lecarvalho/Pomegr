@@ -293,6 +293,10 @@ test("a catalog commit walks no unchanged resident row, and one row after its ev
     const direct = catalogShellRow({ ...committed, detailReadiness: null }, { snapshot: h.store.getByQualifiedId(`claude:${id}`) });
     for (const field of ["currentActivity", "activityFallback", "cacheTiming"]) assert.deepEqual(committed[field], direct[field], `${id} ${field}`);
   }
+
+  assert.equal(counts().rows, 3);
+  await h.coordinator.stop();
+  assert.equal(counts().rows, 0, "stopping the coordinator drops every remembered row");
 });
 
 test("an old-schema database migrates and keeps its rows", async (t) => {
