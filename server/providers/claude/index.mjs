@@ -72,6 +72,8 @@ import { createSourceLedger } from "../kernel/source-ledger.mjs";
 import { createClaudeSessionResolver, ingestClaudeDiscovery, parseClaudeSessionLedgerHeader } from "./session-ledger.mjs";
 const MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
 const MAX_SESSION_SUMMARY_BYTES = 256 * 1024;
+// A zero-byte transcript this recent may still be receiving its first record.
+const EMPTY_TRANSCRIPT_SETTLE_MS = 60_000;
 
 export function createClaudeProvider(options = {}) {
   const captureRepositoryContextInventory = claudeRepositoryInventoryCaptureFromProviderOptions(options);
@@ -568,7 +570,14 @@ export function createClaudeProvider(options = {}) {
           let stat, descriptor, header;
           try {
             stat = fs.statSync(file);
-            if (!stat.isFile() || stat.size <= 0) { partial = true; continue; }
+            if (!stat.isFile()) { partial = true; continue; }
+            if (stat.size <= 0) {
+              // A settled empty file records no session, so it is an explicit
+              // non-candidate. Left incomplete, one stale file would stop every
+              // later scan from pruning rows whose source is gone.
+              if (!(now() - stat.mtimeMs > EMPTY_TRANSCRIPT_SETTLE_MS)) partial = true;
+              continue;
+            }
             descriptor = fs.openSync(file, "r");
             const bytes = Math.min(stat.size, 64 * 1024);
             const buffer = Buffer.alloc(bytes);

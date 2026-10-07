@@ -1959,6 +1959,10 @@ inventory revision for the configured sources. Coverage is `discovering`, `compl
 present only after every configured source and provider enumerates successfully; unreadable,
 inaccessible, or inconclusive sources prevent that claim. A rescan retains the last completed
 total and its original observation timestamp separately, without calling it currently exact.
+A Claude transcript file that is still empty one minute after its last write records no
+session and is an explicit non-candidate; a newer empty file may still be receiving its
+first record and keeps the scan incomplete. Only a complete scan prunes rows whose source
+is gone, including a registration that ended without ever writing a transcript.
 
 `/api/sessions?mode=directory` serves a bounded page from committed normalized inventory.
 Search, lifecycle filters, and project/repository scope execute monitor-side. Rows are
