@@ -24,7 +24,8 @@ import { SessionHistoryStore } from "../sessions/history/session-history-store.m
 import { createSessionHistoryRuntime } from "../sessions/history/session-history-runtime.mjs";
 import { createSessionDomainStore } from "../sessions/domain/session-domain-store.mjs";
 import { createSessionDomainServing } from "../sessions/domain/session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, resolveHistoricalRepositoryAndPullRequests, sessionRepositoryRecord, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "../repository/repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "../repository/repository-snapshot.mjs";
+import { sessionRepositoryRecord } from "../repository/session-repository-record.mjs";
 import { createObservationStartupRepository } from "./observation-startup-repository.mjs";
 import { createCheckpointStateProjector } from "../sessions/checkpoints/checkpoint-state-projector.mjs";
 import { createPersistenceMaintenance } from "../persistence/persistence-maintenance.mjs";
