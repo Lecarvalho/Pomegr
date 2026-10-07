@@ -37,13 +37,24 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
       // The in-memory controlled state remains usable when preferences are unavailable.
     }
   };
+  // A choice made here applies at once. The link is written by a server navigation that can lag or
+  // fail, so the chosen agent is held until the link next changes: it caught up, or another
+  // navigation replaced it.
+  const [chosen, setChosen] = useState<{ sessionId: string; linkedAgentId: string | null; agentId: string | null } | null>(null);
+  const held = chosen && chosen.sessionId === sessionId && chosen.linkedAgentId === selectedAgentId ? chosen : null;
+  if (chosen && !held) setChosen(null);
+  const requestedAgentId = held ? held.agentId : selectedAgentId;
+  const selectAgent = (agentId: string | null) => {
+    setChosen(agentId === selectedAgentId ? null : { sessionId, linkedAgentId: selectedAgentId, agentId });
+    onSelectAgent(agentId);
+  };
   const result = useSessionDomain({ sessionId, domain: "agents" }, { historical, enabled: !paused });
   // The store may expose its bounded loading envelope before the agents payload is ready.
   const agents = Array.isArray(result.data?.agents) ? result.data.agents : [];
   const defaultAgentId = agents.find((agent) => agent.id === "primary")?.id || agents[0]?.id || null;
   // An unknown linked agent falls back to the default without rewriting the link: a retained agents
   // list can predate a newly spawned agent, and the link resolves once the refresh commits.
-  const knownSelectedAgentId = selectedAgentId && agents.some((agent) => agent.id === selectedAgentId) ? selectedAgentId : null;
+  const knownSelectedAgentId = requestedAgentId && agents.some((agent) => agent.id === requestedAgentId) ? requestedAgentId : null;
   const inspectorAgentId = knownSelectedAgentId || defaultAgentId;
   const inspector = useSessionDomain(
     { sessionId, domain: "agent", agentId: inspectorAgentId || "" },
@@ -53,6 +64,10 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
   if (result.data.readiness === "unavailable") return <div className="sessionTabState">Agent evidence is unavailable for this session.</div>;
   if (agents.length === 0) return <div className="sessionTabState">No agents were recorded for this session.</div>;
   const agentEvidence = inspector.data?.readiness === "ready" ? inspector.data : null;
+  // The inspector opens for the chosen agent at once and says what it is waiting for.
+  const inspectorPendingText = agentEvidence ? undefined
+    : inspector.unavailable || inspector.data?.readiness === "unavailable" ? "Agent evidence is unavailable for this agent."
+      : inspector.error || "Loading agent evidence…";
   return <AgentActivityPanel
     agents={agents}
     workflows={result.data.workflows}
@@ -66,8 +81,9 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
     historical={historical}
     sessionId={sessionId}
     selectedAgentId={knownSelectedAgentId}
-    onSelectAgent={onSelectAgent}
+    onSelectAgent={selectAgent}
     inspector={agentEvidence}
+    inspectorPendingText={inspectorPendingText}
     onOpenActivities={(agentId) => onOpenActivities({ agentId })}
     viewMode={viewMode}
     onViewModeChange={changeViewMode}

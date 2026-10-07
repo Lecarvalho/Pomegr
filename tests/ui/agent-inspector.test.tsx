@@ -34,6 +34,31 @@ describe("agent inspector", () => {
     expect(screen.getByRole("region", { name: /Agent inspector/ })).not.toHaveTextContent("custom:");
   });
 
+  it("names a chosen agent while its evidence is pending, without showing facts from the roster row", () => {
+    const child: Agent = { ...agent, id: "agent-child", parentId: "primary", label: "Builder" };
+    renderInspector({ agent: null, pending: { agent: child, text: "Loading agent evidence…" } });
+    const inspector = screen.getByRole("region", { name: "Agent inspector for Builder" });
+    expect(within(inspector).getByRole("heading", { name: "Builder" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("status")).toHaveTextContent("Loading agent evidence…");
+    expect(inspector).not.toHaveTextContent("Select an agent to inspect it.");
+    expect(within(inspector).queryByText("Model")).not.toBeInTheDocument();
+    expect(within(inspector).queryByText(child.status)).not.toBeInTheDocument();
+  });
+
+  it("keeps one phone sheet open from pending evidence to the resolved inspector", () => {
+    const child: Agent = { ...agent, id: "agent-child", parentId: "primary", label: "Builder" };
+    const sheet = (props: Partial<React.ComponentProps<typeof AgentInspector>>) => <LiveClockProvider running={false}><AgentInspector agent={null} agents={[child]} onOpenTree={vi.fn()} presentation="sheet" {...props} /></LiveClockProvider>;
+    const { rerender } = render(sheet({ pending: { agent: child, text: "Loading agent evidence…" } }));
+    const dialog = screen.getByRole("dialog", { name: "Builder" });
+    expect(within(dialog).getByRole("status")).toHaveTextContent("Loading agent evidence…");
+    expect(within(dialog).getByRole("button", { name: "Back" })).toHaveFocus();
+    rerender(sheet({ agent: child }));
+    // The same sheet element proves it was updated in place rather than closed and reopened.
+    expect(screen.getByRole("dialog", { name: "Builder" })).toBe(dialog);
+    expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "Agent inspector for Builder" })).toHaveTextContent("Model");
+  });
+
   it("copies a subagent transcript path only after an explicit action, without rendering it", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
