@@ -32,7 +32,10 @@ function normalizedSourceRoute(value) {
   if (!value || typeof value !== "object") return { catalog: true, sessionIds: [] };
   const sessionIds = [...new Set((Array.isArray(value.sessionIds) ? value.sessionIds : [])
     .filter((entry) => typeof entry === "string" && entry.length > 0 && entry.length <= 512))];
-  return { catalog: Boolean(value.catalog), sessionIds, afterCatalog: Boolean(value.afterCatalog) };
+  return {
+    catalog: Boolean(value.catalog), sessionIds, afterCatalog: Boolean(value.afterCatalog),
+    sourceKnown: value.sourceKnown === true,
+  };
 }
 
 export function createNormalizedPollingObserver(options) {
@@ -590,9 +593,13 @@ export function createNormalizedPollingObserver(options) {
     if (routed.sessionIds.length) qa.routedSourceEvents += 1;
     else qa.unresolvedSourceEvents += 1;
     // Unknown/new sources require a cache-bypassing catalog pass. Known
-    // sources skip discovery and enter acquisition immediately.
+    // sources skip discovery and enter acquisition immediately. A write to a
+    // source its sessions already read is answered by that immediate read: the
+    // catalog is still marked dirty, but the sessions are not retained for a
+    // second read after the pass, which would find nothing new.
     if (routed.catalog) {
-      requestSourceCatalog(routed.sessionIds, sourceEventAt);
+      const answeredNow = routed.sourceKnown && !routed.afterCatalog && change?.eventType === "change";
+      requestSourceCatalog(answeredNow ? [] : routed.sessionIds, sourceEventAt);
       if (routed.afterCatalog) return;
     }
     for (const localSessionId of routed.sessionIds) {

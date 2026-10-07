@@ -342,6 +342,7 @@ export function createCodexIncrementalObserver(options = {}) {
       return {
         catalog: eventType === "rename",
         sessionIds: [...known],
+        sourceKnown: true,
       };
     }
     if (options.noticeRollout) return { catalog: true, afterCatalog: true, sessionIds: [] };

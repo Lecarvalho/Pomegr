@@ -437,6 +437,55 @@ test("known source rotations bypass a blocked catalog and unavailable catalogs r
   assert.equal(reads, 3, "the next successful reconciliation must retry the lost catalog wakeup");
 });
 
+/** One observer whose router answers with `route`; counts catalog reads and session reads. */
+async function observeRoutedWrites(context, route) {
+  const controller = new AbortController();
+  const counts = { catalogs: 0, reads: 0 };
+  let wake;
+  const observer = createNormalizedPollingObserver({
+    async list() { counts.catalogs += 1; return [{ localId: "one", isLive: true }]; },
+    async ingest() { counts.reads += 1; return null; },
+    shouldEagerHydrate: () => false,
+    routeSourceEvent: () => route,
+    sourceCatalogIntervalMs: 0,
+    watchTargets: ["synthetic-sources"],
+    watchSource(_target, _options, callback) { wake = callback; return { close() {} }; },
+    intervalMs: 60_000,
+  });
+  context.after(() => controller.abort());
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal);
+  await settle(() => counts.catalogs === 1);
+  await observer.hydrate("one");
+  counts.reads = 0;
+  const idle = async () => {
+    await settle(() => counts.catalogs === 2 && observer.diagnostics().activeHydrations === 0);
+    for (let index = 0; index < 5; index += 1) await turn();
+  };
+  return { counts, idle, wake: (eventType) => wake(eventType, "known.jsonl") };
+}
+
+test("a write to a source its session already reads refreshes the catalog and reads the session once", async (context) => {
+  const { counts, idle, wake } = await observeRoutedWrites(context, { catalog: true, sessionIds: ["one"], sourceKnown: true });
+  wake("change");
+  await idle();
+  assert.equal(counts.catalogs, 2, "the write still marks the catalog dirty");
+  assert.equal(counts.reads, 1, "the immediate read answers the write; no second read follows the catalog pass");
+});
+
+test("a write keeps its read after the catalog pass when the source is not known, was renamed, or waits for the catalog", async (context) => {
+  for (const [label, route, eventType, expected] of [
+    ["unknown source", { catalog: true, sessionIds: ["one"] }, "change", 2],
+    ["renamed known source", { catalog: true, sessionIds: ["one"], sourceKnown: true }, "rename", 2],
+    ["after-catalog route", { catalog: true, afterCatalog: true, sessionIds: ["one"], sourceKnown: true }, "change", 1],
+  ]) {
+    const { counts, idle, wake } = await observeRoutedWrites(context, route);
+    wake(eventType);
+    await idle();
+    await settle(() => counts.reads === expected);
+    assert.equal(counts.reads, expected, label);
+  }
+});
+
 test("late eager preparation cannot overwrite a newer lifecycle hydration", async (context) => {
   const controller = new AbortController();
   let releasePreparation;
