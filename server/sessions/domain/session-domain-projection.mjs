@@ -7,6 +7,22 @@ import { derivedSessionEventRecord, mergeSessionEventRecord } from "./session-ev
 
 const EMPTY_ACTIVITY = Object.freeze({ total: 0, toolCalls: 0, byKind: [], messages: 0, failed: 0 });
 
+/**
+ * Every catalog-row field a session-domain projection reads. The domain store compares exactly
+ * this view of a row to decide whether a catalog commit changed a retained session's inputs, and
+ * the projection is handed only this view. A row field outside the list is therefore absent for
+ * the projection, never silently stale: to read a new one, add it here.
+ */
+export const SESSION_DOMAIN_CATALOG_FIELDS = Object.freeze(["isLive", "needsInput", "activityStatus", "currentActivity", "activityFallback"]);
+/** The unavailable placeholder also takes its observation time from the row. */
+export const UNAVAILABLE_SESSION_DOMAIN_CATALOG_FIELDS = Object.freeze([...SESSION_DOMAIN_CATALOG_FIELDS, "updatedAt"]);
+
+/** The compared view of one catalog row, or null without a row. */
+export function sessionDomainCatalogInputs(catalogEntry, names = SESSION_DOMAIN_CATALOG_FIELDS) {
+  if (!catalogEntry || typeof catalogEntry !== "object") return null;
+  return Object.freeze(Object.fromEntries(names.map((name) => [name, catalogEntry[name]])));
+}
+
 function readiness(value, fallback = "unavailable") {
   return ["loading", "ready", "unavailable"].includes(value) ? value : fallback;
 }
@@ -128,15 +144,30 @@ function publicRepositoryFile(value, cwd, forbiddenRoots, historical) {
   const safePath = repositoryRelativePath(value?.path, cwd, { forbiddenRoots });
   return safePath ? { status: value.status, path: safePath } : null;
 }
-function publicRepository(value, cwd, forbiddenRoots) {
+function publicRepository(value, cwd, forbiddenRoots, validatedFiles = null) {
   if (!value) return null;
   return {
     ...fields(value, ["available", "branch", "historical", "isMain"]),
     comparison: fields(value.comparison, ["branch", "kind", "ahead", "behind", "integrated"]),
     commits: list(value.commits, (commit) => fields(commit, ["hash", "subject", "committedAt"])),
     remote: fields(value.remote, ["status", "checkedAt"]),
-    files: list(value.files, (file) => publicRepositoryFile(file, cwd, forbiddenRoots, value.historical)),
+    files: validatedFiles ?? list(value.files, (file) => publicRepositoryFile(file, cwd, forbiddenRoots, value.historical)),
   };
+}
+
+/**
+ * The one projection step that reads outside its arguments. A live repository's changed files
+ * are validated against the filesystem, so the same committed inputs can yield a shorter list
+ * once a path is no longer safely contained under the recognized root. Returns that validated
+ * list, or null when the repository projection consults no filesystem state (no repository, a
+ * recorded historical one, or no changed files). A caller that skips unchanged projections
+ * must compare this list too, and may hand it back as `options.liveRepositoryFiles` so one
+ * projection validates each path once.
+ */
+export function liveRepositoryFiles(snapshot, options = {}) {
+  const repository = snapshot?.publicState?.session?.repository;
+  if (!repository || repository.historical === true || !Array.isArray(repository.files) || repository.files.length === 0) return null;
+  return list(repository.files, (file) => publicRepositoryFile(file, options.repositoryRoot, options.forbiddenRoots, repository.historical));
 }
 function repositoryRecordedAt(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : null;
@@ -420,7 +451,9 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const context = publicContext(state.metrics?.tokens?.contextHistory);
   const boundaries = context.boundaries;
   const session = state.session;
-  const repository = publicRepository(session?.repository, options.repositoryRoot, options.forbiddenRoots);
+  // Only the compared view of the catalog row is visible below.
+  const catalogEntry = sessionDomainCatalogInputs(options.catalogEntry);
+  const repository = publicRepository(session?.repository, options.repositoryRoot, options.forbiddenRoots, options.liveRepositoryFiles ?? null);
   const pullRequests = publicPullRequests(session?.pullRequests);
   const repositoryReadiness = readiness(ready.repository);
   const retainedResources = options.retainedResources || null;
@@ -458,7 +491,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
     eventRecord,
   });
   const domains = new Map();
-  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, options.catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events));
+  domains.set("session-summary", sessionSummary(sessionId, observedAt, state, ready, catalogEntry, agents, toolCalls, repository, pullRequests, resourcesReadiness, resourceHasData, touchedFileCount(touchedFiles), events));
   domains.set("agents", {
     ...base("agents", sessionId, observedAt, state, ready.agentEvidence),
     agents,
@@ -531,7 +564,8 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   return Object.freeze({ domains, agentResponses, eventRecord });
 }
 
-export function unavailableSessionDomains(sessionId, catalogEntry, source, capabilities, options = {}) {
+export function unavailableSessionDomains(sessionId, catalogRow, source, capabilities, options = {}) {
+  const catalogEntry = sessionDomainCatalogInputs(catalogRow, UNAVAILABLE_SESSION_DOMAIN_CATALOG_FIELDS);
   const state = {
     source,
     capabilities,

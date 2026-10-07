@@ -1092,11 +1092,13 @@ causation for a specific account, model, or session. Current account usage limit
 independent of agents and historical sessions.
 
 Unchanged immutable session snapshots reuse their bounded report rendering, agent
-rows, and latest-context maps across query-projection refreshes. A replacement
+rows, latest-context maps, and normalized failure candidates across query-projection
+refreshes. A replacement
 snapshot or revision derives them again; cache ownership follows the retained
 snapshot, with no persisted report cache. Projection
 generation times, report filenames, and recent-failure windows still advance on each
-refresh. Serving continues to select a precomputed report and never renders or
+refresh: the time window and the task-over-call preference are applied to the reused
+candidates at every refresh. Serving continues to select a precomputed report and never renders or
 acquires provider data. This prevents unrelated startup restores from repeatedly
 rendering every historical report on the live publication path.
 
@@ -2311,7 +2313,7 @@ These schedules are independent. A frontend request never controls U1, U2, C, D,
 | Complete session-history replay | Backend monitor / U1 through C | Replaces normalized paged history only after a complete validated read | Activity/Requests demand only, with one foreground and one background slot in its separate scheduler; matching source keys do not replay, and state polling never enqueues work |
 | Session publication | Backend store / C | Writes a new immutable L1 evidence revision | Coalesce to the first candidate's 500 ms deadline; later candidates replace pending evidence without restarting the timer. Fresh evidence preempts a delayed failure retry. |
 | Structural catalog projection | Backend monitor / D | Commits additions, removals, live, needs-input, and activity-status transitions to the catalog response cache | Schedule in the next event-loop turn; structural work preempts a queued summary refresh. One shared five-minute Open-visibility expiry timer handles idle owner-retained rows; it does not acquire provider evidence or renew activity. |
-| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions only, and asynchronously after a known evicted session is requested |
+| Session-domain projection | Backend monitor / D | Atomically stages independently revisioned `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, and `details` responses from committed state | After session commits, after restore even when evidence is unchanged, after catalog commits for already retained sessions whose projection inputs changed, and asynchronously after a known evicted session is requested |
 | Session-summary projection and Home correlation | Backend monitor / D | Reads committed dependencies and writes L1 response revisions | Catalog summaries publish in the next event-loop turn after a session commit, without another 500 ms delay. Other dependency refreshes retain their existing coalescing ceiling. |
 | Revision notification | Backend serving / S | Carries no state; announces a bounded domain, revision, session ID for session-scoped domains, and history total only for history | Emit immediately after the corresponding response revision commits |
 | Resource observation | Backend monitor / D input | Updates the private resource sampler, then republishes affected session projections from committed L1 evidence without provider acquisition | Every five seconds for live sessions; confirmed unavailability resolves the resource region instead of leaving it loading |
@@ -2442,12 +2444,46 @@ would remove both residual cases; none is implemented.
 
 Session-domain retention follows demand, not commit order. A semantically identical
 re-projection is a no-op: it neither advances a revision nor refreshes retention, so
-catalog churn cannot reorder or evict retained sessions. A catalog commit re-projects
-only sessions whose domains are already retained; other rows project when their evidence
-commits or when a request asks for them. Above the soft bound, never-requested sessions
-evict first, then the least recently used. Live or open catalog rows and the most recently
-requested session are exempt up to a hard ceiling of 128 sessions. A request recorded
-before a projection exists carries over to the first commit after rebuild or hydration.
+catalog churn cannot reorder or evict retained sessions. A catalog commit offers every
+session whose domains are already retained to the domain store; other rows project when
+their evidence commits or when a request asks for them. Above the soft bound,
+never-requested sessions evict first, then the least recently used. Live or open catalog
+rows and the most recently requested session are exempt up to a hard ceiling of 128
+sessions. A request recorded before a projection exists carries over to the first commit
+after rebuild or hydration.
+
+The domain store projects a session only when one of its projection inputs changed since
+the commit its retained domains came from. A commit from unchanged inputs returns before
+deriving or serializing a domain, with the same outcome as the no-op above: no revision,
+no event, no retention refresh, and no eviction. The store still reads every input on every
+commit, because a source can change its answer without announcing it. The compared inputs
+are:
+
+- **The committed snapshot**, by identity. The L1 store deep-freezes each snapshot and
+  replaces it on change. The store holds it weakly, so the comparison keeps no evicted
+  evidence alive. A snapshot that is not frozen is projected every time.
+- **The catalog row**, through one view. `SESSION_DOMAIN_CATALOG_FIELDS` in
+  `server/sessions/domain/session-domain-projection.mjs` lists the row fields a projection
+  reads: `isLive`, `needsInput`, `activityStatus`, `currentActivity`, and
+  `activityFallback`. The unavailable placeholder also reads `updatedAt`, and compares the
+  provider's source label and capabilities. The projection receives only that view, so a row
+  field outside the list is absent for it instead of stale. A session without a row is
+  compared as such, so a row that leaves the catalog is a change.
+- **The side-channel values**: the live repository root and its unavailable reason, the
+  retained resource block, the recorded file history, the recorded Git-observed files and
+  commit times, and the recorded session-event sidecar. Each is compared by value or, for a
+  frozen block its owner replaces on change, by identity.
+- **The live repository file list.** A live repository's changed files are validated against
+  the filesystem, which is not a committed input. That validation still runs on every
+  commit, and its result is compared with the last one. A path that stops being safely
+  contained is therefore withdrawn by the next commit, as before. A recorded historical
+  repository and a live one without changed files read no filesystem state.
+
+A commit that changes the kept session-event record is not remembered as unchanged until a
+later commit finds the record settled, so the hand-over to the recorder behaves as before.
+Eviction forgets a session's remembered inputs with its domains. The store counts
+projections, skipped commits, and live file validations; the runtime reports those counters
+only in its private diagnostics.
 
 A requested catalog row without committed L1 evidence serves `loading` and queues one
 asynchronous, pinned selection hydration, the same one `/api/state` queues, until its
@@ -3003,6 +3039,14 @@ latest retained normalized tool or execution-task observation supplies the fallb
 including completion/failure/stop observations, with deterministic ordering for ties.
 Missing or malformed evidence remains null. Unknown tool work kinds are unavailable;
 unclassified shell tasks use the generic shell category.
+
+A catalog commit builds a row for every shell entry. For a resident row it derives
+`currentActivity`, this fallback, and the cache timing by walking the snapshot's agents,
+execution tasks, tool calls, and request snapshots. The coordinator remembers those three
+fields per row between commits and reuses them while the row's snapshot, `isLive`,
+`activityStatus`, and restored-activity flag are unchanged; the walk reads nothing else
+from the catalog entry. The memo holds one record for each resident row of the last commit
+and holds its snapshot weakly, so a record outlives neither the snapshot nor the catalog row.
 
 Catalog idle, stopped, open, unknown, or non-live transitions immediately replace a
 running fallback with last-observed evidence, without new acquisition or changing the

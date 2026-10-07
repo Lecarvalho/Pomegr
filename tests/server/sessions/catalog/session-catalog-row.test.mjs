@@ -5,6 +5,9 @@ import path from "node:path";
 import test from "node:test";
 import { openMonitorStore } from "../../../../server/persistence/monitor-store.mjs";
 import { createSessionCatalogInventory } from "../../../../server/sessions/catalog/session-catalog-inventory.mjs";
+import { catalogShellRow, createRowActivityMemo } from "../../../../server/sessions/catalog/session-catalog-row.mjs";
+import { SessionObservationStore } from "../../../../server/sessions/checkpoints/session-observation-store.mjs";
+import { projectSessionActivityFallback, projectSessionCurrentActivity, reconcileSessionActivityFallback } from "../../../../server/sessions/domain/session-current-activity.mjs";
 import { createSessionObservationCoordinator } from "../../../../server/runtime/session-observation-coordinator.mjs";
 
 const PROGRESS = { phase: "implementing", percent: 40, confidence: "medium", reportedAt: "2026-09-29T10:00:00.000Z" };
@@ -168,6 +171,132 @@ test("an older recorded time never replaces a newer summary", async (t) => {
   assert.equal(h.inventory.upsertSummary("claude", "s1", older, "2026-09-29T09:00:00.000Z"), false);
   assert.equal(h.inventory.upsertSummary("claude", "s1", { ...older, extra: 1, agentCount: -1 }, stamp), false);
   assert.equal(row(h, "s1").agentCount, 3);
+});
+
+// --- The per-row activity memo: an unchanged resident row costs a lookup, not a walk -------------
+
+function frozenSnapshot(id, extra = {}) {
+  const store = new SessionObservationStore();
+  const state = evidence(id, extra);
+  return store.publish({ providerId: "claude", localSessionId: id, evidence: state, readiness: { core: "ready" }, publicState: state, observedAt: stamp }).snapshot;
+}
+const RUNNING = { agents: [{ id: "primary", status: "active", executionTasks: [{ id: "task-1", kind: "shell", status: "running", workKind: "test", startedAt: "2026-09-29T10:04:00.000Z", finishedAt: null, exitCode: null }] }] };
+const liveEntry = (id, overrides = {}) => ({ id: `claude:${id}`, provider: "claude", source: "Claude Code", title: "One", project: "Pomegr", createdAt: stamp, updatedAt: stamp,
+  isLive: true, needsInput: false, activityStatus: "working", detailReadiness: null, ...overrides });
+
+test("an unchanged resident row reuses its activity fields, and each compared input walks again", () => {
+  const memo = createRowActivityMemo();
+  const snapshot = frozenSnapshot("s1", RUNNING);
+  const commit = (entry, value = snapshot, restored = false) => { const activity = memo.activity(entry, value, restored); memo.settle(); return activity; };
+
+  const first = commit(liveEntry("s1"));
+  assert.deepEqual(memo.stats(), { walks: 1, reuses: 0, rows: 1 });
+  assert.equal(first.activityFallback.state, "current");
+  for (let pass = 0; pass < 5; pass += 1) {
+    // A catalog commit hands over a new entry object; fields the walk never reads may differ.
+    assert.equal(commit(liveEntry("s1", { title: `Renamed ${pass}`, updatedAt: "2026-09-29T11:00:00.000Z", needsInput: pass % 2 === 0, project: "Other" })), first);
+  }
+  assert.deepEqual(memo.stats(), { walks: 1, reuses: 5, rows: 1 }, "zero walks for an unchanged row");
+
+  const idle = commit(liveEntry("s1", { activityStatus: "idle" }));
+  assert.equal(idle.activityFallback.state, "last_observed", "the status is an input of the walk");
+  const historical = commit(liveEntry("s1", { activityStatus: "idle", isLive: false }));
+  assert.equal(memo.stats().walks, 3, "so is isLive");
+  assert.deepEqual(historical, idle);
+  const working = commit(liveEntry("s1"));
+  assert.equal(working.activityFallback.state, "current");
+  const restored = commit(liveEntry("s1"), snapshot, true);
+  assert.equal(restored.activityFallback.state, "last_observed", "restored execution evidence stays last-observed");
+  const replaced = commit(liveEntry("s1"), frozenSnapshot("s1", RUNNING));
+  assert.equal(replaced.activityFallback.state, "current");
+  assert.equal(memo.stats().walks, 6, "an equal snapshot in a new object is walked again");
+  assert.equal(memo.stats().reuses, 5);
+});
+
+test("the activity memo forgets a row the last catalog commit did not build, and never remembers a mutable snapshot", () => {
+  const memo = createRowActivityMemo();
+  const one = frozenSnapshot("s1");
+  const two = frozenSnapshot("s2");
+  memo.activity(liveEntry("s1"), one); memo.activity(liveEntry("s2"), two); memo.settle();
+  assert.equal(memo.stats().rows, 2);
+  memo.activity(liveEntry("s1"), one); memo.settle();
+  assert.deepEqual(memo.stats(), { walks: 2, reuses: 1, rows: 1 }, "s2 left the catalog and its record went with it");
+  memo.activity(liveEntry("s1"), one); memo.activity(liveEntry("s2"), two); memo.settle();
+  assert.deepEqual(memo.stats(), { walks: 3, reuses: 2, rows: 2 }, "a returning row is walked again");
+
+  const state = evidence("s3");
+  const mutable = Object.freeze({ qualifiedId: "claude:s3", publicState: state, evidence: state });
+  for (let pass = 0; pass < 3; pass += 1) { memo.activity(liveEntry("s3"), mutable); memo.settle(); }
+  assert.equal(memo.stats().walks, 6, "a snapshot that is not deep-frozen is walked every time");
+  memo.clear();
+  assert.equal(memo.stats().rows, 0);
+});
+
+test("a memoized shell row equals the row built without the memo", () => {
+  const memo = createRowActivityMemo();
+  const snapshots = [frozenSnapshot("s1"), frozenSnapshot("s1", RUNNING)];
+  const entries = [liveEntry("s1"), liveEntry("s1", { activityStatus: "idle" }), liveEntry("s1", { isLive: false, activityStatus: "stopped" }),
+    liveEntry("s1", { activityStatus: "needs_input", needsInput: true }), liveEntry("s1", { title: "Renamed" })];
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const snapshot of snapshots) for (const entry of entries) for (const restoredActivity of [false, true]) {
+      const activity = memo.activity(entry, snapshot, restoredActivity);
+      memo.settle();
+      assert.deepEqual(catalogShellRow(entry, { snapshot, restoredActivity, activity }), catalogShellRow(entry, { snapshot, restoredActivity }));
+    }
+  }
+});
+
+test("the row activity projections read only isLive and activityStatus from the catalog entry", () => {
+  const reads = new Set();
+  const entry = new Proxy(liveEntry("s1"), { get(target, property, receiver) { if (typeof property === "string") reads.add(property); return Reflect.get(target, property, receiver); } });
+  const state = evidence("s1", RUNNING);
+  projectSessionCurrentActivity(entry, { ...state.agents[0], currentActivity: { label: "Testing", observedAt: stamp }, liveness: { evidence: "observed", freshness: "current" } });
+  projectSessionActivityFallback(entry, state.agents, state.toolCalls);
+  reconcileSessionActivityFallback(entry, { state: "current", label: "Running tests", observedAt: stamp, source: "execution_task", actor: "primary" });
+  assert.deepEqual([...reads].sort(), ["activityStatus", "isLive"]);
+});
+
+test("a catalog commit walks no unchanged resident row, and one row after its evidence or lifecycle changes", async (t) => {
+  const h = await fixture(t, { store: new SessionObservationStore() });
+  const catalog = (overrides = {}) => ["s1", "s2", "s3", "s4"].map((localId) => ({ localId, title: localId, updatedAt: stamp, isLive: true, activityStatus: "working", ...(overrides[localId] || {}) }));
+  h.publisher().publishCatalog("claude", catalog());
+  for (const id of ["s1", "s2", "s3"]) h.publisher().publishSession("claude", id, evidence(id, RUNNING));
+  await h.clock.advance(1_000);
+  const counts = () => h.coordinator.diagnostics().catalogRowActivity;
+  const shellRow = (id) => h.coordinator.catalog().snapshot.value.sessions.find((entry) => entry.id === `claude:${id}`);
+  assert.equal(shellRow("s1").activityFallback.state, "current");
+  assert.equal(shellRow("s4").summaryReadiness, "loading", "a row without a snapshot has nothing to walk");
+
+  let before = counts();
+  for (let pass = 0; pass < 4; pass += 1) {
+    h.publisher().publishCatalog("claude", catalog());
+    await h.clock.advance(1_000);
+  }
+  assert.equal(counts().walks, before.walks, "zero walks across four catalog commits of unchanged rows");
+  assert.equal(counts().reuses, before.reuses + 12, "three resident rows reused in each");
+  assert.equal(counts().rows, 3);
+
+  before = counts();
+  h.publisher().publishSession("claude", "s2", evidence("s2", { ...RUNNING, metrics: { agents: 5, tokens: { allAgents: 9 } } }));
+  await h.clock.advance(1_000);
+  assert.equal(counts().walks, before.walks + 1, "only the session with new evidence is walked");
+  assert.equal(shellRow("s2").agentCount, 5);
+
+  before = counts();
+  h.publisher().publishCatalog("claude", catalog({ s3: { isLive: false, activityStatus: "idle" } }));
+  await h.clock.advance(1_000);
+  assert.equal(counts().walks, before.walks + 1, "only the row whose lifecycle changed is walked");
+  assert.equal(shellRow("s3").activityFallback.state, "last_observed", "a row that left live shows its last-observed form in the same commit");
+  assert.equal(shellRow("s1").activityFallback.state, "current");
+  for (const id of ["s1", "s2", "s3"]) {
+    const committed = shellRow(id);
+    const direct = catalogShellRow({ ...committed, detailReadiness: null }, { snapshot: h.store.getByQualifiedId(`claude:${id}`) });
+    for (const field of ["currentActivity", "activityFallback", "cacheTiming"]) assert.deepEqual(committed[field], direct[field], `${id} ${field}`);
+  }
+
+  assert.equal(counts().rows, 3);
+  await h.coordinator.stop();
+  assert.equal(counts().rows, 0, "stopping the coordinator drops every remembered row");
 });
 
 test("an old-schema database migrates and keeps its rows", async (t) => {

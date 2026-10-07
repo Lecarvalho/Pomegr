@@ -24,7 +24,8 @@ import { SessionHistoryStore } from "../sessions/history/session-history-store.m
 import { createSessionHistoryRuntime } from "../sessions/history/session-history-runtime.mjs";
 import { createSessionDomainStore } from "../sessions/domain/session-domain-store.mjs";
 import { createSessionDomainServing } from "../sessions/domain/session-domain-serving.mjs";
-import { createRepositorySnapshotRecorder, gitObservedFilesFromSnapshot, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "../repository/repository-snapshot.mjs";
+import { createRepositorySnapshotRecorder, resolveHistoricalRepositoryAndPullRequests, sessionRepositorySnapshot, withLegacyRepositoryAttribution } from "../repository/repository-snapshot.mjs";
+import { sessionRepositoryRecord } from "../repository/session-repository-record.mjs";
 import { createObservationStartupRepository } from "./observation-startup-repository.mjs";
 import { createCheckpointStateProjector } from "../sessions/checkpoints/checkpoint-state-projector.mjs";
 import { createPersistenceMaintenance } from "../persistence/persistence-maintenance.mjs";
@@ -167,10 +168,7 @@ export function createObservationRuntime(options = {}) {
     retainedResourcesForSession: (sessionId) => resourceDomainSource.retained(sessionId), fileHistoryForSession: (sessionId) => fileHistorySource.sessionFiles(sessionId),
     // One recorded-snapshot read per projection. The commit times are monitor-private and feed
     // only the session-event derivation.
-    repositoryRecordForSession: (sessionId) => {
-      const recorded = recordedRepositorySnapshotForSession(sessionId);
-      return { gitObserved: gitObservedFilesFromSnapshot(recorded), commitTimes: recorded?.commitTimesInWindow ?? null };
-    },
+    repositoryRecordForSession: (sessionId) => sessionRepositoryRecord(recordedRepositorySnapshotForSession(sessionId)),
     ...sessionEventRecording,
     onDemand: (sessionId) => { resourceDomainSource.request(sessionId); fileHistorySource.requestSessionFiles(sessionId); },
   });
@@ -624,8 +622,8 @@ export function createObservationRuntime(options = {}) {
       if (event.type === "invalidation") sessionDomainServing.commit(event.qualifiedId);
       if (event.type === "catalog") {
         cacheUnavailableSessionResponses();
-        // Catalog rows only change lifecycle inputs of already retained projections. Unretained
-        // rows project on demand; identical re-projections are store no-ops that never re-revision or evict.
+        // Catalog rows only change lifecycle inputs of already retained projections. Unretained rows
+        // project on demand. The store projects a retained session only when one of its inputs changed.
         for (const retainedId of sessionDomains.sessionIds()) sessionDomainServing.commit(retainedId);
       }
       if (event.type === "session" || event.type === "catalog") agentQueryProjection.refresh();
@@ -793,6 +791,7 @@ export function createObservationRuntime(options = {}) {
         agents: agentsObservation.read({ project: "all", days: 30, scope: "all" })?.revision || 0,
       }),
       agents: agentsObservation.diagnostics(),
+      sessionDomains: sessionDomains.stats?.() || null,
       historyRefresh: sessionHistory.diagnostics(),
       persistenceMaintenance: persistenceMaintenance.stats(),
     }),
