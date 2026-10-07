@@ -20,9 +20,21 @@ export type AgentInspectorProps = {
   requestSnapshots?: RequestSnapshotFeed; cacheRefills?: CacheRefillCount[]; cacheReadDrops?: CacheReadDropCount[];
   contextBoundaries?: ContextHistoryBoundary[]; insights?: Insight[]; planTasks?: PlanTask[];
   onOpenTree: (agentId: string) => void; onOpenActivities?: (agentId: string) => void; presentation?: "inline" | "sheet"; onClose?: () => void;
+  /** The chosen agent's roster row and the line to show while its own evidence has not resolved. */
+  pending?: { agent: Agent; text: string } | null;
 };
 
-export function AgentInspector({ agent, agents = [], workflows = [], sessionId = "agent-activity", historical = false, requestSnapshots = EMPTY_REQUESTS, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], insights = [], planTasks = [], onOpenTree, onOpenActivities, presentation = "inline", onClose = () => {} }: AgentInspectorProps) {
+export function AgentInspector({ agent, agents = [], workflows = [], sessionId = "agent-activity", historical = false, requestSnapshots = EMPTY_REQUESTS, cacheRefills = [], cacheReadDrops = [], contextBoundaries = [], insights = [], planTasks = [], onOpenTree, onOpenActivities, presentation = "inline", onClose = () => {}, pending = null }: AgentInspectorProps) {
+  if (!agent && pending) {
+    // Only the name comes from the roster row; every fact waits for the agent's own evidence.
+    const name = agentDisplayName(pending.agent);
+    const waiting = <div className={`agentInspector agentInspector-${presentation}`} role="region" aria-label={`Agent inspector for ${agentDisplayLabel(pending.agent)}`}>
+      {presentation === "inline" && <header className="inspectorHeader"><span className="sessionEyebrow">Selected agent</span><h3 dir="auto">{name}</h3></header>}
+      <div role="status"><EmptyState text={pending.text} /></div>
+    </div>;
+    // The sheet stays the root element in both branches, so it is not remounted when evidence arrives.
+    return presentation === "sheet" ? <InspectorSheet title={name} onClose={onClose}>{waiting}</InspectorSheet> : waiting;
+  }
   if (!agent) return <aside className="agentInspector"><EmptyState text="Select an agent to inspect it." /></aside>;
   const workflow = workflows.find((item) => item.id === agent.workflowId);
   const phase = workflow?.phases.find((item) => item.id === agent.workflowPhaseId);

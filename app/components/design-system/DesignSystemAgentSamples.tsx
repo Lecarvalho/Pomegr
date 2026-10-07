@@ -65,6 +65,11 @@ export function AgentInspectorSection() {
           <AgentInspector agent={INSPECTED} agents={ROSTER_AGENTS} workflows={ROSTER_WORKFLOWS} onOpenTree={() => undefined} onOpenActivities={() => undefined} />
         </div>
       </Sample>
+      <Sample label="Evidence pending" note="A chosen agent is named at once. Its facts appear only with its own evidence, never from the roster row. On phone the same line is the body of the sheet.">
+        <div className="designSystemInspectorFrame">
+          <AgentInspector agent={null} pending={{ agent: ROSTER_AGENTS[1], text: "Loading agent evidence…" }} onOpenTree={() => undefined} />
+        </div>
+      </Sample>
     </LiveClockProvider>
   </Section>;
 }

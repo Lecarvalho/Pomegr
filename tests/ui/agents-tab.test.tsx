@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentsTab } from "../../app/components/dashboard/AgentsTab";
@@ -124,6 +124,42 @@ describe("Agents tab", () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+
+    it.each([
+      ["still loading", { data: null }, "Loading agent evidence…"],
+      ["definitively unavailable", { data: null, unavailable: true }, "Agent evidence is unavailable for this agent."],
+      ["failing to load", { data: null, error: "Session evidence is temporarily unavailable. Pomegr will retry from the last recorded state." }, "Session evidence is temporarily unavailable. Pomegr will retry from the last recorded state."],
+    ])("opens the phone inspector at once for a chosen agent whose evidence is %s", async (_name, pending, text) => {
+      const user = userEvent.setup();
+      const agentsDomain = domain("agents", { agents: [primary, child], workflows: [], insights: [], loops: [], cacheRefills: [], cacheReadDrops: [], contextBoundaries: [] });
+      const primaryDomain = domain("agent", { agentId: "primary", agent: primary, ancestors: [], descendants: [], workflow: null, contextBoundaries: [], requestSnapshots: { status: "unavailable", items: [] }, insights: [], cacheEvents: { status: "unavailable", items: [], possibleFullRefills: [] }, cacheReadDrops: { status: "unavailable", items: [] }, planTasks: [], sectionReadiness: { agentEvidence: "ready", contextEvidence: "ready", activityEvidence: "ready" } });
+      useSessionDomain.mockImplementation((query: { domain: string; agentId?: string }) => query.domain === "agents" ? agentsDomain
+        : query.agentId === "child" ? { fetching: false, connected: true, error: null, revalidate: vi.fn(), ...pending } : primaryDomain);
+      vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+      try {
+        render(tab(null));
+        await user.click(await screen.findByRole("button", { name: /Direct subagents/ }));
+        await user.click(screen.getByRole("button", { name: "Select Child agent" }));
+        const sheet = screen.getByRole("dialog", { name: /Child agent/ });
+        expect(within(sheet).getByRole("status")).toHaveTextContent(text);
+        expect(screen.queryByText("Select an agent to inspect it.")).not.toBeInTheDocument();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("names the chosen agent in the desktop inspector while its evidence loads", async () => {
+      const user = userEvent.setup();
+      const ready = useSessionDomain.getMockImplementation()!;
+      useSessionDomain.mockImplementation((query: { domain: string; agentId?: string }) => query.agentId === "child"
+        ? { data: null, fetching: true, connected: true, error: null, revalidate: vi.fn() } : ready(query));
+      render(tab(null));
+      await user.click(await screen.findByRole("button", { name: /Direct subagents/ }));
+      await user.click(screen.getByRole("button", { name: "Select Child agent" }));
+      const inspector = screen.getByRole("region", { name: /^Agent inspector for .*Child agent/ });
+      expect(within(inspector).getByRole("status")).toHaveTextContent("Loading agent evidence…");
+      expect(screen.queryByText("Select an agent to inspect it.")).not.toBeInTheDocument();
     });
   });
 

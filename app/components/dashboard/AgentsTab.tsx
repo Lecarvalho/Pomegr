@@ -64,6 +64,10 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
   if (result.data.readiness === "unavailable") return <div className="sessionTabState">Agent evidence is unavailable for this session.</div>;
   if (agents.length === 0) return <div className="sessionTabState">No agents were recorded for this session.</div>;
   const agentEvidence = inspector.data?.readiness === "ready" ? inspector.data : null;
+  // The inspector opens for the chosen agent at once and says what it is waiting for.
+  const inspectorPendingText = agentEvidence ? undefined
+    : inspector.unavailable || inspector.data?.readiness === "unavailable" ? "Agent evidence is unavailable for this agent."
+      : inspector.error || "Loading agent evidence…";
   return <AgentActivityPanel
     agents={agents}
     workflows={result.data.workflows}
@@ -79,6 +83,7 @@ export function AgentsTab({ sessionId, historical, selectedAgentId, onSelectAgen
     selectedAgentId={knownSelectedAgentId}
     onSelectAgent={selectAgent}
     inspector={agentEvidence}
+    inspectorPendingText={inspectorPendingText}
     onOpenActivities={(agentId) => onOpenActivities({ agentId })}
     viewMode={viewMode}
     onViewModeChange={changeViewMode}
