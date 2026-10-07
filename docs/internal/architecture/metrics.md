@@ -380,6 +380,12 @@ retained peak it also keeps the raw in-memory samples from two minutes before to
 minutes after the peak's observation, so a peak can be zoomed to full resolution. Falling
 out of the top ten removes a peak's raw sample window along with it.
 
+The Resources tab presents CPU as the whole-machine percentage in every window: the live
+card reads it from the samples, the Session card from the stored machine-percent minute
+aggregates, and a CPU peak from the machine-percent peak of the same minute. That keeps the
+value between 0% and 100% however many cores the process tree occupies. Occupied cores
+remain the CPU field's identity and the unit of the session-event floor below.
+
 Retention follows the storage settings: past the configured retention age (30, 90, 180,
 365 days, or keep all; default 90), Pomegr drops a session's per-minute rows and peak
 sample windows, but keeps its retained peaks for as long as the session remains in the

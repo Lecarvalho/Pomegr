@@ -229,7 +229,7 @@ test("peak windows never cross sessions: only IDs from this session's own sessio
   assert.equal(blockB.peaks[0].value, 20);
 });
 
-test("peaks: top 3 per display field, 12 max, sorted by observedAt desc, cpu_machine_percent dropped entirely", async (t) => {
+test("peaks: top 3 per display field, 12 max, sorted by observedAt desc, cpu_machine_percent only as the same-minute CPU companion", async (t) => {
   const store = await openStore(t);
   const base = Date.parse("2026-09-22T12:00:00.000Z");
   const sessionId = "multi";
@@ -251,7 +251,10 @@ test("peaks: top 3 per display field, 12 max, sorted by observedAt desc, cpu_mac
   for (const peak of cpuPeaks) {
     insertPeakRow(store, { id: peak.id, sessionId, field: "cpu_cores", observedAt: peak.at, value: peak.value });
   }
-  insertPeakRow(store, { id: 9, sessionId, field: "cpu_machine_percent", observedAt: base + 20_000, value: 999 });
+  // A machine-percent row is never a peak of its own. The one in the CPU peaks' minute becomes
+  // their companion value; one in a minute with no CPU peak contributes nothing.
+  insertPeakRow(store, { id: 9, sessionId, field: "cpu_machine_percent", observedAt: base + 20_000, value: 12.5 });
+  insertPeakRow(store, { id: 10, sessionId, field: "cpu_machine_percent", observedAt: base + 120_000, value: 99 });
 
   const stub = createStubRuntime({ store });
   const source = createResourceDomainSource({ monitorStoreRuntime: stub.runtime, demandedSessionIds: () => [sessionId], onChange: () => {} });
@@ -262,6 +265,8 @@ test("peaks: top 3 per display field, 12 max, sorted by observedAt desc, cpu_mac
   assert.ok(block.peaks.every((peak) => peak.field !== "cpu_machine_percent"));
   assert.deepEqual(block.peaks.map((peak) => peak.id), ["p8", "p7", "p6", "p5", "p4", "p3"], "sorted by observedAt desc across fields");
   assert.deepEqual(block.peaks.map((peak) => peak.value), [50, 30, 10, 500, 400, 300]);
+  assert.deepEqual(block.peaks.map((peak) => peak.cpuMachinePercent), [12.5, 12.5, 12.5, null, null, null],
+    "CPU peaks take the machine-percent peak of their minute; other fields never carry one");
 });
 
 test("peak window: retained carries only the peak's own field; not_retained falls back to the containing minute", async (t) => {
@@ -408,6 +413,7 @@ test("serialization: the resources domain carries no process-identity keys and o
     minutes: [{
       minuteStart: "2026-09-22T12:00:00.000Z",
       cpuCores: { min: 1, avg: 1.5, max: 2, maxAt: "2026-09-22T12:00:30.000Z" },
+      cpuMachinePercent: { min: 6.25, avg: 9.375, max: 12.5, maxAt: "2026-09-22T12:00:30.000Z" },
       memoryBytes: null,
       readBytesPerSecond: null,
       writeBytesPerSecond: null,
@@ -419,6 +425,7 @@ test("serialization: the resources domain carries no process-identity keys and o
       field: "cpu_cores",
       observedAt: "2026-09-22T12:00:30.000Z",
       value: 2,
+      cpuMachinePercent: 12.5,
       matchedTaskIds: ["toolu_matched", "toolu_missing"],
       matchedTaskCount: 2,
       window: { status: "retained", samples: [{ at: "2026-09-22T12:00:29.000Z", value: 1.8 }], minute: null },
@@ -430,7 +437,8 @@ test("serialization: the resources domain carries no process-identity keys and o
   assert.deepEqual(Object.keys(resources).sort(), ["domain", "live", "observedAt", "readiness", "retained", "sessionId", "source", "view"]);
   assert.deepEqual(Object.keys(resources.retained).sort(), ["curveRemoval", "minutes", "minutesTruncated", "peaks", "readiness"]);
   const [peak] = resources.retained.peaks;
-  assert.deepEqual(Object.keys(peak).sort(), ["field", "id", "matchedTaskCount", "observedAt", "request", "tasks", "value", "window"]);
+  assert.deepEqual(Object.keys(peak).sort(), ["cpuMachinePercent", "field", "id", "matchedTaskCount", "observedAt", "request", "tasks", "value", "window"]);
+  assert.equal(peak.cpuMachinePercent, 12.5);
   assert.equal(peak.request, null, "request stays null in this part");
   assert.equal(peak.matchedTaskCount, 2, "unresolved IDs still count toward matchedTaskCount");
   assert.equal(peak.tasks.length, 1, "an unresolved task ID is dropped from tasks");
@@ -439,8 +447,9 @@ test("serialization: the resources domain carries no process-identity keys and o
   assert.equal(peak.tasks[0].durationMs, 5_000);
   assert.deepEqual(Object.keys(peak.window).sort(), ["minute", "samples", "status"]);
   const [minute] = resources.retained.minutes;
-  assert.deepEqual(Object.keys(minute).sort(), ["cpuCores", "memoryBytes", "minuteStart", "readBytesPerSecond", "writeBytesPerSecond"]);
+  assert.deepEqual(Object.keys(minute).sort(), ["cpuCores", "cpuMachinePercent", "memoryBytes", "minuteStart", "readBytesPerSecond", "writeBytesPerSecond"]);
   assert.deepEqual(Object.keys(minute.cpuCores).sort(), ["avg", "max", "maxAt", "min"]);
+  assert.deepEqual(Object.keys(minute.cpuMachinePercent).sort(), ["avg", "max", "maxAt", "min"]);
 
   const serialized = JSON.stringify(resources);
   assert.doesNotMatch(serialized, /"pid"|"processId"|"command"|"cwd"|"exe"|processStartIdentity/i);

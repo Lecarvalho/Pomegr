@@ -16,8 +16,11 @@ const TOP_PEAKS_PER_FIELD = 3;
 const MAX_DEMANDED_SESSIONS_PER_CYCLE = 32;
 
 // The four display fields the resources domain shows curves and peaks for.
-// cpu_machine_percent is sampled live only and is dropped here.
+// cpu_machine_percent is never a peak of its own: its minute aggregates ride on each minute
+// and its same-minute peak value rides on the cpu_cores peak, as the value CPU is presented in.
 const DISPLAY_FIELDS = new Set(["cpu_cores", "memory_bytes", "read_bps", "write_bps"]);
+const CPU_FIELD = "cpu_cores";
+const CPU_MACHINE_PERCENT_FIELD = "cpu_machine_percent";
 const FIELD_SAMPLE_KEY = Object.freeze({
   cpu_cores: "cpuCores",
   memory_bytes: "memoryBytes",
@@ -64,14 +67,24 @@ function toResourceMinute(row) {
   return {
     minuteStart: isoOrNull(row.minuteStart),
     cpuCores: aggregateFromRow(row, "cpuCores"),
+    cpuMachinePercent: aggregateFromRow(row, "cpuMachinePercent"),
     memoryBytes: aggregateFromRow(row, "memoryBytes"),
     readBytesPerSecond: aggregateFromRow(row, "readBps"),
     writeBytesPerSecond: aggregateFromRow(row, "writeBps"),
   };
 }
 
-function buildPeak(queries, peakRow, minutesByStart) {
+function minuteStartOf(observedAtMs) {
+  return Math.floor(observedAtMs / MINUTE_MS) * MINUTE_MS;
+}
+
+function buildPeak(queries, peakRow, minutesByStart, machinePercentByMinute) {
   const sampleKey = FIELD_SAMPLE_KEY[peakRow.field];
+  // Resource history keeps one peak row per field per minute, so the machine-percent row of
+  // the same minute describes the same peak.
+  const cpuMachinePercent = peakRow.field === CPU_FIELD
+    ? numberOrNull(machinePercentByMinute.get(minuteStartOf(peakRow.observedAtMs)))
+    : null;
   const windowRows = queries.peakSampleWindow(peakRow.id);
   let window;
   if (windowRows) {
@@ -81,8 +94,7 @@ function buildPeak(queries, peakRow, minutesByStart) {
       minute: null,
     };
   } else {
-    const minuteStart = Math.floor(peakRow.observedAtMs / MINUTE_MS) * MINUTE_MS;
-    const minuteRow = minutesByStart.get(minuteStart) || null;
+    const minuteRow = minutesByStart.get(minuteStartOf(peakRow.observedAtMs)) || null;
     window = { status: "not_retained", samples: [], minute: minuteRow ? toResourceMinute(minuteRow) : null };
   }
   const matchedTaskIds = Array.isArray(peakRow.matchedTaskIds) ? peakRow.matchedTaskIds : [];
@@ -91,6 +103,7 @@ function buildPeak(queries, peakRow, minutesByStart) {
     field: peakRow.field,
     observedAt: isoOrNull(peakRow.observedAtMs),
     value: peakRow.value,
+    cpuMachinePercent,
     // Task resolution (label/workKind/duration) happens in the projection layer against
     // committed normalized execution tasks; this block carries only the raw matched IDs.
     matchedTaskIds,
@@ -109,7 +122,11 @@ function buildBlock(store, sessionId) {
   const removalRow = queries.sessionCurveRemoval(sessionId);
 
   const byField = new Map();
+  const machinePercentByMinute = new Map();
   for (const peakRow of queries.sessionResourcePeaks(sessionId)) {
+    if (peakRow.field === CPU_MACHINE_PERCENT_FIELD && isFiniteNumber(peakRow.observedAtMs)) {
+      machinePercentByMinute.set(minuteStartOf(peakRow.observedAtMs), peakRow.value);
+    }
     if (!DISPLAY_FIELDS.has(peakRow.field)) continue;
     const bucket = byField.get(peakRow.field) || [];
     // sessionResourcePeaks already orders each field's rows by value desc.
@@ -120,7 +137,7 @@ function buildBlock(store, sessionId) {
   }
   const selectedPeakRows = [...byField.values()].flat();
   selectedPeakRows.sort((left, right) => right.observedAtMs - left.observedAtMs);
-  const peaks = selectedPeakRows.map((peakRow) => buildPeak(queries, peakRow, minutesByStart));
+  const peaks = selectedPeakRows.map((peakRow) => buildPeak(queries, peakRow, minutesByStart, machinePercentByMinute));
 
   let curveRemoval = null;
   if (removalRow) {

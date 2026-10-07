@@ -48,7 +48,7 @@ const RETENTION_MESSAGES: Record<ResourceRetentionReason, string> = {
 };
 
 function liveReader(field: ResourceField): (sample: ResourceUsageSample) => number | null {
-  if (field === "cpu_cores") return (sample) => sample.cpuCores;
+  if (field === "cpu_cores") return (sample) => sample.cpuMachinePercent;
   if (field === "memory_bytes") return (sample) => sample.memoryBytes;
   if (field === "read_bps") return (sample) => sample.readBytesPerSecond;
   return (sample) => sample.writeBytesPerSecond;
@@ -56,7 +56,7 @@ function liveReader(field: ResourceField): (sample: ResourceUsageSample) => numb
 
 function currentReader(field: ResourceField, current: NonNullable<ResourcesDomain["live"]>["current"]): number | null {
   if (!current) return null;
-  if (field === "cpu_cores") return current.cpuCores;
+  if (field === "cpu_cores") return current.cpuMachinePercent;
   if (field === "memory_bytes") return current.memoryBytes;
   if (field === "read_bps") return current.readBytesPerSecond;
   return current.writeBytesPerSecond;
@@ -104,7 +104,7 @@ function buildCards(options: {
 }): ResourceCardModel[] {
   const { window, live, minutes } = options;
   const fields: Array<{ key: string; field: ResourceField; eyebrow: string; unitCaption: string }> = [
-    { key: "cpu", field: "cpu_cores", eyebrow: "CPU", unitCaption: "of one core" },
+    { key: "cpu", field: "cpu_cores", eyebrow: "CPU", unitCaption: "of all cores" },
     { key: "memory", field: "memory_bytes", eyebrow: "Memory", unitCaption: "resident, all processes" },
   ];
   const cards: ResourceCardModel[] = fields.map(({ key, field, eyebrow, unitCaption }) => {

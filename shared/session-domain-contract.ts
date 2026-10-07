@@ -234,7 +234,8 @@ export type SessionTouchedFiles = {
   truncated: boolean; // either source was cut at its cap
 };
 
-/** Display fields. cpu_machine_percent stays in live samples only; peaks and curves use these four. */
+/** Display fields; peaks and curves use these four. CPU is identified by `cpu_cores` and
+ *  presented as its whole-machine percentage, carried alongside the occupied-core value. */
 export type ResourceField = "cpu_cores" | "memory_bytes" | "read_bps" | "write_bps";
 
 /** Why stored minute curves are absent or incomplete for this session. */
@@ -249,6 +250,7 @@ export type ResourceMinute = {
   minuteStart: string; // ISO
   // For each field: min/avg/max and ISO timestamp of the max sample; null when no sample in that minute.
   cpuCores: ResourceMinuteAggregate | null;
+  cpuMachinePercent: ResourceMinuteAggregate | null; // the same samples as a share of all logical processors, 0–100
   memoryBytes: ResourceMinuteAggregate | null;
   readBytesPerSecond: ResourceMinuteAggregate | null;
   writeBytesPerSecond: ResourceMinuteAggregate | null;
@@ -268,6 +270,9 @@ export type ResourcePeak = {
   field: ResourceField;
   observedAt: string; // ISO, second-level instant of the peak sample
   value: number;
+  // cpu_cores peaks only: the whole-machine percentage (0–100) recorded for the same minute's
+  // peak; null for other fields or when that record is absent.
+  cpuMachinePercent: number | null;
   tasks: ResourcePeakTask[]; // matched tasks resolved from committed normalized task metadata; unresolved IDs dropped
   matchedTaskCount: number; // count of matched task IDs, including unresolved ones
   request: { number: number; uncachedInputTokens: number | null } | null; // always null in this part (see below)

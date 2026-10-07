@@ -199,6 +199,7 @@ function publicResourceMinute(value) {
   return result ? {
     ...result,
     cpuCores: publicResourceAggregate(value.cpuCores),
+    cpuMachinePercent: publicResourceAggregate(value.cpuMachinePercent),
     memoryBytes: publicResourceAggregate(value.memoryBytes),
     readBytesPerSecond: publicResourceAggregate(value.readBytesPerSecond),
     writeBytesPerSecond: publicResourceAggregate(value.writeBytesPerSecond),
@@ -241,6 +242,8 @@ function publicResourcePeak(value, tasksById) {
   const matchedTaskIds = Array.isArray(value.matchedTaskIds) ? value.matchedTaskIds : [];
   return {
     ...result,
+    cpuMachinePercent: value.field === "cpu_cores" && Number.isFinite(value.cpuMachinePercent) && value.cpuMachinePercent >= 0
+      ? Math.min(100, value.cpuMachinePercent) : null,
     tasks: matchedTaskIds.map((taskId) => resolveResourcePeakTask(taskId, tasksById)).filter(Boolean),
     // resource_peaks.matched_request_number is always null today; request numbers live
     // only in the async session-history store. See docs/internal/plans/ia-redesign.md T09.
