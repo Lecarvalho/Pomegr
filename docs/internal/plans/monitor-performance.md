@@ -432,3 +432,209 @@ worker inspector. Start the dev app with `NODE_OPTIONS=--inspect-port=9330`, the
 `node -e "process._debugProcess(<monitor pid>)"` and connect to
 `http://127.0.0.1:9330/json/list`. Relaunch through the `restart-pomegr` skill script
 afterwards.
+
+### After-fix results
+
+Captured on 2026-10-07 between 13:08 and 13:30 local time (UTC-4), one run of each
+measurement, with `measure.mjs` unchanged at commit `a505a285` for the whole run. The monitor
+was started fresh through the `restart-pomegr` script and ran the main checkout detached at
+`cfb432c6` (`perf/integration`: `main` at `3c3e20ee` plus ten commits), clean at the start and
+at the end. Its process creation time (13:08:41) is after the restart, and B5 ran after that
+was confirmed. The full JSON of each run was kept outside the repository. "Change" is after
+minus before; a negative change in a time, CPU, or memory is an improvement.
+
+#### Conditions compared with the baseline
+
+| Condition | Baseline | After |
+| --- | --- | --- |
+| Monitor code | `3c3e20ee` on `main` | `cfb432c6`, `main` plus ten commits |
+| Process creation | 10:48:38 | 13:08:41 |
+| Catalog | 1,705 headers; 515 Claude transcripts with 615 subagent files; 3,985 Codex rollouts | 1,707 headers; 517 Claude transcripts with 634 subagent files; 3,985 Codex rollouts |
+| Live sessions | 2 before the restart; 1 live-at-start read; 1 live during B2, B3, B6 | 2 before the restart; 3 live-at-start reads; 1 live during B2, B3, B6 |
+| Unrelated load at the start of the run | 5 `python.exe` at 95 to 100% of a core, `vmmemwsl` 35 to 42%, Defender up to 17% | 3 `python.exe` at 98 to 100%, `vmmemwsl` 30%, `lsass.exe` 14% |
+| Unrelated load during B6 | not sampled | `vmmemwsl` 46%; the monitor under 10% |
+| Unrelated load during B3 | not sampled | `lsass.exe` 19%, Defender 17%, `vmmemwsl` 12%; the monitor 23% |
+| Unrelated load at the start of `steady` | 5 `python.exe` (10:54) | `vmmemwsl` 27%, a fan-control service 15% |
+
+The three `python.exe` processes were gone by the start of `steady` (13:14) and during B6 and
+B3, so the after run had less competing CPU load than the baseline had at its start; the
+baseline's load during B6 and B3 is unknown. Both runs have one live session being written by
+the measuring subagent during B2, B3, and B6, one run each, and different historical sessions
+in B5.
+
+#### B1 and B4: startup and historical header
+
+| Measurement | Before | After | Change | Unit |
+| --- | --- | --- | --- | --- |
+| First HTTP response | 975 | 2,871 | +1,896 | ms |
+| First session-list row with a ready summary | 6,855 | 9,720 | +2,865 | ms |
+| Catalog coverage first `complete` | 134,593 | 82,601 | -51,992 | ms |
+| Live session A summary `ready` | not captured | 3,383 | n/a | ms |
+| First live-at-start session, checkpoint restore committed (log) | 12,679 | 3,911 | -8,768 | ms |
+| Live-at-start sessions, first fresh read ended (log) | 46,537 (1 session) | 21,954 / 22,894 / 23,433 (3 sessions) | not comparable | ms |
+| Live-at-start sessions, fresh evidence committed (log) | 47,113 (1 session) | 22,001 / 22,945 / 23,480 (3 sessions) | not comparable | ms |
+| CPU seconds consumed at 60 / 180 / 300 s | 57.3 / 158.5 / 194.4 | 57.0 / 110.3 / 137.2 | -0.3 / -48.2 / -57.2 | s |
+| RSS at 60 / 180 / 300 s | 924 / 1,092 / 1,218 | 789 / 729 / 729 | -135 / -363 / -489 | MB |
+| B4: first directory page with a row | 2,360 | 2,871 | +511 | ms |
+| B4: rows served at 5 s | 1,705 | 1,707 | +2 | rows |
+
+The monitor's CPU use over the three windows was 95%, 84%, and 30% of a core before, and 95%,
+44%, and 22% after. Coverage still alternates between `complete` and `discovering` at each 60 s
+header rescan in both runs.
+
+#### B2: repeated requests for a live session
+
+| Measurement | Before | After | Change | Unit |
+| --- | --- | --- | --- | --- |
+| First request to `ready` | 0.8 | 0.9 | +0.1 | ms |
+| Repeated request, monitor: median / p95 / max (n=100) | 0.6 / 58.6 / 246.6 | 0.6 / 32.1 / 147.8 | 0.0 / -26.5 / -98.8 | ms |
+| Repeated request, web proxy: median / p95 / max (n=100) | 7.4 / 10.1 / 154.7 | 8.0 / 31.2 / 287.7 | +0.6 / +21.1 / +133.0 | ms |
+
+#### B3: live latency
+
+One live Claude session written by subagent tool calls, 200 s, in both runs.
+
+| Measurement | Before | After | Change | Unit |
+| --- | --- | --- | --- | --- |
+| Write to served revision: median / p95 / max | 687 / 867 / 1,012 | 306 / 774 / 1,016 | -382 / -93 / +4 | ms |
+| Writes paired | 107 | 97 | n/a | writes |
+| Oldest write behind each revision: median / p95 / max | 730 / 871 / 1,012 | 286 / 774 / 1,016 | -444 / -97 / +4 | ms |
+| Revisions behind those writes | 83 | 87 | n/a | revisions |
+| Writes served within 300 / 500 / 700 ms | 5 / 26 / 52 | 49 / 72 / 92 | +44 / +46 / +40 | % |
+| `session-summary` events published in the window | 163 | 87 | -76 | events |
+| Second, catalog-driven revision after the evidence revision | median 83 ms (n=38) | none (n=0) | n/a | |
+| Revision readable by a GET after its event: median / p95 / max | 0.7 / 3.1 / 41.7 | 0.4 / 25.5 / 88.1 | -0.3 / +22.4 / +46.4 | ms |
+
+The shares within 300, 500, and 700 ms were computed from the stored raw timelines with the
+script's pairing. Stage durations from the pipeline log in the same 200 s (all sessions
+together), median with 95th percentile in parentheses:
+
+| Stage | Before | After |
+| --- | --- | --- |
+| `source_queue`, Claude `source_update` lane | 0.1 (198) | 0.1 (1,240) |
+| `acquisition_normalization`, same lane | 123 (212) | 161 (288) |
+| `candidate_to_commit`, all outcomes | 517 (552) | 182 (553) |
+| `candidate_to_commit`, accepted | 517 (565) | 89 (550) |
+| `session_derivation` | 4.6 (6.9) | 16.8 (22.9) |
+| `catalog_projection` | 65.8 (80.2) | 15.6 (21.9) |
+
+#### B5: opening a historical session
+
+Times are from the first domain request to the summary domain's top-level `ready`; "core" is
+the first answer with the `core` section ready. The after run used `--b5-skip 2` and `3`, so the
+sessions differ from the baseline's (`0` and `1`) but are the nearest to the same sizes. Each
+after-run entry is marked cold when the pipeline log shows a read in the `selected` lane for it,
+and restore when it shows none; the baseline's log had rotated away, so its two restore entries
+are the inferred ones from the baseline results.
+
+| Provider | Class | Baseline, first / second sample | After, first / second sample |
+| --- | --- | --- | --- |
+| Codex | Small | 100.8 KB: not ready in 60 s (core 812 ms) / 101.1 KB: 880 ms | 98.5 KB: 476 ms, cold / 98.4 KB: 288 ms, cold |
+| Codex | Medium | 1,025.9 KB: not ready in 60 s (core 1,288 ms) / 1,021.8 KB: not ready in 60 s (core 1,125 ms) | 1,030.1 KB: 161 ms, restore / 1,016.8 KB: 697 ms, cold |
+| Codex | Large | 10,343.7 KB: 112 ms, restore / 10,021.1 KB: not ready in 60 s (core 1,580 ms) | 10,560.1 KB: 112 ms, restore / 9,918.9 KB: 2,243 ms, cold |
+| Claude | Small | 137.4 KB: 1,096 ms / 146.0 KB: 726 ms | 153.8 KB: 127 ms, cold / 175.3 KB: 126 ms, cold |
+| Claude | Medium | 1,023.6 KB: 887 ms / 1,025.3 KB plus 840 KB in 1 subagent file: 929 ms | 1,021.1 KB: 226 ms, cold / 1,018.4 KB plus 345 KB in 1 subagent file: 218 ms, cold |
+| Claude | Large | 10,295.4 KB plus 839 KB in 3 subagent files: 1,247 ms / 9,727.5 KB: 110 ms, restore | 9,667.0 KB: 779 ms, cold / 9,633.5 KB plus 163,944 KB in 39 subagent files: 9,840 ms, cold |
+
+For Codex, top-level `ready` was reached in 6 of 6 after-run samples (2 of 6 in the baseline),
+and the `repository` section was `ready` in all 6. No session stayed `loading`. The script does
+not record the `view` value served, so it is not reported. In the four cold opens of the first
+pass the open finished 75 to 175 ms after the log's read (reads of 50 to 704 ms); the Codex
+cold reads took 173 to 2,019 ms.
+
+#### B6: background cost
+
+A quiet 300 s window from uptime 601 s, no requests sent, in both runs.
+
+| Measurement | Before | After | Change | Unit |
+| --- | --- | --- | --- | --- |
+| CPU (process counters; log counter) | 22.0; 22.0 | 19.0; 19.0 | -3.0; -3.0 | % of one core |
+| RSS at start / middle / end | 1,214 / 1,294 / 1,162 | 1,228 / 1,200 / 1,181 | +14 / -94 / +19 | MB |
+| RSS from the log counter: median / max | 1,252 / 1,319 | 1,178 / 1,241 | -74 / -78 | MB |
+| `event_loop_ms`: median / p95 / max | 32 / 181 / 811 | 33 / 234 / 1,351 | +1 / +53 / +540 | ms |
+| `catalog_projection`: median / p95 (per minute) | 53.7 / 78.6 (33.8) | 16.2 / 25.1 (33.2) | -37.5 / -53.5 | ms |
+| `revision_notify`: median / p95 (per minute) | 19.4 / 26.7 (45.3) | 1.1 / 13.8 (40.8) | -18.3 / -12.9 | ms |
+| `history_contribution`: median / p95 (per minute) | 57.7 / 380.5 (4.4) | 101.9 / 207.7 (2.8) | +44.2 / -172.8 | ms |
+| `candidate_to_commit`: median / p95 (per minute) | 526 / 593 (20.0) | 541 / 553 (13.4) | +15 / -40 | ms |
+| `checkpoint`: median / p95 (per minute) | 8.1 / 44.5 (10.2) | 20.0 / 27.4 (6.2) | +11.9 / -17.1 | ms |
+| RSS after B3 and both B5 passes (uptime 1,608 s before; 1,242 s after) | 1,475 | 1,210 | -265 | MB |
+
+#### Outcome 1: opening a running session
+
+B2 cannot show a change: a live session is committed before anyone asks, so its first request
+answered `ready` in about 1 ms in both runs. The startup log shows the change that matters.
+The first live-at-start session was served from its checkpoint at 3.9 s instead of 12.7 s, and
+the chosen live session's summary was `ready` at 3.4 s (not captured in the baseline). Fresh
+evidence for the live-at-start sessions was committed by 23.5 s for three sessions, against
+47.1 s for one session whose single read took 39.5 s. These are not one-to-one: the after run
+had three live-at-start sessions, less competing load, and the first response came 1.9 s later
+(2.9 s against 1.0 s after process creation), and the first ready catalog row 2.9 s later, which
+is slower and unexplained by this data.
+
+#### Outcome 2: live latency
+
+The median write-to-served wait fell from 687 to 306 ms, and the share served within 500 ms
+rose from 26% to 72%. The pipeline log shows where: the median `candidate_to_commit` of accepted
+commits fell from 517 to 89 ms, and the second catalog-driven revision after each write no longer
+occurs (38 of them before, none after), so one write now publishes one summary revision. The
+tail did not improve to the same degree: the 95th percentile fell from 867 to 774 ms and the
+maximum stayed at about 1,016 ms. The `source_queue` 95th percentile rose from 198 to 1,240 ms,
+and the median read took 38 ms longer, and the median derivation 12 ms longer; the log does not
+show why. This is one session, 97 writes against 107, and one run each, and the readable-after-
+publish tail was worse (95th percentile 3.1 to 25.5 ms), so the tail difference is within what
+one run can show.
+
+#### Outcome 3: historical headers
+
+The directory served 1,707 rows from 5 s after start, against 1,705 before, and coverage first
+reached `complete` at 82.6 s instead of 134.6 s. The first directory page with a row came 0.5 s
+later (2.9 s against 2.4 s), because the process answered its first request later. Coverage
+still returns to `discovering` at every 60 s header rescan.
+
+#### Outcome 4: opening a historical session
+
+Every after-run open reached top-level `ready`, including all six Codex samples; the baseline
+reached it in 2 of 6 Codex samples and left four `loading` for the whole 60 s. Cold Claude opens
+of the small and medium transcripts took 126 to 226 ms against 726 to 1,096 ms before. The log
+shows reads of 50 to 139 ms for them, so the 500 ms commit wait is no longer part of an open.
+Cold Codex opens took 288 to 2,243 ms. The comparison is loose: the sessions differ, two
+baseline and two after entries are restores, and one after-run Claude "large" session carried
+39 subagent files of 164 MB and took 9.8 s, where the baseline's carried 0.8 MB. The mechanism
+that kept Codex sessions `loading` is not shown by these numbers, so I do not attribute the
+Codex change to a fix.
+
+#### Background cost and memory
+
+Idle CPU fell from 22.0% to 19.0% of a core. The three stages the plan targets account for it:
+by their per-minute counts and medians, `catalog_projection`, `revision_notify`, and
+`history_contribution` used about 4.9 points before and 1.5 points after, a drop of 3.5 points
+against the measured 3.0. The first two fell, to 16.2 ms and 1.1 ms at the median; the third
+did not: `history_contribution` had a higher median (101.9 against 57.7 ms) from 14 samples
+against 22, so this run shows no improvement from the history store change. `event_loop_ms`
+was worse at the tail (95th percentile 234 against 181 ms, maximum 1,351 against 811 ms).
+The B6 `candidate_to_commit` median stayed at 541 ms, while the same stage in the B3 window fell;
+the log does not say which sessions those B6 commits belong to.
+
+RSS was lower at startup (729 MB against 1,218 MB at 300 s) but rose to 1.2 GB between 8 and
+10 minutes of uptime, so B6 started at the same level as in the baseline and ended 19 MB
+higher (1,181 against 1,162 MB). After B3 and both B5 passes, RSS was 1,210 MB against 1,475
+MB: it rose 29 MB from the end of B6 in the after run and 313 MB in the baseline, with six Codex
+opens in each. The after run's pass included a 10 MB Codex rollout read cold and a Claude session
+with 164 MB of subagent files, and was measured at a shorter uptime (1,242 s against 1,608 s).
+The log does not show where memory is held, so I do not attribute the difference.
+
+#### Where the runs are not comparable, and what else was seen
+
+- Each measurement is one run per monitor. Small differences in B2 percentiles and B3 tails
+  should not be read as changes: two trial runs on the previous monitor gave B2 95th percentiles
+  of 98 and 107 ms against 59 ms in the baseline run.
+- Load differed: 3 `python.exe` at the start of the after run, none later, against 5 in the
+  baseline at its start; neither run's B3 and B6 load matches (the baseline's was not sampled).
+- B1 had one live-at-start session before and three after. B5 used different sessions and one
+  after-run session far larger in subagent files.
+- The pipeline log recorded no failed span, gap, or rejected derivation in the after run. It
+  recorded six `rejected` outcomes of the checkpoint persistence queue within 0.3 s, about 7 s
+  after start (the queue's bounded admission). The baseline's startup log had rotated away, so
+  there is no comparison for that.
+- Not measured by the script: the `view` value for Codex sessions, and whether each B5 open was
+  a restore (inferred from the log in the after run only).
