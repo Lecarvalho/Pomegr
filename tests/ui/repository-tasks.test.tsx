@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
+import type { RepositoryInventorySnapshot, SessionActivityStatus } from "../../shared/monitor-contract";
 import type { Task, TaskBoard, TaskState } from "../../shared/task-contract";
 
 const navigation = vi.hoisted(() => ({ search: "", replace: vi.fn(), push: vi.fn() }));
@@ -15,7 +15,9 @@ vi.mock("../../app/tasks-store", () => ({ useTasks }));
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import { repositoryTabs } from "../../app/components/repositories/repository-route";
+import { QueueTaskCard } from "../../app/components/tasks/QueueTaskCard";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
+import { sessionState } from "../../app/dashboard-utils";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [{
@@ -181,6 +183,142 @@ describe("task board", () => {
   });
 });
 
+describe("task card borrowing its session", () => {
+  const session = (overrides: Partial<NonNullable<Task["session"]>> = {}): NonNullable<Task["session"]> => ({ id: "claude:abc123", title: "Parser refactor", state: "working", observedModel: null, ...overrides });
+  const onlyCard = (tasks: Task[]) => {
+    render(<TaskBoardView board={board({ tasks })} />);
+    return screen.getByRole("listitem");
+  };
+
+  it.each<[SessionActivityStatus, string, string]>([
+    ["working", "In progress", "positive"],
+    ["needs_input", "Needs input", "warning"],
+    ["idle", "Idle", ""],
+    ["open", "Open", ""],
+    ["stopped", "Stopped", ""],
+    ["closed", "Closed", ""],
+  ])("shows the %s session as the Sessions list labels it, never as Running", (state, label, tone) => {
+    // The label is the Sessions list's own helper, not a copy of its table.
+    expect(sessionState({ activityStatus: state }).label).toBe(label);
+    const card = onlyCard([task(1, { state: "queued", session: session({ state }) })]);
+    const chip = within(card).getByText(label);
+    expect(chip).toHaveClass("commandChip");
+    if (tone) expect(chip).toHaveClass(tone);
+    expect(within(card).queryByText(/^Queued/)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/running/i)).not.toBeInTheDocument();
+    expect(card.classList.contains("isLive")).toBe(state === "working");
+  });
+
+  it("shows the session title, the observed model and an Open session link to the session view", () => {
+    const card = onlyCard([task(1, { text: "Refactor the parser", state: "queued", run: { provider: "claude", model: "opus", effort: "high" }, session: session({ observedModel: "opus" }) })]);
+    expect(within(card).getByText("Parser refactor")).toBeInTheDocument();
+    expect(within(card).queryByText("Refactor the parser")).not.toBeInTheDocument();
+    expect(within(card).getByText("opus · high")).toBeInTheDocument();
+    const observed = within(card).getByText(/^Observed model:/);
+    expect(observed).toHaveTextContent("Observed model: opus");
+    expect(observed).toHaveClass("taskCardDetail");
+    expect(observed).not.toHaveClass("taskCardModelDiffers");
+    expect(within(observed).getByText("opus").tagName).toBe("CODE");
+    const link = within(card).getByRole("link", { name: "Open session" });
+    expect(link).toHaveAttribute("href", "/sessions/claude-abc123");
+    expect(link).toHaveClass("commandTextLink");
+    expect(within(card).queryByText(/wall time/i)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the task text while the session has no usable title", () => {
+    render(<TaskBoardView board={board({ tasks: [
+      task(1, { text: "Empty title", session: session({ title: "" }) }),
+      task(2, { text: "Blank title", session: session({ title: "  " }) }),
+      task(3, { text: "No title", session: session({ title: null }) }),
+    ] })} />);
+    for (const text of ["Empty title", "Blank title", "No title"]) expect(screen.getByText(text)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Open session" })).toHaveLength(3);
+  });
+
+  it("keeps the task's own chip while the monitor has no committed facts for the session", () => {
+    const card = onlyCard([task(1, { text: "Fresh start", state: "queued", session: session({ title: null, state: "unknown" }) })]);
+    expect(within(card).getByText("Queued")).toHaveClass("commandChip", "isInk");
+    expect(within(card).queryByText("Unknown")).not.toBeInTheDocument();
+    expect(card).not.toHaveClass("isLive");
+    // The link does not depend on session facts.
+    expect(within(card).getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/claude-abc123");
+  });
+
+  it.each<[TaskState, string]>([
+    ["needs_review", "Needs review"],
+    ["stalled", "Stalled"],
+    ["blocked", "Blocked by agent"],
+    ["done", "Done"],
+  ])("keeps the %s outcome over a working session and still links to it", (state, label) => {
+    const card = onlyCard([task(1, { state, session: session({ observedModel: "opus" }) })]);
+    expect(within(card).getByText(label)).toHaveClass("commandChip");
+    expect(within(card).queryByText("In progress")).not.toBeInTheDocument();
+    expect(card.classList.contains("isLive")).toBe(false);
+    expect(within(card).getByText("Parser refactor")).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Open session" })).toBeInTheDocument();
+  });
+
+  it("is unchanged for a task with no session", () => {
+    const card = onlyCard([task(1, { state: "queued", run: { provider: "claude", model: "opus", effort: null } })]);
+    expect(within(card).getByText("Queued")).toBeInTheDocument();
+    expect(within(card).getByText("Task text 1")).toBeInTheDocument();
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+    expect(card).not.toHaveTextContent(/observed/i);
+  });
+
+  it("omits Open session for a session ID the session route cannot carry", () => {
+    const card = onlyCard([task(1, { session: session({ id: "not a session id" }) })]);
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  describe("planned against observed model", () => {
+    const planned = (model: string | null, observedModel: string | null) => task(1, { run: { provider: "claude", model, effort: null }, session: session({ observedModel }) });
+
+    it("shows one amber line when they differ, instead of the muted observed line", () => {
+      const card = onlyCard([planned("opus", "sonnet")]);
+      const line = within(card).getByText(/^Planned/);
+      expect(line).toHaveTextContent("Planned opus, observed sonnet");
+      expect(line).toHaveClass("taskCardModelDiffers");
+      expect(within(line).getByText("opus").tagName).toBe("CODE");
+      expect(within(line).getByText("sonnet").tagName).toBe("CODE");
+      expect(within(card).queryByText(/^Observed model:/)).not.toBeInTheDocument();
+    });
+
+    it.each<[string, string | null, string]>([
+      ["equal", "claude-opus-4-1", "claude-opus-4-1"],
+      ["equal ignoring case", "Claude-Opus-4-1", "claude-opus-4-1"],
+      ["a planned alias inside the observed identifier", "opus", "claude-opus-4-1"],
+      ["an observed alias inside the planned identifier", "claude-opus-4-1", "opus"],
+      ["Default model planned", null, "sonnet"],
+    ])("shows only the observed line when they match: %s", (_name, plannedModel, observed) => {
+      const card = onlyCard([planned(plannedModel, observed)]);
+      expect(within(card).getByText(/^Observed model:/)).toHaveTextContent(`Observed model: ${observed}`);
+      expect(card).not.toHaveTextContent(/Planned .*observed/);
+      expect(card.querySelector(".taskCardModelDiffers")).toBeNull();
+    });
+
+    it("shows no model line before a model is observed", () => {
+      const card = onlyCard([planned("opus", null)]);
+      expect(card).not.toHaveTextContent(/observed/i);
+    });
+
+    it("shows the observed line with no planned run at all", () => {
+      const card = onlyCard([task(1, { session: session({ observedModel: "opus" }) })]);
+      expect(card.querySelector(".taskCardRun")).toBeNull();
+      expect(within(card).getByText(/^Observed model:/)).toHaveTextContent("Observed model: opus");
+    });
+  });
+
+  it("draws the same borrowed chip, observed model and link on a queue card", () => {
+    render(<ul><QueueTaskCard nextQueued={false} task={task(1, { state: "queued", run: { provider: "claude", model: "opus", effort: null }, session: session({ observedModel: "sonnet" }) })} /></ul>);
+    const card = screen.getByRole("listitem");
+    expect(within(card).getByText("In progress")).toHaveClass("positive");
+    expect(within(card).getByText("Parser refactor")).toBeInTheDocument();
+    expect(card).toHaveTextContent("Planned opus, observed sonnet");
+    expect(within(card).getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/claude-abc123");
+  });
+});
+
 describe("task board styles", () => {
   const entry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
   const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
@@ -193,5 +331,9 @@ describe("task board styles", () => {
     expect(styles).toMatch(/\.taskCard\s*\{[^}]*border-radius:\s*var\(--panel-radius\)/);
     expect(styles).toMatch(/\.taskCardId\s*\{[^}]*var\(--font-data\)/);
     expect(styles).toMatch(/\.taskBoardGrid\s*\{[^}]*minmax\(220px, 1fr\)/);
+    // D73: the differs line is amber text only; model identifiers keep the data face; D75: the link is not stretched.
+    expect(styles).toMatch(/\.taskCardDetail\.taskCardModelDiffers\s*\{[^}]*color:\s*var\(--command-amber\)/);
+    expect(styles).toMatch(/\.taskCardDetail code\s*\{[^}]*var\(--font-data\)/);
+    expect(styles).toMatch(/\.taskCardLink\s*\{[^}]*align-self:\s*flex-start/);
   });
 });

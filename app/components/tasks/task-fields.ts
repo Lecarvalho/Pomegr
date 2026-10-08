@@ -153,7 +153,14 @@ export function doneWhenSummary(doneWhen: Task["doneWhen"]): string | null {
   return parts.length === 0 ? null : `Done when: ${[...parts, "agent report"].join(" + ")}`;
 }
 
-/** True only when a model is planned and the latest recorded request used another one. */
+/**
+ * True only when a model is planned and the latest recorded request used another one. Equal ignoring case, or one
+ * containing the other (a planned family alias such as `opus` against `claude-opus-4-1`), is the same model.
+ * With Default model planned (null) there is nothing to compare.
+ */
 export function observedModelDiffers(planned: string | null, observed: string | null | undefined): boolean {
-  return planned !== null && Boolean(observed) && observed !== planned;
+  if (!planned || !observed) return false;
+  const left = planned.toLowerCase();
+  const right = observed.toLowerCase();
+  return !left.includes(right) && !right.includes(left);
 }

@@ -18,7 +18,8 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { startAbort, startPlan } from "./task-dispatch.mjs";
+import { fillTaskSessions } from "./task-board.mjs";
+import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
@@ -489,19 +490,22 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     };
   }
 
-  function readBoard(repositoryId) {
+  // `resolveSessionFacts(sessionId)` is supplied by the entry point from committed facts (see task-board.mjs).
+  // Without it a linked session keeps the stored unknown defaults.
+  function readBoard(repositoryId, { resolveSessionFacts = null } = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
     if (!isRepositoryId(repositoryId)) return emptyBoard("", "unavailable");
     if (!database) return emptyBoard(repositoryId, "unavailable");
     try {
       seedColumns(repositoryId);
-      return projectBoard(repositoryId, loadRows(repositoryId)) ?? emptyBoard(repositoryId, "unavailable");
+      const board = projectBoard(repositoryId, loadRows(repositoryId));
+      return board ? fillTaskSessions(board, resolveSessionFacts) : emptyBoard(repositoryId, "unavailable");
     } catch {
       return emptyBoard(repositoryId, "unavailable");
     }
   }
 
-  function apply(repositoryId, action, payload) {
+  function apply(repositoryId, action, payload, { resolveSessionFacts = null } = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
@@ -516,13 +520,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
-      return { ok: true, board };
+      return { ok: true, board: fillTaskSessions(board, resolveSessionFacts) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
   }
 
-  // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; both calls answer a fixed error.
+  // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; a bind links the session that
+  // reports the token once and discards the digest. Every call answers a fixed error.
   function dispatch(operation, input) {
     if (!database) return { ok: false, error: "unavailable" };
     try {
@@ -539,5 +544,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   const planStart = (repositoryId, payload, resolveFacts) => dispatch(startPlan, { repositoryId, payload, resolveFacts, now });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
-  return Object.freeze({ readBoard, apply, planStart, abortStart, close });
+  const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
+  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, close });
 }

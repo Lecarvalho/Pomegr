@@ -37,8 +37,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
 | Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with `CODEX_THREAD_ID`; an unbound call is refused and posts nothing |
-| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet, and the started session is not linked to its task yet, so the card shows no session |
-| Bind a started session to its task | Not built |
+| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet |
+| Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
 | Start a Codex session | Not built |
 | `complete_task`, `block_task`, verified conditions | Not built |
 | Stalled, queue advance, start gates | Not built |
@@ -145,7 +145,20 @@ type TaskBoard = {
 - A feature is `done` when every task attached to it is done. Only unfinished
   features are offered when attaching a task.
 - `session` is a borrowed, normalized reference to the bound session (see
-  [Session binding](#session-binding)); it carries no transcript content.
+  [Session binding](#session-binding)); it carries no transcript content. It is null
+  until the session binds, then `{ id, title, state, observedModel }`, filled on every
+  board that leaves the monitor by `fillTaskSessions` (`server/tasks/task-board.mjs`)
+  from `resolveTaskSessionFacts`, which reads only committed memory: the session
+  catalog row and the observation store's public state. `id` is the normalized
+  session ID. `title` is the catalog title (the catalog's "Untitled session"
+  placeholder is no title). `state` is the catalog row's `activityStatus`, the value the
+  Sessions list State column renders: `working`, `needs_input`, `idle`, `open`,
+  `stopped`, `closed`, or `unknown`. `observedModel` is the primary agent's latest
+  reported model. The projection validates each field itself: a title that is not
+  one bounded line (160 characters) is null, a state outside that list is `unknown`,
+  and a model that is not a request model identifier is null. With no facts the
+  session is `{ id, title: null, state: "unknown", observedModel: null }`: unknown,
+  never guessed. The facts are borrowed per read and never stored.
 
 ## States
 
@@ -284,6 +297,22 @@ supplies.
   plugin's session-start hook reports the token and the session ID to the monitor, which
   links the task to the session. `complete_task` and `block_task` act only on the task
   linked to the bound session.
+- The monitor serves the link as `POST /api/agent/v1/tasks/bind`, under the same gate and
+  with the same content-type and size checks as `add`. The body is a JSON object of at
+  most 1 KiB with exactly `token` (the dispatch token) and `sessionRef` (the normalized
+  session ID, `claude:<id>` or `codex:<id>`). The token is the only authority: the
+  catalog has no row for the session yet at session start, so the session is not looked
+  up. The lookup is monitor-wide, by the SHA-256 digest of the token over every unlinked
+  dispatch. In one write transaction the store sets the task's session, clears the
+  digest, and bumps the update time. It changes no state, column, or queue position.
+- The link is single assignment. A wrong or reused token, an unbound dispatch older than
+  ten minutes, a task that already has a session, and a session already linked to
+  another task all answer the same `not_found`, so the answer never says which failed.
+  The `tasks_session` unique index is the last guard. A linked task is never startable
+  again, and its link never expires.
+- The answer is `{ schemaVersion: 1, ok: true }` or `{ schemaVersion: 1, ok: false,
+  reason }` with `invalid` (400, including a malformed token or session ID), `not_found`
+  (404), or `unavailable` (503). It carries no task ID, repository ID, or task content.
 - The token is a secret shared with the started process. It never reaches browser
   state, logs, reports, or notifications.
 
@@ -306,7 +335,7 @@ Starting is desktop-only and explicit.
    the repository, a gate fails, or the platform is not Windows (fixed result
    `unsupported_platform`).
 
-Built so far: the manual start of a Claude Code session, with no start gate.
+Built so far: the manual start of a Claude Code session, with no start gate, and the link of the started session to its task.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
   task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
@@ -324,7 +353,9 @@ Built so far: the manual start of a Claude Code session, with no start gate.
   installed, ready, and enabled, and with `unavailable` when it has not identified the
   repository's root in the current run.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
-  dispatch is live for ten minutes; after that the task can be started again.
+  dispatch is live for ten minutes; after that the task can be started again. The
+  session's first report of the token binds it (see [Session binding](#session-binding)),
+  which discards the digest and ends the expiry.
 - Desktop main validates the plan, then opens the terminal through one fixed PowerShell
   command (`Start-Process`), run with `spawn`, an argument array, and `shell: false`. A
   detached child of a windowless app gets no console, so the executable cannot be
@@ -348,12 +379,13 @@ like any other.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model. A denied client gets `readiness: "desktop_only"` and no task content |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
-| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes; no other path may be added without updating the AGENTS.md rule |
+| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools (`complete` and `block` are not built yet) |
+| `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `column_create`,
   `column_rename`, `column_reorder`, `column_delete`, `feature_create`, `queue_add`,
@@ -418,7 +450,8 @@ like any other.
 - A task ID comes from a per-repository counter, so a number is never reused after a
   delete.
 - The `GET` is a committed-store read. It acquires no provider evidence and never
-  triggers observation.
+  triggers observation. Its session facts come from a lookup that reads memory only, and
+  the `/internal/tasks/<action>` answers carry the same filled board.
 - Browser and LAN clients never mutate tasks or start sessions.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
   The task tools are a separate registration with the three write paths above.

@@ -637,6 +637,7 @@ export function createMonitorRuntime(options = {}) {
     resolveRunModels: observation.resolveRunModels,
     resolveTaskStart: observation.resolveTaskStart,
     resolveTaskSession: observation.resolveTaskSession,
+    resolveTaskSessionFacts: observation.resolveTaskSessionFacts,
     serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
     serveRepositoryFiles: observation.serveRepositoryFiles,

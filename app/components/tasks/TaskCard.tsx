@@ -3,6 +3,7 @@ import type { Task } from "../../../shared/task-contract";
 import { TaskMoveBar, type CardMoves } from "./TaskMoveBar";
 import type { CardMoveKind } from "./task-board-model";
 import { TaskRunLine } from "./TaskRunLine";
+import { TaskSessionLink } from "./TaskSessionLink";
 import { doneWhenSummary } from "./task-fields";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
@@ -14,9 +15,10 @@ export type TaskCardMove = {
 };
 
 /**
- * One task: its ID, its state chip, its text (or its session's title once it has one), the planned run, the
- * Done when summary and, for a task in a feature, the feature line, each only when set. With `onOpen` the card opens the Task panel; with `move` it can be dragged
- * and moved from the keyboard. Without either the card is read-only.
+ * One task: its ID, its state chip, its text (or its session's title once it has one), the planned run with the observed
+ * model, the Done when summary, for a task in a feature the feature line, and, for a task with a session, Open session,
+ * each only when set. With `onOpen` the card opens the Task panel; with `move` it can be dragged and moved from the
+ * keyboard. Without either the card is read-only.
  */
 export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move }: { task: Task; featureLine?: string | null; nextQueued?: boolean; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove }) {
   const chip = taskChip(task, nextQueued);
@@ -31,9 +33,10 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move }
     {onOpen
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
       : <p className="taskCardTitle" title={title}>{title}</p>}
-    <TaskRunLine run={task.run} />
+    <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
     {summary && <p className="taskCardDetail">{summary}</p>}
     {featureLine && <p className="taskCardDetail taskCardFeature">{featureLine}</p>}
+    {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
     {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} />}
   </li>;
 }

@@ -379,11 +379,11 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "close", "planStart", "readBoard"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "close", "planStart", "readBoard"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {
-  for (const file of ["task-store.mjs", "task-record.mjs"]) {
+  for (const file of ["task-store.mjs", "task-record.mjs", "task-dispatch.mjs", "task-board.mjs"]) {
     const source = await readFile(new URL(`../../../server/tasks/${file}`, import.meta.url), "utf8");
     const specifiers = [...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/gu)].map((match) => match[1]);
     assert.equal(specifiers.some((specifier) => /(?:^|\/)(?:runtime|serving)\//u.test(specifier)), false, file);

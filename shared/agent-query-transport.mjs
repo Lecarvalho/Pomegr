@@ -217,8 +217,10 @@ export function createAgentQueryReader(options = {}) {
 }
 
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
+/** Links a session started by the task dispatcher to its task (Claude Code SessionStart hook). */
+export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 /** The only monitor paths the agent write transport may POST to. */
-export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH]);
+export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH]);
 export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
 
 /**

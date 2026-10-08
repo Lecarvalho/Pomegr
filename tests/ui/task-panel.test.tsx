@@ -153,6 +153,104 @@ describe("Task panel", () => {
     expect(dialog.getByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).toBeInTheDocument();
   });
 
+  it("words the observed-model notice from the contract", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const dialog = await openReviewPanel(user);
+    const notice = dialog.getByText("Observed model differs").closest(".taskModelNotice");
+    expect(notice).toHaveAttribute("role", "status");
+    expect(notice).toHaveTextContent("Observed model differs Planned model-a, latest recorded request used model-b.");
+    expect(dialog.getByText("model-a", { selector: "code" })).toBeInTheDocument();
+    expect(dialog.getByText("model-b", { selector: "code" })).toBeInTheDocument();
+  });
+
+  it.each<[string, string | null, string | null]>([
+    ["a planned alias inside the observed identifier", "opus", "claude-opus-4-1"],
+    ["equal ignoring case", "Model-A", "model-a"],
+    ["Default model planned", null, "model-b"],
+    ["no observed model yet", "model-a", null],
+  ])("shows no notice when the models match or cannot be compared: %s", async (_name, plannedModel, observedModel) => {
+    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: plannedModel, effort: null }, session: { id: "claude:s5", title: "Plain session", state: "working", observedModel } })]);
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Plain session"));
+    const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.queryByText("Observed model differs")).not.toBeInTheDocument();
+    expect(dialog.queryByText(/latest recorded request used/)).not.toBeInTheDocument();
+  });
+
+  it("names the session as the title source only when the title is borrowed, and links to it either way", async () => {
+    setBoard([
+      task(5, { text: "Borrowed title", session: { id: "claude:s5", title: "Session title", state: "idle", observedModel: null } }),
+      task(6, { text: "Own title", session: { id: "codex:s6", title: null, state: "idle", observedModel: null } }),
+    ]);
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Session title"));
+    let dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.getByRole("heading", { name: "Session title" })).toBeInTheDocument();
+    expect(dialog.getByText(/^Title from the session ·$/)).toBeInTheDocument();
+    expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/claude-s5");
+    expect(dialog.getByRole("link", { name: "Open session" })).toHaveClass("commandTextLink");
+    await user.click(screen.getByRole("button", { name: "Close task" }));
+    await user.click(card("Own title"));
+    dialog = within(screen.getByRole("dialog", { name: "Task T-6" }));
+    expect(dialog.getByRole("heading", { name: "Own title" })).toBeInTheDocument();
+    expect(dialog.queryByText(/Title from the session/)).not.toBeInTheDocument();
+    expect(dialog.getByRole("link", { name: "Open session" })).toHaveAttribute("href", "/sessions/codex-s6");
+  });
+
+  it("offers no session link and no title source for a task without a session", async () => {
+    setBoard([task(5, { text: "Unlinked" })]);
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Unlinked"));
+    const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.queryByRole("link")).not.toBeInTheDocument();
+    expect(dialog.queryByText(/Title from the session/)).not.toBeInTheDocument();
+  });
+
+  it("borrows the session's state in the header only while the task has no outcome and the session has facts", async () => {
+    const session = (state: string) => ({ id: "claude:s5", title: "Chip session", state, observedModel: null });
+    const user = userEvent.setup();
+    setBoard([task(5, { state: "queued", session: session("needs_input") })]);
+    const view = render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Chip session"));
+    let dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.getByText("Needs input")).toHaveClass("commandChip", "warning");
+    expect(dialog.queryByText("Queued")).not.toBeInTheDocument();
+    view.unmount();
+
+    setBoard([task(5, { state: "queued", session: session("unknown") })]);
+    const unknown = render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Chip session"));
+    dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.getByText("Queued")).toHaveClass("commandChip");
+    expect(dialog.queryByText("Unknown")).not.toBeInTheDocument();
+    unknown.unmount();
+
+    setBoard([task(5, { state: "done", session: session("working") })]);
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Chip session"));
+    dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.getByText("Done")).toHaveClass("commandChip");
+    expect(dialog.queryByText("In progress")).not.toBeInTheDocument();
+  });
+
+  it("cannot start a session again for a task that already has one", async () => {
+    const taskStart = vi.fn(async () => ({ status: "started" }));
+    setBridge({ taskAction, taskStart });
+    setBoard([task(5, { state: "queued", run: { provider: "claude", model: null, effort: null }, session: { id: "claude:s5", title: "Linked session", state: "working", observedModel: null } })]);
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(card("Linked session"));
+    const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    expect(dialog.getByRole("status")).toHaveTextContent("A session is already linked to this task.");
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    expect(taskStart).not.toHaveBeenCalled();
+  });
+
   it("saves a run change and an effort change as the complete run, and clears effort", async () => {
     const user = userEvent.setup();
     render(<TasksTab repositoryId={repositoryId} />);

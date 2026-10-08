@@ -4,6 +4,7 @@ import type { HTMLAttributes } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import { TaskRunLine } from "./TaskRunLine";
+import { TaskSessionLink } from "./TaskSessionLink";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
 export type QueueCardMove = {
@@ -15,7 +16,7 @@ export type QueueCardMove = {
 
 /**
  * One task in a step (design contract D131-D143): ID, state chip, title (the task text until its session has one),
- * and the planned run line. A queued task of a feature can be dragged and, from the keyboard, moved with the select.
+ * the planned run line with the observed model, and Open session for a task with a session. A queued task of a feature can be dragged and, from the keyboard, moved with the select.
  */
 export function QueueTaskCard({ task, nextQueued, onOpen, move }: {
   task: Task;
@@ -34,7 +35,8 @@ export function QueueTaskCard({ task, nextQueued, onOpen, move }: {
     {onOpen
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
       : <p className="taskCardTitle" title={title}>{title}</p>}
-    <TaskRunLine run={task.run} />
+    <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
+    {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
     {move && move.choices.length > 0 && <div className="taskQueueMove">
       <CommandSelect aria-label={`Move ${task.id} to step`} placeholder="Move to step…" value={null}
         options={move.choices.map((choice) => ({ value: String(choice.step), label: choice.label }))} onChange={(value) => move.onMove(Number(value))} />

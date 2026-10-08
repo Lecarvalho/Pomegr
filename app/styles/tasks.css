@@ -30,6 +30,11 @@
 .taskCardRun { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskCardPlanned { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskCardDetail { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskCardDetail code { font: inherit; font-family: var(--font-data); }
+/* Planned and observed model differ (D73): the one amber text line, never a fill. */
+.taskCardDetail.taskCardModelDiffers { color: var(--command-amber); }
+/* Open session (D75): the Text link role, last on the card and not stretched across it. */
+.taskCardLink { align-self: flex-start; }
 
 /* Moving cards: dragging is the desktop app only. The column under a dragged card takes the raised fill (D48) and
    a movable card shows the grab cursor (D53); the dragged card itself does not change (D86). */

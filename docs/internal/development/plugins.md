@@ -15,6 +15,7 @@ For installation, repository setup, and troubleshooting, read the [Reporting plu
 | Signal and progress tools | Seven shared tools | Seven shared tools |
 | Observation query tools | Seven shared tools | Seven shared tools |
 | Task board tool | `add_task`, bound by `CODEX_THREAD_ID` | `add_task`, bound by a `PreToolUse` hook |
+| Task session link | Not available | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set |
 | Native session-title tool | Provider automatic naming | `rename_session` |
 | Session line above the prompt | Not available | Function-hook module |
 
@@ -118,6 +119,8 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`. A compact fixed reminder identifies observation queries as decision-triggered and cautions against polling or causal interpretation; it does not change the repository policy schema.
 
 Every `SessionStart` also emits one bounded `[Pomegr plugin metadata]` line containing only the installed plugin version, policy status (`valid`, `invalid`, or `missing`), and recognized policy version. Pomegr accepts that line only from provider-owned hook context, records the provider transcript timestamp as the observation time, and never treats an absent observation as proof that the plugin is uninstalled. Historical views retain the version and policy state observed in that session rather than substituting the current machine configuration.
+
+The Claude Code package registers a second, separate `SessionStart` hook on `startup` only (`scripts/bind-task.bundle.mjs`). When `POMEGR_TASK_TOKEN` is set to a well-formed opaque token, the hook posts the token and `claude:<session_id>` from the hook input to `POST /api/agent/v1/tasks/bind` on the loopback monitor, once, with a 2-second request bound under the 5-second hook timeout. Because `SessionStart` stdout enters the model's context and the transcript, it is silent in every outcome: no stdout, stderr, or log; the token is read only from the environment and sent only in the request body; it always exits 0 and ignores an unavailable monitor or a refusal. Without the variable, or with a malformed value, it does nothing. Codex has no equivalent yet.
 
 Both packages also register an all-tool `PostToolUse` reminder hook. Reminder state is stored only as bounded version, timestamp, and counter records under provider plugin data, with SHA-256 session filenames, owner-only permissions, atomic writes, 30-day expiry, and a 256-file cap. Missing, disabled, malformed, or unwritable policy/data suppresses reminders and never blocks a session.
 
