@@ -76,7 +76,7 @@
 
 /* New task and Task side panels (design contract D184-D194, D234-D238, D239-D249, D295-D299). Fixed to the right
    edge below the header, like the Agents evidence drawer; no entrance motion (the contract declares none). The Task
-   panel reuses the .newTaskPanel chrome. Feature and Step (D217-D233, D273-D294) are not drawn. */
+   panel reuses the .newTaskPanel chrome. */
 .newTaskPanel { position: fixed; z-index: 40; top: 60px; right: 0; bottom: 0; box-sizing: border-box; width: min(640px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--command-line); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
 .newTaskPanelHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-6); border-bottom: 1px solid var(--command-line); }
 .newTaskPanelHeader h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
@@ -147,3 +147,34 @@
 .taskPanelConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 /* Delete task is the Quiet role drawn at the control height (role default 28). */
 @media (min-width: 761px) and (pointer: fine) { .taskPanelFooter .commandQuietAction { min-height: var(--control-height); } }
+
+/* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
+   disclosure between two lines, and rows that lead with the step number only in the Task panel. */
+.taskFeatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.taskFeatureRow .commandSelect { display: grid; }
+.taskFeatureName { width: 100%; }
+.taskFeatureDetails { border-top: 1px solid var(--command-line); border-bottom: 1px solid var(--command-line); }
+.taskFeatureDetails > summary { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; list-style: none; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskFeatureDetails > summary::-webkit-details-marker { display: none; }
+.taskFeatureDetails > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskFeatureChevron { flex: 0 0 auto; color: var(--command-muted); }
+.taskFeatureCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskFeatureNum { font-family: var(--font-data); }
+.taskFeatureList { margin: 0; padding: 0 0 var(--space-2); list-style: none; font-size: var(--text-sm); }
+.taskFeatureItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-compact); }
+.taskFeatureItem.hasStep { border-top: 1px solid var(--command-line); }
+.taskFeatureStep { flex: 0 0 20px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskFeatureId { flex: 0 0 40px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskFeatureTitle { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskFeatureItem.isDone .taskFeatureTitle { color: var(--command-muted); }
+/* The sibling title opens that task: the Quiet role drawn as plain title text, like a card's. */
+.taskFeatureOpen.commandQuietAction { flex: 1 1 auto; min-width: 0; padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
+.taskFeatureOpen.commandQuietAction:hover:not(:disabled) .taskFeatureTitle { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 761px) and (pointer: fine) { .taskFeatureOpen.commandQuietAction { min-height: 0; } }
+@media (max-width: 760px) { .taskFeatureRow { grid-template-columns: minmax(0, 1fr); } }
+
+/* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
+.taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.taskFilterCount { color: var(--command-muted); font: 400 var(--text-xs)/1 var(--font-data); }
+.taskCardFeature { overflow-wrap: anywhere; }

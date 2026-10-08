@@ -2,22 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { TASK_BOUNDS, type Task, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type Task, type TaskBoard, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionListTime } from "../../dashboard-utils";
 import { CommandIcon } from "../command-center/CommandIcon";
+import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
 import {
-  DELETE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, deleteDesktopTask, updateDesktopTask, type TaskFieldsInput,
+  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, deleteDesktopTask, updateDesktopTask, type TaskFieldsInput,
 } from "./task-desktop";
 import { doneWhenFromTask, observedModelDiffers, toDoneWhen, type DoneWhenDraft } from "./task-fields";
+import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
 import { useEscapeToClose, useTaskModelOptions } from "./task-panel-hooks";
 import { taskCardTitle, taskChip } from "./task-presentation";
+import { useFeatureCreation } from "./use-feature-creation";
 
-// Task side panel (design contract D239-D272, D295, D298, D299), opened from a card. It reuses the New task
-// panel's drawer chrome. A select, segment or checkbox saves when it changes; the Task textarea and the
-// own-condition input save when they lose focus after a change. Feature, Step and the feature disclosure
-// (D273-D294) and Mark done / Requeue (D296, D297) belong to later parts and are not drawn.
+// Task side panel (design contract D239-D294, D295, D298, D299), opened from a card. It reuses the New task
+// panel's drawer chrome. A select, segment or checkbox saves when it changes; the Task textarea, the
+// own-condition input and a new feature's name save when they lose focus after a change. Mark done / Requeue
+// (D296, D297) belong to a later part and are not drawn.
 
 type Patch = { text?: string } & TaskFieldsInput;
 
@@ -37,9 +40,14 @@ function reportLine(report: NonNullable<Task["report"]>) {
 }
 
 /** Every change goes through the desktop bridge; success refreshes the board, failure reverts the field and says so once. */
-export function TaskPanel({ repositoryId, task, onChanged, onDeleted, onClose }: {
+export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onChanged, onDeleted, onClose }: {
   repositoryId: string;
   task: Task;
+  /** The committed board: its features and their tasks fill the Feature fields and the folded list. */
+  board: Pick<TaskBoard, "columns" | "features" | "tasks">;
+  refresh(): Promise<void>;
+  /** Opens a sibling's own panel from the folded list. */
+  onOpenTask?: (task: Task, opener: HTMLElement) => void;
   onChanged(): void;
   onDeleted(): void;
   onClose(): void;
@@ -51,6 +59,8 @@ export function TaskPanel({ repositoryId, task, onChanged, onDeleted, onClose }:
   const [text, setText] = useState(task.text);
   const [run, setRun] = useState<TaskRun>(task.run);
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(() => doneWhenFromTask(task.doneWhen));
+  const [feature, setFeature] = useState<FeatureDraft>(() => featureDraftFromTask(task));
+  const [featureError, setFeatureError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -58,8 +68,22 @@ export function TaskPanel({ repositoryId, task, onChanged, onDeleted, onClose }:
   const closeButton = useRef<HTMLButtonElement>(null);
   // What the monitor was last asked to store, so a quick toggle back is still sent and an unchanged blur is not.
   const sent = useRef({ text: task.text, run: JSON.stringify(task.run), doneWhen: JSON.stringify(toDoneWhen(doneWhenFromTask(task.doneWhen))) });
+  const sentFeature = useRef(JSON.stringify(featureUpdateInput(featureDraftFromTask(task))));
+  const creatingName = useRef(false);
+  const nameCancelled = useRef(false);
+  const createFeature = useFeatureCreation(repositoryId, board, refresh);
   const stored = useRef(task);
   useEffect(() => { stored.current = task; }, [task]);
+  // The committed feature and step win once the board shows them: "Last" becomes the step it landed on.
+  const committedFeature = `${task.featureId}:${task.step}`;
+  const [seenFeature, setSeenFeature] = useState(committedFeature);
+  if (seenFeature !== committedFeature) {
+    setSeenFeature(committedFeature);
+    setFeature((current) => current.creating ? current : featureDraftFromTask(task));
+  }
+  useEffect(() => {
+    sentFeature.current = JSON.stringify(featureUpdateInput(featureDraftFromTask({ featureId: task.featureId, step: task.step })));
+  }, [task.featureId, task.step]);
   useEffect(() => { closeButton.current?.focus({ preventScroll: true }); }, []);
   useEffect(() => { if (confirming) cancel.current?.focus({ preventScroll: true }); }, [confirming]);
   useEscapeToClose(onClose);
@@ -81,7 +105,44 @@ export function TaskPanel({ repositoryId, task, onChanged, onDeleted, onClose }:
       setDoneWhen(draft);
       sent.current.doneWhen = JSON.stringify(toDoneWhen(draft));
     }
-    setFailure(UPDATE_FAILURE_MESSAGE);
+    if (patch.featureId !== undefined) {
+      const draft = featureDraftFromTask(original);
+      setFeature(draft);
+      sentFeature.current = JSON.stringify(featureUpdateInput(draft));
+    }
+    setFailure(patch.featureId && result.error === "conflict" ? FEATURE_ATTACH_FAILURE_MESSAGE : UPDATE_FAILURE_MESSAGE);
+  };
+
+  // Feature and Step save when they change, except a feature still being named: it saves once it is created.
+  const saveFeature = (next: FeatureDraft) => {
+    const input = featureUpdateInput(next);
+    const serialized = JSON.stringify(input);
+    if (serialized === sentFeature.current) return;
+    sentFeature.current = serialized;
+    void save(input);
+  };
+  const changeFeature = (next: FeatureDraft) => {
+    setFeature(next);
+    setFeatureError(null);
+    if (next.creating) { nameCancelled.current = false; return; }
+    saveFeature(next);
+  };
+  const cancelName = () => {
+    nameCancelled.current = true;
+    setFeatureError(null);
+    setFeature(featureDraftFromTask(stored.current));
+  };
+  const commitName = async () => {
+    if (!feature.creating || creatingName.current || nameCancelled.current) return;
+    const name = feature.name.trim();
+    if (!name) { cancelName(); return; }
+    creatingName.current = true;
+    const created = await createFeature(name);
+    creatingName.current = false;
+    if (!created.ok) { setFeatureError(created.message); return; }
+    const next: FeatureDraft = { featureId: created.id, creating: false, name: "", step: null };
+    setFeature(next);
+    saveFeature(next);
   };
 
   const changeRun = (next: TaskRun) => {
@@ -148,6 +209,8 @@ export function TaskPanel({ repositoryId, task, onChanged, onDeleted, onClose }:
       <DoneWhenField draft={doneWhen} layout="list" results={task.report ? results : undefined} ownNote={task.report && doneWhen.ownEnabled && task.doneWhen.own !== null ? "Agent-reported" : null}
         footnote={task.report ? <span className="newTaskHelper taskDoneWhenNote">{reportLine(task.report)}</span> : undefined}
         onDraftChange={setDoneWhen} onCommit={commitDoneWhen} />
+      <FeatureFields draft={feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
+        onCommitName={() => void commitName()} onCancelName={cancelName} onOpenTask={onOpenTask} />
     </div>
     <footer className="newTaskPanelFooter taskPanelFooter">
       <span className="newTaskPanelSpacer" aria-hidden="true" />

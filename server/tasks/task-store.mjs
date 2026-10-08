@@ -21,7 +21,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
-  normalizeMovePayload, normalizeUpdatePayload, projectBoard, taskIdFromNumber,
+  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeUpdatePayload, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -178,12 +178,44 @@ function reserveTaskNumber(database, repositoryId, atLeast) {
     .run(nextNumberKey(repositoryId), String(atLeast));
 }
 
+// Features hold tasks at dense steps (1..n). A write that changes a task's feature or step reads the
+// affected feature's steps and closes any gap, leaving the other tasks' update times alone.
+const featureExists = (database, repositoryId, id) =>
+  preparedStatement(database, "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
+
+const highestStep = (database, repositoryId, featureId) =>
+  Number(preparedStatement(database, "SELECT MAX(step) AS highest FROM tasks WHERE repository_id = ? AND feature_id = ?").get(repositoryId, featureId)?.highest ?? 0);
+
+// A feature is done when it has tasks and every one of them is done; only unfinished features take tasks.
+function featureIsDone(database, repositoryId, featureId) {
+  const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ?")
+    .get(repositoryId, featureId);
+  return Number(row.total) > 0 && Number(row.total) === Number(row.done);
+}
+
+// A step from 1 to the current highest step + 1 (a new last step); null asks for the new last step.
+const stepWithin = (requested, highest) =>
+  requested === null ? highest + 1 : requested >= 1 && requested <= highest + 1 ? requested : undefined;
+
+function renumberSteps(database, repositoryId, featureId) {
+  const steps = preparedStatement(database, "SELECT DISTINCT step FROM tasks WHERE repository_id = ? AND feature_id = ? ORDER BY step").all(repositoryId, featureId);
+  const update = preparedStatement(database, "UPDATE tasks SET step = ? WHERE repository_id = ? AND feature_id = ? AND step = ?");
+  steps.forEach((row, index) => { if (Number(row.step) !== index + 1) update.run(index + 1, repositoryId, featureId, Number(row.step)); });
+}
+
 function createTask({ database, repositoryId }, payload) {
   const input = normalizeCreatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   ensureRepository(database, repositoryId);
   const count = Number(preparedStatement(database, "SELECT COUNT(*) AS n FROM tasks WHERE repository_id = ?").get(repositoryId).n);
   if (count >= TASK_BOUNDS.tasksPerRepository) return { ok: false, error: "limit" };
+  let step = null;
+  if (input.featureId !== null) {
+    if (!featureExists(database, repositoryId, input.featureId)) return { ok: false, error: "not_found" };
+    if (featureIsDone(database, repositoryId, input.featureId)) return { ok: false, error: "conflict" };
+    step = stepWithin(input.step, highestStep(database, repositoryId, input.featureId));
+    if (step === undefined) return { ok: false, error: "invalid" };
+  }
   // A new task always lands as the last card of the first column.
   const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
   if (!first) return { ok: false, error: "conflict" };
@@ -192,10 +224,10 @@ function createTask({ database, repositoryId }, payload) {
   const number = nextTaskNumber(database, repositoryId);
   if (taskIdFromNumber(number) === undefined) return { ok: false, error: "limit" };
   const now = Date.now();
-  preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at, feature_id, step)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
-      JSON.stringify(input.doneWhen.checks), input.doneWhen.own, now, now);
+      JSON.stringify(input.doneWhen.checks), input.doneWhen.own, now, now, input.featureId, step);
   reserveTaskNumber(database, repositoryId, number + 1);
   return { ok: true };
 }
@@ -203,22 +235,41 @@ function createTask({ database, repositoryId }, payload) {
 function updateTask({ database, repositoryId }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const stored = preparedStatement(database, "SELECT text, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
+  const stored = preparedStatement(database, "SELECT text, feature_id, step, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
   // A field the payload left out keeps its stored value; one it carried is replaced whole.
   const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort };
   const doneWhen = input.doneWhen ? { checks: JSON.stringify(input.doneWhen.checks), own: input.doneWhen.own } : { checks: stored.checks, own: stored.own_condition };
-  preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, updated_at = ?
+  const placement = updatedPlacement(database, repositoryId, stored, input);
+  if (placement.error) return { ok: false, error: placement.error };
+  preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, feature_id = ?, step = ?, updated_at = ?
     WHERE repository_id = ? AND number = ?`)
-    .run(input.text ?? stored.text, run.provider, run.model, run.effort, doneWhen.checks, doneWhen.own, Date.now(), repositoryId, input.number);
+    .run(input.text ?? stored.text, run.provider, run.model, run.effort, doneWhen.checks, doneWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
+  // The feature the task left and the one it joined each close any gap in their steps.
+  for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
+}
+
+// Where an update leaves the task. An absent key keeps the stored value; a different feature follows
+// the rules of create; the task's own feature takes a step from 1 to the highest step + 1, measured
+// before the move, and never answers `conflict`, even when that feature is done.
+function updatedPlacement(database, repositoryId, stored, input) {
+  const current = { featureId: stored.feature_id ?? null, step: stored.step ?? null };
+  if (input.featureId === undefined && input.step === undefined) return current;
+  const featureId = input.featureId === undefined ? current.featureId : input.featureId;
+  if (featureId === null) return input.featureId === null ? { featureId: null, step: null } : input.step == null ? current : { error: "invalid" };
+  if (!featureExists(database, repositoryId, featureId)) return { error: "not_found" };
+  const joining = featureId !== current.featureId;
+  if (joining && featureIsDone(database, repositoryId, featureId)) return { error: "conflict" };
+  const step = stepWithin(input.step ?? (joining ? null : current.step), highestStep(database, repositoryId, featureId));
+  return step === undefined ? { error: "invalid" } : { featureId, step };
 }
 
 function deleteTask({ database, repositoryId }, payload) {
   const input = normalizeDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT column_id, position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT column_id, position, feature_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const reserved = nextTaskNumber(database, repositoryId);
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
@@ -226,6 +277,7 @@ function deleteTask({ database, repositoryId }, payload) {
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
+  if (task.feature_id) renumberSteps(database, repositoryId, task.feature_id);
   return { ok: true };
 }
 
@@ -317,12 +369,26 @@ function deleteColumn({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
+function createFeature({ database, repositoryId }, payload) {
+  const input = normalizeFeatureCreatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  ensureRepository(database, repositoryId);
+  const stored = preparedStatement(database, "SELECT name, created_at FROM features WHERE repository_id = ?").all(repositoryId);
+  if (stored.length >= TASK_BOUNDS.featuresPerRepository) return { ok: false, error: "limit" };
+  if (stored.some((feature) => feature.name === input.name)) return { ok: false, error: "conflict" };
+  // Features list in creation order, so a creation time never ties with or precedes an earlier one.
+  const createdAt = Math.max(Date.now(), ...stored.map((feature) => Number(feature.created_at) + 1));
+  preparedStatement(database, "INSERT INTO features (id, repository_id, name, created_at) VALUES (?, ?, ?, ?)").run(newOpaqueId("feat"), repositoryId, input.name, createdAt);
+  return { ok: true };
+}
+
 // Actions by name. Each takes `{ database, repositoryId }` and the payload inside the store's
 // transaction, and returns `{ ok: true }` or a fixed error code. It validates the payload before
 // its first write. A listed action absent from this table answers `unsupported` until its part lands.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
+  feature_create: createFeature,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */

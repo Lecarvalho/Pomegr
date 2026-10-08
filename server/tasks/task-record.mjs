@@ -151,29 +151,64 @@ function taskNumberFromId(value) {
 }
 
 /**
- * `create` carries the task text and, optionally, the planned run and the done-when conditions.
- * Returns `{ text, run, doneWhen }` with every absent part at its empty value, or undefined when invalid.
+ * The optional feature placement keys of `create` and `update`. `featureId` is a feature ID or null,
+ * `step` an integer of at least 1 or null; an absent key stays undefined. Returns the pair, or null
+ * when a present value is outside that shape.
  */
-export function normalizeCreatePayload(value) {
-  return normalizeTaskInput(value);
+function placementFields(value) {
+  const { featureId, step } = value;
+  if (featureId !== undefined && featureId !== null && (typeof featureId !== "string" || !FEATURE_ID.test(featureId))) return null;
+  if (step !== undefined && step !== null && (!Number.isSafeInteger(step) || step < 1)) return null;
+  return { featureId, step };
 }
 
 /**
- * `update` edits one task. `text`, `run`, and `doneWhen` are each optional, at least one is
- * required, and a field that is present replaces the stored one whole: a null `run` or
- * `doneWhen` clears it, and an absent field is left as stored. Returns `{ number }` plus only
- * the fields that were present, or undefined when invalid.
+ * `create` carries the task text and, optionally, the planned run, the done-when conditions, and a
+ * feature with a step. Returns `{ text, run, doneWhen, featureId, step }` with every absent part at its
+ * empty value (a null `step` in a feature means the new last step), or undefined when invalid.
+ */
+export function normalizeCreatePayload(value) {
+  if (!isPlainObject(value)) return undefined;
+  const rest = { ...value };
+  delete rest.featureId;
+  delete rest.step;
+  const input = normalizeTaskInput(rest);
+  const placement = placementFields(value);
+  if (input === undefined || placement === null) return undefined;
+  const featureId = placement.featureId ?? null;
+  const step = placement.step ?? null;
+  return featureId === null && step !== null ? undefined : { ...input, featureId, step };
+}
+
+/**
+ * `update` edits one task. `text`, `run`, `doneWhen`, `featureId`, and `step` are each optional, at
+ * least one is required, and a field that is present replaces the stored one whole: a null `run` or
+ * `doneWhen` clears it, a null `featureId` detaches the task, and an absent field is left as stored.
+ * Returns `{ number }` plus only the fields that were present, or undefined when invalid.
  */
 export function normalizeUpdatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "doneWhen"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "doneWhen", "featureId", "step"])) return undefined;
   const number = taskNumberFromId(value.id);
   if (number === undefined) return undefined;
   const update = { number };
   if (value.text !== undefined) update.text = normalizeTaskText(value.text);
   if (value.run !== undefined) update.run = normalizeRun(value.run);
   if (value.doneWhen !== undefined) update.doneWhen = normalizeDoneWhen(value.doneWhen);
+  const placement = placementFields(value);
+  if (placement === null) return undefined;
+  // A detach carries no step; whether a lone step fits the stored task is the store's to judge.
+  if (placement.featureId === null && placement.step !== undefined && placement.step !== null) return undefined;
+  if (placement.featureId !== undefined) update.featureId = placement.featureId;
+  if (placement.step !== undefined) update.step = placement.step;
   const fields = Object.keys(update).filter((key) => key !== "number");
   return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
+}
+
+/** `feature_create` carries only the name. Returns `{ name }`, or undefined when invalid. */
+export function normalizeFeatureCreatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["name"])) return undefined;
+  const name = normalizeFeatureName(value.name);
+  return name === undefined ? undefined : { name };
 }
 
 /** `delete` names one task. Returns `{ number }`, or undefined when invalid. */

@@ -34,7 +34,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued |
 | Run-on, effort, and done-when fields | Built: the New task panel and the task panel opened from a card set them, and the card shows them. The task panel also edits the task text and deletes the task. Nothing reads them yet: no session is started and no condition is verified |
 | Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
-| Features | Not built |
+| Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Not built |
 | Agent tool `add_task` | Not built |
 | Start a Claude Code session and bind it to its task | Not built |
@@ -292,6 +292,20 @@ like any other.
   `{ id, position }` with the same clamping, and `column_delete` takes `{ id }`. A
   thirteenth column answers `limit`. Deleting a column that holds tasks, or the last
   column, answers `conflict`. Task and column positions stay dense after every action.
+  `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
+  duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
+  feature with no task is listed with `done: false`. `create` and `update` take two
+  optional keys, `featureId` (a feature ID or null) and `step` (an integer of at least 1
+  or null). Joining a feature without a step lands in a new last step; a `step` is valid
+  from 1 to the feature's highest step + 1 (measured before a move), otherwise `invalid`,
+  and a step without a feature is `invalid`. An unknown feature, or one of another
+  repository, is `not_found`; a done feature (it has tasks and all are done) refuses a
+  task that is not already in it with `conflict`. In `update`, `featureId: null`
+  detaches (a step sent with it must be null), and the task's own feature ID or a `step`
+  alone moves it inside its feature. Steps stay dense (1 to n) after every write that
+  changes a task's feature or step, or deletes a task in a feature, renumbering without
+  changing the update time of other tasks. There is no feature rename, delete, or
+  reorder yet.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

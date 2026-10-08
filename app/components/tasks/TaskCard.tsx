@@ -19,11 +19,11 @@ export type TaskCardMove = {
 };
 
 /**
- * One task: its ID, its state chip, its text (or its session's title once it has one), the planned run and the
- * Done when summary, each only when set. With `onOpen` the card opens the Task panel; with `move` it can be dragged
+ * One task: its ID, its state chip, its text (or its session's title once it has one), the planned run, the
+ * Done when summary and, for a task in a feature, the feature line, each only when set. With `onOpen` the card opens the Task panel; with `move` it can be dragged
  * and moved from the keyboard. Without either the card is read-only.
  */
-export function TaskCard({ task, onOpen, move }: { task: Task; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove }) {
+export function TaskCard({ task, featureLine, onOpen, move }: { task: Task; featureLine?: string | null; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove }) {
   const chip = taskChip(task);
   const title = taskCardTitle(task);
   const planned = plannedRunText(task.run);
@@ -42,6 +42,7 @@ export function TaskCard({ task, onOpen, move }: { task: Task; onOpen?: (task: T
       {planned && <span className="taskCardPlanned">{planned}</span>}
     </div>}
     {summary && <p className="taskCardDetail">{summary}</p>}
+    {featureLine && <p className="taskCardDetail taskCardFeature">{featureLine}</p>}
     {move && <TaskMoveBar id={task.id} available={move.available} onMove={move.onMove} />}
   </li>;
 }

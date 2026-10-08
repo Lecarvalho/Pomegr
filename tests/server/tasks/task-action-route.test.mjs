@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -161,6 +161,20 @@ test("move and the column actions travel through the route with the store's fixe
   assertFixedError(await action("column_create", REPOSITORY_ID, { name: SECRET_TEXT.repeat(4), extra: 1 }, { port }), 400, "invalid");
   for (let count = 5; count < 12; count += 1) assert.equal((await action("column_create", REPOSITORY_ID, { name: `Extra ${count}` }, { port })).status, 200);
   assertFixedError(await action("column_create", REPOSITORY_ID, { name: "Too many" }, { port }), 409, "limit");
+});
+
+test("feature_create and feature placement travel through the route with the fixed statuses", async (context) => {
+  const store = await realStore(context);
+  const { port } = await startRoute(context, { taskStore: store });
+  const created = await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port });
+  assert.equal(created.status, 200);
+  const [feature] = created.json.board.features;
+  assert.deepEqual([feature.name, feature.done], ["Search", false]);
+  const attached = await action("create", REPOSITORY_ID, { text: "in feature", featureId: feature.id }, { port });
+  assert.deepEqual(attached.json.board.tasks.map((task) => [task.featureId, task.step]), [[feature.id, 1]]);
+  assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port }), 409, "conflict");
+  assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "" }, { port }), 400, "invalid");
+  assertFixedError(await action("create", REPOSITORY_ID, { text: "x", featureId: `feat-${"0".repeat(12)}` }, { port }), 404, "not_found");
 });
 
 test("every other listed action answers the fixed unsupported result and changes nothing", async (context) => {

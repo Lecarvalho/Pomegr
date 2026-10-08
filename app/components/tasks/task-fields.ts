@@ -1,4 +1,5 @@
 import type { CommandSelectOption } from "../command-center/CommandSelect";
+import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
@@ -89,10 +90,10 @@ export function withCheck(draft: DoneWhenDraft, check: TaskCheck, on: boolean): 
   return { ...draft, checks: on ? [...draft.checks.filter((existing) => existing !== check), check] : draft.checks.filter((existing) => existing !== check) };
 }
 
-/** Create payload: `run` and `doneWhen` are omitted when nothing is set. */
-export function createPayload(text: string, run: TaskRun, draft: DoneWhenDraft) {
+/** Create payload: `run`, `doneWhen` and the feature keys are omitted when nothing is set. */
+export function createPayload(text: string, run: TaskRun, draft: DoneWhenDraft, feature?: FeatureInput) {
   const doneWhen = toDoneWhen(draft);
-  return { text, ...(isRunSet(run) && { run }), ...((doneWhen.checks.length > 0 || doneWhen.own) && { doneWhen }) };
+  return { text, ...(isRunSet(run) && { run }), ...((doneWhen.checks.length > 0 || doneWhen.own) && { doneWhen }), ...feature };
 }
 
 /** Card line: what is checked, ending with the agent's report. Null when no condition is set. */

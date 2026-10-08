@@ -121,8 +121,10 @@ describe("Task panel", () => {
     expect(dialog.getByRole("checkbox", { name: "Use your own condition" })).toBeChecked();
     expect(dialog.getByRole("button", { name: "Close task" })).toHaveClass("commandIconAction");
     expect(dialog.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
-    // The feature part and the queue-resolve part are not drawn here.
-    expect(dialog.queryByText(/Feature|Step in feature|Mark done|Requeue/)).not.toBeInTheDocument();
+    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
+    expect(dialog.getByRole("combobox", { name: "Step in feature" })).toBeDisabled();
+    // The queue-resolve part is not drawn here.
+    expect(dialog.queryByText(/Mark done|Requeue/)).not.toBeInTheDocument();
   });
 
   it("shows per-check results, the report line and the observed-model notice only when they exist", async () => {

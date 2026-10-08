@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
+import type { FeatureInput } from "./task-features";
 
 // The only way the renderer changes a task: the desktop preload's `taskAction` bridge (fixed IPC channel
 // `pomegr:task-action`). A plain browser has no bridge, so it never mutates tasks and never POSTs.
@@ -31,7 +32,7 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 }
 
 /** The fixed actions this surface sends; the monitor validates each record. */
-type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete";
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create";
 
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -50,8 +51,11 @@ async function sendTaskAction(repositoryId: string, action: TaskActionName, payl
   return { ok: false, error: "unavailable" };
 }
 
-/** A `run` or `doneWhen` key that is present replaces the whole stored field; an absent key leaves it unchanged. */
-export type TaskFieldsInput = { run?: TaskRun; doneWhen?: { checks: TaskCheck[]; own: string | null } };
+/**
+ * A `run` or `doneWhen` key that is present replaces the whole stored field; an absent key leaves it unchanged.
+ * `featureId` with no `step` is a new last step, and `featureId: null` detaches the task.
+ */
+export type TaskFieldsInput = { run?: TaskRun; doneWhen?: { checks: TaskCheck[]; own: string | null } } & FeatureInput;
 
 /** Creates a task in the repository's first column. Omitted `run` or `doneWhen` means nothing set. */
 export function createDesktopTask(repositoryId: string, input: { text: string } & TaskFieldsInput): Promise<TaskActionResult> {
@@ -93,6 +97,11 @@ export function deleteDesktopColumn(repositoryId: string, id: string): Promise<T
   return sendTaskAction(repositoryId, "column_delete", { id });
 }
 
+/** Creates a feature named `name` (one line, at most 80 characters). The new feature is read from the committed board. */
+export function createDesktopFeature(repositoryId: string, name: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "feature_create", { name });
+}
+
 /** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
@@ -103,6 +112,7 @@ export function createFailureMessage(error: TaskActionError | "unavailable"): st
 export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
+export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 export const COLUMN_NAME_REQUIRED_MESSAGE = "The column needs a name.";
 
 export type ColumnAction = "create" | "rename" | "reorder" | "delete";
@@ -113,4 +123,11 @@ export function columnFailureMessage(action: ColumnAction, error: TaskActionErro
   if (action === "rename") return "The column could not be renamed.";
   if (action === "reorder") return "The column could not be moved.";
   return error === "conflict" ? "The column could not be deleted. It must be empty, and a board keeps one column." : "The column could not be deleted.";
+}
+
+/** One fixed message per feature failure; the monitor's own wording never reaches the panel. */
+export function featureFailureMessage(error: TaskActionError | "unavailable"): string {
+  if (error === "conflict") return "A feature with this name already exists.";
+  if (error === "limit") return `The board holds ${TASK_BOUNDS.featuresPerRepository} features, the most it allows.`;
+  return "The feature could not be created.";
 }
