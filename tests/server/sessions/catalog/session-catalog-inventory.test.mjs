@@ -281,3 +281,49 @@ test("catalog source scope binds opaque provider source configuration", () => {
   assert.notEqual(archived, activeOnly);
   assert.doesNotMatch(archived, /private|codex/i);
 });
+
+test("a repeated header or lifecycle pass writes no row and keeps the revision, while each merged column still lands",async(t)=>{
+  const {inventory,store}=await fixture(t);
+  load(inventory,"codex",3); load(inventory,"claude",0);
+  const writes=()=>Number(store.database.prepare("SELECT total_changes() AS n").get().n);
+  const stored=(index)=>store.database.prepare("SELECT title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation FROM session_catalog_headers WHERE provider='codex' AND local_id=?").get(`session-${index}`);
+  const shell=[row(0,{isLive:true,activityStatus:"working"}),row(1),row(2)];
+  inventory.updateProviderLifecycle("codex",shell);
+  const before={writes:writes(),revision:inventory.snapshot().revision,rows:[0,1,2].map(stored)};
+  for(let pass=0;pass<5;pass+=1) {
+    inventory.updateProviderLifecycle("codex",shell);
+    inventory.updateHeaders("codex",[row(1)],{preserveLifecycle:true});
+  }
+  assert.equal(writes(),before.writes,"an unchanged pass must not write a row or the facts record");
+  assert.equal(inventory.snapshot().revision,before.revision);
+  assert.deepEqual([0,1,2].map(stored),before.rows);
+
+  // Each column the merge can change is still written, one change at a time.
+  const later=new Date(1_700_000_100_000).toISOString(), earlier=new Date(1_600_000_000_000).toISOString();
+  const expectWrite=(apply,check,label)=>{ const count=writes(), revision=inventory.snapshot().revision; apply(); assert.ok(writes()>count,label); check(stored(1)); return inventory.snapshot().revision-revision; };
+  assert.ok(expectWrite(()=>inventory.updateHeaders("codex",[row(1,{title:"Renamed"})],{preserveLifecycle:true}),(r)=>assert.equal(r.title,"Renamed"),"title")>0);
+  assert.ok(expectWrite(()=>inventory.updateHeaders("codex",[row(1,{title:"Renamed",project:"Moved"})],{preserveLifecycle:true}),(r)=>assert.equal(r.project,"Moved"),"project")>0);
+  const current={title:"Renamed",project:"Moved"};
+  assert.ok(expectWrite(()=>inventory.updateHeaders("codex",[row(1,{...current,updatedAt:later})],{preserveLifecycle:true}),(r)=>assert.equal(r.updated_at,later),"updated")>0);
+  Object.assign(current,{updatedAt:later});
+  assert.ok(expectWrite(()=>inventory.updateHeaders("codex",[row(1,{...current,createdAt:earlier})],{preserveLifecycle:true}),(r)=>{assert.equal(r.created_at,earlier);assert.equal(r.created_ms,Date.parse(earlier));},"created")>0);
+  Object.assign(current,{createdAt:earlier});
+  assert.ok(expectWrite(()=>inventory.updateHeaders("codex",[row(1,{...current,repositoryId:"repo-1"})],{preserveLifecycle:true}),(r)=>assert.equal(r.repository_id,"repo-1"),"repository")>0);
+  Object.assign(current,{repositoryId:"repo-1"});
+  // A lifecycle-preserving write ignores presence; the lifecycle pass applies it.
+  const quiet=writes();
+  inventory.updateHeaders("codex",[row(1,{...current,isLive:true,needsInput:true,activityStatus:"needs_input"})],{preserveLifecycle:true});
+  assert.equal(writes(),quiet,"preserved lifecycle columns are not a change");
+  assert.ok(expectWrite(()=>inventory.updateProviderLifecycle("codex",[shell[0],row(1,{...current,isLive:true,needsInput:true,activityStatus:"needs_input"}),shell[2]]),
+    (r)=>assert.deepEqual([r.is_live,r.needs_input,r.activity_status,r.settled_status],[1,1,"needs_input","idle"]),"lifecycle")>0);
+  assert.ok(expectWrite(()=>inventory.updateProviderLifecycle("codex",[shell[0],row(1,{...current,activityStatus:"closed"}),shell[2]]),
+    (r)=>assert.deepEqual([r.is_live,r.needs_input,r.activity_status,r.settled_status],[0,0,"closed","closed"]),"settled")>0);
+  // A rescan rewrites only the generation: no public change, but the row must survive the scan's cleanup.
+  const scan=inventory.beginProvider("codex"), revision=inventory.snapshot().revision;
+  inventory.upsertHeaders("codex",[row(0),row(1),row(2)],scan);
+  assert.equal(inventory.snapshot().revision,revision,"a generation-only write is not a catalog change");
+  assert.equal(stored(1).generation,scan);
+  inventory.finishProvider("codex",scan,{complete:true});
+  assert.equal(inventory.coverage().exactTotal,3);
+  assert.equal(stored(1).title,"Renamed");
+});
