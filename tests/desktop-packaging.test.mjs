@@ -51,6 +51,13 @@ test("desktop preparation rejects legal files regenerated after a Windows web bu
   await assert.rejects(assertBuiltLegalNotices(root), /DESKTOP_BUILD_LEGAL_CONTENT_MISMATCH/);
 });
 
+test("electron-builder includes every required desktop runtime module", async () => {
+  const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const packagedFiles = new Set(packageJson.build.files);
+  const missing = DESKTOP_RUNTIME_FILES.filter((filename) => !packagedFiles.has(filename));
+  assert.deepEqual(missing, [], "Required runtime modules must be included in electron-builder's file list");
+});
+
 test("packaged desktop runtime allowlist is closed over local module imports", async () => {
   const runtimeFiles = new Set(DESKTOP_RUNTIME_FILES);
   const testOnlyImport = "desktop/runtime/main.mjs=>desktop/runtime/smoke-main.mjs";
