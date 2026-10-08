@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import { createNormalizedPollingObserver } from "../../../../server/providers/kernel/normalized-polling-observer.mjs";
 import { createPipelineTraceRecorder } from "../../../../server/diagnostics/pipeline-trace.mjs";
@@ -484,6 +485,70 @@ test("a write keeps its read after the catalog pass when the source is not known
     await settle(() => counts.reads === expected);
     assert.equal(counts.reads, expected, label);
   }
+});
+
+/** A watched observer over one settled and one live session, with a scripted file stat. */
+async function observeNotifiedFiles(context, files, { blockBackground = false } = {}) {
+  const controller = new AbortController();
+  const state = { catalogs: 0, reads: [], release: () => {} };
+  const gate = blockBackground ? new Promise((resolve) => { state.release = resolve; }) : null;
+  let wake;
+  const recorder = createPipelineTraceRecorder({ enabled: true });
+  const observer = createNormalizedPollingObserver({
+    providerId: "claude",
+    async list() { state.catalogs += 1; return [{ localId: "settled", isLive: false }, { localId: "live", isLive: true }, { localId: "blocker", isLive: false }]; },
+    async ingest(id) { state.reads.push(id); if (id === "blocker" && gate) await gate; return null; },
+    // The catalog pass queues only the blocker, which can hold the single background slot.
+    shouldEagerHydrate: (entry) => entry.localId === "blocker",
+    routeSourceEvent: ({ filename }) => ({ catalog: false, sessionIds: [path.basename(String(filename), ".jsonl")], sourceKnown: true }),
+    watchTargets: ["synthetic-sources"],
+    watchSource(_target, _options, callback) { wake = callback; return { close() {} }; },
+    statSource(file) {
+      const info = files.get(path.basename(file));
+      if (!info) throw new Error("missing");
+      return { ...info, isFile: () => true };
+    },
+    now: () => 1_000_000,
+    intervalMs: 60_000,
+    backgroundConcurrency: 1,
+  });
+  context.after(() => { state.release(); controller.abort(); });
+  await observer.start({ publishCatalog() {}, publishSession() {}, invalidateSession() {} }, controller.signal, { trace: recorder });
+  await settle(() => state.catalogs === 1 && state.reads.includes("blocker"));
+  for (const id of ["settled", "live"]) await observer.hydrate(id);
+  state.reads.length = 0;
+  const quiet = async () => { for (let index = 0; index < 8; index += 1) await turn(); };
+  const lanes = () => recorder.snapshot().traceEvents.filter((event) => event.name === "source_queue").map((event) => event.args.priorityLane);
+  return { state, observer, quiet, lanes, wake: (filename, eventType = "change") => wake(eventType, filename) };
+}
+
+test("a change notification that moved neither size nor modification time reads nothing", async (context) => {
+  const files = new Map([["settled.jsonl", { size: 10, mtimeMs: 1_000_000 - 3_600_000 }]]);
+  const { state, observer, quiet, wake } = await observeNotifiedFiles(context, files);
+  wake("settled.jsonl");
+  wake("settled.jsonl");
+  await quiet();
+  assert.deepEqual(state.reads, [], "an access-only notification is not a source event");
+  assert.equal(observer.diagnostics().unchangedSourceEvents, 2);
+  assert.equal(observer.diagnostics().routedSourceEvents, 0);
+  files.set("settled.jsonl", { size: 30, mtimeMs: 1_000_000 - 3_600_000 });
+  wake("settled.jsonl");
+  await settle(() => state.reads.length === 1);
+  assert.deepEqual(state.reads, ["settled"], "growth is read");
+});
+
+test("a confirmed write to a settled session uses the live-update lane; an unconfirmed notification waits with background work", async (context) => {
+  const files = new Map([["settled.jsonl", { size: 10, mtimeMs: 1_000_000 + 1 }]]);
+  const { state, quiet, lanes, wake } = await observeNotifiedFiles(context, files, { blockBackground: true });
+  wake("settled.jsonl", "rename");
+  await quiet();
+  assert.equal(state.reads.includes("settled"), false, "a rename of a settled session's file queues behind background work");
+  wake("live.jsonl", "rename");
+  await settle(() => state.reads.includes("live"));
+  wake("settled.jsonl");
+  await settle(() => state.reads.includes("settled"));
+  assert.deepEqual(lanes(), ["urgent", "source_update"],
+    "the live session's first read is urgent, and the confirmed write promotes the waiting settled read to the live-update lane");
 });
 
 test("late eager preparation cannot overwrite a newer lifecycle hydration", async (context) => {
