@@ -1,4 +1,4 @@
-/* Repository Tasks tab: the read-only task board (design contract D45-D67). Tokens only. State chips
+/* Repository Tasks tab: the task board (design contract D45-D67, D86, D87). Tokens only. State chips
    are the shared .commandChip outline label; a tone recolors its text and never fills it. */
 .repositoryTasksTab { display: grid; gap: var(--space-4); }
 
@@ -7,13 +7,13 @@
 .taskBoardScroller:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskBoardGrid { display: grid; grid-template-columns: repeat(var(--task-columns, 5), minmax(220px, 1fr)); gap: var(--space-3); align-items: stretch; }
 .taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); border-radius: var(--panel-radius); }
-.taskColumnHeader { display: flex; align-items: center; justify-content: space-between; padding: var(--space-1) var(--space-1) var(--space-1) 0; }
-.taskColumnHeader h3 { margin: 0; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) 0; }
+.taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskColumnList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); list-style: none; }
 
 /* Card: green border while the bound session works, amber for a state that needs the user. */
-.taskCard { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.taskCard { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .taskCard.isLive { border-color: var(--command-green); }
 .taskCard.isAttention { border-color: var(--command-amber); }
 .taskCardTop { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
@@ -29,6 +29,39 @@
 .taskCardRun { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskCardPlanned { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskCardDetail { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Moving cards: dragging is the desktop app only. The column under a dragged card takes the raised fill (D48) and
+   a movable card shows the grab cursor (D53); the dragged card itself does not change (D86). */
+.taskColumn.isDropTarget { background: var(--command-panel-2); }
+.taskCard.isMovable { cursor: grab; }
+.taskBoardError { margin: 0; }
+.taskBoardFootnote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Keyboard alternative: four Icon-role move actions in one toolbar. It is drawn while the card holds keyboard focus,
+   stays in the accessibility tree otherwise, and is always drawn on a coarse pointer, where dragging may not work. */
+.taskCardMoves { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.taskCard:not(:has(:focus-visible)) .taskCardMoves { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; border: 0; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) {
+  .taskCard:not(:has(:focus-visible)) .taskCardMoves { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
+}
+.taskMove[data-move="up"] > svg { transform: rotate(-90deg); }
+.taskMove[data-move="down"] > svg { transform: rotate(90deg); }
+.taskMove[data-move="left"] > svg, .taskColumnMove[data-column-move="left"] > svg { transform: rotate(180deg); }
+
+/* Column management: Add column beside New task (D28, D29) and an inline editor under a column header. */
+.taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
+.taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskAddColumn .taskOwnInput { flex: 0 1 200px; }
+.taskColumnEditor { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); }
+.taskColumnName { width: 100%; }
+.taskColumnActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.taskColumnActions .commandQuietAction { margin-left: auto; }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskAddColumn .taskOwnInput, .taskColumnName { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  .taskAddColumn .commandQuietAction, .taskColumnActions .commandQuietAction { width: auto; }
+}
 
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }

@@ -30,8 +30,11 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
   return useSyncExternalStore<TaskDesktopAvailability>(subscribeBridge, () => taskDesktopBridge() ? "available" : "absent", () => "pending");
 }
 
+/** The fixed actions this surface sends; the monitor validates each record. */
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete";
+
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
-async function sendTaskAction(repositoryId: string, action: "create" | "update" | "delete", payload: unknown): Promise<TaskActionResult> {
+async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
   const bridge = taskDesktopBridge();
   if (!bridge) return { ok: false, error: "unavailable" };
   try {
@@ -64,6 +67,32 @@ export function deleteDesktopTask(repositoryId: string, id: string): Promise<Tas
   return sendTaskAction(repositoryId, "delete", { id });
 }
 
+/** `position` is the 0-based index in the destination column counted after the task leaves its place; past the end appends. */
+export type TaskMove = { id: string; columnId: string; position: number };
+
+export function moveDesktopTask(repositoryId: string, move: TaskMove): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "move", { id: move.id, columnId: move.columnId, position: move.position });
+}
+
+/** Appends a column named `name` (at most 40 characters) after the last one. */
+export function createDesktopColumn(repositoryId: string, name: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "column_create", { name });
+}
+
+export function renameDesktopColumn(repositoryId: string, id: string, name: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "column_rename", { id, name });
+}
+
+/** `position` is the 0-based target index among the columns. */
+export function reorderDesktopColumn(repositoryId: string, id: string, position: number): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "column_reorder", { id, position });
+}
+
+/** The monitor refuses while the column holds tasks and for the last column. */
+export function deleteDesktopColumn(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "column_delete", { id });
+}
+
 /** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
@@ -73,3 +102,15 @@ export function createFailureMessage(error: TaskActionError | "unavailable"): st
 
 export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
+export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
+export const COLUMN_NAME_REQUIRED_MESSAGE = "The column needs a name.";
+
+export type ColumnAction = "create" | "rename" | "reorder" | "delete";
+
+/** One fixed message per column action; the monitor's own wording never reaches the board. */
+export function columnFailureMessage(action: ColumnAction, error: TaskActionError | "unavailable"): string {
+  if (action === "create") return error === "limit" ? `The board is full: it holds ${TASK_BOUNDS.columnsPerRepository} columns.` : "The column could not be added.";
+  if (action === "rename") return "The column could not be renamed.";
+  if (action === "reorder") return "The column could not be moved.";
+  return error === "conflict" ? "The column could not be deleted. It must be empty, and a board keeps one column." : "The column could not be deleted.";
+}

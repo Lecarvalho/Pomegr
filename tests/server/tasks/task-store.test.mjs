@@ -263,7 +263,7 @@ test("actions whose part has not landed, and unknown names, answer unsupported a
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete"];
+  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete"];
   for (const action of [...ACTIONS.filter((name) => !implemented.includes(name)), "unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
