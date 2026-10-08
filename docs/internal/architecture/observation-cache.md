@@ -433,6 +433,18 @@ idle for 30 seconds (`POOLED_CONNECTION_IDLE_MS`), which is longer than the usua
 between contributions to a live session. Both constants live in
 `server/sessions/history/session-history-connection-pool.mjs`.
 
+Code that reads or writes the monitor store's own database (the session catalog inventory,
+the file-change index and history, and resource history) takes its statements from
+`preparedStatement(database, sql)` in `server/persistence/prepared-statements.mjs`, which
+prepares each statement text once per database. A `node:sqlite` statement holds about 5 KB
+of native memory that V8 does not count and releases only when a major collection finalizes
+it, so preparing on every call kept tens of thousands of dead statements alive between
+collections: several hundred megabytes of resident memory outside the JavaScript heap under
+four live sessions and an open dashboard. The cache holds at most 256 statements per
+database (`MAX_CACHED_STATEMENTS`); statement texts are fixed or bounded by a query shape,
+never built from data. New store code uses the helper, not `database.prepare()` on a hot
+path, and only for statements run to completion with `run`, `get`, or `all`.
+
 Reads and transactions use separate connections to the same file. A read-only connection
 serves GETs and reads, so a read still never creates a database, opens it for writing, or
 rolls back another writer's journal; a read-write connection serves transactions. A new

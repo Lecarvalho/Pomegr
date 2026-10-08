@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { preparedStatement } from "../../persistence/prepared-statements.mjs";
 import { parseProviderSessionId } from "../../providers/provider-contract.mjs";
 import { rowSummaryFields, sanitizeRowSummary } from "./session-catalog-row.mjs";
 
@@ -69,7 +70,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   function transaction(fn) { if (!database) return fn(); database.exec("BEGIN IMMEDIATE"); try { const value = fn(); database.exec("COMMIT"); return value; } catch (error) { database.exec("ROLLBACK"); throw error; } }
   function saveFacts() {
     if (!database) return;
-    database.prepare("INSERT OR REPLACE INTO session_catalog_facts (id, revision, observed_at, completed_total, completed_at, scope_key) VALUES (1,?,?,?,?,?)")
+    preparedStatement(database, "INSERT OR REPLACE INTO session_catalog_facts (id, revision, observed_at, completed_total, completed_at, scope_key) VALUES (1,?,?,?,?,?)")
       .run(revision, observedAt, lastCompletedTotal, lastCompletedAt, scopeKey);
   }
   function changed() { revision += 1; observedAt = stamp(); saveFacts(); }
@@ -89,18 +90,18 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       CREATE TABLE IF NOT EXISTS session_catalog_facts (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,observed_at TEXT,completed_total INTEGER,completed_at TEXT,scope_key TEXT NOT NULL DEFAULT '');`);
     // Additive migration: older inventories (before the settled status and the row summary) keep their rows.
     for (const [column, type] of [["settled_status", "TEXT"], ["summary_json", "TEXT"], ["summary_updated_ms", "INTEGER"]]) {
-      if (!database.prepare("SELECT 1 AS found FROM pragma_table_info('session_catalog_headers') WHERE name=?").get(column)) database.exec(`ALTER TABLE session_catalog_headers ADD COLUMN ${column} ${type}`);
+      if (!preparedStatement(database, "SELECT 1 AS found FROM pragma_table_info('session_catalog_headers') WHERE name=?").get(column)) database.exec(`ALTER TABLE session_catalog_headers ADD COLUMN ${column} ${type}`);
     }
-    const facts = database.prepare("SELECT revision,observed_at,completed_total,completed_at,scope_key FROM session_catalog_facts WHERE id=1").get();
+    const facts = preparedStatement(database, "SELECT revision,observed_at,completed_total,completed_at,scope_key FROM session_catalog_facts WHERE id=1").get();
     if (facts) { revision = Math.max(revision, facts.revision); lastCompletedTotal = Number.isSafeInteger(facts.completed_total) ? facts.completed_total : null; lastCompletedAt = date(facts.completed_at); }
     transaction(() => {
-      if (facts && facts.scope_key !== scopeKey) { database.prepare("DELETE FROM session_catalog_headers").run(); lastCompletedTotal = null; lastCompletedAt = null; }
+      if (facts && facts.scope_key !== scopeKey) { preparedStatement(database, "DELETE FROM session_catalog_headers").run(); lastCompletedTotal = null; lastCompletedAt = null; }
       // Persisted identity survives restart; native writer/lifecycle presence does not.
-      database.prepare("UPDATE session_catalog_headers SET is_live=0,needs_input=0,activity_status='unknown' WHERE is_live<>0 OR needs_input<>0 OR activity_status<>'unknown'").run();
+      preparedStatement(database, "UPDATE session_catalog_headers SET is_live=0,needs_input=0,activity_status='unknown' WHERE is_live<>0 OR needs_input<>0 OR activity_status<>'unknown'").run();
       for (const row of memory.values()) writeRow(row, row.generation, true);
       if (states.size) {
         const ids = [...states.keys()];
-        database.prepare(`DELETE FROM session_catalog_headers WHERE provider NOT IN (${ids.map(() => "?").join(",")})`).run(...ids);
+        preparedStatement(database, `DELETE FROM session_catalog_headers WHERE provider NOT IN (${ids.map(() => "?").join(",")})`).run(...ids);
       }
       changed();
     });
@@ -116,7 +117,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     transaction(() => {
       if (nextScope !== scopeKey || rosterChanged) {
         scopeKey = nextScope;
-        if (database) database.prepare("DELETE FROM session_catalog_headers").run();
+        if (database) preparedStatement(database, "DELETE FROM session_catalog_headers").run();
         memory.clear(); lifecycleIds.clear(); presenceObserved.clear(); lastCompletedTotal = null; lastCompletedAt = null; overflow = false;
         for (const state of states.values()) {state.status="discovering";state.token=null;}
       }
@@ -127,7 +128,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   }
   function writeRow(row, generation, overlay, preserveLifecycle = false) {
     if (database) {
-      database.prepare(`INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
+      preparedStatement(database, `INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,local_id) DO UPDATE SET
         title=CASE WHEN ? OR (excluded.title<>'Untitled session' AND excluded.updated_ms >= updated_ms) THEN excluded.title ELSE title END,
         project=CASE WHEN ? OR (excluded.project<>'Unknown project' AND excluded.updated_ms >= updated_ms) THEN excluded.project ELSE project END,
@@ -191,7 +192,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     const json = JSON.stringify(clean);
     return transaction(() => {
       let written;
-      if (database) written = Number(database.prepare("UPDATE session_catalog_headers SET summary_json=?,summary_updated_ms=? WHERE provider=? AND local_id=? AND coalesce(summary_updated_ms,-1)<=? AND summary_json IS NOT ?")
+      if (database) written = Number(preparedStatement(database, "UPDATE session_catalog_headers SET summary_json=?,summary_updated_ms=? WHERE provider=? AND local_id=? AND coalesce(summary_updated_ms,-1)<=? AND summary_json IS NOT ?")
         .run(json, ms, provider, localId, ms, json).changes) > 0;
       else {
         const row = memory.get(`${provider}:${localId}`);
@@ -202,13 +203,13 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       return written;
     });
   }
-  function countAll() { return database ? Number(database.prepare("SELECT COUNT(*) AS n FROM session_catalog_headers").get().n) : memory.size; }
+  function countAll() { return database ? Number(preparedStatement(database, "SELECT COUNT(*) AS n FROM session_catalog_headers").get().n) : memory.size; }
   function finishProvider(provider, token, { complete = false } = {}) {
     const state = states.get(provider); if (!state || !token || state.token !== token) return false;
     const success = complete && !state.invalid && !overflow;
     transaction(() => {
       if (success) {
-        if (database) database.prepare("DELETE FROM session_catalog_headers WHERE provider=? AND generation<>?").run(provider,token);
+        if (database) preparedStatement(database, "DELETE FROM session_catalog_headers WHERE provider=? AND generation<>?").run(provider,token);
         else for (const [id,row] of memory) if (row.provider === provider && row.generation !== token) memory.delete(id);
       }
       state.status = success ? "complete" : "partial"; state.token = null;
@@ -229,7 +230,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       for (const id of lifecycleIds.get(provider) || []) {
         if (current.has(id)) continue;
         if (database) {
-          const result = database.prepare("UPDATE session_catalog_headers SET is_live=0,needs_input=0,activity_status='unknown' WHERE provider=? AND local_id=? AND (is_live<>0 OR needs_input<>0 OR activity_status<>'unknown')").run(provider,id);
+          const result = preparedStatement(database, "UPDATE session_catalog_headers SET is_live=0,needs_input=0,activity_status='unknown' WHERE provider=? AND local_id=? AND (is_live<>0 OR needs_input<>0 OR activity_status<>'unknown')").run(provider,id);
           removed = Number(result.changes) > 0 || removed;
         }
         else { const row=memory.get(`${provider}:${id}`); if (row) { removed ||= row.isLive || row.needsInput || row.activityStatus !== "unknown"; Object.assign(row,{isLive:false,needsInput:false,activityStatus:"unknown"}); } }
@@ -252,7 +253,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   function snapshot() { return {revision,coverage:coverage()}; }
   function get(id) {
     const parsed=parseProviderSessionId(id); if (!parsed) return null;
-    const row=database?database.prepare(`SELECT ${COLUMNS} FROM session_catalog_headers WHERE provider=? AND local_id=?`).get(parsed.providerId,parsed.localSessionId):memory.get(id);
+    const row=database?preparedStatement(database, `SELECT ${COLUMNS} FROM session_catalog_headers WHERE provider=? AND local_id=?`).get(parsed.providerId,parsed.localSessionId):memory.get(id);
     return row?toPublic(row):null;
   }
   function directory(query={}) {
@@ -269,11 +270,11 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     }
     let rows,matchedCount,counts;
     if (database) {
-      matchedCount=Number(database.prepare(`SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
-      const tallies=database.prepare("SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN needs_input=1 OR activity_status='needs_input' THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers").get();
+      matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
+      const tallies=preparedStatement(database, "SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN needs_input=1 OR activity_status='needs_input' THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers").get();
       counts={all:Number(tallies.all_count),live:Number(tallies.live),needs:Number(tallies.needs)};
       const keyset=after?`${where?" AND":" WHERE"} (created_ms < ? OR (created_ms = ? AND (provider,local_id) > (?,?)))`:"";
-      rows=database.prepare(`SELECT ${COLUMNS},created_ms AS createdMs FROM session_catalog_headers${where}${keyset} ORDER BY ${ORDER} LIMIT ?`)
+      rows=preparedStatement(database, `SELECT ${COLUMNS},created_ms AS createdMs FROM session_catalog_headers${where}${keyset} ORDER BY ${ORDER} LIMIT ?`)
         .all(...args,...(after?[after.createdMs,after.createdMs,after.provider,after.localId]:[]),scope.pageSize+1);
     } else {
       const all=[...memory.values()]; counts={all:all.length,live:all.filter(row=>row.isLive).length,needs:all.filter(row=>row.needsInput||row.activityStatus==="needs_input").length};

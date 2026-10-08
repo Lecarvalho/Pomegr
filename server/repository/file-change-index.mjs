@@ -1,3 +1,4 @@
+import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import path from "node:path";
 import { repositoryRelativePath } from "../normalize/repository-path.mjs";
 import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
@@ -19,42 +20,42 @@ const FILE_INDEX_VERSION = "2";
 const FILE_AGENTS_VERSION = "1";
 
 function readMeta(store, key) {
-  const row = store.database.prepare("SELECT value FROM meta WHERE key = ?").get(key);
+  const row = preparedStatement(store.database, "SELECT value FROM meta WHERE key = ?").get(key);
   return row ? row.value : null;
 }
 
 function writeMeta(store, key, value) {
-  store.database.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(key, value);
+  preparedStatement(store.database, "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(key, value);
 }
 
 function findFile(store, repositoryId, currentPath) {
-  return store.database.prepare("SELECT id, deleted_at AS deletedAt FROM files WHERE repository_id = ? AND current_path = ?")
+  return preparedStatement(store.database, "SELECT id, deleted_at AS deletedAt FROM files WHERE repository_id = ? AND current_path = ?")
     .get(repositoryId, currentPath) || null;
 }
 
 function ensureFile(store, repositoryId, currentPath, observedAt) {
-  store.database.prepare("INSERT OR IGNORE INTO files (repository_id, current_path, first_seen_at, deleted_at) VALUES (?, ?, ?, NULL)")
+  preparedStatement(store.database, "INSERT OR IGNORE INTO files (repository_id, current_path, first_seen_at, deleted_at) VALUES (?, ?, ?, NULL)")
     .run(repositoryId, currentPath, observedAt);
   const row = findFile(store, repositoryId, currentPath);
-  const openPath = store.database.prepare("SELECT 1 AS present FROM file_paths WHERE file_id = ? AND valid_to IS NULL").get(row.id);
+  const openPath = preparedStatement(store.database, "SELECT 1 AS present FROM file_paths WHERE file_id = ? AND valid_to IS NULL").get(row.id);
   if (!openPath) {
-    store.database.prepare("INSERT OR IGNORE INTO file_paths (file_id, path, valid_from, valid_to, source) VALUES (?, ?, ?, NULL, 'recorded')")
+    preparedStatement(store.database, "INSERT OR IGNORE INTO file_paths (file_id, path, valid_from, valid_to, source) VALUES (?, ?, ?, NULL, 'recorded')")
       .run(row.id, currentPath, observedAt);
   }
   return row;
 }
 
 function closeOpenPath(store, fileId, validTo) {
-  store.database.prepare("UPDATE file_paths SET valid_to = ? WHERE file_id = ? AND valid_to IS NULL").run(validTo, fileId);
+  preparedStatement(store.database, "UPDATE file_paths SET valid_to = ? WHERE file_id = ? AND valid_to IS NULL").run(validTo, fileId);
 }
 
 function openPath(store, fileId, newPath, validFrom, source) {
-  store.database.prepare("INSERT OR IGNORE INTO file_paths (file_id, path, valid_from, valid_to, source) VALUES (?, ?, ?, NULL, ?)")
+  preparedStatement(store.database, "INSERT OR IGNORE INTO file_paths (file_id, path, valid_from, valid_to, source) VALUES (?, ?, ?, NULL, ?)")
     .run(fileId, newPath, validFrom, source);
 }
 
 function recordChange(store, fileId, change) {
-  store.database.prepare(`
+  preparedStatement(store.database, `
     INSERT INTO file_changes (file_id, session_id, agent_id, kind, observed_at, request_number)
     VALUES (?, ?, ?, ?, ?, NULL)
   `).run(fileId, change.sessionId, change.agentId, change.kind, change.observedAt);
@@ -64,11 +65,11 @@ function recordChange(store, fileId, change) {
 function applyMutation(store, repositoryId, change) {
   const row = ensureFile(store, repositoryId, change.path, change.observedAt);
   if (change.kind === "deleted") {
-    store.database.prepare("UPDATE files SET deleted_at = ? WHERE id = ?").run(change.observedAt, row.id);
+    preparedStatement(store.database, "UPDATE files SET deleted_at = ? WHERE id = ?").run(change.observedAt, row.id);
   } else if (row.deletedAt !== null) {
     // A recorded create/edit at a path this index last saw deleted proves the file
     // currently exists again; clear the tombstone rather than leaving it stale.
-    store.database.prepare("UPDATE files SET deleted_at = NULL WHERE id = ?").run(row.id);
+    preparedStatement(store.database, "UPDATE files SET deleted_at = NULL WHERE id = ?").run(row.id);
   }
   recordChange(store, row.id, change);
 }
@@ -86,7 +87,7 @@ function applyMove(store, repositoryId, change) {
   const liveSource = source && source.deletedAt === null ? source : null;
   if (!liveSource) {
     const row = ensureFile(store, repositoryId, change.path, change.observedAt);
-    if (row.deletedAt !== null) store.database.prepare("UPDATE files SET deleted_at = NULL WHERE id = ?").run(row.id);
+    if (row.deletedAt !== null) preparedStatement(store.database, "UPDATE files SET deleted_at = NULL WHERE id = ?").run(row.id);
     recordChange(store, row.id, change);
     return;
   }
@@ -95,7 +96,7 @@ function applyMove(store, repositoryId, change) {
     recordChange(store, conflict.id, change);
     return;
   }
-  store.database.prepare("UPDATE files SET current_path = ?, deleted_at = NULL WHERE id = ?").run(change.path, liveSource.id);
+  preparedStatement(store.database, "UPDATE files SET current_path = ?, deleted_at = NULL WHERE id = ?").run(change.path, liveSource.id);
   closeOpenPath(store, liveSource.id, change.observedAt);
   openPath(store, liveSource.id, change.path, change.observedAt, "shell_move");
   recordChange(store, liveSource.id, change);
@@ -107,7 +108,7 @@ function applyMove(store, repositoryId, change) {
  * Git or shell move does not make a replayed change look new.
  */
 function isRecorded(store, repositoryId, change) {
-  return Boolean(store.database.prepare(`
+  return Boolean(preparedStatement(store.database, `
     SELECT 1 AS present
     FROM file_changes fc
     JOIN files f ON f.id = fc.file_id
@@ -242,7 +243,7 @@ function applyGitRename(store, repositoryId, rename, observedAt) {
   if (!source || source.deletedAt !== null) return;
   const conflict = findFile(store, repositoryId, rename.to);
   if (conflict && conflict.id !== source.id) return;
-  store.database.prepare("UPDATE files SET current_path = ? WHERE id = ?").run(rename.to, source.id);
+  preparedStatement(store.database, "UPDATE files SET current_path = ? WHERE id = ?").run(rename.to, source.id);
   closeOpenPath(store, source.id, observedAt);
   openPath(store, source.id, rename.to, observedAt, "git");
 }
@@ -289,23 +290,23 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
       // full rebuild clears every provider.
       if (needsRebuild) store.transaction(() => {
         if (store.rebuilt === true) {
-          store.database.prepare("DELETE FROM file_changes").run();
+          preparedStatement(store.database, "DELETE FROM file_changes").run();
         } else if (priorVersion !== FILE_INDEX_VERSION) {
           // A v1 Codex move/delete may have rewritten the shared `files` row
           // and its path timeline before this migration starts. Removing only
           // the Codex change would leave that false path/deletion attached to
           // a surviving Claude row, so discard every identity touched by an
           // unbound legacy Codex change. Untouched Claude identities remain.
-          store.database.prepare(`
+          preparedStatement(store.database, `
             DELETE FROM file_changes
             WHERE file_id IN (
               SELECT DISTINCT file_id FROM file_changes WHERE session_id LIKE 'codex:%'
             )
           `).run();
         }
-        store.database.prepare("DELETE FROM file_paths WHERE file_id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
-        store.database.prepare("DELETE FROM files WHERE id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
-        store.database.prepare(`
+        preparedStatement(store.database, "DELETE FROM file_paths WHERE file_id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
+        preparedStatement(store.database, "DELETE FROM files WHERE id NOT IN (SELECT DISTINCT file_id FROM file_changes)").run();
+        preparedStatement(store.database, `
           DELETE FROM file_change_agents
           WHERE NOT EXISTS (
             SELECT 1 FROM file_changes fc
@@ -395,7 +396,7 @@ export function listSessionFileChanges(store, sessionId, { limit, before } = {})
   if (typeof sessionId !== "string" || sessionId.length === 0) return [];
   const boundedLimit = normalizeLimit(limit);
   const beforeMs = Number.isSafeInteger(before) ? before : null;
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     SELECT fc.id AS id, fc.kind AS kind, fc.observed_at AS observedAt, fc.agent_id AS agentId,
            fc.request_number AS requestNumber, f.id AS fileId, f.current_path AS path
     FROM file_changes fc
@@ -416,7 +417,7 @@ export function listRepositoryFiles(store, repositoryId, { historical = false, l
   const boundedLimit = normalizeLimit(limit);
   const afterId = Number.isSafeInteger(after) ? after : 0;
   const deletedClause = historical ? "" : "AND deleted_at IS NULL";
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     SELECT id, current_path AS path, first_seen_at AS firstSeenAt, deleted_at AS deletedAt
     FROM files
     WHERE repository_id = ? AND id > ? ${deletedClause}
@@ -434,7 +435,7 @@ export function fileHistory(store, fileId, { limit, before } = {}) {
   if (!Number.isSafeInteger(fileId)) return [];
   const boundedLimit = normalizeLimit(limit);
   const beforeMs = Number.isSafeInteger(before) ? before : null;
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     SELECT id, session_id AS sessionId, agent_id AS agentId, kind, observed_at AS observedAt, request_number AS requestNumber
     FROM file_changes
     WHERE file_id = ? AND (? IS NULL OR observed_at < ?)
