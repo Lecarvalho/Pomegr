@@ -1,6 +1,6 @@
 import type { ContextAllocation, ContextAllocationKind, ContextInventoryReference } from "./repository-inventory-contract";
-import type { SessionCatalogCoverage, SessionDirectoryGroups } from "./session-catalog-contract";
-export type { SessionCatalogCoverage, SessionDirectoryGroup, SessionDirectoryGroups, SessionDirectoryQuery } from "./session-catalog-contract";
+import type { SessionCatalogCoverage, SessionDirectoryGroups, SessionDirectoryTaskFields, WithSessionTask } from "./session-catalog-contract";
+export type { SessionCatalogCoverage, SessionDirectoryGroup, SessionDirectoryGroups, SessionDirectoryQuery, SessionDirectoryTaskFields, SessionDirectoryTaskReadiness, SessionTaskReference, WithSessionTask } from "./session-catalog-contract";
 import type { CacheLifetime, RequestSnapshotFeed, SessionReportRequestSnapshot, WorkKind } from "./request-snapshot-contract";
 export type { ContextAllocation, ContextAllocationKind, ContextInventoryReference, ContextInventoryRevisionDetail, ContextInventoryRevisionSummary, RepositoryInventorySnapshot, RepositoryProviderInventory, RepositorySummary } from "./repository-inventory-contract";
 import type { ResourceUsage } from "./resource-usage-contract";
@@ -447,7 +447,7 @@ export type SessionCatalogSnapshot = {
 };
 
 /** One bounded page from a committed inventory revision. */
-export type SessionDirectorySnapshot = SessionCatalogSnapshot & SessionDirectoryGroups<SessionSummary> & {
+export type SessionDirectorySnapshot = Omit<SessionCatalogSnapshot, "sessions"> & SessionDirectoryGroups<WithSessionTask<SessionSummary>> & SessionDirectoryTaskFields<SessionSummary> & {
   revision: string | number;
   coverage: SessionCatalogCoverage;
   matchedCount: number;

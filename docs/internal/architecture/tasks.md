@@ -47,7 +47,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Start gates | Built: every start, manual or queued, first passes the four gates, judged from committed facts. A queued task that a gate holds waits, with the reason shown on its Queue card, and the queue stays on; a manual start a gate holds is refused with one fixed status. The Queue view lists each gate's current reading and sets the usage threshold (70, 85, or 95 percent; 85 by default); the Board shows each provider's usage reading |
 | Parallel steps with worktrees | Built: the queued tasks of one feature step start together. A task of a step that holds more than one task starts in a Git worktree of its own, on the branch `tasks/<task id>`, under a Pomegr-owned directory of the desktop data root; a task alone in its step, or without a feature, starts in the repository root. The next step starts only when every task of the step is done |
 | Scheduling | Built: in the desktop app the Task panel gives a task its own start time, which makes it Scheduled, and the Queue view's Schedule panel sets a start time and a stop time for the queue. The queue starts a scheduled task only from its time on, and starts nothing before the queue's start time or from its stop time on. Each check happens when the desktop queue runner asks, so it needs Pomegr open, and no running session is ever stopped |
-| Task on the Sessions list and in the session view | Not built |
+| Task on the Sessions list | Built: for a same-computer client the Sessions list has a Task column (the task ID, a chip only for Needs review, Stalled, or Done, and the feature and step), a Feature filter chip, and Feature in Group by. The task reference is joined from the task store when a directory page is served; a LAN client gets the list without it |
+| Task in the session view | Not built |
 
 Report-less completion (a task finishing from a deterministic condition with no agent
 report) is deliberately not designed or implemented; see [Open questions](#open-questions).
@@ -602,6 +603,7 @@ like any other.
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client; the LAN gateway forwards the path but marks its requests, and a marked request never gets the marker | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step), the `feature` scope, and `group=feature`. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
@@ -700,9 +702,28 @@ new data class.
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
 - The Sessions list and session view receive only the task ID, task state, feature name,
-  and step. That is a deliberate, later widening of exposure: the part that builds it
-  updates the AGENTS.md rule in the same pull request, and it must not carry task text,
-  the own condition, or a column name.
+  and step. That is a deliberate widening of exposure: the part that builds it updates
+  the AGENTS.md rule in the same pull request, and it must not carry task text, the own
+  condition, or a column name.
+- The Sessions list part has shipped. `server/tasks/task-session-link.mjs` reads the
+  reference, and `server/serving/session-directory-tasks.mjs` joins it onto a directory
+  page when the page is served. It adds the ID of the repository whose board holds the
+  task, so the task ID can link to that board (a task worktree gives the session another
+  repository ID), and the opaque feature ID, which the Feature filter passes back. The
+  state is served only as `needs_review`, `stalled`, `blocked`, `done`, or null; the list
+  draws a chip for Needs review, Stalled, and Done, and none for Blocked by agent.
+- A session's task reference is found by the session link, never by repository ID. The
+  session catalog stores none of it: the catalog index only takes a bounded set of
+  session IDs to narrow or group a page.
+- Grouping by feature lists only sessions started for a task that belongs to a feature,
+  from at most the 2000 newest links. A session with no task, or with a task outside a
+  feature, is in no group.
+- Task references follow the `GET /api/tasks` gate. The LAN gateway forwards
+  `/api/sessions` with a loopback host, so it marks every forwarded request with
+  `x-pomegr-lan-gateway`, and the same-origin proxy never sets `tasks=1` on a marked
+  request. The development server marks a peer that is not local the same way, because
+  it listens on the LAN and a peer can send any Host header. A client without the marker gets `taskReadiness: "desktop_only"`: the list
+  has no Task column, and Group by Feature says where features are shown.
 - Task state shown beside a session is a projection of the task store, never an
   observation of the session.
 - Provider and model names, effort, check results, and times are normalized enums or

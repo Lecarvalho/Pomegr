@@ -212,6 +212,28 @@ describe("monitor proxy", () => {
     expect(upstream).not.toContain("sort=");
   });
 
+  it("marks a directory read for task references only for a same-computer client", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('{"sessions":[]}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const upstreamFor = async (url: string, headers: Record<string, string>) => {
+      await sessionsGet(new Request(url, { headers }));
+      return new URL(String(fetchMock.mock.calls.at(-1)?.[0])).searchParams;
+    };
+    const local = "http://127.0.0.1:3003/api/sessions?mode=directory&group=feature&feature=feat-0123456789ab";
+    const marked = await upstreamFor(`${local}&tasks=0`, { host: "127.0.0.1:3003", "sec-fetch-site": "same-origin" });
+    // The marker is the route's own: a client value is never copied.
+    expect(marked.getAll("tasks")).toEqual(["1"]);
+    expect(marked.get("feature")).toBe("feat-0123456789ab");
+    expect(marked.get("group")).toBe("feature");
+    // The LAN gateway rewrites the host to loopback and marks what it forwards.
+    expect((await upstreamFor(local, { host: "127.0.0.1:3003", "x-pomegr-lan-gateway": "1" })).has("tasks")).toBe(false);
+    expect((await upstreamFor("http://192.168.1.20:3003/api/sessions?mode=directory&tasks=1", { host: "192.168.1.20:3003" })).has("tasks")).toBe(false);
+    expect((await upstreamFor(local, { host: "127.0.0.1:3003", origin: "http://evil.example" })).has("tasks")).toBe(false);
+    expect((await upstreamFor(local, { host: "127.0.0.1:3003", "sec-fetch-site": "cross-site" })).has("tasks")).toBe(false);
+    // Only the directory carries task references.
+    expect((await upstreamFor("http://127.0.0.1:3003/api/sessions?selected=codex%3Aone", { host: "127.0.0.1:3003" })).has("tasks")).toBe(false);
+  });
+
   it("streams only the monitor event body through the loopback proxy", async () => {
     const upstream = new ReadableStream({
       start(controller) {

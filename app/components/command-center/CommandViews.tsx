@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeProviderUsageLimits, ProviderId, ProviderServiceStatus, SessionCatalogCoverage, SessionDirectorySnapshot, SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, ProviderId, ProviderServiceStatus, SessionCatalogCoverage, SessionDirectorySnapshot, SessionSummary, WithSessionTask } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
@@ -21,8 +21,11 @@ import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, C
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
 import { subscribeLiveEvents } from "../../live-events";
 import { useRepositoryInventory } from "../../repository-inventory-client";
+import { SessionTaskCell, SessionTaskNote } from "../tasks/SessionTaskCell";
 export { AgentsView } from "../agents/AgentsView";
 export { RepositoryInventoryView as RepositoriesView } from "../repositories/RepositoryInventoryView";
+
+type SessionDirectoryRow = WithSessionTask<SessionSummary>;
 
 function sessionHref(session: SessionSummary) {
   try { return `/sessions/${encodeSessionRoute(session.id)}`; } catch { return "/"; }
@@ -111,17 +114,17 @@ function SessionSummaryLoading({ session }: { session: SessionSummary }) {
   </span>;
 }
 
-type SessionGrouping = "recent" | "project" | "provider";
-const SESSION_GROUPINGS: { id: SessionGrouping; label: string }[] = [{ id: "recent", label: "Recent" }, { id: "project", label: "Repository" }, { id: "provider", label: "Provider" }];
+type SessionGrouping = "recent" | "project" | "provider" | "feature";
+const SESSION_GROUPINGS: { id: SessionGrouping; label: string }[] = [{ id: "recent", label: "Recent" }, { id: "project", label: "Repository" }, { id: "provider", label: "Provider" }, { id: "feature", label: "Feature" }];
 const SESSION_GROUPING_KEY = "pomegr-sessions-group-by";
 // The catalog's project field names the repository a session ran in; the interface calls it a repository.
-const SESSION_GROUP_NOUNS = { project: ["repository", "repositories"], provider: ["provider", "providers"] } as const;
+const SESSION_GROUP_NOUNS = { project: ["repository", "repositories"], provider: ["provider", "providers"], feature: ["feature", "features"] } as const;
 
 function storedSessionGrouping(): SessionGrouping {
   if (typeof window === "undefined") return "recent";
   try {
     const stored = window.localStorage.getItem(SESSION_GROUPING_KEY);
-    return stored === "project" || stored === "provider" ? stored : "recent";
+    return stored === "project" || stored === "provider" || stored === "feature" ? stored : "recent";
   } catch {
     return "recent";
   }
@@ -150,14 +153,18 @@ function SessionGroupHeader({ label, open, onToggle, tallies }: { label: string;
   </button>;
 }
 
-/** `omit` drops the field the enclosing group header already names. */
-function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "provider" | null): CommandTableColumn<SessionSummary>[] { return [
+/** `omit` drops the field the enclosing group header already names. `showTask` adds the Task column, second (D326). */
+function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "provider" | "feature" | null, showTask: boolean): CommandTableColumn<SessionDirectoryRow>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
-    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{omit !== "project" && session.project}{!omit && " · "}{omit !== "provider" && <ProviderBadge source={session.source} variant="text" />}</span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
+    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{omit !== "project" && session.project}{omit !== "project" && omit !== "provider" && " · "}{omit !== "provider" && <ProviderBadge source={session.source} variant="text" />}</span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
   },
+  ...(showTask ? [{
+    id: "task", label: "Task", cellLabel: "Task", className: "commandSessionCellTask", colClassName: "commandSessionColTask",
+    renderCell: (session: SessionDirectoryRow) => <SessionTaskCell task={session.task} omitFeature={omit === "feature"} />,
+  }] : []),
   {
-    id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
+    id: "state", label: "State", cellLabel: "State", className: "commandSessionCellState", colClassName: "commandSessionColState",
     renderCell: (session) => { const state = sessionState(session); return <span className="commandSessionState"><CommandStatus state={state.state}>{state.label}</CommandStatus><SessionSummaryLoading session={session} /></span>; },
   },
   {
@@ -170,12 +177,12 @@ function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "p
     renderCell: (session) => session.agentCount === null ? <span title="Agent count is unavailable">—</span> : <span title={session.activeAgentCount === null ? "Active agent count is unavailable" : "Active / total agents"}>{session.activeAgentCount === null ? session.agentCount : session.activeAgentCount + "/" + session.agentCount}</span>,
   },
   {
-    id: "context", label: "Context", cellLabel: "Context", colClassName: "commandSessionColContext",
+    id: "context", label: "Context", cellLabel: "Context", className: "commandSessionCellContext", colClassName: "commandSessionColContext",
     sortValue: (session) => session.latestContextTotal,
     renderCell: (session) => session.latestContextTotal === null ? <span title="Context is unavailable">—</span> : Math.round(session.latestContextTotal / 1000) + "k",
   },
   {
-    id: "progress", label: "Progress", cellLabel: "Progress", colClassName: "commandSessionColProgress",
+    id: "progress", label: "Progress", cellLabel: "Progress", className: "commandSessionCellProgress", colClassName: "commandSessionColProgress",
     sortValue: (session) => session.progress?.percent,
     renderCell: (session) => <span className="commandTableProgress" title={session.progress ? "Agent-reported session progress" : "Agent-reported session progress is unavailable"}>{session.progress ? Math.round(session.progress.percent) + "%" : "—"}</span>,
   },
@@ -213,11 +220,15 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const filter = selectedFilter ?? (committedSessions.some((session) => session.isLive) ? "live" : "all");
   const [grouping, setGrouping] = useState<SessionGrouping>(storedSessionGrouping);
   const [provider, setProvider] = useState<{ id: ProviderId; label: string } | null>(null);
+  const [feature, setFeature] = useState<{ id: string; label: string } | null>(null);
   const [closedGroups, setClosedGroups] = useState<ReadonlySet<string>>(() => new Set());
-  // A scope that already names one project or provider leaves a single group, so its rows page as a list.
-  const serverGroup = grouping === "project" && !project ? "project" : grouping === "provider" && !provider ? "provider" : null;
-  const columns = useMemo(() => sessionColumns(providers, serverGroup), [providers, serverGroup]);
+  // A scope that already names one project, provider or feature leaves a single group, so its rows page as a list.
+  const serverGroup = grouping === "project" && !project ? "project" : grouping === "provider" && !provider ? "provider" : grouping === "feature" && !feature ? "feature" : null;
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
+  // Task references reach a same-computer client only. The column follows the last answer, so it never appears and goes.
+  const taskReadiness = directory?.taskReadiness;
+  const showTask = taskReadiness === "ready";
+  const columns = useMemo(() => sessionColumns(providers, serverGroup, showTask), [providers, serverGroup, showTask]);
   const [directoryReadAt, setDirectoryReadAt] = useState(0);
   const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
   const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
@@ -233,9 +244,10 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     if (project) params.set("project", project);
     if (repositoryId) params.set("repositoryId", repositoryId);
     if (provider) params.set("provider", provider.id);
+    if (feature) params.set("feature", feature.id);
     if (serverGroup) params.set("group", serverGroup);
     return params.toString();
-  }, [filter, repositoryId, project, provider, query, serverGroup]);
+  }, [feature, filter, repositoryId, project, provider, query, serverGroup]);
   const resetDirectory = () => { setCursor(null); setCursorTrail([]); setCursorPageBase(0); };
   const updateQuery = (value: string) => { setQuery(value); resetDirectory(); };
   const updateFilter = (value: typeof filter) => { setFilter(value); resetDirectory(); };
@@ -288,10 +300,10 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const directoryMatchesQuery = directoryQueryKey === directoryQuery;
   const directoryLoading = !paused && fulfilledPageKey !== `${directoryQuery}\u0000${cursor || ""}`;
   const committedSessionsById = useMemo(() => new Map(committedSessions.map((session) => [session.id, session])), [committedSessions]);
-  const rowGroups = useMemo<CommandTableRowGroup<SessionSummary>[]>(() => {
+  const rowGroups = useMemo<CommandTableRowGroup<SessionDirectoryRow>[]>(() => {
     if (!directoryMatchesQuery || !directory) return [];
     const toggle = (id: string) => () => setClosedGroups((closed) => { const next = new Set(closed); if (!next.delete(id)) next.add(id); return next; });
-    const merged = (sessions: SessionSummary[]) => sessions.map((session) => {
+    const merged = (sessions: SessionDirectoryRow[]) => sessions.map((session) => {
       const committed = committedSessionsById.get(session.id);
       return committed ? { ...session, ...committed } : session;
     });
@@ -299,6 +311,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
       const id = `${serverGroup}:${group.key}`, open = !closedGroups.has(id);
       const showAll = () => {
         if (serverGroup === "project") setProject(group.key);
+        else if (serverGroup === "feature") setFeature({ id: group.key, label: group.label });
         else setProvider({ id: group.key as ProviderId, label: group.label });
         setCursor(null); setCursorTrail([]); setCursorPageBase(0);
       };
@@ -324,7 +337,15 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const counts = directoryMatchesQuery ? directory?.counts : undefined;
   const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
   // An empty page under a search, scope, project, or repository filter is a filtered result, not an empty catalog.
-  const narrowed = Boolean(query.trim() || project || repositoryId || provider || filter !== "all");
+  const narrowed = Boolean(query.trim() || project || repositoryId || provider || feature || filter !== "all");
+  // Grouping by feature lists only sessions started for a feature's task, so an empty answer has its own wording.
+  const featureEmpty = serverGroup === "feature" && directoryMatchesQuery
+    ? taskReadiness === "desktop_only" ? { title: "Features are not shown here", detail: "Task and feature details are shown in the Pomegr desktop app, or in a browser on the same computer." }
+      : taskReadiness === "unavailable" ? { title: "Features are unavailable", detail: "Pomegr could not read the task board." }
+        : !narrowed ? { title: "No feature sessions", detail: "A session appears here once it is started for a task that belongs to a feature." } : null
+    : null;
+  // The filter chip names the feature the monitor resolved; until then, the group it was opened from.
+  const featureName = (directoryMatchesQuery && directory?.feature?.id === feature?.id ? directory?.feature?.name : undefined) ?? feature?.label;
   const liveSessionCount = counts?.live;
   const needsInputCount = counts?.needs;
   const allSessionCount = sessionCountMagnitude(coverage, counts?.all);
@@ -339,6 +360,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
           {project && <button className="commandFilterChip active" type="button" aria-label={`Clear repository filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Repository: {project}<CommandIcon name="close" size="small" /></button>}
           {repositoryId && <RepositoryFilterChip repositoryId={repositoryId} onClear={() => { setRepositoryId(undefined); resetDirectory(); }} />}
           {provider && <button className="commandFilterChip active" type="button" aria-label={`Clear provider filter: ${provider.label}`} onClick={() => { setProvider(null); resetDirectory(); }}>Provider: {provider.label}<CommandIcon name="close" size="small" /></button>}
+          {feature && <button className="commandFilterChip active" type="button" aria-label={`Clear feature filter: ${featureName}`} onClick={() => { setFeature(null); resetDirectory(); }}>Feature: {featureName}<CommandIcon name="close" size="small" /></button>}
           <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={allSessionCount.value} ariaLabel={allSessionCount.label}>All</CommandFilter>
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
@@ -365,12 +387,13 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
             <span className="uiSkeleton commandSessionsSkeletonDetail" />
             <span className="uiSkeleton commandSessionsSkeletonMeta" />
           </div>)}</div>
-        </div> : (catalogUnavailable || directoryUnavailable || paused) && !hasRows ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+        </div> : (catalogUnavailable || directoryUnavailable || paused) && !hasRows ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : featureEmpty ? <CommandEmpty title={featureEmpty.title} detail={featureEmpty.detail} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
       {directoryMatchesQuery && directory && serverGroup && hasRows && groupCount !== undefined && <p className="commandSessionGroupSummary">{groupCount > rowGroups.length
         ? `Showing the ${rowGroups.length} most recent of ${groupCount.toLocaleString("en-US")} ${SESSION_GROUP_NOUNS[serverGroup][1]}. Filter sessions to reach the others.`
-        : `${groupCount} ${SESSION_GROUP_NOUNS[serverGroup][groupCount === 1 ? 0 : 1]} · ${(matchedCount ?? 0).toLocaleString("en-US")} sessions`}</p>}
+        : `${groupCount} ${SESSION_GROUP_NOUNS[serverGroup][groupCount === 1 ? 0 : 1]} · ${(matchedCount ?? 0).toLocaleString("en-US")} sessions`}{serverGroup === "feature" && " · Only sessions started for a feature's task are listed."}</p>}
       {directoryMatchesQuery && directory && !serverGroup && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
+      {showTask && hasRows && <SessionTaskNote />}
       {!hasRows && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
       {(catalogUnavailable || directoryUnavailable) && hasRows && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>

@@ -7,6 +7,7 @@ import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mj
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
+import { serveSessionDirectoryWithTasks, validFeatureQuery } from "./session-directory-tasks.mjs";
 import {
   AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, TASK_ACTION_PATH_PREFIX,
   serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
@@ -363,7 +364,7 @@ export function createRequestHandler({
       try {
         if (runtime.observationActive?.()) {
           if (requestUrl.searchParams.get("mode") === "directory") {
-            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "pageSize", "cursor"]);
+            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "feature", "tasks", "pageSize", "cursor"]);
             const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
             const filter = requestUrl.searchParams.get("filter") || "all";
             const pageSize = requestUrl.searchParams.get("pageSize") || "";
@@ -374,19 +375,21 @@ export function createRequestHandler({
             const cursor = requestUrl.searchParams.get("cursor") || "";
             const provider = requestUrl.searchParams.get("provider") || "";
             const group = requestUrl.searchParams.get("group") || "";
-            if (!oneEach || !["all", "live", "needs"].includes(filter) || !["", "claude", "codex"].includes(provider) || !["", "project", "provider"].includes(group)
+            const feature = requestUrl.searchParams.get("feature") || "";
+            const tasks = requestUrl.searchParams.get("tasks") || "";
+            if (!oneEach || !["all", "live", "needs"].includes(filter) || !["", "claude", "codex"].includes(provider) || !["", "project", "provider", "feature"].includes(group)
+              || !validFeatureQuery(feature) || !["", "1"].includes(tasks)
               || (pageSize && !/^(?:[1-9]|[1-9][0-9]|100)$/.test(pageSize)) || !boundedText(query, 120)
               || !boundedText(project, 160) || !boundedText(repositoryId, 160) || !/^[A-Za-z0-9_-]{0,256}$/u.test(cursor)) {
               response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
             }
-            const page = runtime.serveSessionDirectory?.({
-              query, filter, project, repositoryId, provider, group, pageSize: pageSize ? Number(pageSize) : 25, cursor,
-            });
+            // Task references are joined here from the task store, for a same-computer client the proxy marked.
+            const page = serveSessionDirectoryWithTasks({ runtime, taskStore, allowed: tasks === "1" && sameComputerRead, feature, groupFeature: group === "feature",
+              query: { query, filter, project, repositoryId, provider, group: group === "feature" ? "" : group, pageSize: pageSize ? Number(pageSize) : 25, cursor } });
             response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
               "X-Pomegr-Revision": String(page?.revision ?? 0), ETag: `"${page?.revision ?? 0}"` });
-            response.end(JSON.stringify(page || { revision: 0, sessions: [], matchedCount: 0, counts: { all: 0, live: 0, needs: 0 }, pageSize: 25, nextCursor: null,
-              coverage: { status: "discovering", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: null, lastCompletedAt: null } }));
+            response.end(JSON.stringify(page));
             return;
           }
           const safeId = (value) => Boolean(parseProviderSessionId(value));

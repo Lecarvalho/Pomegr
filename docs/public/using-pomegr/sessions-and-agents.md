@@ -21,9 +21,18 @@ not whether the work succeeded.
    sessions first under the day they started. **Repository** and **Provider** show
    one group per repository or coding tool, with its newest sessions; select
    **Show all** in a group to list every session in it. Select a group heading
-   to collapse it. Pomegr remembers the choice in this browser.
+   to collapse it. **Feature** shows one group per feature, with the sessions
+   Pomegr started for that feature's tasks; other sessions are not listed.
+   **Show all** in a feature group adds a **Feature** chip. Pomegr remembers the
+   choice in this browser.
 4. Read a row, then select its title to open the session. A list shows 25 rows
    per page; use **Previous** and **Next**.
+5. Read the **Task** column to see the task a session was started for: its ID,
+   and its feature and step. Select the ID to open that repository's task board.
+   A dash means you started the session yourself. A chip appears only for an
+   outcome the session cannot show: **Needs review**, **Stalled**, or **Done**.
+   The column and feature details are shown in the desktop app and in a browser
+   on the same computer, not on another device.
 
 ![The Sessions list in dark theme, filtered to the Pomegr project and the text Claude Code with All selected, showing four Claude Code sessions with their State, Last activity, Agents, and Context columns; one is In progress with 2/25 agents.](../images/sessions-and-agents/sessions-list.jpg)
 

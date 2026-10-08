@@ -9,6 +9,24 @@ const MEMORY_MAX = 256;
 const GROUP_MAX = 20;
 const GROUP_ROWS = 5;
 const GROUP_COLUMNS = { project: "project", provider: "provider" };
+// A caller may narrow a query to a set of session IDs, or group by a caller-supplied session-to-group map (`group: "set"`).
+// Both are bounded, validated IDs passed to SQLite as one JSON parameter, so the statement text stays fixed.
+const SET_MAX = 2000;
+const SESSION_KEY_SQL = "provider || ':' || local_id";
+const SET_FROM = `session_catalog_headers JOIN json_each(?) AS link ON link.key = ${SESSION_KEY_SQL}`;
+const sessionIdList = (value) => Array.isArray(value)
+  ? [...new Set(value.filter((id) => typeof id === "string" && parseProviderSessionId(id)))].slice(0, SET_MAX).sort() : null;
+function sessionSets(value) {
+  if (!(value?.members instanceof Map)) return null;
+  const members = new Map(), labels = new Map();
+  for (const [id, groupKey] of value.members) {
+    if (members.size >= SET_MAX) break;
+    if (typeof id !== "string" || !parseProviderSessionId(id) || typeof groupKey !== "string" || !groupKey || groupKey.length > 160) continue;
+    members.set(id, groupKey);
+    labels.set(groupKey, clean(value.labels?.get?.(groupKey), 160) || groupKey);
+  }
+  return { members, labels };
+}
 const NEEDS_SQL = "(needs_input = 1 OR activity_status = 'needs_input')";
 const needsOf = (row) => Boolean(row.needsInput) || row.activityStatus === "needs_input";
 const SOURCES = { claude: "Claude Code", codex: "Codex" };
@@ -47,6 +65,10 @@ function queryParts(query) {
   const scope = { query: clean(query.query, 120).toLowerCase(), filter: ["live", "needs"].includes(query.filter) ? query.filter : "all",
     project: clean(query.project, 160), repositoryId: clean(query.repositoryId, 160), pageSize,
     provider: SOURCES[query.provider] ? query.provider : "", group: GROUP_COLUMNS[query.group] ? query.group : "" };
+  const sessionIds = sessionIdList(query.sessionIds);
+  const sets = query.group === "set" ? sessionSets(query.sets) : null;
+  if (sessionIds) scope.sessionIds = sessionIds;
+  if (sets) scope.group = "set";
   const hash = createHash("sha256").update(JSON.stringify(scope)).digest("hex").slice(0, 24);
   const where = [], args = [];
   if (scope.provider) { where.push("provider = ?"); args.push(scope.provider); }
@@ -55,11 +77,13 @@ function queryParts(query) {
   if (scope.repositoryId) { where.push("repository_id = ?"); args.push(scope.repositoryId); }
   if (scope.filter === "live") where.push("is_live = 1");
   if (scope.filter === "needs") where.push(NEEDS_SQL);
-  return { scope, hash, where: where.length ? ` WHERE ${where.join(" AND ")}` : "", args };
+  if (sessionIds) { where.push(`${SESSION_KEY_SQL} IN (SELECT value FROM json_each(?))`); args.push(JSON.stringify(sessionIds)); }
+  return { scope, hash, where: where.length ? ` WHERE ${where.join(" AND ")}` : "", args, sets };
 }
 const matchesScope = (scope) => (row) => (!scope.query || `${row.title} ${row.project} ${SOURCES[row.provider]}`.toLowerCase().includes(scope.query))
   && (!scope.provider || row.provider === scope.provider) && (!scope.project || row.project === scope.project)
-  && (!scope.repositoryId || row.repositoryId === scope.repositoryId) && (scope.filter !== "live" || row.isLive) && (scope.filter !== "needs" || needsOf(row));
+  && (!scope.repositoryId || row.repositoryId === scope.repositoryId) && (scope.filter !== "live" || row.isLive) && (scope.filter !== "needs" || needsOf(row))
+  && (!scope.sessionIds || scope.sessionIds.includes(key(row)));
 
 /** A committed normalized index. Only mutation methods initialize or write SQLite. */
 export function createSessionCatalogInventory({ store = () => null, now = Date.now, providers = [], scopeKey: initialScopeKey = "", maxMemoryRows = MEMORY_MAX } = {}) {
@@ -289,22 +313,27 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
   // session and rows inside a group keep the directory's newest-created order, so live updates never
   // reorder either. The response is bounded
   // to GROUP_MAX groups of GROUP_ROWS rows and has no cursor: a group's remaining rows are read by
-  // narrowing the ordinary paged directory to that project or provider.
-  function groupedDirectory(scope,where,args) {
-    const column=GROUP_COLUMNS[scope.group];
+  // narrowing the ordinary paged directory to that project or provider. A `set` grouping uses the
+  // caller's session-to-group map instead of a column: only mapped sessions are grouped or counted.
+  function groupedDirectory(scope,where,whereArgs,sets) {
+    const column=sets?"link.value":GROUP_COLUMNS[scope.group];
+    const from=sets?SET_FROM:"session_catalog_headers";
+    const args=sets?[JSON.stringify(Object.fromEntries(sets.members)),...whereArgs]:whereArgs;
+    const groupKeyOf=sets?(row)=>sets.members.get(key(row)):(row)=>row[column];
     let summaries,groupCount,matchedCount;
     if (database) {
-      matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
-      groupCount=Number(preparedStatement(database, `SELECT COUNT(DISTINCT ${column}) AS n FROM session_catalog_headers${where}`).get(...args).n);
-      const rowsFor=preparedStatement(database, `SELECT ${COLUMNS} FROM session_catalog_headers${where}${where?" AND":" WHERE"} ${column} = ? ORDER BY ${ORDER} LIMIT ?`);
+      matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM ${from}${where}`).get(...args).n);
+      groupCount=Number(preparedStatement(database, `SELECT COUNT(DISTINCT ${column}) AS n FROM ${from}${where}`).get(...args).n);
+      const rowsFor=preparedStatement(database, `SELECT ${COLUMNS} FROM ${from}${where}${where?" AND":" WHERE"} ${column} = ? ORDER BY ${ORDER} LIMIT ?`);
       summaries=preparedStatement(database, `SELECT ${column} AS groupKey,COUNT(*) AS n,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs,MAX(updated_ms) AS latestMs,MAX(created_ms) AS newestMs
-        FROM session_catalog_headers${where} GROUP BY ${column} ORDER BY newestMs DESC,${column} LIMIT ?`).all(...args,GROUP_MAX)
+        FROM ${from}${where} GROUP BY ${column} ORDER BY newestMs DESC,${column} LIMIT ?`).all(...args,GROUP_MAX)
         .map(group=>({key:group.groupKey,count:Number(group.n),live:Number(group.live),needs:Number(group.needs),latestMs:Number(group.latestMs),rows:rowsFor.all(...args,group.groupKey,GROUP_ROWS)}));
     } else {
       const byKey=new Map();
-      const matches=[...memory.values()].filter(matchesScope(scope)).map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
+      const matches=[...memory.values()].filter(matchesScope(scope)).filter(row=>groupKeyOf(row)!==undefined).map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
       for (const row of matches) {
-        const group=byKey.get(row[column])||{key:row[column],count:0,live:0,needs:0,latestMs:0,newestMs:row.createdMs,rows:[]};
+        const groupKey=groupKeyOf(row);
+        const group=byKey.get(groupKey)||{key:groupKey,count:0,live:0,needs:0,latestMs:0,newestMs:row.createdMs,rows:[]};
         group.count+=1; group.live+=row.isLive?1:0; group.needs+=needsOf(row)?1:0; group.latestMs=Math.max(group.latestMs,Date.parse(row.updatedAt)||0);
         if (group.rows.length<GROUP_ROWS) group.rows.push(row);
         byKey.set(group.key,group);
@@ -314,11 +343,11 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     }
     const facts=coverage();
     return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:[],matchedCount,counts:tallies(),pageSize:scope.pageSize,nextCursor:null,
-      groupBy:scope.group,groupCount,groups:summaries.map(group=>({key:group.key,label:column==="provider"?SOURCES[group.key]:group.key,count:group.count,live:group.live,needs:group.needs,
+      groupBy:scope.group,groupCount,groups:summaries.map(group=>({key:group.key,label:sets?sets.labels.get(group.key)||group.key:column==="provider"?SOURCES[group.key]:group.key,count:group.count,live:group.live,needs:group.needs,
         latestUpdatedAt:group.latestMs>0?new Date(group.latestMs).toISOString():null,sessions:group.rows.map(toPublic)}))};
   }
   function directory(query={}) {
-    const {scope,hash,where,args}=queryParts(query);
+    const {scope,hash,where,args,sets}=queryParts(query);
     // Keyset cursors name the last row's creation position, so live updates and newly
     // created sessions never move a later page; new sessions appear only on the first page.
     let after=null,cursorReset=false;
@@ -330,7 +359,7 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       else after={createdMs:cursor[1],provider:cursor[2],localId:cursor[3]};
     }
     let rows,matchedCount,counts;
-    if (scope.group) return groupedDirectory(scope,where,args);
+    if (scope.group) return groupedDirectory(scope,where,args,sets);
     if (database) {
       matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
       counts=tallies();

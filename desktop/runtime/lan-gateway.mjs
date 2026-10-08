@@ -338,7 +338,9 @@ export async function startLanGateway(options = {}) {
       if (url.search || hasBody) { fixed(response, 403); return; }
     }
     if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
-    const headers = { host: upstream.host, "x-pomegr-desktop-authorization": options.authorizationToken };
+    // The upstream sees a loopback host, so every forwarded request is marked: a route that serves same-computer
+    // content (the Sessions list's task references) refuses a marked request. Client headers pass only by allowlist.
+    const headers = { host: upstream.host, "x-pomegr-desktop-authorization": options.authorizationToken, "x-pomegr-lan-gateway": "1" };
     for (const [name, value] of Object.entries(request.headers)) {
       if (!REQUEST_HEADERS.has(name) || typeof value !== "string" || value.length > 4096 || /[\r\n]/.test(value)) continue;
       headers[name] = value;
