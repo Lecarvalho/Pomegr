@@ -587,8 +587,7 @@ export function createNormalizedPollingObserver(options) {
     const sourceEventAt = monotonicNow();
     // A notification that moved neither the file's size nor its modification time (a
     // last-access update caused by a read, on Windows) is not a source event at all.
-    const written = await sourceWrites.classify(change);
-    if (stopped || signal?.aborted) return;
+    const written = sourceWrites.classify(change);
     if (written === "unchanged") {
       qa.unchangedSourceEvents += 1;
       return;

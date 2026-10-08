@@ -376,8 +376,6 @@ test("catalog-event bursts coalesce discovery and hydrate departures against the
     async ingest(id, _publisher, prepared) { hydrated.push(prepared.get(id)); return null; },
     shouldEagerHydrate: () => false,
     routeSourceEvent: () => ({ catalog: true, afterCatalog: true, sessionIds: ["one"] }),
-    // Settles in the notification's own turn, so the burst below stays one burst.
-    async statSource() { throw new Error("synthetic index is not a file"); },
     sourceCatalogIntervalMs: 0,
     watchTargets: ["synthetic-index"],
     watchSource(_target, _options, callback) { wake = callback; return { close() {} }; },
@@ -505,7 +503,7 @@ async function observeNotifiedFiles(context, files, { blockBackground = false } 
     routeSourceEvent: ({ filename }) => ({ catalog: false, sessionIds: [path.basename(String(filename), ".jsonl")], sourceKnown: true }),
     watchTargets: ["synthetic-sources"],
     watchSource(_target, _options, callback) { wake = callback; return { close() {} }; },
-    async statSource(file) {
+    statSource(file) {
       const info = files.get(path.basename(file));
       if (!info) throw new Error("missing");
       return { ...info, isFile: () => true };

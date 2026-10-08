@@ -87,8 +87,13 @@ test("selected historical sessions recover after eviction without rebuilding unc
   await waitFor(() => observer.diagnostics().activeHydrations === 0);
   const attempts = observer.diagnostics().hydrationAttempts;
   watcher.emit("change", path.basename(fixture));
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(observer.diagnostics().unchangedSourceEvents, 1, "a change that moved neither size nor modification time is not routed");
+  assert.equal(observer.diagnostics().hydrationAttempts, attempts);
+  // A rename is routed without that check and reaches both sessions that read the file.
+  watcher.emit("rename", path.basename(fixture));
   await waitFor(() => observer.diagnostics().hydrationAttempts >= attempts + 2 && observer.diagnostics().activeHydrations === 0);
-  assert.equal(reads, 2, "ordinary notifications do not rebuild evicted unchanged history");
+  assert.equal(reads, 2, "routed notifications do not rebuild evicted unchanged history");
 
   assert.equal(coordinator.session("claude:one", original.revision).status, "loading");
   assert.equal(reads, 2);

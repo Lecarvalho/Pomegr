@@ -9,7 +9,7 @@ const target = path.resolve("synthetic-sources");
 function classifier(files, options = {}) {
   return createSourceWriteClassifier({
     now: () => START,
-    async stat(file) {
+    stat(file) {
       const info = files.get(path.basename(file));
       if (!info) throw Object.assign(new Error("missing"), { code: "ENOENT" });
       return { size: info.size, mtimeMs: info.mtimeMs, isFile: () => info.directory !== true };
@@ -19,47 +19,47 @@ function classifier(files, options = {}) {
 }
 const change = (filename) => ({ target, filename, eventType: "change" });
 
-test("a first notification is a write only when the file was modified after the classifier started", async () => {
+test("a first notification is a write only when the file was modified after the classifier started", () => {
   const files = new Map([
     ["old.jsonl", { size: 10, mtimeMs: START - 3_600_000 }],
     ["new.jsonl", { size: 10, mtimeMs: START + 5 }],
     ["just-before.jsonl", { size: 10, mtimeMs: START - 1_500 }],
   ]);
   const writes = classifier(files);
-  assert.equal(await writes.classify(change("old.jsonl")), "unchanged");
-  assert.equal(await writes.classify(change("new.jsonl")), "written");
-  assert.equal(await writes.classify(change("just-before.jsonl")), "written");
+  assert.equal(writes.classify(change("old.jsonl")), "unchanged");
+  assert.equal(writes.classify(change("new.jsonl")), "written");
+  assert.equal(writes.classify(change("just-before.jsonl")), "written");
 });
 
-test("a later notification is a write only when size or modification time moved", async () => {
+test("a later notification is a write only when size or modification time moved", () => {
   const files = new Map([["one.jsonl", { size: 10, mtimeMs: START - 3_600_000 }]]);
   const writes = classifier(files);
-  assert.equal(await writes.classify(change("one.jsonl")), "unchanged");
-  assert.equal(await writes.classify(change("one.jsonl")), "unchanged", "a repeated access-only notification");
+  assert.equal(writes.classify(change("one.jsonl")), "unchanged");
+  assert.equal(writes.classify(change("one.jsonl")), "unchanged", "a repeated access-only notification");
   files.set("one.jsonl", { size: 25, mtimeMs: START - 3_600_000 });
-  assert.equal(await writes.classify(change("one.jsonl")), "written", "growth with an unmoved modification time");
+  assert.equal(writes.classify(change("one.jsonl")), "written", "growth with an unmoved modification time");
   files.set("one.jsonl", { size: 25, mtimeMs: START + 10 });
-  assert.equal(await writes.classify(change("one.jsonl")), "written", "a rewrite at the same size");
-  assert.equal(await writes.classify(change("one.jsonl")), "unchanged", "the second notification of one write");
+  assert.equal(writes.classify(change("one.jsonl")), "written", "a rewrite at the same size");
+  assert.equal(writes.classify(change("one.jsonl")), "unchanged", "the second notification of one write");
 });
 
-test("anything that is not a change to a readable regular file is left unverified", async () => {
+test("anything that is not a change to a readable regular file is left unverified", () => {
   const files = new Map([
     ["one.jsonl", { size: 10, mtimeMs: START - 3_600_000 }],
     ["folder", { size: 0, mtimeMs: START - 3_600_000, directory: true }],
   ]);
   const writes = classifier(files);
-  assert.equal(await writes.classify({ target, filename: "one.jsonl", eventType: "rename" }), "unverified");
-  assert.equal(await writes.classify({ target, filename: null, eventType: "change" }), "unverified");
-  assert.equal(await writes.classify(change("missing.jsonl")), "unverified");
-  assert.equal(await writes.classify(change("folder")), "unverified");
-  assert.equal(await writes.classify(), "unverified");
+  assert.equal(writes.classify({ target, filename: "one.jsonl", eventType: "rename" }), "unverified");
+  assert.equal(writes.classify({ target, filename: null, eventType: "change" }), "unverified");
+  assert.equal(writes.classify(change("missing.jsonl")), "unverified");
+  assert.equal(writes.classify(change("folder")), "unverified");
+  assert.equal(writes.classify(), "unverified");
 });
 
-test("the tracked set is bounded and forgets the least recently notified file", async () => {
+test("the tracked set is bounded and forgets the least recently notified file", () => {
   const files = new Map(["a", "b", "c"].map((name) => [name, { size: 1, mtimeMs: START + 1 }]));
   const writes = classifier(files, { maxEntries: 2 });
-  for (const name of ["a", "b", "c"]) assert.equal(await writes.classify(change(name)), "written");
-  assert.equal(await writes.classify(change("b")), "unchanged", "still tracked");
-  assert.equal(await writes.classify(change("a")), "written", "forgotten, so judged again as a first notification");
+  for (const name of ["a", "b", "c"]) assert.equal(writes.classify(change(name)), "written");
+  assert.equal(writes.classify(change("b")), "unchanged", "still tracked");
+  assert.equal(writes.classify(change("a")), "written", "forgotten, so judged again as a first notification");
 });

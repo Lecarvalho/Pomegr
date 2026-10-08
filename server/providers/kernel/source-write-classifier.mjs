@@ -16,24 +16,25 @@ const START_SLACK_MS = 2_000;
  * a file not notified before, it was modified after this classifier started. `unchanged`:
  * neither moved. `unverified`: not a `change` for a readable regular file, so the caller
  * keeps its ordinary routing. Only sizes and modification times are held, for a bounded
- * number of files, in memory.
+ * number of files, in memory. The stat is synchronous so a notification is judged in the
+ * turn it arrives and a burst keeps its order.
  */
-export function createSourceWriteClassifier({ stat = fs.promises.stat, now = Date.now, maxEntries = MAX_TRACKED_SOURCES } = {}) {
+export function createSourceWriteClassifier({ stat = (file) => fs.statSync(file, { throwIfNoEntry: false }), now = Date.now, maxEntries = MAX_TRACKED_SOURCES } = {}) {
   const seen = new Map();
   const startedAt = now();
   const keyOf = (file) => (process.platform === "win32" ? file.toLowerCase() : file);
   return Object.freeze({
     /**
      * @param {{target?: string, filename?: string | null, eventType?: string}} [change]
-     * @returns {Promise<"written" | "unchanged" | "unverified">}
+     * @returns {"written" | "unchanged" | "unverified"}
      */
-    async classify({ target, filename, eventType } = {}) {
+    classify({ target, filename, eventType } = {}) {
       if (eventType !== "change" || typeof target !== "string" || typeof filename !== "string" || !filename) return "unverified";
       let file;
       let info;
       try {
         file = path.resolve(target, filename);
-        info = await stat(file);
+        info = stat(file);
       } catch { return "unverified"; }
       if (!info || typeof info.isFile !== "function" || !info.isFile()
         || !Number.isFinite(info.size) || !Number.isFinite(info.mtimeMs)) return "unverified";
