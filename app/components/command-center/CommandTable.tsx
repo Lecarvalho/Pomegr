@@ -18,6 +18,16 @@ export type CommandTableColumn<Row> = {
   cellLabel?: string;
 };
 
+/** One labeled section of rows. The caller owns order and collapse: pass no rows for a collapsed group. */
+export type CommandTableRowGroup<Row> = {
+  key: Key;
+  /** Rendered in a full-width row-group header cell above the group's rows. */
+  header: ReactNode;
+  rows: readonly Row[];
+  /** Optional full-width row after the group's rows, such as a "Show all" link. */
+  footer?: ReactNode;
+};
+
 type CommandTableProps<Row> = {
   caption: string;
   rows: readonly Row[];
@@ -25,6 +35,8 @@ type CommandTableProps<Row> = {
   getRowKey: (row: Row) => Key;
   className?: string;
   emptyState?: ReactNode;
+  /** Renders these sections in the caller's order instead of `rows`; sorting and pagination do not apply. */
+  rowGroups?: readonly CommandTableRowGroup<Row>[];
   /** Pass a positive pageSize; the caller resets page when its filters change. */
   pagination?: { page: number; pageSize: number; onPageChange: (page: number) => void; label?: string };
 };
@@ -34,7 +46,7 @@ function availableValue(value: SortValue) {
 }
 
 /** Sorts before optional pagination; ties retain input order. See docs/internal/development/command-table.md. */
-export function CommandTable<Row>({ caption, rows, columns, getRowKey, className = "", emptyState = <p className="commandUnavailableNote">No rows to display.</p>, pagination }: CommandTableProps<Row>) {
+export function CommandTable<Row>({ caption, rows, columns, getRowKey, className = "", emptyState = <p className="commandUnavailableNote">No rows to display.</p>, pagination, rowGroups }: CommandTableProps<Row>) {
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection } | null>(null);
   const sortColumn = columns.find((column) => column.id === sort?.columnId && column.sortValue);
   const orderedRows = useMemo(() => {
@@ -61,7 +73,8 @@ export function CommandTable<Row>({ caption, rows, columns, getRowKey, className
   };
 
   // Keep sorting state while the caller's filters temporarily return no rows.
-  if (!rows.length) return emptyState;
+  if (rowGroups ? !rowGroups.length : !rows.length) return emptyState;
+  const renderRow = (row: Row) => <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.id} className={column.className} data-label={column.cellLabel}>{column.renderCell(row)}</td>)}</tr>;
 
   return <>
     <div className="commandTableWrap">
@@ -79,10 +92,14 @@ export function CommandTable<Row>({ caption, rows, columns, getRowKey, className
             </button> : <span className={column.hideLabel ? "commandVisuallyHidden" : undefined}>{column.label}</span>}
           </th>;
         })}</tr></thead>
-        <tbody>{visibleRows.map((row) => <tr key={getRowKey(row)}>{columns.map((column) => <td key={column.id} className={column.className} data-label={column.cellLabel}>{column.renderCell(row)}</td>)}</tr>)}</tbody>
+        {rowGroups ? rowGroups.map((group) => <tbody key={group.key}>
+          <tr className="commandTableGroupRow"><th scope="rowgroup" colSpan={columns.length}>{group.header}</th></tr>
+          {group.rows.map(renderRow)}
+          {group.footer && <tr className="commandTableGroupFooter"><td colSpan={columns.length}>{group.footer}</td></tr>}
+        </tbody>) : <tbody>{visibleRows.map(renderRow)}</tbody>}
       </table>
     </div>
-    {pagination && pageCount > 1 && <nav className="commandPagination" aria-label={pagination.label ?? caption + " pages"}>
+    {pagination && !rowGroups && pageCount > 1 && <nav className="commandPagination" aria-label={pagination.label ?? caption + " pages"}>
       <span className="commandPaginationSummary">Showing {firstVisibleIndex + 1}–{Math.min(firstVisibleIndex + pageSize, rows.length)} of {rows.length}</span>
       <div className="commandPaginationControls">
         <button className="commandSecondaryAction" type="button" onClick={() => pagination.onPageChange(activePage - 1)} disabled={activePage === 1}>Previous</button>

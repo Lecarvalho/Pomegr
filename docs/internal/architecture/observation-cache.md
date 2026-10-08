@@ -2058,7 +2058,14 @@ selection without materializing the complete inventory in memory. A cursor binds
 query and names the last row's creation position (keyset), not an offset or revision, so
 live-status updates and newly created sessions never move a later page; new sessions
 appear only on the first page. A cursor for another query or a malformed cursor restarts
-at the first page. The directory never receives a global
+at the first page. An optional `provider` scope (`claude` or `codex`) narrows a page like the
+project scope. `group=project` or `group=provider` returns groups instead of a row page: at
+most 20 groups ordered by their newest recorded update, each with its scoped session, live,
+and needs-input counts, that newest update time, and its 5 newest-created rows, plus the
+total group count. A grouped response has no cursor; the browser reads the rest of a group
+by requesting the ordinary paged directory with that project or provider scope. Groups
+expose only fields the rows already carry and are read from the same committed inventory
+with SQLite aggregation. The directory never receives a global
 session array. The default catalog response is a separate small shell feed for live,
 needs-input, pinned, and selected destinations, capped at 200 rows; its length is not
 the inventory total. Header scans use batches of at most 100 rows and repeat on a
@@ -2465,7 +2472,7 @@ from fixture operation-count tests.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
+| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages (or bounded project/provider groups) from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |
@@ -2944,7 +2951,7 @@ A `204` retains that query's body and restores connectivity after a transient fa
 | Consumer | Refresh and recovery |
 | --- | --- |
 | Catalog/sidebar | Revision events; 30 seconds connected, 5 seconds reconnecting, 30 seconds hidden; 1 second while initially loading |
-| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; **Pause live refresh** stops refresh; query changes reset the bounded cursor trail |
+| Sessions directory | Catalog revision events and a 30-second visible / 60-second hidden fallback; **Pause live refresh** stops refresh; query and grouping changes reset the bounded cursor trail; the grouping choice is a browser-local preference |
 | Selected live session (`/api/state` compatibility) | Matching session-domain or catalog events; the same 30/5/30-second fallback; 1 second while unresolved |
 | Mounted session domain (`/api/session-domain`) | One exact-query browser entry per session/domain/agent; current plus two recent session IDs retained; matching domain events and the 30/5/30-second live fallback; 1 second while unresolved |
 | Live Activity and Requests history | Matching history events and the same 30/5/30-second fallback; explicit navigation fetches the selected query |

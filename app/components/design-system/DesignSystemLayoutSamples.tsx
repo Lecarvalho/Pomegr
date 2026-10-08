@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CommandTable, type CommandTableColumn } from "../command-center/CommandTable";
-import { CommandEmpty } from "../command-center/CommandPage";
+import { CommandEmpty, CommandIcon, CommandStatus } from "../command-center/CommandPage";
 import { Sample, Section } from "./DesignSystemKit";
 
 // Fixed display strings keep server and client markup identical regardless of time zone.
@@ -32,6 +32,11 @@ export function CommandTableSection() {
   return <Section id="command-table" title="Command table" lede="CommandTable is the shared table: a sortable header per column, an optional pagination footer, and a caller-supplied empty state. Sorting runs before pagination and keeps missing values last in either direction.">
     <CommandTable caption="Sample sessions" className="designSystemTable" rows={TABLE_ROWS} columns={TABLE_COLUMNS} getRowKey={rowKey} pagination={{ page, pageSize: 4, onPageChange: setPage, label: "Sample session pages" }} />
     <p className="designSystemNote">Sortable headers start unsorted with a two-arrow glyph. The first click sorts descending, the next ascending, and the active header takes ink text, a single-arrow glyph, and aria-sort; Status has no sort value, so it stays a plain header. Focus draws an inset ring. The footer summarizes the visible range with Previous, page numbers (aria-current on the current page), and Next as secondary actions, and appears only with more than one page. At 760px and narrower it stacks into full-width Previous and Next with a Page N of M line. The table scrolls inside its frame when it is wider than its container.</p>
+    <CommandTable caption="Grouped sample sessions" className="designSystemTable" rows={[]} columns={TABLE_COLUMNS.map((column) => ({ ...column, sortValue: undefined }))} getRowKey={rowKey} rowGroups={[
+      { key: "open", header: <button className="commandQuietAction commandSessionGroupToggle" type="button" aria-expanded="true"><CommandIcon name="chevron" size="small" /><strong>pomegr</strong><span className="commandSessionGroupCount">7 sessions</span><CommandStatus state="active">2 live</CommandStatus><CommandStatus state="attention">1 needs input</CommandStatus><span className="commandSessionGroupLatest">Updated 2m ago</span></button>, rows: TABLE_ROWS.slice(0, 2), footer: <button className="commandTextLink" type="button">Show all 7 in pomegr</button> },
+      { key: "closed", header: <button className="commandQuietAction commandSessionGroupToggle" type="button" aria-expanded="false"><CommandIcon name="chevron" size="small" /><strong>catalogus</strong><span className="commandSessionGroupCount">3 sessions</span><span className="commandSessionGroupLatest">Updated 1h ago</span></button>, rows: [] },
+    ]} />
+    <p className="designSystemNote">Row groups replace the flat body with one section per group, in the caller&apos;s order, without sorting or pagination. Each section opens with a full-width header cell holding a quiet toggle: a chevron that turns when open, the group name, data-font counts, live and needs-input status only when present, and the newest update on the right. A collapsed group keeps its header and drops its rows. A group with more rows than it shows ends in one text link.</p>
     <div className="designSystemGrid">
       <Sample label="Empty · default" note="Without emptyState the table renders the quiet unavailable note.">
         <CommandTable caption="Empty sample" rows={[]} columns={TABLE_COLUMNS} getRowKey={rowKey} />

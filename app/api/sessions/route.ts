@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   // This route intentionally forwards only the bounded catalog query vocabulary.  The
   // monitor owns validation and cursor binding, but preserving this small allowlist
   // prevents the browser proxy from becoming a generic loopback query relay.
-  for (const key of ["mode", "query", "filter", "project", "repositoryId", "pageSize", "cursor", "revision", "selected", "pinned"]) {
+  for (const key of ["mode", "query", "filter", "project", "repositoryId", "provider", "group", "pageSize", "cursor", "revision", "selected", "pinned"]) {
     const value = requestUrl.searchParams.get(key);
     if (value !== null && value !== "") monitorParams.set(key, value);
   }

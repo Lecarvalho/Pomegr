@@ -327,3 +327,42 @@ test("a repeated header or lifecycle pass writes no row and keeps the revision, 
   assert.equal(inventory.coverage().exactTotal,3);
   assert.equal(stored(1).title,"Renamed");
 });
+
+test("grouped directory returns bounded project and provider groups from committed rows",async(t)=>{
+  const {inventory,store}=await fixture(t);
+  load(inventory,"codex",40);load(inventory,"claude",12);
+  inventory.updateHeaders("codex",[row(10,{isLive:true,needsInput:true,activityStatus:"needs_input"})]);
+  const before=store.database.prepare("SELECT total_changes() AS n").get().n;
+  const projects=inventory.directory({group:"project"});
+  assert.equal(projects.groupBy,"project");assert.equal(projects.groupCount,2);assert.equal(projects.matchedCount,52);
+  assert.deepEqual(projects.sessions,[]);assert.equal(projects.nextCursor,null);
+  // Groups follow their newest recorded update: session-39 is odd, so Other leads.
+  assert.deepEqual(projects.groups.map((group)=>[group.key,group.label,group.count]),[["Other","Other",26],["Pomegr","Pomegr",26]]);
+  const pomegr=projects.groups[1];
+  assert.equal(pomegr.live,1);assert.equal(pomegr.needs,1);assert.equal(pomegr.latestUpdatedAt,row(38).updatedAt);
+  assert.deepEqual(pomegr.sessions.map((session)=>session.id),["codex:session-38","codex:session-36","codex:session-34","codex:session-32","codex:session-30"]);
+  const providers=inventory.directory({group:"provider"});
+  assert.deepEqual(providers.groups.map((group)=>[group.key,group.label,group.count,group.sessions.length]),[["codex","Codex",40,5],["claude","Claude Code",12,5]]);
+  assert.deepEqual(inventory.directory({group:"provider",filter:"live"}).groups.map((group)=>[group.key,group.count]),[["codex",1]]);
+  assert.deepEqual(inventory.directory({group:"project",query:"Session 00011"}).groups.map((group)=>[group.key,group.count]),[["Other",2]]);
+  // The provider scope narrows the ordinary paged directory to one group's rows.
+  const claude=inventory.directory({provider:"claude",pageSize:5});
+  assert.equal(claude.matchedCount,12);assert.equal(claude.groups,undefined);assert.ok(claude.sessions.every((session)=>session.provider==="claude"));
+  assert.equal(inventory.directory({provider:"claude",pageSize:5,cursor:claude.nextCursor}).sessions[0].id,"claude:session-6");
+  assert.equal(inventory.directory({provider:"SECRET",group:"SECRET"}).matchedCount,52);
+  assert.equal(store.database.prepare("SELECT total_changes() AS n").get().n,before);
+});
+
+test("grouped directory bounds the group list and matches the memory fallback",async(t)=>{
+  const {inventory}=await fixture(t);
+  const token=inventory.beginProvider("codex");
+  inventory.upsertHeaders("codex",Array.from({length:30},(_,index)=>row(index,{project:`Project ${String(index).padStart(2,"0")}`})),token);
+  inventory.finishProvider("codex",token,{complete:true});load(inventory,"claude",0);
+  const grouped=inventory.directory({group:"project"});
+  assert.equal(grouped.groupCount,30);assert.equal(grouped.groups.length,20);assert.equal(grouped.groups[0].key,"Project 29");
+  const memory=createSessionCatalogInventory({providers:["codex"]});
+  memory.updateHeaders("codex",Array.from({length:8},(_,index)=>row(index)));
+  const fallback=memory.directory({group:"project"});
+  assert.deepEqual(fallback.groups.map((group)=>[group.key,group.count,group.sessions.map((session)=>session.id)]),
+    [["Other",4,["codex:session-7","codex:session-5","codex:session-3","codex:session-1"]],["Pomegr",4,["codex:session-6","codex:session-4","codex:session-2","codex:session-0"]]]);
+});

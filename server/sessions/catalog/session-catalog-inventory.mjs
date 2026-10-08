@@ -5,6 +5,12 @@ import { rowSummaryFields, sanitizeRowSummary } from "./session-catalog-row.mjs"
 
 const PAGE_MAX = 100;
 const MEMORY_MAX = 256;
+// A grouped directory response holds at most GROUP_MAX groups of GROUP_ROWS rows each.
+const GROUP_MAX = 20;
+const GROUP_ROWS = 5;
+const GROUP_COLUMNS = { project: "project", provider: "provider" };
+const NEEDS_SQL = "(needs_input = 1 OR activity_status = 'needs_input')";
+const needsOf = (row) => Boolean(row.needsInput) || row.activityStatus === "needs_input";
 const SOURCES = { claude: "Claude Code", codex: "Codex" };
 const ACTIVITY = new Set(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
 const COLUMNS = "provider,local_id AS localId,title,project,created_at AS createdAt,updated_at AS updatedAt,is_live AS isLive,needs_input AS needsInput,activity_status AS activityStatus,settled_status AS settledStatus,repository_id AS repositoryId,summary_json AS summaryJson";
@@ -39,16 +45,21 @@ function publicRow(row, activityStatus = row.activityStatus) {
 function queryParts(query) {
   const pageSize = Math.max(1, Math.min(PAGE_MAX, Math.trunc(Number(query.pageSize) || 25)));
   const scope = { query: clean(query.query, 120).toLowerCase(), filter: ["live", "needs"].includes(query.filter) ? query.filter : "all",
-    project: clean(query.project, 160), repositoryId: clean(query.repositoryId, 160), pageSize };
+    project: clean(query.project, 160), repositoryId: clean(query.repositoryId, 160), pageSize,
+    provider: SOURCES[query.provider] ? query.provider : "", group: GROUP_COLUMNS[query.group] ? query.group : "" };
   const hash = createHash("sha256").update(JSON.stringify(scope)).digest("hex").slice(0, 24);
   const where = [], args = [];
+  if (scope.provider) { where.push("provider = ?"); args.push(scope.provider); }
   if (scope.query) { where.push("instr(lower(title || ' ' || project || ' ' || CASE provider WHEN 'codex' THEN 'Codex' ELSE 'Claude Code' END), ?) > 0"); args.push(scope.query); }
   if (scope.project) { where.push("project = ?"); args.push(scope.project); }
   if (scope.repositoryId) { where.push("repository_id = ?"); args.push(scope.repositoryId); }
   if (scope.filter === "live") where.push("is_live = 1");
-  if (scope.filter === "needs") where.push("(needs_input = 1 OR activity_status = 'needs_input')");
+  if (scope.filter === "needs") where.push(NEEDS_SQL);
   return { scope, hash, where: where.length ? ` WHERE ${where.join(" AND ")}` : "", args };
 }
+const matchesScope = (scope) => (row) => (!scope.query || `${row.title} ${row.project} ${SOURCES[row.provider]}`.toLowerCase().includes(scope.query))
+  && (!scope.provider || row.provider === scope.provider) && (!scope.project || row.project === scope.project)
+  && (!scope.repositoryId || row.repositoryId === scope.repositoryId) && (scope.filter !== "live" || row.isLive) && (scope.filter !== "needs" || needsOf(row));
 
 /** A committed normalized index. Only mutation methods initialize or write SQLite. */
 export function createSessionCatalogInventory({ store = () => null, now = Date.now, providers = [], scopeKey: initialScopeKey = "", maxMemoryRows = MEMORY_MAX } = {}) {
@@ -269,6 +280,42 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     const row=database?preparedStatement(database, `SELECT ${COLUMNS} FROM session_catalog_headers WHERE provider=? AND local_id=?`).get(parsed.providerId,parsed.localSessionId):memory.get(id);
     return row?toPublic(row):null;
   }
+  function tallies() {
+    if (!database) { const all=[...memory.values()]; return {all:all.length,live:all.filter(row=>row.isLive).length,needs:all.filter(needsOf).length}; }
+    const row=preparedStatement(database, `SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers`).get();
+    return {all:Number(row.all_count),live:Number(row.live),needs:Number(row.needs)};
+  }
+  // Groups the scoped inventory by project or provider. Groups are ordered by their newest recorded
+  // update; rows inside a group keep the directory's newest-created order. The response is bounded
+  // to GROUP_MAX groups of GROUP_ROWS rows and has no cursor: a group's remaining rows are read by
+  // narrowing the ordinary paged directory to that project or provider.
+  function groupedDirectory(scope,where,args) {
+    const column=GROUP_COLUMNS[scope.group];
+    let summaries,groupCount,matchedCount;
+    if (database) {
+      matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
+      groupCount=Number(preparedStatement(database, `SELECT COUNT(DISTINCT ${column}) AS n FROM session_catalog_headers${where}`).get(...args).n);
+      const rowsFor=preparedStatement(database, `SELECT ${COLUMNS} FROM session_catalog_headers${where}${where?" AND":" WHERE"} ${column} = ? ORDER BY ${ORDER} LIMIT ?`);
+      summaries=preparedStatement(database, `SELECT ${column} AS groupKey,COUNT(*) AS n,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs,MAX(updated_ms) AS latestMs
+        FROM session_catalog_headers${where} GROUP BY ${column} ORDER BY latestMs DESC,${column} LIMIT ?`).all(...args,GROUP_MAX)
+        .map(group=>({key:group.groupKey,count:Number(group.n),live:Number(group.live),needs:Number(group.needs),latestMs:Number(group.latestMs),rows:rowsFor.all(...args,group.groupKey,GROUP_ROWS)}));
+    } else {
+      const byKey=new Map();
+      const matches=[...memory.values()].filter(matchesScope(scope)).map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
+      for (const row of matches) {
+        const group=byKey.get(row[column])||{key:row[column],count:0,live:0,needs:0,latestMs:0,rows:[]};
+        group.count+=1; group.live+=row.isLive?1:0; group.needs+=needsOf(row)?1:0; group.latestMs=Math.max(group.latestMs,Date.parse(row.updatedAt)||0);
+        if (group.rows.length<GROUP_ROWS) group.rows.push(row);
+        byKey.set(group.key,group);
+      }
+      matchedCount=matches.length; groupCount=byKey.size;
+      summaries=[...byKey.values()].sort((a,b)=>b.latestMs-a.latestMs||(a.key<b.key?-1:a.key>b.key?1:0)).slice(0,GROUP_MAX);
+    }
+    const facts=coverage();
+    return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:[],matchedCount,counts:tallies(),pageSize:scope.pageSize,nextCursor:null,
+      groupBy:scope.group,groupCount,groups:summaries.map(group=>({key:group.key,label:column==="provider"?SOURCES[group.key]:group.key,count:group.count,live:group.live,needs:group.needs,
+        latestUpdatedAt:group.latestMs>0?new Date(group.latestMs).toISOString():null,sessions:group.rows.map(toPublic)}))};
+  }
   function directory(query={}) {
     const {scope,hash,where,args}=queryParts(query);
     // Keyset cursors name the last row's creation position, so live updates and newly
@@ -282,17 +329,16 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       else after={createdMs:cursor[1],provider:cursor[2],localId:cursor[3]};
     }
     let rows,matchedCount,counts;
+    if (scope.group) return groupedDirectory(scope,where,args);
     if (database) {
       matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
-      const tallies=preparedStatement(database, "SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN needs_input=1 OR activity_status='needs_input' THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers").get();
-      counts={all:Number(tallies.all_count),live:Number(tallies.live),needs:Number(tallies.needs)};
+      counts=tallies();
       const keyset=after?`${where?" AND":" WHERE"} (created_ms < ? OR (created_ms = ? AND (provider,local_id) > (?,?)))`:"";
       rows=preparedStatement(database, `SELECT ${COLUMNS},created_ms AS createdMs FROM session_catalog_headers${where}${keyset} ORDER BY ${ORDER} LIMIT ?`)
         .all(...args,...(after?[after.createdMs,after.createdMs,after.provider,after.localId]:[]),scope.pageSize+1);
     } else {
-      const all=[...memory.values()]; counts={all:all.length,live:all.filter(row=>row.isLive).length,needs:all.filter(row=>row.needsInput||row.activityStatus==="needs_input").length};
-      const matches=all.filter(row=>(!scope.query||`${row.title} ${row.project} ${SOURCES[row.provider]}`.toLowerCase().includes(scope.query))&&(!scope.project||row.project===scope.project)&&(!scope.repositoryId||row.repositoryId===scope.repositoryId)&&(scope.filter!=="live"||row.isLive)&&(scope.filter!=="needs"||row.needsInput||row.activityStatus==="needs_input"))
-        .map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
+      counts=tallies();
+      const matches=[...memory.values()].filter(matchesScope(scope)).map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
       const start=after?matches.findIndex(row=>compareCreation(row,after)>0):0;
       matchedCount=matches.length; rows=start<0?[]:matches.slice(start,start+scope.pageSize+1);
     }

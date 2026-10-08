@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { HomeProviderUsageLimits, ProviderServiceStatus, SessionCatalogCoverage, SessionDirectorySnapshot, SessionSummary } from "../../../shared/monitor-contract";
+import type { HomeProviderUsageLimits, ProviderId, ProviderServiceStatus, SessionCatalogCoverage, SessionDirectorySnapshot, SessionSummary } from "../../../shared/monitor-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { relativeTime, sessionListTime, sessionState } from "../../dashboard-utils";
 import { useSessionCatalog } from "../../hooks/SessionCatalogContext";
@@ -15,7 +15,7 @@ import { CodexUsageHelp } from "../CodexUsageHelp";
 import { AgentChip } from "../AgentChip";
 import { ProviderBadge } from "../ProviderBadge";
 import { ProviderServiceNotice, ProviderStatusArea, ProviderStatusDetails, providerHasServiceIssue, providerIncidentRank, providerServiceNoticeVisible, providerStatusFor, type ProviderIncidentDismissal } from "../ProviderStatus";
-import { CommandTable, type CommandTableColumn } from "./CommandTable";
+import { CommandTable, type CommandTableColumn, type CommandTableRowGroup } from "./CommandTable";
 import { SessionCacheTiming } from "./SessionCacheTiming";
 import { CommandEmpty, CommandFilter, CommandIcon, CommandPage, CommandSearch, CommandStatus, CommandToolbar } from "./CommandPage";
 import { useProviderSettingsAvailable } from "../../settings/ProviderSettings";
@@ -111,10 +111,50 @@ function SessionSummaryLoading({ session }: { session: SessionSummary }) {
   </span>;
 }
 
-function sessionColumns(providers: ProviderServiceStatus[]): CommandTableColumn<SessionSummary>[] { return [
+type SessionGrouping = "recent" | "project" | "provider";
+const SESSION_GROUPINGS: { id: SessionGrouping; label: string }[] = [{ id: "recent", label: "Recent" }, { id: "project", label: "Repository" }, { id: "provider", label: "Provider" }];
+const SESSION_GROUPING_KEY = "pomegr-sessions-group-by";
+// The catalog's project field names the repository a session ran in; the interface calls it a repository.
+const SESSION_GROUP_NOUNS = { project: ["repository", "repositories"], provider: ["provider", "providers"] } as const;
+
+function storedSessionGrouping(): SessionGrouping {
+  if (typeof window === "undefined") return "recent";
+  try {
+    const stored = window.localStorage.getItem(SESSION_GROUPING_KEY);
+    return stored === "project" || stored === "provider" ? stored : "recent";
+  } catch {
+    return "recent";
+  }
+}
+
+// The directory is ordered newest-created first, so Recent sections follow the creation time.
+const RECENT_SECTIONS = [["today", "Started today"], ["yesterday", "Started yesterday"], ["week", "Started in the previous 7 days"], ["earlier", "Started earlier"]] as const;
+
+function recentSection(createdAt: string | null | undefined, now: number): (typeof RECENT_SECTIONS)[number][0] {
+  const created = Date.parse(createdAt || "");
+  const dayStart = (daysBack: number) => { const day = new Date(now); day.setHours(0, 0, 0, 0); day.setDate(day.getDate() - daysBack); return day.getTime(); };
+  if (!Number.isFinite(created)) return "earlier";
+  return created >= dayStart(0) ? "today" : created >= dayStart(1) ? "yesterday" : created >= dayStart(8) ? "week" : "earlier";
+}
+
+type SessionGroupTallies = { count: number; live: number; needs: number; latestUpdatedAt: string | null };
+
+function SessionGroupHeader({ label, open, onToggle, tallies }: { label: string; open: boolean; onToggle: () => void; tallies?: SessionGroupTallies }) {
+  return <button className="commandQuietAction commandSessionGroupToggle" type="button" aria-expanded={open} onClick={onToggle}>
+    <CommandIcon name="chevron" size="small" />
+    <strong>{label}</strong>
+    {tallies && <span className="commandSessionGroupCount">{tallies.count.toLocaleString("en-US")} {tallies.count === 1 ? "session" : "sessions"}</span>}
+    {tallies && tallies.live > 0 && <CommandStatus state="active">{tallies.live} live</CommandStatus>}
+    {tallies && tallies.needs > 0 && <CommandStatus state="attention">{tallies.needs} {tallies.needs === 1 ? "needs" : "need"} input</CommandStatus>}
+    {tallies?.latestUpdatedAt && <span className="commandSessionGroupLatest">Updated {sessionTimestamp(tallies.latestUpdatedAt)}</span>}
+  </button>;
+}
+
+/** `omit` drops the field the enclosing group header already names. */
+function sessionColumns(providers: ProviderServiceStatus[], omit: "project" | "provider" | null): CommandTableColumn<SessionSummary>[] { return [
   {
     id: "session", label: "Session", colClassName: "commandSessionColSession",
-    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{session.project} · <ProviderBadge source={session.source} variant="text" /></span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
+    renderCell: (session) => <><Link href={sessionHref(session)} className="commandTablePrimary"><strong>{session.title}</strong></Link><div className="commandSessionMetadata"><span>{omit !== "project" && session.project}{!omit && " · "}{omit !== "provider" && <ProviderBadge source={session.source} variant="text" />}</span><SessionProviderWarning session={session} providers={providers} /></div><SessionCurrentActivity session={session} compact /></>,
   },
   {
     id: "state", label: "State", cellLabel: "State", colClassName: "commandSessionColState",
@@ -167,12 +207,18 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const [project, setProject] = useState(initialProject);
   const [repositoryId, setRepositoryId] = useState(initialRepositoryId);
   const { providers } = useProviderStatus();
-  const columns = useMemo(() => sessionColumns(providers), [providers]);
   const { sessions: committedSessions, connected, paused, readiness } = useSessionCatalog();
   const [query, setQuery] = useState("");
   const [selectedFilter, setFilter] = useState<"all" | "live" | "needs" | null>(null);
   const filter = selectedFilter ?? (committedSessions.some((session) => session.isLive) ? "live" : "all");
+  const [grouping, setGrouping] = useState<SessionGrouping>(storedSessionGrouping);
+  const [provider, setProvider] = useState<{ id: ProviderId; label: string } | null>(null);
+  const [closedGroups, setClosedGroups] = useState<ReadonlySet<string>>(() => new Set());
+  // A scope that already names one project or provider leaves a single group, so its rows page as a list.
+  const serverGroup = grouping === "project" && !project ? "project" : grouping === "provider" && !provider ? "provider" : null;
+  const columns = useMemo(() => sessionColumns(providers, serverGroup), [providers, serverGroup]);
   const [directory, setDirectory] = useState<SessionDirectorySnapshot | null>(null);
+  const [directoryReadAt, setDirectoryReadAt] = useState(0);
   const [directoryQueryKey, setDirectoryQueryKey] = useState<string | null>(null);
   const [directoryUnavailable, setDirectoryUnavailable] = useState(false);
   const [fulfilledPageKey, setFulfilledPageKey] = useState<string | null>(null);
@@ -186,11 +232,17 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
     if (query.trim()) params.set("query", query.trim());
     if (project) params.set("project", project);
     if (repositoryId) params.set("repositoryId", repositoryId);
+    if (provider) params.set("provider", provider.id);
+    if (serverGroup) params.set("group", serverGroup);
     return params.toString();
-  }, [filter, repositoryId, project, query]);
+  }, [filter, repositoryId, project, provider, query, serverGroup]);
   const resetDirectory = () => { setCursor(null); setCursorTrail([]); setCursorPageBase(0); };
   const updateQuery = (value: string) => { setQuery(value); resetDirectory(); };
   const updateFilter = (value: typeof filter) => { setFilter(value); resetDirectory(); };
+  const updateGrouping = (value: SessionGrouping) => {
+    setGrouping(value); resetDirectory();
+    try { window.localStorage.setItem(SESSION_GROUPING_KEY, value); } catch { /* The in-memory choice remains usable when preferences are unavailable. */ }
+  };
 
   useEffect(() => {
     if (paused) return;
@@ -208,6 +260,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
       .then((next) => {
         if (controller.signal.aborted || request !== requestRef.current || !Array.isArray(next.sessions) || !next.coverage) return;
         setDirectory(next);
+        setDirectoryReadAt(Date.now());
         setDirectoryQueryKey(directoryQuery);
         setFulfilledPageKey(pageKey);
         setDirectoryUnavailable(false);
@@ -235,18 +288,43 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
   const directoryMatchesQuery = directoryQueryKey === directoryQuery;
   const directoryLoading = !paused && fulfilledPageKey !== `${directoryQuery}\u0000${cursor || ""}`;
   const committedSessionsById = useMemo(() => new Map(committedSessions.map((session) => [session.id, session])), [committedSessions]);
-  const pageRows = useMemo(() => {
-    if (!directoryMatchesQuery) return [];
-    return (directory?.sessions || []).map((session) => {
+  const rowGroups = useMemo<CommandTableRowGroup<SessionSummary>[]>(() => {
+    if (!directoryMatchesQuery || !directory) return [];
+    const toggle = (id: string) => () => setClosedGroups((closed) => { const next = new Set(closed); if (!next.delete(id)) next.add(id); return next; });
+    const merged = (sessions: SessionSummary[]) => sessions.map((session) => {
       const committed = committedSessionsById.get(session.id);
       return committed ? { ...session, ...committed } : session;
     });
-  }, [committedSessionsById, directory?.sessions, directoryMatchesQuery]);
+    if (serverGroup) return (directory.groupBy === serverGroup ? directory.groups || [] : []).map((group) => {
+      const id = `${serverGroup}:${group.key}`, open = !closedGroups.has(id);
+      const showAll = () => {
+        if (serverGroup === "project") setProject(group.key);
+        else setProvider({ id: group.key as ProviderId, label: group.label });
+        setCursor(null); setCursorTrail([]); setCursorPageBase(0);
+      };
+      // Under the Live or Needs input scope every counted session has that state, so the status would repeat the count.
+      const tallies = { ...group, live: filter === "live" ? 0 : group.live, needs: filter === "needs" ? 0 : group.needs };
+      return {
+        key: id,
+        header: <SessionGroupHeader label={group.label} open={open} onToggle={toggle(id)} tallies={tallies} />,
+        rows: open ? merged(group.sessions) : [],
+        footer: open && group.count > group.sessions.length ? <button className="commandTextLink" type="button" onClick={showAll}>Show all {group.count.toLocaleString("en-US")} in {group.label}</button> : undefined,
+      };
+    });
+    const rows = merged(directory.sessions || []);
+    return RECENT_SECTIONS.flatMap(([section, label]) => {
+      const sectionRows = rows.filter((session) => recentSection(session.createdAt, directoryReadAt) === section);
+      const id = `recent:${section}`, open = !closedGroups.has(id);
+      return sectionRows.length ? [{ key: id, header: <SessionGroupHeader label={label} open={open} onToggle={toggle(id)} />, rows: open ? sectionRows : [] }] : [];
+    });
+  }, [closedGroups, committedSessionsById, directory, directoryMatchesQuery, directoryReadAt, filter, serverGroup]);
+  const hasRows = rowGroups.length > 0;
+  const groupCount = directoryMatchesQuery ? directory?.groupCount : undefined;
   const coverage = directoryMatchesQuery ? directory?.coverage : undefined;
   const counts = directoryMatchesQuery ? directory?.counts : undefined;
   const matchedCount = directoryMatchesQuery ? directory?.matchedCount : null;
   // An empty page under a search, scope, project, or repository filter is a filtered result, not an empty catalog.
-  const narrowed = Boolean(query.trim() || project || repositoryId || filter !== "all");
+  const narrowed = Boolean(query.trim() || project || repositoryId || provider || filter !== "all");
   const liveSessionCount = counts?.live;
   const needsInputCount = counts?.needs;
   const allSessionCount = sessionCountMagnitude(coverage, counts?.all);
@@ -258,17 +336,25 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
       <div className="commandSessionsToolbar"><CommandToolbar label="Filter sessions">
         <CommandSearch value={query} onChange={updateQuery} placeholder="Filter sessions" label="Filter sessions" />
         <div className="commandSessionFilters" role="group" aria-label="Session scope">
-          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear project filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Project: {project}<CommandIcon name="close" size="small" /></button>}
+          {project && <button className="commandFilterChip active" type="button" aria-label={`Clear repository filter: ${project}`} onClick={() => { setProject(""); resetDirectory(); }}>Repository: {project}<CommandIcon name="close" size="small" /></button>}
           {repositoryId && <RepositoryFilterChip repositoryId={repositoryId} onClear={() => { setRepositoryId(undefined); resetDirectory(); }} />}
+          {provider && <button className="commandFilterChip active" type="button" aria-label={`Clear provider filter: ${provider.label}`} onClick={() => { setProvider(null); resetDirectory(); }}>Provider: {provider.label}<CommandIcon name="close" size="small" /></button>}
           <CommandFilter active={filter === "all"} onClick={() => updateFilter("all")} count={allSessionCount.value} ariaLabel={allSessionCount.label}>All</CommandFilter>
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
         {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
+        <div className="commandSessionGroupBy">
+          <span id="commandSessionGroupByLabel">Group by</span>
+          <div className="commandSegmented" role="group" aria-labelledby="commandSessionGroupByLabel">
+            {SESSION_GROUPINGS.map((option) => <button key={option.id} type="button" aria-pressed={grouping === option.id} onClick={() => updateGrouping(option.id)}>{option.label}</button>)}
+          </div>
+        </div>
       </CommandToolbar></div>
       <CommandTable
         caption="Observed Pomegr sessions"
-        rows={pageRows}
+        rows={[]}
+        rowGroups={rowGroups}
         columns={columns.map((column) => ({ ...column, sortValue: undefined }))}
         getRowKey={(session) => session.id}
         className="commandSessionTable"
@@ -279,11 +365,14 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
             <span className="uiSkeleton commandSessionsSkeletonDetail" />
             <span className="uiSkeleton commandSessionsSkeletonMeta" />
           </div>)}</div>
-        </div> : (catalogUnavailable || directoryUnavailable || paused) && !pageRows.length ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
+        </div> : (catalogUnavailable || directoryUnavailable || paused) && !hasRows ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
-      {directoryMatchesQuery && directory && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
-      {!pageRows.length && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
-      {(catalogUnavailable || directoryUnavailable) && pageRows.length > 0 && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
+      {directoryMatchesQuery && directory && serverGroup && hasRows && groupCount !== undefined && <p className="commandSessionGroupSummary">{groupCount > rowGroups.length
+        ? `Showing the ${rowGroups.length} most recently updated of ${groupCount.toLocaleString("en-US")} ${SESSION_GROUP_NOUNS[serverGroup][1]}. Filter sessions to reach the others.`
+        : `${groupCount} ${SESSION_GROUP_NOUNS[serverGroup][groupCount === 1 ? 0 : 1]} · ${(matchedCount ?? 0).toLocaleString("en-US")} sessions`}</p>}
+      {directoryMatchesQuery && directory && !serverGroup && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
+      {!hasRows && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}
+      {(catalogUnavailable || directoryUnavailable) && hasRows && <p className="commandUnavailableNote">The local monitor is reconnecting. Showing the last known session catalog.</p>}
     </div>
   </CommandPage>;
 }

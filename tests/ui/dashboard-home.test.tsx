@@ -185,7 +185,7 @@ describe("personal Home", () => {
     fireEvent.click(screen.getByRole("button", { name: /^All/ }));
     expect(screen.getByText("Build Home")).toBeInTheDocument();
     expect(screen.queryByText("Review report")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Clear project filter: Pomegr" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear repository filter: Pomegr" }));
     expect(await screen.findByText("Review report")).toBeInTheDocument();
   });
 
