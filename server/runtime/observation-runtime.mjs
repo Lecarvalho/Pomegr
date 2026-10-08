@@ -15,7 +15,7 @@ import { createSessionObservationCoordinator } from "./session-observation-coord
 import { SessionObservationStore } from "../sessions/checkpoints/session-observation-store.mjs";
 import { createProviderStatusObservation } from "./provider-status-observation.mjs";
 import { createAgentsObservation } from "./agents-observation.mjs";
-import { resolveTaskSession } from "./task-session-lookup.mjs";
+import { createTaskLookups } from "./task-start-lookup.mjs";
 import { createAgentQueryProjectionCache } from "../sessions/domain/agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "../repository/repository-inventory-runtime.mjs";
 import { attachFileHistory } from "../repository/file-history-domain.mjs";
@@ -780,7 +780,7 @@ export function createObservationRuntime(options = {}) {
       repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
-    resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions }),
+    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory }),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

@@ -12,7 +12,15 @@ export type TaskActionResult = { ok: true } | { ok: false; error: TaskActionErro
 
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
+  /** Absent on an older desktop build; `startDesktopTask` then answers `unavailable`. */
+  taskStart?: (repositoryId: string, taskId: string) => Promise<{ status: TaskStartStatus }>;
 };
+
+/** Fixed outcome of one desktop session start. */
+export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
+  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed";
+const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed"]);
 
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);
 
@@ -69,6 +77,20 @@ export function updateDesktopTask(repositoryId: string, id: string, patch: { tex
 
 export function deleteDesktopTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "delete", { id });
+}
+
+/** Asks the desktop to confirm and start a session for one task. Never throws; sends only the two IDs. */
+export async function startDesktopTask(repositoryId: string, id: string): Promise<TaskStartStatus> {
+  const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
+  if (typeof bridge?.taskStart !== "function") return "unavailable";
+  try {
+    const result: unknown = await bridge.taskStart(repositoryId, id);
+    const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
+    if (typeof status !== "string") return "unavailable";
+    return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";
+  } catch {
+    return "unavailable";
+  }
 }
 
 /** `position` is the 0-based index in the destination column counted after the task leaves its place; past the end appends. */

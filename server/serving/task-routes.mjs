@@ -9,6 +9,11 @@ export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
 const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
 const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
+// Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
+const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
+const START_STATUS = Object.freeze({
+  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, unsupported_provider: 422, unavailable: 503,
+});
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -111,15 +116,40 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+// `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
+// `resolveStart(repositoryId)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
+// that precedes it. Neither answer ever carries the stored digest or an echo of task content.
+function serveStartAction({ response, taskStore, resolveStart, action, repositoryId, payload }) {
+  try {
+    const planning = action === "start-plan";
+    const call = planning ? taskStore?.planStart : taskStore?.abortStart;
+    if (typeof call !== "function") {
+      writeActionResult(response, 503, rejected("unavailable"));
+      return;
+    }
+    const result = planning
+      ? call(repositoryId, payload, () => (typeof resolveStart === "function" ? resolveStart(repositoryId) : null))
+      : call(repositoryId, payload);
+    if (result?.ok === true) {
+      writeActionResult(response, 200, planning ? { ok: true, plan: result.plan } : { ok: true });
+      return;
+    }
+    const error = Object.hasOwn(START_STATUS, result?.error) ? result.error : "unavailable";
+    writeActionResult(response, START_STATUS[error], rejected(error));
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
 /**
  * `POST /internal/tasks/<action>`. The request handler has already applied the private-action gate
  * (desktop token, loopback host, no Origin, POST), so a refused request never reaches this function
  * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
  * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
  */
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action)) {
+  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -158,6 +188,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
   }
   if (Buffer.byteLength(JSON.stringify(body.payload), "utf8") > TASK_PAYLOAD_LIMIT_BYTES) {
     writeActionResult(response, 413, rejected("invalid"));
+    return;
+  }
+  if (START_ACTIONS.includes(action)) {
+    serveStartAction({ response, taskStore, resolveStart, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
   try {

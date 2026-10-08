@@ -213,7 +213,10 @@ export function createRequestHandler({
     }
     response.setHeader("Cache-Control", "no-store");
     if (taskActionRequest) {
-      await serveTaskActionRoute({ request, response, requestUrl, taskStore });
+      await serveTaskActionRoute({
+        request, response, requestUrl, taskStore,
+        resolveStart: (repositoryId) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId) : null),
+      });
       return;
     }
     if (repositoryPluginRequest) {

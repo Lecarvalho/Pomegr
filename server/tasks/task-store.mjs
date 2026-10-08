@@ -18,6 +18,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { startAbort, startPlan } from "./task-dispatch.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
@@ -471,7 +472,7 @@ class ActionRejected extends Error {
  * Opens the task store in `directory`. Synchronous and never throws: a store that is missing
  * its directory, malformed, or newer than this build is `unavailable`, and is never rewritten.
  */
-export function openTaskStore({ directory } = {}) {
+export function openTaskStore({ directory, now = Date.now } = {}) {
   let database = openDatabase(directory);
 
   function seedColumns(repositoryId) {
@@ -521,10 +522,22 @@ export function openTaskStore({ directory } = {}) {
     }
   }
 
+  // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; both calls answer a fixed error.
+  function dispatch(operation, input) {
+    if (!database) return { ok: false, error: "unavailable" };
+    try {
+      return operation({ database, transaction: (work) => runTransaction(database, work), ...input });
+    } catch {
+      return { ok: false, error: "unavailable" };
+    }
+  }
+
   function close() {
     try { database?.close(); } catch { /* already closed or unusable */ }
     database = null;
   }
 
-  return Object.freeze({ readBoard, apply, close });
+  const planStart = (repositoryId, payload, resolveFacts) => dispatch(startPlan, { repositoryId, payload, resolveFacts, now });
+  const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
+  return Object.freeze({ readBoard, apply, planStart, abortStart, close });
 }
