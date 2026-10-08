@@ -322,3 +322,115 @@ test("with no provider CLI installed nothing is confirmed or planned", async () 
   assert.deepEqual(await go(h), { status: "cli_missing" });
   assert.deepEqual(h.log, []);
 });
+
+const queued = (h, id = "T-3", repo = repositoryId) => h.start.startQueued(repo, id);
+
+test("a queued start asks no confirmation and needs no renderer event", async () => {
+  const h = harness({ confirmImpl: async () => { h.log.push("confirm"); return false; } });
+  assert.deepEqual(await queued(h), { status: "started" });
+  assert.deepEqual(h.log, ["start-plan"]);
+  assert.equal(h.spawns.length, 1);
+  assert.equal(h.spawns[0][2].env.POMEGR_TASK_TOKEN, token);
+  assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3" } });
+  assert.equal(h.calls[0].options.redirect, "error");
+  const text = JSON.stringify(await queued(h));
+  for (const secret of [token, root, "Do the thing"]) assert.ok(!text.includes(secret));
+});
+
+test("a queued start keeps every refusal of a manual start", async () => {
+  let h = harness();
+  for (const [repo, id] of [["repo-bad", "T-3"], [repositoryId, "T-0"], [repositoryId, "x"], [repositoryId, 3], [3, "T-3"]]) {
+    assert.deepEqual(await queued(h, id, repo), { status: "invalid" });
+  }
+  assert.deepEqual(h.log, []);
+
+  h = harness({ overrides: { platform: "linux" } });
+  assert.deepEqual(await queued(h), { status: "unsupported_platform" });
+  h = harness({ overrides: { fileExists: () => false } });
+  assert.deepEqual(await queued(h), { status: "cli_missing" });
+  h = harness({ overrides: { fileExists: (f) => f === exe } });
+  assert.deepEqual(await queued(h), { status: "unavailable" });
+  h = harness({ overrides: { authorizationToken: "" } });
+  assert.deepEqual(await queued(h), { status: "unavailable" });
+  for (const error of ["not_startable", "plugin_missing", "not_found", "unsupported_provider"]) {
+    h = harness({ answer: json({ ok: false, error }) });
+    assert.deepEqual(await queued(h), { status: error });
+    assert.equal(h.spawns.length, 0);
+  }
+  h = harness({ plan: { ...basePlan(), provider: "codex" }, overrides: { fileExists: (f) => f === exe || f === powershell } });
+  assert.deepEqual(await queued(h), { status: "cli_missing" });
+  assert.deepEqual(aborted(h)[0].body, { repositoryId, payload: { id: "T-3", token } });
+});
+
+test("a queued start aborts on a malformed plan or a failed launch", async () => {
+  let h = harness({ plan: { ...basePlan(), repositoryRoot: "relative\dir" } });
+  assert.deepEqual(await queued(h), { status: "failed" });
+  assert.equal(h.spawns.length, 0);
+  assert.deepEqual(aborted(h)[0].body, { repositoryId, payload: { id: "T-3", token } });
+  for (const spawnImpl of [() => { throw new Error("EPERM"); }, () => fakeChild(1), () => fakeChild("error")]) {
+    h = harness({ spawnImpl });
+    assert.deepEqual(await queued(h), { status: "failed" });
+    assert.deepEqual(aborted(h).map((c) => c.body), [{ repositoryId, payload: { id: "T-3", token } }]);
+  }
+});
+
+test("a manual and a queued start share one slot and answer busy to each other", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let h = harness({ confirmImpl: async () => { await gate; return true; } });
+  const manual = go(h);
+  assert.deepEqual(await queued(h), { status: "busy" });
+  assert.deepEqual(await go(h, "T-3", repositoryId, {}), { status: "invalid" });
+  release();
+  assert.deepEqual(await manual, { status: "started" });
+  assert.deepEqual(await queued(h), { status: "started" });
+
+  let releasePlan;
+  const planGate = new Promise((resolve) => { releasePlan = resolve; });
+  h = harness({ answer: async () => { await planGate; return json({ ok: true, plan: basePlan() }); } });
+  const first = queued(h);
+  assert.deepEqual(await go(h), { status: "busy" });
+  assert.deepEqual(await queued(h), { status: "busy" });
+  releasePlan();
+  assert.deepEqual(await first, { status: "started" });
+  assert.deepEqual(await go(h), { status: "started" });
+});
+
+test("a disposed starter refuses a queued start", async () => {
+  const h = harness();
+  h.start.dispose();
+  assert.deepEqual(await queued(h), { status: "unavailable" });
+  assert.deepEqual(h.calls, []);
+});
+
+test("the installer starts the queue runner and disposes it with the handler", async () => {
+  const handlers = new Map();
+  const ipcMain = { handle: (c, f) => handlers.set(c, f), removeHandler: (c) => handlers.delete(c) };
+  const order = [];
+  const starter = { start: async () => ({ status: "started" }), dispose: () => order.push("starter.dispose") };
+  const queueRunner = { start: () => order.push("runner.start"), dispose: () => order.push("runner.dispose") };
+  const remove = installTaskStartIpc({ ipcMain, starter, queueRunner });
+  assert.deepEqual(order, ["runner.start"]);
+  remove();
+  assert.deepEqual(order, ["runner.start", "runner.dispose", "starter.dispose"]);
+
+  order.length = 0;
+  installTaskStartIpc({ ipcMain, starter, queueRunner: false })();
+  assert.deepEqual(order, ["starter.dispose"]);
+});
+
+test("the default runner is wired to the starter and does no network before its first interval", async () => {
+  const handlers = new Map();
+  const ipcMain = { handle: (c, f) => handlers.set(c, f), removeHandler: (c) => handlers.delete(c) };
+  const requests = [];
+  const remove = installTaskStartIpc({
+    ipcMain, isTrustedEvent: () => true, monitorOrigin: origin, authorizationToken: "s", platform: "win32", environment,
+    fileExists: () => false,
+    fetch: async (url) => { requests.push(url); return json({ ok: false }); },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(requests, []);
+  remove();
+  assert.equal(handlers.has(TASK_START_CHANNEL), false);
+  assert.deepEqual(requests, []);
+});

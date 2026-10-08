@@ -59,7 +59,7 @@ const features = [
 const ORDER = ["T-2", "T-3", "T-4", "T-6", "T-7", "T-13", "T-9"];
 
 function setBoard(overrides: Partial<TaskBoard> = {}) {
-  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, order: ORDER }, ...overrides };
+  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, pauseReason: null, order: ORDER }, ...overrides };
   useTasks.mockReturnValue({ board, refresh });
   return board;
 }
@@ -125,7 +125,7 @@ describe("the Queue view", () => {
   it("draws one panel per unfinished feature that holds a task, in board order", async () => {
     await showQueue();
     const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["Task board v1", "Docs", "Single tasks"]);
+    expect(headings).toEqual(["Task board v1", "Docs", "Single tasks", "When the queue blocks"]);
     const panel = within(screen.getByRole("region", { name: "Task board v1" }));
     expect(panel.getByText((_, element) => element?.className === "taskQueueCaption" && element.textContent === "1 of 6 tasks done")).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.className === "taskQueueCaption" && element.textContent === "0 of 1 task done")).toBeInTheDocument();
@@ -169,7 +169,7 @@ describe("the Queue view", () => {
   });
 
   it("follows queue.order when another task is first", async () => {
-    setBoard({ queue: { status: "idle", blockedBy: null, order: ["T-6", "T-2", "T-3", "T-4", "T-7", "T-13", "T-9"] } });
+    setBoard({ queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-6", "T-2", "T-3", "T-4", "T-7", "T-13", "T-9"] } });
     await showQueue();
     expect(chipText("T-6")).toBe("Queued · next");
     expect(chipText("T-2")).toBe("Queued");
@@ -187,13 +187,13 @@ describe("the Queue view", () => {
   });
 
   it("says so when no single task is queued", async () => {
-    setBoard({ tasks: tasks().filter((entry) => entry.featureId !== null), queue: { status: "idle", blockedBy: null, order: ["T-2", "T-3", "T-4", "T-6", "T-7"] } });
+    setBoard({ tasks: tasks().filter((entry) => entry.featureId !== null), queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-2", "T-3", "T-4", "T-6", "T-7"] } });
     await showQueue();
     expect(screen.getByText("No single task is queued.")).toBeInTheDocument();
   });
 
   it("shows an empty state when there is no feature panel and no single task", async () => {
-    setBoard({ tasks: [task(1, "Idea"), task(2, "Shipped", { state: "done" })], queue: { status: "idle", blockedBy: null, order: [] } });
+    setBoard({ tasks: [task(1, "Idea"), task(2, "Shipped", { state: "done" })], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } });
     await showQueue();
     expect(screen.getByText(/Nothing is in the queue yet\. Open a task on the Board and choose Add to queue\./)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Single tasks" })).not.toBeInTheDocument();

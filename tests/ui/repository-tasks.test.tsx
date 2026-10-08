@@ -37,7 +37,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 }
 
 function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
-  return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, ...overrides };
+  return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides };
 }
 
 const column = (name: string) => screen.getByRole("region", { name });
@@ -331,6 +331,30 @@ describe("task card borrowing its session", () => {
   });
 });
 
+describe("the Queue banner on a read-only board", () => {
+  const held = (queue: Partial<TaskBoard["queue"]>, tasks: Task[]) => board({ tasks, queue: { status: "blocked", blockedBy: "T-3", pauseReason: null, order: [], ...queue } });
+
+  it("words a blocked queue for any client, on the Board and the Queue, with no action to take", () => {
+    const tasks = [task(3, { state: "needs_review", report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "ci_passed", passed: false }], blockReason: null } })];
+    const view = render(<TaskBoardView board={held({}, tasks)} />);
+    const banner = screen.getByRole("region", { name: "Queue status" });
+    expect(within(banner).getByText("Queue blocked")).toBeInTheDocument();
+    expect(banner).toHaveTextContent("T-3 reported complete, but one check did not pass.");
+    expect(within(banner).queryByRole("button")).not.toBeInTheDocument();
+    view.rerender(<TaskBoardView board={held({}, tasks)} view="queue" />);
+    expect(screen.getByRole("region", { name: "Queue status" })).toHaveTextContent('T-3 reported complete, but the check "CI passed" did not pass.');
+  });
+
+  it("words a paused queue and draws nothing for a queue that is off or on", () => {
+    const view = render(<TaskBoardView board={held({ status: "paused", blockedBy: "T-3", pauseReason: "unsupported_platform" }, [task(3, { state: "queued" })])} />);
+    expect(screen.getByRole("region", { name: "Queue status" })).toHaveTextContent("T-3 could not start: starting sessions is available on Windows only.");
+    for (const status of ["idle", "running"] as const) {
+      view.rerender(<TaskBoardView board={held({ status, blockedBy: null }, [task(3, { state: "queued" })])} />);
+      expect(screen.queryByRole("region", { name: "Queue status" })).not.toBeInTheDocument();
+    }
+  });
+});
+
 describe("task board styles", () => {
   const entry = readFileSync(join(process.cwd(), "app", "globals.css"), "utf8");
   const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
@@ -347,5 +371,12 @@ describe("task board styles", () => {
     expect(styles).toMatch(/\.taskCardDetail\.taskCardModelDiffers\s*\{[^}]*color:\s*var\(--command-amber\)/);
     expect(styles).toMatch(/\.taskCardDetail code\s*\{[^}]*var\(--font-data\)/);
     expect(styles).toMatch(/\.taskCardLink\s*\{[^}]*align-self:\s*flex-start/);
+  });
+
+  it("draws the queue banner on the error-soft panel and the block rules in their state tones", () => {
+    expect(styles).toMatch(/\.taskQueueBanner\s*\{[^}]*flex-wrap:\s*wrap[^}]*border:\s*1px solid var\(--command-error\)[^}]*border-radius:\s*var\(--panel-radius\)[^}]*background:\s*var\(--color-error-soft\)/);
+    expect(styles).toMatch(/\.taskQueueBannerActions \.commandSecondaryAction\s*\{[^}]*var\(--command-line-strong\)[^}]*var\(--command-panel\)/);
+    expect(styles).toMatch(/\.taskBlockState\.isReview\s*\{[^}]*var\(--command-amber\)/);
+    expect(styles).toMatch(/\.taskBlockState\.isError\s*\{[^}]*var\(--command-error\)/);
   });
 });

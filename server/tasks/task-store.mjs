@@ -20,7 +20,8 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
+import { nextQueueStarts, pauseQueue, queueSettings, readPauseReason } from "./task-queue-advance.mjs";
+import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
@@ -283,6 +284,8 @@ function deleteTask({ database, repositoryId }, payload) {
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
   if (task.feature_id) renumberSteps(database, repositoryId, task.feature_id);
+  // A blocked queue must not keep naming a task that is gone.
+  releaseQueue(database, repositoryId);
   return { ok: true };
 }
 
@@ -460,7 +463,7 @@ const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
   feature_create: createFeature,
-  queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask,
+  queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
 });
 
@@ -485,8 +488,10 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   }
 
   function loadRows(repositoryId) {
+    const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
     return {
-      repository: preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId),
+      // The pause reason is kept in `meta` (task-queue-advance.mjs); the projection validates it.
+      repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId),
@@ -516,7 +521,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (!database) return { ok: false, error: "conflict" };
     try {
       const board = runTransaction(database, () => {
-        const result = handler({ database, repositoryId }, payload);
+        const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         // The write stands only if the whole board, the new row included, still projects.
         const projected = projectBoard(repositoryId, loadRows(repositoryId));
@@ -553,5 +558,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
   // A session that ended without a report (task-stall.mjs): `resolveFacts(sessionId)` supplies committed session facts.
   const stallEnded = (resolveFacts) => dispatch(stallEndedTasks, { resolveFacts, now });
-  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, close });
+  // The queue (task-queue-advance.mjs): which tasks the running queues start now, and the pause a failed start reports.
+  const nextStarts = () => dispatch(nextQueueStarts, { loadRows, now });
+  const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
+  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, close });
 }

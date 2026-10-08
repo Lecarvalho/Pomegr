@@ -222,3 +222,27 @@
   .taskQueueStepLabel { flex: 1 0 100%; padding-top: 0; }
   .taskQueueCards { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Queue switch, banner and block rules (D30-D34, D108-D114, D178-D183). The switch is the Segmented role beside the view
+   switch. The banner sits on the error-soft panel with the error line; its Secondary actions take the stronger line and
+   panel fill (role default: panel line, no fill) and Requeue is the Quiet role in ink (role default: muted). */
+.taskQueueSwitch { display: inline-flex; align-items: center; gap: var(--space-2); }
+.taskQueueBanner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--command-error); border-radius: var(--panel-radius); background: var(--color-error-soft); }
+.taskQueueBanner[data-view="board"] { gap: var(--space-4); }
+.taskQueueBannerText { flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.taskQueueBannerTitle { margin: 0; color: var(--command-error); font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueBannerBody { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueBannerActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskQueueBannerActions .commandSecondaryAction { border-color: var(--command-line-strong); background: var(--command-panel); }
+.taskQueueBannerActions .commandQuietAction { color: var(--command-ink); }
+.taskBlockRulesPanel { gap: var(--space-2); }
+.taskBlockRules { display: grid; gap: var(--space-1); margin: 0; padding: 0 0 0 var(--space-4); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskBlockState { font-weight: 500; }
+.taskBlockState.isReview { color: var(--command-amber); }
+.taskBlockState.isError { color: var(--command-error); }
+@media (max-width: 760px) {
+  .taskQueueSwitch { display: flex; }
+  .taskQueueSwitch .commandSegmented { flex: 1 1 auto; }
+  .taskQueueBannerActions { flex: 1 1 100%; }
+  .taskQueueBannerActions .commandSecondaryAction { flex: 1 1 0; }
+}

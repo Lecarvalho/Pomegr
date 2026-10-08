@@ -9,7 +9,7 @@ const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"];
-const EMPTY_QUEUE = { status: "idle", blockedBy: null, order: [] };
+const EMPTY_QUEUE = { status: "idle", blockedBy: null, pauseReason: null, order: [] };
 
 function secretBoard(repositoryId = REPOSITORY_ID) {
   return {

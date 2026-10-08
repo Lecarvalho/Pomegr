@@ -6,6 +6,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
 import { environmentValue, nativeClaudeEnvironment, nativeCodexEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
+import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
@@ -129,7 +130,9 @@ function waitForLaunch(child, timeoutMs) {
  * request because the monitor mints a single-use token with the plan, so the provider is known only after it:
  * a start is refused before the confirmation when no provider CLI is installed, and after the plan when the
  * task's own provider CLI is missing. The session runs in its own terminal window and is never killed or
- * tracked by Pomegr. Nothing but a fixed status reaches the renderer.
+ * tracked by Pomegr. Nothing but a fixed status reaches the renderer. The queue runner starts the next task
+ * through `startQueued`, the same path without a renderer event or a confirmation, because the user turned the
+ * queue on; both entry points share one in-flight slot, so a manual and a queued start never overlap.
  */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -163,8 +166,7 @@ export function createTaskStart(options = {}) {
     try { await post("start-abort", repositoryId, { id: taskId, token }); } catch { /* best effort */ }
   }
 
-  async function run(event, repositoryId, taskId) {
-    if (!isTrustedEvent(event)) return result("invalid");
+  async function run(repositoryId, taskId, { confirmRequired }) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
@@ -176,7 +178,7 @@ export function createTaskStart(options = {}) {
     if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     const launcher = powershellExecutable(sourceEnvironment, fileExists);
     if (!launcher) return result("unavailable");
-    if (await confirm({ taskId }) !== true) return result("cancelled");
+    if (confirmRequired && await confirm({ taskId }) !== true) return result("cancelled");
     if (disposed) return result("cancelled");
 
     let answer;
@@ -224,14 +226,24 @@ export function createTaskStart(options = {}) {
     return result("started");
   }
 
-  async function start(event, repositoryId, taskId) {
-    if (active) return isTrustedEvent(event) ? result("busy") : result("invalid");
+  async function exclusive(mode, repositoryId, taskId) {
+    if (active) return result("busy");
     active = true;
-    try { return await run(event, repositoryId, taskId); } catch { return result("failed"); } finally { active = false; }
+    try { return await run(repositoryId, taskId, mode); } catch { return result("failed"); } finally { active = false; }
+  }
+
+  async function start(event, repositoryId, taskId) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    return exclusive({ confirmRequired: true }, repositoryId, taskId);
+  }
+
+  // Only the queue runner calls this, and only for a repository whose queue the user turned on.
+  function startQueued(repositoryId, taskId) {
+    return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
 
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, dispose() { disposed = true; } });
+  return Object.freeze({ start, startQueued, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -239,8 +251,14 @@ export function installTaskStartIpc(options = {}) {
   if (!ipcMain?.handle || !ipcMain?.removeHandler) throw new TypeError("Task start requires ipcMain");
   ipcMain.removeHandler(TASK_START_CHANNEL);
   const starter = options.starter || createTaskStart(options);
+  // The runner is optional: an injected object replaces it and `false` turns it off. It arms no timer until
+  // `start()`, and then only with a trusted monitor origin and a token.
+  const runner = options.queueRunner === false ? null : options.queueRunner || createTaskQueueRunner({
+    starter, fetch: options.fetch, monitorOrigin: options.monitorOrigin, authorizationToken: options.authorizationToken,
+  });
   ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.start(event, repositoryId, taskId); } catch { return result("failed"); }
   });
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); starter.dispose?.(); };
+  runner?.start();
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); runner?.dispose(); starter.dispose?.(); };
 }

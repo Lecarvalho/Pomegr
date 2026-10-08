@@ -281,7 +281,7 @@ test("a failed report blocks a running queue and its resolution lets it run agai
   startedTask(env, { session: OTHER_SESSION });
   setQueue(env, "running");
   await complete(env);
-  assert.deepEqual({ ...env.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "blocked", blockedBy: "T-1", order: undefined });
+  assert.deepEqual({ ...env.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "blocked", blockedBy: "T-1", pauseReason: null, order: undefined });
   await block(env, REASON, OTHER_SESSION);
   assert.equal(env.store.readBoard(REPOSITORY_ID).queue.blockedBy, "T-1");
   apply(env, "resolve_done", { id: "T-1" });

@@ -17,6 +17,11 @@ export type TaskProvider = "claude" | "codex";
 export type TaskEffort = "low" | "medium" | "high" | "xhigh";
 export type TaskBoardReadiness = "ready" | "loading" | "unavailable" | "desktop_only";
 export type TaskQueueStatus = "idle" | "running" | "blocked" | "paused";
+/**
+ * Why a queue is paused: a start the queue made did not succeed. `session_not_linked` is a started terminal
+ * whose session never reported back in time. A fixed value only; it never carries a path, command, or error text.
+ */
+export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked";
 /** Fixed error of a mutation that changed nothing. */
 export type TaskActionError = "invalid" | "not_found" | "limit" | "conflict" | "unsupported";
 
@@ -29,8 +34,12 @@ export type TaskReport = { at: string; results: { check: TaskCheck; passed: bool
  * `order` holds the IDs of the queued tasks in the order they would start: features in board order, each
  * feature's steps ascending, tasks of one step by task number, then tasks without a feature in the order they
  * were queued. Its first entry is the "Queued · next" task. It carries IDs only, at most one per task.
+ *
+ * `idle` is the queue turned off (the default); `running` is on. `blocked` names in `blockedBy` the task that
+ * needs the user (Needs review, Stalled, or Blocked by agent). `paused` names in `blockedBy` the task whose start
+ * did not succeed, with the fixed `pauseReason`; `pauseReason` is null in every other status.
  */
-export type TaskQueue = { status: TaskQueueStatus; blockedBy: string | null; order: string[] };
+export type TaskQueue = { status: TaskQueueStatus; blockedBy: string | null; pauseReason: TaskQueuePauseReason | null; order: string[] };
 
 export type Task = {
   id: string; // "T-<n>", monotonic per repository
@@ -87,11 +96,12 @@ export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "sched
 export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 export const TASK_EFFORTS: readonly TaskEffort[] = ["low", "medium", "high", "xhigh"];
 export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running", "blocked", "paused"];
+export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"];
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 /** Columns seeded, in this order, the first time a repository's board is read. */
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];
 
 /** A board with no content, for loading, unavailable, and desktop-only answers. */
 export function createEmptyTaskBoard(repositoryId: string, readiness: TaskBoardReadiness): TaskBoard {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } };
+  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, runModels: { codex: [] } };
 }

@@ -25,6 +25,7 @@ export const TASK_STATES = Object.freeze(["not_queued", "queued", "scheduled", "
 export const TASK_PROVIDERS = Object.freeze(["claude", "codex"]);
 export const TASK_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 export const TASK_QUEUE_STATUSES = Object.freeze(["idle", "running", "blocked", "paused"]);
+export const TASK_QUEUE_PAUSE_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"]);
 export const DEFAULT_TASK_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
 // The fixed action list shared by the route (which rejects any other name) and the store (which
 // answers `unsupported` for a listed action whose part has not landed).
@@ -378,7 +379,7 @@ export function normalizeStoredFeature(row) {
 
 /** A board with no content, for unavailable and loading answers. */
 export function emptyBoard(repositoryId, readiness) {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } };
+  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };
 }
 
 /**
@@ -392,6 +393,8 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     || tasks.length > TASK_BOUNDS.tasksPerRepository) return undefined;
   const status = repository.queue_status;
   const blockedBy = repository.queue_blocked_by ?? null;
+  // The reason is kept beside the repository row (the store reads it from `meta`) and means something only while paused.
+  const pauseReason = status === "paused" && TASK_QUEUE_PAUSE_REASONS.includes(repository.pause_reason) ? repository.pause_reason : null;
   if (!TASK_QUEUE_STATUSES.includes(status) || (blockedBy !== null && !isTaskId(blockedBy))) return undefined;
 
   const projectedColumns = columns.map(normalizeStoredColumn);
@@ -421,7 +424,7 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     // A feature is done when it has tasks and every one of them is done.
     features: projectedFeatures.map((feature) => ({ id: feature.id, name: feature.name, done: doneByFeature.get(feature.id) === true })),
     tasks: projectedTasks.toSorted((a, b) => columnOrder.get(a.columnId) - columnOrder.get(b.columnId) || a.position - b.position || taskNumber(a) - taskNumber(b)),
-    queue: { status, blockedBy, order },
+    queue: { status, blockedBy, pauseReason, order },
   };
 }
 

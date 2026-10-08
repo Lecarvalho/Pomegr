@@ -7,9 +7,11 @@ import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
 import { AddColumnAction } from "./AddColumnAction";
 import { AddFeatureAction } from "./AddFeatureAction";
 import { NewTaskPanel } from "./NewTaskPanel";
+import { QueueControl } from "./QueueControl";
 import { TaskBoardView, type TaskView } from "./TaskBoardView";
 import { TaskPanel } from "./TaskPanel";
 import { useTaskDesktopAvailability } from "./task-desktop";
+import { queueStatusLine } from "./task-queue-banner";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 
 /** One drawer at a time: the New task panel, or the Task panel of one card. */
@@ -48,6 +50,7 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
   const changed = useCallback(() => { void refresh(); }, [refresh]);
   const deleted = useCallback(() => { opener.current = trigger.current; setPanel(null); }, []);
   const ready = board.readiness === "ready";
+  const queueLine = queueStatusLine(board.queue.status);
   const columnsFull = board.columns.length >= TASK_BOUNDS.columnsPerRepository;
   const openNew = () => { opener.current = trigger.current; setPanel({ kind: "new" }); };
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setPanel({ kind: "task", id: task.id }); }, []);
@@ -58,12 +61,15 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
         <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
         {desktop === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app.</p>}
         {desktop === "available" && columnsFull && <p id={fullNoteId} className="taskBoardNote">The board holds {TASK_BOUNDS.columnsPerRepository} columns, the most it allows.</p>}
+        {/* A blocked or paused queue is worded by its banner instead. */}
+        {ready && queueLine && <p className="taskBoardNote">{queueLine}</p>}
       </div>
       {(desktop === "available" || ready) && <div className="taskHeadActions">
         {ready && <div className="commandSegmented" role="group" aria-label="Tasks view">
           <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
           <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Queue</button>
         </div>}
+        {desktop === "available" && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
         {desktop === "available" && ready && view === "board" && <AddColumnAction edits={edits} full={columnsFull} describedBy={fullNoteId} />}
         {/* The Board's filter row carries this action once a feature exists; without one the row is not drawn. */}
         {desktop === "available" && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}

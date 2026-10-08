@@ -87,7 +87,7 @@ test("the first read seeds the five default columns in order and a ready, idle b
   assert.equal(new Set(board.columns.map((column) => column.id)).size, 5);
   assert.deepEqual(board.features, []);
   assert.deepEqual(board.tasks, []);
-  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: [] });
+  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: [] });
 });
 
 test("columns are seeded once per repository and keep their IDs across reads and restarts", async (t) => {
@@ -148,7 +148,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   const second = openStore(temp);
   const board = second.readBoard(REPOSITORY);
   assert.equal(board.readiness, "ready");
-  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-1", order: [] });
+  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-1", pauseReason: null, order: [] });
   assert.deepEqual(board.features, [{ id: FEATURE, name: "Billing rewrite", done: false }]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
@@ -190,7 +190,7 @@ test("the served board holds only the contract keys and never private store fiel
   const store = openStore(temp);
   const wire = JSON.parse(JSON.stringify(store.readBoard(REPOSITORY)));
   assert.deepEqual(keysOf(wire), BOARD_KEYS);
-  assert.deepEqual(keysOf(wire.queue), ["blockedBy", "order", "status"]);
+  assert.deepEqual(keysOf(wire.queue), ["blockedBy", "order", "pauseReason", "status"]);
   for (const column of wire.columns) assert.deepEqual(keysOf(column), COLUMN_KEYS);
   for (const feature of wire.features) assert.deepEqual(keysOf(feature), FEATURE_KEYS);
   assert.equal(wire.tasks.length, 1);
@@ -252,19 +252,20 @@ test("an invalid repository ID yields an unavailable board with no content and w
     assert.equal(board.readiness, "unavailable", String(value));
     assert.equal(board.repositoryId, "");
     assert.deepEqual([board.columns, board.features, board.tasks], [[], [], []]);
-    assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: [] });
+    assert.deepEqual(board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: [] });
     assert.deepEqual(store.apply(value, "create", { text: "x" }), { ok: false, error: "invalid" });
   }
   store.close();
   assert.equal(withRawDatabase(databasePath, (database) => database.prepare("SELECT COUNT(*) AS n FROM repositories").get().n), 0);
 });
 
-test("actions whose part has not landed, and unknown names, answer unsupported and change nothing", async (t) => {
+test("unknown action names answer unsupported and change nothing", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "resolve_done", "resolve_requeue"];
-  for (const action of [...ACTIONS.filter((name) => !implemented.includes(name)), "unknown_action", "__proto__", "constructor", "", null, 7]) {
+  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
+  for (const action of ["unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);
@@ -379,11 +380,11 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "planStart", "readBoard", "stallEndedTasks"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "nextQueueStarts", "pauseQueue", "planStart", "readBoard", "stallEndedTasks"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {
-  for (const file of ["task-store.mjs", "task-record.mjs", "task-dispatch.mjs", "task-board.mjs", "task-report.mjs", "task-checks.mjs", "task-stall.mjs"]) {
+  for (const file of ["task-store.mjs", "task-record.mjs", "task-dispatch.mjs", "task-board.mjs", "task-report.mjs", "task-checks.mjs", "task-stall.mjs", "task-queue.mjs", "task-queue-advance.mjs"]) {
     const source = await readFile(new URL(`../../../server/tasks/${file}`, import.meta.url), "utf8");
     const specifiers = [...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/gu)].map((match) => match[1]);
     assert.equal(specifiers.some((specifier) => /(?:^|\/)(?:runtime|serving)\//u.test(specifier)), false, file);

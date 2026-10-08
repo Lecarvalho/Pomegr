@@ -25,7 +25,7 @@ function task(overrides: Partial<Task> = {}): Task {
   };
 }
 function setBoard(t: Task) {
-  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [t], queue: { status: "idle", blockedBy: null, order: [] } };
+  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [t], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };
   useTasks.mockReturnValue({ board, refresh });
 }
 function setBridge(bridge: unknown) { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; }

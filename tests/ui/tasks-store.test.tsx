@@ -20,7 +20,7 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return {
     version: 1, readiness: "ready", repositoryId,
     columns: [{ id: "col-1", name: "Backlog", position: 0 }],
-    features: [], tasks: [task()], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] }, ...overrides,
+    features: [], tasks: [task()], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, runModels: { codex: [] }, ...overrides,
   };
 }
 
@@ -149,15 +149,26 @@ describe("parseTaskBoard", () => {
   it("keeps a valid ready board with its session and report", () => {
     const parsed = parseTaskBoard(board({ tasks: [task({ session: { id: "claude:1", title: "Fix parser", state: "working", observedModel: "opus" }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null } })] }), repositoryId);
     expect(parsed?.tasks[0].session?.title).toBe("Fix parser");
-    expect(parsed?.queue).toEqual({ status: "idle", blockedBy: null, order: [] });
+    expect(parsed?.queue).toEqual({ status: "idle", blockedBy: null, pauseReason: null, order: [] });
   });
 
   it("keeps the queue start order and rejects a malformed one like any malformed board", () => {
-    const queue = (order: unknown) => ({ status: "idle", blockedBy: null, order });
+    const queue = (order: unknown) => ({ status: "idle", blockedBy: null, pauseReason: null, order });
     expect(parseTaskBoard(board({ queue: queue(["T-2", "T-1"]) as TaskBoard["queue"] }), repositoryId)?.queue.order).toEqual(["T-2", "T-1"]);
     for (const order of [undefined, "T-1", [1], ["task-1"], ["T-0"], [{ id: "T-1" }], Array.from({ length: 501 }, (_, index) => `T-${index + 1}`)]) {
       expect(parseTaskBoard(board({ queue: queue(order) as TaskBoard["queue"] }), repositoryId)).toBeNull();
     }
+  });
+
+  it("keeps one fixed pause reason on a paused queue and reads anything else as none", () => {
+    const queue = (status: string, pauseReason: unknown) => board({ queue: { status, blockedBy: "T-2", pauseReason, order: ["T-2"] } as TaskBoard["queue"] });
+    for (const reason of ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"]) {
+      expect(parseTaskBoard(queue("paused", reason), repositoryId)?.queue).toEqual({ status: "paused", blockedBy: "T-2", pauseReason: reason, order: ["T-2"] });
+    }
+    for (const reason of ["C:/Users/me/claude.exe", "spawn ENOENT", 7, null, undefined]) {
+      expect(parseTaskBoard(queue("paused", reason), repositoryId)?.queue.pauseReason).toBeNull();
+    }
+    expect(parseTaskBoard(queue("running", "start_failed"), repositoryId)?.queue.pauseReason).toBeNull();
   });
 });
 
@@ -186,7 +197,7 @@ describe("GET /api/tasks proxy", () => {
       const response = await GET(request);
       expect(response.status).toBe(403);
       expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await response.json()).toEqual({ version: 1, readiness: "desktop_only", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } });
+      expect(await response.json()).toEqual({ version: 1, readiness: "desktop_only", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, runModels: { codex: [] } });
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -203,6 +214,6 @@ describe("GET /api/tasks proxy", () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("PRIVATE_PATH"));
     const response = await GET(same());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ version: 1, readiness: "unavailable", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } });
+    expect(await response.json()).toEqual({ version: 1, readiness: "unavailable", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, runModels: { codex: [] } });
   });
 });
