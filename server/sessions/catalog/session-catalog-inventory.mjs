@@ -125,27 +125,39 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       changed();
     });
   }
+  // Returns whether the stored row changed. The conflict branch writes only when a merged column
+  // differs, so a repeated header leaves no dirty page and its transaction commits without a disk sync.
+  // ?15 is the overlay flag and ?16 whether lifecycle columns follow the incoming row.
   function writeRow(row, generation, overlay, preserveLifecycle = false) {
     if (database) {
-      database.prepare(`INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
+      const result = database.prepare(`INSERT INTO session_catalog_headers (provider,local_id,title,project,created_at,updated_at,created_ms,updated_ms,is_live,needs_input,activity_status,settled_status,repository_id,generation)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,local_id) DO UPDATE SET
-        title=CASE WHEN ? OR (excluded.title<>'Untitled session' AND excluded.updated_ms >= updated_ms) THEN excluded.title ELSE title END,
-        project=CASE WHEN ? OR (excluded.project<>'Unknown project' AND excluded.updated_ms >= updated_ms) THEN excluded.project ELSE project END,
+        title=CASE WHEN ?15 OR (excluded.title<>'Untitled session' AND excluded.updated_ms >= updated_ms) THEN excluded.title ELSE title END,
+        project=CASE WHEN ?15 OR (excluded.project<>'Unknown project' AND excluded.updated_ms >= updated_ms) THEN excluded.project ELSE project END,
         created_at=CASE WHEN excluded.created_ms > 0 AND (created_ms=0 OR excluded.created_ms < created_ms) THEN excluded.created_at ELSE created_at END,
         created_ms=CASE WHEN excluded.created_ms > 0 AND (created_ms=0 OR excluded.created_ms < created_ms) THEN excluded.created_ms ELSE created_ms END,
         updated_at=CASE WHEN excluded.updated_ms >= updated_ms THEN excluded.updated_at ELSE updated_at END,
         updated_ms=max(updated_ms,excluded.updated_ms),
-        is_live=CASE WHEN ? THEN excluded.is_live ELSE is_live END,
-        needs_input=CASE WHEN ? THEN excluded.needs_input ELSE needs_input END,
-        activity_status=CASE WHEN ? THEN excluded.activity_status ELSE activity_status END,
+        is_live=CASE WHEN ?16 THEN excluded.is_live ELSE is_live END,
+        needs_input=CASE WHEN ?16 THEN excluded.needs_input ELSE needs_input END,
+        activity_status=CASE WHEN ?16 THEN excluded.activity_status ELSE activity_status END,
         settled_status=CASE WHEN excluded.settled_status IS NULL THEN settled_status
           WHEN excluded.settled_status IN ('closed','stopped') OR settled_status IS NULL OR settled_status NOT IN ('closed','stopped') THEN excluded.settled_status ELSE settled_status END,
-        repository_id=CASE WHEN ? THEN excluded.repository_id ELSE coalesce(excluded.repository_id,repository_id) END,
-        generation=CASE WHEN excluded.generation='' THEN generation ELSE excluded.generation END`)
+        repository_id=CASE WHEN ?15 THEN excluded.repository_id ELSE coalesce(excluded.repository_id,repository_id) END,
+        generation=CASE WHEN excluded.generation='' THEN generation ELSE excluded.generation END
+        WHERE ((?15 OR (excluded.title<>'Untitled session' AND excluded.updated_ms >= updated_ms)) AND excluded.title<>title)
+          OR ((?15 OR (excluded.project<>'Unknown project' AND excluded.updated_ms >= updated_ms)) AND excluded.project<>project)
+          OR (excluded.created_ms > 0 AND (created_ms=0 OR excluded.created_ms < created_ms))
+          OR excluded.updated_ms > updated_ms OR (excluded.updated_ms = updated_ms AND excluded.updated_at IS NOT updated_at)
+          OR (?16 AND (excluded.is_live<>is_live OR excluded.needs_input<>needs_input OR excluded.activity_status<>activity_status))
+          OR (excluded.settled_status IS NOT NULL AND excluded.settled_status IS NOT settled_status
+            AND (excluded.settled_status IN ('closed','stopped') OR settled_status IS NULL OR settled_status NOT IN ('closed','stopped')))
+          OR (CASE WHEN ?15 THEN excluded.repository_id ELSE coalesce(excluded.repository_id,repository_id) END) IS NOT repository_id
+          OR (excluded.generation<>'' AND excluded.generation<>generation)`)
         .run(row.provider,row.localId,row.title,row.project,row.createdAt,row.updatedAt,Date.parse(row.createdAt)||0,Date.parse(row.updatedAt)||0,
           row.isLive?1:0,row.needsInput?1:0,row.activityStatus,row.settledStatus,row.repositoryId,generation || "",
-          overlay?1:0,overlay?1:0,preserveLifecycle?0:overlay?1:0,preserveLifecycle?0:overlay?1:0,preserveLifecycle?0:overlay?1:0,overlay?1:0);
-      return;
+          overlay?1:0,!preserveLifecycle&&overlay?1:0);
+      return Number(result.changes) > 0;
     }
     const id = key(row), previous = memory.get(id);
     if (!previous && memory.size >= memoryLimit) { overflow = true; return; }
@@ -174,7 +186,8 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
         const row = normalize(provider, entry);
         if (!row) { invalid = true; continue; }
         const before = JSON.stringify(get(key(row)));
-        writeRow(row, token || (overlay ? state.token : null), overlay, preserveLifecycle);
+        // A durable row that was not written cannot have changed, so it is not read again.
+        if (writeRow(row, token || (overlay ? state.token : null), overlay, preserveLifecycle) === false) continue;
         semanticChange ||= before !== JSON.stringify(get(key(row)));
       }
       if (invalid) state.invalid = true;
