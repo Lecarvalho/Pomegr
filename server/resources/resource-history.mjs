@@ -7,6 +7,7 @@
 // IDs, request numbers, timestamps, and numeric measurements. No PIDs, process
 // identities, paths, command text, labels, or raw provider evidence.
 
+import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { matchResourcePeak } from "./resource-peak-matching.mjs";
 
 const MINUTE_MS = 60_000;
@@ -83,22 +84,22 @@ function upsertMinuteRow(store, sessionId, minuteStart, aggregates) {
     values.push(stats.min, stats.avg, stats.max, stats.maxAtMs);
     placeholders.push("?", "?", "?", "?");
   }
-  store.database.prepare(
+  preparedStatement(store.database, 
     `INSERT OR REPLACE INTO resource_minutes (${columns.join(", ")}) VALUES (${placeholders.join(", ")})`,
   ).run(...values);
 }
 
 /** Finds (or creates) the single peak row for this session/field/minute and writes its value. */
 function upsertPeakCandidate(store, sessionId, field, minuteStart, observedAtMs, value) {
-  const existing = store.database.prepare(
+  const existing = preparedStatement(store.database, 
     "SELECT id FROM resource_peaks WHERE session_id = ? AND field = ? AND observed_at >= ? AND observed_at < ?",
   ).get(sessionId, field, minuteStart, minuteStart + MINUTE_MS);
   if (existing) {
-    store.database.prepare("UPDATE resource_peaks SET observed_at = ?, value = ? WHERE id = ?")
+    preparedStatement(store.database, "UPDATE resource_peaks SET observed_at = ?, value = ? WHERE id = ?")
       .run(observedAtMs, value, existing.id);
     return;
   }
-  store.database.prepare(
+  preparedStatement(store.database, 
     "INSERT INTO resource_peaks (session_id, field, observed_at, value, matched_task_ids, matched_request_number) VALUES (?, ?, ?, ?, '[]', NULL)",
   ).run(sessionId, field, observedAtMs, value);
 }
@@ -106,19 +107,19 @@ function upsertPeakCandidate(store, sessionId, field, minuteStart, observedAtMs,
 /** Evicts every peak past the top ten (by value desc, earlier observed_at wins ties) per field. */
 function evictExcessPeaks(store, sessionId) {
   for (const { field } of FIELDS) {
-    const rows = store.database.prepare(
+    const rows = preparedStatement(store.database, 
       "SELECT id FROM resource_peaks WHERE session_id = ? AND field = ? ORDER BY value DESC, observed_at ASC",
     ).all(sessionId, field);
     const evictable = rows.slice(TOP_PEAKS_PER_FIELD);
     for (const row of evictable) {
-      store.database.prepare("DELETE FROM resource_peak_samples WHERE peak_id = ?").run(row.id);
-      store.database.prepare("DELETE FROM resource_peaks WHERE id = ?").run(row.id);
+      preparedStatement(store.database, "DELETE FROM resource_peak_samples WHERE peak_id = ?").run(row.id);
+      preparedStatement(store.database, "DELETE FROM resource_peaks WHERE id = ?").run(row.id);
     }
   }
 }
 
 function retainedPeaks(store, sessionId) {
-  return store.database.prepare(
+  return preparedStatement(store.database, 
     "SELECT id, field, observed_at AS observedAt FROM resource_peaks WHERE session_id = ?",
   ).all(sessionId);
 }
@@ -134,14 +135,14 @@ function precedingSampleMs(sortedSamples, beforeMs) {
 }
 
 function updatePeakMatch(store, peakId, taskIds, requestNumber) {
-  store.database.prepare("UPDATE resource_peaks SET matched_task_ids = ?, matched_request_number = ? WHERE id = ?")
+  preparedStatement(store.database, "UPDATE resource_peaks SET matched_task_ids = ?, matched_request_number = ? WHERE id = ?")
     .run(JSON.stringify([...taskIds].sort()), requestNumber, peakId);
 }
 
 function writeSampleWindow(store, sessionId, peakId, observedAtMs, sortedSamples) {
   const lower = observedAtMs - PEAK_WINDOW_MS;
   const upper = observedAtMs + PEAK_WINDOW_MS;
-  const statement = store.database.prepare(
+  const statement = preparedStatement(store.database, 
     `INSERT OR IGNORE INTO resource_peak_samples
        (session_id, peak_id, observed_at, cpu_cores, cpu_machine_percent, memory_bytes, read_bps, write_bps)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -283,7 +284,7 @@ export function createResourceHistoryQueries(store) {
       const params = [sessionId];
       if (isFiniteNumber(fromMs)) { clauses.push("minute_start >= ?"); params.push(fromMs); }
       if (isFiniteNumber(toMs)) { clauses.push("minute_start <= ?"); params.push(toMs); }
-      const rows = store.database.prepare(
+      const rows = preparedStatement(store.database, 
         `SELECT * FROM resource_minutes WHERE ${clauses.join(" AND ")} ORDER BY minute_start ASC`,
       ).all(...params);
       return rows.map(camelizeMinuteRow);
@@ -297,7 +298,7 @@ export function createResourceHistoryQueries(store) {
      */
     sessionResourceCurvesRecent(sessionId, { limit } = {}) {
       const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 1440;
-      const rows = store.database.prepare(
+      const rows = preparedStatement(store.database, 
         "SELECT * FROM resource_minutes WHERE session_id = ? ORDER BY minute_start DESC LIMIT ?",
       ).all(sessionId, boundedLimit + 1);
       const truncated = rows.length > boundedLimit;
@@ -306,14 +307,14 @@ export function createResourceHistoryQueries(store) {
 
     /** Bounded removal record for a session's minute curve; null when none was recorded. */
     sessionCurveRemoval(sessionId) {
-      const row = store.database.prepare(
+      const row = preparedStatement(store.database, 
         "SELECT reason, removed_at AS removedAtMs FROM resource_curve_removals WHERE session_id = ?",
       ).get(sessionId);
       return row ? { reason: row.reason, removedAtMs: row.removedAtMs } : null;
     },
 
     sessionResourcePeaks(sessionId) {
-      const rows = store.database.prepare(
+      const rows = preparedStatement(store.database, 
         "SELECT id, field, observed_at AS observedAtMs, value, matched_task_ids AS matchedTaskIds, matched_request_number AS matchedRequestNumber "
         + "FROM resource_peaks WHERE session_id = ? ORDER BY field ASC, value DESC",
       ).all(sessionId);
@@ -329,7 +330,7 @@ export function createResourceHistoryQueries(store) {
     },
 
     peakSampleWindow(peakId) {
-      const rows = store.database.prepare(
+      const rows = preparedStatement(store.database, 
         "SELECT observed_at AS observedAtMs, cpu_cores AS cpuCores, cpu_machine_percent AS cpuMachinePercent, "
         + "memory_bytes AS memoryBytes, read_bps AS readBps, write_bps AS writeBps "
         + "FROM resource_peak_samples WHERE peak_id = ? ORDER BY observed_at ASC",

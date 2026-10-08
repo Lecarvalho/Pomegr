@@ -37,14 +37,14 @@ dependency-cruiser rule per folder. A post-edit agent hook
 | `providers/` | `index`, `registry`, `provider-contract`: the only provider files generic code may import | U1/U2 seam | `providers/**`, `normalize/` |
 | `providers/kernel/` | Provider-neutral ingestors, observers, ledgers | U1 | `normalize/`, `diagnostics/pipeline-operations{,-failures}.mjs` |
 | `providers/claude/`, `providers/codex/` | One adapter each; never import each other | U1, U2 | `providers/kernel/`, `providers/provider-contract.mjs`, `normalize/` |
-| `sessions/catalog/` | Session catalog rows and inventory | D | `normalize/`, `sessions/domain/`, provider contract |
+| `sessions/catalog/` | Session catalog rows and inventory | D | `normalize/`, `sessions/domain/`, provider contract, `persistence/prepared-statements.mjs` |
 | `sessions/domain/` | Session projections and domain serving | D | `normalize/`, `analytics/`, `repository/`, provider contract |
 | `sessions/checkpoints/` | L1 observation store, checkpoints, restore | C, P | `normalize/`, `repository/`, `sessions/catalog/`, `sessions/domain/`, provider contract |
 | `sessions/history/` | Incremental session history store and refresh | P | `normalize/` |
 | `analytics/` | Cache, context, efficiency, and agent derivations | D | `normalize/` |
 | `notifications/` | Pure notification rules and bounded occurrence ledger | D | `notifications/`, `normalize/` only |
 | `repository/` | Git state, pull requests, snapshots, file history | U1 (Git), D | `normalize/`, `persistence/` |
-| `resources/` | Resource sampling and history | U1 (OS), D | `normalize/` |
+| `resources/` | Resource sampling and history | U1 (OS), D | `normalize/`, `persistence/prepared-statements.mjs` |
 | `persistence/` | SQLite store, retention, committed response caches | C, P | `normalize/` |
 | `serving/` | HTTP request handling | S | `normalize/`, `persistence/`, `repository/`, `sessions/domain/`, provider contract |
 | `diagnostics/` | Pipeline operations, logs, dev tracing | — | `normalize/`, provider contract |
