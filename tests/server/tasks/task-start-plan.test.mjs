@@ -22,7 +22,8 @@ async function setup(context, { facts = { root: ROOT, pluginReady: true } } = {}
   const clock = { now: 1_000_000 };
   const store = openTaskStore({ directory, now: () => clock.now });
   const lookups = [];
-  const runtime = { resolveTaskStart(id) { lookups.push(id); return typeof facts === "function" ? facts() : facts; } };
+  const providers = [];
+  const runtime = { resolveTaskStart(id, provider) { lookups.push(id); providers.push(provider); return typeof facts === "function" ? facts() : facts; } };
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: TOKEN }));
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   context.after(async () => {
@@ -35,7 +36,7 @@ async function setup(context, { facts = { root: ROOT, pluginReady: true } } = {}
       }
     }
   });
-  return { store, clock, lookups, port: server.address().port, directory };
+  return { store, clock, lookups, providers, port: server.address().port, directory };
 }
 
 function send(port, { method = "POST", path: requestPath, headers: extra = headers, body } = {}) {
@@ -160,16 +161,29 @@ test("abort validates its payload and names unknown tasks", async (context) => {
   refused(await call(env.port, "start-abort", { id: "T-9", token: "a".repeat(43) }), 404, "not_found");
 });
 
-test("start-plan refusals: invalid, not_found, unsupported_provider", async (context) => {
+test("start-plan refusals: invalid, not_found", async (context) => {
   const env = await setup(context);
   create(env, {});
-  create(env, { run: { provider: "codex", model: null, effort: null } });
   refused(await plan(env, { id: "T-1", extra: true }), 400, "invalid");
   refused(await plan(env, { id: "task-1" }), 400, "invalid");
   refused(await plan(env, {}), 400, "invalid");
   refused(await plan(env, { id: "T-9" }), 404, "not_found");
-  refused(await plan(env, { id: "T-2" }), 422, "unsupported_provider");
   assert.deepEqual(env.lookups, []);
+});
+
+test("a Codex task plans a Codex start and asks for the Codex plugin proof", async (context) => {
+  let ready = (provider) => provider === "codex";
+  const env = await setup(context, { facts: () => ({ root: ROOT, pluginReady: ready(env.providers.at(-1)) }) });
+  create(env, { run: { provider: "codex", model: "gpt-6-sol", effort: "xhigh" } });
+  create(env, {});
+  const answer = await plan(env, { id: "T-1" });
+  assert.equal(answer.status, 200);
+  assert.equal(answer.json.plan.provider, "codex");
+  assert.equal(answer.json.plan.model, "gpt-6-sol");
+  assert.equal(answer.json.plan.effort, "xhigh");
+  refused(await plan(env, { id: "T-2" }), 409, "plugin_missing");
+  assert.deepEqual(env.providers, ["codex", "claude"]);
+  ready = () => false;
 });
 
 test("a task in another state or with a linked session is not startable", async (context) => {

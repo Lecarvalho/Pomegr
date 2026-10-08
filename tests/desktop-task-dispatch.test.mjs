@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { nativeClaudeEnvironment } from "../desktop/runtime/environment-policy.mjs";
+import { nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/runtime/environment-policy.mjs";
 import {
   createTaskStart,
   installTaskStartIpc,
@@ -16,6 +16,7 @@ const repositoryId = "repo-0123456789abcdef01234567";
 const trusted = { trusted: true };
 const origin = "http://127.0.0.1:4317";
 const exe = "C:\\Users\\tester\\.local\\bin\\claude.exe";
+const codexExe = "C:\\Users\\tester\\.local\\bin\\codex.exe";
 const root = "C:\\Work\\repo";
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const token = "A".repeat(43);
@@ -211,7 +212,7 @@ test("monitor errors map to same-named statuses", async () => {
 
 test("malformed plans fail, spawn nothing and abort with the token", async () => {
   const bad = [
-    { provider: "codex" }, { taskId: "T-4" }, { repositoryRoot: "relative\\dir" }, { repositoryRoot: "C:\\Work\\..\\repo" },
+    { provider: "gemini" }, { provider: "__proto__" }, { taskId: "T-4" }, { repositoryRoot: "relative\\dir" }, { repositoryRoot: "C:\\Work\\..\\repo" },
     { repositoryRoot: "C:\\Work\\missing" }, { repositoryRoot: "C:\\Work\\\"x" },
     { model: "bad model" }, { model: "a/b" }, { effort: "max" }, { prompt: "-rf" }, { prompt: "" }, { prompt: "a\u0000b" },
     { prompt: "x".repeat(8001) },
@@ -239,7 +240,7 @@ test("spawn failures abort and report failed", async () => {
 });
 
 test("a failing abort never changes the status", async () => {
-  const plan = { ...basePlan(), provider: "codex" };
+  const plan = { ...basePlan(), provider: "gemini" };
   const h = harness({ plan, answer: (url) => {
     if (url.endsWith("start-abort")) throw new Error("down");
     return json({ ok: true, plan });
@@ -273,4 +274,51 @@ test("the installer replaces the handler, removes it and never throws", async ()
   installTaskStartIpc({ ipcMain, starter: { start: async () => { throw new Error("boom"); } } });
   assert.deepEqual(await handlers.get(TASK_START_CHANNEL)({}, repositoryId, "T-3"), { status: "failed" });
   assert.throws(() => installTaskStartIpc({}), TypeError);
+});
+
+const codexFiles = (f) => f === codexExe || f === powershell;
+
+test("a Codex plan starts the Codex CLI with its own environment and the task token", async () => {
+  const h = harness({ plan: { ...basePlan(), provider: "codex" }, overrides: { fileExists: (f) => f === exe || codexFiles(f) } });
+  assert.deepEqual(await go(h), { status: "started" });
+  const [command, args, options] = h.spawns[0];
+  assert.equal(command, powershell);
+  assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
+  assert.equal(options.shell, false);
+  assert.deepEqual(options.env, {
+    ...nativeCodexEnvironment(environment),
+    POMEGR_TASK_TOKEN: token,
+    POMEGR_START_FILE: codexExe,
+    POMEGR_START_ARGUMENTS: '"Do the thing"',
+    POMEGR_START_DIRECTORY: root,
+  });
+  assert.equal(options.env.SECRET_KEY, undefined);
+});
+
+test("Codex model and effort flags are passed only when set, xhigh by name", async () => {
+  const start = (plan) => harness({ plan: { ...basePlan(), provider: "codex", ...plan }, overrides: { fileExists: codexFiles } });
+  let h = start({ model: "gpt-6-sol", effort: "xhigh" });
+  assert.deepEqual(await go(h), { status: "started" });
+  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model gpt-6-sol -c model_reasoning_effort=xhigh "Do the thing"');
+  h = start({ effort: "low" });
+  assert.deepEqual(await go(h), { status: "started" });
+  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '-c model_reasoning_effort=low "Do the thing"');
+  h = start({ model: "gpt-6-sol" });
+  assert.deepEqual(await go(h), { status: "started" });
+  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model gpt-6-sol "Do the thing"');
+});
+
+test("a plan whose provider CLI is missing aborts the dispatch and answers cli_missing", async () => {
+  for (const [provider, fileExists] of [["codex", (f) => f === exe || f === powershell], ["claude", codexFiles]]) {
+    const h = harness({ plan: { ...basePlan(), provider }, overrides: { fileExists } });
+    assert.deepEqual(await go(h), { status: "cli_missing" }, provider);
+    assert.equal(h.spawns.length, 0);
+    assert.deepEqual(aborted(h)[0].body, { repositoryId, payload: { id: "T-3", token } });
+  }
+});
+
+test("with no provider CLI installed nothing is confirmed or planned", async () => {
+  const h = harness({ overrides: { fileExists: (f) => f === powershell } });
+  assert.deepEqual(await go(h), { status: "cli_missing" });
+  assert.deepEqual(h.log, []);
 });

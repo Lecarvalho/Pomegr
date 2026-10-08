@@ -718,9 +718,9 @@ async function startDesktop() {
             if (!mainWindow || mainWindow.isDestroyed()) return false;
             const answer = await dialog.showMessageBox(mainWindow, {
               type: "question",
-              title: "Start a Claude Code session",
+              title: "Start a session",
               message: `Start task ${taskId}?`,
-              detail: "A Claude Code session will open in a new terminal window in this repository.",
+              detail: "A session will open in a new terminal window in this repository, on the provider set in the task's Run on (Claude Code when none is set).",
               buttons: ["Start session", "Cancel"],
               defaultId: 1,
               cancelId: 1,

@@ -1,9 +1,9 @@
 import { resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
 
 /**
- * Committed-fact lookups for the task control plane. `resolveTaskStart(repositoryId)` returns the recognized
+ * Committed-fact lookups for the task control plane. `resolveTaskStart(repositoryId, provider)` returns the recognized
  * repository root (monitor-private) and whether the committed plugin-setup observation proves the Pomegr
- * plugin for Claude Code is installed and enabled. An unknown or loading observation is never proof.
+ * plugin for that provider (`claude` or `codex`) is installed and enabled. An unknown or loading observation is never proof.
  * `resolveTaskSessionFacts(sessionRef)` returns `{ title, state, observedModel }` for a linked session from the
  * committed catalog row and public state, or null.
  * `resolveRunModels()` returns the last committed Codex client-catalog models `{ id, label }` for the task
@@ -15,9 +15,9 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveRunModels: () => runModels?.codex?.() ?? [],
-    resolveTaskStart(repositoryId) {
+    resolveTaskStart(repositoryId, provider = "claude") {
       const root = repositoryInventory.repositoryRoot?.(repositoryId) ?? null;
-      const setup = repositoryInventory.readPluginSetup?.(repositoryId, "claude");
+      const setup = repositoryInventory.readPluginSetup?.(repositoryId, provider === "codex" ? "codex" : "claude");
       const pluginReady = setup?.readiness === "ready" && setup.installation === "installed" && setup.enabled !== false;
       return { root, pluginReady };
     },

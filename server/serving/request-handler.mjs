@@ -223,7 +223,7 @@ export function createRequestHandler({
     if (taskActionRequest) {
       await serveTaskActionRoute({
         request, response, requestUrl, taskStore, resolveSessionFacts,
-        resolveStart: (repositoryId) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId) : null),
+        resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),
       });
       return;
     }

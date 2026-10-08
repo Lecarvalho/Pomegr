@@ -144,7 +144,7 @@ function isPlainObject(value) {
 }
 
 // `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
-// `resolveStart(repositoryId)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
+// `resolveStart(repositoryId, provider)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
 // that precedes it. Neither answer ever carries the stored digest or an echo of task content.
 function serveStartAction({ response, taskStore, resolveStart, action, repositoryId, payload }) {
   try {
@@ -155,7 +155,7 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
       return;
     }
     const result = planning
-      ? call(repositoryId, payload, () => (typeof resolveStart === "function" ? resolveStart(repositoryId) : null))
+      ? call(repositoryId, payload, (provider) => (typeof resolveStart === "function" ? resolveStart(repositoryId, provider) : null))
       : call(repositoryId, payload);
     if (result?.ok === true) {
       writeActionResult(response, 200, planning ? { ok: true, plan: result.plan } : { ok: true });

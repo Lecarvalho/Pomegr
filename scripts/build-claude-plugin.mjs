@@ -20,7 +20,7 @@ const bundles = [
     outputFile: path.join(pluginRoot, "scripts", "query-session.bundle.mjs"),
   },
   {
-    entryPoint: path.join(repositoryRoot, "plugin-src", "claude-bind-task.mjs"),
+    entryPoint: path.join(repositoryRoot, "plugin-src", "bind-task.mjs"),
     outputFile: path.join(pluginRoot, "scripts", "bind-task.bundle.mjs"),
   },
   {

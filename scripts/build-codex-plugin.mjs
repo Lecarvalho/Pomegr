@@ -13,6 +13,8 @@ const reminderEntryPoint = path.join(repositoryRoot, "scripts", "progress-remind
 const reminderOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "scripts", "progress-reminder.bundle.mjs");
 const usageGuardEntryPoint = path.join(repositoryRoot, "scripts", "usage-guard.mjs");
 const usageGuardOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "scripts", "usage-guard.bundle.mjs");
+const bindTaskEntryPoint = path.join(repositoryRoot, "plugin-src", "bind-task.mjs");
+const bindTaskOutputFile = path.join(repositoryRoot, "plugins", "pomegr", "scripts", "bind-task.bundle.mjs");
 const obsoleteLifecycleBundleFiles = [
   path.join(repositoryRoot, "plugins", "pomegr", "scripts", "codex-lifecycle-bridge.bundle.mjs"),
   path.join(repositoryRoot, "plugins", "pomegr", "scripts", "codex-lifecycle-owner.bundle.mjs"),
@@ -56,13 +58,14 @@ export async function buildCodexPluginMcp() {
     buildBundle(entryPoint, outputFile),
     buildBundle(reminderEntryPoint, reminderOutputFile),
     buildBundle(usageGuardEntryPoint, usageGuardOutputFile),
+    buildBundle(bindTaskEntryPoint, bindTaskOutputFile),
   ]);
   await mkdir(path.dirname(hooksOutputFile), { recursive: true });
   await writeFile(hooksOutputFile, await readFile(hooksSourceFile, "utf8"), "utf8");
   await writeFile(readmeOutputFile, await readFile(readmeSourceFile, "utf8"), "utf8");
   await mkdir(path.dirname(iconOutputFile), { recursive: true });
   await copyFile(iconSourceFile, iconOutputFile);
-  return [...skillFiles, outputFile, reminderOutputFile, usageGuardOutputFile, hooksOutputFile, readmeOutputFile, iconOutputFile];
+  return [...skillFiles, outputFile, reminderOutputFile, usageGuardOutputFile, bindTaskOutputFile, hooksOutputFile, readmeOutputFile, iconOutputFile];
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

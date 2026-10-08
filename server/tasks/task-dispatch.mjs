@@ -20,6 +20,8 @@ export const TASK_DISPATCH_UNBOUND_TTL_MS = 10 * 60 * 1000;
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
+/** Providers a session can be started on. A task with no provider runs on Claude Code. */
+export const TASK_START_PROVIDERS = Object.freeze(["claude", "codex"]);
 const STORED_DISPATCH = /^([0-9a-f]{64}):(\d{1,16})$/u;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 const CHECK_LABELS = Object.freeze({
@@ -71,8 +73,9 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
 
 /**
- * `start-plan`. `resolveFacts()` returns `{ root, pluginReady }` from committed facts and is called only
- * after the task, provider, and state refusals. `transaction(work)` runs `work` in one write transaction.
+ * `start-plan`. `resolveFacts(provider)` returns `{ root, pluginReady }` from committed facts, `pluginReady`
+ * for the plugin of the provider the session runs on, and is called only after the task, provider, and state
+ * refusals. `transaction(work)` runs `work` in one write transaction.
  */
 export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, now }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id"]) : undefined;
@@ -83,9 +86,10 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   if (!task) return { ok: false, error: "unavailable" };
   const at = now();
   if (!startable(row, at)) return { ok: false, error: "not_startable" };
-  if ((task.run.provider ?? "claude") !== "claude") return { ok: false, error: "unsupported_provider" };
+  const provider = task.run.provider ?? "claude";
+  if (!TASK_START_PROVIDERS.includes(provider)) return { ok: false, error: "unsupported_provider" };
   let facts;
-  try { facts = resolveFacts(); } catch { facts = null; }
+  try { facts = resolveFacts(provider); } catch { facts = null; }
   if (typeof facts?.root !== "string" || facts.root.length === 0) return { ok: false, error: "unavailable" };
   if (facts.pluginReady !== true) return { ok: false, error: "plugin_missing" };
   const token = crypto.randomBytes(32).toString("base64url");
@@ -101,7 +105,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   return {
     ok: true,
     plan: {
-      taskId: task.id, provider: "claude", model: task.run.model, effort: task.run.effort,
+      taskId: task.id, provider, model: task.run.model, effort: task.run.effort,
       repositoryRoot: facts.root, prompt: buildTaskPrompt(task), token,
     },
   };
