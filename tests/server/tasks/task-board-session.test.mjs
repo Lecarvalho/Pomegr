@@ -245,14 +245,14 @@ test("the lookup reads the catalog row's title and the state the Sessions list r
     assert.equal(lookup({ rows: [catalogRow({ activityStatus })] })(SESSION).state, activityStatus);
   }
   const publicState = { session: { title: "From state" }, agents: [{ id: "primary", model: "claude-opus-4-1" }, { id: "agent-2", model: "claude-haiku-4" }] };
-  assert.deepEqual(lookup({ rows: [catalogRow()], publicState })(SESSION), { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1" });
+  assert.deepEqual(lookup({ rows: [catalogRow()], publicState })(SESSION), { title: "Fix the flaky test", state: "working", observedModel: "claude-opus-4-1", writerReleased: false });
 });
 
 test("the lookup falls back to the committed public state where the row lacks a title or is missing", () => {
   const publicState = { session: { title: "From state" }, agents: [{ id: "primary", model: "claude-sonnet-4" }] };
-  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })], publicState })(SESSION), { title: "From state", state: "working", observedModel: "claude-sonnet-4" });
-  assert.deepEqual(lookup({ publicState })(SESSION), { title: "From state", state: "unknown", observedModel: "claude-sonnet-4" });
-  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })] })(SESSION), { title: null, state: "working", observedModel: null });
+  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })], publicState })(SESSION), { title: "From state", state: "working", observedModel: "claude-sonnet-4", writerReleased: false });
+  assert.deepEqual(lookup({ publicState })(SESSION), { title: "From state", state: "unknown", observedModel: "claude-sonnet-4", writerReleased: false });
+  assert.deepEqual(lookup({ rows: [catalogRow({ title: "Untitled session" })] })(SESSION), { title: null, state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(lookup({ rows: [catalogRow({ title: `a${NUL}b${LINE_BREAK}c` })] })(SESSION).title, "a b c");
   assert.equal(lookup({ rows: [catalogRow({ title: "t".repeat(400) })] })(SESSION).title.length, TASK_SESSION_TITLE_LENGTH);
 });
@@ -281,6 +281,6 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
     repositoryInventory: new Proxy({}, { get(_target, key) { touched.push(["inventory", String(key)]); return undefined; } }),
   });
   assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
-  assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null });
+  assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });

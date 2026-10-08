@@ -26,6 +26,8 @@ import { useTaskStart } from "./use-task-start";
 // offers Add to queue (Not queued) or Remove from queue (Queued) before Delete task: the design has no such
 // control, so this is the orchestrator's decision.
 
+const STALLED_NOTE = "The session ended with no report.";
+
 type Patch = { text?: string } & TaskFieldsInput;
 
 function reportLine(report: NonNullable<Task["report"]>) {
@@ -89,6 +91,8 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
+  // A stalled task has no report: its session ended before the agent reported complete or blocked.
+  const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
   const start = useTaskStart(repositoryId, task, text.trim() !== task.text, refresh);
   // A task that needs the user offers its resolutions instead of Start session, so the footer keeps one primary action.
   const showStart = start.available && !unresolved;
@@ -233,7 +237,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
         </div>}
       </div>
       <DoneWhenField draft={doneWhen} layout="list" results={task.report ? results : undefined} ownNote={task.report && doneWhen.ownEnabled && task.doneWhen.own !== null ? "Agent-reported" : null}
-        footnote={task.report ? <span className="newTaskHelper taskDoneWhenNote">{reportLine(task.report)}</span> : undefined}
+        footnote={outcomeNote ? <span className="newTaskHelper taskDoneWhenNote">{outcomeNote}</span> : undefined}
         onDraftChange={setDoneWhen} onCommit={commitDoneWhen} />
       <FeatureFields draft={feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
         onCommitName={() => void commitName()} onCancelName={cancelName} onOpenTask={onOpenTask} />

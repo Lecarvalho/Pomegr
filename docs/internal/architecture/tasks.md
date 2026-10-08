@@ -42,7 +42,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
 | `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
 | CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
-| Stalled, queue advance, start gates | Not built |
+| Stalled | Built: after committed revisions the monitor sets a linked task with no report to Stalled once its session's committed facts establish the end (catalog state Closed or Stopped, or Unknown with the Codex writer released), persists it, and holds a running queue. Idle, Open, and a bare Unknown never stall a task. The task panel says the session ended with no report and offers Mark done and resume queue or Requeue task |
+| Queue advance, start gates | Not built |
 | Parallel steps with worktrees, scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
 
@@ -182,6 +183,17 @@ at first observation of its evidence: Stalled is assigned only once the end of t
 bound session is established by committed observation, never from an idle or paused
 reading that a later observation could reverse. The same rule applies to every card
 badge and chip derived from a task.
+
+Stalled is decided in `server/tasks/task-stall.mjs`. After each burst of committed
+revisions the monitor reads the committed facts of every session linked to a task that
+has no report. The task stalls when the catalog state is Closed or Stopped, or when the
+state is Unknown and the primary agent's liveness reason is `writer_released`. Idle,
+Open, Working, Needs input, a bare Unknown, and a session with no committed facts leave
+the task as it is, so a Codex session whose turn finished and whose state stays Idle
+does not stall its task. The decision is written to the task store once. A stalled task
+keeps its session link and has no report; a later report from that session is refused,
+and only Mark done or Requeue changes the state. The sweep reads memory and the task
+store only: no provider, Git, or GitHub read.
 
 ## Features and steps
 

@@ -21,6 +21,7 @@ import { createPipelineOperationsSnapshot } from "./diagnostics/pipeline-operati
 import { startPipelineOperationsTransport } from "./diagnostics/pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./serving/request-handler.mjs";
 import { EMPTY_PROVIDER_FOLDERS } from "./normalize/provider-folders.mjs";
+import { createTaskStallWatcher } from "./tasks/task-stall.mjs";
 import { openTaskStore } from "./tasks/task-store.mjs";
 import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./sessions/domain/session-current-activity.mjs";
 import {
@@ -697,11 +698,13 @@ export async function startMonitorServer(options = {}) {
   let startupExtension;
   let stopObservationPromise;
   let ownedTaskStore = null;
+  let stallWatcher = null;
   const stopObservationOnce = () => {
     stopObservationPromise ??= Promise.resolve().then(() => runtime?.stopObservation?.());
     return stopObservationPromise;
   };
   const closeOwnedTaskStore = () => {
+    stallWatcher?.stop();
     const store = ownedTaskStore;
     ownedTaskStore = null;
     try { store?.close(); } catch { /* shutdown stays bounded */ }
@@ -746,6 +749,11 @@ export async function startMonitorServer(options = {}) {
       }));
     }
     await runtime.startObservation?.();
+    // A linked task whose session ended without a report stalls, decided from committed session facts.
+    if (tasks.store && typeof runtime.resolveTaskSessionFacts === "function") {
+      stallWatcher = createTaskStallWatcher({ taskStore: tasks.store, subscribe: runtime.subscribeRevisionEvents,
+        resolveSessionFacts: (id) => runtime.resolveTaskSessionFacts(id) });
+    }
     // Provider-owned watch targets remain private and are initialized only
     // after the listener and background observation lifecycle are ready.
     await registry.watchTargets();

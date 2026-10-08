@@ -29,7 +29,7 @@ const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT *
 const reportable = (row) => REPORTABLE_STATES.has(row.state) && (row.report_at ?? null) === null;
 
 // The first task that needs the user holds a running queue; a queue already blocked keeps its first blocker.
-function blockQueue(database, repositoryId, taskId) {
+export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
     .run(taskId, repositoryId);
 }

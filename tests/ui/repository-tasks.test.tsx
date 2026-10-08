@@ -121,6 +121,18 @@ describe("task board", () => {
     expect(card.classList.contains("isDone")).toBe(state === "done");
   });
 
+  it.each(["closed", "stopped", "unknown", "working"])("keeps the Stalled chip while its ended session reads %s", (state) => {
+    render(<TaskBoardView board={board({ tasks: [
+      task(4, { state: "stalled", session: { id: "claude:abc124", title: null, state, observedModel: null } }),
+    ] })} />);
+    const card = screen.getByRole("listitem");
+    expect(within(card).getByText("Stalled")).toHaveClass("commandChip", "warning");
+    expect(card).toHaveClass("isAttention");
+    expect(card).not.toHaveClass("isLive");
+    expect(within(card).queryByText(/^(Closed|Stopped|Unknown|Working)$/u)).not.toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: /session/iu })).toBeInTheDocument();
+  });
+
   it("shows the session title instead of the text once the session has one, and that session's state", () => {
     render(<TaskBoardView board={board({ tasks: [
       task(1, { text: "Refactor the parser", state: "queued", session: { id: "claude:abc", title: "Parser refactor session", state: "working", observedModel: "opus" } }),
