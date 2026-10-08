@@ -6,7 +6,7 @@ import { SessionsView } from "../../app/components/command-center/CommandViews";
 import { SessionCatalogProvider } from "../../app/hooks/SessionCatalogContext";
 import type { SessionSummary } from "../../shared/monitor-contract";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); window.localStorage.clear(); });
 
 function session(index: number): SessionSummary {
   const createdAt = new Date(Date.UTC(2026, 7, 1, 12, index)).toISOString();
@@ -215,5 +215,91 @@ describe("Sessions view", () => {
     expect(screen.getByText("First page")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
     vi.useRealTimers();
+  });
+
+  it("sections the recent list by creation day and collapses a section", async () => {
+    const today = { ...session(2), title: "Fresh session", createdAt: new Date().toISOString() };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(directorySnapshot([today, session(1)])), { status: 200 }))));
+    const user = userEvent.setup();
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+    const earlier = await screen.findByRole("button", { name: "Started earlier" });
+    expect(screen.getByRole("button", { name: "Recent" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Started today" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Fresh session").closest("tr")).toHaveTextContent("Pomegr · Codex");
+    await user.click(earlier);
+    expect(earlier).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Session 1")).not.toBeInTheDocument();
+    expect(screen.getByText("Fresh session")).toBeInTheDocument();
+  });
+
+  it("groups by repository from the monitor, remembers the choice, and narrows to a group's full list", async () => {
+    const grouped = directorySnapshot([], {
+      groupBy: "project", groupCount: 2,
+      groups: [
+        { key: "Pomegr", label: "Pomegr", count: 7, live: 2, needs: 1, latestUpdatedAt: "2026-08-29T12:00:00.000Z", sessions: [session(3), session(2)] },
+        { key: "Other", label: "Other", count: 1, live: 0, needs: 0, latestUpdatedAt: null, sessions: [{ ...session(4), project: "Other" }] },
+      ],
+    });
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("group=project") ? grouped : directorySnapshot([session(1)])), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    const view = render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    await screen.findByText("Session 1");
+
+    await user.click(screen.getByRole("button", { name: "Repository" }));
+    const header = await screen.findByRole("button", { name: /^Pomegr/ });
+    expect(header).toHaveTextContent("7 sessions");
+    expect(header).toHaveTextContent("2 live");
+    expect(header).toHaveTextContent("1 needs input");
+    expect(screen.getByRole("button", { name: /^Other/ })).toHaveTextContent("1 session");
+    // The group header names the repository, so the row keeps only the provider.
+    expect(screen.getByText("Session 3").closest("tr")).not.toHaveTextContent("Pomegr");
+    expect(screen.getByText("2 repositories · 52 sessions")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Next" })).not.toBeInTheDocument();
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).not.toContain("cursor=");
+    expect(window.localStorage.getItem("pomegr-sessions-group-by")).toBe("project");
+
+    // The Live scope already says every counted session is live.
+    await user.click(screen.getByRole("button", { name: /^Live/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Pomegr/ })).not.toHaveTextContent("2 live"));
+    expect(screen.getByRole("button", { name: /^Pomegr/ })).toHaveTextContent("1 needs input");
+    await user.click(screen.getByRole("button", { name: /^Needs input/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Pomegr/ })).not.toHaveTextContent("1 needs input"));
+    expect(screen.getByRole("button", { name: /^Pomegr/ })).toHaveTextContent("2 live");
+
+    await user.click(screen.getByRole("button", { name: "Show all 7 in Pomegr" }));
+    await screen.findByRole("button", { name: "Clear repository filter: Pomegr" });
+    const narrowed = String(fetchMock.mock.calls.at(-1)?.[0]);
+    expect(narrowed).toContain("project=Pomegr");
+    expect(narrowed).not.toContain("group=");
+    expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+
+    view.unmount();
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+    expect(screen.getByRole("button", { name: "Repository" })).toHaveAttribute("aria-pressed", "true");
+    await screen.findByRole("button", { name: /^Pomegr/ });
+  });
+
+  it("groups by provider and narrows with a provider scope", async () => {
+    window.localStorage.setItem("pomegr-sessions-group-by", "provider");
+    const grouped = directorySnapshot([], {
+      groupBy: "provider", groupCount: 1,
+      groups: [{ key: "codex", label: "Codex", count: 9, live: 0, needs: 0, latestUpdatedAt: "2026-08-29T12:00:00.000Z", sessions: [session(3)] }],
+    });
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("group=provider") ? grouped : directorySnapshot([session(1)])), { status: 200 })));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+    await screen.findByRole("button", { name: /^Codex/ });
+    const row = screen.getByText("Session 3").closest("tr");
+    expect(row).toHaveTextContent("Pomegr");
+    expect(row).not.toHaveTextContent("Codex");
+    await user.click(screen.getByRole("button", { name: "Show all 9 in Codex" }));
+    await screen.findByRole("button", { name: "Clear provider filter: Codex" });
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("provider=codex");
+    await user.click(screen.getByRole("button", { name: "Clear provider filter: Codex" }));
+    await screen.findByRole("button", { name: "Show all 9 in Codex" });
   });
 });

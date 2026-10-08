@@ -80,4 +80,24 @@ describe("CommandTable", () => {
     expect(screen.getByRole("columnheader", { name: "Name" })).not.toHaveAttribute("aria-sort");
     expect(names()).toEqual(["Item 10", "Item 2", "Item 1", "Item 3"]);
   });
+
+  it("renders caller-ordered row groups with header and footer rows instead of sorted pages", () => {
+    render(<CommandTable caption="Items" rows={[]} columns={columns} getRowKey={getRowKey} pagination={{ page: 1, pageSize: 1, onPageChange: () => {} }} rowGroups={[
+      { key: "first", header: "First group", rows: rows.slice(0, 2), footer: <button type="button">Show all 9</button> },
+      { key: "collapsed", header: "Collapsed group", rows: [] },
+    ]} />);
+    const table = screen.getByRole("table", { name: "Items" });
+    expect(within(table).getAllByRole("rowgroup")).toHaveLength(3);
+    const first = within(table).getByRole("rowheader", { name: "First group" });
+    expect(first).toHaveAttribute("colspan", "3");
+    expect(first.closest("tbody")).toHaveTextContent("Item 10");
+    expect(within(first.closest("tbody") as HTMLElement).getByRole("button", { name: "Show all 9" })).toBeInTheDocument();
+    expect(within(table).getByRole("rowheader", { name: "Collapsed group" }).closest("tbody")?.querySelectorAll("tr")).toHaveLength(1);
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state when there are no row groups", () => {
+    render(<CommandTable caption="Items" rows={rows} columns={columns} getRowKey={getRowKey} rowGroups={[]} emptyState={<p>Nothing grouped</p>} />);
+    expect(screen.getByText("Nothing grouped")).toBeInTheDocument();
+  });
 });

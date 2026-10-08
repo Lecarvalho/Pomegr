@@ -15,9 +15,14 @@ not whether the work succeeded.
    on **All**. **Needs input** narrows the list to sessions waiting for you. A
    count sits beside each filter.
 2. Type in **Filter sessions** to match a session title, project, or coding tool.
-   Some links open the list already filtered to one project and add a
-   **Project** chip; select its close button to clear it.
-3. Read a row, then select its title to open the session. The list shows 25 rows
+   Some links open the list already filtered to one repository and add a
+   **Repository** chip; select its close button to clear it.
+3. Choose how the list is arranged with **Group by**. **Recent** lists the newest
+   sessions first under the day they started. **Repository** and **Provider** show
+   one group per repository or coding tool, with its newest sessions; select
+   **Show all** in a group to list every session in it. Select a group heading
+   to collapse it. Pomegr remembers the choice in this browser.
+4. Read a row, then select its title to open the session. A list shows 25 rows
    per page; use **Previous** and **Next**.
 
 ![The Sessions list in dark theme, filtered to the Pomegr project and the text Claude Code with All selected, showing four Claude Code sessions with their State, Last activity, Agents, and Context columns; one is In progress with 2/25 agents.](../images/sessions-and-agents/sessions-list.jpg)

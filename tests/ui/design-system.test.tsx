@@ -190,9 +190,14 @@ describe("Design-system reference page", () => {
     expect(within(inspector).getByRole("button", { name: /Activities for this agent/ })).toHaveClass("commandSecondaryAction", "inspectorActionRow");
 
     const tableSection = section("Command table");
-    const agentsHeader = within(tableSection).getByRole("columnheader", { name: "Agents" });
+    const sampleTable = within(tableSection).getByRole("table", { name: "Sample sessions" });
+    const agentsHeader = within(sampleTable).getByRole("columnheader", { name: "Agents" });
     expect(agentsHeader).not.toHaveAttribute("aria-sort");
-    expect(within(tableSection).getByRole("columnheader", { name: "Status" })).not.toHaveClass("commandTableSortable");
+    expect(within(sampleTable).getByRole("columnheader", { name: "Status" })).not.toHaveClass("commandTableSortable");
+    const groupedTable = within(tableSection).getByRole("table", { name: "Grouped sample sessions" });
+    expect(within(groupedTable).getByRole("button", { name: /^pomegr/ })).toHaveClass("commandQuietAction", "commandSessionGroupToggle");
+    expect(within(groupedTable).getByRole("button", { name: /^catalogus/ })).toHaveAttribute("aria-expanded", "false");
+    expect(within(groupedTable).getByRole("button", { name: "Show all 7 in pomegr" })).toHaveClass("commandTextLink");
     await user.click(within(agentsHeader).getByRole("button"));
     expect(agentsHeader).toHaveAttribute("aria-sort", "descending");
     await user.click(within(agentsHeader).getByRole("button"));

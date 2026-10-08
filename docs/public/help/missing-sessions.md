@@ -20,8 +20,8 @@ The list reads **No sessions match** when a search or filter matches none, and
 A search or filter is hiding the rows, and "0 matches" appears beside the
 filters.
 
-1. Clear **Filter sessions**, and select the close button on a **Project:** or
-   **Repository:** chip if one is shown. **View sessions** on a repository opens
+1. Clear **Filter sessions**, and select the close button on a **Repository:**
+   or **Provider:** chip if one is shown. **View sessions** on a repository opens
    the list with the **Repository:** chip.
 2. Select **All**. **Live** and **Needs input** list only sessions in that state.
 
