@@ -70,6 +70,7 @@ const OBSERVER_COUNTERS = Object.freeze([
   "watcherWakeups",
   "routedSourceEvents",
   "unresolvedSourceEvents",
+  "unchangedSourceEvents",
   "hydrationAttempts",
   "hydrationsQueued",
   "hydrationsCoalesced",

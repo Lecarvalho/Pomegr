@@ -1595,6 +1595,20 @@ because a read at an unchanged size publishes nothing. A rename, a file no sessi
 yet, and a route that waits for the catalog keep the read after the pass. A read that fails
 is retried by the next notification or the ten-second reconciliation, not by that pass.
 
+The shared observer first checks that a `change` notification is a write. On Windows,
+reading a file whose last-access time is stale updates that time, and the directory watcher
+reports the update as `change`; the monitor's own header and fingerprint reads would
+otherwise notify its own watcher. The observer stats the notified file and holds only its
+size and modification time, in memory, for at most 8,192 files. A notification that moved
+neither is dropped before routing and counted as `unchangedSourceEvents`. A file not
+notified before counts as written only when it was modified after the observer started.
+A rename, a directory, and a file that cannot be read keep their ordinary routing.
+
+A routed session enters the live-update lane when the notification is a confirmed write, the
+catalog lists the session as live or needing input, or the catalog does not list it yet. Any
+other notification for a settled session queues with background work, so a burst of them
+cannot delay live sessions. A later confirmed write promotes the waiting read.
+
 Claude catalog discovery walks the projects tree through `fs.promises`, so the event loop
 is free between directory reads and file-stat batches. Each directory's listing is reused
 while its identity and modification time are unchanged and it had been unmodified for at

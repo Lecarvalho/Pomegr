@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createSourceWriteClassifier } from "./source-write-classifier.mjs";
 import { isObservationWorkingSetEntry } from "../../normalize/observation-working-set.mjs";
 import { createDurationSeries } from "../../diagnostics/pipeline-operations.mjs";
 import { createPipelineFailureRecorder } from "../../diagnostics/pipeline-operations-failures.mjs";
@@ -55,6 +56,7 @@ export function createNormalizedPollingObserver(options) {
     watchTargets = [],
     routeSourceEvent,
     watchSource = fs.watch,
+    statSource,
     yieldControl = () => new Promise((resolve) => setImmediate(resolve)),
     now = Date.now,
     monotonicNow = () => performance.now(),
@@ -124,6 +126,7 @@ export function createNormalizedPollingObserver(options) {
   const runningHydrations = new Map();
   const latestEntries = new Map();
   const catalogHydrations = new Map();
+  const sourceWrites = createSourceWriteClassifier({ ...(statSource ? { stat: statSource } : {}), now });
   const hydratedSessions = new Set();
   // The first catalog this observer ever reads (its "startup catalog"). Any
   // session already present in it is excluded from the new-session priority
@@ -168,6 +171,7 @@ export function createNormalizedPollingObserver(options) {
     watcherWakeups: 0,
     routedSourceEvents: 0,
     unresolvedSourceEvents: 0,
+    unchangedSourceEvents: 0,
     hydrationAttempts: 0,
     hydrationsQueued: 0,
     hydrationsCoalesced: 0,
@@ -581,6 +585,14 @@ export function createNormalizedPollingObserver(options) {
   async function handleSourceEvent(change) {
     if (stopped || signal?.aborted) return;
     const sourceEventAt = monotonicNow();
+    // A notification that moved neither the file's size nor its modification time (a
+    // last-access update caused by a read, on Windows) is not a source event at all.
+    const written = await sourceWrites.classify(change);
+    if (stopped || signal?.aborted) return;
+    if (written === "unchanged") {
+      qa.unchangedSourceEvents += 1;
+      return;
+    }
     trace?.recordDuration({ stage: "source_notification", domain: "acquisition", durationMs: 0 });
     let routed;
     try {
@@ -604,8 +616,13 @@ export function createNormalizedPollingObserver(options) {
     }
     for (const localSessionId of routed.sessionIds) {
       preparationGeneration += 1;
+      // The live-update lane is for a confirmed write, a live session, or a session the
+      // catalog does not list yet. Any other notification for a settled session waits with
+      // background work, so a burst of them cannot delay live sessions.
+      const entry = latestEntries.get(localSessionId);
+      const liveLane = written === "written" || !entry || entry.isLive || entry.needsInput;
       enqueueHydration(localSessionId, {
-        priority: needsInitialLiveHydration(localSessionId) ? URGENT : SOURCE_UPDATE,
+        priority: needsInitialLiveHydration(localSessionId) ? URGENT : liveLane ? SOURCE_UPDATE : BACKGROUND,
         rerunIfActive: true,
         sourceEventAt,
       });
@@ -645,6 +662,7 @@ export function createNormalizedPollingObserver(options) {
     }
     pendingHydrations.clear();
     catalogHydrations.clear();
+    sourceWrites.clear();
     hydratedSessions.clear();
     pendingEagerEntries = null;
     settleCatalogWaiters();
