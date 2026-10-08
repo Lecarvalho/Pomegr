@@ -5,6 +5,7 @@ import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { QueueBlockRules } from "./QueueBlockRules";
 import { QueueFeaturePanel } from "./QueueFeaturePanel";
 import { QueueSingleTasks } from "./QueueSingleTasks";
+import { SchedulePanel } from "./SchedulePanel";
 import { StartGatesPanel } from "./StartGatesPanel";
 import { queueFeatures, singleQueueTasks } from "./task-queue-model";
 import { useQueueDrag } from "./use-queue-drag";
@@ -14,7 +15,8 @@ const EMPTY_TEXT = "Nothing is in the queue yet. Open a task on the Board and ch
 
 /**
  * The Queue view of a ready board (design contract D101-D155): one panel per unfinished feature with its steps, then
- * the single tasks, then the fixed rules for when the queue blocks (D178-D183). The monitor owns the start order; this view draws it and, with `edits` (the desktop app), lets a
+ * the single tasks, then the fixed rules for when the queue blocks (D178-D183); beside them the start gates and the
+ * queue's schedule (D156-D177). The monitor owns the start order; this view draws it and, with `edits` (the desktop app), lets a
  * queued task move to another step by drag or from the keyboard. Without `edits` it is read-only.
  */
 export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: (task: Task, opener: HTMLElement) => void; edits?: TaskBoardEdits }) {
@@ -37,6 +39,9 @@ export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; 
     <QueueBlockRules />
     <span className="visuallyHidden" role="status">{announcement}</span>
     </div>
-    <StartGatesPanel queue={board.queue} edits={edits} />
+    <aside className="taskQueueAside" aria-label="Queue settings">
+      <StartGatesPanel queue={board.queue} edits={edits} />
+      <SchedulePanel queue={board.queue} edits={edits} />
+    </aside>
   </div>;
 }

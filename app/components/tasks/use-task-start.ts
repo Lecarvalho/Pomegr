@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { startDesktopTask, useTaskDesktopAvailability, type TaskStartStatus } from "./task-desktop";
+import { useMinuteClock } from "./task-panel-hooks";
+import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 
 // Start session for one task. The desktop shows the native confirmation; this only mirrors the committed board
 // (pre-disabled reasons) and one fixed line per result. It never shows a running state: the card borrows the
@@ -26,11 +28,13 @@ const LINES: Record<TaskStartStatus, string | null> = {
 /** A retry cannot succeed after these, or after `started`, for as long as the panel stays open. */
 const FINAL = new Set<TaskStartStatus>(["started", "unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);
 
-function boardReason(task: Task, unsaved: boolean): string | null {
+function boardReason(task: Task, unsaved: boolean, now: number): string | null {
   if (task.session !== null) return "A session is already linked to this task.";
   if (task.state === "done") return "This task is done.";
   if (task.state !== "not_queued" && task.state !== "queued" && task.state !== "scheduled") return "Resolve this task before starting it again.";
   if (unsaved) return "Save your changes first.";
+  // A scheduled task is not startable before its own time; the monitor refuses it too.
+  if (waitsForOwnTime(task, now)) return `This task starts ${scheduleLabel(task.scheduledAt ?? "") ?? "later"}. Clear its start time to start it now.`;
   return null;
 }
 
@@ -39,7 +43,8 @@ export function useTaskStart(repositoryId: string, task: Task, unsaved: boolean,
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<TaskStartStatus | null>(null);
   const inFlight = useRef(false);
-  const reason = boardReason(task, unsaved);
+  const now = useMinuteClock();
+  const reason = boardReason(task, unsaved, now);
   const locked = result !== null && FINAL.has(result);
   const run = async () => {
     if (inFlight.current || locked || reason !== null) return;

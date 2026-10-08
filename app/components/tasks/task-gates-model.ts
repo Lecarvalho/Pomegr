@@ -1,4 +1,5 @@
 import type { TaskBoard, TaskGateReason, TaskGates, TaskGateUsage, TaskProvider } from "../../../shared/task-contract";
+import { scheduleLabel } from "./task-schedule";
 
 export const PROVIDER_NAMES: Record<TaskProvider, string> = { claude: "Claude Code", codex: "Codex" };
 
@@ -33,7 +34,8 @@ export function workingTreeRow(gates: TaskGates): { text: string; tone: GateTone
   return { text: "Unknown", tone: "muted" };
 }
 
-function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<TaskGates["next"]>): string {
+function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<TaskGates["next"]>, schedule: TaskBoard["queue"]["schedule"]): string {
+  const at = (value: string | null | undefined) => (value ? scheduleLabel(value) : null);
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
     case "previous_step": return next.blockedBy ? `step before it is not done (${next.blockedBy})` : "step before it is not done";
@@ -43,6 +45,8 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
     case "provider_status_unknown": return `${provider} status is not known`;
     case "tree_dirty": return "the working tree has uncommitted changes";
     case "tree_unknown": return "the working tree state is not known";
+    case "before_queue_start": return at(schedule?.startAt) ? `the queue starts ${at(schedule?.startAt)}` : "the queue's start time has not come";
+    case "after_queue_stop": return at(schedule?.stopAfter) ? `the queue stopped starting tasks ${at(schedule?.stopAfter)}` : "the queue's stop time has passed";
   }
 }
 
@@ -51,5 +55,5 @@ export function waitingLine(queue: TaskBoard["queue"], taskId: string): string |
   const gates = queue.gates;
   if (queue.status !== "running" || !gates?.next || gates.next.taskId !== taskId || gates.next.reasons.length === 0) return null;
   const next = gates.next;
-  return `Waiting: ${next.reasons.map((reason) => reasonText(reason, gates, next)).join("; ")}`;
+  return `Waiting: ${next.reasons.map((reason) => reasonText(reason, gates, next, queue.schedule)).join("; ")}`;
 }

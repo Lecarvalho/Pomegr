@@ -4,8 +4,14 @@
 //
 // A task in a feature runs by feature order, then step, then task number, because a step starts
 // only when the step before it is done and the tasks of one step run in parallel. A task without a
-// feature has no such structure, so it runs in the order it was queued. Only tasks in state
-// `queued` are in the order; every task of a feature takes part in its steps.
+// feature has no such structure, so it runs in the order it was queued. Only tasks that wait to
+// start now are in the order: those in state `queued`, and those in state `scheduled` whose own
+// time has come (`due`). Every task of a feature takes part in its steps.
+//
+// The schedule rules are pure too and take the clock as a value: a scheduled task is due from its
+// own time on, and a queue starts nothing before its start time or from its stop time on. A time
+// that passed while nothing was asking is simply in the past at the next question, so a missed
+// start happens then, and only if the stop time has not come.
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 
@@ -17,12 +23,31 @@ const taskNumber = (id) => (typeof id === "string" && TASK_ID.test(id) ? Number(
 /** Stored feature steps are integers of at least 1; anything else places the task nowhere. */
 const isStep = (value) => Number.isSafeInteger(value) && value >= 1;
 
+/** A scheduled task is due from its own time on. `scheduledAt` and `at` are epoch milliseconds; a task with no time has nothing to wait for. */
+export function taskIsDue(scheduledAt, at) {
+  if (scheduledAt === null || scheduledAt === undefined) return true;
+  return Number.isSafeInteger(scheduledAt) && Number.isFinite(at) && scheduledAt <= at;
+}
+
 /**
- * `tasks` are `{ id, featureId, step, state, queuePosition }` and `features` are `{ id }` in board
+ * Why a queue's own schedule holds every start at `at`: `before_queue_start` until `startAt`, `after_queue_stop` from
+ * `stopAfter` on, or null. All three are epoch milliseconds, the two settings null when not set; a setting that is
+ * not a time is not set. A clock that is not a number holds like a stop: nothing starts on an unknown time.
+ */
+export function queueWindowHold(schedule, at) {
+  const { startAt = null, stopAfter = null } = isRecord(schedule) ? schedule : {};
+  if (!Number.isFinite(at)) return Number.isSafeInteger(startAt) || Number.isSafeInteger(stopAfter) ? "after_queue_stop" : null;
+  if (Number.isSafeInteger(stopAfter) && at >= stopAfter) return "after_queue_stop";
+  return Number.isSafeInteger(startAt) && at < startAt ? "before_queue_start" : null;
+}
+
+/**
+ * `tasks` are `{ id, featureId, step, state, queuePosition, due }` and `features` are `{ id }` in board
  * order. `queuePosition` is the monitor-private integer a task received when it was queued, or null.
+ * `due` is true for a `scheduled` task whose own time has come; the caller, which holds the clock, supplies it.
  *
  * Returns `{ order, steps }`:
- * - `order`: the IDs of the queued tasks in the order they would start. Features in the given
+ * - `order`: the IDs of the tasks that wait to start now, in the order they would start. Features in the given
  *   order, each feature's steps ascending, the tasks of one step by task number; then the queued
  *   tasks without a feature by `queuePosition` ascending (null last), ties by task number.
  * - `steps`: every step of every feature, features in the given order and steps ascending, with the
@@ -52,7 +77,7 @@ export function orderQueue(tasks, features) {
       number,
       featureId: placed ? task.featureId : null,
       step: placed ? task.step : null,
-      queued: task.state === "queued",
+      queued: task.state === "queued" || (task.state === "scheduled" && task.due === true),
       done: task.state === "done",
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
@@ -124,7 +149,7 @@ export function previousStepBlocker(taskId, tasks, features) {
 }
 
 /**
- * What a queue does next. `tasks` are `{ id, featureId, step, state, queuePosition, inFlight, unlinked }` and `features`
+ * What a queue does next. `tasks` are `{ id, featureId, step, state, queuePosition, due, inFlight, unlinked }` and `features`
  * are `{ id }` in board order. The store supplies two facts the rule cannot know: `inFlight` is true for a task whose
  * session is linked and has no outcome yet, or whose start is still waiting for its session to report; `unlinked` is true
  * for a task whose start expired with no session ever linked.
@@ -134,7 +159,9 @@ export function previousStepBlocker(taskId, tasks, features) {
  * next is always among the starts, and the starts are every queued task of that step: the tasks of one step run in
  * parallel. A task without a feature is a step of its own. While tasks are in flight, only the queued rest of their own
  * step may join them; tasks in flight outside one feature step hold the queue. A step whose earlier feature steps are
- * not all done waits: the queue never skips ahead to a later task.
+ * not all done waits: the queue never skips ahead to a later task. A scheduled task that is not due is not in the order,
+ * so the tasks behind it start, and the step it is in stays not done until it ran. The queue's own start and stop
+ * times are the caller's to judge (`queueWindowHold`).
  */
 export function nextQueueStart(input) {
   const { status, tasks, features } = isRecord(input) ? input : {};

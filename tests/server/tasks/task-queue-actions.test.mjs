@@ -157,7 +157,7 @@ test("queue_add and queue_remove answer fixed errors for invalid, unknown, and f
   assert.deepEqual(store.readBoard(REPOSITORY), before);
 });
 
-test("queue_add refuses a task in any state but not queued, and queue_remove one in any state but queued", async (t) => {
+test("queue_add refuses a task past the queue or already queued, and queue_remove one that is not waiting in it", async (t) => {
   const { store, databasePath } = await temporaryStore(t);
   const states = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];
   states.forEach(() => addTask(store));
@@ -165,11 +165,12 @@ test("queue_add refuses a task in any state but not queued, and queue_remove one
   const before = store.readBoard(REPOSITORY);
   states.forEach((state, index) => {
     const id = `T-${index + 1}`;
-    if (state !== "not_queued") assert.deepEqual(queue(store, id), { ok: false, error: "conflict" }, `add ${state}`);
-    if (state !== "queued") assert.deepEqual(unqueue(store, id), { ok: false, error: "conflict" }, `remove ${state}`);
+    if (state !== "not_queued" && state !== "scheduled") assert.deepEqual(queue(store, id), { ok: false, error: "conflict" }, `add ${state}`);
+    if (state !== "queued" && state !== "scheduled") assert.deepEqual(unqueue(store, id), { ok: false, error: "conflict" }, `remove ${state}`);
   });
   assert.deepEqual(store.readBoard(REPOSITORY), before);
-  assert.deepEqual(before.queue.order, ["T-2"]);
+  // The scheduled task has no time of its own here, so it waits for nothing and is in the order.
+  assert.deepEqual(before.queue.order, ["T-2", "T-3"]);
 });
 
 test("the queue actions leave the stored queue status and its blocker as they are and start nothing", async (t) => {

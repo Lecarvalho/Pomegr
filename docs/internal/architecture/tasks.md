@@ -46,7 +46,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one step at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
 | Start gates | Built: every start, manual or queued, first passes the four gates, judged from committed facts. A queued task that a gate holds waits, with the reason shown on its Queue card, and the queue stays on; a manual start a gate holds is refused with one fixed status. The Queue view lists each gate's current reading and sets the usage threshold (70, 85, or 95 percent; 85 by default); the Board shows each provider's usage reading |
 | Parallel steps with worktrees | Built: the queued tasks of one feature step start together. A task of a step that holds more than one task starts in a Git worktree of its own, on the branch `tasks/<task id>`, under a Pomegr-owned directory of the desktop data root; a task alone in its step, or without a feature, starts in the repository root. The next step starts only when every task of the step is done |
-| Scheduling | Not built |
+| Scheduling | Built: in the desktop app the Task panel gives a task its own start time, which makes it Scheduled, and the Queue view's Schedule panel sets a start time and a stop time for the queue. The queue starts a scheduled task only from its time on, and starts nothing before the queue's start time or from its stop time on. Each check happens when the desktop queue runner asks, so it needs Pomegr open, and no running session is ever stopped |
 | Task on the Sessions list and in the session view | Not built |
 
 Report-less completion (a task finishing from a deterministic condition with no agent
@@ -125,6 +125,7 @@ type TaskBoard = {
     status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null;
     pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | null;
     order: string[];
+    schedule?: { startAt: string | null; stopAfter: string | null };   // absent when neither time is set
     gates?: {                              // absent from a board that is not ready and from an older monitor
       threshold: 70 | 85 | 95;
       usage: Record<"claude" | "codex", { status: "ok" | "over" | "unknown"; fiveHourPercent: number | null; sevenDayPercent: number | null }>;
@@ -192,7 +193,7 @@ task state.
 | --- | --- | --- |
 | Not queued | On the board, not in the queue | Creation, or removal from the queue |
 | Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue, or requeues a task that needs review, is blocked, or stalled |
-| Scheduled | Waiting for its own start time | The user sets a time |
+| Scheduled | In the queue, waiting for its own start time, then for its turn and the start gates | The user sets a start time on the task |
 | Needs review | The agent reported complete but a checked condition failed | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
@@ -243,12 +244,13 @@ paths stay desktop-private and never reach the monitor store or browser state.
 
 ## Queue
 
-The queue is the ordered set of queued tasks, ordered by the pure `orderQueue` rule. It
+The queue is the ordered set of queued and scheduled tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
 and only one step at a time. Every start first passes the [start gates](#start-gates).
 
-- **Order.** `queue.order` on the board lists the IDs of the tasks in state `queued`, in the
-  order they would start, one ID per task. Features come in board order. Inside a
+- **Order.** `queue.order` on the board lists the IDs of the tasks that wait to start now:
+  those in state `queued`, and those in state `scheduled` whose own time has come. They
+  are in the order they would start, one ID per task. Features come in board order. Inside a
   feature the steps ascend, and the tasks of one step order by task number as a number
   (T-2 before T-10); they are the tasks that run in parallel. After every feature task
   come the single queued tasks, which have no feature or step. They run in the order
@@ -318,9 +320,37 @@ and only one step at a time. Every start first passes the [start gates](#start-g
 - **No stop.** Pomegr never stops a running session, whether for a schedule, a
   gate, or a blocked queue.
 - **Scheduling.** A task or the queue can start at a given time, and the queue can
-  stop starting tasks after a given time. Scheduling runs only while the desktop app is
-  open; what happens to a time that passed while it was closed is decided by the
-  scheduling part and recorded here.
+  stop starting tasks after a given time. Every time is one instant, stored as epoch
+  milliseconds, not a daily time: the Schedule panel takes a time of day and sends its
+  next occurrence, so the monitor never needs a time zone. The pure rules are
+  `taskIsDue` and `queueWindowHold` in `task-queue.mjs`, and the store hands them its
+  clock.
+  - **A task's own time.** `queue_add` with `{ id, at }` stores `scheduled_at` and sets
+    the task to `scheduled`. A scheduled task is a queued task with a start time: it keeps
+    its queue position, is in `queue.order` only from its time on, and is started by the
+    queue like any other task, so it needs the queue on. Until then it is not startable by
+    hand either (`start-plan` answers `gate_held`). A scheduled task that is not due holds
+    nothing behind it: the tasks after it start. Its feature step is not done until it
+    ran, so the next step of its feature waits. The task keeps the state `scheduled` and
+    its time after it started; the card then borrows the session's state.
+  - **The queue's window.** `queue_settings` with `{ schedule: { startAt, stopAfter } }`
+    stores the two times in the `meta` table under `queue_start_at:<repositoryId>` and
+    `queue_stop_after:<repositoryId>`, so the schema version stays 1. A running queue
+    answers no start before `startAt` and none from `stopAfter` on. The queue stays
+    `running` and its tasks stay queued; the board names the hold on the next task as
+    `before_queue_start` or `after_queue_stop`. The window holds the queue's starts only:
+    a start the user makes by hand, with its native confirmation, is not held by it.
+    Setting the schedule never turns the queue on or off, and turning the queue off and
+    on keeps the schedule.
+  - **A time that has passed.** A time is checked only when the desktop queue runner asks,
+    so scheduling runs only while the desktop app is open. A task's time or a queue start
+    time that passed while it was closed counts from the next question on: the start then
+    happens, and only if the stop time has not come. A stop time that has passed stays
+    stored and keeps holding the queue until the user changes or clears it.
+  - **Bounds.** A time the user sets may be at most one minute behind the monitor's clock
+    and at most 366 days ahead; anything else is `invalid`, and so is a stop time that
+    does not come after the start time. A stored time that is sent back unchanged is kept
+    even when it has passed, so the other time can still be edited.
 
 ## Start gates
 
@@ -609,9 +639,15 @@ like any other.
   changes a task's feature or step, or deletes a task in a feature, renumbering without
   changing the update time of other tasks. There is no feature rename, delete, or
   reorder yet.
-  `queue_add` takes exactly `{ id }`: a task in state `not_queued` becomes `queued`; any
-  other state is `conflict`, and an unknown task is `not_found`. `queue_remove` takes
-  exactly `{ id }`: a `queued` task becomes `not_queued`; any other state is `conflict`.
+  `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
+  `2026-10-09T02:00:00.000Z`. Without `at`, a task in state `not_queued` becomes `queued`
+  at the end of the queue, and a `scheduled` task becomes `queued` in the place it has and
+  loses its time; any other state is `conflict`. With `at`, a task in state `not_queued`,
+  `queued`, or `scheduled` with no linked session becomes `scheduled` with that time, in
+  the place it has or at the end; a task with a session or an outcome is `conflict`, and a
+  time outside the bounds is `invalid`. An unknown task is `not_found`. `queue_remove`
+  takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
+  its time; any other state is `conflict`. `resolve_requeue` clears the time too.
   `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
   must exist (`not_found`) and be queued and in a feature (otherwise `conflict`; a single
   task is not reordered). `step` is valid from 1 to the feature's highest step + 1, measured
@@ -623,9 +659,10 @@ like any other.
   `queued`. The three actions start no session and leave the stored queue status as it is.
   There is no insertion of a step between two others yet. `resolve_done` and
   `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` takes
-  exactly one setting: `{ on }`, a boolean (see [Queue](#queue)), or `{ threshold }`,
-  one of 70, 85, and 95 (see [Start gates](#start-gates)), which leaves the queue status
-  as it is.
+  exactly one setting: `{ on }`, a boolean (see [Queue](#queue)); `{ threshold }`,
+  one of 70, 85, and 95 (see [Start gates](#start-gates)); or `{ schedule }`, exactly
+  `{ startAt, stopAfter }` with each an instant or null (see Scheduling under
+  [Queue](#queue)). The last two leave the queue status as it is.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

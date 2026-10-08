@@ -20,13 +20,13 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, startGates } from "./task-queue-advance.mjs";
+import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
-  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeQueueAddPayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -390,9 +390,10 @@ function createFeature({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// The queue is the set of tasks in state `queued`, ordered by the pure `orderQueue` rule when the board is
-// projected. These actions change a task's state and step only; they start no session and leave the queue
-// status as stored. A task that leaves `queued` here gets a null `queue_position`.
+// The queue is the set of tasks in state `queued` or `scheduled`, ordered by the pure `orderQueue` rule when the
+// board is projected. A scheduled task is a queued task with a start time of its own: it keeps its place and is not
+// started before that time. These actions change a task's state, time, and step only; they start no session and
+// leave the queue status as stored. A task that leaves the queue here gets a null `queue_position` and no time.
 const queuePositionAfterHighest = (database, repositoryId) => {
   const highest = preparedStatement(database, "SELECT MAX(queue_position) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest;
   return highest === null || highest === undefined || !Number.isSafeInteger(Number(highest)) ? 0 : Number(highest) + 1;
@@ -410,15 +411,20 @@ function stepIsDone(database, repositoryId, featureId, step) {
   return total > 0 && total === done;
 }
 
-function addToQueue({ database, repositoryId }, payload) {
-  const input = normalizeQueueTaskPayload(payload);
+// `{ id }` queues a task that is not queued, and takes the start time off a scheduled one, which stays in its place.
+// `{ id, at }` gives a task that is not queued, queued, or scheduled its own start time: it is Scheduled from then
+// on, in the place it had or at the end. A task with a session already started and is not scheduled again.
+function addToQueue({ database, repositoryId, now }, payload) {
+  const input = normalizeQueueAddPayload(payload, now());
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id, queue_position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
-  if (task.state !== "not_queued") return { ok: false, error: "conflict" };
+  const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
+  if (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting || (task.session_id ?? null) !== null) return { ok: false, error: "conflict" };
   // A task joins at the end: a position above every position the repository ever handed out.
-  preparedStatement(database, "UPDATE tasks SET state = 'queued', queue_position = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(queuePositionAfterHighest(database, repositoryId), Date.now(), repositoryId, input.number);
+  const position = task.state === "not_queued" || (task.queue_position ?? null) === null ? queuePositionAfterHighest(database, repositoryId) : task.queue_position;
+  preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(input.at === null ? "queued" : "scheduled", input.at, position, Date.now(), repositoryId, input.number);
   return { ok: true };
 }
 
@@ -427,8 +433,8 @@ function removeFromQueue({ database, repositoryId }, payload) {
   if (!input) return { ok: false, error: "invalid" };
   const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
-  if (task.state !== "queued") return { ok: false, error: "conflict" };
-  preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
+  if (task.state !== "queued" && task.state !== "scheduled") return { ok: false, error: "conflict" };
+  preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, scheduled_at = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, input.number);
   return { ok: true };
 }
@@ -487,11 +493,16 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     runTransaction(database, () => ensureRepository(database, repositoryId));
   }
 
+  function storedSchedule(repositoryId) {
+    const { startAt, stopAfter } = readQueueSchedule(database, repositoryId);
+    return { start_at: startAt, stop_after: stopAfter };
+  }
+
   function loadRows(repositoryId) {
     const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
     return {
-      // The pause reason is kept in `meta` (task-queue-advance.mjs); the projection validates it.
-      repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId) } : repository,
+      // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
+      repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId),
@@ -502,7 +513,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
   // committed start-gate facts the same way; without it every gate reads unknown.
   const served = (board, { resolveSessionFacts = null, resolveGateFacts = null }) =>
-    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts), resolveGateFacts });
+    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts), resolveGateFacts, at: now() });
 
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
@@ -510,7 +521,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (!database) return emptyBoard(repositoryId, "unavailable");
     try {
       seedColumns(repositoryId);
-      const board = projectBoard(repositoryId, loadRows(repositoryId));
+      const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
       return board ? served(board, resolvers) : emptyBoard(repositoryId, "unavailable");
     } catch {
       return emptyBoard(repositoryId, "unavailable");
@@ -528,7 +539,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         // The write stands only if the whole board, the new row included, still projects.
-        const projected = projectBoard(repositoryId, loadRows(repositoryId));
+        const projected = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
@@ -558,8 +569,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
     gatesHold: (taskId) => {
-      const board = projectBoard(repositoryId, loadRows(repositoryId));
-      return !board || !startGates({ database, repositoryId, board, taskId, resolveGateFacts }).ok;
+      const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
+      return !board || !startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now() }).ok;
     },
   });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });

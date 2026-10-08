@@ -269,5 +269,11 @@
 .taskGateField { display: flex; flex-direction: column; gap: var(--space-1); }
 .taskGateFieldLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
 .taskGateReadOnly { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+/* Schedule (D170-D177): the panel shares the gates panel's frame, heading, field and caption. A time field is the form
+   field of D176: control height, the stronger line, the data font. */
+.taskScheduleMode { align-self: flex-start; }
+.taskTimeInput { box-sizing: border-box; width: 100%; min-height: var(--control-height); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-data); }
+.taskTimeInput:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskTimeInput:disabled { opacity: .48; }
 .taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskQueueSingleWaiting { flex: 1 1 100%; }

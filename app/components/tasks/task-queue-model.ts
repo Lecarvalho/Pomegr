@@ -33,14 +33,15 @@ export function queueFeatures(board: Pick<TaskBoard, "features" | "tasks">): Que
 }
 
 /**
- * Tasks outside any feature that are in the queue's hands: queued ones first in start order, then every other state
- * except Not queued and Done by task number.
+ * Tasks outside any feature that are in the queue's hands: those waiting to start now first, in start order (queued
+ * ones, and a scheduled one whose time has come), then every other state except Not queued and Done by task number.
  */
 export function singleQueueTasks(board: Pick<TaskBoard, "tasks" | "queue">): Task[] {
   const order = new Map(board.queue.order.map((id, index) => [id, index]));
   const listed = board.tasks.filter((task) => task.featureId === null && task.state !== "not_queued" && task.state !== "done");
-  const queued = listed.filter((task) => task.state === "queued").sort((left, right) => (order.get(left.id) ?? Infinity) - (order.get(right.id) ?? Infinity) || byTaskNumber(left, right));
-  return [...queued, ...listed.filter((task) => task.state !== "queued").sort(byTaskNumber)];
+  const waits = (task: Task) => task.state === "queued" || (task.state === "scheduled" && order.has(task.id));
+  const queued = listed.filter(waits).sort((left, right) => (order.get(left.id) ?? Infinity) - (order.get(right.id) ?? Infinity) || byTaskNumber(left, right));
+  return [...queued, ...listed.filter((task) => !waits(task)).sort(byTaskNumber)];
 }
 
 /** Only a queued task of a feature can be moved between steps. */

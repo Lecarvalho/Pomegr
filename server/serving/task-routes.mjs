@@ -29,7 +29,9 @@ const RUN_MODEL_LIMIT = 64;
 export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const GATE_REASONS = Object.freeze([
   "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
+  "before_queue_start", "after_queue_stop",
 ]);
+const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const GATE_PROVIDERS = Object.freeze(["claude", "codex"]);
 const GATE_USAGE_STATUSES = Object.freeze(["ok", "over", "unknown"]);
 const GATE_PROVIDER_STATUSES = Object.freeze(["ok", "incident", "unknown"]);
@@ -96,6 +98,14 @@ export function projectGates(gates) {
   return { threshold: gates.threshold, usage, providerStatus, workingTree: gates.workingTree, next };
 }
 
+/** The queue's own start and stop times: two instants or nulls, and nothing when neither is set or one is not an instant. */
+export function projectSchedule(schedule) {
+  if (!isPlainObject(schedule)) return undefined;
+  const instant = (value) => value === null || (typeof value === "string" && INSTANT_PATTERN.test(value) && Number.isFinite(Date.parse(value)));
+  if (!instant(schedule.startAt) || !instant(schedule.stopAfter) || (schedule.startAt === null && schedule.stopAfter === null)) return undefined;
+  return { startAt: schedule.startAt, stopAfter: schedule.stopAfter };
+}
+
 // The store validated every record; the route only pins the contract's top-level keys, the queue's keys, and the requested ID.
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
@@ -104,10 +114,11 @@ function projectBoard(repositoryId, board, runModels) {
     throw new TypeError("Task board unavailable");
   }
   const gates = projectGates(board.queue.gates);
+  const schedule = projectSchedule(board.queue.schedule);
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks,
-    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(gates ? { gates } : {}) },
+    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}) },
     runModels: projectRunModels(runModels),
   };
 }

@@ -13,6 +13,7 @@ export function TaskFieldsSection() {
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: "model-large", effort: "high" });
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
   const [fresh, setFresh] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [startAt, setStartAt] = useState("02:00");
   const [reported, setReported] = useState<DoneWhenDraft>({ checks: ["pr_open", "tree_clean"], ownEnabled: true, ownText: "The store rejects a malformed record." });
   return <Section id="task-fields" title="Task fields" lede="Run on, Effort and Done when, shared by the New task and Task panels. Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Done when is five checks and an own condition judged by the agent.">
     <div className="designSystemStates">
@@ -27,6 +28,12 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="Done when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
         <DoneWhenField draft={reported} layout="list" results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
+      </Sample>
+      <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
+        <div className="taskGateField">
+          <label className="taskGateFieldLabel" htmlFor="design-system-task-time">Stop starting tasks after</label>
+          <input id="design-system-task-time" type="time" className="taskTimeInput" value={startAt} onChange={(event) => setStartAt(event.currentTarget.value)} />
+        </div>
       </Sample>
     </div>
   </Section>;

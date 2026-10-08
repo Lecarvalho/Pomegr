@@ -123,7 +123,7 @@ export function resolveRequeue({ database, repositoryId }, payload) {
   if (target.error) return { ok: false, error: target.error };
   const highest = preparedStatement(database, "SELECT MAX(queue_position) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest;
   const position = highest === null || highest === undefined || !Number.isSafeInteger(Number(highest)) ? 0 : Number(highest) + 1;
-  preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = ?, session_id = NULL, dispatch_token = NULL,
+  preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = ?, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
     .run(position, Date.now(), repositoryId, target.number);
   releaseQueue(database, repositoryId);

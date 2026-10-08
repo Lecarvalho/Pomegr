@@ -31,9 +31,10 @@ export type TaskRun = { provider: TaskProvider | null; model: string | null; eff
 export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null };
 /**
- * `order` holds the IDs of the queued tasks in the order they would start: features in board order, each
- * feature's steps ascending, tasks of one step by task number, then tasks without a feature in the order they
- * were queued. Its first entry is the "Queued · next" task. It carries IDs only, at most one per task.
+ * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
+ * order, each feature's steps ascending, tasks of one step by task number, then tasks without a feature in the
+ * order they were queued. A queued task is in it, and a scheduled task once its own time has come. Its first entry
+ * is the "Queued · next" task. It carries IDs only, at most one per task.
  *
  * `idle` is the queue turned off (the default); `running` is on. `blocked` names in `blockedBy` the task that
  * needs the user (Needs review, Stalled, or Blocked by agent). `paused` names in `blockedBy` the task whose start
@@ -44,9 +45,18 @@ export type TaskQueue = {
   blockedBy: string | null;
   pauseReason: TaskQueuePauseReason | null;
   order: string[];
+  /** The queue's own start and stop times. Absent when neither is set, and from an older monitor. */
+  schedule?: TaskQueueSchedule;
   /** The start gates as the monitor last judged them. Absent from a board that is not ready and from an older monitor. */
   gates?: TaskGates;
 };
+
+/**
+ * The queue starts nothing before `startAt` and nothing from `stopAfter` on; each is an instant or null for not set.
+ * Both are one-time instants, not daily times, and a time that has passed stays as stored until the user changes it.
+ * Neither ever stops a running session, and a start the user makes by hand is not held by them.
+ */
+export type TaskQueueSchedule = { startAt: string | null; stopAfter: string | null };
 
 /** The usage a provider may have reached, in percent of its five-hour window, before no new session starts on it. */
 export type TaskGateThreshold = 70 | 85 | 95;
@@ -54,8 +64,12 @@ export type TaskGateThreshold = 70 | 85 | 95;
 export type TaskGateUsageStatus = "ok" | "over" | "unknown";
 export type TaskGateProviderStatus = "ok" | "incident" | "unknown";
 export type TaskGateWorkingTree = "clean" | "dirty" | "unknown";
-/** Why a start is held. Fixed values only; never a path, a command, or error text. */
-export type TaskGateReason = "previous_step" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown";
+/**
+ * Why a start is held. Fixed values only; never a path, a command, or error text. The last two are the queue's own
+ * schedule: its start time has not come, or its stop time has.
+ */
+export type TaskGateReason = "previous_step" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown"
+  | "before_queue_start" | "after_queue_stop";
 /** The whole percentages Usage limits already shows for the five-hour and seven-day windows, or null when not observed. */
 export type TaskGateUsage = { status: TaskGateUsageStatus; fiveHourPercent: number | null; sevenDayPercent: number | null };
 /**
@@ -81,6 +95,7 @@ export type Task = {
   run: TaskRun;
   doneWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
+  /** The task's own start time while its state is `scheduled`: it is not started before it, by the queue or by hand. */
   scheduledAt: string | null;
   session: TaskSession | null; // borrowed from observation; never transcript content
   report: TaskReport | null;
@@ -129,7 +144,9 @@ export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running
 export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"];
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
-export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
+export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];
+/** A start or stop time the user sets may lie at most this far ahead. */
+export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 /** Columns seeded, in this order, the first time a repository's board is read. */
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];

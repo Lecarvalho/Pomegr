@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
 import type { FeatureInput } from "./task-features";
 
 // The only way the renderer changes a task: the desktop preload's `taskAction` bridge (fixed IPC channel
@@ -129,7 +129,15 @@ export function addDesktopQueueTask(repositoryId: string, id: string): Promise<T
   return sendTaskAction(repositoryId, "queue_add", { id });
 }
 
-/** A `queued` task becomes `not_queued`. */
+/**
+ * Gives a task its own start time (`at`, an instant): it becomes `scheduled`, in the queue. `null` takes the time off a
+ * scheduled task, which stays `queued`. The monitor answers `invalid` for a time behind the clock or over a year ahead.
+ */
+export function scheduleDesktopTask(repositoryId: string, id: string, at: string | null): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_add", at === null ? { id } : { id, at });
+}
+
+/** A `queued` or `scheduled` task becomes `not_queued` and loses its start time. */
 export function removeDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "queue_remove", { id });
 }
@@ -155,6 +163,11 @@ export function setDesktopGateThreshold(repositoryId: string, threshold: TaskGat
   return sendTaskAction(repositoryId, "queue_settings", { threshold });
 }
 
+/** Sets the queue's own start and stop times, each an instant or null. It never turns the queue on or off. */
+export function setDesktopQueueSchedule(repositoryId: string, schedule: TaskQueueSchedule): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_settings", { schedule: { startAt: schedule.startAt, stopAfter: schedule.stopAfter } });
+}
+
 /** Accepts a task that needs review, is blocked, or stalled as done; a queue it was holding runs again. */
 export function resolveDesktopTaskDone(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_done", { id });
@@ -178,6 +191,9 @@ export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
 export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
 export const QUEUE_SETTINGS_FAILURE_MESSAGE = "The queue setting could not be changed.";
 export const GATE_THRESHOLD_FAILURE_MESSAGE = "The start threshold could not be changed.";
+export const QUEUE_SCHEDULE_FAILURE_MESSAGE = "The schedule could not be changed.";
+export const TASK_SCHEDULE_FAILURE_MESSAGE = "The start time could not be saved.";
+export const TASK_SCHEDULE_INVALID_MESSAGE = "Choose a time from now up to a year ahead.";
 export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";

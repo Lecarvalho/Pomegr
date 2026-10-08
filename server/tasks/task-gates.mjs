@@ -12,9 +12,13 @@ import { isTaskId, TASK_PROVIDERS } from "./task-record.mjs";
 /** The usage a provider may have reached, in percent of its five-hour window, before no new session starts on it. */
 export const TASK_GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
 export const DEFAULT_TASK_GATE_THRESHOLD = 85;
-/** Why a start is held, in the order they are reported. */
+/**
+ * Why a start is held, in the order they are reported. The last two are the queue's own start and stop times: the
+ * store adds one of them for the queue's next task (`task-queue-advance.mjs`); `evaluateGates` never returns them.
+ */
 export const TASK_GATE_REASONS = Object.freeze([
   "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
+  "before_queue_start", "after_queue_stop",
 ]);
 /** What a provider-status fact may say. Anything but `operational` on a fresh observation is `incident`. */
 export const TASK_GATE_PROVIDER_FACTS = Object.freeze(["operational", "incident"]);

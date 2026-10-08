@@ -5,18 +5,12 @@ import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { TaskRunLine } from "./TaskRunLine";
 import { waitingLine } from "./task-gates-model";
 import { taskCardTitle, taskChip } from "./task-presentation";
-
-/** "Oct 9, 02:00" in local time, or null for a value that is not a time. */
-function scheduledLabel(at: string) {
-  const time = Date.parse(at);
-  if (!Number.isFinite(time)) return null;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(time);
-}
+import { scheduleLabel } from "./task-schedule";
 
 /** A single task's state chip; a scheduled one carries its time (D155) when it has one. */
 function chipOf(task: Task, nextQueued: boolean) {
   const chip = taskChip(task, nextQueued);
-  const when = task.state === "scheduled" && task.scheduledAt ? scheduledLabel(task.scheduledAt) : null;
+  const when = task.state === "scheduled" && task.scheduledAt ? scheduleLabel(task.scheduledAt) : null;
   return { ...chip, label: when && chip.label === "Scheduled" ? `Scheduled · ${when}` : chip.label };
 }
 
