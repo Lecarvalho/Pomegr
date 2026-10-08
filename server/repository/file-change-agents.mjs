@@ -9,6 +9,7 @@
 // kinds, paths, or raw provider records. See AGENTS.md ("File-change history") and
 // docs/internal/architecture/observation-cache.md.
 
+import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
 
 export const SAFE_FILE_CHANGE_AGENT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
@@ -40,7 +41,7 @@ export function fileChangeAgentIdentity(value) {
  */
 export function recordFileChangeAgents(store, sessionId, agentIds, publicAgents, observedAt) {
   if (!agentIds.size || !Array.isArray(publicAgents) || !Number.isFinite(observedAt)) return;
-  const statement = store.database.prepare(`
+  const statement = preparedStatement(store.database, `
     INSERT INTO file_change_agents (session_id, agent_id, label, assignment, model, observed_at)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT (session_id, agent_id) DO UPDATE SET
@@ -63,7 +64,7 @@ export function readFileChangeAgents(store, sessionId, agentIds) {
   const ids = [...agentIds].filter((agentId) => typeof agentId === "string" && SAFE_FILE_CHANGE_AGENT_ID.test(agentId));
   if (!ids.length) return identities;
   const placeholders = ids.map(() => "?").join(", ");
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     SELECT agent_id AS agentId, label, assignment, model
     FROM file_change_agents
     WHERE session_id = ? AND agent_id IN (${placeholders})

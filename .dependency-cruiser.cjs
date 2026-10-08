@@ -125,10 +125,10 @@ module.exports = {
     },
     {
       name: "server-resources-layer",
-      comment: "Resource sampling depends only on normalized shapes.",
+      comment: "Resource sampling depends only on normalized shapes and the shared prepared-statement cache.",
       severity: "error",
       from: { path: "^server[/\\\\]resources[/\\\\]" },
-      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]resources[/\\\\]","^server[/\\\\]normalize[/\\\\]"] },
+      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]resources[/\\\\]","^server[/\\\\]normalize[/\\\\]","^server[/\\\\]persistence[/\\\\]prepared-statements[.]mjs$"] },
     },
     {
       name: "server-sessions-history-layer",
@@ -160,10 +160,10 @@ module.exports = {
     },
     {
       name: "server-sessions-catalog-layer",
-      comment: "The catalog builds on the session domain.",
+      comment: "The catalog builds on the session domain and the shared prepared-statement cache.",
       severity: "error",
       from: { path: "^server[/\\\\]sessions[/\\\\]catalog[/\\\\]" },
-      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]sessions[/\\\\]catalog[/\\\\]","^server[/\\\\]normalize[/\\\\]","^server[/\\\\]sessions[/\\\\]domain[/\\\\]","^server[/\\\\]providers[/\\\\]provider-contract[.]mjs$"] },
+      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]sessions[/\\\\]catalog[/\\\\]","^server[/\\\\]normalize[/\\\\]","^server[/\\\\]sessions[/\\\\]domain[/\\\\]","^server[/\\\\]providers[/\\\\]provider-contract[.]mjs$","^server[/\\\\]persistence[/\\\\]prepared-statements[.]mjs$"] },
     },
     {
       name: "server-sessions-checkpoints-layer",

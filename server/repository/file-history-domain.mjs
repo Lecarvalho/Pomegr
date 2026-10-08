@@ -15,6 +15,7 @@
 // attribution appears only where a recorded `file_changes` row proves it; a Git-only move
 // (source: `git` in `file_paths`) contributes path continuity only, never attribution.
 
+import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { readFileChangeAgents, SAFE_FILE_CHANGE_AGENT_ID as SAFE_AGENT_ID } from "./file-change-agents.mjs";
 import { registerFileChangeIndexContributor } from "./file-change-index.mjs";
 import { isSafeRecordedRepositoryPath } from "./repository-snapshot.mjs";
@@ -117,13 +118,13 @@ function buildSessionFiles(store, sessionId) {
   // The session surface has one repository context. Keep independently indexed
   // evidence available in repository listings, but never merge ambiguous paths
   // from multiple roots into that single-context list.
-  const repositories = store.database.prepare(`
+  const repositories = preparedStatement(store.database, `
     SELECT DISTINCT f.repository_id AS repositoryId
     FROM file_changes fc JOIN files f ON f.id = fc.file_id
     WHERE fc.session_id = ? LIMIT 2
   `).all(sessionId);
   if (repositories.length > 1) return UNAVAILABLE_SESSION_FILES;
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     SELECT f.id AS fileId, f.current_path AS path, COUNT(*) AS changeCount, MAX(fc.observed_at) AS newestAt
     FROM file_changes fc
     JOIN files f ON f.id = fc.file_id
@@ -134,13 +135,13 @@ function buildSessionFiles(store, sessionId) {
   `).all(sessionId, MAX_SESSION_FILES + 1);
   const truncated = rows.length > MAX_SESSION_FILES;
   const bounded = rows.slice(0, MAX_SESSION_FILES).filter((row) => isSafeRecordedRepositoryPath(row.path));
-  const kindStatement = store.database.prepare(
+  const kindStatement = preparedStatement(store.database, 
     "SELECT kind FROM file_changes WHERE file_id = ? AND session_id = ? ORDER BY observed_at DESC, id DESC LIMIT 1",
   );
   // Recorded agents per file: only rows whose agent_id the index stored from the tool call's
   // own actor, newest-touching agent first, with the identity recorded beside the index. The
   // session-domain projection prefers the same session's visible agent fields when present.
-  const agentStatement = store.database.prepare(`
+  const agentStatement = preparedStatement(store.database, `
     SELECT agent_id AS agentId, COUNT(*) AS changeCount, MAX(observed_at) AS newestAt
     FROM file_changes
     WHERE file_id = ? AND session_id = ? AND agent_id IS NOT NULL
@@ -187,7 +188,7 @@ function rollupFolders(pairs) {
 
 /** Repository listing: every file with a distinct attributed-session count, plus folder rollups. */
 function buildRepositoryListing(store, repositoryId) {
-  const fileRows = store.database.prepare(`
+  const fileRows = preparedStatement(store.database, `
     SELECT f.id AS fileId, f.current_path AS path, f.deleted_at AS deletedAt,
            COUNT(DISTINCT fc.session_id) AS sessionCount
     FROM files f
@@ -203,7 +204,7 @@ function buildRepositoryListing(store, repositoryId) {
     fileId: `f${row.fileId}`, path: row.path, sessionCount: row.sessionCount, deleted: row.deletedAt !== null,
   }));
 
-  const pairRows = store.database.prepare(`
+  const pairRows = preparedStatement(store.database, `
     SELECT DISTINCT f.current_path AS path, f.deleted_at AS deletedAt, fc.session_id AS sessionId
     FROM files f
     JOIN file_changes fc ON fc.file_id = f.id
@@ -224,13 +225,13 @@ function buildRepositoryListing(store, repositoryId) {
 function resolveFileTarget(store, repositoryId, target) {
   if (typeof target.fileId === "string") {
     const id = Number(target.fileId.slice(1));
-    const row = store.database.prepare("SELECT id, current_path AS path FROM files WHERE id = ? AND repository_id = ?").get(id, repositoryId);
+    const row = preparedStatement(store.database, "SELECT id, current_path AS path FROM files WHERE id = ? AND repository_id = ?").get(id, repositoryId);
     return row ? { fileId: row.id, currentPath: row.path } : { fileId: null, currentPath: null };
   }
   const requestedPath = target.path;
-  let row = store.database.prepare("SELECT id, current_path AS path FROM files WHERE repository_id = ? AND current_path = ?").get(repositoryId, requestedPath);
+  let row = preparedStatement(store.database, "SELECT id, current_path AS path FROM files WHERE repository_id = ? AND current_path = ?").get(repositoryId, requestedPath);
   if (!row) {
-    row = store.database.prepare(`
+    row = preparedStatement(store.database, `
       SELECT f.id AS id, f.current_path AS path
       FROM file_paths fp JOIN files f ON f.id = fp.file_id
       WHERE f.repository_id = ? AND fp.path = ?
@@ -256,7 +257,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
   // Aggregate in SQLite before applying the public 100-session bound. A raw-row
   // limit here would let a busy recent session hide older history and undercount
   // edits while reporting the result as complete.
-  const rows = store.database.prepare(`
+  const rows = preparedStatement(store.database, `
     WITH sessions AS (
       SELECT session_id AS sessionId, MAX(observed_at) AS newestAt,
              MAX(id) AS newestId,
@@ -284,7 +285,7 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
   const agentIdsBySession = new Map(selectedSessionIds.map((sessionId) => [sessionId, new Set()]));
   if (selectedSessionIds.length) {
     const placeholders = selectedSessionIds.map(() => "?").join(", ");
-    const agentRows = store.database.prepare(`
+    const agentRows = preparedStatement(store.database, `
       SELECT DISTINCT session_id AS sessionId, agent_id AS agentId
       FROM file_changes
       WHERE file_id = ? AND session_id IN (${placeholders}) AND agent_id IS NOT NULL
@@ -293,11 +294,11 @@ function buildFileHistory(store, repositoryId, target, catalogFn, agentLabelFn) 
       if (typeof row.agentId === "string" && row.agentId) agentIdsBySession.get(row.sessionId)?.add(row.agentId);
     }
   }
-  const unattributedChanges = store.database.prepare(
+  const unattributedChanges = preparedStatement(store.database, 
     "SELECT COUNT(*) AS count FROM file_changes WHERE file_id = ? AND session_id IS NULL",
   ).get(resolved.fileId)?.count || 0;
   const catalogById = new Map(safeArray(catalogFn).map((entry) => [entry?.id, entry]));
-  const pathAtTimeStatement = store.database.prepare(`
+  const pathAtTimeStatement = preparedStatement(store.database, `
     SELECT path FROM file_paths WHERE file_id = ? AND valid_from <= ? AND (valid_to IS NULL OR valid_to > ?)
     ORDER BY valid_from DESC LIMIT 1
   `);
