@@ -56,6 +56,7 @@ import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpd
 import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-action.mjs";
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
+import { installTaskActionIpc } from "./task-action.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -108,6 +109,7 @@ let claudeUsageIntegration;
 let removeClaudeUsageIpc;
 let removeRepositoryInventoryIpc;
 let removeRepositoryPluginActionIpc;
+let removeTaskActionIpc;
 let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
@@ -435,6 +437,8 @@ async function stopRuntime() {
     removeRepositoryInventoryIpc = undefined;
     removeRepositoryPluginActionIpc?.();
     removeRepositoryPluginActionIpc = undefined;
+    removeTaskActionIpc?.();
+    removeTaskActionIpc = undefined;
     repositoryPluginCli?.dispose();
     repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
@@ -693,6 +697,12 @@ async function startDesktop() {
             confirm: confirmRepositoryPluginAction,
             runPlan: (plan) => repositoryPluginCli?.run(plan) || "unavailable",
           }),
+        });
+        removeTaskActionIpc = installTaskActionIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

@@ -30,3 +30,39 @@
 .taskBoardSkeletonColumn span:last-child { width: 100%; height: 64px; border-radius: var(--panel-radius); }
 .taskBoardNotice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); }
 .taskBoardNotice p, .taskBoardEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
+
+/* Tasks tab head: the New task action sits at the far right, the desktop-app note is one quiet line (D29). */
+.taskNewAction { flex: 0 0 auto; }
+
+/* New task side panel (design contract D184-D194, D234-D238). Fixed to the right edge below the header, like the
+   Agents evidence drawer; no entrance motion (the contract declares none). Run on, Done when, Feature and Step
+   (D195-D233) are part 4 and are not drawn. */
+.newTaskPanel { position: fixed; z-index: 40; top: 60px; right: 0; bottom: 0; box-sizing: border-box; width: min(640px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--command-line); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+.newTaskPanelHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-6); border-bottom: 1px solid var(--command-line); }
+.newTaskPanelHeader h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.newTaskPanelRepository { min-width: 0; overflow: hidden; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.newTaskPanelSpacer { flex: 1 1 0; }
+/* Close is the Icon role drawn at the touch size (role default 32). */
+.newTaskPanelHeader .commandIconAction { flex: 0 0 auto; width: 44px; height: 44px; }
+.newTaskPanelBody { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
+.newTaskField { display: flex; flex-direction: column; gap: var(--space-1); }
+.newTaskField label { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskField textarea { box-sizing: border-box; display: block; width: 100%; padding: var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); resize: vertical; }
+.newTaskField textarea::placeholder { color: var(--command-muted); opacity: 1; }
+.newTaskField textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.newTaskHelper, .newTaskError { margin: 0; font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskHelper { color: var(--command-muted); }
+.newTaskError { color: var(--command-error); }
+.newTaskPanelFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--command-line); background: var(--command-ground); }
+.newTaskPanelNote { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Create and add another is the Secondary role drawn at 36 with the stronger line and panel fill (role default 32). */
+@media (min-width: 761px) and (pointer: fine) {
+  .newTaskPanelFooter .commandSecondaryAction { min-height: var(--control-height); border-color: var(--command-line-strong); background: var(--command-panel); }
+}
+@media (max-width: 1080px) { .newTaskPanel { top: 56px; } }
+@media (max-width: 760px) {
+  .newTaskPanelBody { padding: var(--space-4); }
+  .newTaskPanelFooter { padding: var(--space-3) var(--space-4); }
+  .newTaskPanelSpacer { display: none; }
+  .newTaskPanelNote { flex: 1 0 100%; }
+}

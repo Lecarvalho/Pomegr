@@ -30,9 +30,10 @@ The four task rows route paths that arrive with the [task-board plan](../plans/t
 Until a part creates a path it does not exist, and that part confirms the commands
 above and adds the test files they name. Present so far: `server/tasks/task-store.mjs`
 and `task-record.mjs`, `server/serving/task-routes.mjs`, `shared/task-contract.ts`,
-`app/components/tasks/`, `app/tasks-store.ts`, `app/api/tasks/route.ts`, and the tests
-`tests/server/tasks/*.test.mjs`, `tests/ui/tasks-store.test.tsx`, and
-`tests/ui/repository-tasks.test.tsx`. The development server refuses a LAN peer's
+`desktop/runtime/task-action.mjs`, `app/components/tasks/`, `app/tasks-store.ts`,
+`app/api/tasks/route.ts`, and the tests `tests/server/tasks/*.test.mjs`,
+`tests/desktop-task-action.test.mjs`, `tests/ui/tasks-store.test.tsx`,
+`tests/ui/repository-tasks.test.tsx`, and `tests/ui/new-task.test.tsx`. The development server refuses a LAN peer's
 `/api/tasks` read in `scripts/provider-folders-local-gate.mjs`
 (`node --test tests/provider-folders-local-gate.test.mjs`).
 

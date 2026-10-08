@@ -30,8 +30,9 @@ Claude Code or Codex session for it, in the desktop app only.
 | Capability | State |
 | --- | --- |
 | This contract and the privacy rules in AGENTS.md | Documentation only |
-| Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and a read-only repository Tasks tab. No task can be created yet, so every board shows the default columns empty |
-| Task creation, run-on and done-when fields, move, columns, features | Not built |
+| Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and the repository Tasks tab |
+| Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued. The store also applies `update` (text) and `delete`, which no surface calls yet |
+| Run-on and done-when fields, move, columns, features | Not built |
 | Queue view and ordering | Not built |
 | Agent tool `add_task` | Not built |
 | Start a Claude Code session and bind it to its task | Not built |
@@ -277,7 +278,27 @@ like any other.
   `column_rename`, `column_reorder`, `column_delete`, `feature_create`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. An action whose part has not landed answers a fixed `unsupported`
-  result.
+  result. Built so far: `create` with `{ text }`, `update` with `{ id, text }`, and
+  `delete` with `{ id }`; a payload with any other key is `invalid`.
+- The list is written three times, because the layers may not import each other:
+  `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
+  by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`
+  with its copy in `preload.cjs`. A part that adds an action changes all of them.
+- The POST body is `{ "repositoryId": "repo-<24 hex>", "payload": { ... } }`. The
+  monitor answers `no-store` JSON, `{ "ok": true, "board": ... }` or
+  `{ "ok": false, "error": ... }`: 200 on success; 400 `invalid`; 404 for an unknown
+  action name (`invalid`) or an unknown task (`not_found`); 409 `limit` or `conflict`;
+  413 `invalid` for an oversize body; 501 `unsupported`; 503 `conflict` when the store
+  is missing, malformed, or newer. A request without the desktop token, from a
+  non-loopback host, or with an `Origin` header gets the private-action gate's 401 and
+  writes nothing.
+- `desktop/runtime/task-action.mjs` owns the IPC handler. It returns to the renderer
+  only `{ ok: true }` or `{ ok: false, error }`, where `error` is one of the store's
+  five values or `unavailable` (the monitor could not be reached or answered
+  something else). The board never crosses the IPC: the renderer reads it again
+  through `GET /api/tasks`. A refused call answers `invalid` and posts nothing.
+- A task ID comes from a per-repository counter, so a number is never reused after a
+  delete.
 - The `GET` is a committed-store read. It acquires no provider evidence and never
   triggers observation.
 - Browser and LAN clients never mutate tasks or start sessions.

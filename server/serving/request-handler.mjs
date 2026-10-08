@@ -7,7 +7,7 @@ import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mj
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
-import { serveTaskRoute } from "./task-routes.mjs";
+import { TASK_ACTION_PATH_PREFIX, serveTaskActionRoute, serveTaskRoute } from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -174,7 +174,8 @@ export function createRequestHandler({
     }
     const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
     const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
-    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest;
+    const taskActionRequest = requestUrl.pathname.startsWith(TASK_ACTION_PATH_PREFIX);
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest;
     const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -198,6 +199,10 @@ export function createRequestHandler({
       response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     }
     response.setHeader("Cache-Control", "no-store");
+    if (taskActionRequest) {
+      await serveTaskActionRoute({ request, response, requestUrl, taskStore });
+      return;
+    }
     if (repositoryPluginRequest) {
       const preparing = requestUrl.pathname.endsWith("/prepare");
       const allowedKeys = new Set(preparing ? ["repositoryId", "provider", "action"] : ["repositoryId", "provider"]);

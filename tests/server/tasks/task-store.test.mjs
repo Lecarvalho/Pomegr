@@ -259,14 +259,14 @@ test("an invalid repository ID yields an unavailable board with no content and w
   assert.equal(withRawDatabase(databasePath, (database) => database.prepare("SELECT COUNT(*) AS n FROM repositories").get().n), 0);
 });
 
-test("every action answers unsupported in this part and changes nothing", async (t) => {
+test("actions whose part has not landed, and unknown names, answer unsupported and change nothing", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  for (const action of [...ACTIONS, "unknown_action", "__proto__", "constructor", "", null, 7]) {
+  const implemented = ["create", "update", "delete"];
+  for (const action of [...ACTIONS.filter((name) => !implemented.includes(name)), "unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
-  assert.deepEqual(store.apply(REPOSITORY, "create"), { ok: false, error: "unsupported" });
   assert.deepEqual(store.readBoard(REPOSITORY), before);
 });
 

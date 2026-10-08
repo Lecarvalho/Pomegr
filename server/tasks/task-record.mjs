@@ -25,6 +25,12 @@ export const TASK_PROVIDERS = Object.freeze(["claude", "codex"]);
 export const TASK_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 export const TASK_QUEUE_STATUSES = Object.freeze(["idle", "running", "blocked", "paused"]);
 export const DEFAULT_TASK_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
+// The fixed action list shared by the route (which rejects any other name) and the store (which
+// answers `unsupported` for a listed action whose part has not landed).
+export const TASK_ACTIONS = Object.freeze([
+  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete",
+  "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
@@ -133,6 +139,33 @@ export function normalizeTaskInput(value) {
   const run = normalizeRun(value.run);
   const doneWhen = normalizeDoneWhen(value.doneWhen);
   return text === undefined || run === undefined || doneWhen === undefined ? undefined : { text, run, doneWhen };
+}
+
+/** The number of a validated `T-<n>` task ID, or undefined. */
+function taskNumberFromId(value) {
+  return isTaskId(value) ? Number(value.slice(2)) : undefined;
+}
+
+/** `create` carries the free-text task and nothing else. Returns `{ text }`, or undefined when invalid. */
+export function normalizeCreatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["text"])) return undefined;
+  const text = normalizeTaskText(value.text);
+  return text === undefined ? undefined : { text };
+}
+
+/** `update` edits the text of one task. Returns `{ number, text }`, or undefined when invalid. */
+export function normalizeUpdatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  const text = normalizeTaskText(value.text);
+  return number === undefined || text === undefined ? undefined : { number, text };
+}
+
+/** `delete` names one task. Returns `{ number }`, or undefined when invalid. */
+export function normalizeDeletePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  return number === undefined ? undefined : { number };
 }
 
 function nonNegativeInteger(value) {
