@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,9 +6,12 @@ import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 import { TASK_BOUNDS, createEmptyTaskBoard } from "../../shared/task-contract";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
+const agents = vi.hoisted(() => ({ runs: [] as Array<{ source: string; model: string | null }> }));
+vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: agents.runs }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 const inventory = vi.hoisted(() => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] } as RepositoryInventorySnapshot }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory.snapshot, loading: false, connected: true, refresh: vi.fn() }) }));
 
@@ -18,12 +21,14 @@ const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<Result>>();
 const refresh = vi.fn(async () => {});
+const DEFAULT_DONE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function setBridge(bridge: unknown) {
   (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge;
 }
 
 beforeEach(() => {
+  agents.runs = [];
   inventory.snapshot = { revision: 1, readiness: "ready", repositories: [{
     id: repositoryId, name: "example", displayName: "Example project", sessionCount: 0, liveCount: 0, historyCount: 0, providerCount: 0, updatedAt: null, providers: [],
   }] };
@@ -97,8 +102,11 @@ describe("with the desktop bridge", () => {
     expect(createButton()).toHaveClass("commandPrimaryAction");
     expect(anotherButton()).toHaveClass("commandSecondaryAction");
     expect(screen.getByRole("button", { name: "Close" })).toHaveClass("commandIconAction");
-    // Run on, Done when, Feature and Step are part 4.
-    expect(screen.queryByText(/Run on|Done when|Feature|Step in feature/)).not.toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Run on");
+    expect(dialog).toHaveTextContent("Effort");
+    expect(dialog).toHaveTextContent("Done when");
+    // Feature and Step belong to the feature part.
+    expect(screen.queryByText(/Feature|Step in feature/)).not.toBeInTheDocument();
   });
 
   it("disables both create buttons while the text is empty or only whitespace", async () => {
@@ -126,7 +134,7 @@ describe("with the desktop bridge", () => {
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide" });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(newTaskButton()).toHaveFocus();
   });
@@ -136,7 +144,7 @@ describe("with the desktop bridge", () => {
     render(<TasksTab repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "  Write the guide  ");
     await user.click(createButton());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN }));
   });
 
   it("keeps the panel open with an empty, focused field after Create and add another", async () => {
@@ -146,7 +154,7 @@ describe("with the desktop bridge", () => {
     await user.click(anotherButton());
     await waitFor(() => expect(field().value).toBe(""));
     expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "First task" });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "First task", doneWhen: DEFAULT_DONE_WHEN });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(panel()).toBeInTheDocument();
     expect(field()).toHaveFocus();
@@ -157,7 +165,7 @@ describe("with the desktop bridge", () => {
     await user.type(field(), "Second task");
     await user.click(anotherButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Second task" });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Second task", doneWhen: DEFAULT_DONE_WHEN });
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
@@ -262,8 +270,144 @@ describe("with the desktop bridge", () => {
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(fetchSpy).not.toHaveBeenCalled();
-    const source = ["NewTaskPanel.tsx", "TasksTab.tsx", "task-desktop.ts"].map((file) => readFileSync(join(process.cwd(), "app", "components", "tasks", file), "utf8")).join("\n");
+    const source = ["NewTaskPanel.tsx", "TaskPanel.tsx", "TaskFields.tsx", "TaskCard.tsx", "TasksTab.tsx", "task-desktop.ts", "task-fields.ts", "task-panel-hooks.ts"].map((file) => readFileSync(join(process.cwd(), "app", "components", "tasks", file), "utf8")).join("\n");
     expect(source).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage/);
+  });
+});
+
+describe("Run on, Effort and Done when", () => {
+  const runOn = () => screen.getByRole("combobox", { name: "Run on" });
+  const effort = (name: string) => screen.getByRole("button", { name });
+  const checkbox = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;
+  const own = () => screen.getByRole("textbox", { name: "Your own condition, judged by the agent" }) as HTMLInputElement;
+  const optionLabels = () => {
+    fireEvent.click(runOn());
+    const labels = screen.getAllByRole("option").map((option) => option.textContent);
+    fireEvent.click(runOn());
+    return labels;
+  };
+
+  it("starts with nothing in Run on and Effort and the two default checks", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await openPanel(user);
+    expect(runOn()).toHaveTextContent("Not set");
+    for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", "false");
+    expect(checkbox("Pull request open")).toBeChecked();
+    expect(checkbox("Working tree clean")).toBeChecked();
+    for (const name of ["Commit on task branch", "Pull request merged", "CI passed", "Use your own condition"]) expect(checkbox(name)).not.toBeChecked();
+    expect(own()).toHaveAttribute("maxlength", String(TASK_BOUNDS.ownConditionLength));
+    expect(own()).toHaveAttribute("placeholder", "Your own condition");
+    expect(screen.getByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).toBeInTheDocument();
+  });
+
+  it("groups the options by provider from the served model list and always offers Default model", async () => {
+    agents.runs = [
+      { source: "Claude Code", model: "model-b" }, { source: "Claude Code", model: "model-a" }, { source: "Claude Code", model: "model-a" },
+      { source: "Codex", model: "model-c" }, { source: "Codex", model: null }, { source: "Claude Code", model: "C:\\not\\a\\model" },
+    ];
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await openPanel(user);
+    expect(optionLabels()).toEqual([
+      "Not set", "model-a, Claude Code", "model-b, Claude Code", "Default model, Claude Code", "model-c, Codex", "Default model, Codex",
+    ]);
+  });
+
+  it("offers only Default model when no model list is available", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await openPanel(user);
+    expect(optionLabels()).toEqual(["Not set", "Default model, Claude Code", "Default model, Codex"]);
+  });
+
+  it("sends the chosen run, effort, checks and own condition", async () => {
+    agents.runs = [{ source: "Codex", model: "model-c" }];
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Ship it");
+    chooseCommandOption(runOn(), "codex:model:model-c");
+    expect(runOn()).toHaveTextContent("Codex · model-c");
+    await user.click(effort("Xhigh"));
+    expect(effort("Xhigh")).toHaveAttribute("aria-pressed", "true");
+    await user.click(checkbox("Working tree clean"));
+    await user.click(checkbox("CI passed"));
+    await user.click(checkbox("Pull request merged"));
+    await user.click(checkbox("Use your own condition"));
+    await user.type(own(), "  The migration is reversible  ");
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
+      text: "Ship it",
+      run: { provider: "codex", model: "model-c", effort: "xhigh" },
+      doneWhen: { checks: ["pr_open", "pr_merged", "ci_passed"], own: "The migration is reversible" },
+    });
+  });
+
+  it("sends a provider with its default model as a null model", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Use the default");
+    chooseCommandOption(runOn(), "claude:default");
+    expect(runOn()).toHaveTextContent("Claude Code · Default model");
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: null }, doneWhen: DEFAULT_DONE_WHEN });
+  });
+
+  it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Optional fields");
+    await user.click(effort("High"));
+    expect(effort("High")).toHaveAttribute("aria-pressed", "true");
+    await user.click(effort("High"));
+    expect(effort("High")).toHaveAttribute("aria-pressed", "false");
+    chooseCommandOption(runOn(), "codex:default");
+    chooseCommandOption(runOn(), "");
+    expect(runOn()).toHaveTextContent("Not set");
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Optional fields", doneWhen: DEFAULT_DONE_WHEN });
+  });
+
+  it("keeps Effort alone as a valid run, without a provider or model", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Effort only");
+    await user.click(effort("Low"));
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Effort only", run: { provider: null, model: null, effort: "low" }, doneWhen: DEFAULT_DONE_WHEN });
+  });
+
+  it("omits doneWhen when nothing is checked", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "No conditions");
+    await user.click(checkbox("Pull request open"));
+    await user.click(checkbox("Working tree clean"));
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "No conditions" });
+  });
+
+  it("sends the own condition only while its checkbox is checked and its text is not blank", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Text without the checkbox");
+    await user.type(own(), "Looks right");
+    await user.click(anotherButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Text without the checkbox", doneWhen: DEFAULT_DONE_WHEN });
+    // The checkbox with only whitespace in the field.
+    await user.type(field(), "Checkbox without text");
+    await user.clear(own());
+    await user.type(own(), "   ");
+    await user.click(checkbox("Use your own condition"));
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Checkbox without text", doneWhen: DEFAULT_DONE_WHEN });
   });
 });
 

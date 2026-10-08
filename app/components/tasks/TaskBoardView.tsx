@@ -1,10 +1,12 @@
 import { useId } from "react";
 import type { CSSProperties } from "react";
-import type { TaskBoard } from "../../../shared/task-contract";
+import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { TaskCard } from "./TaskCard";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
 
-function TaskColumn({ column }: { column: TaskColumnView }) {
+type OpenTask = (task: Task, opener: HTMLElement) => void;
+
+function TaskColumn({ column, onOpen }: { column: TaskColumnView; onOpen?: OpenTask }) {
   const headingId = useId();
   const total = column.tasks.length;
   return <section className="taskColumn" aria-labelledby={headingId}>
@@ -12,7 +14,7 @@ function TaskColumn({ column }: { column: TaskColumnView }) {
       <h3 id={headingId}>{column.name}</h3>
       <span className="taskColumnCount">{total}<span className="visuallyHidden"> {total === 1 ? "task" : "tasks"}</span></span>
     </header>
-    {total > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} />)}</ul>}
+    {total > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} onOpen={onOpen} />)}</ul>}
   </section>;
 }
 
@@ -23,8 +25,8 @@ function TaskBoardSkeleton() {
   </div>;
 }
 
-/** Read-only board: columns with a name and a count, each holding its task cards. */
-export function TaskBoardView({ board }: { board: TaskBoard }) {
+/** Columns with a name and a count, each holding its task cards. Cards open the Task panel only when `onOpenTask` is given. */
+export function TaskBoardView({ board, onOpenTask }: { board: TaskBoard; onOpenTask?: OpenTask }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -36,7 +38,7 @@ export function TaskBoardView({ board }: { board: TaskBoard }) {
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {columns.length > 0 && <div className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
-        {columns.map((column) => <TaskColumn key={column.id} column={column} />)}
+        {columns.map((column) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} />)}
       </div>
     </div>}
   </>;

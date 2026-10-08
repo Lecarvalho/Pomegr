@@ -246,6 +246,7 @@
 .commandSelectIcon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 8px; }
 .commandSelectList { position: fixed; z-index: 120; max-width: min(360px, calc(100vw - 24px)); margin: 0; padding: var(--space-1); overflow-y: auto; list-style: none; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); scrollbar-width: thin; }
 .commandSelectOption { display: flex; align-items: center; gap: var(--space-2); min-height: 32px; padding-inline: var(--space-2) var(--space-3); border-radius: var(--control-radius); color: var(--command-ink); font: 500 var(--text-sm)/1.3 var(--font-ui); cursor: pointer; }
+.commandSelectGroup { padding: var(--space-2) var(--space-2) var(--space-1); color: var(--command-muted); font: 500 var(--text-xs)/1.3 var(--font-ui); }
 .commandSelectOption[data-active] { background: var(--command-panel-2); }
 .commandSelectOption[aria-selected="true"] { color: var(--command-brand-text); font-weight: 600; }
 @media (pointer: coarse) { .commandSelectOption { min-height: 44px; } }

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { TASK_ACTIONS as ROUTE_ACTIONS } from "../../../server/serving/task-routes.mjs";
-import { TASK_ACTIONS, TASK_BOUNDS } from "../../../server/tasks/task-record.mjs";
+import { TASK_ACTIONS, TASK_BOUNDS, TASK_CHECKS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
@@ -129,7 +129,12 @@ test("create rejects invalid text and payload shapes, and a rejection writes not
   const invalid = [
     undefined, null, "text", 7, [], [{ text: "x" }], {}, { text: "" }, { text: "   \n\t " }, { text: 5 }, { text: null }, { text: ["x"] },
     { text: "x".repeat(TASK_BOUNDS.textLength + 1) }, { text: `${"x".repeat(100)}\u0000` }, { text: "bad \ud800 surrogate" },
-    { text: "ok", id: "T-1" }, { text: "ok", run: { provider: "claude" } }, { text: "ok", doneWhen: { checks: [] } }, { text: "ok", __proto__: { x: 1 }, constructor: 1 },
+    { text: "ok", id: "T-1" }, { text: "ok", state: "done" }, { text: "ok", run: "claude" }, { text: "ok", run: { provider: "gemini" } },
+    { text: "ok", run: { provider: "claude", effort: "max" } }, { text: "ok", run: { provider: "claude", model: "C:\models\opus" } },
+    { text: "ok", run: { provider: "claude", model: "x".repeat(TASK_BOUNDS.modelIdentifierLength + 1) } }, { text: "ok", run: { model: "opus" } },
+    { text: "ok", run: { provider: "claude", command: "x" } }, { text: "ok", doneWhen: ["pr_open"] }, { text: "ok", doneWhen: { checks: ["tests_pass"] } },
+    { text: "ok", doneWhen: { checks: ["pr_open", "pr_open"] } }, { text: "ok", doneWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
+    { text: "ok", doneWhen: { checks: [], command: "x" } }, { text: "ok", __proto__: { x: 1 }, constructor: 1 },
   ];
   for (const payload of invalid) {
     assert.deepEqual(store.apply(REPOSITORY, "create", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
@@ -198,6 +203,60 @@ test("a deleted task number stays retired even when it was inserted outside the 
   const store = openStore(temp);
   assert.equal(store.apply(REPOSITORY, "delete", { id: "T-7" }).ok, true);
   assert.equal(store.apply(REPOSITORY, "create", { text: "after the raw one" }).board.tasks[0].id, "T-8");
+});
+
+test("create stores the planned run and the done-when conditions, and keeps absent parts null", async (t) => {
+  const temp = await temporaryDirectory(t);
+  const store = openStore(temp);
+  const created = store.apply(REPOSITORY, "create", {
+    text: "Planned",
+    run: { provider: "claude", model: "opus", effort: "high" },
+    doneWhen: { checks: ["tree_clean", "pr_open"], own: "  The store rejects a malformed record.  " },
+  });
+  assert.equal(created.ok, true);
+  assert.deepEqual(created.board.tasks[0].run, { provider: "claude", model: "opus", effort: "high" });
+  // Checks come back in the contract order, and the own condition trimmed.
+  assert.deepEqual(created.board.tasks[0].doneWhen, { checks: ["pr_open", "tree_clean"], own: "The store rejects a malformed record." });
+
+  const partial = store.apply(REPOSITORY, "create", { text: "Default model", run: { provider: "codex" }, doneWhen: { own: "   " } }).board.tasks[1];
+  assert.deepEqual(partial.run, { provider: "codex", model: null, effort: null });
+  assert.deepEqual(partial.doneWhen, { checks: [], own: null });
+  const effortOnly = store.apply(REPOSITORY, "create", { text: "Effort only", run: { effort: "xhigh" }, doneWhen: null }).board.tasks[2];
+  assert.deepEqual(effortOnly.run, { provider: null, model: null, effort: "xhigh" });
+  assert.deepEqual(effortOnly.doneWhen, { checks: [], own: null });
+  // The bounds themselves are valid, and the stored values survive a restart.
+  const bound = store.apply(REPOSITORY, "create", {
+    text: "Bounds", run: { provider: "claude", model: "m".repeat(TASK_BOUNDS.modelIdentifierLength) }, doneWhen: { checks: [...TASK_CHECKS], own: "x".repeat(TASK_BOUNDS.ownConditionLength) },
+  });
+  assert.equal(bound.ok, true);
+  store.close();
+  assert.deepEqual(openStore(temp).readBoard(REPOSITORY), bound.board);
+});
+
+test("update replaces only the fields it carries and keeps the others, nulls included", async (t) => {
+  const temp = await temporaryDirectory(t);
+  const store = openStore(temp);
+  store.apply(REPOSITORY, "create", { text: "Original", run: { provider: "claude", model: "opus", effort: "high" }, doneWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  const fields = (board) => { const { text, run, doneWhen } = board.tasks[0]; return { text, run, doneWhen }; };
+
+  const run = store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", effort: "low" } });
+  assert.deepEqual(fields(run.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  const doneWhen = store.apply(REPOSITORY, "update", { id: "T-1", doneWhen: { checks: ["ci_passed", "tree_clean"] } });
+  assert.deepEqual(fields(doneWhen.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  const text = store.apply(REPOSITORY, "update", { id: "T-1", text: "Edited" });
+  assert.deepEqual(fields(text.board), { text: "Edited", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  // A null field clears it; the text is untouched.
+  const cleared = store.apply(REPOSITORY, "update", { id: "T-1", run: null, doneWhen: null });
+  assert.deepEqual(fields(cleared.board), { text: "Edited", run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null } });
+  const all = store.apply(REPOSITORY, "update", { id: "T-1", text: "All", run: { provider: "claude", model: "sonnet" }, doneWhen: { checks: [], own: "Judged" } });
+  assert.deepEqual(fields(all.board), { text: "All", run: { provider: "claude", model: "sonnet", effort: null }, doneWhen: { checks: [], own: "Judged" } });
+
+  const bad = [{ id: "T-1", run: { provider: "gemini" } }, { id: "T-1", run: { model: "opus" } }, { id: "T-1", run: { provider: "claude", model: "../opus" } },
+    { id: "T-1", run: { effort: "max" } }, { id: "T-1", doneWhen: { checks: ["tests_pass"] } }, { id: "T-1", doneWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
+    { id: "T-1", text: null, run: { provider: "claude" } }, { id: "T-1", text: "Fine", run: { provider: "nope" } }];
+  for (const payload of bad) assert.deepEqual(store.apply(REPOSITORY, "update", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
+  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-9", run: { provider: "claude" } }), { ok: false, error: "not_found" });
+  assert.deepEqual(fields(store.readBoard(REPOSITORY)), fields(all.board));
 });
 
 test("update changes the text only and answers not_found for an unknown or foreign task", async (t) => {

@@ -156,6 +156,12 @@ test("the planned run holds a provider, a model, and an effort, all optional", (
   }
 });
 
+test("a planned model needs its provider", () => {
+  assert.equal(normalizeRun({ model: "opus" }), undefined);
+  assert.equal(normalizeRun({ provider: null, model: "opus", effort: "low" }), undefined);
+  assert.deepEqual(normalizeRun({ effort: "low" }), { provider: null, model: null, effort: "low" });
+});
+
 test("done-when checks are known, unique, and kept in contract order", () => {
   assert.deepEqual(normalizeChecks(undefined), []);
   assert.deepEqual(normalizeChecks(["ci_passed", "pr_open"]), ["pr_open", "ci_passed"]);

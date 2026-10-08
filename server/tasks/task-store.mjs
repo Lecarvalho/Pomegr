@@ -191,8 +191,10 @@ function createTask({ database, repositoryId }, payload) {
   const number = nextTaskNumber(database, repositoryId);
   if (taskIdFromNumber(number) === undefined) return { ok: false, error: "limit" };
   const now = Date.now();
-  preparedStatement(database, "INSERT INTO tasks (repository_id, number, text, column_id, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .run(repositoryId, number, input.text, first.id, position, now, now);
+  preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
+      JSON.stringify(input.doneWhen.checks), input.doneWhen.own, now, now);
   reserveTaskNumber(database, repositoryId, number + 1);
   return { ok: true };
 }
@@ -200,9 +202,16 @@ function createTask({ database, repositoryId }, payload) {
 function updateTask({ database, repositoryId }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const updated = preparedStatement(database, "UPDATE tasks SET text = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(input.text, Date.now(), repositoryId, input.number);
-  return Number(updated.changes) === 0 ? { ok: false, error: "not_found" } : { ok: true };
+  const stored = preparedStatement(database, "SELECT text, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
+    .get(repositoryId, input.number);
+  if (!stored) return { ok: false, error: "not_found" };
+  // A field the payload left out keeps its stored value; one it carried is replaced whole.
+  const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort };
+  const doneWhen = input.doneWhen ? { checks: JSON.stringify(input.doneWhen.checks), own: input.doneWhen.own } : { checks: stored.checks, own: stored.own_condition };
+  preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, updated_at = ?
+    WHERE repository_id = ? AND number = ?`)
+    .run(input.text ?? stored.text, run.provider, run.model, run.effort, doneWhen.checks, doneWhen.own, Date.now(), repositoryId, input.number);
+  return { ok: true };
 }
 
 function deleteTask({ database, repositoryId }, payload) {
