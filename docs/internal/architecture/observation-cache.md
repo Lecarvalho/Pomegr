@@ -2053,6 +2053,12 @@ the inventory total. Header scans use batches of at most 100 rows and repeat on 
 60-second reconciliation cadence. The bounded 256-row memory fallback reports partial
 coverage if it overflows; it cannot silently claim a complete large inventory.
 
+Every catalog pass and every accepted session commit offers its bounded rows to the
+inventory again, most of them unchanged. A header upsert writes its row only when a merged
+column would differ, so an unchanged pass leaves no dirty page: its transaction commits
+without a disk sync and the inventory revision does not move. A changed row still commits
+in its own transaction with the store's default synchronous setting.
+
 Inventory persistence contains only validated normalized catalog fields, a durable settled
 lifecycle status (`idle`, `closed`, `stopped`, or null), revision/coverage facts, and one monitor-private opaque source-scope fingerprint. Changed provider roots,
 archive inclusion, explicit transcript selection, or enabled identity sources invalidate
