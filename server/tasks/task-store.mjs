@@ -20,7 +20,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { nextQueueStarts, pauseQueue, queueSettings, readPauseReason } from "./task-queue-advance.mjs";
+import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import {
@@ -499,21 +499,25 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   }
 
   // `resolveSessionFacts(sessionId)` is supplied by the entry point from committed facts (see task-board.mjs).
-  // Without it a linked session keeps the stored unknown defaults.
-  function readBoard(repositoryId, { resolveSessionFacts = null } = {}) {
+  // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
+  // committed start-gate facts the same way; without it every gate reads unknown.
+  const served = (board, { resolveSessionFacts = null, resolveGateFacts = null }) =>
+    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts), resolveGateFacts });
+
+  function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
     if (!isRepositoryId(repositoryId)) return emptyBoard("", "unavailable");
     if (!database) return emptyBoard(repositoryId, "unavailable");
     try {
       seedColumns(repositoryId);
       const board = projectBoard(repositoryId, loadRows(repositoryId));
-      return board ? fillTaskSessions(board, resolveSessionFacts) : emptyBoard(repositoryId, "unavailable");
+      return board ? served(board, resolvers) : emptyBoard(repositoryId, "unavailable");
     } catch {
       return emptyBoard(repositoryId, "unavailable");
     }
   }
 
-  function apply(repositoryId, action, payload, { resolveSessionFacts = null } = {}) {
+  function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
@@ -528,7 +532,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
-      return { ok: true, board: fillTaskSessions(board, resolveSessionFacts) };
+      return { ok: true, board: served(board, resolvers) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
@@ -550,7 +554,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     database = null;
   }
 
-  const planStart = (repositoryId, payload, resolveFacts) => dispatch(startPlan, { repositoryId, payload, resolveFacts, now });
+  // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
+  const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
+    repositoryId, payload, resolveFacts, now,
+    gatesHold: (taskId) => {
+      const board = projectBoard(repositoryId, loadRows(repositoryId));
+      return !board || !startGates({ database, repositoryId, board, taskId, resolveGateFacts }).ok;
+    },
+  });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
   // The agent's report (task-report.mjs): `resolveFacts()` supplies committed repository facts for the checks.
@@ -559,7 +570,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // A session that ended without a report (task-stall.mjs): `resolveFacts(sessionId)` supplies committed session facts.
   const stallEnded = (resolveFacts) => dispatch(stallEndedTasks, { resolveFacts, now });
   // The queue (task-queue-advance.mjs): which tasks the running queues start now, and the pause a failed start reports.
-  const nextStarts = () => dispatch(nextQueueStarts, { loadRows, now });
+  const nextStarts = ({ resolveGateFacts = null } = {}) => dispatch(nextQueueStarts, { loadRows, resolveGateFacts, now });
   const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
   return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, close });
 }

@@ -74,6 +74,7 @@ describe("Start session", () => {
     ["unsupported_provider", "Sessions cannot be started on this provider.", true],
     ["not_startable", "This task cannot be started right now.", false],
     ["not_found", "This task no longer exists.", false],
+    ["gate_held", "A start gate holds this task. See Start gates in the Queue view.", false],
     ["busy", "Another session is being started.", false],
     ["invalid", "The session could not be started.", false],
     ["unavailable", "The session could not be started.", false],

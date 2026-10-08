@@ -7,6 +7,7 @@ import test from "node:test";
 import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
 import { createTaskStallWatcher, sessionEnded } from "../../../server/tasks/task-stall.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const SESSION = "claude:0b8f2c1e-1111-4222-8333-444455556666";
@@ -43,7 +44,7 @@ function createTask(env) {
 /** Creates a task and links `session` to it the way a started session does. */
 function startedTask(env, session = SESSION) {
   const id = createTask(env);
-  const planned = env.store.planStart(REPOSITORY_ID, { id }, () => START_FACTS);
+  const planned = env.store.planStart(REPOSITORY_ID, { id }, () => START_FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: session }), { ok: true });
   return id;

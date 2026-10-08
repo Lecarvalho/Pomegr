@@ -9,6 +9,7 @@ import test from "node:test";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatch.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const OTHER_REPOSITORY_ID = "repo-fedcba987654321001234567";
@@ -63,7 +64,7 @@ const bind = (env, payload) => send(env.port, { body: typeof payload === "string
 const create = (env, repositoryId = REPOSITORY_ID) => assert.equal(env.store.apply(repositoryId, "create", { text: TEXT }).ok, true);
 // A start plan mints the dispatch token exactly as the desktop does.
 const mint = (env, id = "T-1", repositoryId = REPOSITORY_ID) => {
-  const planned = env.store.planStart(repositoryId, { id }, () => FACTS);
+  const planned = env.store.planStart(repositoryId, { id }, () => FACTS, passingGates);
   assert.equal(planned.ok, true);
   return planned.plan.token;
 };

@@ -8,6 +8,7 @@ import { createRequestHandler } from "../../../server/serving/request-handler.mj
 import { TASK_ACTIONS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { removeDirectory, setQueueRow, setMeta, pauseReasonKey, withDatabase } from "./queue-test-support.mjs";
+import { GATE_FACTS } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const OTHER_REPOSITORY_ID = "repo-fedcba987654321001234567";
@@ -39,9 +40,10 @@ function recordingStore(inner, overrides = {}) {
   return { store, calls };
 }
 
-async function startRoute(context, { taskStore, authorizationToken = TOKEN } = {}) {
+async function startRoute(context, { taskStore, authorizationToken = TOKEN, gateFacts = null } = {}) {
+  // The handler asks once, when it is built, whether the runtime has the start-gate lookup; nothing else is read.
   const touched = [];
-  const runtime = new Proxy({}, { get(_object, property) { touched.push(String(property)); return undefined; } });
+  const runtime = new Proxy({}, { get(_object, property) { touched.push(String(property)); return property === "resolveTaskGateFacts" && gateFacts ? () => gateFacts : undefined; } });
   const server = http.createServer(createRequestHandler({ runtime, taskStore, authorizationToken }));
   context.after(() => new Promise((resolve) => server.close(resolve)));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -95,7 +97,7 @@ async function seeded(context) {
 test("queue-next answers the next task of each running queue and nothing else", async (context) => {
   const { store } = await seeded(context);
   const { store: spy, calls } = recordingStore(store);
-  const { port, touched } = await startRoute(context, { taskStore: spy });
+  const { port, touched } = await startRoute(context, { taskStore: spy, gateFacts: GATE_FACTS });
   assert.deepEqual((await queueNext(port)).json, { ok: true, starts: [] });
   assert.equal((await action(port, "queue_settings", { on: true })).json.board.queue.status, "running");
   assert.equal((await action(port, "queue_settings", { on: true }, OTHER_REPOSITORY_ID)).json.board.queue.status, "running");
@@ -106,7 +108,7 @@ test("queue-next answers the next task of each running queue and nothing else", 
   assert.deepEqual(response.json, { ok: true, starts: [{ repositoryId: OTHER_REPOSITORY_ID, taskId: "T-1" }, { repositoryId: REPOSITORY_ID, taskId: "T-1" }].toSorted((a, b) => a.repositoryId.localeCompare(b.repositoryId)) });
   assert.deepEqual(Object.keys(response.json), ["ok", "starts"]);
   assert.equal(response.text.includes(SECRET_TEXT), false);
-  assert.deepEqual(touched, [], "the observation runtime is never reached");
+  assert.ok(touched.every((property) => property === "resolveTaskGateFacts"), "only the committed start-gate lookup is read");
   assert.equal(calls.filter((call) => call === "nextQueueStarts").length, 2);
 });
 
@@ -200,7 +202,7 @@ test("queue-pause pauses a running queue and answers only ok", async (context) =
   assert.equal(response.status, 200);
   assert.equal(response.headers["cache-control"], "no-store");
   assert.deepEqual(response.json, { ok: true });
-  assert.deepEqual(touched, []);
+  assert.deepEqual(touched, ["resolveTaskGateFacts"]);
   const queue = store.readBoard(REPOSITORY_ID).queue;
   assert.deepEqual(queue, { status: "paused", blockedBy: "T-1", pauseReason: "plugin_missing", order: ["T-1"] });
   // Already paused, and a queue that was never on, change nothing and still answer ok.

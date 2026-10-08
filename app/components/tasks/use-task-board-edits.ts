@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TaskBoard } from "../../../shared/task-contract";
+import type { TaskBoard, TaskGateThreshold } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
-  MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE, columnFailureMessage,
+  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE, columnFailureMessage,
   createDesktopColumn, createDesktopFeature, deleteDesktopColumn, featureFailureMessage, moveDesktopTask, renameDesktopColumn, reorderDesktopColumn,
-  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopQueue, type ColumnAction, type TaskActionResult, type TaskMove,
+  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, type ColumnAction, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
 // Board edits made in the desktop app. A card move is optimistic: it is drawn in its new place at once and rolled
@@ -39,6 +39,8 @@ export type TaskBoardEdits = {
   reorderQueueTask(id: string, step: number): Promise<boolean>;
   /** Turns the queue on or off (on again while paused is the retry); the committed board then shows its status. */
   setQueue(on: boolean): Promise<boolean>;
+  /** Sets the usage above which no new session starts; waits for the committed board. */
+  setGateThreshold(threshold: TaskGateThreshold): Promise<boolean>;
   /** Resolves the task holding the queue: accept it as done, or send it back to the queue; waits for the committed board. */
   resolveTask(id: string, done: boolean): Promise<boolean>;
   /** Shows a fixed message for an input the board refused before sending anything. */
@@ -145,6 +147,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     addFeature: useCallback((name: string) => waitedAction(() => createDesktopFeature(repositoryId, name), featureFailureMessage), [waitedAction, repositoryId]),
     reorderQueueTask: useCallback((id: string, step: number) => waitedAction(() => reorderDesktopQueueTask(repositoryId, id, step), () => QUEUE_REORDER_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
+    setGateThreshold: useCallback((threshold: TaskGateThreshold) => waitedAction(() => setDesktopGateThreshold(repositoryId, threshold), () => GATE_THRESHOLD_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     resolveTask: useCallback((id: string, done: boolean) => waitedAction(() => done ? resolveDesktopTaskDone(repositoryId, id) : requeueDesktopTask(repositoryId, id),
       () => done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     reject: useCallback((message: string) => setFailure(message), []),

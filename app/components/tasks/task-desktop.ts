@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskRun } from "../../../shared/task-contract";
 import type { FeatureInput } from "./task-features";
 
 // The only way the renderer changes a task: the desktop preload's `taskAction` bridge (fixed IPC channel
@@ -18,9 +18,9 @@ export type TaskDesktopBridge = {
 
 /** Fixed outcome of one desktop session start. */
 export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
-  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed";
+  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held";
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed"]);
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held"]);
 
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);
 
@@ -150,6 +150,11 @@ export function setDesktopQueue(repositoryId: string, on: boolean): Promise<Task
   return sendTaskAction(repositoryId, "queue_settings", { on });
 }
 
+/** Sets the usage, in percent of the five-hour window, above which no new session starts. The monitor holds the value. */
+export function setDesktopGateThreshold(repositoryId: string, threshold: TaskGateThreshold): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_settings", { threshold });
+}
+
 /** Accepts a task that needs review, is blocked, or stalled as done; a queue it was holding runs again. */
 export function resolveDesktopTaskDone(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_done", { id });
@@ -172,6 +177,7 @@ export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
 export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
 export const QUEUE_SETTINGS_FAILURE_MESSAGE = "The queue setting could not be changed.";
+export const GATE_THRESHOLD_FAILURE_MESSAGE = "The start threshold could not be changed.";
 export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";

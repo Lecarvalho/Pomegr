@@ -51,6 +51,9 @@ export function createRequestHandler({
   const extraResponseHeaders = typeof responseHeaders === "function" ? responseHeaders : () => ({});
   // A linked task's session facts, read lazily from committed memory only; absent, the board shows them unknown.
   const resolveSessionFacts = (id) => runtime.resolveTaskSessionFacts?.(id);
+  // The start-gate facts of a repository, from committed memory only; read lazily like the session facts.
+  // A runtime without the lookup serves a board with no gates, and holds every start.
+  const resolveGateFacts = typeof runtime.resolveTaskGateFacts === "function" ? (repositoryId) => runtime.resolveTaskGateFacts(repositoryId) : null;
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -64,7 +67,7 @@ export function createRequestHandler({
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
     if (requestUrl.pathname === "/api/tasks") {
       serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead,
-        runModels: () => runtime.resolveRunModels?.(), resolveSessionFacts });
+        runModels: () => runtime.resolveRunModels?.(), resolveSessionFacts, resolveGateFacts });
       return;
     }
     if (requestUrl.pathname === "/api/provider-folders") {
@@ -224,7 +227,7 @@ export function createRequestHandler({
     response.setHeader("Cache-Control", "no-store");
     if (taskActionRequest) {
       await serveTaskActionRoute({
-        request, response, requestUrl, taskStore, resolveSessionFacts,
+        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts,
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),
       });
       return;

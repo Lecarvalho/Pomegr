@@ -8,6 +8,7 @@ import test from "node:test";
 import { resolveTaskCheckFacts } from "../../../server/runtime/task-session-lookup.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const AGENT = "a".repeat(40);
@@ -77,7 +78,7 @@ function startedTask(env, { checks = [], own = null, session = SESSION } = {}) {
   const created = apply(env, "create", { text: TEXT, doneWhen: { checks, own } });
   assert.equal(created.ok, true);
   const id = created.board.tasks.reduce((best, task) => (Number(task.id.slice(2)) > Number(best.slice(2)) ? task.id : best), "T-0");
-  const planned = env.store.planStart(REPOSITORY_ID, { id }, () => START_FACTS);
+  const planned = env.store.planStart(REPOSITORY_ID, { id }, () => START_FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: session }), { ok: true });
   return id;
@@ -257,7 +258,7 @@ test("resolve_requeue clears the report and the link, queues the task last, and 
   assert.equal(task.session, null);
   assert.deepEqual(env.store.readBoard(REPOSITORY_ID).queue.order, ["T-1", "T-2"]);
   refused(await complete(env), 404, "not_found");
-  const planned = env.store.planStart(REPOSITORY_ID, { id: "T-2" }, () => START_FACTS);
+  const planned = env.store.planStart(REPOSITORY_ID, { id: "T-2" }, () => START_FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: OTHER_SESSION }), { ok: true });
   assert.equal((await complete(env, OTHER_SESSION)).json.state, "done");

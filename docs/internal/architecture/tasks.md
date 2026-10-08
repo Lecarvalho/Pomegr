@@ -37,14 +37,14 @@ Claude Code or Codex session for it, in the desktop app only.
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
 | Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with the thread identity in the tool call's `_meta`; an unbound call is refused and posts nothing |
-| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet |
+| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window |
 | Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
 | Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
 | `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
 | CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
 | Stalled | Built: after committed revisions the monitor sets a linked task with no report to Stalled once its session's committed facts establish the end (catalog state Closed or Stopped, or Unknown with the Codex writer released), persists it, and holds a running queue. Idle, Open, and a bare Unknown never stall a task. The task panel says the session ended with no report and offers Mark done and resume queue or Requeue task |
 | Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one task at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
-| Start gates | Not built |
+| Start gates | Built: every start, manual or queued, first passes the four gates, judged from committed facts. A queued task that a gate holds waits, with the reason shown on its Queue card, and the queue stays on; a manual start a gate holds is refused with one fixed status. The Queue view lists each gate's current reading and sets the usage threshold (70, 85, or 95 percent; 85 by default); the Board shows each provider's usage reading |
 | Parallel steps with worktrees, scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
 
@@ -124,6 +124,13 @@ type TaskBoard = {
     status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null;
     pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | null;
     order: string[];
+    gates?: {                              // absent from a board that is not ready and from an older monitor
+      threshold: 70 | 85 | 95;
+      usage: Record<"claude" | "codex", { status: "ok" | "over" | "unknown"; fiveHourPercent: number | null; sevenDayPercent: number | null }>;
+      providerStatus: Record<"claude" | "codex", "ok" | "incident" | "unknown">;
+      workingTree: "clean" | "dirty" | "unknown";
+      next: { taskId: string; provider: "claude" | "codex"; blockedBy: string | null; reasons: TaskGateReason[] } | null;
+    };
   };
   runModels?: { codex: { id: string; label: string | null }[] };  // at most 64; empty when no catalog is committed; absent from an older monitor
 };
@@ -151,6 +158,11 @@ type TaskBoard = {
   the monitor.
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
+- `queue.gates` is the [start gates](#start-gates) as the monitor last judged them: fixed
+  statuses, the whole percentages Usage limits already shows, the threshold, and for the
+  next task its provider, the earlier task it waits on, and the fixed reasons that hold
+  it. It never carries a path, a reset time, an incident name, a changed file, or error
+  text.
 - A feature is `done` when every task attached to it is done. Only unfinished
   features are offered when attaching a task.
 - `session` is a borrowed, normalized reference to the bound session (see
@@ -214,7 +226,7 @@ paths stay desktop-private and never reach the monitor store or browser state.
 
 The queue is the ordered set of queued tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
-and only one start at a time. The start gates below are not checked yet.
+and only one start at a time. Every start first passes the [start gates](#start-gates).
 
 - **Order.** `queue.order` on the board lists the IDs of the tasks in state `queued`, in the
   order they would start, one ID per task. Features come in board order. Inside a
@@ -244,6 +256,10 @@ and only one start at a time. The start gates below are not checked yet.
   `queue.order`, so the task shown as next is the task that starts. A candidate in a
   feature waits while an earlier step of that feature is not done; the queue never
   skips ahead to a later task.
+- **Gates.** A candidate that a start gate holds is not answered as a next start and
+  changes nothing: the queue stays `running`, the task stays `queued`, and the next poll
+  judges the gates again. A held gate is a wait, not one of the outcomes that block or
+  pause the queue.
 - **Runner.** The desktop main process polls `POST /internal/tasks/queue-next` (desktop
   token, body `{}`) every 15 seconds on one unreferenced timer. The answer holds at most
   16 `{ repositoryId, taskId }` pairs, one per repository whose queue has a next start,
@@ -285,21 +301,62 @@ and only one start at a time. The start gates below are not checked yet.
 
 ## Start gates
 
-Before every start, `evaluateGates` judges committed facts and returns the reasons it
-cannot proceed. A start needs all of the following.
+Before every start, manual or queued, the pure `evaluateGates(task, facts, settings)` in
+`task-gates.mjs` judges committed facts and returns the fixed reasons a start cannot
+proceed. A start needs all of the following.
 
-1. The previous step of the task's feature is done.
-2. The provider has usage capacity: the committed usage observation stays below a
-   configurable threshold, 85% of the five-hour window by default. Unknown, stale,
-   or partial usage is not capacity, so the gate holds (designed default, confirmed
-   when the gates part lands).
-3. The provider has no incident in the committed public provider status. Public
-   status does not prove impact or causation, so it gates a start but is not shown as
-   a cause.
-4. The working tree of the repository root, or of the task's worktree, is clean.
+1. The previous step of the task's feature is done (`previous_step`). The board names
+   the lowest-numbered task that is not done in the earliest unfinished step before it.
+2. The task's provider has usage capacity: its five-hour window, as a whole percentage,
+   is below the threshold (`usage_over` otherwise). The threshold is 70, 85, or 95
+   percent per repository, 85 by default, set with `queue_settings` `{ threshold }` and
+   kept in the store's `meta` table under `queue_gate_threshold:<repositoryId>`. The
+   seven-day window is shown beside it and decides nothing. A task with no provider is
+   judged as Claude Code, the provider it starts on.
+3. The task's provider has no incident in the committed public provider status
+   (`provider_incident`): any status but operational is an incident. Public status does
+   not prove impact or causation, so it gates a start but is not shown as a cause.
+4. The working tree of the repository root is clean (`tree_dirty`), by the same Git
+   status rule the done-when check uses. A task's own worktree arrives with parallel
+   steps.
 
-The gates read already committed facts. They never acquire provider data, run Git
-inspections on a request, or probe an account.
+A fact that is missing, stale, or partial is unknown (`usage_unknown`,
+`provider_status_unknown`, `tree_unknown`). Unknown holds a start exactly like a failed
+gate and never counts as passed. The other provider's usage and status never hold a
+task.
+
+The gates read already committed facts, supplied by `resolveTaskGateFacts(repositoryId)`
+in `server/runtime/task-gate-facts.mjs`:
+
+| Fact | Source | Counts when |
+| --- | --- | --- |
+| Usage | The committed usage response in memory | The provider's usage is available and fresh: its own freshness when it reports one, otherwise a fetch no older than ten minutes. The reading is the highest window of that length |
+| Provider status | The committed public provider status in memory | The row is ready, fresh, and not unknown |
+| Working tree | A monitor-private observation of the recognized repository root, in memory only | The last inspection succeeded and is no older than 60 seconds |
+
+No gate acquires provider data, probes an account, or runs Git on a request. Asking for
+a repository's gate facts (a `GET /api/tasks`, a task action, `queue-next`, or
+`start-plan`) is the demand signal for the working-tree observation: when the
+observation is missing or 15 seconds old, the ask queues one asynchronous Git status of
+the root and answers with what is already committed. The first ask therefore reads
+unknown. At most 16 repositories are held, least recently asked first out; a repository
+nobody asks about is not inspected, so there is no timer. Roots, changed files, and Git
+errors stay in the monitor: only clean, dirty, or unknown leaves it.
+
+What a held gate does:
+
+- **Queue.** `queue-next` does not answer the start. Nothing is written, so the task
+  waits and no state is shown and later retracted; `queue.gates.next.reasons` says why.
+- **Manual start.** `start-plan` answers the fixed `gate_held` before a token is minted,
+  after the refusals that precede it (`not_startable`, `unsupported_provider`,
+  `unavailable`, `plugin_missing`). The renderer shows one fixed line that points at the
+  Queue view. The queue runner treats `gate_held` like a task that moved: no pause, and
+  the next poll asks again.
+- **Running sessions.** Never touched.
+
+`GET /api/tasks` serves the readings as `queue.gates`. The route rebuilds the block
+field by field and drops it whole when one value is outside the contract. A monitor
+runtime without the lookup serves no `gates` and holds every start.
 
 ## Completion
 
@@ -433,10 +490,10 @@ Starting is desktop-only and explicit.
 3. The session prompt is a fixed template holding the task text, the done-when list, and
    the instruction to call `complete_task` or `block_task`.
 4. The start is refused with a fixed reason when the Pomegr plugin is not installed in
-   the repository, a gate fails, or the platform is not Windows (fixed result
-   `unsupported_platform`).
+   the repository, a gate holds (fixed result `gate_held`), or the platform is not
+   Windows (fixed result `unsupported_platform`).
 
-Built so far: the manual start of a Claude Code or Codex session, with no start gate, and the link of the started session to its task.
+Built so far: the manual and the queued start of a Claude Code or Codex session behind the start gates, and the link of the started session to its task.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
   task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
@@ -457,7 +514,8 @@ Built so far: the manual start of a Claude Code or Codex session, with no start 
   `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed
   plugin setup of the repository shows the Pomegr plugin of that provider installed,
   ready, and enabled, and with `unavailable` when it has not identified the
-  repository's root in the current run.
+  repository's root in the current run. Last, it refuses with `gate_held` when a
+  [start gate](#start-gates) holds the task.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
   dispatch is live for ten minutes; after that the task can be started again. The
   session's first report of the token binds it (see [Session binding](#session-binding)),
@@ -539,7 +597,9 @@ like any other.
   `queued`. The three actions start no session and leave the stored queue status as it is.
   There is no insertion of a step between two others yet. `resolve_done` and
   `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` takes
-  exactly `{ on }`, a boolean (see [Queue](#queue)).
+  exactly one setting: `{ on }`, a boolean (see [Queue](#queue)), or `{ threshold }`,
+  one of 70, 85, and 95 (see [Start gates](#start-gates)), which leaves the queue status
+  as it is.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

@@ -67,7 +67,8 @@ const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));
-  assert.equal(TASK_START_STATUSES.length, 12);
+  assert.equal(TASK_START_STATUSES.length, 13);
+  assert.ok(TASK_START_STATUSES.includes("gate_held"));
 });
 
 test("starts with no model or effort, exact args and options", async () => {

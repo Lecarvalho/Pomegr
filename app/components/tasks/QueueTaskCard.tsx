@@ -18,9 +18,11 @@ export type QueueCardMove = {
  * One task in a step (design contract D131-D143): ID, state chip, title (the task text until its session has one),
  * the planned run line with the observed model, and Open session for a task with a session. A queued task of a feature can be dragged and, from the keyboard, moved with the select.
  */
-export function QueueTaskCard({ task, nextQueued, onOpen, move }: {
+export function QueueTaskCard({ task, nextQueued, waiting, onOpen, move }: {
   task: Task;
   nextQueued: boolean;
+  /** Why a start gate holds this task, or null. */
+  waiting?: string | null;
   onOpen?: (task: Task, opener: HTMLElement) => void;
   move?: QueueCardMove;
 }) {
@@ -36,6 +38,7 @@ export function QueueTaskCard({ task, nextQueued, onOpen, move }: {
       ? <button type="button" className="commandQuietAction taskCardOpen" aria-haspopup="dialog" title={title} onClick={(event) => onOpen(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
       : <p className="taskCardTitle" title={title}>{title}</p>}
     <TaskRunLine run={task.run} observedModel={task.session?.observedModel} />
+    {waiting && <p className="taskCardWaiting">{waiting}</p>}
     {task.session && <TaskSessionLink sessionId={task.session.id} className="taskCardLink" />}
     {move && move.choices.length > 0 && <div className="taskQueueMove">
       <CommandSelect aria-label={`Move ${task.id} to step`} placeholder="Move to step…" value={null}

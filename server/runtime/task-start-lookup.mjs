@@ -1,3 +1,4 @@
+import { createTaskGateFacts, createTaskTreeObservation } from "./task-gate-facts.mjs";
 import { resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
 
 /**
@@ -10,10 +11,23 @@ import { resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } fr
  * from its committed public state, each null when unknown.
  * `resolveRunModels()` returns the last committed Codex client-catalog models `{ id, label }` for the task
  * panel's Run on list, from the catalog the release scheduler already committed in memory.
- * No provider acquisition and no Git call happen here.
+ * `resolveTaskGateFacts(repositoryId)` returns the start-gate facts `{ usage, providerStatus, treeClean }` from the
+ * committed usage response (`gateSources.usageLimits()`), the committed public provider status
+ * (`gateSources.providerStatus()`), and the working-tree observation of the recognized root, which refreshes off the
+ * request path (task-gate-facts.mjs). Without `gateSources` every fact but the tree is unknown.
+ * No provider acquisition and no synchronous Git call happen here.
  */
-export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null }) {
+export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null }) {
+  const tree = createTaskTreeObservation({
+    repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
+    ...(gateSources?.gitReader ? { gitReader: gateSources.gitReader } : {}),
+    ...(gateSources?.forbiddenRoots ? { forbiddenRoots: gateSources.forbiddenRoots } : {}),
+    ...(gateSources?.now ? { now: gateSources.now } : {}),
+  });
   return {
+    resolveTaskGateFacts: createTaskGateFacts({
+      usageLimits: gateSources?.usageLimits, providerStatus: gateSources?.providerStatus, tree, ...(gateSources?.now ? { now: gateSources.now } : {}),
+    }),
     resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveTaskCheckFacts: (sessionRef) => resolveTaskCheckFacts(sessionRef, { observationStore }),

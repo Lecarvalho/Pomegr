@@ -10,7 +10,7 @@ import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
-  "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
+  "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
   "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed",
 ]);
 
@@ -19,7 +19,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const TOKEN = /^[A-Za-z0-9_-]{32,128}$/u;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
-const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "unavailable"]);
+const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
 const PROMPT_MAX = 8000;
 const LAUNCH_TIMEOUT_MS = 15_000;
 
