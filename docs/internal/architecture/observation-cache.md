@@ -2060,7 +2060,7 @@ live-status updates and newly created sessions never move a later page; new sess
 appear only on the first page. A cursor for another query or a malformed cursor restarts
 at the first page. An optional `provider` scope (`claude` or `codex`) narrows a page like the
 project scope. `group=project` or `group=provider` returns groups instead of a row page: at
-most 20 groups ordered by their newest recorded update, each with its scoped session, live,
+most 20 groups ordered by their newest-created session (so live updates never reorder them), each with its scoped session, live,
 and needs-input counts, that newest update time, and its 5 newest-created rows, plus the
 total group count. A grouped response has no cursor; the browser reads the rest of a group
 by requesting the ordinary paged directory with that project or provider scope. Groups

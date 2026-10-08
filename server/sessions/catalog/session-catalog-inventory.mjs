@@ -285,8 +285,9 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
     const row=preparedStatement(database, `SELECT COUNT(*) AS all_count,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs FROM session_catalog_headers`).get();
     return {all:Number(row.all_count),live:Number(row.live),needs:Number(row.needs)};
   }
-  // Groups the scoped inventory by project or provider. Groups are ordered by their newest recorded
-  // update; rows inside a group keep the directory's newest-created order. The response is bounded
+  // Groups the scoped inventory by project or provider. Groups are ordered by their newest-created
+  // session and rows inside a group keep the directory's newest-created order, so live updates never
+  // reorder either. The response is bounded
   // to GROUP_MAX groups of GROUP_ROWS rows and has no cursor: a group's remaining rows are read by
   // narrowing the ordinary paged directory to that project or provider.
   function groupedDirectory(scope,where,args) {
@@ -296,20 +297,20 @@ export function createSessionCatalogInventory({ store = () => null, now = Date.n
       matchedCount=Number(preparedStatement(database, `SELECT COUNT(*) AS n FROM session_catalog_headers${where}`).get(...args).n);
       groupCount=Number(preparedStatement(database, `SELECT COUNT(DISTINCT ${column}) AS n FROM session_catalog_headers${where}`).get(...args).n);
       const rowsFor=preparedStatement(database, `SELECT ${COLUMNS} FROM session_catalog_headers${where}${where?" AND":" WHERE"} ${column} = ? ORDER BY ${ORDER} LIMIT ?`);
-      summaries=preparedStatement(database, `SELECT ${column} AS groupKey,COUNT(*) AS n,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs,MAX(updated_ms) AS latestMs
-        FROM session_catalog_headers${where} GROUP BY ${column} ORDER BY latestMs DESC,${column} LIMIT ?`).all(...args,GROUP_MAX)
+      summaries=preparedStatement(database, `SELECT ${column} AS groupKey,COUNT(*) AS n,coalesce(SUM(is_live),0) AS live,coalesce(SUM(CASE WHEN ${NEEDS_SQL} THEN 1 ELSE 0 END),0) AS needs,MAX(updated_ms) AS latestMs,MAX(created_ms) AS newestMs
+        FROM session_catalog_headers${where} GROUP BY ${column} ORDER BY newestMs DESC,${column} LIMIT ?`).all(...args,GROUP_MAX)
         .map(group=>({key:group.groupKey,count:Number(group.n),live:Number(group.live),needs:Number(group.needs),latestMs:Number(group.latestMs),rows:rowsFor.all(...args,group.groupKey,GROUP_ROWS)}));
     } else {
       const byKey=new Map();
       const matches=[...memory.values()].filter(matchesScope(scope)).map(row=>({...row,createdMs:Date.parse(row.createdAt)||0})).sort(compareCreation);
       for (const row of matches) {
-        const group=byKey.get(row[column])||{key:row[column],count:0,live:0,needs:0,latestMs:0,rows:[]};
+        const group=byKey.get(row[column])||{key:row[column],count:0,live:0,needs:0,latestMs:0,newestMs:row.createdMs,rows:[]};
         group.count+=1; group.live+=row.isLive?1:0; group.needs+=needsOf(row)?1:0; group.latestMs=Math.max(group.latestMs,Date.parse(row.updatedAt)||0);
         if (group.rows.length<GROUP_ROWS) group.rows.push(row);
         byKey.set(group.key,group);
       }
       matchedCount=matches.length; groupCount=byKey.size;
-      summaries=[...byKey.values()].sort((a,b)=>b.latestMs-a.latestMs||(a.key<b.key?-1:a.key>b.key?1:0)).slice(0,GROUP_MAX);
+      summaries=[...byKey.values()].sort((a,b)=>b.newestMs-a.newestMs||(a.key<b.key?-1:a.key>b.key?1:0)).slice(0,GROUP_MAX);
     }
     const facts=coverage();
     return {revision,coverage:facts,readiness:{catalog:facts.knownCount||facts.status==="complete"?"ready":facts.status==="partial"?"unavailable":"loading"},sessions:[],matchedCount,counts:tallies(),pageSize:scope.pageSize,nextCursor:null,

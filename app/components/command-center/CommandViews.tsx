@@ -343,8 +343,8 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
           <CommandFilter active={filter === "live"} onClick={() => updateFilter("live")} count={catalogLoading ? undefined : liveSessionCount}>Live</CommandFilter>
           <CommandFilter active={filter === "needs"} onClick={() => updateFilter("needs")} count={catalogLoading ? undefined : needsInputCount}>Needs input</CommandFilter>
         </div>
-        {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
         <div className="commandSessionGroupBy">
+          {matchedCount !== null && <span className="commandToolbarCount" aria-live="polite">{matchedCount} matches</span>}
           <span id="commandSessionGroupByLabel">Group by</span>
           <div className="commandSegmented" role="group" aria-labelledby="commandSessionGroupByLabel">
             {SESSION_GROUPINGS.map((option) => <button key={option.id} type="button" aria-pressed={grouping === option.id} onClick={() => updateGrouping(option.id)}>{option.label}</button>)}
@@ -368,7 +368,7 @@ export function SessionsView({ initialProject = "", initialRepositoryId }: { ini
         </div> : (catalogUnavailable || directoryUnavailable || paused) && !hasRows ? <CommandEmpty title="Session catalog unavailable" detail={paused ? "Pomegr is paused. Resume it to refresh the session directory." : "Pomegr will retry the local monitor automatically."} icon="sessions" /> : <CommandEmpty title={narrowed ? "No sessions match" : "No sessions observed"} detail={narrowed ? "Try a different search or filter." :"Observed sessions will appear here when the local monitor is ready."} icon="sessions" />}
       />
       {directoryMatchesQuery && directory && serverGroup && hasRows && groupCount !== undefined && <p className="commandSessionGroupSummary">{groupCount > rowGroups.length
-        ? `Showing the ${rowGroups.length} most recently updated of ${groupCount.toLocaleString("en-US")} ${SESSION_GROUP_NOUNS[serverGroup][1]}. Filter sessions to reach the others.`
+        ? `Showing the ${rowGroups.length} most recent of ${groupCount.toLocaleString("en-US")} ${SESSION_GROUP_NOUNS[serverGroup][1]}. Filter sessions to reach the others.`
         : `${groupCount} ${SESSION_GROUP_NOUNS[serverGroup][groupCount === 1 ? 0 : 1]} · ${(matchedCount ?? 0).toLocaleString("en-US")} sessions`}</p>}
       {directoryMatchesQuery && directory && !serverGroup && <nav className="commandPagination" aria-label="Session pages"><span className="commandPaginationSummary">Showing up to {directory.pageSize} of {matchedCount}</span><div className="commandPaginationControls"><button className="commandSecondaryAction" type="button" disabled={!cursorTrail.length || directoryLoading} onClick={() => { const previous = cursorTrail.at(-1) || null; setCursorTrail((trail) => trail.slice(0, -1)); setCursor(previous); }}>Previous</button><button className="commandSecondaryAction" type="button" disabled={!directory.nextCursor || directoryLoading} onClick={() => { if (!directory.nextCursor) return; setCursorTrail((trail) => { const next = [...trail, cursor || ""]; if (next.length <= 100) return next; setCursorPageBase((page) => page + 1); return next.slice(1); }); setCursor(directory.nextCursor); }}>Next</button></div><span className="commandPaginationPageStatus" aria-live="polite">Page {cursorPageBase + cursorTrail.length + 1}</span></nav>}
       {!hasRows && !catalogLoading && providerSettingsAvailable && <p className="commandUnavailableNote">Need a different local source? <Link className="commandTextLink" href="/settings?section=providers">Configure session sources</Link></p>}

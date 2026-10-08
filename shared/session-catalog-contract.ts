@@ -39,7 +39,7 @@ export type SessionDirectoryGroup<Row> = {
 /** Present on a grouped directory response, which carries `groups` instead of a row page and has no cursor. */
 export type SessionDirectoryGroups<Row> = {
   groupBy?: "project" | "provider";
-  /** A bounded list ordered by newest recorded update; `groupCount` may exceed it. */
+  /** A bounded list ordered by each group's newest-created session; `groupCount` may exceed it. */
   groups?: SessionDirectoryGroup<Row>[];
   groupCount?: number;
 };

@@ -336,7 +336,7 @@ test("grouped directory returns bounded project and provider groups from committ
   const projects=inventory.directory({group:"project"});
   assert.equal(projects.groupBy,"project");assert.equal(projects.groupCount,2);assert.equal(projects.matchedCount,52);
   assert.deepEqual(projects.sessions,[]);assert.equal(projects.nextCursor,null);
-  // Groups follow their newest recorded update: session-39 is odd, so Other leads.
+  // Groups follow their newest-created session: session-39 is odd, so Other leads.
   assert.deepEqual(projects.groups.map((group)=>[group.key,group.label,group.count]),[["Other","Other",26],["Pomegr","Pomegr",26]]);
   const pomegr=projects.groups[1];
   assert.equal(pomegr.live,1);assert.equal(pomegr.needs,1);assert.equal(pomegr.latestUpdatedAt,row(38).updatedAt);
@@ -351,6 +351,10 @@ test("grouped directory returns bounded project and provider groups from committ
   assert.equal(inventory.directory({provider:"claude",pageSize:5,cursor:claude.nextCursor}).sessions[0].id,"claude:session-6");
   assert.equal(inventory.directory({provider:"SECRET",group:"SECRET"}).matchedCount,52);
   assert.equal(store.database.prepare("SELECT total_changes() AS n").get().n,before);
+  // A newer update never reorders groups; only the reported update time moves.
+  inventory.updateHeaders("codex",[row(0,{updatedAt:new Date(1_800_000_000_000).toISOString()})]);
+  const updated=inventory.directory({group:"project"});
+  assert.deepEqual(updated.groups.map((group)=>group.key),["Other","Pomegr"]);assert.equal(updated.groups[1].latestUpdatedAt,new Date(1_800_000_000_000).toISOString());
 });
 
 test("grouped directory bounds the group list and matches the memory fallback",async(t)=>{
