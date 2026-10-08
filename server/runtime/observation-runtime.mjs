@@ -780,7 +780,7 @@ export function createObservationRuntime(options = {}) {
       repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
-    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory }),
+    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory, runModels: options.runModels }),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

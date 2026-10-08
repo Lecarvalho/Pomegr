@@ -99,10 +99,10 @@ test("an authorized create answers the new board, no-store JSON, without reachin
   assert.match(response.headers["content-type"], /^application\/json/u);
   assert.equal(response.json.ok, true);
   assert.deepEqual(Object.keys(response.json).sort(), ["board", "ok"]);
-  assert.deepEqual(Object.keys(response.json.board).sort(), ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"]);
+  assert.deepEqual(Object.keys(response.json.board).sort(), ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
   assert.equal(response.json.board.repositoryId, REPOSITORY_ID);
   assert.deepEqual(response.json.board.tasks.map((task) => [task.id, task.text, task.state]), [["T-1", SECRET_TEXT, "not_queued"]]);
-  assert.deepEqual(store.readBoard(REPOSITORY_ID), response.json.board);
+  assert.deepEqual({ ...store.readBoard(REPOSITORY_ID), runModels: { codex: [] } }, response.json.board);
   assert.deepEqual(touched, []);
 });
 
@@ -139,7 +139,7 @@ test("move and the column actions travel through the route with the store's fixe
   const moved = await action("move", REPOSITORY_ID, { id: "T-2", columnId: ready.id, position: 9 }, { port });
   assert.equal(moved.status, 200);
   assert.deepEqual(moved.json.board.tasks.map((task) => [task.id, task.columnId, task.position]), [["T-1", backlog.id, 0], ["T-2", ready.id, 0]]);
-  assert.deepEqual(store.readBoard(REPOSITORY_ID), moved.json.board);
+  assert.deepEqual({ ...store.readBoard(REPOSITORY_ID), runModels: { codex: [] } }, moved.json.board);
 
   const created = await action("column_create", REPOSITORY_ID, { name: "Blocked" }, { port });
   assert.equal(created.status, 200);
@@ -399,7 +399,7 @@ test("GET /api/tasks behaves exactly as before: desktop_only for denied clients,
     assert.equal(denied.headers["cache-control"], "no-store");
     assert.deepEqual(denied.json, {
       version: 1, readiness: "desktop_only", repositoryId: REPOSITORY_ID,
-      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] },
+      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] },
     });
     assert.ok(!denied.text.includes(SECRET_TEXT));
   }

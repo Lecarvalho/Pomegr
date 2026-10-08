@@ -1,3 +1,5 @@
+import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
+
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 // action list is mirrored here; tests/server/tasks/task-actions.test.mjs pins it to `TASK_ACTIONS` in task-record.mjs.
 export const TASK_ACTIONS = Object.freeze([
@@ -16,6 +18,7 @@ const START_STATUS = Object.freeze({
 });
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
+const RUN_MODEL_LIMIT = 64;
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 function emptyBoard(readiness, repositoryId) {
@@ -23,11 +26,32 @@ function emptyBoard(readiness, repositoryId) {
     version: 1, readiness, repositoryId,
     columns: [], features: [], tasks: [],
     queue: { status: "idle", blockedBy: null, order: [] },
+    runModels: { codex: [] },
   };
 }
 
+/**
+ * The Run on list: the last committed Codex client catalog, at most 64 distinct rows with a validated identifier
+ * and a validated one-line label (or null). A lookup that is missing or throws yields an empty list.
+ * It is a client catalog, never account entitlement.
+ */
+export function projectRunModels(lookup) {
+  const codex = [];
+  try {
+    const rows = typeof lookup === "function" ? lookup() : [];
+    const seen = new Set();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (codex.length >= RUN_MODEL_LIMIT) break;
+      if (!row || !validModelIdentifier(row.id) || seen.has(row.id)) continue;
+      seen.add(row.id);
+      codex.push({ id: row.id, label: validModelLabel(row.label) ? row.label : null });
+    }
+  } catch { codex.length = 0; }
+  return { codex };
+}
+
 // The store validated every record; the route only pins the contract's top-level keys and the requested ID.
-function projectBoard(repositoryId, board) {
+function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
     || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)) {
@@ -36,15 +60,17 @@ function projectBoard(repositoryId, board) {
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks, queue: board.queue,
+    runModels: projectRunModels(runModels),
   };
 }
 
 /**
  * Committed-store task board GET. `authorized` is the same-computer decision the request handler
  * shares with `GET /api/provider-folders`; a denied client learns nothing beyond `desktop_only`.
+ * `runModels` reads the last committed Codex client catalog from memory.
  * The route never acquires provider evidence and has no write path.
  */
-export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized }) {
+export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });
@@ -68,7 +94,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     return;
   }
   try {
-    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId));
+    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId), runModels);
     response.writeHead(200, JSON_HEADERS);
     response.end(JSON.stringify(board));
   } catch {

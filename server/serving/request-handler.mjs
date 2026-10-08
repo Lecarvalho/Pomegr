@@ -58,7 +58,8 @@ export function createRequestHandler({
       && request.headers.origin === undefined
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
     if (requestUrl.pathname === "/api/tasks") {
-      serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead });
+      serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead,
+        runModels: () => runtime.resolveRunModels?.() });
       return;
     }
     if (requestUrl.pathname === "/api/provider-folders") {

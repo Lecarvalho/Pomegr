@@ -20,7 +20,7 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
   return {
     version: 1, readiness: "ready", repositoryId,
     columns: [{ id: "col-1", name: "Backlog", position: 0 }],
-    features: [], tasks: [task()], queue: { status: "idle", blockedBy: null, order: [] }, ...overrides,
+    features: [], tasks: [task()], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] }, ...overrides,
   };
 }
 
@@ -138,6 +138,14 @@ describe("useTasks", () => {
 });
 
 describe("parseTaskBoard", () => {
+  it("keeps valid Codex run models, drops invalid ones, and treats a missing field as empty", () => {
+    const older: Partial<TaskBoard> = board();
+    delete older.runModels;
+    expect(parseTaskBoard(older, repositoryId)?.runModels).toEqual({ codex: [] });
+    const rows = [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-6.1-sol", label: null }, { id: "../x", label: null }, { id: "gpt-5.2", label: "bad\nlabel" }, { id: 7 }];
+    expect(parseTaskBoard({ ...board(), runModels: { codex: rows } }, repositoryId)?.runModels).toEqual({ codex: [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-5.2", label: null }] });
+  });
+
   it("keeps a valid ready board with its session and report", () => {
     const parsed = parseTaskBoard(board({ tasks: [task({ session: { id: "claude:1", title: "Fix parser", state: "working", observedModel: "opus" }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null } })] }), repositoryId);
     expect(parsed?.tasks[0].session?.title).toBe("Fix parser");
@@ -178,7 +186,7 @@ describe("GET /api/tasks proxy", () => {
       const response = await GET(request);
       expect(response.status).toBe(403);
       expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(await response.json()).toEqual({ version: 1, readiness: "desktop_only", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } });
+      expect(await response.json()).toEqual({ version: 1, readiness: "desktop_only", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } });
     }
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -195,6 +203,6 @@ describe("GET /api/tasks proxy", () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("PRIVATE_PATH"));
     const response = await GET(same());
     expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ version: 1, readiness: "unavailable", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } });
+    expect(await response.json()).toEqual({ version: 1, readiness: "unavailable", repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } });
   });
 });

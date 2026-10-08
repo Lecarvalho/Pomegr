@@ -58,7 +58,12 @@ export type TaskBoard = {
   features: TaskFeature[];
   tasks: Task[];
   queue: TaskQueue;
+  /** Last committed Codex client-catalog models for the Run on list; never entitlement. Absent from an older monitor, which means empty. */
+  runModels?: TaskRunModels;
 };
+
+/** At most 64 rows; `id` is a validated model identifier (120 characters), `label` a safe one-line name (64) or null. */
+export type TaskRunModels = { codex: { id: string; label: string | null }[] };
 
 /** Repository identity accepted by the board; the same pattern every repository route uses. */
 export const TASK_REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
@@ -88,5 +93,5 @@ export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In 
 
 /** A board with no content, for loading, unavailable, and desktop-only answers. */
 export function createEmptyTaskBoard(repositoryId: string, readiness: TaskBoardReadiness): TaskBoard {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } };
+  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] } };
 }

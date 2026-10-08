@@ -73,7 +73,7 @@ test("the monitor's mirrored constants match shared/task-contract.ts", () => {
     assert.equal(isTaskId(value), CONTRACT_TASK_ID_PATTERN.test(value), value);
   }
   for (const readiness of ["ready", "loading", "unavailable", "desktop_only"]) {
-    assert.deepEqual(emptyBoard(REPOSITORY, readiness), createEmptyTaskBoard(REPOSITORY, readiness));
+    assert.deepEqual({ ...emptyBoard(REPOSITORY, readiness), runModels: { codex: [] } }, createEmptyTaskBoard(REPOSITORY, readiness));
   }
 });
 

@@ -29,14 +29,56 @@ export const NO_MODELS: TaskModelOptions = { claude: [], codex: [] };
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:+[\]-]*$/u;
 const UNSET = "";
 
-/** Distinct, valid model identifiers seen in agent runs, per provider. Nothing is invented. */
-export function modelsByProvider(runs: ReadonlyArray<{ source: string; model: string | null }>): TaskModelOptions {
-  const found: Record<TaskProvider, Set<string>> = { claude: new Set(), codex: new Set() };
-  for (const run of runs) {
-    const provider = run.source === "Claude Code" ? "claude" : run.source === "Codex" ? "codex" : null;
-    if (provider && run.model && run.model.length <= TASK_BOUNDS.modelIdentifierLength && MODEL_IDENTIFIER.test(run.model)) found[provider].add(run.model);
+/** A model identifier split into its family (the words) and its version (the numbers), for example `claude-opus` and 4.1. */
+function modelVersion(model: string): { family: string; version: number[]; date: number } {
+  const words: string[] = [];
+  const version: number[] = [];
+  let date = 0;
+  for (const part of model.toLowerCase().split("-")) {
+    if (/^\d{8}$/u.test(part)) date = Number(part);
+    else if (/^\d+(?:\.\d+)*$/u.test(part)) version.push(...part.split(".").map(Number));
+    else words.push(part);
   }
-  return { claude: [...found.claude].sort(), codex: [...found.codex].sort() };
+  return { family: words.join("-"), version, date };
+}
+
+function isNewerModel(candidate: ReturnType<typeof modelVersion>, current: ReturnType<typeof modelVersion>): boolean {
+  for (let index = 0; index < Math.max(candidate.version.length, current.version.length); index += 1) {
+    const difference = (candidate.version[index] ?? 0) - (current.version[index] ?? 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return candidate.date > current.date;
+}
+
+/**
+ * The newest observed model of each family, so `claude-opus-4-1` hides `claude-opus-4`. A heuristic on the
+ * identifier's numbers: a variant such as `[1m]` or `-mini` is its own family, and nothing is invented.
+ */
+export function latestModels(models: Iterable<string>): string[] {
+  const newest = new Map<string, { model: string; parsed: ReturnType<typeof modelVersion> }>();
+  for (const model of models) {
+    const parsed = modelVersion(model);
+    const current = newest.get(parsed.family);
+    if (!current || isNewerModel(parsed, current.parsed)) newest.set(parsed.family, { model, parsed });
+  }
+  return [...newest.values()].map((entry) => entry.model).sort();
+}
+
+/**
+ * Run on models per provider. Claude offers the newest valid identifier of each family seen in agent runs.
+ * Codex offers only the monitor's committed client catalog, in catalog order (never observed runs, which include
+ * internal identifiers, and never account entitlement). Nothing is invented.
+ */
+export function modelsByProvider(
+  runs: ReadonlyArray<{ source: string; model: string | null }>,
+  codexCatalog: ReadonlyArray<{ id: string }> = [],
+): TaskModelOptions {
+  const claude = new Set<string>();
+  for (const run of runs) {
+    if (run.source === "Claude Code" && run.model && run.model.length <= TASK_BOUNDS.modelIdentifierLength && MODEL_IDENTIFIER.test(run.model)) claude.add(run.model);
+  }
+  const codex = codexCatalog.map((model) => model.id).filter((id) => id.length <= TASK_BOUNDS.modelIdentifierLength && MODEL_IDENTIFIER.test(id));
+  return { claude: latestModels(claude), codex: [...new Set(codex)] };
 }
 
 /** `provider:default` is the provider's default model; `provider:model:<id>` a named model. A model needs a provider. */
@@ -60,7 +102,8 @@ export function runSelectOptions(models: TaskModelOptions, run: TaskRun): Comman
   for (const provider of TASK_PROVIDERS) {
     const names = new Set(models[provider]);
     if (run.provider === provider && run.model) names.add(run.model);
-    for (const model of [...names].sort()) options.push({ value: `${provider}:model:${model}`, label: model, group: PROVIDER_LABELS[provider] });
+    const ordered = provider === "codex" ? [...names] : [...names].sort();
+    for (const model of ordered) options.push({ value: `${provider}:model:${model}`, label: model, group: PROVIDER_LABELS[provider] });
     options.push({ value: `${provider}:default`, label: "Default model", group: PROVIDER_LABELS[provider] });
   }
   return options;

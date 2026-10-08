@@ -65,7 +65,8 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
           <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Queue</button>
         </div>}
         {desktop === "available" && ready && view === "board" && <AddColumnAction edits={edits} full={columnsFull} describedBy={fullNoteId} />}
-        {desktop === "available" && ready && view === "queue" && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+        {/* The Board's filter row carries this action once a feature exists; without one the row is not drawn. */}
+        {desktop === "available" && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
         {desktop === "available" && <button ref={trigger} type="button" className="commandPrimaryAction taskNewAction" aria-haspopup="dialog" onClick={openNew}>New task</button>}
       </div>}
     </header>

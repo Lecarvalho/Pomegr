@@ -47,7 +47,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   repositoryId: string;
   task: Task;
   /** The committed board: its features and their tasks fill the Feature fields and the folded list. */
-  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
+  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { runModels?: NonNullable<TaskBoard["runModels"]>; queue?: Pick<TaskBoard["queue"], "order"> };
   refresh(): Promise<void>;
   /** Opens a sibling's own panel from the folded list. */
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
@@ -58,7 +58,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const titleId = useId();
   const fieldId = useId();
   const errorId = useId();
-  const models = useTaskModelOptions();
+  const models = useTaskModelOptions(board.runModels);
   const [text, setText] = useState(task.text);
   const [run, setRun] = useState<TaskRun>(task.run);
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(() => doneWhenFromTask(task.doneWhen));

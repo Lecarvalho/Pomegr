@@ -359,6 +359,20 @@ describe("Feature filter and card feature line", () => {
     expect(card("T-1")).not.toHaveTextContent("step");
   });
 
+  it("offers New feature in the Board header while the board has no feature, and once in the filter row after", async () => {
+    const user = userEvent.setup();
+    mock.board = boardOf({ features: [], tasks: [task(1, "Loose")] });
+    const view = render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(screen.getByRole("button", { name: "+ New feature" }));
+    await user.type(screen.getByRole("textbox", { name: "Feature name" }), "First");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "feature_create", { name: "First" }));
+    mock.board = boardOf();
+    view.rerender(<TasksTab repositoryId={repositoryId} />);
+    expect(screen.getAllByRole("button", { name: "+ New feature" })).toHaveLength(1);
+    expect(within(screen.getByRole("group", { name: "Filter by feature" })).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
+  });
+
   it("counts tasks per chip, presses All first, and hides non-matching cards in every column", async () => {
     const user = userEvent.setup();
     render(<TasksTab repositoryId={repositoryId} />);

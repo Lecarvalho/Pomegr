@@ -118,6 +118,7 @@ type TaskBoard = {
   features: { id: string; name: string; done: boolean }[];
   tasks: Task[];
   queue: { status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null; order: string[] };
+  runModels?: { codex: { id: string; label: string | null }[] };  // at most 64; empty when no catalog is committed; absent from an older monitor
 };
 ```
 
@@ -129,7 +130,12 @@ type TaskBoard = {
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at
   most 120 identifier characters, never a path, markup, or prose. A card shows the
   planned provider and model beside the observed model; the observed model is
-  evidence, the planned one is intent. A model belongs to one provider, so a model
+  evidence, the planned one is intent. The Run on list offers Claude's newest observed
+  model of each family and, for Codex, only `runModels.codex`: the last committed Codex
+  client catalog (visible, non-alias rows) that the hourly model read already holds in
+  memory. The GET never triggers a catalog read, the list is a client catalog and never
+  account entitlement, and with no committed catalog Codex offers only its Default model.
+  A model belongs to one provider, so a model
   without a provider is invalid; an effort alone is valid.
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.

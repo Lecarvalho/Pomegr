@@ -304,8 +304,9 @@ describe("Run on, Effort and Done when", () => {
   it("groups the options by provider from the served model list and always offers Default model", async () => {
     agents.runs = [
       { source: "Claude Code", model: "model-b" }, { source: "Claude Code", model: "model-a" }, { source: "Claude Code", model: "model-a" },
-      { source: "Codex", model: "model-c" }, { source: "Codex", model: null }, { source: "Claude Code", model: "C:\\not\\a\\model" },
+      { source: "Codex", model: "observed-only" }, { source: "Codex", model: null }, { source: "Claude Code", model: "C:\\not\\a\\model" },
     ];
+    useTasks.mockReturnValue({ board: { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }], runModels: { codex: [{ id: "model-c", label: null }] } }, refresh });
     const user = userEvent.setup();
     render(<TasksTab repositoryId={repositoryId} />);
     await openPanel(user);
@@ -322,7 +323,7 @@ describe("Run on, Effort and Done when", () => {
   });
 
   it("sends the chosen run, effort, checks and own condition", async () => {
-    agents.runs = [{ source: "Codex", model: "model-c" }];
+    useTasks.mockReturnValue({ board: { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }], runModels: { codex: [{ id: "model-c", label: null }] } }, refresh });
     const user = userEvent.setup();
     render(<TasksTab repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Ship it");
