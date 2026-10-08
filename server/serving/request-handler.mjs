@@ -8,8 +8,8 @@ import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
 import {
-  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, TASK_ACTION_PATH_PREFIX, serveAgentTaskAddRoute, serveAgentTaskBindRoute,
-  serveTaskActionRoute, serveTaskRoute,
+  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, TASK_ACTION_PATH_PREFIX,
+  serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
@@ -107,9 +107,10 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The agent write paths (add, bind); every other agent route stays GET-only.
+      // The agent write paths (add, bind, complete, block); every other agent route stays GET-only.
       const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
-        : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute : null;
+        : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute
+          : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH ? serveAgentTaskReportRoute : null;
       if (agentTaskWrite) {
         if (request.method !== "POST") {
           response.writeHead(405, { Allow: "POST" });
@@ -119,6 +120,7 @@ export function createRequestHandler({
         await agentTaskWrite({
           request, response, requestUrl, taskStore,
           resolveSession: typeof runtime.resolveTaskSession === "function" ? (ref) => runtime.resolveTaskSession(ref) : null,
+          resolveCheckFacts: typeof runtime.resolveTaskCheckFacts === "function" ? (ref) => runtime.resolveTaskCheckFacts(ref) : null,
         });
         return;
       }

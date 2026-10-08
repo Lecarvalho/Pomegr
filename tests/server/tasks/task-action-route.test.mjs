@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "resolve_done", "resolve_requeue"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));

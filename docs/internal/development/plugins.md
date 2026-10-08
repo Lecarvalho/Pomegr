@@ -14,12 +14,12 @@ For installation, repository setup, and troubleshooting, read the [Reporting plu
 | Delegated-report detection | `SubagentStop` hook | `SubagentStop` hook |
 | Signal and progress tools | Seven shared tools | Seven shared tools |
 | Observation query tools | Seven shared tools | Seven shared tools |
-| Task board tool | `add_task`, bound by `CODEX_THREAD_ID` | `add_task`, bound by a `PreToolUse` hook |
+| Task board tools | `add_task`, `complete_task`, `block_task`, bound by the thread identity in each tool call's `_meta` | `add_task`, `complete_task`, `block_task`, bound by a `PreToolUse` hook |
 | Task session link | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set |
 | Native session-title tool | Provider automatic naming | `rename_session` |
 | Session line above the prompt | Not available | Function-hook module |
 
-Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local capability and return only bounded normalized evidence. The same capability authorizes the one agent write, `add_task`, which sends the task fields the agent supplied to the local monitor; see [Task board and dispatch](../architecture/tasks.md). The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
+Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local capability and return only bounded normalized evidence. The same capability authorizes the agent writes: `add_task`, which sends the task fields the agent supplied to the local monitor, and `complete_task` and `block_task`, which send only the bound session and, for a block, a one-line reason; see [Task board and dispatch](../architecture/tasks.md). The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
 ## Public directories
 

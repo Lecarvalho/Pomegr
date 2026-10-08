@@ -103,10 +103,19 @@ describe("Start session", () => {
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
   });
 
+  it.each(["needs_review", "blocked", "stalled"] as const)("is not offered for a %s task, which shows its resolutions instead", async (state) => {
+    setBoard(task({ state }));
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(screen.getByRole("button", { name: "Write the thing" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Task T-1" }));
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
+    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Mark done and resume queue"]);
+  });
+
   it.each([
     ["a linked session", { session: { id: "s", title: "Linked work", state: "idle", observedModel: null } }, "A session is already linked to this task.", "Linked work"],
     ["done", { state: "done" as const }, "This task is done.", "Write the thing"],
-    ["needs_review", { state: "needs_review" as const }, "Resolve this task before starting it again.", "Write the thing"],
   ])("is disabled with its reason for %s", async (_name, overrides, reason, cardName) => {
     setBoard(task(overrides));
     const user = userEvent.setup();

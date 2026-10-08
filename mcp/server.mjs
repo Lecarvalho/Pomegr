@@ -24,7 +24,7 @@ import {
 } from "../server/normalize/session-signals.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "./agent-query-tools.mjs";
 import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot } from "../shared/agent-query-transport.mjs";
-import { registerTaskTools, TASK_TOOL_INSTRUCTIONS } from "./task-tools.mjs";
+import { registerTaskTools, resolveCodexCallSession, TASK_TOOL_INSTRUCTIONS } from "./task-tools.mjs";
 
 const labelSchema = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
   .refine((label) => normalizeSessionSignal({ label, tone: "neutral" }) !== null, "Use one line of plain text without control characters.")
@@ -200,10 +200,11 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
-  // The Codex thread identity comes from the launch environment; the model cannot supply it.
+  // Codex names the calling thread in each tool call's `_meta`; the model cannot supply it. The launch environment is
+  // the fallback for a host that forwards a thread identity to the server instead.
   const taskRef = typeof currentSessionRef === "string" && currentSessionRef.startsWith("codex:") ? currentSessionRef : null;
   registerTaskTools(server, {
-    resolveSession: () => taskRef,
+    resolveSession: (_input, extra) => resolveCodexCallSession(extra?._meta) ?? taskRef,
     post: options.taskPost ?? createAgentTaskWriter({ dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot() }),
     hookBound: false,
   });

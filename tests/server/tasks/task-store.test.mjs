@@ -263,7 +263,7 @@ test("actions whose part has not landed, and unknown names, answer unsupported a
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
+  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "resolve_done", "resolve_requeue"];
   for (const action of [...ACTIONS.filter((name) => !implemented.includes(name)), "unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
@@ -379,11 +379,11 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "close", "planStart", "readBoard"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "planStart", "readBoard"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {
-  for (const file of ["task-store.mjs", "task-record.mjs", "task-dispatch.mjs", "task-board.mjs"]) {
+  for (const file of ["task-store.mjs", "task-record.mjs", "task-dispatch.mjs", "task-board.mjs", "task-report.mjs", "task-checks.mjs"]) {
     const source = await readFile(new URL(`../../../server/tasks/${file}`, import.meta.url), "utf8");
     const specifiers = [...source.matchAll(/(?:from|import)\s*\(?\s*["']([^"']+)["']/gu)].map((match) => match[1]);
     assert.equal(specifiers.some((specifier) => /(?:^|\/)(?:runtime|serving)\//u.test(specifier)), false, file);

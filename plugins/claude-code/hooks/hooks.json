@@ -73,7 +73,7 @@
         ]
       },
       {
-        "matcher": "^mcp__(plugin_pomegr_pomegr|pomegr)__add_task$",
+        "matcher": "^mcp__(plugin_pomegr_pomegr|pomegr)__(add_task|complete_task|block_task)$",
         "hooks": [
           {
             "type": "command",

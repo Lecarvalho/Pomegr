@@ -8,8 +8,9 @@ import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import {
-  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask,
-  deleteDesktopTask, removeDesktopQueueTask, updateDesktopTask, type TaskFieldsInput,
+  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
+  RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
+  resolveDesktopTaskDone, updateDesktopTask, type TaskFieldsInput,
 } from "./task-desktop";
 import { doneWhenFromTask, observedModelDiffers, toDoneWhen, type DoneWhenDraft } from "./task-fields";
 import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
@@ -18,11 +19,12 @@ import { taskCardTitle, taskChip, taskSessionHref, taskSessionTitle } from "./ta
 import { useFeatureCreation } from "./use-feature-creation";
 import { useTaskStart } from "./use-task-start";
 
-// Task side panel (design contract D239-D294, D295, D298, D299), opened from a card. It reuses the New task
-// panel's drawer chrome. A select, segment or checkbox saves when it changes; the Task textarea, the
-// own-condition input and a new feature's name save when they lose focus after a change. Mark done / Requeue
-// (D296, D297) belong to a later part and are not drawn. The footer offers Add to queue (Not queued) or Remove
-// from queue (Queued) before Delete task: the design has no such control, so this is the orchestrator's decision.
+// Task side panel (design contract D239-D299), opened from a card. It reuses the New task panel's drawer
+// chrome. A select, segment or checkbox saves when it changes; the Task textarea, the own-condition input and
+// a new feature's name save when they lose focus after a change. A task that needs review, is blocked or
+// stalled leads the footer with Mark done and resume queue and Requeue task (D296, D297). The footer also
+// offers Add to queue (Not queued) or Remove from queue (Queued) before Delete task: the design has no such
+// control, so this is the orchestrator's decision.
 
 type Patch = { text?: string } & TaskFieldsInput;
 
@@ -59,6 +61,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [queueing, setQueueing] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   // What the monitor was last asked to store, so a quick toggle back is still sent and an unchanged blur is not.
@@ -84,8 +87,11 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   useEscapeToClose(onClose);
 
   const chip = taskChip(task, task.id === board.queue?.order[0]);
+  const unresolved = task.state === "needs_review" || task.state === "blocked" || task.state === "stalled";
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   const start = useTaskStart(repositoryId, task, text.trim() !== task.text, refresh);
+  // A task that needs the user offers its resolutions instead of Start session, so the footer keeps one primary action.
+  const showStart = start.available && !unresolved;
   const sessionTitle = taskSessionTitle(task);
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
 
@@ -177,6 +183,16 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
     if (result.ok) onChanged(); else setFailure(add ? QUEUE_ADD_FAILURE_MESSAGE : QUEUE_REMOVE_FAILURE_MESSAGE);
   };
 
+  // Mark done / Requeue: offered only for a task that needs the user, and the monitor decides the rest.
+  const resolve = async (done: boolean) => {
+    if (resolving) return;
+    setResolving(true);
+    setFailure(null);
+    const result = await (done ? resolveDesktopTaskDone(repositoryId, task.id) : requeueDesktopTask(repositoryId, task.id));
+    setResolving(false);
+    if (result.ok) onChanged(); else setFailure(done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE);
+  };
+
   const remove = async () => {
     if (deleting) return;
     setDeleting(true);
@@ -223,7 +239,11 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
         onCommitName={() => void commitName()} onCancelName={cancelName} onOpenTask={onOpenTask} />
     </div>
     <footer className="newTaskPanelFooter taskPanelFooter">
-      {start.available && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
+      {showStart && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
+      {unresolved && !confirming && <>
+        <button type="button" className="commandPrimaryAction" disabled={resolving} onClick={() => void resolve(true)}>Mark done and resume queue</button>
+        <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
+      </>}
       <span className="newTaskPanelSpacer" aria-hidden="true" />
       {confirming
         ? <div className="taskPanelConfirm" role="group" aria-label="Confirm delete">
@@ -232,7 +252,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
           <button ref={cancel} type="button" className="commandQuietAction" disabled={deleting} onClick={() => setConfirming(false)}>Keep task</button>
         </div>
         : <>
-          {start.available && <button type="button" className="commandPrimaryAction" disabled={start.disabled} onClick={() => void start.run()}>
+          {showStart && <button type="button" className="commandPrimaryAction" disabled={start.disabled} onClick={() => void start.run()}>
             {start.pending ? "Starting…" : "Start session"}
           </button>}
           {(task.state === "not_queued" || task.state === "queued") && <button type="button" className="commandSecondaryAction" disabled={queueing} onClick={() => void changeQueue(task.state === "not_queued")}>

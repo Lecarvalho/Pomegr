@@ -123,8 +123,6 @@ describe("Task panel", () => {
     expect(dialog.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
     expect(dialog.getByRole("combobox", { name: "Step in feature" })).toBeDisabled();
-    // The queue-resolve part is not drawn here.
-    expect(dialog.queryByText(/Mark done|Requeue/)).not.toBeInTheDocument();
   });
 
   it("shows per-check results, the report line and the observed-model notice only when they exist", async () => {
@@ -410,6 +408,83 @@ describe("Task panel", () => {
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
       "Not set", "model-a, Claude Code", "Default model, Claude Code", "Default model, Codex",
     ]);
+  });
+});
+
+describe("Task panel resolutions", () => {
+  const blockedTask = task(14, {
+    state: "blocked", session: { id: "claude:def456", title: null, state: "idle", observedModel: null },
+    report: { at: "2026-10-08T12:00:00.000Z", results: [], blockReason: "The schema needs a decision." },
+  });
+  async function open(text: string, id: string) {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    await user.click(screen.getByRole("button", { name: text }));
+    return { user, dialog: within(screen.getByRole("dialog", { name: `Task ${id}` })) };
+  }
+
+  it("leads the footer of a task in review with Mark done and Requeue, before Delete", async () => {
+    const { user, dialog } = await open("Task store and privacy rules", "T-12");
+    const done = dialog.getByRole("button", { name: "Mark done and resume queue" });
+    const requeue = dialog.getByRole("button", { name: "Requeue task" });
+    const remove = dialog.getByRole("button", { name: "Delete task" });
+    expect(done).toHaveClass("commandPrimaryAction");
+    expect(requeue).toHaveClass("commandSecondaryAction");
+    expect(remove).toHaveClass("commandQuietAction");
+    expect(done.compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(requeue.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
+    await user.click(done);
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-12" }));
+    await waitFor(() => expect(refresh).toHaveBeenCalled());
+  });
+
+  it("requeues a task the agent blocked and shows its reason", async () => {
+    setBoard([reviewTask, blockedTask]);
+    const { user, dialog } = await open("Task text 14", "T-14");
+    expect(dialog.getByText("Blocked by agent")).toHaveClass("commandChip");
+    expect(dialog.getByText(/Agent reported it cannot continue/)).toHaveTextContent("The schema needs a decision.");
+    await user.click(dialog.getByRole("button", { name: "Requeue task" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-14" }));
+  });
+
+  it("offers the resolutions for a stalled task and for no other state", async () => {
+    setBoard([task(15, { state: "stalled" }), task(16, { state: "done" }), task(17, { state: "queued" }), task(18)]);
+    const first = await open("Task text 15", "T-15");
+    expect(first.dialog.getByRole("button", { name: "Mark done and resume queue" })).toBeInTheDocument();
+    for (const [text, id] of [["Task text 16", "T-16"], ["Task text 17", "T-17"], ["Task text 18", "T-18"]]) {
+      await first.user.click(screen.getByRole("button", { name: text }));
+      const dialog = within(screen.getByRole("dialog", { name: `Task ${id}` }));
+      expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
+      expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
+    }
+  });
+
+  it("shows one fixed line when the monitor refuses a resolution", async () => {
+    taskAction.mockResolvedValue({ ok: false, error: "conflict" });
+    const { user, dialog } = await open("Task store and privacy rules", "T-12");
+    await user.click(dialog.getByRole("button", { name: "Mark done and resume queue" }));
+    expect(await dialog.findByRole("alert")).toHaveTextContent("The task could not be marked done.");
+    await user.click(dialog.getByRole("button", { name: "Requeue task" }));
+    await waitFor(() => expect(dialog.getByRole("alert")).toHaveTextContent("The task could not be requeued."));
+  });
+
+  it("hides the resolutions while the delete confirmation is open", async () => {
+    const { user, dialog } = await open("Task store and privacy rules", "T-12");
+    await user.click(dialog.getByRole("button", { name: "Delete task" }));
+    expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
+  });
+
+  it("says a CI condition is not available yet instead of not passed", async () => {
+    setBoard([task(19, {
+      state: "needs_review", doneWhen: { checks: ["pr_open", "ci_passed"], own: null },
+      report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null },
+    })]);
+    const { dialog } = await open("Task text 19", "T-19");
+    expect(dialog.getByText("Not available yet")).toHaveClass("isFailed");
+    expect(dialog.getByText("Passed")).toHaveClass("isPassed");
+    expect(dialog.queryByText("Not passed")).not.toBeInTheDocument();
   });
 });
 
