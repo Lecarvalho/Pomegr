@@ -40,7 +40,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet |
 | Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
 | Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
-| `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task. CI passed has no source yet and is never confirmed |
+| `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
+| CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
 | Stalled, queue advance, start gates | Not built |
 | Parallel steps with worktrees, scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
@@ -263,7 +264,7 @@ the conditions the user checked and sets the state.
 | Working tree clean | Committed repository state of the root or worktree |
 | Commit on task branch | Committed Git facts of the task branch |
 | Pull request merged | Committed pull-request state |
-| CI passed | Committed pull-request check state (its source is added by the CI part) |
+| CI passed | Check status of the task branch's pull request, as last read by the monitor |
 | Own condition | Not verified; the agent judges it in its report |
 
 - Pass: Done. Fail: Needs review. The agent can call `block_task` with a bounded
@@ -284,8 +285,15 @@ the conditions the user checked and sets the state.
     shows a commit of its own, merged since or not.
   - Pull request open, Pull request merged: the ready pull-request block holds a pull
     request whose head is the task branch in that state.
-  - CI passed: no committed source yet, so it is always not passed. The task panel
-    says "Not available yet" and the tool names it so.
+  - CI passed: the monitor's pull-request read (`server/repository/pull-requests.mjs`)
+    asks gh for `statusCheckRollup` in the same call and normalizes it to one of
+    `passed`, `failed`, `pending`, or `none`: any failed check gives `failed`, otherwise
+    any unfinished check gives `pending`, and a pull request with no check gives `none`.
+    A missing or unrecognized list is unknown. The condition judges the task branch's
+    open pull requests, or its merged ones when none is open, and passes only when each
+    is `passed`. Pending, failed, no check, and no such pull request are not passed; a
+    pull request whose status the monitor has not read is unknown. Verification reads
+    the status from memory (`pullRequestCheckStatus`) and never runs gh.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
 - Committed facts can trail the agent: a pull request opened seconds before the report
@@ -527,6 +535,12 @@ new data class.
   observation of the session.
 - Provider and model names, effort, check results, and times are normalized enums or
   identifiers, not user content.
+- The pull-request check status is monitor-private. It is held only in memory, as one
+  fixed `passed`, `failed`, `pending`, or `none` value for at most 256 pull-request URLs,
+  and it is not part of the normalized pull-request item. It is never persisted and never
+  enters `/api/state`, a session domain, a repository snapshot, a report, a log, or
+  `GET /api/tasks`. Its only use is the CI passed condition, which exposes pass or fail.
+  Check names, URLs, conclusions, and counts are dropped when the list is normalized.
 
 ## Invariants and failure behavior
 

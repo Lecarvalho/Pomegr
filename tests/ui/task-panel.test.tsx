@@ -476,15 +476,15 @@ describe("Task panel resolutions", () => {
     expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
   });
 
-  it("says a CI condition is not available yet instead of not passed", async () => {
+  it("shows a CI condition's result like any other check", async () => {
     setBoard([task(19, {
       state: "needs_review", doneWhen: { checks: ["pr_open", "ci_passed"], own: null },
       report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null },
     })]);
     const { dialog } = await open("Task text 19", "T-19");
-    expect(dialog.getByText("Not available yet")).toHaveClass("isFailed");
+    expect(dialog.getByText("Not passed")).toHaveClass("isFailed");
     expect(dialog.getByText("Passed")).toHaveClass("isPassed");
-    expect(dialog.queryByText("Not passed")).not.toBeInTheDocument();
+    expect(dialog.queryByText("Not available yet")).not.toBeInTheDocument();
   });
 });
 

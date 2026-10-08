@@ -47,7 +47,10 @@ test("an unknown, missing, or malformed fact is never a pass", () => {
   }
 });
 
-test("CI passed cannot be confirmed from the facts the monitor commits today", () => {
-  assert.deepEqual(verifyChecks(["ci_passed"], { treeClean: true, branchCommits: true, pullRequestStates: ["merged"], ciPassed: null }),
-    [{ check: "ci_passed", passed: false }]);
+test("CI passed needs a known passing check status", () => {
+  for (const ciPassed of [null, false]) {
+    assert.deepEqual(verifyChecks(["ci_passed"], { treeClean: true, branchCommits: true, pullRequestStates: ["merged"], ciPassed }),
+      [{ check: "ci_passed", passed: false }]);
+  }
+  assert.deepEqual(verifyChecks(["ci_passed"], { ciPassed: true }), [{ check: "ci_passed", passed: true }]);
 });

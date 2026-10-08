@@ -327,11 +327,40 @@ test("check facts come from the session's committed repository state and carry n
   assert.deepEqual(facts, { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: null });
   assert.doesNotMatch(JSON.stringify(facts), /SECRET|tasks\/12/u);
   const dirty = resolveTaskCheckFacts(SESSION, observation({ repository: repository({ files: [{ status: "M", path: "a.txt" }] }), pullRequests: pulls() }));
-  assert.deepEqual(dirty, { treeClean: false, branchCommits: true, pullRequestStates: [], ciPassed: null });
+  assert.deepEqual(dirty, { treeClean: false, branchCommits: true, pullRequestStates: [], ciPassed: false });
   const merged = resolveTaskCheckFacts(SESSION, observation({
     repository: repository({ comparison: { branch: "main", kind: "base", ahead: 0, behind: 0, integrated: true } }), pullRequests: pulls(pull("merged")),
   }));
   assert.deepEqual(merged, { treeClean: true, branchCommits: true, pullRequestStates: ["merged"], ciPassed: null });
+});
+
+test("CI passed joins the task branch's pull requests with the check status the monitor last read", () => {
+  const url = (number) => `https://github.com/PomegrHQ/pomegr/pull/${number}`;
+  const numbered = (number, state, headBranch = "tasks/12") => ({ state, headBranch, url: url(number) });
+  const ci = (items, statuses) => resolveTaskCheckFacts(SESSION, {
+    ...observation({ repository: repository(), pullRequests: pulls(...items) }),
+    checkStatus: (value) => statuses[value] ?? null,
+  }).ciPassed;
+
+  assert.equal(ci([numbered(1, "open")], { [url(1)]: "passed" }), true);
+  for (const status of ["failed", "pending", "none"]) assert.equal(ci([numbered(1, "open")], { [url(1)]: status }), false, status);
+  // A check status the monitor has not read is unknown, and it is never read here.
+  assert.equal(ci([numbered(1, "open")], {}), null);
+  assert.equal(ci([numbered(1, "open"), numbered(2, "open")], { [url(1)]: "passed" }), null);
+  assert.equal(ci([numbered(1, "open"), numbered(2, "open")], { [url(1)]: "passed", [url(2)]: "failed" }), false);
+  // An open pull request is judged before a merged one; a closed one and another branch's never count.
+  assert.equal(ci([numbered(1, "open"), numbered(2, "merged"), numbered(3, "closed")], { [url(1)]: "passed", [url(2)]: "failed", [url(3)]: "failed" }), true);
+  assert.equal(ci([numbered(2, "merged"), numbered(3, "closed")], { [url(2)]: "passed", [url(3)]: "failed" }), true);
+  assert.equal(ci([numbered(3, "closed")], { [url(3)]: "passed" }), false);
+  assert.equal(ci([numbered(4, "open", "other")], { [url(4)]: "passed" }), false);
+  assert.equal(ci([], {}), false);
+
+  const facts = resolveTaskCheckFacts(SESSION, { ...observation({ repository: repository(), pullRequests: pulls(numbered(1, "open")) }), checkStatus: () => "passed" });
+  assert.deepEqual(facts, { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: true });
+  const notReady = resolveTaskCheckFacts(SESSION, {
+    ...observation({ repository: repository(), pullRequests: { status: "unavailable", checkedAt: null, items: [numbered(1, "open")] } }), checkStatus: () => "passed",
+  });
+  assert.equal(notReady.ciPassed, null);
 });
 
 test("check facts the committed state does not establish are unknown", () => {

@@ -21,7 +21,7 @@ const RULES = Object.freeze({
   // The task branch is not the main branch and holds a commit of its own, merged since or not.
   commit_on_branch: (facts) => facts.branchCommits === true,
   pr_merged: (facts) => pullRequestStates(facts).includes("merged"),
-  // The source of pull-request check state arrives with the CI part; until then the fact is always unknown.
+  // The checks of the task branch's pull request all passed. Pending, failed, no check, and unknown are not a pass.
   ci_passed: (facts) => facts.ciPassed === true,
 });
 

@@ -36,9 +36,6 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
  * The five checks and a last row for the agent-judged own condition. `onDraftChange` fires on every edit;
  * `onCommit` fires when a checkbox changes and when the own-condition input loses focus.
  */
-// Pomegr has no source for pull-request checks yet, so a CI condition is never confirmed.
-const CI_UNAVAILABLE_RESULT = "Not available yet";
-
 export function DoneWhenField({ draft, layout = "grid", results, ownNote, footnote, onDraftChange, onCommit }: {
   draft: DoneWhenDraft;
   layout?: "grid" | "list";
@@ -60,7 +57,7 @@ export function DoneWhenField({ draft, layout = "grid", results, ownNote, footno
         return <div className="taskCheckRow" key={check}>
           <input id={id} type="checkbox" checked={draft.checks.includes(check)} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
           <label htmlFor={id}>{CHECK_LABELS[check]}</label>
-          {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : check === "ci_passed" ? CI_UNAVAILABLE_RESULT : "Not passed"}</span>}
+          {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : "Not passed"}</span>}
         </div>;
       })}
       <div className="taskCheckRow">

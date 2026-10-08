@@ -5,8 +5,18 @@ const CACHE_TTL_MS = 60_000;
 const GH_TIMEOUT_MS = 6_000;
 const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,10})(?![A-Za-z0-9/?#])/g;
 const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt";
+// Asked for with the metadata when gh can read it; a gh that cannot answers the metadata alone.
+const GH_CHECK_FIELD = "statusCheckRollup";
+const MAX_CHECK_ENTRIES = 200;
+const MAX_CHECK_STATUSES = 256;
+const PASSED_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+const FAILED_CONCLUSIONS = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"]);
+const PENDING_RUN_STATUSES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
 const metadataCache = new Map();
 const branchCache = new Map();
+// Monitor-private: the latest check status read for a canonical pull-request URL. It never joins the
+// normalized pull-request item, so no browser surface carries it.
+const checkStatuses = new Map();
 
 /**
  * Read bounded URLs from normalized provider evidence. Provider transcript
@@ -68,6 +78,62 @@ function normalizedState(value) {
   return state === "open" || state === "closed" ? state : "unknown";
 }
 
+// One recognized check entry as passed, failed, or pending; anything else is unknown.
+function checkEntryStatus(entry) {
+  if (entry?.__typename === "CheckRun") {
+    if (entry.status === "COMPLETED") return PASSED_CONCLUSIONS.has(entry.conclusion) ? "passed" : FAILED_CONCLUSIONS.has(entry.conclusion) ? "failed" : null;
+    return PENDING_RUN_STATUSES.has(entry.status) ? "pending" : null;
+  }
+  if (entry?.__typename === "StatusContext") {
+    if (entry.state === "SUCCESS") return "passed";
+    if (entry.state === "FAILURE" || entry.state === "ERROR") return "failed";
+    return entry.state === "PENDING" || entry.state === "EXPECTED" ? "pending" : null;
+  }
+  return null;
+}
+
+/**
+ * Normalize gh's `statusCheckRollup` list to the aggregate check status of a pull request's head
+ * commit: `none` (no check), `failed` (any check failed), `pending` (none failed, one unfinished), or
+ * `passed`. A missing, oversized, or unrecognized list is `null` (unknown). Names, URLs, and every
+ * other field of a check are dropped here.
+ *
+ * @param {unknown} rollup
+ * @returns {"passed" | "failed" | "pending" | "none" | null}
+ */
+export function normalizeCheckStatus(rollup) {
+  if (!Array.isArray(rollup) || rollup.length > MAX_CHECK_ENTRIES) return null;
+  if (rollup.length === 0) return "none";
+  const statuses = rollup.map(checkEntryStatus);
+  if (statuses.includes(null)) return null;
+  return statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "passed";
+}
+
+function recordCheckStatus(url, value) {
+  const status = normalizeCheckStatus(value?.[GH_CHECK_FIELD]);
+  checkStatuses.delete(url);
+  if (status === null) return;
+  checkStatuses.set(url, status);
+  if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
+}
+
+/**
+ * The aggregate check status last read for a normalized pull-request URL, or `null` when the latest
+ * read did not establish one. A memory lookup: it never runs gh. For the task done-when rule only.
+ *
+ * @param {unknown} url
+ * @returns {"passed" | "failed" | "pending" | "none" | null}
+ */
+export function pullRequestCheckStatus(url) {
+  return (typeof url === "string" && checkStatuses.get(url)) || null;
+}
+
+// Ask for the check field with the metadata; when that read fails, the metadata alone, so a gh that
+// cannot read checks still answers the pull request.
+async function readGhJson(ghRunner, cwd, args) {
+  return await ghRunner(cwd, [...args, `${GH_FIELDS},${GH_CHECK_FIELD}`]) || ghRunner(cwd, [...args, GH_FIELDS]);
+}
+
 export function normalizePullRequest(value, association = "session", fallbackUrl = "") {
   const reference = pullRequestReference(typeof value?.url === "string" ? value.url : fallbackUrl);
   const number = Number(value?.number || reference?.number);
@@ -107,7 +173,7 @@ async function cached(cache, key, loader) {
 
 async function metadataForUrl(cwd, url, ghRunner) {
   const load = async () => {
-    const output = await ghRunner(cwd, ["pr", "view", url, "--json", GH_FIELDS]);
+    const output = await readGhJson(ghRunner, cwd, ["pr", "view", url, "--json"]);
     if (!output) return null;
     try { return JSON.parse(output); } catch { return null; }
   };
@@ -119,7 +185,7 @@ async function metadataForUrl(cwd, url, ghRunner) {
 async function pullRequestsForBranch(cwd, branch, ghRunner) {
   if (!cwd || !branch || branch.startsWith("detached@") || branch.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) || branch.includes("..")) return null;
   const load = async () => {
-    const output = await ghRunner(cwd, ["pr", "list", "--state", "all", "--head", branch, "--limit", String(MAX_PULL_REQUESTS), "--json", GH_FIELDS]);
+    const output = await readGhJson(ghRunner, cwd, ["pr", "list", "--state", "all", "--head", branch, "--limit", String(MAX_PULL_REQUESTS), "--json"]);
     if (!output) return null;
     try {
       const parsed = JSON.parse(output);
@@ -157,14 +223,18 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
 
   for (const { url, result } of metadata) {
     const item = normalizePullRequest(result.loaded || {}, "session", url);
-    if (item) itemsByUrl.set(item.url, item);
+    if (!item) continue;
+    itemsByUrl.set(item.url, item);
+    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded);
   }
   if (branchValues !== null) {
     queried = true;
     available = true;
     for (const value of branchValues) {
       const item = normalizePullRequest(value, "branch");
-      if (item && !itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
+      if (!item) continue;
+      if (!itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
+      recordCheckStatus(item.url, value);
     }
   }
 
