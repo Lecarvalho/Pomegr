@@ -28,8 +28,13 @@ behavior owner so a coding agent can discover the contract before editing it.
 
 The four task rows route paths that arrive with the [task-board plan](../plans/task-board.md).
 Until a part creates a path it does not exist, and that part confirms the commands
-above, adds the test files they name, and adds the `server/tasks/` row to the
-[server layout](#server-layout) together with its dependency-cruiser rule.
+above and adds the test files they name. Present so far: `server/tasks/task-store.mjs`
+and `task-record.mjs`, `server/serving/task-routes.mjs`, `shared/task-contract.ts`,
+`app/components/tasks/`, `app/tasks-store.ts`, `app/api/tasks/route.ts`, and the tests
+`tests/server/tasks/*.test.mjs`, `tests/ui/tasks-store.test.tsx`, and
+`tests/ui/repository-tasks.test.tsx`. The development server refuses a LAN peer's
+`/api/tasks` read in `scripts/provider-folders-local-gate.mjs`
+(`node --test tests/provider-folders-local-gate.test.mjs`).
 
 ## Server layout
 
@@ -52,6 +57,7 @@ dependency-cruiser rule per folder. A post-edit agent hook
 | `sessions/history/` | Incremental session history store and refresh | P | `normalize/` |
 | `analytics/` | Cache, context, efficiency, and agent derivations | D | `normalize/` |
 | `notifications/` | Pure notification rules and bounded occurrence ledger | D | `notifications/`, `normalize/` only |
+| `tasks/` | Task store, record validation, board projection; a control plane outside the observation pipeline | — | `tasks/`, `normalize/`, `persistence/` only |
 | `repository/` | Git state, pull requests, snapshots, file history | U1 (Git), D | `normalize/`, `persistence/` |
 | `resources/` | Resource sampling and history | U1 (OS), D | `normalize/`, `persistence/prepared-statements.mjs` |
 | `persistence/` | SQLite store, retention, committed response caches | C, P | `normalize/` |

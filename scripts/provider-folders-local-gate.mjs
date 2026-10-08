@@ -8,13 +8,21 @@ function localIdentity() {
   return { hostname: hostname(), addresses: Object.values(networkInterfaces()).flatMap((entries) => entries ?? []).map((entry) => entry.address) };
 }
 
+// A denied task-board read answers the contract's desktop_only board with no
+// task content; a denied provider-folders read stays unavailable.
+const gatedRoutes = new Map([
+  ["/api/provider-folders", { status: 404, body: '{"error":"Provider folders unavailable."}' }],
+  ["/api/tasks", { status: 200, body: JSON.stringify({ version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } }) }],
+]);
+
 // Vite listens on the LAN during development. Check the actual peer before the
 // Fetch API loses socket information; forwarded headers cannot authorize reads.
 export function providerFoldersLocalGate(request, response, next, identity = undefined) {
   let pathname;
   try { pathname = decodeURIComponent(new URL(request.url || "/", "http://localhost").pathname).replace(/\/+$/u, ""); }
   catch { next(); return; }
-  if (pathname !== "/api/provider-folders") {
+  const denied = gatedRoutes.get(pathname);
+  if (!denied) {
     next(); return;
   }
   identity ??= localIdentity();
@@ -45,8 +53,8 @@ export function providerFoldersLocalGate(request, response, next, identity = und
     }
     next(); return;
   }
-  response.writeHead(404, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
-  response.end('{"error":"Provider folders unavailable."}');
+  response.writeHead(denied.status, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8" });
+  response.end(denied.body);
 }
 
 /** @returns {import("vite").Plugin} */

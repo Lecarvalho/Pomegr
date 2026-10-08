@@ -1,10 +1,12 @@
 export const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 
-// Order matches the design contract (F19): Overview, Files, Git, Plugin, Context inventory, Reporting.
+// Order follows the design contract (F19): Overview, Files, Git, then the setup tabs Plugin, Context
+// inventory, Reporting. Tasks sits between Git and Plugin so Home/End keep landing on Overview and Reporting.
 export const repositoryTabs = [
   ["overview", "Overview"],
   ["files", "Files"],
   ["git", "Git"],
+  ["tasks", "Tasks"],
   ["plugin", "Plugin"],
   ["inventory", "Context inventory"],
   ["reporting", "Reporting"],

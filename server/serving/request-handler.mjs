@@ -7,6 +7,7 @@ import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mj
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
+import { serveTaskRoute } from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -32,6 +33,7 @@ function requestRevision(requestUrl, request) {
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
 export function createRequestHandler({
   runtime,
+  taskStore = null,
   authorizationToken: rawAuthorizationToken = "",
   agentAuthorizationToken: rawAgentAuthorizationToken = "",
   responseHeaders = null,
@@ -51,12 +53,17 @@ export function createRequestHandler({
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
+    // The same-computer read gate shared by the provider-folder and task-board routes.
+    const sameComputerRead = request.headers.host === expectedHost
+      && request.headers.origin === undefined
+      && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+    if (requestUrl.pathname === "/api/tasks") {
+      serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead });
+      return;
+    }
     if (requestUrl.pathname === "/api/provider-folders") {
-      const authorized = request.headers.host === expectedHost
-        && request.headers.origin === undefined
-        && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
       response.setHeader("Cache-Control", "no-store");
-      if (!authorized) {
+      if (!sameComputerRead) {
         response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
         response.end("Unauthorized");
         return;

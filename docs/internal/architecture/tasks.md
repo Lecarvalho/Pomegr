@@ -30,7 +30,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Capability | State |
 | --- | --- |
 | This contract and the privacy rules in AGENTS.md | Documentation only |
-| Task store, board read, Tasks tab | Not built |
+| Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and a read-only repository Tasks tab. No task can be created yet, so every board shows the default columns empty |
 | Task creation, run-on and done-when fields, move, columns, features | Not built |
 | Queue view and ordering | Not built |
 | Agent tool `add_task` | Not built |
@@ -51,7 +51,7 @@ they never import observation internals beyond the shared value primitives.
 
 | Owner | Responsibility | May not import |
 | --- | --- | --- |
-| `server/tasks/` | Task store, record validation, board projection, queue rules, done-when checks, start gates | `server/runtime/` or `server/serving/` (dependency-cruiser rule `only-entry-points-import-runtime-and-serving`); a `server-tasks-layer` rule beside the other layer rules will enforce the rest |
+| `server/tasks/` | Task store, record validation, board projection, queue rules, done-when checks, start gates | `server/runtime/` or `server/serving/` (dependency-cruiser rule `only-entry-points-import-runtime-and-serving`); the `server-tasks-layer` rule limits it to `server/tasks/`, `server/normalize/`, and `server/persistence/` |
 | `server/serving/task-routes.mjs` | HTTP for tasks, called from the request handler (pattern: `notification-routes.mjs`) | Task rules; it only parses, authorizes, and delegates |
 | `shared/task-contract.ts` | Browser-visible types and bounds | Anything from `server/` or `desktop/` |
 | `desktop/runtime/task-*.mjs` | Trusted IPC, session start, queue runner, worktrees | The renderer; `server/` internals (the monitor is reached over its internal HTTP) |
@@ -69,10 +69,13 @@ gathers the committed facts they judge; they never acquire evidence.
 Tasks live in a monitor-owned private store, separate from the observation cache and
 from its retention and prune cycle, so pruning session history never deletes a task. It
 reuses the `server/persistence/` primitives (prepared statements, the open and verify
-pattern of `monitor-store.mjs`).
+pattern of `monitor-store.mjs`). The file is `tasks-v1/tasks.sqlite` under the monitor's
+private data root, beside `monitor-store-v1` and outside its prune cycle.
 
 - The store is versioned. A malformed or newer store is never overwritten by a routine
-  write; the board then reports `unavailable`.
+  write; the board then reports `unavailable`. Unlike the monitor store, a bad file is
+  never rebuilt, and one stored row outside the contract makes the whole board
+  `unavailable` instead of partly served.
 - Bounds per repository: 500 tasks, 12 columns, and 50 features. Task text is at most
   4000 characters, an own condition 500, a column name 40, a feature name 80, and a
   block reason 200.

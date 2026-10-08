@@ -58,3 +58,23 @@ test("local peers cannot authorize arbitrary hosts, ports, or cross-origin reque
     assert.equal(result.status, 404);
   }
 });
+
+test("development task-board reads answer remote LAN peers a desktop_only board with no task content", () => {
+  for (const remote of ["192.168.1.10", "::ffff:192.168.1.10", undefined]) {
+    for (const url of ["/api/tasks?repositoryId=repo-0123456789abcdef01234567", "/api/tasks/", "/api/t%61sks"]) {
+      const result = request(url, remote);
+      assert.equal(result.forwarded, false);
+      assert.equal(result.status, 200);
+      assert.equal(result.headers["Cache-Control"], "no-store");
+      assert.deepEqual(JSON.parse(result.body), {
+        version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [],
+        queue: { status: "idle", blockedBy: null },
+      });
+    }
+  }
+  for (const remote of ["127.0.0.1", "::1", "192.168.1.20"]) {
+    assert.equal(request("/api/tasks?repositoryId=repo-0123456789abcdef01234567", remote).forwarded, true);
+  }
+  assert.equal(request("/api/tasks", "192.168.1.20", { origin: "http://attacker.example" }).status, 200);
+  assert.equal(request("/api/tasks", "192.168.1.20", { origin: "http://attacker.example" }).forwarded, false);
+});
