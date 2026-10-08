@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
-import type { Task, TaskBoard, TaskCheck, TaskState } from "../shared/task-contract";
+import { TASK_ID_PATTERN, createEmptyTaskBoard, type Task, type TaskBoard, type TaskCheck, type TaskState } from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks). Task text is user-authored content, so it
 // lives only in this module's memory: never in browser storage, a URL, or the notification layer.
@@ -77,7 +77,7 @@ function validFeature(value: unknown): value is TaskBoard["features"][number] {
 }
 
 function contentFreeBoard(repositoryId: string, readiness: TaskBoard["readiness"]): TaskBoard {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } };
+  return createEmptyTaskBoard(repositoryId, readiness);
 }
 
 /**
@@ -94,7 +94,10 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   const tasks = listOf(body.tasks, LIMITS.tasks, validTask);
   const queue = record(body.queue);
   if (!columns || !features || !tasks || !queue || !QUEUE_STATUSES.has(queue.status as string) || !nullableText(queue.blockedBy, LIMITS.label)) return null;
-  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy } };
+  // The start order is IDs only: at most one entry per task, each a task ID.
+  const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));
+  if (!order) return null;
+  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, order } };
 }
 
 function isVisible() {

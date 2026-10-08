@@ -35,7 +35,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 const tasks = () => [task(1), task(2), task(3), task(4, { columnId: "col-2", position: 0, state: "queued" }), task(5, { columnId: "col-3", position: 0, state: "done" })];
 
 function setBoard(overrides: Partial<TaskBoard> = {}) {
-  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: tasks(), queue: { status: "idle", blockedBy: null }, ...overrides };
+  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: tasks(), queue: { status: "idle", blockedBy: null, order: [] }, ...overrides };
   useTasks.mockReturnValue({ board, refresh });
   return board;
 }

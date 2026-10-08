@@ -33,9 +33,10 @@ export type TaskChip = {
 /**
  * The chip is the task's own state, except that while a session is bound and the task has no outcome
  * yet it shows that session's state, borrowed. There is no Running task state, and nothing is derived
- * here: whatever the monitor committed is what the card shows.
+ * here: whatever the monitor committed is what the card shows. `nextQueued` is true for the one task the monitor
+ * lists first in `queue.order`: it reads "Queued · next".
  */
-export function taskChip(task: Task): TaskChip {
+export function taskChip(task: Task, nextQueued = false): TaskChip {
   if (task.session && !OUTCOME_STATES.has(task.state)) {
     const status = SESSION_STATUSES.has(task.session.state as SessionActivityStatus) ? task.session.state as SessionActivityStatus : "unknown";
     const { label, state } = sessionState({ activityStatus: status });
@@ -44,7 +45,8 @@ export function taskChip(task: Task): TaskChip {
   }
   const attention = ATTENTION_STATES.has(task.state);
   const tone: ChipTone = attention ? "warning" : task.state === "scheduled" ? "info" : "neutral";
-  return { label: taskStateLabels[task.state], tone, ink: task.state === "queued", border: attention ? "attention" : "none" };
+  const label = task.state === "queued" && nextQueued ? "Queued · next" : taskStateLabels[task.state];
+  return { label, tone, ink: task.state === "queued", border: attention ? "attention" : "none" };
 }
 
 /** The card shows the task text until its session has a title, then the session title. */

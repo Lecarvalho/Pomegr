@@ -42,7 +42,7 @@ const reviewTask = task(12, {
 });
 
 function setBoard(tasks: Task[]) {
-  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks, queue: { status: "idle", blockedBy: null } };
+  const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks, queue: { status: "idle", blockedBy: null, order: [] } };
   useTasks.mockReturnValue({ board, refresh });
   return board;
 }

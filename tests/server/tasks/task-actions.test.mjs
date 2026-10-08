@@ -10,7 +10,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const IMPLEMENTED = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create"];
+const IMPLEMENTED = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-actions-"));

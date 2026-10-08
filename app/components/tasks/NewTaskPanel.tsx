@@ -24,7 +24,7 @@ export function NewTaskPanel({ repositoryId, repositoryName, board, refresh, onC
   repositoryId: string;
   repositoryName: string | null;
   /** The committed board: its unfinished features and their tasks fill the Feature fields. */
-  board: Pick<TaskBoard, "columns" | "features" | "tasks">;
+  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
   refresh(): Promise<void>;
   onCreated(): void;
   onClose(): void;

@@ -30,6 +30,8 @@ import {
   normalizeFeatureName,
   normalizeModelIdentifier,
   normalizeOwnCondition,
+  normalizeQueueReorderPayload,
+  normalizeQueueTaskPayload,
   normalizeRun,
   normalizeStoredColumn,
   normalizeStoredFeature,
@@ -261,7 +263,7 @@ test("the board orders columns and tasks and derives feature completion", () => 
     { id: FEATURE, name: "Billing", done: true },
     { id: `feat-${"0".repeat(11)}2`, name: "Empty", done: false },
   ]);
-  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-3" });
+  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-3", order: [] });
 
   const pending = projectBoard(REPOSITORY, {
     repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
@@ -295,6 +297,35 @@ test("a board with inconsistent or out-of-bound rows is not projected", () => {
 test("an empty board carries no content", () => {
   assert.deepEqual(emptyBoard(REPOSITORY, "unavailable"), {
     version: 1, readiness: "unavailable", repositoryId: REPOSITORY, columns: [], features: [], tasks: [],
-    queue: { status: "idle", blockedBy: null },
+    queue: { status: "idle", blockedBy: null, order: [] },
   });
+});
+
+test("the projected queue order lists queued task IDs only and keeps the private queue position off every task", () => {
+  const board = projectBoard(REPOSITORY, {
+    repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
+    tasks: [
+      storedTask({ number: 1, state: "queued", queue_position: 9, position: 0 }),
+      storedTask({ number: 2, state: "queued", feature_id: FEATURE, step: 2, queue_position: 0, position: 1 }),
+      storedTask({ number: 3, state: "queued", feature_id: FEATURE, step: 1, queue_position: 4, position: 2 }),
+      storedTask({ number: 4, state: "done", queue_position: 1, position: 3 }),
+      storedTask({ number: 5, state: "queued", queue_position: 2, position: 4 }),
+      storedTask({ number: 6, state: "queued", queue_position: "junk", position: 5 }),
+    ],
+  });
+  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: ["T-3", "T-2", "T-5", "T-1", "T-6"] });
+  for (const task of board.tasks) assert.equal(Object.hasOwn(task, "queuePosition"), false);
+  assert.equal(JSON.stringify(board).includes("queue_position"), false);
+});
+
+test("queue payloads carry exactly their keys", () => {
+  assert.deepEqual(normalizeQueueTaskPayload({ id: "T-12" }), { number: 12 });
+  for (const value of [undefined, null, "T-1", [], {}, { id: "T-0" }, { id: 1 }, { id: "T-1", step: 1 }, { id: "T-1", x: 1 }]) {
+    assert.equal(normalizeQueueTaskPayload(value), undefined, JSON.stringify(value));
+  }
+  assert.deepEqual(normalizeQueueReorderPayload({ id: "T-3", step: 2 }), { number: 3, step: 2 });
+  for (const value of [undefined, null, [], {}, { id: "T-3" }, { step: 2 }, { id: "T-3", step: 0 }, { id: "T-3", step: -1 }, { id: "T-3", step: 1.5 },
+    { id: "T-3", step: "2" }, { id: "T-3", step: null }, { id: "T-3", step: 2 ** 53 }, { id: "T-0", step: 1 }, { id: "T-3", step: 1, extra: 1 }]) {
+    assert.equal(normalizeQueueReorderPayload(value), undefined, JSON.stringify(value));
+  }
 });

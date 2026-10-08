@@ -9,7 +9,8 @@ import { CommandIcon } from "../command-center/CommandIcon";
 import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
 import {
-  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, deleteDesktopTask, updateDesktopTask, type TaskFieldsInput,
+  DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask,
+  deleteDesktopTask, removeDesktopQueueTask, updateDesktopTask, type TaskFieldsInput,
 } from "./task-desktop";
 import { doneWhenFromTask, observedModelDiffers, toDoneWhen, type DoneWhenDraft } from "./task-fields";
 import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
@@ -20,7 +21,8 @@ import { useFeatureCreation } from "./use-feature-creation";
 // Task side panel (design contract D239-D294, D295, D298, D299), opened from a card. It reuses the New task
 // panel's drawer chrome. A select, segment or checkbox saves when it changes; the Task textarea, the
 // own-condition input and a new feature's name save when they lose focus after a change. Mark done / Requeue
-// (D296, D297) belong to a later part and are not drawn.
+// (D296, D297) belong to a later part and are not drawn. The footer offers Add to queue (Not queued) or Remove
+// from queue (Queued) before Delete task: the design has no such control, so this is the orchestrator's decision.
 
 type Patch = { text?: string } & TaskFieldsInput;
 
@@ -44,7 +46,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   repositoryId: string;
   task: Task;
   /** The committed board: its features and their tasks fill the Feature fields and the folded list. */
-  board: Pick<TaskBoard, "columns" | "features" | "tasks">;
+  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
   refresh(): Promise<void>;
   /** Opens a sibling's own panel from the folded list. */
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
@@ -64,6 +66,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const [failure, setFailure] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [queueing, setQueueing] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   // What the monitor was last asked to store, so a quick toggle back is still sent and an unchanged blur is not.
@@ -88,7 +91,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   useEffect(() => { if (confirming) cancel.current?.focus({ preventScroll: true }); }, [confirming]);
   useEscapeToClose(onClose);
 
-  const chip = taskChip(task);
+  const chip = taskChip(task, task.id === board.queue?.order[0]);
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   const sessionTitle = task.session?.title ?? null;
 
@@ -170,6 +173,16 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
     void save({ text: trimmed });
   };
 
+  // Add to queue / Remove from queue: only a task in the matching state is offered, and the monitor decides the rest.
+  const changeQueue = async (add: boolean) => {
+    if (queueing) return;
+    setQueueing(true);
+    setFailure(null);
+    const result = await (add ? addDesktopQueueTask(repositoryId, task.id) : removeDesktopQueueTask(repositoryId, task.id));
+    setQueueing(false);
+    if (result.ok) onChanged(); else setFailure(add ? QUEUE_ADD_FAILURE_MESSAGE : QUEUE_REMOVE_FAILURE_MESSAGE);
+  };
+
   const remove = async () => {
     if (deleting) return;
     setDeleting(true);
@@ -220,7 +233,12 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
           <button type="button" className="commandSecondaryAction" disabled={deleting} onClick={() => void remove()}>Delete {task.id}</button>
           <button ref={cancel} type="button" className="commandQuietAction" disabled={deleting} onClick={() => setConfirming(false)}>Keep task</button>
         </div>
-        : <button type="button" className="commandQuietAction" onClick={() => setConfirming(true)}>Delete task</button>}
+        : <>
+          {(task.state === "not_queued" || task.state === "queued") && <button type="button" className="commandSecondaryAction" disabled={queueing} onClick={() => void changeQueue(task.state === "not_queued")}>
+            {task.state === "not_queued" ? "Add to queue" : "Remove from queue"}
+          </button>}
+          <button type="button" className="commandQuietAction" onClick={() => setConfirming(true)}>Delete task</button>
+        </>}
     </footer>
   </section>;
 }

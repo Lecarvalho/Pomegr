@@ -5,8 +5,9 @@ import { useRepositoryInventory } from "../../repository-inventory-client";
 import { useTasks } from "../../tasks-store";
 import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
 import { AddColumnAction } from "./AddColumnAction";
+import { AddFeatureAction } from "./AddFeatureAction";
 import { NewTaskPanel } from "./NewTaskPanel";
-import { TaskBoardView } from "./TaskBoardView";
+import { TaskBoardView, type TaskView } from "./TaskBoardView";
 import { TaskPanel } from "./TaskPanel";
 import { useTaskDesktopAvailability } from "./task-desktop";
 import { useTaskBoardEdits } from "./use-task-board-edits";
@@ -28,6 +29,7 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
   // Decided on the first client render: `pending` is only the server pass, and draws neither the action nor the note.
   const desktop = useTaskDesktopAvailability();
   const [panel, setPanel] = useState<OpenPanel>(null);
+  const [view, setView] = useState<TaskView>("board");
   const trigger = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
@@ -45,6 +47,7 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
   const close = useCallback(() => setPanel(null), []);
   const changed = useCallback(() => { void refresh(); }, [refresh]);
   const deleted = useCallback(() => { opener.current = trigger.current; setPanel(null); }, []);
+  const ready = board.readiness === "ready";
   const columnsFull = board.columns.length >= TASK_BOUNDS.columnsPerRepository;
   const openNew = () => { opener.current = trigger.current; setPanel({ kind: "new" }); };
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setPanel({ kind: "task", id: task.id }); }, []);
@@ -56,12 +59,17 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
         {desktop === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app.</p>}
         {desktop === "available" && columnsFull && <p id={fullNoteId} className="taskBoardNote">The board holds {TASK_BOUNDS.columnsPerRepository} columns, the most it allows.</p>}
       </div>
-      {desktop === "available" && <div className="taskHeadActions">
-        {board.readiness === "ready" && <AddColumnAction edits={edits} full={columnsFull} describedBy={fullNoteId} />}
-        <button ref={trigger} type="button" className="commandPrimaryAction taskNewAction" aria-haspopup="dialog" onClick={openNew}>New task</button>
+      {(desktop === "available" || ready) && <div className="taskHeadActions">
+        {ready && <div className="commandSegmented" role="group" aria-label="Tasks view">
+          <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
+          <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Queue</button>
+        </div>}
+        {desktop === "available" && ready && view === "board" && <AddColumnAction edits={edits} full={columnsFull} describedBy={fullNoteId} />}
+        {desktop === "available" && ready && view === "queue" && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+        {desktop === "available" && <button ref={trigger} type="button" className="commandPrimaryAction taskNewAction" aria-haspopup="dialog" onClick={openNew}>New task</button>}
       </div>}
     </header>
-    <TaskBoardView board={board} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined} />
+    <TaskBoardView board={board} view={view} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined} />
     {desktop === "available" && panel?.kind === "new" && <NewTaskPanel repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onClose={close} />}
     {desktop === "available" && openTask && <TaskPanel key={openTask.id} repositoryId={repositoryId} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
   </div>;

@@ -35,7 +35,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Run-on, effort, and done-when fields | Built: the New task panel and the task panel opened from a card set them, and the card shows them. The task panel also edits the task text and deletes the task. Nothing reads them yet: no session is started and no condition is verified |
 | Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
-| Queue view and ordering | Not built |
+| Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
 | Agent tool `add_task` | Not built |
 | Start a Claude Code session and bind it to its task | Not built |
 | Start a Codex session | Not built |
@@ -116,7 +116,7 @@ type TaskBoard = {
   columns: { id: string; name: string; position: number }[];
   features: { id: string; name: string; done: boolean }[];
   tasks: Task[];
-  queue: { status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null };
+  queue: { status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null; order: string[] };
 };
 ```
 
@@ -132,6 +132,9 @@ type TaskBoard = {
   without a provider is invalid; an effort alone is valid.
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
+- `queue.order` holds task IDs only: the queued tasks in the order they would start (see
+  [Queue](#queue)). It adds no task content, and the private queue position never leaves
+  the monitor.
 - A feature is `done` when every task attached to it is done. Only unfinished
   features are offered when attaching a task.
 - `session` is a borrowed, normalized reference to the bound session (see
@@ -171,8 +174,24 @@ paths stay desktop-private and never reach the monitor store or browser state.
 
 The queue is the ordered set of queued tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
-and only one start at a time subject to the gates below. Exact ordering and tie-break
-rules are recorded here when the part that implements them lands.
+and only one start at a time subject to the gates below. Until the part that starts
+sessions lands, the queue only holds and orders tasks.
+
+- **Order.** `queue.order` on the board lists the IDs of the tasks in state `queued`, in the
+  order they would start, one ID per task. Features come in board order. Inside a
+  feature the steps ascend, and the tasks of one step order by task number as a number
+  (T-2 before T-10); they are the tasks that run in parallel. After every feature task
+  come the single queued tasks, which have no feature or step. They run in the order
+  they were queued, because no other order is defined for them. A task in another state
+  is not in the order, even when it belongs to a queued task's feature. The first entry
+  is the task shown as next.
+- **Queue position.** Adding a task to the queue stamps it with a private integer, one
+  above the highest the repository holds. The monitor keeps it beside the task and uses
+  it only to order single tasks. It is never part of a task record or of the board.
+  Removing a task from the queue clears it, so queuing it again places it last.
+- **Steps.** `orderQueue` also reports every step of every feature with the IDs of its
+  tasks of any state and whether the step is done (it has tasks and each one is done).
+  The store uses that rule to refuse a move into a done step.
 
 - **Stop on trouble.** Any failed check (Needs review), stalled task, or agent block
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
@@ -306,6 +325,20 @@ like any other.
   changes a task's feature or step, or deletes a task in a feature, renumbering without
   changing the update time of other tasks. There is no feature rename, delete, or
   reorder yet.
+  `queue_add` takes exactly `{ id }`: a task in state `not_queued` becomes `queued`; any
+  other state is `conflict`, and an unknown task is `not_found`. `queue_remove` takes
+  exactly `{ id }`: a `queued` task becomes `not_queued`; any other state is `conflict`.
+  `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
+  must exist (`not_found`) and be queued and in a feature (otherwise `conflict`; a single
+  task is not reordered). `step` is valid from 1 to the feature's highest step + 1, measured
+  before the move, where the highest + 1 is a new last step; anything else is `invalid`. A
+  target step whose tasks are all done answers `conflict`. Moving a task to its own step, or
+  the only task of the last step to a new last step, succeeds and changes nothing. Otherwise
+  the steps are renumbered densely in the same transaction (a step the move empties
+  disappears) without changing the update time of other tasks, and the task stays
+  `queued`. The three actions start no session and leave the stored queue status as it is.
+  There is no insertion of a step between two others yet. `queue_settings`, `resolve_done`,
+  and `resolve_requeue` still answer `unsupported`.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

@@ -17,7 +17,7 @@ function emptyBoard(readiness, repositoryId) {
   return {
     version: 1, readiness, repositoryId,
     columns: [], features: [], tasks: [],
-    queue: { status: "idle", blockedBy: null },
+    queue: { status: "idle", blockedBy: null, order: [] },
   };
 }
 
@@ -25,7 +25,7 @@ function emptyBoard(readiness, repositoryId) {
 function projectBoard(repositoryId, board) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
-    || !board.queue || typeof board.queue !== "object") {
+    || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)) {
     throw new TypeError("Task board unavailable");
   }
   return {

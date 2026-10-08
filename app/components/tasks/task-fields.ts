@@ -15,6 +15,11 @@ export const CHECK_LABELS: Record<TaskCheck, string> = {
   ci_passed: "CI passed",
 };
 
+/** Planned model and effort, for example "opus · high"; each only when set. */
+export function plannedRunText(run: TaskRun) {
+  return [run.model, run.effort && EFFORT_LABELS[run.effort].toLowerCase()].filter(Boolean).join(" · ");
+}
+
 export const EMPTY_RUN: TaskRun = { provider: null, model: null, effort: null };
 
 /** Models the app has observed per provider. A provider with none offers only its Default model. */

@@ -87,7 +87,7 @@ test("the first read seeds the five default columns in order and a ready, idle b
   assert.equal(new Set(board.columns.map((column) => column.id)).size, 5);
   assert.deepEqual(board.features, []);
   assert.deepEqual(board.tasks, []);
-  assert.deepEqual(board.queue, { status: "idle", blockedBy: null });
+  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: [] });
 });
 
 test("columns are seeded once per repository and keep their IDs across reads and restarts", async (t) => {
@@ -148,7 +148,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   const second = openStore(temp);
   const board = second.readBoard(REPOSITORY);
   assert.equal(board.readiness, "ready");
-  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-1" });
+  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-1", order: [] });
   assert.deepEqual(board.features, [{ id: FEATURE, name: "Billing rewrite", done: false }]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
@@ -190,7 +190,7 @@ test("the served board holds only the contract keys and never private store fiel
   const store = openStore(temp);
   const wire = JSON.parse(JSON.stringify(store.readBoard(REPOSITORY)));
   assert.deepEqual(keysOf(wire), BOARD_KEYS);
-  assert.deepEqual(keysOf(wire.queue), ["blockedBy", "status"]);
+  assert.deepEqual(keysOf(wire.queue), ["blockedBy", "order", "status"]);
   for (const column of wire.columns) assert.deepEqual(keysOf(column), COLUMN_KEYS);
   for (const feature of wire.features) assert.deepEqual(keysOf(feature), FEATURE_KEYS);
   assert.equal(wire.tasks.length, 1);
@@ -252,7 +252,7 @@ test("an invalid repository ID yields an unavailable board with no content and w
     assert.equal(board.readiness, "unavailable", String(value));
     assert.equal(board.repositoryId, "");
     assert.deepEqual([board.columns, board.features, board.tasks], [[], [], []]);
-    assert.deepEqual(board.queue, { status: "idle", blockedBy: null });
+    assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: [] });
     assert.deepEqual(store.apply(value, "create", { text: "x" }), { ok: false, error: "invalid" });
   }
   store.close();
@@ -263,7 +263,7 @@ test("actions whose part has not landed, and unknown names, answer unsupported a
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create"];
+  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
   for (const action of [...ACTIONS.filter((name) => !implemented.includes(name)), "unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
