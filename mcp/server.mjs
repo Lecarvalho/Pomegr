@@ -23,7 +23,8 @@ import {
   TASK_SIGNAL_TOOL,
 } from "../server/normalize/session-signals.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "./agent-query-tools.mjs";
-import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../shared/agent-query-transport.mjs";
+import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot } from "../shared/agent-query-transport.mjs";
+import { registerTaskTools, TASK_TOOL_INSTRUCTIONS } from "./task-tools.mjs";
 
 const labelSchema = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
   .refine((label) => normalizeSessionSignal({ label, tone: "neutral" }) !== null, "Use one line of plain text without control characters.")
@@ -62,7 +63,7 @@ const signalAnnotations = {
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
     { name: "pomegr", version: "0.8.3" },
-    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful. " + AGENT_QUERY_INSTRUCTIONS },
+    { instructions: "Use report_agent_signal for the calling agent, report_session_signal for the overall session, report_session_progress for bounded session progress, and report_task_signal for a durable execution-task outcome. A later report replaces the same scope. Use clear_agent_signal, clear_session_signal, or clear_session_progress when the corresponding current state is no longer meaningful. " + AGENT_QUERY_INSTRUCTIONS + " " + TASK_TOOL_INSTRUCTIONS },
   );
 
   server.registerTool(
@@ -199,6 +200,13 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
+  // The Codex thread identity comes from the launch environment; the model cannot supply it.
+  const taskRef = typeof currentSessionRef === "string" && currentSessionRef.startsWith("codex:") ? currentSessionRef : null;
+  registerTaskTools(server, {
+    resolveSession: () => taskRef,
+    post: options.taskPost ?? createAgentTaskWriter({ dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot() }),
+    hookBound: false,
+  });
 
   return server;
 }

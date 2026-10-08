@@ -216,6 +216,63 @@ export function createAgentQueryReader(options = {}) {
   };
 }
 
+export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
+/** The only monitor paths the agent write transport may POST to. */
+export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH]);
+export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
+
+/**
+ * Adapter shape for the MCP task tools: (allowlisted path, JSON body) => parsed JSON body.
+ * Returns the body for any HTTP status that carries a JSON object (refusals use 4xx/5xx).
+ */
+export function createAgentTaskWriter({
+  dataRoot,
+  descriptorPath,
+  fetchFn = fetch,
+  readFileFn,
+  statFn,
+  timeoutMs = AGENT_QUERY_TIMEOUT_MS,
+  maxBytes = AGENT_QUERY_MAX_RESPONSE_BYTES,
+  maxBodyBytes = AGENT_TASK_MAX_BODY_BYTES,
+} = {}) {
+  return async (pathname, body) => {
+    if (!AGENT_TASK_WRITE_PATHS.includes(pathname)) throw new Error("AGENT_QUERY_PATH_INVALID");
+    const payload = JSON.stringify(body);
+    if (typeof payload !== "string" || Buffer.byteLength(payload, "utf8") > maxBodyBytes) {
+      throw new Error("AGENT_QUERY_BODY_INVALID");
+    }
+    const descriptorState = await inspectAgentQueryDescriptor({ dataRoot, descriptorPath, readFileFn, statFn });
+    if (descriptorState.status === "invalid" || descriptorState.status === "unavailable") {
+      throw new Error("AGENT_QUERY_UNAVAILABLE");
+    }
+    const descriptor = descriptorState.descriptor;
+    const origin = descriptor?.origin || AGENT_QUERY_DEFAULT_ORIGIN;
+    const headers = {
+      "content-type": "application/json",
+      ...(descriptor?.token ? { [AGENT_QUERY_AUTH_HEADER]: descriptor.token } : {}),
+    };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+    try {
+      const response = await fetchFn(`${origin}${pathname}`, {
+        method: "POST",
+        headers,
+        body: payload,
+        redirect: "error",
+        signal: controller.signal,
+      });
+      const text = await readResponseText(response, maxBytes);
+      const parsed = JSON.parse(text);
+      if (!isRecord(parsed)) throw new Error("AGENT_QUERY_UNAVAILABLE");
+      return parsed;
+    } catch {
+      throw new Error("AGENT_QUERY_UNAVAILABLE");
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+}
+
 export function defaultAgentQueryDataRoot(environment = process.env) {
   return resolvePomegrDataRoot({ environment, homeDir: os.homedir() });
 }

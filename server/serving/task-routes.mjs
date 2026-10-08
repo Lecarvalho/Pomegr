@@ -176,3 +176,102 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 503, rejected("conflict"));
   }
 }
+
+export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
+const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
+const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "doneWhen", "feature"]);
+const AGENT_FEATURE_NAME_LIMIT = 80;
+const AGENT_ADD_STATUS = Object.freeze({
+  invalid: 400, session_not_found: 404, repository_unavailable: 409, feature_not_found: 404, limit: 409, unavailable: 503,
+});
+
+function writeAgentAddResult(response, reason, taskId = null, { close = false } = {}) {
+  const ok = reason === null;
+  response.writeHead(ok ? 200 : AGENT_ADD_STATUS[reason], {
+    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
+  });
+  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, taskId } : { schemaVersion: 1, ok: false, reason }));
+}
+
+/**
+ * `POST /api/agent/v1/tasks/add`, the first agent write. The request handler has already applied the
+ * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
+ * the strict body, and the bound session's repository from `resolveSession` (committed facts only).
+ * The answer carries the new task ID and never an echo of task content. The store validates the record.
+ */
+export async function serveAgentTaskAddRoute({ request, response, requestUrl, taskStore, resolveSession }) {
+  const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (requestUrl.search || mediaType !== "application/json" || request.headers["transfer-encoding"] !== undefined
+    || Number(request.headers["content-length"] || 0) > TASK_PAYLOAD_LIMIT_BYTES) {
+    writeAgentAddResult(response, "invalid", null, { close: true });
+    return;
+  }
+  let raw;
+  try {
+    raw = await readLimitedBody(request, TASK_PAYLOAD_LIMIT_BYTES);
+  } catch {
+    writeAgentAddResult(response, "invalid", null, { close: true });
+    return;
+  }
+  if (raw === null) {
+    writeAgentAddResult(response, "invalid", null, { close: true });
+    return;
+  }
+  let body;
+  try { body = JSON.parse(raw.toString("utf8")); } catch { body = null; }
+  const feature = isPlainObject(body) ? body.feature : undefined;
+  const valid = isPlainObject(body) && Object.keys(body).every((key) => AGENT_TASK_KEYS.has(key))
+    && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+    && typeof body.text === "string"
+    && (feature === undefined || (typeof feature === "string" && feature.length > 0 && feature.length <= AGENT_FEATURE_NAME_LIMIT));
+  if (!valid) {
+    writeAgentAddResult(response, "invalid");
+    return;
+  }
+  try {
+    if (typeof taskStore?.apply !== "function" || typeof taskStore?.readBoard !== "function" || typeof resolveSession !== "function") {
+      writeAgentAddResult(response, "unavailable");
+      return;
+    }
+    const session = resolveSession(body.sessionRef);
+    if (!session || session.found !== true) {
+      writeAgentAddResult(response, "session_not_found");
+      return;
+    }
+    const repositoryId = session.repositoryId;
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(repositoryId)) {
+      writeAgentAddResult(response, "repository_unavailable");
+      return;
+    }
+    const payload = { text: body.text };
+    if (body.run !== undefined) payload.run = body.run;
+    if (body.doneWhen !== undefined) payload.doneWhen = body.doneWhen;
+    if (feature !== undefined) {
+      // Exact name of an unfinished feature; agents never create features.
+      const match = projectBoard(repositoryId, taskStore.readBoard(repositoryId)).features
+        .find((candidate) => candidate.name === feature && candidate.done !== true);
+      if (!match) {
+        writeAgentAddResult(response, "feature_not_found");
+        return;
+      }
+      payload.featureId = match.id;
+    }
+    const result = taskStore.apply(repositoryId, "create", payload);
+    if (result?.ok !== true) {
+      const reason = result?.error === "invalid" ? "invalid" : result?.error === "limit" ? "limit"
+        : feature !== undefined && (result?.error === "not_found" || result?.error === "conflict") ? "feature_not_found" : "unavailable";
+      writeAgentAddResult(response, reason);
+      return;
+    }
+    // Task numbers only grow, so the newest task of the committed board is the one just created.
+    const numbers = projectBoard(repositoryId, result.board).tasks.map((task) => ({ id: task.id, number: Number(String(task.id).slice(2)) }));
+    const newest = numbers.reduce((best, task) => (best === null || task.number > best.number ? task : best), null);
+    if (!newest) {
+      writeAgentAddResult(response, "unavailable");
+      return;
+    }
+    writeAgentAddResult(response, null, newest.id);
+  } catch {
+    writeAgentAddResult(response, "unavailable");
+  }
+}

@@ -2,6 +2,8 @@
 
 Pomegr is a local-first, read-only observer for coding-agent sessions. This plugin loads a repository-owned reporting policy, lets Codex report bounded project-specific signals, and exposes read-only queries over normalized observations already committed by the local Pomegr monitor.
 
+`add_task` adds a task to the current repository's Pomegr board, in the first column, not queued; it does not start anything.
+
 The plugin does not send transcript contents, source code, prompts, responses, commands, tool output, or provider credentials to Pomegr. Reporting remains opt-in per repository through `.pomegr/signals.md`, and query tools fail closed when the local observer is unavailable.
 
 ## Get started

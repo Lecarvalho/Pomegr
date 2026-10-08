@@ -36,7 +36,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
-| Agent tool `add_task` | Not built |
+| Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with `CODEX_THREAD_ID`; an unbound call is refused and posts nothing |
 | Start a Claude Code session and bind it to its task | Not built |
 | Start a Codex session | Not built |
 | `complete_task`, `block_task`, verified conditions | Not built |
@@ -257,6 +257,22 @@ supplies.
   already does for the read tools.
 - `add_task` targets the repository of the bound session. It never accepts a path or a
   repository ID.
+- The monitor serves `add_task` as `POST /api/agent/v1/tasks/add`, beside the agent-query
+  GETs and under the same gate: loopback host, no `Origin` header, and the agent token
+  when one is configured. The body is a JSON object of at most 16 KiB with
+  `Content-Type: application/json` and only these keys: `sessionRef` (`claude:<id>` or
+  `codex:<id>`), `text`, and optionally `run`, `doneWhen`, and `feature` (a feature name).
+  Any other key, including a repository ID or path, is `invalid`. The record rules are
+  the store's. The monitor resolves `sessionRef` to the session's repository identity from
+  committed facts, never reading Git or provider files, and creates the task as the
+  desktop `create` action does: last in the first column, not queued. A `feature` must
+  name an unfinished feature of that repository exactly; the task takes a new last step,
+  and agents never create features.
+- The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
+  reason }`, never an echo of task content. Reasons: `invalid` (400), `session_not_found`
+  (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409), and
+  `unavailable` (503). Any other path under `/api/agent/v1/tasks/` is not served, and no
+  other agent route accepts a write.
 - A started session carries an opaque random dispatch token in `POMEGR_TASK_TOKEN`. The
   plugin's session-start hook reports the token and the session ID to the monitor, which
   links the task to the session. `complete_task` and `block_task` act only on the task
