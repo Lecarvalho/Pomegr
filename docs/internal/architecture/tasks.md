@@ -43,9 +43,10 @@ Claude Code or Codex session for it, in the desktop app only.
 | `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
 | CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
 | Stalled | Built: after committed revisions the monitor sets a linked task with no report to Stalled once its session's committed facts establish the end (catalog state Closed or Stopped, or Unknown with the Codex writer released), persists it, and holds a running queue. Idle, Open, and a bare Unknown never stall a task. The task panel says the session ended with no report and offers Mark done and resume queue or Requeue task |
-| Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one task at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
+| Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one step at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
 | Start gates | Built: every start, manual or queued, first passes the four gates, judged from committed facts. A queued task that a gate holds waits, with the reason shown on its Queue card, and the queue stays on; a manual start a gate holds is refused with one fixed status. The Queue view lists each gate's current reading and sets the usage threshold (70, 85, or 95 percent; 85 by default); the Board shows each provider's usage reading |
-| Parallel steps with worktrees, scheduling | Not built |
+| Parallel steps with worktrees | Built: the queued tasks of one feature step start together. A task of a step that holds more than one task starts in a Git worktree of its own, on the branch `tasks/<task id>`, under a Pomegr-owned directory of the desktop data root; a task alone in its step, or without a feature, starts in the repository root. The next step starts only when every task of the step is done |
+| Scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
 
 Report-less completion (a task finishing from a deterministic condition with no agent
@@ -222,11 +223,29 @@ done. A task attached to a feature defaults to a new last step, and `step` is at
 1. Worktree creation and cleanup belong to the desktop (`task-worktree.mjs`); worktree
 paths stay desktop-private and never reach the monitor store or browser state.
 
+- **Which tasks get a worktree.** A task of a step that holds more than one task, counting
+  tasks of any state. A task alone in its step, and a task without a feature, runs in the
+  repository root. The monitor decides this when it answers the start plan (`worktree`,
+  a boolean); it never learns where the worktree is.
+- **Where.** `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. Both parts are
+  validated identifiers, so no task text and no repository path shapes the directory.
+- **Branch.** `tasks/<task ID>`, created at the repository's current commit, or checked out
+  when it already exists. Uncommitted changes of the repository root are not part of it.
+- **Reuse.** A worktree left by an earlier start of the task (a requeue) is used again only
+  when Git still lists it on the task branch and its working tree is clean. Otherwise the
+  start fails and nothing is touched.
+- **Removal.** The desktop removes a worktree only when Git lists it as a worktree of the
+  repository, its working tree is clean, and its HEAD holds no commit that exists nowhere
+  else (no remote and no other local branch). The removal is Git's own unforced
+  `worktree remove`. The only automatic removal is of a worktree made for a start that
+  then failed; the worktrees of finished tasks stay until the user removes them.
+- **Git.** `execFile` with argument arrays and no shell, with a 30-second limit per call.
+
 ## Queue
 
 The queue is the ordered set of queued tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
-and only one start at a time. Every start first passes the [start gates](#start-gates).
+and only one step at a time. Every start first passes the [start gates](#start-gates).
 
 - **Order.** `queue.order` on the board lists the IDs of the tasks in state `queued`, in the
   order they would start, one ID per task. Features come in board order. Inside a
@@ -250,22 +269,26 @@ and only one start at a time. Every start first passes the [start gates](#start-
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
   off never touches a running session.
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
-  repository. Nothing starts unless the status is `running`. Nothing starts while any
-  task of the repository is in flight: it has a linked session and no outcome, or a
-  dispatch that is still live. Otherwise the candidate is the first entry of
-  `queue.order`, so the task shown as next is the task that starts. A candidate in a
-  feature waits while an earlier step of that feature is not done; the queue never
-  skips ahead to a later task.
-- **Gates.** A candidate that a start gate holds is not answered as a next start and
-  changes nothing: the queue stays `running`, the task stays `queued`, and the next poll
-  judges the gates again. A held gate is a wait, not one of the outcomes that block or
-  pause the queue.
+  repository. Nothing starts unless the status is `running`. The queue runs one step at
+  a time, and a task without a feature is a step of its own. A task is in flight when it
+  has a linked session and no outcome, or a dispatch that is still live. With nothing in
+  flight, the step is the one of the first entry of `queue.order`, and the starts are
+  every queued task of that step, so the task shown as next is always among them. While
+  tasks are in flight, only the queued rest of their own step may start; tasks in flight
+  outside one feature step hold the queue. A step waits while an earlier step of its
+  feature is not done, and a step is done only when every one of its tasks is done; the
+  queue never skips ahead to a later task.
+- **Gates.** Each start of a step is judged on its own. One that a start gate holds is
+  not answered as a next start and changes nothing: the queue stays `running`, the task
+  stays `queued`, and the next poll judges the gates again while the rest of its step
+  starts. A held gate is a wait, not one of the outcomes that block or pause the queue.
 - **Runner.** The desktop main process polls `POST /internal/tasks/queue-next` (desktop
   token, body `{}`) every 15 seconds on one unreferenced timer. The answer holds at most
-  16 `{ repositoryId, taskId }` pairs, one per repository whose queue has a next start,
-  and no task content. The runner starts them one after another through the same
-  dispatcher a manual start uses, without the native confirmation, because the user
-  turned the queue on. A manual start and a queued start never overlap. The next start
+  16 `{ repositoryId, taskId }` pairs, the queued tasks of the current step of each
+  repository whose queue has a next start, and no task content. The runner starts them
+  one after another in the same tick through the same dispatcher a manual start uses,
+  without the native confirmation, because the user turned the queue on. When one start
+  pauses a queue, the rest of that repository's answer is not started. A manual start and a queued start never overlap. The next start
   is served only on this route, never on `GET /api/tasks`.
 - **Pause.** A start that does not succeed pauses the queue and is not retried: the
   runner posts `POST /internal/tasks/queue-pause` with `{ id, reason }`, the monitor
@@ -317,8 +340,11 @@ proceed. A start needs all of the following.
    (`provider_incident`): any status but operational is an incident. Public status does
    not prove impact or causation, so it gates a start but is not shown as a cause.
 4. The working tree of the repository root is clean (`tree_dirty`), by the same Git
-   status rule the done-when check uses. A task's own worktree arrives with parallel
-   steps.
+   status rule the done-when check uses. The gate reads the root for every task, a task
+   that starts in its own worktree included: a new worktree starts at the root's current
+   commit, so uncommitted changes of the root would not be part of it. A worktree that
+   is used again must be clean too; the desktop checks that itself and fails the start
+   otherwise.
 
 A fact that is missing, stale, or partial is unknown (`usage_unknown`,
 `provider_status_unknown`, `tree_unknown`). Unknown holds a start exactly like a failed
@@ -507,8 +533,8 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   the plan's own provider executable is missing desktop main aborts the dispatch and
   answers `cli_missing`.
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
-  model, effort, the repository root resolved monitor-side, the prompt, and the dispatch
-  token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
+  model, effort, the repository root resolved monitor-side, whether the session must run
+  in a worktree of its own (`worktree`), the prompt, and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
   session is linked, and no dispatch is live. A task with no provider starts Claude Code;
   a Codex task starts Codex, and any other provider value answers
   `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed

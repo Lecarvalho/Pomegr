@@ -79,6 +79,15 @@ function taskNumber(payload, keys) {
 const loadRow = (database, repositoryId, number) =>
   preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
 
+// A task of a feature step that holds more than one task runs in a Git worktree of its own, because the tasks of one
+// step run in parallel. A task alone in its step, and a task without a feature, runs in the repository root.
+function worktreeRequired(database, row) {
+  if ((row.feature_id ?? null) === null || (row.step ?? null) === null) return false;
+  const inStep = preparedStatement(database, "SELECT COUNT(*) AS count FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
+    .get(row.repository_id, row.feature_id, row.step);
+  return Number(inStep?.count) > 1;
+}
+
 // Startable: a startable state, no linked session, no live dispatch.
 const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_id ?? null) === null
   && !isLive(parseStoredDispatch(row.dispatch_token), now);
@@ -87,7 +96,8 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
  * `start-plan`. `resolveFacts(provider)` returns `{ root, pluginReady }` from committed facts, `pluginReady`
  * for the plugin of the provider the session runs on, and is called only after the task, provider, and state
  * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts; a held
- * start answers `gate_held` and mints nothing. `transaction(work)` runs `work` in one write transaction.
+ * start answers `gate_held` and mints nothing. `transaction(work)` runs `work` in one write transaction. The plan's
+ * `worktree` says whether the session must run in a worktree of its own; where that worktree is, only the desktop knows.
  */
 export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, now }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id"]) : undefined;
@@ -109,17 +119,17 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   const minted = transaction(() => {
     // The state may have moved since the read above; the mint stands only if the task is still startable.
     const fresh = loadRow(database, repositoryId, number);
-    if (!fresh || !startable(fresh, at)) return false;
+    if (!fresh || !startable(fresh, at)) return null;
     preparedStatement(database, "UPDATE tasks SET dispatch_token = ? WHERE repository_id = ? AND number = ?")
       .run(`${digestOf(token)}:${at}`, repositoryId, number);
-    return true;
+    return { worktree: worktreeRequired(database, fresh) };
   });
   if (!minted) return { ok: false, error: "not_startable" };
   return {
     ok: true,
     plan: {
       taskId: task.id, provider, model: task.run.model, effort: task.run.effort,
-      repositoryRoot: facts.root, prompt: buildTaskPrompt(task), token,
+      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task), token,
     },
   };
 }

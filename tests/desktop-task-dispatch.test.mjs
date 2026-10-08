@@ -435,3 +435,78 @@ test("the default runner is wired to the starter and does no network before its 
   assert.equal(handlers.has(TASK_START_CHANNEL), false);
   assert.deepEqual(requests, []);
 });
+
+const worktreeDirectory = "C:\\Data\\task-worktrees\\repo-0123456789abcdef01234567\\T-3";
+
+/** Fake worktrees: `ensure` answers `made`, every call is recorded. */
+function fakeWorktrees(made = { ok: true, directory: worktreeDirectory, created: true, branchCreated: true }) {
+  const calls = [];
+  return {
+    calls,
+    ensure: async (request) => { calls.push(["ensure", request]); if (made instanceof Error) throw made; return made; },
+    remove: async (request) => { calls.push(["remove", request]); return "removed"; },
+  };
+}
+
+test("a plan that asks for a worktree starts the session in the task's worktree", async () => {
+  const worktrees = fakeWorktrees();
+  const h = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees } });
+  assert.deepEqual(await go(h), { status: "started" });
+  assert.deepEqual(worktrees.calls, [["ensure", { repositoryRoot: root, repositoryId, taskId: "T-3" }]]);
+  const [, , options] = h.spawns[0];
+  assert.equal(options.cwd, worktreeDirectory);
+  assert.equal(options.env.POMEGR_START_DIRECTORY, worktreeDirectory);
+  assert.equal(options.shell, false);
+  assert.equal(aborted(h).length, 0);
+});
+
+test("a plan without a worktree keeps the repository root and makes none", async () => {
+  for (const plan of [basePlan(), { ...basePlan(), worktree: false }]) {
+    const worktrees = fakeWorktrees();
+    const h = harness({ plan, overrides: { worktrees } });
+    assert.deepEqual(await go(h), { status: "started" });
+    assert.equal(h.spawns[0][2].cwd, root);
+    assert.deepEqual(worktrees.calls, []);
+  }
+});
+
+test("a worktree that cannot be made fails the start, aborts the dispatch and spawns nothing", async () => {
+  const outcomes = [
+    { ok: false }, null, new Error("git"), { ok: true, directory: "relative" }, { ok: true, directory: `${worktreeDirectory}"` }, { ok: true },
+  ];
+  for (const made of outcomes) {
+    const worktrees = fakeWorktrees(made);
+    const h = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees } });
+    assert.deepEqual(await go(h), { status: "failed" });
+    assert.equal(h.spawns.length, 0);
+    assert.deepEqual(aborted(h).map((c) => c.body), [{ repositoryId, payload: { id: "T-3", token } }]);
+    assert.equal(worktrees.calls.some(([name]) => name === "remove"), false);
+  }
+  // No worktree root configured: a worktree plan cannot start, and never falls back to the repository root.
+  const h = harness({ plan: { ...basePlan(), worktree: true } });
+  assert.deepEqual(await go(h), { status: "failed" });
+  assert.equal(h.spawns.length, 0);
+});
+
+test("a worktree made for a start that fails is removed again; a reused one is left alone", async () => {
+  let worktrees = fakeWorktrees();
+  let h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  assert.deepEqual(await go(h), { status: "failed" });
+  assert.deepEqual(worktrees.calls[1], ["remove", { repositoryRoot: root, repositoryId, taskId: "T-3", deleteBranch: true }]);
+  worktrees = fakeWorktrees({ ok: true, directory: worktreeDirectory, created: true, branchCreated: false });
+  h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  await go(h);
+  assert.equal(worktrees.calls[1][1].deleteBranch, false);
+  worktrees = fakeWorktrees({ ok: true, directory: worktreeDirectory, created: false, branchCreated: false });
+  h = harness({ plan: { ...basePlan(), worktree: true }, spawnImpl: () => fakeChild(1), overrides: { worktrees } });
+  assert.deepEqual(await go(h), { status: "failed" });
+  assert.deepEqual(worktrees.calls.map(([name]) => name), ["ensure"]);
+});
+
+test("a plan whose worktree field is not a boolean is malformed", async () => {
+  const worktrees = fakeWorktrees();
+  const h = harness({ plan: { ...basePlan(), worktree: "yes" }, overrides: { worktrees } });
+  assert.deepEqual(await go(h), { status: "failed" });
+  assert.equal(h.spawns.length, 0);
+  assert.deepEqual(worktrees.calls, []);
+});

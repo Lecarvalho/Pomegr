@@ -147,9 +147,10 @@ function queueRecord(row, at) {
 
 /**
  * Which tasks the running queues start now. For every repository whose queue is `running`, in repository ID order,
- * the pure rule answers a start, a pause, or nothing; a pause is written at once as `session_not_linked`, and at most
- * `TASK_QUEUE_START_LIMIT` starts are answered. A start the gates hold is not answered and changes nothing, so the
- * task waits and is judged again on the next call. A repository whose rows do not project is skipped. Answers
+ * the pure rule answers the starts of one step, a pause, or nothing; a pause is written at once as `session_not_linked`,
+ * and at most `TASK_QUEUE_START_LIMIT` starts are answered. Each start is judged by the gates on its own: one the gates
+ * hold is not answered and changes nothing, so the task waits and is judged again on the next call while the rest of
+ * its step starts. A repository whose rows do not project is skipped. Answers
  * `{ ok: true, starts: [{ repositoryId, taskId }] }`, and starts nothing itself. `loadRows(repositoryId)` is the store's
  * row reader and `resolveGateFacts(repositoryId)` the entry point's committed gate facts.
  */
@@ -164,8 +165,11 @@ export function nextQueueStarts({ database, transaction, loadRows, resolveGateFa
     const board = projectBoard(repositoryId, rows);
     if (!board) continue;
     const decision = nextQueueStart({ status: board.queue.status, tasks: rows.tasks.map((row) => queueRecord(row, at)), features: board.features });
-    if (decision?.start) {
-      if (startGates({ database, repositoryId, board, taskId: decision.start, resolveGateFacts }).ok) starts.push({ repositoryId, taskId: decision.start });
+    if (decision?.starts) {
+      for (const taskId of decision.starts) {
+        if (starts.length >= TASK_QUEUE_START_LIMIT) break;
+        if (startGates({ database, repositoryId, board, taskId, resolveGateFacts }).ok) starts.push({ repositoryId, taskId });
+      }
     }
     else if (decision?.pause) pauses.push({ repositoryId, taskId: decision.pause });
   }
