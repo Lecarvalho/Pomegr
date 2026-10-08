@@ -10,14 +10,15 @@ Size in things you can count, then derive tokens from them.
   a deliverable, counted apart; a contract too large for one context's
   reservation is sliced by artboard or region.
 - Count without opening files: the tree listing, globs, a search for
-  the symbols the intent names, imports, test names. Whoever opens a
-  file should be the one that edits it (§3, One reader per file), so
-  open one while sizing only when you will edit it inline yourself.
+  the symbols the intent names, imports, test names. That is enough to
+  cut parts. Open files when you are the one running the work and need
+  them to plan it (§3, Reading).
 - A wide or unknown area: delegate the count to a read-only worker on
   the `fast` tier, so the answer comes back as a page of paths and your
   budget survives sizing. It locates; it does not read files end to end.
 - What one context (an inline part, or one slice) holds is decided by
-  its token reservation (§2) against its limit.
+  its token reservation (§2) against its limit; a worker aims lower
+  than its limit (§2, Worker target).
 
 ## 2. Reserve context
 
@@ -30,9 +31,8 @@ fallback`, `confidence: low`, and these floors:
 | Work class | Reservation |
 |------------|-------------|
 | semantic inline | 40k + 12k per file, on top of startup |
-| semantic worker | 150k + 15k per file, startup included |
 | mechanical inline (delete, rename, import cleanup, generated) | 8k + 2k per file, on top of startup; deleted lines do not count |
-| mechanical worker | worker startup + 10k + 3k per file |
+| implementing worker | your judgement, from worker startup up (Worker target, below) |
 | command-only | 0 |
 | evidence worker | 60k |
 | review worker | 200k |
@@ -43,10 +43,28 @@ Record each worker separately (stage, class, reservation, limit).
 `aggregate_reserved_tokens` is their sum plus the orchestrator's;
 `observed_tokens: null`.
 
+- **Worker target.** Aim each implementing worker at about 170k and
+  never plan one past `limits.worker_context_tokens` (200k as shipped).
+  A long run re-reads its whole context on every turn and leaves
+  everything waiting on one agent. How much work that is has no
+  formula; it is a balance of scope and cost that you judge per slice:
+  - the kind of work: a scripted change run through the shell over many
+    files costs little more than startup; reading every file and taking
+    a precise decision in each costs most;
+  - the size of the files (lines, not count), and how much of each must
+    be read;
+  - how much the brief already decided;
+  - `calibration.md` and earlier parts' measured workers, when present.
+
+  Write your figure as the worker's reservation and the reasoning in
+  `basis`. Cut only when a cut is needed: over the target means more
+  slices or a more precise brief; well under it, one worker is right.
+  Your own reading to brief is judged the same way and counted in your
+  lane.
 - **Earlier parts measured?** When `plan.yaml` has `actual` on earlier
   parts, scale by the mean actual/reservation ratio for matching lanes
   and classes (files and lines when tokens were not measured). Say the
-  ratio in `basis`; re-cut a part whose lane then breaks its limit.
+  ratio in `basis`; re-cut what then breaks its limit.
 - **Distrust a fit just under the limit.** If most parts land at
   80–100% of a limit, you fitted guesses to it: recount and cut further.
 
@@ -75,19 +93,21 @@ look before the next starts. The answer is `mode` in `plan.yaml` and
 
 **`single`: one session, you orchestrate.** The goal is wall-clock time
 without losing your own context, because you are there until the end.
-- Every capability group is a part with its own implementer, which
-  reads and edits its `owns`. Parts no `after` links form a **wave**:
-  their delegated stages are spawned together, in one message. Order
-  the cut so the first wave is as wide as the groups allow.
-- You cut from structure, write briefs, run checks and read verdicts.
-  You do not read the files workers own, their diffs or their
-  artifacts. Edit inline only what is cheaper than a spawn: a few lines
-  in a file no worker owns (a registry line, a seam between two parts).
-- Your lane is one startup plus every part's brief and coordination,
-  compared once with `limits.orchestrator_tokens` for the whole plan
-  (`estimate.orchestrator` in `plan.yaml`; parts after the first carry
-  `startup_tokens: 0`). Over the limit: fewer and larger parts, or
-  recommend another mode. Never start a plan you cannot finish.
+- Every capability group is a part with its own implementers, which
+  edit its `owns`. Parts no `after` links form a **wave**: their
+  delegated stages are spawned together, in one message. Order the cut
+  so the first wave is as wide as the groups allow.
+- You read what you need to cut and brief, write briefs, run checks and
+  read verdicts: not workers' diffs or artifacts. Edit inline only what
+  is cheaper than a spawn: a few lines in a file no worker owns (a
+  registry line, a seam between two parts).
+- Your lane is one startup plus every part's reading, brief and
+  coordination, compared once with `limits.orchestrator_tokens` for the
+  whole plan (`estimate.orchestrator` in `plan.yaml`; parts after the
+  first carry `startup_tokens: 0`). Over the limit: give a part's
+  reading to a delegated `plan` stage that writes its briefs, make
+  fewer and larger parts, or recommend another mode. Never start a plan
+  you cannot finish.
 - A wave is as wide as the disjoint groups allow. `sessions: 1`, no
   handoff files between
   parts, verify on the merged tree after each wave, review and evidence
@@ -116,31 +136,24 @@ requests cannot conflict.
   its own branch before the others finish.
 - Inside each part, slice as below.
 
-### One reader per file
+### Reading
 
-Reading is the cost. A file opened by the planner and then opened again
-by the implementer is paid twice, so the context that opens a file is
-the one that edits it, and no two contexts open the same file. Not a
-hard rule, but every exception is tokens spent for nothing.
+Planning the execution means opening files, and that is the
+orchestrator's job: read what decides how the work splits and what a
+brief must say. It counts in your lane.
 
-- Planning does not read what an implementer will read. Cut and brief
-  from structure (paths, names, imports, signatures found by search),
-  not from file contents. A brief says what to achieve and which files
-  are the worker's; the worker reads them and works out the how.
-- Where the plan needs the file's contents to be written at all, plan
-  and implement are one context: both inline, or both in the one worker
-  that owns the file.
-- A worker needs something from a file it does not own: put the
-  signature, selector or type in its brief instead of the path.
-- The cheap exception: a locate pass on the `fast` tier, where a read
-  costs little. Keep it narrow all the same.
-- **When it cannot hold, say so.** If the modules to change cannot be
-  told from structure (coupling, no module boundaries, behaviour spread
-  across files that do not name it) and files must be opened just to
-  learn who changes what, do that mapping on the `fast` tier and state
-  it in the cut and in the presentation, never silently:
-  `Double read: <paths or area>; <cause in this repo>; mapped on
-  <tier>, read again by the implementer.`
+- **At plan time, cut from structure.** Parts that run later, in
+  another session or after other parts have changed the tree, are read
+  by whoever runs them. Paths, names, imports and signatures found by
+  search are enough to draw perimeters and count.
+- **When you run the work, read to brief.** Entry points, shared types,
+  the largest files: enough to take the decisions and write steps a
+  worker follows almost mechanically. Not every file end to end; the
+  worker still reads its own.
+- **No two workers on one file.** What to avoid is two workers opening
+  the same file: each file has one worker, and what another needs from
+  it goes in its brief as a signature, selector or type instead of the
+  path. A habit worth keeping, not a law.
 
 ### Cut
 
@@ -152,14 +165,21 @@ hard rule, but every exception is tokens spent for nothing.
    earliest part that needs it and is named in the later part's
    `assumes`. A file under three or more parts means a layer cut:
    regroup.
-2. Inside a part, files that import, style or test each other are one
-   group. Two or more disjoint groups become a fan-out: one plan stage
-   that briefs from structure, one `balanced` implement stage per
-   slice, one verify on the merged tree. A file two slices would edit gets one owner or is done in a
-   small part before the fan-out. One group stays inline, or is one implementer if your budget
-   cannot hold it. Lanes: your plan and briefs, one worker per slice, an
-   evidence worker if visible, 10k coordination.
-3. Order parts by `after`: the parts each truly builds on. In
+2. Inside a part, **suggest the workers; do not settle them.** Judge
+   the part's delegated work (§2, Worker target). Where one worker
+   would pass the target, propose as many slices as bring each near it, along the
+   groups structure shows (files that import, style or test each other
+   belong together), and write them as the manifest's implement stages.
+   Whoever runs the part settles the real slices when it starts
+   (`execute.md`, Strategy): it has read the code and knows what
+   earlier parts found. Work you can hold inline stays inline.
+3. Slices share no file. Disjoint groups run side by side. A group too
+   big for one worker is split at its thinnest seam, with the interface
+   across it fixed in both briefs, or its second worker runs after the
+   first. A file two slices would edit gets one owner or is done first.
+   Lanes: your reading and briefs, one worker per slice, an evidence
+   worker if visible, 10k coordination.
+4. Order parts by `after`: the parts each truly builds on. In
    `sequential` the default is the one before. In `single` and
    `parallel` leave `after` empty wherever nothing is built on, since
    every link removes a part from a wave.
@@ -180,12 +200,11 @@ Confirm the cut before writing anything:
 Too big for one context (~<files> files; <lane that does not fit>: ~<reserved> / <limit>).
 Mode: <single | sequential | parallel>
 Proposed cut, <n> parts, one owner per file:
-  1. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <lanes>
+  1. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <suggested lanes>
   2. ...
 Waves: 1, 2, 3 together; then 4   (single and parallel)
 Shared: <path> owned by <n>, assumed by <m>   (only if a file could not get one owner)
 Own worktree: part <n>; <why it cannot share>   (parallel, only if any)
-Double read: <paths or area>; <cause>; mapped on <tier>   (only if any)
 OK to write the plan, or change the cut?
 ```
 
@@ -198,7 +217,7 @@ in `parallel`) and write:
 runs/<plan-id>/plan.yaml                      intent, mode, limits, one entry per part
                                               (index, dir, summary, owns, after,
                                               worktree, estimate, status: planned),
-                                              double_reads, aggregate volume
+                                              aggregate volume
                                               (one startup per session; volume,
                                               not fit), sessions: <n>
 runs/<plan-id>/<index>-<slug>/manifest.yaml   one per part
@@ -212,10 +231,10 @@ A table, not the manifests:
 intent: <what the whole plan makes true>
 mode: <single | sequential | parallel>   sessions: <n>
 
-| part | wave | summary | files | orchestrator | workers |
-|------|------|---------|-------|--------------|---------|
+| part | wave | summary | files | orchestrator | workers (suggested) |
+|------|------|---------|-------|--------------|---------------------|
 | 1 | 1 | <few words> | 4 | ~88k / 120k | none |
-| 2 | 1 | <few words> | 6 | ~65k / 120k | implement-a ~195k / 300k; implement-b ~195k / 300k |
+| 2 | 1 | <few words> | 22 | ~110k / 120k | implement-a ~150k / 200k; implement-b ~165k / 200k |
 
 Manifests: runs/<plan-id>/<index>-<slug>/manifest.yaml
 Next: <per mode, below>
@@ -226,7 +245,7 @@ one column. One part per row, in run order; `wave` only in `single` and
 `parallel`; no other columns, no stage lists, tier names or totals row.
 In `single` the orchestrator column is each part's share, and one line
 under the table gives the session: `orchestrator, whole session:
-~<reserved> / <limit>`. Any `Own worktree:` and `Double read:` line of
+~<reserved> / <limit>`. Any `Own worktree:` line of
 the cut is repeated here. Optionally one line `reserved context volume: ~<n> across
 <m> contexts; not observed usage`, plus, without calibration,
 `Conservative reservation from ACOS fallback floors; actual usage is

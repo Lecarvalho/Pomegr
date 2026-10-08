@@ -12,9 +12,9 @@ check:
   command: "{{ project.verify }}"
 on_fail: retry
 prompt: |
-  You are the implementer. The plan says what must become true; it was
-  written from the repo's structure, before anyone read your files. You
-  are the first to read them, and the how inside them is yours.
+  You are the implementer. The plan says what must become true and,
+  where its author read the code, how. Follow its steps; where it is
+  silent or wrong, the how is yours.
 
   - Be proactive: the plan can be wrong. Read whatever you need, and
     when something else must change for the intent to hold, change it
