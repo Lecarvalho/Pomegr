@@ -65,6 +65,7 @@ export function createClaudeSourceEventRouter(projectsRoot, options = {}) {
     return {
       catalog: eventType === "rename" || isMainTranscript || sessionIds.length === 0,
       sessionIds,
+      sourceKnown: knownSessionIds.length > 0,
     };
   };
 }

@@ -220,6 +220,7 @@ export function createIncrementalProviderObserver(options = {}) {
       return {
         catalog: change.eventType === "rename",
         sessionIds: [...known],
+        sourceKnown: true,
       };
     }
     return { catalog: true, sessionIds: [] };

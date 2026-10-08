@@ -1587,6 +1587,14 @@ within about one second plus its discovery time. Known-session hydration is not 
 this spacing; it still enters the queue in the same event-loop turn. Catalog-dirty session
 IDs are retained for the pass that answers them, and a failed pass keeps them for retry.
 
+A router also states whether the notified file is one its sessions already read
+(`sourceKnown`, from the adapter's private reverse index). For every provider, a content
+write to such a file is answered by the immediate read: it may still mark the catalog dirty
+so the row refreshes, but its sessions are not retained for a second read after that pass,
+because a read at an unchanged size publishes nothing. A rename, a file no session reads
+yet, and a route that waits for the catalog keep the read after the pass. A read that fails
+is retried by the next notification or the ten-second reconciliation, not by that pass.
+
 Claude catalog discovery walks the projects tree through `fs.promises`, so the event loop
 is free between directory reads and file-stat batches. Each directory's listing is reused
 while its identity and modification time are unchanged and it had been unmodified for at
