@@ -277,3 +277,66 @@
 .taskTimeInput:disabled { opacity: .48; }
 .taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskQueueSingleWaiting { flex: 1 1 100%; }
+
+/* Session view task surfaces (design contract D361-D380 and D397-D440): the header meta, the compact Overview panel and
+   the read-only Task tab. The panels are the shared .panel frame; every value is a token. */
+.sessionTaskMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskMetaGroup { display: inline-flex; align-items: center; gap: var(--space-1); }
+.sessionTaskMetaId { font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskMetaId.isPlain { color: var(--command-ink); }
+.sessionTaskMetaFeature { font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskMetaStep { font: 400 var(--text-xs)/1.4 var(--font-data); }
+@media (min-width: 761px) { .sessionTaskMeta .commandTextLink { min-height: 0; } }
+
+.sessionTaskSummary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); padding: var(--space-3) var(--space-4); }
+.sessionTaskHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.sessionTaskHeading code, .sessionTaskPanelHeading code { font-family: var(--font-data); font-weight: 500; }
+.sessionTaskHeading .panelHeadingLink { text-decoration: none; }
+.sessionTaskCell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sessionTaskEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.sessionTaskValue { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskValue code, .sessionTaskFeatureLine code { font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskValue.isDiffers { color: var(--command-amber); }
+.sessionTaskBlocked { color: var(--command-error); }
+.sessionTaskNote { flex: 1 1 100%; margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSummary .sessionTaskNote { flex: 1 1 240px; }
+
+.sessionTaskTab { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
+.sessionTaskTab > .sessionTaskPanel { flex: 999 1 480px; }
+.sessionTaskPanel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.sessionTaskSide { flex: 1 1 380px; max-width: 480px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.sessionTaskSide .sessionTaskPanel { gap: var(--space-2); }
+.sessionTaskPanelHead, .sessionTaskFeatureHead { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.sessionTaskPanelHead { align-items: center; }
+.sessionTaskFeatureHead { align-items: baseline; }
+.sessionTaskPanelHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskStarted { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSpacer { flex: 1 1 0; }
+.sessionTaskBlock, .sessionTaskChecks { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.sessionTaskBlock.isRuled, .sessionTaskChecks.isRuled, .sessionTaskRunFacts { padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
+.sessionTaskLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskText { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); overflow-wrap: anywhere; white-space: pre-wrap; }
+.sessionTaskStatus { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskRunFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.sessionTaskFeatureLine { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskCheckList { margin: 0; padding: 0; list-style: none; }
+.sessionTaskCheck { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-height); border-top: 1px solid var(--command-line); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskCheckResult.is-passed { color: var(--command-green); }
+.sessionTaskCheckResult.is-failed { color: var(--command-error); }
+
+.sessionTaskFeatureLink.commandTextLink { color: var(--command-ink); font: inherit; }
+.sessionTaskProgress { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskProgress code { font-family: var(--font-data); }
+.sessionTaskSideLabel { color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSideLabel.isNext { padding-top: var(--space-2); }
+.sessionTaskRows { margin: 0; padding: 0; list-style: none; }
+.sessionTaskRow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: start; padding: var(--space-2) 0; border-top: 1px solid var(--command-line); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskRowId { padding-top: 1px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskRowTitle, .sessionTaskRowTitle.commandTextLink { min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskRow.isDone .sessionTaskRowTitle { color: var(--command-muted); }
+.sessionTaskBlockedNote { margin: 0; color: var(--command-error); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+@media (max-width: 760px) {
+  .sessionTaskRunFacts { grid-template-columns: minmax(0, 1fr); }
+  .sessionTaskSide { max-width: none; }
+}

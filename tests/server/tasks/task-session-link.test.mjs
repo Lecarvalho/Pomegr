@@ -177,8 +177,16 @@ test("GET /api/sessions joins task references only for a marked same-computer re
   assert.equal((await read(`feature=${board}`)).body.matchedCount, 0);
   const grouped = await read("tasks=1&group=feature");
   assert.deepEqual([grouped.body.groupBy, grouped.body.groups.length], ["feature", 2]);
-  for (const invalid of ["tasks=2", "feature=Task%20board", "feature=feat-XYZ", "group=task", `feature=${board}&feature=${board}`]) assert.equal((await read(invalid)).status, 400, invalid);
-  for (const body of [marked.body, filtered.body, grouped.body]) assert.equal(JSON.stringify(body).includes(SECRET_TEXT), false);
+  // One session's own row: the session view reads its task reference this way.
+  const own = await read(`tasks=1&session=${encodeURIComponent(session(2))}&pageSize=1`);
+  assert.deepEqual([own.body.matchedCount, own.body.sessions.length, own.body.sessions[0].id, own.body.sessions[0].task.id, own.body.sessions[0].task.step], [1, 1, session(2), "T-2", 2]);
+  assert.equal((await read(`tasks=1&session=${encodeURIComponent(session(0))}`)).body.sessions[0].task, null);
+  const unmarked = await read(`session=${encodeURIComponent(session(2))}`);
+  assert.deepEqual([unmarked.body.taskReadiness, unmarked.body.sessions.length, "task" in unmarked.body.sessions[0]], ["desktop_only", 1, false]);
+  assert.equal((await read(`tasks=1&session=${encodeURIComponent("claude:missing")}`)).body.sessions.length, 0);
+  for (const invalid of ["tasks=2", "feature=Task%20board", "feature=feat-XYZ", "group=task", `feature=${board}&feature=${board}`, "session=not%20an%20id", "session=..%2Fpath",
+    `session=${encodeURIComponent(session(2))}&feature=${board}`, `session=${encodeURIComponent(session(2))}&group=feature`, `session=${encodeURIComponent(session(2))}&query=x`]) assert.equal((await read(invalid)).status, 400, invalid);
+  for (const body of [marked.body, filtered.body, grouped.body, own.body, unmarked.body]) assert.equal(JSON.stringify(body).includes(SECRET_TEXT), false);
 });
 
 test("a task in another repository links by session, not by repository", async (t) => {

@@ -364,7 +364,7 @@ export function createRequestHandler({
       try {
         if (runtime.observationActive?.()) {
           if (requestUrl.searchParams.get("mode") === "directory") {
-            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "feature", "tasks", "pageSize", "cursor"]);
+            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "feature", "session", "tasks", "pageSize", "cursor"]);
             const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
             const filter = requestUrl.searchParams.get("filter") || "all";
             const pageSize = requestUrl.searchParams.get("pageSize") || "";
@@ -377,15 +377,19 @@ export function createRequestHandler({
             const group = requestUrl.searchParams.get("group") || "";
             const feature = requestUrl.searchParams.get("feature") || "";
             const tasks = requestUrl.searchParams.get("tasks") || "";
+            // One session's own row, for the session view's task reference. It excludes every other scope.
+            const session = requestUrl.searchParams.get("session") || "";
+            const sessionScope = !session || (Boolean(parseProviderSessionId(session)) && session.length <= 200
+              && !query && !project && !repositoryId && !provider && !group && !feature && !cursor);
             if (!oneEach || !["all", "live", "needs"].includes(filter) || !["", "claude", "codex"].includes(provider) || !["", "project", "provider", "feature"].includes(group)
-              || !validFeatureQuery(feature) || !["", "1"].includes(tasks)
+              || !validFeatureQuery(feature) || !["", "1"].includes(tasks) || !sessionScope
               || (pageSize && !/^(?:[1-9]|[1-9][0-9]|100)$/.test(pageSize)) || !boundedText(query, 120)
               || !boundedText(project, 160) || !boundedText(repositoryId, 160) || !/^[A-Za-z0-9_-]{0,256}$/u.test(cursor)) {
               response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
             }
             // Task references are joined here from the task store, for a same-computer client the proxy marked.
-            const page = serveSessionDirectoryWithTasks({ runtime, taskStore, allowed: tasks === "1" && sameComputerRead, feature, groupFeature: group === "feature",
+            const page = serveSessionDirectoryWithTasks({ runtime, taskStore, allowed: tasks === "1" && sameComputerRead, feature, session, groupFeature: group === "feature",
               query: { query, filter, project, repositoryId, provider, group: group === "feature" ? "" : group, pageSize: pageSize ? Number(pageSize) : 25, cursor } });
             response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
               "X-Pomegr-Revision": String(page?.revision ?? 0), ETag: `"${page?.revision ?? 0}"` });

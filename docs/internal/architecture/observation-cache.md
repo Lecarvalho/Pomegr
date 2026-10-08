@@ -2051,7 +2051,9 @@ first record and keeps the scan incomplete. Only a complete scan prunes rows who
 is gone, including a registration that ended without ever writing a transcript.
 
 `/api/sessions?mode=directory` serves a bounded page from committed normalized inventory.
-Search, lifecycle filters, and project/repository scope execute monitor-side. Rows are
+Search, lifecycle filters, and project/repository scope execute monitor-side. A `session`
+scope narrows the page to one validated session ID and excludes every other scope; the
+session view uses it to read its own row. Rows are
 always ordered newest-created first; there is no other directory order. Pages default to
 25 rows and cannot exceed 100. SQLite performs filtering, counting, ordering, and page
 selection without materializing the complete inventory in memory. A cursor binds to the

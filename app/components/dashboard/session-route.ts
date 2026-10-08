@@ -1,4 +1,4 @@
-export const SESSION_TABS = ["overview", "agents", "activities", "signals", "repository", "resources", "details"] as const;
+export const SESSION_TABS = ["overview", "agents", "activities", "signals", "repository", "resources", "details", "task"] as const;
 
 export type SessionTab = (typeof SESSION_TABS)[number];
 export type SessionRouteQuery = {

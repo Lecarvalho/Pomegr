@@ -16,6 +16,8 @@ import { ResourcesTab } from "./components/dashboard/ResourcesTab";
 import { SignalsTab } from "./components/dashboard/SignalsTab";
 import { SessionOverview } from "./components/dashboard/SessionOverview";
 import { SessionTabs } from "./components/dashboard/SessionTabs";
+import { SessionTaskMeta, SessionTaskSummary } from "./components/dashboard/SessionTaskSummary";
+import { SessionTaskTab } from "./components/dashboard/SessionTaskTab";
 import { parseSessionTab, sessionQueryString, type SessionRouteQuery, type SessionTab } from "./components/dashboard/session-route";
 import { CommandBreadcrumbSeparator, CommandIcon, CommandPageHeader, CommandStatus } from "./components/command-center/CommandPage";
 import type { DesktopState } from "./components/DesktopControls";
@@ -26,6 +28,7 @@ import { useDisplayPreferences } from "./hooks/DisplayPreferencesContext";
 import { useSessionCatalog } from "./hooks/SessionCatalogContext";
 import { buildSessionReport, sessionReportFilename } from "./session-report.mjs";
 import { useSessionDomain } from "./session-domain-store";
+import { useSessionTaskReference } from "./session-task-store";
 
 type DesktopBridge = {
   saveReport(payload: { filename: string; content: string }): Promise<{ status: string }>;
@@ -95,6 +98,9 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
   if (summary?.view === "history" && !knownHistorical) setKnownHistorical(true);
   const historical = summary?.view === "history" || catalogHistorical;
   const activeTab = parseSessionTab(initialQuery.tab);
+  // The task this session was started for, or none. Until it is known nothing about a task is shown. It is asked
+  // only for a session with a committed summary, so an unavailable session starts no second read.
+  const sessionTask = useSessionTaskReference(sessionId, { enabled: !paused && Boolean(summary?.session) });
 
   useEffect(() => {
     const bridge = desktopBridge();
@@ -156,12 +162,14 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
   const status = sessionState(summary.lifecycle);
   const nativeId = summary.session.id.split(":").at(-1) || summary.session.id;
   const signal = summary.session.signal;
+  const taskTabHref = `/sessions/${encodeSessionRoute(sessionId)}?tab=task`;
   const meta = <div className="sessionHeaderMeta">
     <ProviderBadge source={summary.source} />
     <span className="commandChip"><CommandStatus state={status.state}>{historical ? "Recorded" : status.label}</CommandStatus></span>
     {signal && <AgentChip className={`sessionSignal ${signal.tone}`} ariaLabel={`Session signal: ${signal.label}`} title={signal.description ? `Agent-reported session signal · ${signal.description}` : "Agent-reported session signal"}>{signal.label}</AgentChip>}
     <SessionIdChip sessionId={nativeId} />
     {summary.sectionReadiness.repository === "ready" && summary.repository.branch && <span className="commandChip sessionBranchChip"><CommandIcon name="git" size="small" />{summary.repository.branch}</span>}
+    {sessionTask.task && <SessionTaskMeta task={sessionTask.task} taskHref={activeTab === "task" ? null : taskTabHref} />}
     <span className="sessionStartedMeta">Started {summary.session.startedAt ? <time dateTime={summary.session.startedAt}>{sessionListTime(summary.session.startedAt)}</time> : "time unavailable"}</span>
   </div>;
   return <section className="commandView commandSessionView" aria-busy={summaryResult.fetching || undefined}>
@@ -170,15 +178,17 @@ export function Dashboard({ initialSessionId: sessionId, initialQuery = {} }: { 
     {summaryResult.error && <div className="notice" role="status"><span aria-hidden="true">!</span>{summaryResult.error}</div>}
     {reportError && <div className="notice" role="status"><span aria-hidden="true">!</span>{reportError}</div>}
     <SessionKpis summary={summary} historical={historical} />
-    <SessionTabs active={activeTab} summary={summary} onSelect={selectTab} />
+    <SessionTabs active={activeTab} task={sessionTask.status} summary={summary} onSelect={selectTab} />
     <div className="sessionTabPanel" role="tabpanel" id="session-tab-panel" aria-labelledby={`session-tab-${activeTab}`}>
+      {activeTab === "overview" && sessionTask.task && <SessionTaskSummary task={sessionTask.task} taskHref={taskTabHref} />}
       {activeTab === "overview" && <SessionOverview summary={summary} showEstimatedCost={preferences.estimatedCost} onNavigate={navigate} />}
       {activeTab === "agents" && <AgentsTab sessionId={sessionId} historical={historical} paused={paused} selectedAgentId={initialQuery.agent || null} onSelectAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} onOpenActivities={({ agentId, request }) => navigate({ tab: "activities", agent: agentId || null, request: request || null })} />}
       {activeTab === "activities" && <ActivitiesTab sessionId={sessionId} historical={historical} paused={paused} route={{ agent: initialQuery.agent || null, request: initialQuery.request || null }} onRouteChange={navigateActivities} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, request: null })} />}
       {activeTab === "signals" && <SignalsTab sessionId={sessionId} historical={historical} paused={paused} onNavigateAgent={(agentId) => navigate({ tab: "agents", agent: agentId })} />}
       {activeTab === "repository" && <RepositoryTab sessionId={sessionId} historical={historical} paused={paused} selectedPath={initialQuery.path || null} onSelectPath={(path) => navigate({ path })} onOpenAgent={(agentId) => navigate({ tab: "agents", agent: agentId, path: null })} />}
       {activeTab === "resources" && <ResourcesTab sessionId={sessionId} historical={historical} paused={paused} peakField={initialQuery.peak || null} onClearPeakField={() => navigate({ peak: null })} />}
-      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
+      {activeTab === "task" && (sessionTask.task ? <SessionTaskTab task={sessionTask.task} sessionId={sessionId} /> : <div className="sessionTabState" role="status">Loading task…</div>)}
+      {activeTab !== "overview" && activeTab !== "agents" && activeTab !== "activities" && activeTab !== "signals" && activeTab !== "repository" && activeTab !== "resources" && activeTab !== "task" && <LegacySessionTab tab={activeTab} sessionId={sessionId} historical={historical} paused={paused} showEstimatedCost={preferences.estimatedCost} />}
     </div>
   </section>;
 }

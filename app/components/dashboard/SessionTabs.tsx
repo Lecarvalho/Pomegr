@@ -5,8 +5,8 @@ import type { SessionSummaryDomain } from "../../../shared/session-domain-contra
 import type { SessionTab } from "./session-route";
 
 const PRIMARY_PHONE_TABS: SessionTab[] = ["overview", "agents", "activities", "repository"];
-const SECONDARY_TABS: SessionTab[] = ["signals", "resources", "details"];
-const ALL_TABS: SessionTab[] = ["overview", "agents", "activities", "repository", "signals", "resources", "details"];
+const SECONDARY_TABS: SessionTab[] = ["signals", "resources", "details", "task"];
+const ALL_TABS: SessionTab[] = ["overview", "agents", "activities", "repository", "signals", "resources", "details", "task"];
 const LABELS: Record<SessionTab, string> = {
   overview: "Overview",
   agents: "Agents",
@@ -15,6 +15,7 @@ const LABELS: Record<SessionTab, string> = {
   repository: "Repository",
   resources: "Resources",
   details: "Details",
+  task: "Task",
 };
 
 // Session panel content lives in app/Dashboard.tsx, which owns the single
@@ -22,8 +23,15 @@ const LABELS: Record<SessionTab, string> = {
 // aria-labelledby={`session-tab-${activeTab}`} to match the ids below.
 const PANEL_ID = "session-tab-panel";
 
-export function SessionTabs({ active, summary, onSelect }: {
+/**
+ * Whether this session was started for a task: only then is the Task tab listed. `loading` is the monitor not having
+ * said yet, so a deep link to the tab is neither rewritten nor shown and then withdrawn.
+ */
+export type SessionTaskTabState = "present" | "absent" | "loading";
+
+export function SessionTabs({ active, summary, task, onSelect }: {
   active: SessionTab;
+  task: SessionTaskTabState;
   summary: SessionSummaryDomain;
   onSelect: (tab: SessionTab) => void;
 }) {
@@ -43,7 +51,8 @@ export function SessionTabs({ active, summary, onSelect }: {
   const resourcesHasData = summary.resourceAvailability.hasData;
   const showResources = resourcesHasData === true;
   const resourcesDefinitivelyHidden = !showResources && resourcesReadiness !== "loading";
-  const available = ALL_TABS.filter((tab) => tab !== "resources" || showResources);
+  const showTask = task === "present";
+  const available = ALL_TABS.filter((tab) => (tab !== "resources" || showResources) && (tab !== "task" || showTask));
   const menuTabs = SECONDARY_TABS.filter((tab) => available.includes(tab));
 
   // If the active tab (e.g. from ?tab=resources) is hidden, such as on a
@@ -55,6 +64,11 @@ export function SessionTabs({ active, summary, onSelect }: {
     if (active !== "resources") return;
     if (resourcesDefinitivelyHidden) onSelect("overview");
   }, [active, resourcesDefinitivelyHidden, onSelect]);
+
+  // A deep link to ?tab=task on a session with no task falls back to Overview, but only once the monitor has said so.
+  useEffect(() => {
+    if (active === "task" && task === "absent") onSelect("overview");
+  }, [active, task, onSelect]);
 
   const keyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
