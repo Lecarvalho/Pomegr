@@ -2,7 +2,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import {
-  TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard,
+  TASK_COLUMN_ROLES, TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard,
   type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskState,
 } from "../shared/task-contract";
 
@@ -78,9 +78,12 @@ function validTask(value: unknown): value is Task {
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
 }
 
+const COLUMN_ROLES = new Set<string>(TASK_COLUMN_ROLES);
 function validColumn(value: unknown): value is TaskBoard["columns"][number] {
   const column = record(value);
-  return Boolean(column) && text(column!.id, LIMITS.label) && text(column!.name, LIMITS.columnName) && count(column!.position, 0);
+  // An older monitor serves no role, which reads as none.
+  return Boolean(column) && text(column!.id, LIMITS.label) && text(column!.name, LIMITS.columnName) && count(column!.position, 0)
+    && (column!.role === undefined || column!.role === null || COLUMN_ROLES.has(column!.role as string));
 }
 function validFeature(value: unknown): value is TaskBoard["features"][number] {
   const feature = record(value);

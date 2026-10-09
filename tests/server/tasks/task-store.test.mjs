@@ -64,7 +64,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 }
 
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
-const COLUMN_KEYS = ["id", "name", "position"];
+const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
 const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "position", "report", "run", "scheduledAt", "session", "state", "step", "text", "updatedAt"];
 
@@ -72,7 +72,7 @@ function keysOf(value) {
   return Object.keys(value).toSorted();
 }
 
-const ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create",
+const ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 test("the first read seeds the five default columns in order and a ready, idle board", async (t) => {
@@ -263,7 +263,7 @@ test("unknown action names answer unsupported and change nothing", async (t) => 
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
   assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
   for (const action of ["unknown_action", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));

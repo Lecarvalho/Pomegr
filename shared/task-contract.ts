@@ -26,7 +26,13 @@ export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupport
 /** Fixed error of a mutation that changed nothing. */
 export type TaskActionError = "invalid" | "not_found" | "limit" | "conflict" | "unsupported";
 
-export type TaskColumn = { id: string; name: string; position: number };
+/**
+ * Where Pomegr moves a card by itself: to the `in_progress` column when its session links, to `review` when it needs
+ * review, and to `done` when it is done. At most one column of a board holds each role.
+ */
+export type TaskColumnRole = "in_progress" | "review" | "done";
+/** `role` is null for a column no card is moved to, and absent from an older monitor, which means the same. */
+export type TaskColumn = { id: string; name: string; position: number; role?: TaskColumnRole | null };
 export type TaskFeature = { id: string; name: string; done: boolean };
 export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null };
 export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null };
@@ -151,6 +157,9 @@ export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 /** Columns seeded, in this order, the first time a repository's board is read. */
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];
+export const TASK_COLUMN_ROLES: readonly TaskColumnRole[] = ["in_progress", "review", "done"];
+/** The roles the default columns are seeded with, in the order of `DEFAULT_TASK_COLUMNS`. */
+export const DEFAULT_TASK_COLUMN_ROLES: readonly (TaskColumnRole | null)[] = [null, null, "in_progress", "review", "done"];
 
 /** A board with no content, for loading, unavailable, and desktop-only answers. */
 export function createEmptyTaskBoard(repositoryId: string, readiness: TaskBoardReadiness): TaskBoard {

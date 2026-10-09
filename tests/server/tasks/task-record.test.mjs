@@ -191,7 +191,7 @@ test("a task input accepts only text, run, and done-when", () => {
 });
 
 test("stored columns and features are validated", () => {
-  assert.deepEqual(normalizeStoredColumn({ id: COLUMN, name: "Backlog", position: 0 }), { id: COLUMN, name: "Backlog", position: 0 });
+  assert.deepEqual(normalizeStoredColumn({ id: COLUMN, name: "Backlog", position: 0 }), { id: COLUMN, name: "Backlog", position: 0, role: null });
   assert.equal(normalizeStoredColumn({ id: "col-1", name: "Backlog", position: 0 }), undefined);
   assert.equal(normalizeStoredColumn({ id: COLUMN, name: "x".repeat(41), position: 0 }), undefined);
   assert.equal(normalizeStoredColumn({ id: COLUMN, name: "Backlog", position: -1 }), undefined);

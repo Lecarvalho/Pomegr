@@ -19,6 +19,7 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
+import { clearColumnRoles, readColumnRoles, seedColumnRoles, setColumnRole, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
@@ -167,7 +168,9 @@ function ensureRepository(database, repositoryId) {
   const inserted = preparedStatement(database, "INSERT OR IGNORE INTO repositories (repository_id, created_at) VALUES (?, ?)").run(repositoryId, Date.now());
   if (Number(inserted.changes) === 0) return;
   const insertColumn = preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)");
-  DEFAULT_TASK_COLUMNS.forEach((name, position) => insertColumn.run(newOpaqueId("col"), repositoryId, name, position));
+  const ids = DEFAULT_TASK_COLUMNS.map(() => newOpaqueId("col"));
+  DEFAULT_TASK_COLUMNS.forEach((name, position) => insertColumn.run(ids[position], repositoryId, name, position));
+  seedColumnRoles(database, repositoryId, ids);
 }
 
 // Task numbers are monotonic per repository and never reused. The next number is kept beside the
@@ -290,18 +293,9 @@ function deleteTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// Positions stay dense (0..n-1) in every column and among the columns. Each write below reads the
+// Positions stay dense (0..n-1) in every column (task-columns.mjs) and among the columns. Each write below reads the
 // affected order, changes it as a list, and writes the whole list back, so a gap or a tie left by an
 // earlier write is closed by the next action that touches the same list.
-const taskNumbersInOrder = (database, repositoryId, columnId) =>
-  preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ? AND column_id = ? ORDER BY position, number")
-    .all(repositoryId, columnId).map((row) => Number(row.number));
-
-function writeTaskOrder(database, repositoryId, numbers) {
-  const update = preparedStatement(database, "UPDATE tasks SET position = ? WHERE repository_id = ? AND number = ? AND position <> ?");
-  numbers.forEach((number, index) => update.run(index, repositoryId, number, index));
-}
-
 const columnIdsInOrder = (database, repositoryId) =>
   preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId).map((row) => row.id);
 
@@ -374,6 +368,7 @@ function deleteColumn({ database, repositoryId }, payload) {
   const ids = columnIdsInOrder(database, repositoryId);
   if (ids.length <= 1 || taskNumbersInOrder(database, repositoryId, input.id).length > 0) return { ok: false, error: "conflict" };
   preparedStatement(database, "DELETE FROM columns WHERE repository_id = ? AND id = ?").run(repositoryId, input.id);
+  clearColumnRoles(database, repositoryId, input.id);
   writeColumnOrder(database, repositoryId, ids.filter((id) => id !== input.id));
   return { ok: true };
 }
@@ -468,7 +463,7 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
 // its first write. A listed action absent from this table answers `unsupported` until its part lands.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
-  column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
+  column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn, column_role: setColumnRole,
   feature_create: createFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
@@ -501,10 +496,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   function loadRows(repositoryId) {
     const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
+    // A column's role is kept in `meta` like the pause reason (task-columns.mjs).
+    const roles = readColumnRoles(database, repositoryId);
     return {
       // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
-      columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId),
+      columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
+        .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId),
     };

@@ -20,7 +20,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Columns are yours; moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done, to the column set for that in the column's menu. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -557,6 +557,37 @@ describe("managing columns", () => {
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_reorder", { id: "col-3", position: 1 });
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(3));
     expect(alertText()).toBeNull();
+  });
+
+  it("shows which state change moves cards to a column and sends column_role when it changes", async () => {
+    setBoard({ columns: columns.map((entry) => ({ ...entry, role: entry.name === "Done" ? "done" as const : null })) });
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const done = await openEditor(user, "Done");
+    expect(done.getByRole("combobox", { name: "Pomegr moves a card here: Done" })).toHaveTextContent("When it is done");
+    const ready = await openEditor(user, "Ready");
+    const select = ready.getByRole("combobox", { name: "Pomegr moves a card here: Ready" });
+    // A board from an older monitor serves no role, which reads as Never.
+    expect(select).toHaveTextContent("Never");
+    await user.click(select);
+    await user.click(screen.getByRole("option", { name: "When it needs review" }));
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_role", { id: "col-2", role: "review" });
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await user.click(done.getByRole("combobox", { name: "Pomegr moves a card here: Done" }));
+    await user.click(screen.getByRole("option", { name: "Never" }));
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_role", { id: "col-3", role: null });
+    expect(alertText()).toBeNull();
+  });
+
+  it("shows one fixed message when the monitor refuses a role change", async () => {
+    taskAction.mockResolvedValueOnce({ ok: false, error: "not_found" });
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const ready = await openEditor(user, "Ready");
+    await user.click(ready.getByRole("combobox", { name: "Pomegr moves a card here: Ready" }));
+    await user.click(screen.getByRole("option", { name: "When its session starts" }));
+    await waitFor(() => expect(alertText()).toBe("The column's automatic move could not be changed."));
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("offers delete but keeps it unavailable while the column holds tasks, with the reason", async () => {

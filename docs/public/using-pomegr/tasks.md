@@ -97,6 +97,27 @@ keeps **Working tree clean** from passing until it ends.
   button renames it, moves it left or right, or offers **Delete column**, which
   works only on an empty column and never on the last one.
 
+### Cards Pomegr moves
+
+Pomegr moves a card to another column when its task changes state:
+
+| When | The card moves to the column set to |
+| --- | --- |
+| The task's session starts and links to it | **When its session starts** |
+| The task becomes **Needs review** | **When it needs review** |
+| The task becomes **Done**, also through **Mark done** | **When it is done** |
+
+- **Choose the columns.** Open a column's **Edit column** button and set **Pomegr
+  moves a card here**. One column holds each choice; choosing it for another column
+  takes it from the first. **Never** turns it off for that column. A new board
+  starts with **In progress**, **Review**, and **Done** set. A board you already
+  had starts with none, so set them once.
+- **No column is set.** The card stays where it is. Its chip still changes.
+- **Blocked by agent**, **Stalled**, and **Requeue task** do not move a card.
+- **You can still move a card by hand.** It stays where you put it until its
+  task's next state change in the table, which moves it again.
+- The card lands last in its new column.
+
 A board holds up to 500 tasks, 12 columns, and 50 features. A column name is up
 to 40 characters and a feature name up to 80.
 
@@ -136,8 +157,9 @@ cannot start before its own time.
 The session is told one fixed message: your task text, the **Done when** list, and
 the instruction to call `complete_task` when the work is done or `block_task` with
 a short reason if it cannot proceed. With nothing checked, the message says the
-agent's report alone completes the task. Starting never changes the task's state,
-column, or queue position. Until the session links, or ten minutes pass, the task
+agent's report alone completes the task. Starting never changes the task's state
+or queue position. The card moves once the session links (see
+[Cards Pomegr moves](#cards-pomegr-moves)). Until the session links, or ten minutes pass, the task
 cannot start again, so you do not get two sessions.
 
 ## Group tasks into features and steps

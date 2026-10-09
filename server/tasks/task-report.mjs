@@ -9,9 +9,13 @@
 //
 // A failed check or a block stops a running queue (the task is named in `queue_blocked_by`); resolving
 // the last task that needs the user lets it run again. An idle or paused queue keeps its status.
+//
+// The write that sets Done or Needs review also moves the card to the column that holds that role
+// (task-columns.mjs). Blocked and Requeue leave the card where it is.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
+import { moveTaskToRole } from "./task-columns.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
@@ -49,6 +53,7 @@ function storeReport(database, row, { state, at, results, blockReason }) {
     WHERE repository_id = ? AND number = ? AND session_id = ? AND report_at IS NULL`)
     .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number, row.session_id);
   if (Number(written.changes) !== 1) return false;
+  if (state === "done" || state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), state === "done" ? "done" : "review");
   if (state !== "done") blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
   return true;
 }
@@ -110,13 +115,14 @@ function unresolvedTask(database, repositoryId, payload) {
 /**
  * `resolve_done`: the user accepts a task that needs review, is blocked, or stalled, or a linked task whose session
  * has not reported. Its report and session link stay as recorded. It never touches the session: a report that
- * arrives afterwards is refused, because the task has an outcome.
+ * arrives afterwards is refused, because the task has an outcome. The card moves to the Done column.
  */
 export function resolveDone({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, target.number);
+  moveTaskToRole(database, repositoryId, target.number, "done");
   releaseQueue(database, repositoryId);
   return { ok: true };
 }
@@ -124,7 +130,8 @@ export function resolveDone({ database, repositoryId }, payload) {
 /**
  * `resolve_requeue`: the user sends the task back to the end of the queue for a new session. The report, the
  * session link, and any dispatch are cleared, so the task can be started and reported on once more. The same
- * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped.
+ * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped. The card stays
+ * in its column until the new session links.
  */
 export function resolveRequeue({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);

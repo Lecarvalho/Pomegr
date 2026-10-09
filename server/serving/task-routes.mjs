@@ -3,7 +3,7 @@ import { validModelIdentifier, validModelLabel } from "../../shared/model-notifi
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 // action list is mirrored here; tests/server/tasks/task-actions.test.mjs pins it to `TASK_ACTIONS` in task-record.mjs.
 export const TASK_ACTIONS = Object.freeze([
-  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete",
+  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role",
   "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";

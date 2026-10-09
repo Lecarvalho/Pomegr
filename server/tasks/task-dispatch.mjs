@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
@@ -144,8 +145,9 @@ const BIND_REFUSED = Object.freeze({ ok: false, error: "not_found" });
  * transaction, and clears the digest. The lookup is monitor-wide: the token is the only input that names a
  * task. A wrong or reused token, an expired unbound dispatch, a task that already has a session, and a session
  * already linked to another task all answer the same `not_found`, so the answer says nothing about which
- * one failed and never carries a task or repository. The link is single assignment; it changes no state,
- * column, or queue position, and a linked task is never startable again.
+ * one failed and never carries a task or repository. The link is single assignment; it changes no state or
+ * queue position, moves the card to the In progress column in the same write, and a linked task is never
+ * startable again.
  */
 export function bindDispatch({ database, transaction, payload, now }) {
   const shaped = payload !== null && typeof payload === "object" && !Array.isArray(payload)
@@ -169,7 +171,9 @@ export function bindDispatch({ database, transaction, payload, now }) {
     try {
       const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")
         .run(payload.sessionId, Date.now(), match.repository_id, match.number, match.dispatch_token);
-      return Number(linked.changes) === 1 ? { ok: true } : BIND_REFUSED;
+      if (Number(linked.changes) !== 1) return BIND_REFUSED;
+      moveTaskToRole(database, match.repository_id, Number(match.number), "in_progress");
+      return { ok: true };
     } catch (error) {
       // The unique `tasks_session` index is the last guard of single assignment; anything else is unavailable.
       if (/constraint/iu.test(String(error?.message))) return BIND_REFUSED;

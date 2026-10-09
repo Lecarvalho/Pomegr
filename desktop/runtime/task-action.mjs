@@ -3,7 +3,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 export const TASK_ACTION_CHANNEL = "pomegr:task-action";
 export const TASK_ACTION_NAMES = Object.freeze([
   "create", "update", "delete", "move",
-  "column_create", "column_rename", "column_reorder", "column_delete",
+  "column_create", "column_rename", "column_reorder", "column_delete", "column_role",
   "feature_create",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",

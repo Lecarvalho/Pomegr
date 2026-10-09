@@ -76,6 +76,7 @@ describe("useTasks", () => {
     ["a board with an unknown version", () => json({ ...board(), version: 2 })],
     ["a board with an unknown readiness", () => json({ ...board(), readiness: "hydrating" })],
     ["columns that are not a list", () => json({ ...board(), columns: "Backlog" })],
+    ["a column role outside the fixed list", () => json({ ...board(), columns: [{ id: "col-1", name: "Backlog", position: 0, role: "ready" }] })],
     ["a task with an unknown state", () => json(board({ tasks: [task({ state: "running" as never })] }))],
     ["a task with a bad id", () => json(board({ tasks: [task({ id: "task-1" })] }))],
     ["a task with a session that is not an object", () => json(board({ tasks: [task({ session: "claude:1" as never })] }))],
