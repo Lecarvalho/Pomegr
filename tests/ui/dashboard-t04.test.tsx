@@ -113,6 +113,17 @@ describe("T04 session workspace", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/state"))).toBe(false);
   });
 
+  it.each([undefined, "other"])("opens a request bar with its owning agent and request from scope %s", async (agent) => {
+    const summary = sessionSummaryFixture();
+    const request = summary.requestSnapshots.items[0];
+    mount({ tab: "overview", agent, request: "stale" }, summary);
+    await userEvent.setup().click(await screen.findByTitle("Primary agent: 35 fresh tokens"));
+    const url = new URL(String(navigation.replace.mock.calls.at(-1)?.[0]), "http://localhost");
+    expect(url.searchParams.get("tab")).toBe("activities");
+    expect(url.searchParams.get("agent")).toBe(request.agentId);
+    expect(url.searchParams.get("request")).toBe(request.id);
+  });
+
   it("orders desktop tabs and preserves deep links on simple tab changes", async () => {
     mount({ tab: "overview", agent: "primary", request: "request-1", path: "app/Dashboard.tsx" });
     await screen.findByRole("heading", { name: "Recorded implementation session" });
