@@ -568,6 +568,18 @@ supplies.
   - The window is ten minutes because the hook issues the proof before the host's
     permission prompt and the server verifies it after the user approves. This reliance on
     the hook running before the prompt has not been exercised on a device.
+  - The hook makes no permission decision for a write, so Claude Code decides as it does
+    for any MCP tool: in its default mode the user approves each of the three tools, and
+    in auto mode Claude Code's own classifier decides. Observed on a device on 2026-10-09
+    (plugin 0.9.0): the classifier let ordinary task text through and refused a few calls,
+    with reasons that followed the conversation and the free text (`text`, `reason`), not
+    the tool name. Calls that carried the same `session_ref` and `session_proof` passed,
+    so neither the names nor the hook's fields explain a refusal, and renaming the tools
+    would not prevent one. The sample is small and the classifier's reasoning is not
+    visible. A refused call posts nothing; the agent stops and tells the user instead of
+    rewording the text. Whether a hook-granted approval would also skip the classifier
+    has not been tested, and granting one would let an agent write to the board with no
+    user approval, which the product owner has not decided.
 - **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
   (`threadId`, which must agree with `thread_id` in its turn metadata when that is
   present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`. A stdio MCP server
