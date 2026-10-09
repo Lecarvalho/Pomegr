@@ -94,7 +94,7 @@ export function SessionOverview({ summary, showEstimatedCost, onNavigate }: {
         : <>
           <div className="sessionRequestTracks" aria-label="Recent request-local fresh token totals">
             {requests.map((request) => <button type="button" key={request.id} title={`${request.agentLabel}: ${freshTokens(request).toLocaleString()} fresh tokens`}
-              className={`commandIconAction ${roleFamilyPresentation(request.agentRole).className}`} onClick={() => onNavigate({ tab: "activities", agent: request.agentId, request: request.id })}>
+              className={`commandIconAction ${roleFamilyPresentation(request.agentRole).className}`} onClick={() => onNavigate({ tab: "activities", request: request.id })}>
               <span className="sessionFreshStack" style={{ height: `${Math.max(12, Math.round(freshTokens(request) / maximumFreshTokens * 100))}%` }}><i className="requestsActionsSegment uncached" style={{ flex: request.uncachedInputTokens }} /><i className="requestsActionsSegment write" style={{ flex: request.cacheWriteTokens }} /><i className="requestsActionsSegment output" style={{ flex: request.outputTokens }} /></span>
             </button>)}
             {Array.from({ length: emptySlots }, (_, index) => <span className="sessionRequestBarSlot" key={`empty-${index}`} aria-hidden="true" />)}
