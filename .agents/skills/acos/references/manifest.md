@@ -45,10 +45,7 @@
 - a part in a plan without `part.mode`; in `parallel`, a part without
   `part.worktree`, a path owned by two parts of one wave, or a full
   verify on a part that shares its worktree with a running one;
-- in `single`, a session lane over `limits.orchestrator_tokens`, or an
-  inline stage that reads files a worker owns;
-- a plan or explore stage that reads files another context implements,
-  unless it is a `fast`-tier locate named in a `Double read:` line;
+- in `single`, a session lane over `limits.orchestrator_tokens`;
 - an output or artifact name containing `report`, `summary`,
   `findings` or `analysis`, or a delegated prompt asking a worker to
   write such a file (Claude Code refuses it; `adapters.md`, Artifact
@@ -58,23 +55,24 @@
   last non-evidence stage, and a final part that lists `covers_parts`,
   repeats every claim and holds the evidence stage.
 
-## Before presenting a `/acos run`
+## Running a written manifest (`/acos run`)
 
-Read only `config.yaml`, `calibration.md`, the manifest, `plan.yaml` and
-the previous part's handoff.
+The command is the GO: nothing waits, unless the user asked to see the
+strategy first. Read `config.yaml`, `calibration.md`, the manifest,
+`plan.yaml` and the previous part's handoff, then:
 
 - `part.assumes`: check the tree matches, say so in one line; a mismatch
   is a question, not a blocker.
 - A part in `part.after` not `done`: say so.
-- `part.mode: single`: present the plan table (`sizing.md` §5), not one
-  part; GO runs every part not `done`.
+- Settle the strategy (`execute.md`, Strategy). The manifest on disk is
+  the planner's suggestion; this is where it becomes yours, with the
+  discoveries and measured actuals of the parts before it.
+- Print the summary below, its last line `Starting now; interrupt to
+  change.`, and start.
+- `part.mode: single`: print the plan table (`sizing.md` §5) once, then
+  each part's strategy as its wave starts; every part not `done` runs.
 - `part.mode: parallel`: name the parts running alongside and the
   worktree in one line.
-- Earlier parts with `actual`: re-size (`sizing.md` §2). Breaking a limit:
-  two lines proposing to run the first half now and add the second as a
-  new part; the user may GO as is.
-- `plan.yaml` `discoveries` newer than the manifest that contradict it
-  (premise, scope, order, owned files, acceptance): re-compose first.
 
 ## Present
 
@@ -98,16 +96,18 @@ Manifest: runs/<id>/manifest.yaml
 Reply GO, or tell me what to change.
 ```
 
-- Round to thousands (`~176k / 280k`). Print nothing zero or already
+- Round to thousands (`~165k / 200k`). Print nothing zero or already
   visible; no workers line when nothing is delegated.
 - `runs on`: `inline`, or model and effort (model alone on `inherit`).
   `check`: the check itself (`full verify`), `—` for `none`.
 - `∥` after a model marks a stage running with the row above; list their
   `owns` under the table, one line each, plus any
   `Workflow script: runs/<id>/workflow-<n>.js`.
-- Any `Double read:` line (`sizing.md` §3), above the manifest path.
 - A long conversation or wide exploration before this: one line
   recommending `/acos run <path>` in a fresh session, just above the GO
   prompt.
-- Full YAML only on request. Changes requested: new manifest, present
-  again.
+- Full YAML only on request. Changes requested before GO: new manifest,
+  present again.
+- A manifest for a later session (`/acos plan`): its workers and slices
+  are a suggestion its orchestrator settles at the start; say so in one
+  line under the table.

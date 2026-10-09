@@ -19,7 +19,7 @@ Never overwrite an existing `config.yaml` without asking. Shape:
    only those whose CLI (`claude`, `codex`, `gemini`, `ollama`) exists.
    Say which alias each tier maps to.
 4. **Defaults.** No `preset`. `gates.go: required`. `limits`:
-   `orchestrator_tokens: 120000`, `worker_context_tokens: 300000`,
+   `orchestrator_tokens: 120000`, `worker_context_tokens: 200000`,
    unless the user gave others.
 5. **startup**, what a session holds before reading any code:
    - Measured: ask the user to run `/context` (or the harness's
@@ -47,7 +47,9 @@ Own session, never during a task. Fewer than two runs: say so and stop.
 3. **Derive per run:** size (log `actual`), stages planned vs executed,
    tiers and efforts planned vs used (delegated only), iterations,
    adapters and agents, reserved vs measured tokens by lane and class,
-   lanes over their limit, wall time per stage and part, gaps between
+   lanes over their limit, workers suggested by the plan vs settled at
+   the start (the `strategy` drift entries), measured worker tokens
+   against the 170k target, wall time per stage and part, gaps between
    parts. For plans: how many parts, and whether they came out too big or
    too small.
 4. **Find patterns across runs:**

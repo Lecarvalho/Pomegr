@@ -19,8 +19,9 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeCreatePayload, normalizeDeletePayload,
-  normalizeUpdatePayload, projectBoard, taskIdFromNumber,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
+  normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
+  normalizeMovePayload, normalizeUpdatePayload, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -228,10 +229,101 @@ function deleteTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
+// Positions stay dense (0..n-1) in every column and among the columns. Each write below reads the
+// affected order, changes it as a list, and writes the whole list back, so a gap or a tie left by an
+// earlier write is closed by the next action that touches the same list.
+const taskNumbersInOrder = (database, repositoryId, columnId) =>
+  preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ? AND column_id = ? ORDER BY position, number")
+    .all(repositoryId, columnId).map((row) => Number(row.number));
+
+function writeTaskOrder(database, repositoryId, numbers) {
+  const update = preparedStatement(database, "UPDATE tasks SET position = ? WHERE repository_id = ? AND number = ? AND position <> ?");
+  numbers.forEach((number, index) => update.run(index, repositoryId, number, index));
+}
+
+const columnIdsInOrder = (database, repositoryId) =>
+  preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId).map((row) => row.id);
+
+function writeColumnOrder(database, repositoryId, ids) {
+  const update = preparedStatement(database, "UPDATE columns SET position = ? WHERE repository_id = ? AND id = ? AND position <> ?");
+  ids.forEach((id, index) => update.run(index, repositoryId, id, index));
+}
+
+const columnExists = (database, repositoryId, id) =>
+  preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
+
+// A move changes only the task's column, position, and update time. The tasks that shift to make room
+// or close a gap change position alone, as they do when a task is deleted.
+function moveTask({ database, repositoryId }, payload) {
+  const input = normalizeMovePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const task = preparedStatement(database, "SELECT column_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  if (!task || !columnExists(database, repositoryId, input.columnId)) return { ok: false, error: "not_found" };
+  const sourceColumnId = task.column_id;
+  const before = taskNumbersInOrder(database, repositoryId, input.columnId);
+  const order = before.filter((number) => number !== input.number);
+  order.splice(Math.min(input.position, order.length), 0, input.number);
+  // Dropping a card where it already is writes no update time; it still closes any stored gap.
+  if (sourceColumnId !== input.columnId || before.join() !== order.join()) {
+    preparedStatement(database, "UPDATE tasks SET column_id = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
+      .run(input.columnId, Date.now(), repositoryId, input.number);
+  }
+  writeTaskOrder(database, repositoryId, order);
+  if (sourceColumnId !== input.columnId) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, sourceColumnId));
+  return { ok: true };
+}
+
+function createColumn({ database, repositoryId }, payload) {
+  const input = normalizeColumnCreatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  ensureRepository(database, repositoryId);
+  const ids = columnIdsInOrder(database, repositoryId);
+  if (ids.length >= TASK_BOUNDS.columnsPerRepository) return { ok: false, error: "limit" };
+  // Names may repeat: the opaque ID is the identity. A new column is always the last one.
+  const id = newOpaqueId("col");
+  preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)").run(id, repositoryId, input.name, ids.length);
+  writeColumnOrder(database, repositoryId, [...ids, id]);
+  return { ok: true };
+}
+
+function renameColumn({ database, repositoryId }, payload) {
+  const input = normalizeColumnRenamePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
+  preparedStatement(database, "UPDATE columns SET name = ? WHERE repository_id = ? AND id = ?").run(input.name, repositoryId, input.id);
+  return { ok: true };
+}
+
+function reorderColumn({ database, repositoryId }, payload) {
+  const input = normalizeColumnReorderPayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
+  const order = columnIdsInOrder(database, repositoryId).filter((id) => id !== input.id);
+  order.splice(Math.min(input.position, order.length), 0, input.id);
+  writeColumnOrder(database, repositoryId, order);
+  return { ok: true };
+}
+
+// A column that still holds tasks, and the last column, cannot go: the board must always have a
+// first column for a new task to land in, and no task is ever moved or removed on its owner's behalf.
+function deleteColumn({ database, repositoryId }, payload) {
+  const input = normalizeColumnDeletePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
+  const ids = columnIdsInOrder(database, repositoryId);
+  if (ids.length <= 1 || taskNumbersInOrder(database, repositoryId, input.id).length > 0) return { ok: false, error: "conflict" };
+  preparedStatement(database, "DELETE FROM columns WHERE repository_id = ? AND id = ?").run(repositoryId, input.id);
+  writeColumnOrder(database, repositoryId, ids.filter((id) => id !== input.id));
+  return { ok: true };
+}
+
 // Actions by name. Each takes `{ database, repositoryId }` and the payload inside the store's
 // transaction, and returns `{ ok: true }` or a fixed error code. It validates the payload before
 // its first write. A listed action absent from this table answers `unsupported` until its part lands.
-const ACTIONS = Object.freeze({ create: createTask, update: updateTask, delete: deleteTask });
+const ACTIONS = Object.freeze({
+  create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
+  column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
+});
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
 class ActionRejected extends Error {

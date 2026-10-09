@@ -33,7 +33,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and the repository Tasks tab |
 | Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued |
 | Run-on, effort, and done-when fields | Built: the New task panel and the task panel opened from a card set them, and the card shows them. The task panel also edits the task text and deletes the task. Nothing reads them yet: no session is started and no condition is verified |
-| Move, columns, features | Not built |
+| Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
+| Features | Not built |
 | Queue view and ordering | Not built |
 | Agent tool `add_task` | Not built |
 | Start a Claude Code session and bind it to its task | Not built |
@@ -284,7 +285,13 @@ like any other.
   `{ id, text?, run?, doneWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
   that is present replaces the stored one whole (a null `run` or `doneWhen` clears it),
-  and an absent field is left as stored.
+  and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
+  `position` is the zero-based index in the destination column counted after the task
+  leaves its place, and a value past the end appends. `column_create` takes `{ name }`
+  and appends the column, `column_rename` takes `{ id, name }`, `column_reorder` takes
+  `{ id, position }` with the same clamping, and `column_delete` takes `{ id }`. A
+  thirteenth column answers `limit`. Deleting a column that holds tasks, or the last
+  column, answers `conflict`. Task and column positions stay dense after every action.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

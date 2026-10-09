@@ -187,6 +187,53 @@ function nonNegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
+function columnIdOf(value) {
+  return typeof value === "string" && COLUMN_ID.test(value) ? value : undefined;
+}
+
+/**
+ * `move` puts one task at a 0-based index of a column, counted after the task leaves its old place;
+ * the store clamps an index past the end to an append. Returns `{ number, columnId, position }`, or
+ * undefined when invalid. Every key is required and no other key is accepted.
+ */
+export function normalizeMovePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "columnId", "position"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  const columnId = columnIdOf(value.columnId);
+  const position = nonNegativeInteger(value.position);
+  return number === undefined || columnId === undefined || position === undefined ? undefined : { number, columnId, position: position + 0 };
+}
+
+/** `column_create` carries only the name. Returns `{ name }`, or undefined when invalid. */
+export function normalizeColumnCreatePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["name"])) return undefined;
+  const name = normalizeColumnName(value.name);
+  return name === undefined ? undefined : { name };
+}
+
+/** `column_rename` names one column and its new name. Returns `{ id, name }`, or undefined when invalid. */
+export function normalizeColumnRenamePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "name"])) return undefined;
+  const id = columnIdOf(value.id);
+  const name = normalizeColumnName(value.name);
+  return id === undefined || name === undefined ? undefined : { id, name };
+}
+
+/** `column_reorder` puts one column at a 0-based index among the columns; the store clamps it to the last. */
+export function normalizeColumnReorderPayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "position"])) return undefined;
+  const id = columnIdOf(value.id);
+  const position = nonNegativeInteger(value.position);
+  return id === undefined || position === undefined ? undefined : { id, position: position + 0 };
+}
+
+/** `column_delete` names one column. Returns `{ id }`, or undefined when invalid. */
+export function normalizeColumnDeletePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
+  const id = columnIdOf(value.id);
+  return id === undefined ? undefined : { id };
+}
+
 function isoTime(value) {
   if (!Number.isSafeInteger(value) || value < 0) return undefined;
   const date = new Date(value);
