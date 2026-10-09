@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
-import { environmentValue, nativeClaudeEnvironment, nativeCodexEnvironment } from "./environment-policy.mjs";
+import { environmentValue, userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 import { createTaskWorktrees } from "./task-worktree.mjs";
@@ -60,18 +60,17 @@ function powershellExecutable(environment, fileExists) {
 
 const result = (status) => Object.freeze({ status });
 
-// One entry per startable provider: where its CLI is, the environment it runs in, and its flags. A flag is
+// One entry per startable provider: where its CLI is and its flags. Every provider's session runs in the user's
+// own environment (`userSessionEnvironment`). A flag is
 // passed only when the task sets it. Codex takes the effort as a configuration override and accepts every
 // task effort by name, `xhigh` included.
 const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
-    environment: nativeClaudeEnvironment,
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["--effort", plan.effort] : [])],
   }),
   codex: Object.freeze({
     executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
-    environment: nativeCodexEnvironment,
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
   }),
 });
@@ -228,7 +227,7 @@ export function createTaskStart(options = {}) {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
         cwd: directory,
         env: {
-          ...provider.environment(sourceEnvironment),
+          ...userSessionEnvironment(sourceEnvironment),
           POMEGR_TASK_TOKEN: plan.token,
           POMEGR_START_FILE: executable,
           POMEGR_START_ARGUMENTS: args.map(windowsArgument).join(" "),

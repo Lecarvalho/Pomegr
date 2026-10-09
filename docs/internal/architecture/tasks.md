@@ -685,8 +685,14 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   prompt as one argument, each quoted by the Windows command-line rules. Claude Code
   takes `--model` and `--effort`; Codex takes `--model` and
   `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
-  included. The environment is the native allowlist of the started provider for the
-  active provider profile plus `POMEGR_TASK_TOKEN`. Pomegr keeps no handle to the session.
+  included. The environment is the user's own, as the desktop app inherited it at launch
+  (product-owner decision, 2026-10-09): the session's hooks and MCP servers need the
+  user's Node, tools, and settings, so the app's stripped runtime environment is not
+  used. Left out are only the app's own variables (`ELECTRON_*`, `POMEGR_SMOKE_*`,
+  `POMEGR_START_*`, the monitor origin and token); added is `POMEGR_TASK_TOKEN`. A
+  provider folder variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) is set only when the user
+  chose that folder in Settings or inherited the variable: naming the default folder makes
+  Claude Code read another user configuration file. Pomegr keeps no handle to the session.
 - When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.

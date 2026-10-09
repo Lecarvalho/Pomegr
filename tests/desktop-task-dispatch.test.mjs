@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/runtime/environment-policy.mjs";
 import {
   createTaskStart,
   installTaskStartIpc,
@@ -22,7 +21,9 @@ const codexExe = "C:\\Users\\tester\\.local\\bin\\codex.exe";
 const root = "C:\\Work\\repo";
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const token = "A".repeat(43);
-const environment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", SECRET_KEY: "nope" };
+// The session gets the user's environment as inherited; only this app's own runtime variables are left out.
+const sessionEnvironment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows;C:\\Program Files\\nodejs", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", HTTPS_PROXY: "http://proxy.test:8080" };
+const environment = { ...sessionEnvironment, ELECTRON_RUN_AS_NODE: "1", POMEGR_MONITOR_TOKEN: "app-private", POMEGR_SMOKE_NO_SYSTEM_NODE: "1", POMEGR_TASK_TOKEN: "stale" };
 
 const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 const basePlan = () => ({ taskId: "T-3", provider: "claude", model: null, effort: null, repositoryRoot: root, prompt: "Do the thing", token });
@@ -88,13 +89,14 @@ test("starts with no model or effort, exact args and options", async () => {
   assert.equal(options.stdio, "ignore");
   assert.equal(options.windowsHide, true);
   assert.deepEqual(options.env, {
-    ...nativeClaudeEnvironment(environment),
+    ...sessionEnvironment,
     POMEGR_TASK_TOKEN: token,
     POMEGR_START_FILE: exe,
     POMEGR_START_ARGUMENTS: '"Do the thing"',
     POMEGR_START_DIRECTORY: root,
   });
-  assert.equal(options.env.SECRET_KEY, undefined);
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
   const text = JSON.stringify(out);
   for (const secret of [token, root, "Do the thing"]) assert.ok(!text.includes(secret));
   assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3" } });
@@ -290,13 +292,14 @@ test("a Codex plan starts the Codex CLI with its own environment and the task to
   assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
   assert.equal(options.shell, false);
   assert.deepEqual(options.env, {
-    ...nativeCodexEnvironment(environment),
+    ...sessionEnvironment,
     POMEGR_TASK_TOKEN: token,
     POMEGR_START_FILE: codexExe,
     POMEGR_START_ARGUMENTS: '"Do the thing"',
     POMEGR_START_DIRECTORY: root,
   });
-  assert.equal(options.env.SECRET_KEY, undefined);
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
 });
 
 test("Codex model and effort flags are passed only when set, xhigh by name", async () => {
