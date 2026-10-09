@@ -22,9 +22,10 @@ running session. Observing sessions works the same whether or not you use tasks.
   "Starting sessions is available on Windows only."
 - **Install the Pomegr plugin in the repository.** A started session links to its
   task, and the agent reports its result, through the plugin; see
-  [Reporting plugins](reporting-plugins.md#install-the-plugin). Without it a start
-  is refused with "Install the Pomegr plugin in this repository to start
-  sessions." Codex runs plugin hooks only after you trust them.
+  [Reporting plugins](reporting-plugins.md#install-the-plugin). Tasks need plugin
+  0.9.0 or later. Without the plugin, with an older one, or when Pomegr cannot read
+  its version, a start is refused with "Install or update the Pomegr plugin in this
+  repository to start sessions." Codex runs plugin hooks only after you trust them.
 - **Install the coding tool.** If Pomegr cannot find the Claude Code or Codex
   program, a start says "The provider's command-line tool was not found on this
   computer."
@@ -249,7 +250,7 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 | Reason | What to do |
 | --- | --- |
 | The provider's command-line tool was not found. | Install Claude Code or Codex on this computer. |
-| The Pomegr plugin is not installed in this repository. | Install it; see [Reporting plugins](reporting-plugins.md#install-the-plugin). |
+| The Pomegr plugin is not installed in this repository, or needs an update. | Install it, or update it to 0.9.0 or later; see [Reporting plugins](reporting-plugins.md#install-the-plugin). |
 | Starting sessions is available on Windows only. | Start tasks from a Windows computer. |
 | Its worktree has uncommitted changes, and Pomegr never removes them. | Select **Open folder** in the banner (desktop app, Windows), commit or discard the changes there, then select **On** again. |
 | The terminal window could not be opened. | Select **On** to retry. |
