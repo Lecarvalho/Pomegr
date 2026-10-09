@@ -57,8 +57,7 @@ const CHECK_LABELS = {
   tree_clean: "Working tree clean",
   commit_on_branch: "Commit on task branch",
   pr_merged: "Pull request merged",
-  // Pomegr has no source for pull-request checks yet, so this condition can never be confirmed.
-  ci_passed: "CI passed (not available yet)",
+  ci_passed: "CI passed",
 };
 const REPORT_REASON_TEXT = {
   invalid: "Pomegr rejected the report as invalid, so nothing was reported.",

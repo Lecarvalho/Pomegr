@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { normalizePullRequest, pullRequestUrls, readPullRequests } from "../../../server/repository/pull-requests.mjs";
+import { normalizeCheckStatus, normalizePullRequest, pullRequestCheckStatus, pullRequestUrls, readPullRequests } from "../../../server/repository/pull-requests.mjs";
 import { pullRequestCreationEvents, readClaudePullRequestCreations } from "../../../server/providers/claude/pull-requests.mjs";
 import { parseCodexPullRequestRecords } from "../../../server/providers/codex/pull-requests.mjs";
 
@@ -163,4 +163,81 @@ test("Codex emits provider-neutral events only for successful recognized PR crea
     }),
   });
   assert.deepEqual(result.items.map(({ number, association }) => ({ number, association })), [{ number: 52, association: "session" }]);
+});
+
+const run = (status, conclusion = null) => ({ __typename: "CheckRun", name: "PRIVATE NAME", detailsUrl: "https://example.invalid/PRIVATE", status, conclusion });
+const context = (state) => ({ __typename: "StatusContext", context: "PRIVATE CONTEXT", targetUrl: "https://example.invalid/PRIVATE", state });
+
+test("normalizes the check rollup to one fixed aggregate status", () => {
+  assert.equal(normalizeCheckStatus([]), "none");
+  assert.equal(normalizeCheckStatus([run("COMPLETED", "SUCCESS"), run("COMPLETED", "SKIPPED"), run("COMPLETED", "NEUTRAL"), context("SUCCESS")]), "passed");
+  for (const status of ["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]) assert.equal(normalizeCheckStatus([run("COMPLETED", "SUCCESS"), run(status)]), "pending", status);
+  for (const state of ["PENDING", "EXPECTED"]) assert.equal(normalizeCheckStatus([context("SUCCESS"), context(state)]), "pending", state);
+  for (const conclusion of ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"]) {
+    assert.equal(normalizeCheckStatus([run("COMPLETED", "SUCCESS"), run("IN_PROGRESS"), run("COMPLETED", conclusion)]), "failed", conclusion);
+  }
+  for (const state of ["FAILURE", "ERROR"]) assert.equal(normalizeCheckStatus([context("PENDING"), context(state)]), "failed", state);
+});
+
+test("a missing, oversized, or unrecognized check rollup is unknown, never a status", () => {
+  for (const rollup of [
+    undefined, null, "SUCCESS", {}, 1,
+    [null], [{}], ["SUCCESS"],
+    [{ status: "COMPLETED", conclusion: "SUCCESS" }],
+    [run("COMPLETED", "SUCCESS"), run("COMPLETED", "MADE_UP")],
+    [run("COMPLETED")],
+    [run("MADE_UP")],
+    [context("MADE_UP")],
+    Array.from({ length: 201 }, () => run("COMPLETED", "SUCCESS")),
+  ]) assert.equal(normalizeCheckStatus(rollup), null, JSON.stringify(rollup)?.slice(0, 80));
+});
+
+test("the check status is read with the pull request and kept out of the normalized item", async () => {
+  const url = (number) => `https://github.com/PomegrHQ/pomegr-checks/pull/${number}`;
+  const fields = [];
+  const ghRunner = (rollups) => async (_cwd, args) => {
+    fields.push(args.at(-1));
+    if (args[1] === "view") return JSON.stringify({ number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", statusCheckRollup: rollups[7] });
+    return JSON.stringify([
+      { number: 7, state: "OPEN", url: url(7), headRefName: "tasks/13", statusCheckRollup: rollups[7] },
+      { number: 6, state: "MERGED", mergedAt: "2026-10-01T00:00:00Z", url: url(6), headRefName: "tasks/13", statusCheckRollup: rollups[6] },
+    ]);
+  };
+  const read = (rollups) => readPullRequests([], { cwd: "C:\\repo", branch: "tasks/13", sessionCreations: [{ url: url(7) }], ghRunner: ghRunner(rollups) });
+
+  assert.equal(pullRequestCheckStatus(url(7)), null);
+  const result = await read({ 7: [run("IN_PROGRESS")], 6: [run("COMPLETED", "SUCCESS")] });
+  assert.ok(fields.every((value) => value.endsWith(",statusCheckRollup")));
+  assert.equal(pullRequestCheckStatus(url(7)), "pending");
+  assert.equal(pullRequestCheckStatus(url(6)), "passed");
+  assert.deepEqual(result.items.map((item) => item.number), [7, 6]);
+  assert.doesNotMatch(JSON.stringify(result), /statusCheckRollup|passed|pending|PRIVATE/u);
+  assert.deepEqual(Object.keys(result), ["status", "checkedAt", "items"]);
+
+  // The newest read replaces the status; a read that does not establish one clears it.
+  await read({ 7: [run("COMPLETED", "FAILURE")], 6: [] });
+  assert.equal(pullRequestCheckStatus(url(7)), "failed");
+  assert.equal(pullRequestCheckStatus(url(6)), "none");
+  await read({ 7: [run("MADE_UP")] });
+  assert.equal(pullRequestCheckStatus(url(7)), null);
+  assert.equal(pullRequestCheckStatus(url(6)), null);
+  for (const value of [undefined, null, 7, "", "https://example.invalid/pull/7"]) assert.equal(pullRequestCheckStatus(value), null);
+});
+
+test("a gh that cannot read checks still answers the pull request, with an unknown check status", async () => {
+  const url = "https://github.com/PomegrHQ/pomegr-checks/pull/9";
+  const calls = [];
+  const result = await readPullRequests([], {
+    cwd: "C:\\repo",
+    branch: "tasks/no-checks",
+    ghRunner: async (_cwd, args) => {
+      calls.push(args.at(-1));
+      return args.at(-1).includes("statusCheckRollup") ? null : JSON.stringify([{ number: 9, state: "OPEN", url, headRefName: "tasks/no-checks" }]);
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0], `${calls[1]},statusCheckRollup`);
+  assert.deepEqual(result.items.map(({ number, state }) => ({ number, state })), [{ number: 9, state: "open" }]);
+  assert.equal(pullRequestCheckStatus(url), null);
 });

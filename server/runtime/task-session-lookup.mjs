@@ -1,4 +1,5 @@
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
+import { pullRequestCheckStatus } from "../repository/pull-requests.mjs";
 
 /**
  * The bound session's recognized repository identity for the agent task write, from committed facts
@@ -45,14 +46,25 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
 
 const PULL_REQUEST_STATES = ["open", "merged", "closed"];
 
+// CI passed judges the task branch's open pull requests, or its merged ones when none is open; a closed one
+// never counts. No such pull request is a known "not passed"; one whose check status the monitor has not read
+// is unknown. Only `passed` passes: pending, failed, and no check at all do not.
+function ciPassed(items, checkStatus) {
+  const judged = ["open", "merged"].map((state) => items.filter((item) => item.state === state)).find((list) => list.length > 0);
+  if (!judged) return false;
+  const statuses = judged.map((item) => checkStatus(item.url));
+  return statuses.includes(null) ? null : statuses.every((status) => status === "passed");
+}
+
 /**
  * The repository facts the done-when checks judge for the bound session, from the session's committed public
  * state in memory only: `{ treeClean, branchCommits, pullRequestStates, ciPassed }`. The task branch is the branch
  * recorded for the session. Every fact that the committed state does not establish is null (unknown), which the
  * rule never passes: an unavailable or historical repository block, a branch with no base comparison, and a
- * pull-request block that is not ready. `ciPassed` has no committed source yet. No Git, GitHub, or provider read.
+ * pull-request block that is not ready. `ciPassed` joins those pull requests with the check status the monitor
+ * last read for each (`pullRequestCheckStatus`, monitor-private memory). No Git, GitHub, or provider read.
  */
-export function resolveTaskCheckFacts(sessionRef, { observationStore }) {
+export function resolveTaskCheckFacts(sessionRef, { observationStore, checkStatus = pullRequestCheckStatus }) {
   const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null };
   const parsed = parseProviderSessionId(sessionRef);
   if (!parsed) return unknown;
@@ -63,8 +75,13 @@ export function resolveTaskCheckFacts(sessionRef, { observationStore }) {
   const branchCommits = repository.isMain === true ? false
     : comparison?.kind === "base" && Number.isSafeInteger(comparison.ahead) ? comparison.ahead > 0 || comparison.integrated === true : null;
   const pulls = session.pullRequests;
-  const pullRequestStates = pulls?.status === "ready" && Array.isArray(pulls.items)
-    ? pulls.items.filter((item) => item?.headBranch === repository.branch && PULL_REQUEST_STATES.includes(item.state)).map((item) => item.state)
+  const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items)
+    ? pulls.items.filter((item) => item?.headBranch === repository.branch && PULL_REQUEST_STATES.includes(item.state))
     : null;
-  return { treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null, branchCommits, pullRequestStates, ciPassed: null };
+  return {
+    treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
+    branchCommits,
+    pullRequestStates: branchPulls ? branchPulls.map((item) => item.state) : null,
+    ciPassed: branchPulls ? ciPassed(branchPulls, checkStatus) : null,
+  };
 }

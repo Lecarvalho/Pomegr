@@ -324,7 +324,7 @@ test("complete_task reports the state and names only the conditions Pomegr could
     { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false }, { check: "made_up", passed: false },
   ] } });
   assert.equal((await review.tools.complete_task.handler({})).content[0].text,
-    "Task reported complete, but Pomegr could not confirm: Pull request open, CI passed (not available yet). The task now needs the user's review; do not report again.");
+    "Task reported complete, but Pomegr could not confirm: Pull request open, CI passed. The task now needs the user's review; do not report again.");
 });
 
 test("the report tools map every refusal to fixed text and never echo the monitor's answer", async () => {
