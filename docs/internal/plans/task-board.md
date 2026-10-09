@@ -1,11 +1,11 @@
 # Task board and session dispatch
 
-> Status: active; part 1 (charter) is the documentation-only checkpoint and no task code exists yet.
+> Status: active; part 2 (`board-read`) ships the store, `GET /api/tasks`, and the read-only Tasks tab. No task can be created yet.
 > Created: 2026-10-08.
 > Scope: a per-repository task board and an opt-in desktop dispatcher. Tasks carry planned provider, model and effort, features with ordered steps, and done-when checks. A queue starts Claude Code and Codex sessions behind start gates and stops on trouble. Agents add, complete, and block tasks through Pomegr MCP tools. The Sessions list and session view show task identity. Observation stays read-only and untouched.
 > Continuation owner: the Pomegr maintainer; each part is delivered by the session that owns it, and the product owner reviews and merges every pull request.
 > Authority: working checklist. [Tasks](../architecture/tasks.md) and [AGENTS.md](../../../AGENTS.md) govern behavior and privacy; this plan only orders the work.
-> Next task or decision: part 2 (`board-read`) once the charter pull request is open; the open questions below need the product owner before the parts that touch them.
+> Next task or decision: part 3 (`create-task`) once the part 2 pull request is open; the open questions below need the product owner before the parts that touch them.
 > Completion criteria: all 21 parts have an open (then merged) pull request, the behavior they ship is recorded in the tasks contract, the public guide exists, and this plan is deleted.
 > Permanent destinations: [Tasks](../architecture/tasks.md) (current behavior and invariants), [AGENTS.md](../../../AGENTS.md) (privacy rules), [agent workflow](../development/agent-workflow.md) (routing rows and the server layout row), `docs/public/using-pomegr/tasks.md` (user guide, written by part 21), and [DESIGN.md](../../../DESIGN.md) with the `/design-system` samples for any new shared control.
 > Lifetime: temporary; the last part deletes this plan after transferring enduring findings, as described under [Closing the plan](#closing-the-plan).

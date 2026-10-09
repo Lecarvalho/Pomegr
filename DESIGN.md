@@ -400,7 +400,7 @@ live and history counts, observed provider badges, and the existing secondary-bu
 role for View sessions. It does not repeat the repository name as a page title or
 show a repository icon. The shell uses the shared session breadcrumb for
 `Repositories › {displayName}`. Detail navigation uses the existing Settings
-layout: a 210px six-tab rail (Overview, Files, Git, Plugin, Context inventory, Reporting) on desktop and its horizontal mobile strip, with
+layout: a 210px seven-tab rail (Overview, Files, Git, Tasks, Plugin, Context inventory, Reporting) on desktop and its horizontal mobile strip, with
 the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
 linked setup summaries, and the five most recent associated sessions. Plugin
 groups plugin installation instructions and native actions by provider.

@@ -7,6 +7,7 @@ import type { ProviderId, RepositoryProviderInventory } from "../../../shared/mo
 import type { RepositoryPluginAction } from "../../../shared/repository-plugin-contract";
 import { repositoryInventoryDesktopBridge, useRepositoryInventory } from "../../repository-inventory-client";
 import { ProviderBadge } from "../ProviderBadge";
+import { TasksTab } from "../tasks/TasksTab";
 import { CommandBreadcrumbSeparator, CommandEmpty, CommandIcon, CommandPage, CommandPageHeader } from "../command-center/CommandPage";
 import { repositoryFilePath, repositoryRouteOptions, repositoryTab, repositoryTabs, type RepositoryTab } from "./repository-route";
 import { pluginActionMessage, type ProviderFeedback } from "./repository-setup-details";
@@ -155,7 +156,7 @@ export function RepositoryDetailView({ repositoryId, initialTab = "overview", in
         </button>)}
       </div>
       <div className="commandSettingsPane" role="tabpanel" id={`repository-panel-${tab}`} aria-labelledby={`repository-tab-${tab}`} tabIndex={0}>
-        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "files" ? <RepositoryFilesTab repositoryId={repositoryId} repositoryLabel={repository.displayName} path={filesPath} onSelectPath={selectFilesPath} /> : tab === "plugin" ? <>
+        {tab === "overview" ? <RepositoryOverviewTab repository={repository} /> : tab === "files" ? <RepositoryFilesTab repositoryId={repositoryId} repositoryLabel={repository.displayName} path={filesPath} onSelectPath={selectFilesPath} /> : tab === "tasks" ? <TasksTab repositoryId={repositoryId} /> : tab === "plugin" ? <>
           <div className="repositoryPaneHead"><div><h2>Plugin</h2><p>Install and manage the Pomegr plugin for each provider. Installation and updates run natively on this machine after a confirmation.</p></div></div>
           {repository.providers.map((provider) => {
             const key = `${repositoryId}:${provider.provider}`;
