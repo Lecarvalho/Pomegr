@@ -292,7 +292,10 @@ session. In Claude Code, the coding tool ties each call to its session; if Claud
 Code hooks are off or the hook times out, an agent's add, complete, or block call is
 refused and nothing is added or reported. When Claude Code asks you to approve such
 a call, you have up to ten minutes to do so; after that the call is refused and the
-agent can try again. A task takes one report per start; a second report changes
+agent can try again. Choose to always allow the three tools so a session you are not
+watching does not wait for you. In Claude Code's auto mode no prompt appears: Claude
+Code decides by itself and can, rarely, refuse one of these calls. If that happens,
+add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
 nothing. If every checked condition passes, the task is **Done**; if one fails, it
 is **Needs review**. When no condition is checked, the agent's report alone
 completes the task, which is the agent's word, not a check. A session that ends
