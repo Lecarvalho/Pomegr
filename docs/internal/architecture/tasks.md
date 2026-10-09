@@ -908,8 +908,8 @@ Each item is owned by the product owner; none is implemented until they answer.
 
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
-above now describe the fixed behavior. Two items remain open, and the maintainer owns
-each. The stated limits of the age rule for done-when conditions are listed under
+above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
+three more. Five items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
 [Completion](#completion).
 
 1. **`add_task` from an unlinked session in a task worktree targets another board.** A
@@ -924,9 +924,29 @@ each. The stated limits of the age rule for done-when conditions are listed unde
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
    decides.
+3. **The start gate does not check the plugin's version.** A start needs the Pomegr plugin
+   installed and enabled, but not a version that has the bind hook and the task tools
+   (0.9.0 or later). With an older plugin the session starts, never links, and the card
+   keeps its own chip.
+4. **The task panel keeps its start line after the task changes.** After a start the panel
+   shows "Session started in a new terminal window." and keeps Start session disabled for
+   as long as it stays open, also after Requeue or after the task is done. Closing and
+   opening the panel clears it.
+5. **A held manual start does not say which gate holds.** The panel reads "A start gate
+   holds this task. See Start gates in the Queue view." although the fixed hold reasons
+   are already served on `GET /api/tasks`.
 
-Not yet proven on a device: that a session started in a new task worktree links to its
-task, and that Codex sends the thread identity the binding reads.
+Proven on a device on 2026-10-09 (Windows, Claude Code, plugin 0.9.0): a started session
+opens as the user's own Claude Code, in the repository root and in a new task worktree;
+it links to its task; `complete_task` and `add_task` are accepted with the hook's proof;
+Mark done and Requeue work on a linked task with no report and leave the session running,
+and the requeued session's later report is refused; a started task is not the queue's next
+task; a dirty task worktree refuses a manual start and pauses the queue with
+`worktree_dirty`, and Open folder opens it.
+
+Not yet proven on a device: that Codex sends the thread identity the binding reads, a
+Codex session start, the Stalled state after a real session end, a checked done-when
+condition, and a tool call that waits at a permission prompt inside the proof window.
 
 ## Change and verify
 
