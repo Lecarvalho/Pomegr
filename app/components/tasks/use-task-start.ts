@@ -17,7 +17,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   cancelled: null,
   unsupported_platform: "Starting sessions is available on Windows only.",
   cli_missing: "The provider's command-line tool was not found on this computer.",
-  plugin_missing: "Install the Pomegr plugin in this repository to start sessions.",
+  plugin_missing: "Install or update the Pomegr plugin in this repository to start sessions.",
   not_startable: "This task cannot be started right now.",
   unsupported_provider: "Sessions cannot be started on this provider.",
   not_found: "This task no longer exists.",

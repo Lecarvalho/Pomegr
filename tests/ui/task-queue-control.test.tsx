@@ -325,7 +325,7 @@ describe("the Queue banner", () => {
 describe("the paused Queue banner", () => {
   it.each<[TaskQueuePauseReason | null, string]>([
     ["cli_missing", "the provider's command-line tool was not found on this computer."],
-    ["plugin_missing", "the Pomegr plugin is not installed in this repository."],
+    ["plugin_missing", "the Pomegr plugin is not installed in this repository, or needs an update."],
     ["unsupported_platform", "starting sessions is available on Windows only."],
     ["start_failed", "the terminal window could not be opened."],
     ["session_not_linked", "its terminal opened, but the session did not report back."],
