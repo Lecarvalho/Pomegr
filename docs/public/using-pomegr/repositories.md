@@ -38,6 +38,7 @@ button on its **Repository:** chip to list every session again. The tabs are:
 | **Overview** | Counts, last activity, setup cards, and the five most recent sessions. |
 | **Files** | Files that recorded sessions changed, with each file's history. |
 | **Git** | Recent commits from the newest live session's working tree. |
+| **Tasks** | A board of tasks for the repository, and a queue that starts sessions for them; see [Tasks](tasks.md). |
 | **Plugin** | Plugin installation state for each coding tool; see [Reporting plugins](reporting-plugins.md#check-the-setup-in-pomegr). |
 | **Context inventory** | A saved diagnostic of what a coding tool loads first, what stays on demand, and what it reserves for compaction. |
 | **Reporting** | The repository's reporting policy. |
@@ -45,6 +46,8 @@ button on its **Repository:** chip to list every session again. The tabs are:
 **Git** shows "Commits appear while a session in this repository is live." until
 one is. **Plugin** and **Context inventory** change only from the desktop app,
 after a confirmation; a browser shows what Pomegr last observed or saved.
+**Tasks** also changes only from the desktop app; a browser on the same computer
+reads the board.
 Branch, working-tree, and pull-request detail is not on the repository page: it
 appears per session, in the **Repository** tab described below.
 

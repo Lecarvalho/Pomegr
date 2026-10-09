@@ -30,6 +30,9 @@
 .designSystemInspectorFrame .agentInspector-inline { max-height: none; border-left: 0; }
 .designSystemTable { min-width: 560px; }
 .designSystemEventsFrame { width: min(380px, 100%); }
+/* Task compositions: a full-width stack inside a sample, standing in for the repository Tasks tab column the real controls sit in. */
+.designSystemTaskFrame { flex: 1 1 100%; min-width: 0; display: grid; gap: var(--space-4); align-content: start; }
+.designSystemTaskFrame > * { min-width: 0; }
 .designSystemType { margin-top: var(--space-4); display: grid; gap: var(--space-3); }
 .designSystemType > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); align-items: baseline; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .designSystemType > div > span:first-child { min-width: 0; overflow-wrap: anywhere; }
