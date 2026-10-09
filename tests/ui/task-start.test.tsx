@@ -9,6 +9,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] }, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { openDesktopTaskWorktree, startDesktopTask } from "../../app/components/tasks/task-desktop";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskStart = vi.fn<(repositoryId: string, taskId: string) => Promise<unknown>>();
@@ -149,5 +150,42 @@ describe("Start session", () => {
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("The session could not be started."));
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+  });
+});
+
+describe("the desktop start and folder wrappers", () => {
+  it("pass worktree_dirty through as its own start status, never as a generic failure", async () => {
+    taskStart.mockResolvedValue({ status: "worktree_dirty" });
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("worktree_dirty");
+    taskStart.mockResolvedValue({ status: "worktree_gone" });
+    expect(await startDesktopTask(repositoryId, "T-1")).toBe("failed");
+  });
+
+  it("open a task worktree folder with the two IDs only and answer one of four fixed statuses", async () => {
+    const taskWorktreeOpen = vi.fn<(repositoryId: string, taskId: string) => Promise<unknown>>();
+    setBridge({ taskAction, taskWorktreeOpen });
+    for (const status of ["opened", "not_found", "invalid", "unavailable"]) {
+      taskWorktreeOpen.mockResolvedValueOnce({ status, path: "D:\\private-folder" });
+      expect(await openDesktopTaskWorktree(repositoryId, "T-1")).toBe(status);
+    }
+    expect(taskWorktreeOpen.mock.calls).toEqual(Array.from({ length: 4 }, () => [repositoryId, "T-1"]));
+  });
+
+  it.each([
+    ["an unknown status", () => ({ status: "failed" })],
+    ["a malformed answer", () => "nope"],
+    ["no answer", () => null],
+  ])("answer unavailable for %s", async (_name, answer) => {
+    setBridge({ taskAction, taskWorktreeOpen: async () => answer() });
+    expect(await openDesktopTaskWorktree(repositoryId, "T-1")).toBe("unavailable");
+  });
+
+  it("answer unavailable for a throwing bridge, a bridge without the function, and no bridge", async () => {
+    setBridge({ taskAction, taskWorktreeOpen: async () => { throw new Error("D:\\private-folder"); } });
+    expect(await openDesktopTaskWorktree(repositoryId, "T-1")).toBe("unavailable");
+    setBridge({ taskAction });
+    expect(await openDesktopTaskWorktree(repositoryId, "T-1")).toBe("unavailable");
+    setBridge(undefined);
+    expect(await openDesktopTaskWorktree(repositoryId, "T-1")).toBe("unavailable");
   });
 });

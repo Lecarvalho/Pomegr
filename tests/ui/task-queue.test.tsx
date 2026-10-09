@@ -56,7 +56,7 @@ const features = [
   { id: "f3", name: "Old", done: true },
   { id: "f4", name: "Empty", done: false },
 ];
-const ORDER = ["T-2", "T-3", "T-4", "T-6", "T-7", "T-13", "T-9"];
+const ORDER = ["T-2", "T-4", "T-6", "T-7", "T-13", "T-9"];
 
 function setBoard(overrides: Partial<TaskBoard> = {}) {
   const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, pauseReason: null, order: ORDER }, ...overrides };
@@ -92,6 +92,36 @@ async function showQueue() {
   render(<TasksTab repositoryId={repositoryId} />);
   await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
 }
+
+describe("a task that already started", () => {
+  const gates = {
+    threshold: 85 as const,
+    usage: { claude: { status: "ok" as const, fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { status: "ok" as const, fiveHourPercent: 10, sevenDayPercent: 10 } },
+    providerStatus: { claude: "ok" as const, codex: "ok" as const },
+    workingTree: "dirty" as const,
+    next: { taskId: "T-2", provider: "claude" as const, blockedBy: null, reasons: ["tree_dirty" as const] },
+  };
+
+  it("borrows its session state, is not next, and carries no Waiting line; the next waiting task carries it", async () => {
+    setBoard({ queue: { status: "running", blockedBy: null, pauseReason: null, order: ORDER, gates } });
+    await showQueue();
+    expect(chipText("T-3")).toBe("In progress");
+    expect(within(card("T-3")).queryByText(/Waiting/)).not.toBeInTheDocument();
+    expect(within(card("T-2")).getByText(/Waiting: the working tree has uncommitted changes/)).toBeInTheDocument();
+    expect(chipText("T-2")).toBe("Queued · next");
+  });
+
+  it("started by a live dispatch with no session yet keeps its own chip, no next marker and no Waiting line", async () => {
+    const board = tasks().map((entry) => (entry.id === "T-9" ? { ...entry, state: "queued" as const } : entry));
+    setBoard({ tasks: board, queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-2", "T-4", "T-6", "T-7", "T-13"], gates } });
+    await showQueue();
+    expect(chipText("T-9")).toBe("Queued");
+    expect(within(card("T-9")).queryByText(/Waiting/)).not.toBeInTheDocument();
+    expect(card("T-9")).not.toHaveClass("isMovable");
+    // Listed after the singles that wait, as every other single that is not in the order.
+    expect(singleQueueTasks(setBoard({ tasks: board, queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-13"] } })).map((entry) => entry.id)).toEqual(["T-13", "T-9", "T-10"]);
+  });
+});
 
 describe("the Board | Queue switch", () => {
   it("shows the same data as a board or as a queue and keeps the board-only action off the queue", async () => {
@@ -169,7 +199,7 @@ describe("the Queue view", () => {
   });
 
   it("follows queue.order when another task is first", async () => {
-    setBoard({ queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-6", "T-2", "T-3", "T-4", "T-7", "T-13", "T-9"] } });
+    setBoard({ queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-6", "T-2", "T-4", "T-7", "T-13", "T-9"] } });
     await showQueue();
     expect(chipText("T-6")).toBe("Queued · next");
     expect(chipText("T-2")).toBe("Queued");
@@ -187,7 +217,7 @@ describe("the Queue view", () => {
   });
 
   it("says so when no single task is queued", async () => {
-    setBoard({ tasks: tasks().filter((entry) => entry.featureId !== null), queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-2", "T-3", "T-4", "T-6", "T-7"] } });
+    setBoard({ tasks: tasks().filter((entry) => entry.featureId !== null), queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-2", "T-4", "T-6", "T-7"] } });
     await showQueue();
     expect(screen.getByText("No single task is queued.")).toBeInTheDocument();
   });
@@ -273,11 +303,12 @@ describe("dragging a queued task", () => {
 
   it("starts a drag only on queued cards and shows the grab cursor only there", async () => {
     await showQueue();
-    for (const id of ["T-2", "T-3", "T-4", "T-6", "T-7"]) {
+    for (const id of ["T-2", "T-4", "T-6", "T-7"]) {
       expect(card(id)).toHaveAttribute("draggable", "true");
       expect(card(id)).toHaveClass("isMovable");
     }
-    for (const id of ["T-1", "T-5"]) {
+    // T-3 started (queued state, linked session, not in the order): it cannot be moved either.
+    for (const id of ["T-1", "T-3", "T-5"]) {
       expect(card(id)).not.toHaveAttribute("draggable");
       expect(card(id)).not.toHaveClass("isMovable");
     }

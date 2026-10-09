@@ -13,6 +13,14 @@ export const taskStateLabels: Record<TaskState, string> = {
   done: "Done",
 };
 
+/** Footer line for a linked task whose session has not reported: it can hold the queue, and the two exits leave the session running. */
+export const AWAITING_REPORT_NOTE = "The session has not reported. Mark done and Requeue do not stop it.";
+
+/** A task with a linked session and no outcome yet: the same set the monitor lets the user resolve without a report. */
+export function taskAwaitsReport(task: Pick<Task, "state" | "session">): boolean {
+  return task.session !== null && (task.state === "not_queued" || task.state === "queued" || task.state === "scheduled");
+}
+
 /** States that end a task's run. They stay on the card even while its session is still bound. */
 const OUTCOME_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked", "done"]);
 /** Outcomes that hold the queue and need the user, so the card carries the attention border. */

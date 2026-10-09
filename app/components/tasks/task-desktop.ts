@@ -14,13 +14,19 @@ export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
   /** Absent on an older desktop build; `startDesktopTask` then answers `unavailable`. */
   taskStart?: (repositoryId: string, taskId: string) => Promise<{ status: TaskStartStatus }>;
+  /** Absent on an older desktop build; `openDesktopTaskWorktree` then answers `unavailable`. */
+  taskWorktreeOpen?: (repositoryId: string, taskId: string) => Promise<{ status: TaskWorktreeOpenStatus }>;
 };
+
+/** Fixed outcome of opening a task's worktree folder; the folder path never reaches the renderer. */
+export type TaskWorktreeOpenStatus = "opened" | "not_found" | "invalid" | "unavailable";
+const OPEN_STATUSES = new Set<string>(["opened", "not_found", "invalid", "unavailable"]);
 
 /** Fixed outcome of one desktop session start. */
 export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" | "cli_missing" | "plugin_missing" | "not_startable"
-  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held";
+  | "unsupported_provider" | "not_found" | "busy" | "invalid" | "unavailable" | "failed" | "gate_held" | "worktree_dirty";
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held"]);
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty"]);
 
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);
 
@@ -88,6 +94,19 @@ export async function startDesktopTask(repositoryId: string, id: string): Promis
     const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
     if (typeof status !== "string") return "unavailable";
     return START_STATUSES.has(status) ? status as TaskStartStatus : "failed";
+  } catch {
+    return "unavailable";
+  }
+}
+
+/** Asks the desktop to open the folder of a task's worktree. Never throws; sends only the two IDs and gets a fixed status. */
+export async function openDesktopTaskWorktree(repositoryId: string, id: string): Promise<TaskWorktreeOpenStatus> {
+  const bridge = typeof window === "undefined" ? undefined : (window as Window & { pomegrDesktop?: Partial<TaskDesktopBridge> }).pomegrDesktop;
+  if (typeof bridge?.taskWorktreeOpen !== "function") return "unavailable";
+  try {
+    const result: unknown = await bridge.taskWorktreeOpen(repositoryId, id);
+    const status = typeof result === "object" && result !== null ? (result as { status?: unknown }).status : undefined;
+    return typeof status === "string" && OPEN_STATUSES.has(status) ? status as TaskWorktreeOpenStatus : "unavailable";
   } catch {
     return "unavailable";
   }

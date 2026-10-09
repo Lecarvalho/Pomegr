@@ -87,7 +87,8 @@ test("an existing worktree is reused only when Git lists it on the task branch a
   ];
   for (const answers of refusals) {
     h = harness({ exists: true, answers });
-    assert.deepEqual(await h.worktrees.ensure(place), { ok: false }, JSON.stringify(answers));
+    const dirty = answers.status?.ok === true && answers.status.stdout !== "";
+    assert.deepEqual(await h.worktrees.ensure(place), dirty ? { ok: false, reason: "dirty" } : { ok: false }, JSON.stringify(answers));
     assert.equal(h.git().some((command) => command.startsWith("worktree add") || command.startsWith("worktree remove")), false);
   }
 });
@@ -180,7 +181,8 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
 
   // Uncommitted changes: not reused, not removed.
   writeFileSync(path.join(first.directory, "new.txt"), "work\n");
-  assert.deepEqual(await worktrees.ensure(at("T-1")), { ok: false });
+  assert.deepEqual(await worktrees.ensure(at("T-1")), { ok: false, reason: "dirty" });
+  assert.equal(await worktrees.locate({ repositoryId: at("T-1").repositoryId, taskId: "T-1" }), first.directory);
   assert.equal(await worktrees.remove(at("T-1")), "kept");
   assert.equal(existsSync(path.join(first.directory, "new.txt")), true);
 
@@ -200,4 +202,35 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
   git(repository, "merge", "--quiet", "tasks/T-1");
   assert.equal(await worktrees.remove(at("T-1")), "removed");
   assert.match(git(repository, "branch", "--list", "tasks/T-1"), /tasks\/T-1/u);
+});
+
+test("only a listed, uncommitted-changes worktree is dirty; a failed status and other refusals are the plain failure", async () => {
+  const dirty = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing() }, status: { ok: true, stdout: " M a.txt\n" } } });
+  assert.deepEqual(await dirty.worktrees.ensure(place), { ok: false, reason: "dirty" });
+  const unknown = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing() }, status: { ok: false } } });
+  assert.deepEqual(await unknown.worktrees.ensure(place), { ok: false });
+  const wrongBranch = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing("refs/heads/other") }, status: { ok: true, stdout: " M a.txt\n" } } });
+  assert.deepEqual(await wrongBranch.worktrees.ensure(place), { ok: false });
+});
+
+test("locate answers the directory only when it exists and Git lists it on the task branch, asking Git from inside it", async () => {
+  let h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing() } } });
+  assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), directory);
+  assert.deepEqual(h.calls.map((call) => call.args), [["-C", directory, "worktree", "list", "--porcelain"]]);
+  const misses = [
+    { exists: false, answers: { "worktree list": { ok: true, stdout: listing() } } },
+    { exists: true, answers: { "worktree list": { ok: true, stdout: listing("refs/heads/other") } } },
+    { exists: true, answers: { "worktree list": { ok: true, stdout: listing(null) } } },
+    { exists: true, answers: { "worktree list": { ok: true, stdout: `worktree ${repositoryRoot}\nHEAD abc\nbranch refs/heads/main\n\n` } } },
+    { exists: true, answers: { "worktree list": { ok: false } } },
+  ];
+  for (const miss of misses) {
+    h = harness(miss);
+    assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), null);
+  }
+  h = harness({ exists: true });
+  for (const bad of [undefined, {}, { repositoryId: "x", taskId: "T-3" }, { repositoryId, taskId: "../T-3" }, { repositoryId, taskId: "T-0" }]) {
+    assert.equal(await h.worktrees.locate(bad), null);
+  }
+  assert.deepEqual(h.calls, []);
 });

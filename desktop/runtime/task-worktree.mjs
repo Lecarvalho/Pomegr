@@ -90,8 +90,17 @@ export function createTaskWorktrees(options = {}) {
     return status.ok && status.stdout.trim() === "";
   }
 
+  /** `clean`, `dirty`, or `unknown` when Git's status itself failed: a failed status is never known to be dirty. */
+  async function treeState(directory) {
+    const status = await git(directory, ["status", "--porcelain", "--untracked-files=normal"]);
+    if (!status.ok) return "unknown";
+    return status.stdout.trim() === "" ? "clean" : "dirty";
+  }
+
   /**
    * The worktree a task's session runs in: `{ ok: true, directory, created, branchCreated }` or `{ ok: false }`.
+   * `{ ok: false, reason: "dirty" }` is the one distinct failure: Git lists the task's worktree on its branch and
+   * the tree has uncommitted changes. A `git status` that fails is not known to be dirty and stays the plain failure.
    * A new worktree starts at the repository's current commit, on a new `tasks/<task id>` branch or on that branch
    * when it already exists. A worktree left by an earlier start of the task is used again only when Git still
    * lists it on the task branch and its working tree is clean. A directory in the way that is anything else is
@@ -103,7 +112,10 @@ export function createTaskWorktrees(options = {}) {
     try {
       if (directoryExists(at.directory)) {
         const branch = await listed(at);
-        if (branch !== `refs/heads/${at.branch}` || !(await clean(at.directory))) return { ok: false };
+        if (branch !== `refs/heads/${at.branch}`) return { ok: false };
+        const state = await treeState(at.directory);
+        if (state === "dirty") return { ok: false, reason: "dirty" };
+        if (state !== "clean") return { ok: false };
         return { ok: true, directory: at.directory, created: false, branchCreated: false };
       }
       makeDirectory(path.dirname(at.directory));
@@ -136,5 +148,19 @@ export function createTaskWorktrees(options = {}) {
     } catch { return "failed"; }
   }
 
-  return Object.freeze({ ensure, remove });
+  /**
+   * The directory of a task's existing worktree, for desktop main alone, or null. It answers only when the directory
+   * exists and Git, asked from inside it, lists it as a worktree on `tasks/<task id>`; the path never leaves main.
+   */
+  async function locate({ repositoryId, taskId } = {}) {
+    const at = target({ repositoryRoot: root, repositoryId, taskId });
+    if (!at) return null;
+    try {
+      if (!directoryExists(at.directory)) return null;
+      const branch = await listed({ repositoryRoot: at.directory, directory: at.directory });
+      return branch === `refs/heads/${at.branch}` ? at.directory : null;
+    } catch { return null; }
+  }
+
+  return Object.freeze({ ensure, remove, locate });
 }

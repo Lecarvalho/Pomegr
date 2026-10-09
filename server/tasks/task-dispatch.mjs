@@ -14,16 +14,16 @@
 
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { TASK_DISPATCH_UNBOUND_TTL_MS, dispatchStanding, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
-/** An unbound dispatch is live for this long after its mint; a bound one is never read again and never expires. */
-export const TASK_DISPATCH_UNBOUND_TTL_MS = 10 * 60 * 1000;
+export { TASK_DISPATCH_UNBOUND_TTL_MS, dispatchStanding };
+
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
 /** Providers a session can be started on. A task with no provider runs on Claude Code. */
 export const TASK_START_PROVIDERS = Object.freeze(["claude", "codex"]);
-const STORED_DISPATCH = /^([0-9a-f]{64}):(\d{1,16})$/u;
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,128}$/u;
 const CHECK_LABELS = Object.freeze({
   pr_open: "Pull request open",
@@ -51,23 +51,6 @@ export function buildTaskPrompt(task) {
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     "When the task is done, call the Pomegr MCP tool complete_task. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
   ].join("\n");
-}
-
-function parseStoredDispatch(value) {
-  const match = typeof value === "string" ? STORED_DISPATCH.exec(value) : null;
-  return match ? { digest: match[1], mintedAt: Number(match[2]) } : null;
-}
-
-const isLive = (stored, now) => stored !== null && now - stored.mintedAt < TASK_DISPATCH_UNBOUND_TTL_MS && now >= stored.mintedAt;
-
-/**
- * How an unbound dispatch column value stands at `now`: `none` for no value, `live` inside its ten minutes, and `expired`
- * for a value that has run out or that no dispatch could have written. Only the queue reads this, to tell a start that
- * is still waiting for its session from one that never reported back.
- */
-export function dispatchStanding(value, now) {
-  if (value === null || value === undefined) return "none";
-  return isLive(parseStoredDispatch(value), now) ? "live" : "expired";
 }
 
 function taskNumber(payload, keys) {

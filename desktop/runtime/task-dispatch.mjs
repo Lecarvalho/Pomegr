@@ -9,10 +9,13 @@ import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 import { createTaskWorktrees } from "./task-worktree.mjs";
 
+export const TASK_WORKTREE_OPEN_CHANNEL = "pomegr:task-worktree-open";
+export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found", "invalid", "unavailable"]);
+
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
   "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed",
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -215,7 +218,7 @@ export function createTaskStart(options = {}) {
       try { made = worktrees ? await worktrees.ensure(place) : null; } catch { made = null; }
       if (made?.ok !== true || typeof made.directory !== "string" || !path.isAbsolute(made.directory) || /[\u0000\r\n"]/u.test(made.directory)) {
         await abort(repositoryId, taskId, plan.token);
-        return result("failed");
+        return result(made?.ok === false && made.reason === "dirty" ? "worktree_dirty" : "failed");
       }
       directory = made.directory;
     }
@@ -263,8 +266,26 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
 
+  /**
+   * Opens a task's worktree folder in the file manager. The worktree must exist and be listed by Git on the task
+   * branch; nothing in it is touched, and only a fixed status leaves main, never the path or an error.
+   */
+  async function openWorktree(event, repositoryId, taskId) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
+    if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
+    if (disposed || platform !== "win32" || !worktrees?.locate || typeof options.openPath !== "function") return result("unavailable");
+    let directory = null;
+    try { directory = await worktrees.locate({ repositoryId, taskId }); } catch { directory = null; }
+    if (typeof directory !== "string" || !path.isAbsolute(directory)) return result("not_found");
+    try {
+      const failure = await options.openPath(directory);
+      return result(failure === "" ? "opened" : "unavailable");
+    } catch { return result("unavailable"); }
+  }
+
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startQueued, dispose() { disposed = true; } });
+  return Object.freeze({ start, startQueued, openWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -280,6 +301,10 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.start(event, repositoryId, taskId); } catch { return result("failed"); }
   });
+  ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL);
+  ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {
+    try { return await starter.openWorktree(event, repositoryId, taskId); } catch { return result("unavailable"); }
+  });
   runner?.start();
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); runner?.dispose(); starter.dispose?.(); };
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); starter.dispose?.(); };
 }

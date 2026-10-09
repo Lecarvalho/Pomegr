@@ -16,7 +16,8 @@ import {
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "../../../mcp/agent-query-tools.mjs";
-import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
+import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot, readAgentQueryDescriptor } from "../../../shared/agent-query-transport.mjs";
+import { verifyTaskBindingProof } from "../../../plugin-src/task-binding-proof.mjs";
 import { registerTaskTools, TASK_TOOL_INSTRUCTIONS } from "../../../mcp/task-tools.mjs";
 
 const HOOK_SESSION_REF = /^claude:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -140,10 +141,25 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
-  // Only the PreToolUse hook sets session_ref; never fall back to the launch-time session ID.
+  // Only the PreToolUse hook sets session_ref, and the schema cannot tell its value from one the model typed
+  // when hooks are off or time out. So the reference counts only with the hook's proof, keyed by the local
+  // capability token read at call time. Never fall back to the launch-time session ID.
+  const taskDataRoot = options.dataRoot ?? defaultAgentQueryDataRoot();
+  const readBindingToken = options.readBindingToken
+    ?? (async () => (await readAgentQueryDescriptor({ dataRoot: taskDataRoot }))?.token ?? null);
+  const now = options.now ?? Date.now;
   registerTaskTools(server, {
-    resolveSession: (input) => (typeof input?.session_ref === "string" && HOOK_SESSION_REF.test(input.session_ref) ? input.session_ref : null),
-    post: options.taskPost ?? createAgentTaskWriter({ dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot() }),
+    resolveSession: async (input, _extra, tool) => {
+      const ref = input?.session_ref;
+      if (typeof ref !== "string" || !HOOK_SESSION_REF.test(ref) || typeof input.session_proof !== "string") return null;
+      try {
+        const token = await readBindingToken();
+        return verifyTaskBindingProof({ token, tool, sessionRef: ref, proof: input.session_proof, now: now() }) ? ref : null;
+      } catch {
+        return null;
+      }
+    },
+    post: options.taskPost ?? createAgentTaskWriter({ dataRoot: taskDataRoot }),
     hookBound: true,
   });
 

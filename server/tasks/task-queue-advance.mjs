@@ -22,18 +22,15 @@
 // ever touches a running session.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { dispatchStanding } from "./task-dispatch.mjs";
+import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { DEFAULT_TASK_GATE_THRESHOLD, evaluateGates, normalizeGateThreshold, queueGates } from "./task-gates.mjs";
 import { nextQueueStart, previousStepBlocker, queueWhenTurnedOn, queueWindowHold, taskIsDue } from "./task-queue.mjs";
-import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, taskIdFromNumber } from "./task-record.mjs";
+import { isRepositoryId, isTaskId, normalizeQueueSchedule, projectBoard, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 /** The reasons the desktop may report. `session_not_linked` is found here, from an expired dispatch, never reported. */
-export const TASK_QUEUE_PAUSE_REQUEST_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed"]);
+export const TASK_QUEUE_PAUSE_REQUEST_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "worktree_dirty"]);
 /** Starts answered in one call. */
 export const TASK_QUEUE_START_LIMIT = 16;
-
-/** States of a task with a linked session that has not reported: the session is working on it. */
-const IN_FLIGHT_STATES = new Set(["not_queued", "queued", "scheduled"]);
 
 const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
   && Object.keys(payload).length === keys.length && keys.every((key) => Object.hasOwn(payload, key));
@@ -184,7 +181,7 @@ function queueRecord(row, at) {
     state: row.state,
     queuePosition: row.queue_position ?? null,
     due: row.state === "scheduled" && taskIsDue(row.scheduled_at ?? null, at),
-    inFlight: standing === "live" || (linked && IN_FLIGHT_STATES.has(row.state)),
+    inFlight: rowInFlight(row, at),
     unlinked: !linked && standing === "expired",
   };
 }

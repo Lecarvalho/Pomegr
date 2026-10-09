@@ -118,6 +118,11 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
     return ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
   },
+  taskWorktreeOpen(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-worktree-open", repositoryId, taskId);
+  },
   setNativeTheme,
   quit() {
     return ipcRenderer.invoke("pomegr:quit");

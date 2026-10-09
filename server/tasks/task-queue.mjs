@@ -42,8 +42,8 @@ export function queueWindowHold(schedule, at) {
 }
 
 /**
- * `tasks` are `{ id, featureId, step, state, queuePosition, due }` and `features` are `{ id }` in board
- * order. `queuePosition` is the monitor-private integer a task received when it was queued, or null.
+ * `tasks` are `{ id, featureId, step, state, queuePosition, due, inFlight }` and `features` are `{ id }` in board
+ * order. `inFlight` is optional: a task already started (its session linked with no outcome, or a live dispatch) is not in `order`, but stays in its step, so the step is not done. `queuePosition` is the monitor-private integer a task received when it was queued, or null.
  * `due` is true for a `scheduled` task whose own time has come; the caller, which holds the clock, supplies it.
  *
  * Returns `{ order, steps }`:
@@ -77,7 +77,7 @@ export function orderQueue(tasks, features) {
       number,
       featureId: placed ? task.featureId : null,
       step: placed ? task.step : null,
-      queued: task.state === "queued" || (task.state === "scheduled" && task.due === true),
+      queued: task.inFlight !== true && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
       done: task.state === "done",
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
@@ -172,7 +172,8 @@ export function nextQueueStart(input) {
   for (const task of records) if (!byId.has(task.id)) byId.set(task.id, task);
   const stepOf = (id) => steps.find((entry) => entry.taskIds.includes(id)) ?? null;
 
-  const waiting = order.filter((id) => byId.get(id).inFlight !== true);
+  // `orderQueue` already leaves a task in flight out of `order`.
+  const waiting = order;
   if (waiting.length === 0) return null;
   const flying = records.filter((task) => task.inFlight === true);
   const current = stepOf(flying.length > 0 ? flying[0].id : waiting[0]);

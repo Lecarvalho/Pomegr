@@ -16,14 +16,16 @@ import {
 import { doneWhenFromTask, observedModelDiffers, toDoneWhen, type DoneWhenDraft } from "./task-fields";
 import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
 import { useEscapeToClose, useTaskModelOptions } from "./task-panel-hooks";
-import { taskCardTitle, taskChip, taskSessionHref, taskSessionTitle } from "./task-presentation";
+import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskCardTitle, taskChip, taskSessionHref, taskSessionTitle } from "./task-presentation";
 import { useFeatureCreation } from "./use-feature-creation";
 import { useTaskStart } from "./use-task-start";
 
 // Task side panel (design contract D239-D299), opened from a card. It reuses the New task panel's drawer
 // chrome. A select, segment or checkbox saves when it changes; the Task textarea, the own-condition input and
 // a new feature's name save when they lose focus after a change. A task that needs review, is blocked or
-// stalled leads the footer with Mark done and resume queue and Requeue task (D296, D297). The footer also
+// stalled leads the footer with Mark done and resume queue and Requeue task (D296, D297). A task whose linked
+// session has not reported offers Mark done and Requeue task too, as secondary actions with a line that neither
+// stops the session; nothing marks such a task done or stalled by itself. The footer also
 // offers Add to queue (Not queued) or Remove from queue (Queued, Scheduled) before Delete task: the design has no
 // such control, so this is the orchestrator's decision. A task that still waits for a session has a Start at field:
 // its own start time, which makes it Scheduled.
@@ -101,6 +103,8 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const showStart = start.available && !unresolved;
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
   const schedulable = waiting && task.session === null;
+  // A linked task with no report never resolves by itself, so the user can mark it done or requeue it.
+  const awaitingReport = taskAwaitsReport(task);
   const sessionTitle = taskSessionTitle(task);
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
 
@@ -192,7 +196,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
     if (result.ok) onChanged(); else setFailure(add ? QUEUE_ADD_FAILURE_MESSAGE : QUEUE_REMOVE_FAILURE_MESSAGE);
   };
 
-  // Mark done / Requeue: offered only for a task that needs the user, and the monitor decides the rest.
+  // Mark done / Requeue: offered only for a task that needs the user or whose session has not reported, and the monitor decides the rest.
   const resolve = async (done: boolean) => {
     if (resolving) return;
     setResolving(true);
@@ -252,6 +256,11 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
       {showStart && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
       {unresolved && !confirming && <>
         <button type="button" className="commandPrimaryAction" disabled={resolving} onClick={() => void resolve(true)}>Mark done and resume queue</button>
+        <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
+      </>}
+      {awaitingReport && !confirming && <>
+        <span className="newTaskPanelNote">{AWAITING_REPORT_NOTE}</span>
+        <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(true)}>Mark done</button>
         <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>
       </>}
       <span className="newTaskPanelSpacer" aria-hidden="true" />

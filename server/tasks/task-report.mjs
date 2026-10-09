@@ -96,15 +96,23 @@ export function reportBlock({ database, transaction, payload, now }) {
   return stored ? { ok: true, state: "blocked" } : { ok: false, error: "already_reported" };
 }
 
+// A linked task whose session has not reported is in flight: the session could still report, and nothing marks it
+// done or stalled by itself, so it can hold the queue with no exit. The user resolves it like an outcome.
+const awaitingReport = (row) => (row.session_id ?? null) !== null && reportable(row);
+
 function unresolvedTask(database, repositoryId, payload) {
   const input = normalizeQueueTaskPayload(payload);
   if (!input) return { error: "invalid" };
-  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id, report_at FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { error: "not_found" };
-  return UNRESOLVED_STATES.includes(task.state) ? { number: input.number } : { error: "conflict" };
+  return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
 
-/** `resolve_done`: the user accepts a task that needs review, is blocked, or stalled. Its report and session link stay as recorded. */
+/**
+ * `resolve_done`: the user accepts a task that needs review, is blocked, or stalled, or a linked task whose session
+ * has not reported. Its report and session link stay as recorded. It never touches the session: a report that
+ * arrives afterwards is refused, because the task has an outcome.
+ */
 export function resolveDone({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
@@ -116,7 +124,8 @@ export function resolveDone({ database, repositoryId }, payload) {
 
 /**
  * `resolve_requeue`: the user sends the task back to the end of the queue for a new session. The report, the
- * session link, and any dispatch are cleared, so the task can be started and reported on once more.
+ * session link, and any dispatch are cleared, so the task can be started and reported on once more. The same
+ * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped.
  */
 export function resolveRequeue({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);

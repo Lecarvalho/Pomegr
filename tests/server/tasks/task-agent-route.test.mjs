@@ -6,11 +6,16 @@ import path from "node:path";
 import test from "node:test";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { REPOSITORY, createTask, openTemporaryStore, startedTask } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "a".repeat(40);
 const SECRET_TEXT = "AGENT-TASK-TEXT-do-not-leak";
-const SESSIONS = { "claude:known": REPOSITORY_ID, "claude:norepo": null };
+const SESSIONS = {
+  "claude:known": REPOSITORY_ID, "claude:norepo": null,
+  // Committed under the worktree's own identity (or none), but started for a task of REPOSITORY.
+  "claude:worktree": "repo-ffffffffffffffffffffffff", "claude:worktree-norepo": null,
+};
 const headers = { "x-pomegr-agent-authorization": TOKEN, "content-type": "application/json" };
 const ADD = "/api/agent/v1/tasks/add";
 
@@ -195,6 +200,67 @@ test("no other agent write path exists", async (context) => {
   assert.equal(wrong.status, 405);
   assert.equal(wrong.headers.allow, "POST");
   assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 0);
+});
+
+/** A store whose T-1 on REPOSITORY is linked to each given session, as the plugin's session-start hook leaves it. */
+async function linkedStore(context, ...sessions) {
+  const env = await openTemporaryStore(context, "pomegr-agent-link-");
+  for (const [index, session] of sessions.entries()) {
+    createTask(env.store, REPOSITORY, { text: `linked ${index}` });
+    startedTask(env.directory, index + 1, { session });
+  }
+  return env;
+}
+
+const addTo = (port, sessionRef, extra = {}) => send(port, { body: JSON.stringify({ sessionRef, text: "from the worktree", ...extra }) });
+
+test("a session linked to a task adds to the linked task's board, whatever repository it committed under", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree", "claude:worktree-norepo", "claude:uncommitted");
+  const { port } = await start(context, store);
+  // The committed identity of a task worktree differs from the repository whose board holds the task.
+  assert.deepEqual((await addTo(port, "claude:worktree")).json, { schemaVersion: 1, ok: true, taskId: "T-4" });
+  // A committed session with no repository identity, and a linked session the monitor has not committed yet, still add.
+  assert.deepEqual((await addTo(port, "claude:worktree-norepo")).json, { schemaVersion: 1, ok: true, taskId: "T-5" });
+  assert.deepEqual((await addTo(port, "claude:uncommitted")).json, { schemaVersion: 1, ok: true, taskId: "T-6" });
+  assert.deepEqual(store.readBoard(REPOSITORY).tasks.map((task) => task.id), ["T-1", "T-2", "T-3", "T-4", "T-5", "T-6"]);
+  assert.equal(store.readBoard(REPOSITORY).tasks.find((task) => task.id === "T-4").text, "from the worktree");
+  assert.equal(store.readBoard("repo-ffffffffffffffffffffffff").tasks.length, 0);
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 0);
+});
+
+test("a session that is not linked keeps the committed repository, and an unknown one is still not found", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree");
+  const { port } = await start(context, store);
+  assert.equal((await addTo(port, "claude:known")).json.ok, true);
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 1);
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 1);
+  reason(await addTo(port, "claude:norepo"), 409, "repository_unavailable");
+  reason(await addTo(port, "codex:missing"), 404, "session_not_found");
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 1);
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 1);
+});
+
+test("a linked session still cannot name a repository or a path in the body", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree");
+  const { port } = await start(context, store);
+  for (const extra of [{ repositoryId: REPOSITORY_ID }, { repositoryId: REPOSITORY }, { path: "C:\\x" }, { cwd: "." }]) {
+    reason(await addTo(port, "claude:worktree", extra), 400, "invalid");
+  }
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 1);
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 0);
+});
+
+test("a store that cannot read the link leaves the committed identity in charge", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree");
+  const throwing = await start(context, { ...store, sessionTasks() { throw new Error("SECRET-LINK-FAILURE"); } });
+  assert.equal((await addTo(throwing.port, "claude:known")).json.ok, true);
+  // Without the link the worktree's own committed identity is used, as before the link existed.
+  assert.equal((await addTo(throwing.port, "claude:worktree")).json.ok, true);
+  assert.equal(store.readBoard("repo-ffffffffffffffffffffffff").tasks.length, 1);
+  const missing = await start(context, { apply: store.apply, readBoard: store.readBoard });
+  assert.equal((await addTo(missing.port, "claude:known")).json.ok, true);
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 2);
+  assert.equal(store.readBoard(REPOSITORY).tasks.length, 1);
 });
 
 test("the runtime session lookup reads only committed store and catalog facts", async () => {

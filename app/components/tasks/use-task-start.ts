@@ -24,6 +24,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   unavailable: "The session could not be started.",
   failed: "The session could not be started.",
   gate_held: "A start gate holds this task. See Start gates in the Queue view.",
+  worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
 };
 /** A retry cannot succeed after these, or after `started`, for as long as the panel stays open. */
 const FINAL = new Set<TaskStartStatus>(["started", "unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);

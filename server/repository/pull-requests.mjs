@@ -109,11 +109,18 @@ export function normalizeCheckStatus(rollup) {
   return statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "passed";
 }
 
-function recordCheckStatus(url, value) {
+// `checkedAt` is the time of the gh read that produced `value` (a cached read keeps its own time), kept in
+// memory with the status so a consumer can tell how old the fact is. A read older than the status already
+// held does not replace it.
+function recordCheckStatus(url, value, checkedAt) {
   const status = normalizeCheckStatus(value?.[GH_CHECK_FIELD]);
+  const parsed = Date.parse(checkedAt);
+  const readAt = Number.isFinite(parsed) ? parsed : Date.now();
+  const held = checkStatuses.get(url);
+  if (status !== null && held && held.readAt > readAt) return;
   checkStatuses.delete(url);
   if (status === null) return;
-  checkStatuses.set(url, status);
+  checkStatuses.set(url, { status, readAt });
   if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
 }
 
@@ -125,7 +132,19 @@ function recordCheckStatus(url, value) {
  * @returns {"passed" | "failed" | "pending" | "none" | null}
  */
 export function pullRequestCheckStatus(url) {
-  return (typeof url === "string" && checkStatuses.get(url)) || null;
+  return (typeof url === "string" && checkStatuses.get(url)?.status) || null;
+}
+
+/**
+ * The same status together with the time (epoch milliseconds) of the read that established it, or
+ * `null` when no read established one. A memory lookup; for the task done-when rule only.
+ *
+ * @param {unknown} url
+ * @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null}
+ */
+export function pullRequestCheckRead(url) {
+  const held = typeof url === "string" ? checkStatuses.get(url) : undefined;
+  return held ? { status: held.status, readAt: held.readAt } : null;
 }
 
 // Ask for the check field with the metadata; when that read fails, the metadata alone, so a gh that
@@ -225,7 +244,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
     const item = normalizePullRequest(result.loaded || {}, "session", url);
     if (!item) continue;
     itemsByUrl.set(item.url, item);
-    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded);
+    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded, result.checkedAt);
   }
   if (branchValues !== null) {
     queried = true;
@@ -234,7 +253,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
       const item = normalizePullRequest(value, "branch");
       if (!item) continue;
       if (!itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
-      recordCheckStatus(item.url, value);
+      recordCheckStatus(item.url, value, branchResult.checkedAt);
     }
   }
 

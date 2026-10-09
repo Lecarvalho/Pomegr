@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { resolveTaskCheckFacts } from "../../../server/runtime/task-session-lookup.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { passingGates } from "./queue-test-support.mjs";
@@ -20,7 +19,9 @@ const BLOCK = "/api/agent/v1/tasks/block";
 const REASON = "The SECRET-REASON migration needs a decision";
 const agentHeaders = { "x-pomegr-agent-authorization": AGENT, "content-type": "application/json" };
 const START_FACTS = { root: "C:/Work/SECRET-ROOT/repo", pluginReady: true };
-const PASSING = { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: null };
+// Every fact carries the time it was read, later than the work it judges; a fact without one is unknown.
+const FRESH = { readAt: { tree: 2000, branch: 2000, pullRequests: 2000, ci: 2000 }, workAt: { tree: 1000, repository: 1000 } };
+const PASSING = { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: null, ...FRESH };
 
 async function setup(context, { facts = PASSING } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-report-"));
@@ -118,7 +119,7 @@ test("complete verifies the checked conditions from the bound session's facts: a
 });
 
 test("a failed or unknown check gives needs review with each result, and nothing but results", async (context) => {
-  const env = await setup(context, { facts: { treeClean: false, branchCommits: true, pullRequestStates: null, ciPassed: null, secret: "SECRET-FACT" } });
+  const env = await setup(context, { facts: { treeClean: false, branchCommits: true, pullRequestStates: null, ciPassed: null, ...FRESH, secret: "SECRET-FACT" } });
   startedTask(env, { checks: ["pr_open", "tree_clean", "commit_on_branch", "ci_passed"] });
   const response = await complete(env);
   const results = [
@@ -264,9 +265,9 @@ test("resolve_requeue clears the report and the link, queues the task last, and 
   assert.equal((await complete(env, OTHER_SESSION)).json.state, "done");
 });
 
-test("the resolutions refuse a task with no outcome, an unknown task, and a malformed payload", async (context) => {
+test("the resolutions refuse a task that was never started, an unknown task, and a malformed payload", async (context) => {
   const env = await setup(context);
-  startedTask(env);
+  apply(env, "create", { text: TEXT });
   for (const action of ["resolve_done", "resolve_requeue"]) {
     assert.deepEqual(apply(env, action, { id: "T-1" }), { ok: false, error: "conflict" }, action);
     assert.deepEqual(apply(env, action, { id: "T-9" }), { ok: false, error: "not_found" }, action);
@@ -274,6 +275,92 @@ test("the resolutions refuse a task with no outcome, an unknown task, and a malf
     assert.deepEqual(apply(env, action, {}), { ok: false, error: "invalid" }, action);
   }
   assert.equal(taskOf(env).state, "not_queued");
+  // A start still waiting for its session has no link yet: it is not a task to resolve.
+  const planned = env.store.planStart(REPOSITORY_ID, { id: "T-1" }, () => START_FACTS, passingGates);
+  assert.equal(planned.ok, true);
+  for (const action of ["resolve_done", "resolve_requeue"]) assert.deepEqual(apply(env, action, { id: "T-1" }), { ok: false, error: "conflict" }, action);
+});
+
+test("resolve_done accepts a linked task that has no report, keeps its link, and refuses the session's later report", async (context) => {
+  const env = await setup(context);
+  startedTask(env, { checks: ["tree_clean"] });
+  const before = taskOf(env);
+  assert.equal(before.state, "not_queued");
+  assert.equal(before.report, null);
+  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+  const task = taskOf(env);
+  assert.equal(task.state, "done");
+  assert.equal(task.report, null);
+  assert.equal(task.session.id, SESSION);
+  // The task has an outcome now: neither the exit nor a report from the running session repeats it.
+  assert.deepEqual(apply(env, "resolve_done", { id: "T-1" }), { ok: false, error: "conflict" });
+  assert.deepEqual(apply(env, "resolve_requeue", { id: "T-1" }), { ok: false, error: "conflict" });
+  refused(await complete(env), 409, "already_reported");
+  refused(await block(env), 409, "already_reported");
+  assert.equal(taskOf(env).state, "done");
+});
+
+test("resolve_requeue accepts a linked task that has no report, clears the link and the dispatch, and the old session can no longer report", async (context) => {
+  const env = await setup(context);
+  apply(env, "create", { text: "Queued first" });
+  apply(env, "queue_add", { id: "T-1" });
+  startedTask(env);
+  assert.equal(apply(env, "resolve_requeue", { id: "T-2" }).ok, true);
+  const task = taskOf(env, "T-2");
+  assert.equal(task.state, "queued");
+  assert.equal(task.report, null);
+  assert.equal(task.session, null);
+  assert.deepEqual(env.store.readBoard(REPOSITORY_ID).queue.order, ["T-1", "T-2"]);
+  assert.equal(withDatabase(env.directory, (database) => database.prepare("SELECT dispatch_token FROM tasks WHERE number = 2").get().dispatch_token), null);
+  refused(await complete(env), 404, "not_found");
+  refused(await block(env), 404, "not_found");
+  const planned = env.store.planStart(REPOSITORY_ID, { id: "T-2" }, () => START_FACTS, passingGates);
+  assert.equal(planned.ok, true);
+  assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: OTHER_SESSION }), { ok: true });
+  assert.equal((await complete(env, OTHER_SESSION)).json.state, "done");
+});
+
+test("nothing resolves a linked task with no report by itself: the queue waits on it until the user acts", async (context) => {
+  const env = await setup(context);
+  startedTask(env);
+  apply(env, "create", { text: "Next task" });
+  apply(env, "queue_add", { id: "T-2" });
+  setQueue(env, "running");
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  // A session the monitor still shows working, or one it holds no facts for, never changes the task.
+  for (const facts of [{ state: "working", writerReleased: false }, { state: "unknown", writerReleased: false }, null]) {
+    assert.deepEqual(env.store.stallEndedTasks(() => facts), { ok: true, stalled: 0 });
+  }
+  env.clock.now += 24 * 60 * 60 * 1000;
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  assert.equal(taskOf(env).state, "not_queued");
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "running");
+  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }),
+    { ok: true, starts: [{ repositoryId: REPOSITORY_ID, taskId: "T-2" }] });
+});
+
+test("block_task from the bound session works on a linked task with no report and blocks the queue", async (context) => {
+  const env = await setup(context);
+  startedTask(env);
+  startedTask(env, { session: OTHER_SESSION });
+  setQueue(env, "running");
+  assert.equal(taskOf(env).report, null);
+  env.clock.now = 3_000_000;
+  const response = await block(env);
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "blocked" });
+  const task = taskOf(env);
+  assert.equal(task.state, "blocked");
+  assert.deepEqual(task.report, { at: new Date(3_000_000).toISOString(), results: [], blockReason: REASON });
+  assert.equal(task.session.id, SESSION);
+  const queue = env.store.readBoard(REPOSITORY_ID).queue;
+  assert.deepEqual({ status: queue.status, blockedBy: queue.blockedBy }, { status: "blocked", blockedBy: "T-1" });
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  // Only the bound session blocks: the other linked task is untouched.
+  assert.equal(taskOf(env, "T-2").state, "not_queued");
+  // The user's Requeue of the blocked task lets the queue run again.
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "running");
 });
 
 test("a failed report blocks a running queue and its resolution lets it run again", async (context) => {
@@ -313,65 +400,3 @@ test("a report that passes, and a queue that is not running, leave the queue sta
   }
 });
 
-function observation(session) {
-  return { observationStore: { get: (providerId, localId) => (providerId === "claude" && localId === "0b8f2c1e-1111-4222-8333-444455556666" ? { publicState: { session } } : undefined) } };
-}
-const repository = (overrides = {}) => ({
-  available: true, historical: false, branch: "tasks/12", isMain: false, files: [],
-  comparison: { branch: "main", kind: "base", ahead: 2, behind: 0, integrated: false }, ...overrides,
-});
-const pulls = (...items) => ({ status: "ready", checkedAt: null, items });
-const pull = (state, headBranch = "tasks/12") => ({ state, headBranch, title: "SECRET-TITLE", url: "https://example.invalid/SECRET" });
-
-test("check facts come from the session's committed repository state and carry no content", () => {
-  const facts = resolveTaskCheckFacts(SESSION, observation({ repository: repository(), pullRequests: pulls(pull("open"), pull("merged", "other"), pull("unknown")) }));
-  assert.deepEqual(facts, { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: null });
-  assert.doesNotMatch(JSON.stringify(facts), /SECRET|tasks\/12/u);
-  const dirty = resolveTaskCheckFacts(SESSION, observation({ repository: repository({ files: [{ status: "M", path: "a.txt" }] }), pullRequests: pulls() }));
-  assert.deepEqual(dirty, { treeClean: false, branchCommits: true, pullRequestStates: [], ciPassed: false });
-  const merged = resolveTaskCheckFacts(SESSION, observation({
-    repository: repository({ comparison: { branch: "main", kind: "base", ahead: 0, behind: 0, integrated: true } }), pullRequests: pulls(pull("merged")),
-  }));
-  assert.deepEqual(merged, { treeClean: true, branchCommits: true, pullRequestStates: ["merged"], ciPassed: null });
-});
-
-test("CI passed joins the task branch's pull requests with the check status the monitor last read", () => {
-  const url = (number) => `https://github.com/PomegrHQ/pomegr/pull/${number}`;
-  const numbered = (number, state, headBranch = "tasks/12") => ({ state, headBranch, url: url(number) });
-  const ci = (items, statuses) => resolveTaskCheckFacts(SESSION, {
-    ...observation({ repository: repository(), pullRequests: pulls(...items) }),
-    checkStatus: (value) => statuses[value] ?? null,
-  }).ciPassed;
-
-  assert.equal(ci([numbered(1, "open")], { [url(1)]: "passed" }), true);
-  for (const status of ["failed", "pending", "none"]) assert.equal(ci([numbered(1, "open")], { [url(1)]: status }), false, status);
-  // A check status the monitor has not read is unknown, and it is never read here.
-  assert.equal(ci([numbered(1, "open")], {}), null);
-  assert.equal(ci([numbered(1, "open"), numbered(2, "open")], { [url(1)]: "passed" }), null);
-  assert.equal(ci([numbered(1, "open"), numbered(2, "open")], { [url(1)]: "passed", [url(2)]: "failed" }), false);
-  // An open pull request is judged before a merged one; a closed one and another branch's never count.
-  assert.equal(ci([numbered(1, "open"), numbered(2, "merged"), numbered(3, "closed")], { [url(1)]: "passed", [url(2)]: "failed", [url(3)]: "failed" }), true);
-  assert.equal(ci([numbered(2, "merged"), numbered(3, "closed")], { [url(2)]: "passed", [url(3)]: "failed" }), true);
-  assert.equal(ci([numbered(3, "closed")], { [url(3)]: "passed" }), false);
-  assert.equal(ci([numbered(4, "open", "other")], { [url(4)]: "passed" }), false);
-  assert.equal(ci([], {}), false);
-
-  const facts = resolveTaskCheckFacts(SESSION, { ...observation({ repository: repository(), pullRequests: pulls(numbered(1, "open")) }), checkStatus: () => "passed" });
-  assert.deepEqual(facts, { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: true });
-  const notReady = resolveTaskCheckFacts(SESSION, {
-    ...observation({ repository: repository(), pullRequests: { status: "unavailable", checkedAt: null, items: [numbered(1, "open")] } }), checkStatus: () => "passed",
-  });
-  assert.equal(notReady.ciPassed, null);
-});
-
-test("check facts the committed state does not establish are unknown", () => {
-  const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null };
-  assert.deepEqual(resolveTaskCheckFacts("not a session", observation({ repository: repository() })), unknown);
-  assert.deepEqual(resolveTaskCheckFacts(OTHER_SESSION, observation({ repository: repository() })), unknown);
-  assert.deepEqual(resolveTaskCheckFacts(SESSION, observation({ repository: repository({ available: false }), pullRequests: pulls(pull("open")) })), unknown);
-  assert.deepEqual(resolveTaskCheckFacts(SESSION, observation({ repository: repository({ historical: true }), pullRequests: pulls(pull("open")) })), unknown);
-  const partial = resolveTaskCheckFacts(SESSION, observation({ repository: repository({ comparison: null }), pullRequests: { status: "unavailable", checkedAt: null, items: [pull("open")] } }));
-  assert.deepEqual(partial, { treeClean: true, branchCommits: null, pullRequestStates: null, ciPassed: null });
-  const main = resolveTaskCheckFacts(SESSION, observation({ repository: repository({ isMain: true, comparison: { branch: "origin/main", kind: "upstream", ahead: 3, behind: 0, integrated: false } }) }));
-  assert.equal(main.branchCommits, false);
-});

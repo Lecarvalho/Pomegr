@@ -5,7 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createTaskLookups } from "../../../server/runtime/task-start-lookup.mjs";
-import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { resolveTaskCheckFacts, resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { verifyChecks } from "../../../server/tasks/task-checks.mjs";
+import { TASK_CHECKS } from "../../../server/tasks/task-record.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { TASK_SESSION_STATES, TASK_SESSION_TITLE_LENGTH, fillTaskSessions } from "../../../server/tasks/task-board.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
@@ -284,4 +286,114 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
   assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
   assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
+});
+
+// The done-when check facts carry the time each was read and the time of the work that could have changed it.
+const iso = (milliseconds) => new Date(milliseconds).toISOString();
+const checkRepository = (overrides = {}) => ({
+  available: true, historical: false, branch: "tasks/12", isMain: false, files: [],
+  comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false },
+  remote: { status: "ready", checkedAt: iso(5_000) }, ...overrides,
+});
+const pullUrl = (number) => `https://github.com/PomegrHQ/pomegr/pull/${number}`;
+const openPull = (number = 1, state = "open") => ({ state, headBranch: "tasks/12", url: pullUrl(number) });
+const task = (workKind, finishedAt, status = "completed") => ({ id: `tool-${workKind}`, workKind, status, finishedAt });
+const checkSession = (overrides = {}) => ({
+  repository: checkRepository(), pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull()] }, ...overrides,
+});
+const checkState = (overrides = {}) => ({ session: checkSession(), executionTasks: [], agents: [], activity: { items: [], total: 0 }, ...overrides });
+const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_000 } : null);
+const checkFacts = (publicState, options = {}) => resolveTaskCheckFacts(SESSION, { observationStore: storeWith(publicState), checkRead: passedRead, ...options });
+
+test("each check fact carries the time it was read, from committed memory alone", () => {
+  // The pull-request block's own check time, the remote comparison's refresh time, the oldest judged check read, and no tree read.
+  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: 5_000, pullRequests: 6_000, ci: 7_000 });
+
+  const stamped = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(9_000) }) }) });
+  assert.deepEqual(checkFacts(stamped).readAt, { tree: 9_000, branch: 9_000, pullRequests: 6_000, ci: 7_000 });
+
+  // Without a ready remote refresh the comparison has no read time, and a malformed time is no time.
+  for (const remote of [{ status: "checking", checkedAt: iso(5_000) }, { status: "ready", checkedAt: null }, { status: "ready", checkedAt: "soon" }, undefined]) {
+    const state = checkState({ session: checkSession({ repository: checkRepository({ remote }) }) });
+    assert.equal(checkFacts(state).readAt.branch, null, JSON.stringify(remote));
+  }
+  for (const checkedAt of [null, undefined, "yesterday", 6_000]) {
+    const state = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt, items: [openPull()] } }) });
+    assert.equal(checkFacts(state).readAt.pullRequests, null, String(checkedAt));
+  }
+
+  // CI uses the oldest read among the judged pull requests, and an unread or undated one makes it unknown.
+  const two = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull(1), openPull(2)] } }) });
+  const reads = { [pullUrl(1)]: { status: "passed", readAt: 7_000 }, [pullUrl(2)]: { status: "passed", readAt: 4_000 } };
+  const oldest = checkFacts(two, { checkRead: (url) => reads[url] ?? null });
+  assert.deepEqual([oldest.ciPassed, oldest.readAt.ci], [true, 4_000]);
+  const unread = checkFacts(two, { checkRead: (url) => (url === pullUrl(1) ? reads[url] : null) });
+  assert.deepEqual([unread.ciPassed, unread.readAt.ci], [null, null]);
+  const undated = checkFacts(two, { checkRead: () => ({ status: "passed", readAt: Number.NaN }) });
+  assert.deepEqual([undated.ciPassed, undated.readAt.ci], [null, null]);
+  // No judged pull request is a known "not passed" that rests on no read.
+  const none = checkFacts(checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [] } }) }));
+  assert.deepEqual([none.ciPassed, none.readAt.ci], [false, null]);
+});
+
+test("the work times are the latest end of the session's finished commands and recorded file changes", () => {
+  const workAt = (publicState) => checkFacts(publicState).workAt;
+  assert.deepEqual(workAt(checkState()), { tree: null, repository: null });
+
+  // Git, push, and pull-request commands move the repository work; any command moves the tree work.
+  const tasks = [task("test", iso(3_000)), task("git", iso(1_000)), task("git_push", iso(2_000)), task("pull_request", iso(1_500)), task("shell", iso(2_500))];
+  assert.deepEqual(workAt(checkState({ executionTasks: tasks })), { tree: 3_000, repository: 2_000 });
+  assert.deepEqual(workAt(checkState({ executionTasks: [task("test", iso(3_000))] })), { tree: 3_000, repository: null });
+
+  // A subagent's commands count, and so does a recorded file change; a read does not.
+  const subagent = { id: "agent-2", executionTasks: [task("git", iso(8_000))] };
+  assert.deepEqual(workAt(checkState({ agents: [subagent] })), { tree: 8_000, repository: 8_000 });
+  const feed = (...entries) => ({ items: entries.map(([workKind, time]) => ({ workKind, timestamp: iso(time) })), total: entries.length });
+  assert.deepEqual(workAt(checkState({ activity: feed(["write", 4_000], ["read", 9_000], ["write", 3_500]) })), { tree: 4_000, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: feed(["read", 9_000]) })), { tree: null, repository: null });
+
+  // A command still running, or finished at no known time, is work that is not over.
+  const never = Number.POSITIVE_INFINITY;
+  for (const open of [task("git", null, "running"), task("git", iso(1_000), "running"), task("git", null), task("git", "later")]) {
+    assert.deepEqual(workAt(checkState({ executionTasks: [task("git", iso(2_000)), open] })), { tree: never, repository: never });
+  }
+  // A running command of another kind leaves the repository work alone but not the tree.
+  assert.deepEqual(workAt(checkState({ executionTasks: [task("test", null, "running")] })), { tree: never, repository: null });
+
+  // A truncated activity feed that shows no file change bounds the newest one by its oldest item.
+  const truncated = { ...feed(["read", 6_000], ["read", 7_000]), total: 500 };
+  assert.deepEqual(workAt(checkState({ activity: truncated })), { tree: 6_000, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: { items: [], total: 500 } })), { tree: never, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: { ...feed(["write", 4_000]), total: 500 } })), { tree: 4_000, repository: null });
+  // Malformed entries never throw.
+  assert.deepEqual(workAt(checkState({ executionTasks: [null, "x", 7], agents: [null, { executionTasks: "x" }], activity: { items: [null, 1] } })), { tree: null, repository: null });
+});
+
+test("a check judges a fact only when it was read after the work it judges", () => {
+  const passes = (publicState) => Object.fromEntries(verifyChecks(TASK_CHECKS, checkFacts(publicState)).map((result) => [result.check, result.passed]));
+  const stamped = (readAt, extra = {}) => checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(readAt) }) }), ...extra });
+  const all = { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: true };
+
+  assert.deepEqual(passes(stamped(9_000)), all);
+  // The tree has no read time of its own until the repository producer stamps one, so it is unknown.
+  assert.deepEqual(passes(checkState()), { ...all, tree_clean: false });
+  // A push that ended after the pull requests (6000) and the check status (7000) were read, but before the
+  // comparison (9000) was, leaves only the first two unknown.
+  const afterReads = { pr_open: false, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: false };
+  assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(7_500))] })), afterReads);
+  assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(4_000))] })), all);
+  // Any command after the tree was read, or a command still running, leaves the tree unknown.
+  assert.equal(passes(stamped(9_000, { executionTasks: [task("shell", iso(9_001))] })).tree_clean, false);
+  assert.equal(passes(stamped(9_000, { executionTasks: [task("test", null, "running")] })).tree_clean, false);
+  assert.equal(passes(stamped(9_000, { activity: { items: [{ workKind: "write", timestamp: iso(9_500) }], total: 1 } })).tree_clean, false);
+  assert.equal(passes(stamped(9_000, { activity: { items: [{ workKind: "write", timestamp: iso(8_500) }], total: 1 } })).tree_clean, true);
+});
+
+test("check facts are unknown, with no times, when the committed state does not establish them", () => {
+  const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
+    readAt: { tree: null, branch: null, pullRequests: null, ci: null }, workAt: { tree: null, repository: null } };
+  assert.deepEqual(resolveTaskCheckFacts("not a session", { observationStore: storeWith(checkState()) }), unknown);
+  assert.deepEqual(resolveTaskCheckFacts("claude:other", { observationStore: storeWith(checkState()) }), unknown);
+  assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ historical: true }) } })), unknown);
+  assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ available: false }) } })), unknown);
 });

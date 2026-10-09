@@ -716,6 +716,7 @@ async function startDesktop() {
           authorizationToken,
           environment: providerEnvironment,
           worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          openPath: (directory) => shell.openPath(directory),
           confirm: async ({ taskId }) => {
             if (!mainWindow || mainWindow.isDestroyed()) return false;
             const answer = await dialog.showMessageBox(mainWindow, {

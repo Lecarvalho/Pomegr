@@ -19,9 +19,10 @@ export type TaskBoardReadiness = "ready" | "loading" | "unavailable" | "desktop_
 export type TaskQueueStatus = "idle" | "running" | "blocked" | "paused";
 /**
  * Why a queue is paused: a start the queue made did not succeed. `session_not_linked` is a started terminal
- * whose session never reported back in time. A fixed value only; it never carries a path, command, or error text.
+ * whose session never reported back in time. `worktree_dirty` is a requeued parallel task whose own worktree has
+ * uncommitted changes, which Pomegr never removes. A fixed value only; it never carries a path, command, or error text.
  */
-export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked";
+export type TaskQueuePauseReason = "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty";
 /** Fixed error of a mutation that changed nothing. */
 export type TaskActionError = "invalid" | "not_found" | "limit" | "conflict" | "unsupported";
 
@@ -141,7 +142,7 @@ export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "sched
 export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 export const TASK_EFFORTS: readonly TaskEffort[] = ["low", "medium", "high", "xhigh"];
 export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running", "blocked", "paused"];
-export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"];
+export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"];
 export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
 export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
 export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown", "before_queue_start", "after_queue_stop"];

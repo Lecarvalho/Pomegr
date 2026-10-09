@@ -139,3 +139,14 @@ test("the rule changes nothing it is given and holds only IDs and fixed fields",
   assert.deepEqual(Object.keys(result.steps[0]).sort(), ["done", "featureId", "step", "taskIds"]);
   assert.equal(JSON.stringify(result).includes("never copied"), false);
 });
+
+test("a task in flight is not in the order but stays in its step, so the step is not done", () => {
+  const tasks = [queued(1, { featureId: A, step: 1, inFlight: true }), queued(2, { featureId: A, step: 1 }), queued(3, { featureId: A, step: 2 }), queued(4, { inFlight: true }), queued(5)];
+  const { order, steps } = orderQueue(tasks, FEATURES);
+  assert.deepEqual(order, ["T-2", "T-3", "T-5"]);
+  assert.deepEqual(steps, [
+    { featureId: A, step: 1, taskIds: ["T-1", "T-2"], done: false },
+    { featureId: A, step: 2, taskIds: ["T-3"], done: false },
+  ]);
+  assert.deepEqual(orderQueue([task(1, { state: "scheduled", due: true, inFlight: true })], []).order, []);
+});
