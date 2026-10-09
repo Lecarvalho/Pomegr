@@ -7,7 +7,7 @@ import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mj
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
-import { TASK_ACTION_PATH_PREFIX, serveTaskActionRoute, serveTaskRoute } from "./task-routes.mjs";
+import { AGENT_TASK_ADD_PATH, TASK_ACTION_PATH_PREFIX, serveAgentTaskAddRoute, serveTaskActionRoute, serveTaskRoute } from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -101,6 +101,19 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
+      // The one agent write path; every other agent route stays GET-only.
+      if (requestUrl.pathname === AGENT_TASK_ADD_PATH) {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+        await serveAgentTaskAddRoute({
+          request, response, requestUrl, taskStore,
+          resolveSession: typeof runtime.resolveTaskSession === "function" ? (ref) => runtime.resolveTaskSession(ref) : null,
+        });
+        return;
+      }
       if (request.method !== "GET") {
         response.writeHead(405, { Allow: "GET" });
         response.end();

@@ -2,6 +2,8 @@
 
 Pomegr is a local-first, read-only observer for coding-agent sessions. This plugin loads a repository-owned reporting policy, lets Claude Code report bounded project-specific signals, and exposes read-only queries over normalized observations already committed by the local Pomegr monitor.
 
+`add_task` adds a task to the current repository's Pomegr board, in the first column, not queued; it does not start anything.
+
 The plugin does not send transcript contents, source code, prompts, responses, commands, tool output, or provider credentials to Pomegr. Reporting remains opt-in per repository through `.pomegr/signals.md`, and query tools fail closed when the local observer is unavailable. Read-only queries connect only to the loopback Pomegr process and use its short-lived local capability; that capability is not an account credential and never leaves the computer.
 
 ## Get started

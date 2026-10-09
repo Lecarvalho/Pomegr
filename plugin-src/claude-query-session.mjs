@@ -6,6 +6,11 @@ import { pathToFileURL } from "node:url";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
+const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task)$/u;
+const WRITE_FIELDS = {
+  add_task: ["text", "provider", "model", "effort", "done_when", "own_condition", "feature"],
+};
+const WRITE_DENIED = "Pomegr could not bind this task to the current session, so it was not added.";
 const SELF_GRANTED = "get_agent_context";
 const FIELDS = {
   get_session_report: ["session_ref"],
@@ -29,14 +34,36 @@ function currentSessionId(transcriptPath) {
     && path.basename(directory) === "subagents" && UUID.test(owner) ? owner : null;
 }
 
+/**
+ * Write tools never honor a model-supplied selector. The binding is the host's
+ * current transcript, or the call is denied. No permission decision is allowed
+ * here, so the host still asks the user as it normally would for a write.
+ */
+function bindWriteTool(payload, name) {
+  const deny = { hookSpecificOutput: {
+    hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED,
+  } };
+  const input = payload.tool_input;
+  if (!input || typeof input !== "object" || Array.isArray(input)
+    || Object.keys(input).some((key) => !WRITE_FIELDS[name].includes(key))) return deny;
+  const id = currentSessionId(payload.transcript_path);
+  if (!id) return deny;
+  return { hookSpecificOutput: {
+    hookEventName: "PreToolUse",
+    updatedInput: { ...input, session_ref: `claude:${id}` },
+  } };
+}
+
 export function bindClaudeQuerySession(payload) {
   if (payload?.hook_event_name !== "PreToolUse") return null;
+  const write = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
+  if (write) return bindWriteTool(payload, write[1]);
   const match = typeof payload.tool_name === "string" ? TOOL.exec(payload.tool_name) : null;
   if (!match) return null;
   const input = payload.tool_input;
   if (!input || typeof input !== "object" || Array.isArray(input)
     || Object.keys(input).some((key) => !FIELDS[match[1]].includes(key))) return null;
-  // Explicit historical/delegated selectors still go through MCP schema validation.
+  // Explicit historical/delegated selectors still go through MCP schema validation (reads only).
   if (Object.hasOwn(input, "session_ref")) return null;
   const id = currentSessionId(payload.transcript_path);
   if (!id) return null;

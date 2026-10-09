@@ -16,8 +16,10 @@ import {
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "../../../mcp/agent-query-tools.mjs";
-import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
+import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
+import { registerTaskTools, TASK_TOOL_INSTRUCTIONS } from "../../../mcp/task-tools.mjs";
 
+const HOOK_SESSION_REF = /^claude:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const reportingAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const titleAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const label = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
@@ -60,7 +62,7 @@ function rejected(text) {
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
     { name: "pomegr", version: "0.8.3" },
-    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
+    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS + " " + TASK_TOOL_INSTRUCTIONS },
   );
 
   server.registerTool("report_agent_signal", {
@@ -138,6 +140,12 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
+  // Only the PreToolUse hook sets session_ref; never fall back to the launch-time session ID.
+  registerTaskTools(server, {
+    resolveSession: (input) => (typeof input?.session_ref === "string" && HOOK_SESSION_REF.test(input.session_ref) ? input.session_ref : null),
+    post: options.taskPost ?? createAgentTaskWriter({ dataRoot: options.dataRoot ?? defaultAgentQueryDataRoot() }),
+    hookBound: true,
+  });
 
   return server;
 }
