@@ -44,6 +44,7 @@ function recordingStore(inner, overrides = {}) {
 }
 
 function untouchedRuntime() {
+  // The handler asks once, when it is built, whether the runtime has the start-gate lookup; nothing else is read.
   const touched = [];
   return { runtime: new Proxy({}, { get(_object, property) { touched.push(String(property)); return undefined; } }), touched };
 }
@@ -103,7 +104,7 @@ test("an authorized create answers the new board, no-store JSON, without reachin
   assert.equal(response.json.board.repositoryId, REPOSITORY_ID);
   assert.deepEqual(response.json.board.tasks.map((task) => [task.id, task.text, task.state]), [["T-1", SECRET_TEXT, "not_queued"]]);
   assert.deepEqual({ ...store.readBoard(REPOSITORY_ID), runModels: { codex: [] } }, response.json.board);
-  assert.deepEqual(touched, []);
+  assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 });
 
 test("update, delete, and not_found travel through the route with fixed statuses", async (context) => {
@@ -152,7 +153,7 @@ test("move and the column actions travel through the route with the store's fixe
   const deleted = await action("column_delete", REPOSITORY_ID, { id: blocked.id }, { port });
   assert.equal(deleted.status, 200);
   assert.equal(deleted.json.board.columns.length, 5);
-  assert.deepEqual(touched, []);
+  assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 
   assertFixedError(await action("column_delete", REPOSITORY_ID, { id: backlog.id }, { port }), 409, "conflict");
   assertFixedError(await action("move", REPOSITORY_ID, { id: "T-9", columnId: ready.id, position: 0 }, { port }), 404, "not_found");
@@ -204,7 +205,7 @@ test("queue_add, queue_reorder, and queue_remove travel through the route with t
   assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 0 }, { port }), 400, "invalid");
   assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-3", step: 1 }, { port }), 409, "conflict");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 400, "invalid");
-  assert.deepEqual(touched, []);
+  assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 });
 
 test("every listed action has a handler, so none answers the fixed unsupported result", async (context) => {

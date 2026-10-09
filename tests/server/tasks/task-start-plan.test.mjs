@@ -10,6 +10,7 @@ import { createRequestHandler } from "../../../server/serving/request-handler.mj
 import { TASK_DISPATCH_UNBOUND_TTL_MS, TASK_PROMPT_OPENING, buildTaskPrompt } from "../../../server/tasks/task-dispatch.mjs";
 import { TASK_ACTIONS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { GATE_FACTS } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "d".repeat(40);
@@ -17,13 +18,16 @@ const ROOT = "C:\\Work\\SECRET-ROOT\\repo";
 const TEXT = "Fix the SECRET-TASK-TEXT flaky test";
 const headers = { "x-pomegr-desktop-authorization": TOKEN, "content-type": "application/json" };
 
-async function setup(context, { facts = { root: ROOT, pluginReady: true } } = {}) {
+async function setup(context, { facts = { root: ROOT, pluginReady: true }, gateFacts = GATE_FACTS } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-start-"));
   const clock = { now: 1_000_000 };
   const store = openTaskStore({ directory, now: () => clock.now });
   const lookups = [];
   const providers = [];
-  const runtime = { resolveTaskStart(id, provider) { lookups.push(id); providers.push(provider); return typeof facts === "function" ? facts() : facts; } };
+  const runtime = {
+    resolveTaskStart(id, provider) { lookups.push(id); providers.push(provider); return typeof facts === "function" ? facts() : facts; },
+    resolveTaskGateFacts: () => (typeof gateFacts === "function" ? gateFacts() : gateFacts),
+  };
   const server = http.createServer(createRequestHandler({ runtime, taskStore: store, authorizationToken: TOKEN }));
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
   context.after(async () => {

@@ -462,6 +462,18 @@ the repository and setup state, and the breadcrumb marks the current page.
 Legacy repository query links redirect to the Context inventory tab. Setup
 mutations require native confirmation, with browser clients receiving setup
 instructions.
+The Queue view puts a **Start gates** panel in a right column (`.taskQueueAside`,
+`flex: 1 1 280px`, at most 360px, wrapping under the queue when narrow): the
+heading, one caption, and a definition list of five rows with the label left and
+the reading right. A reading is green when the gate passes, error when it holds,
+and muted when it is unknown or no task is queued; the two capacity readings are
+mono and print only the percentages the board sent. Below the rows the **Do not
+start above** field is a `CommandSelect` with the three fixed thresholds in the
+desktop app and plain text in a browser. The Board view shows the same two
+capacity readings in a one-line **Start gates** strip above the feature filter.
+The next queued task's card adds one muted **Waiting:** line while a gate holds
+it and the queue is on. All three are local to the Tasks tab and use the
+`taskGate*` classes in `app/styles/tasks.css`.
 
 ### File tree and file history panel
 

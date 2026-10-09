@@ -1,8 +1,9 @@
 "use client";
 
 import { useId } from "react";
-import type { Task } from "../../../shared/task-contract";
+import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { QueueTaskCard } from "./QueueTaskCard";
+import { waitingLine } from "./task-gates-model";
 import { isMovableQueueTask, moveChoices, stepModeLabel, type QueueFeature } from "./task-queue-model";
 import { dropKey, type QueueDropHandlers, type useQueueDrag } from "./use-queue-drag";
 
@@ -14,10 +15,12 @@ const NEW_STEP_TEXT = "Drop a queued task here to add a step at the end";
 type Drag = ReturnType<typeof useQueueDrag>;
 
 /** One unfinished feature: its progress, its steps in order, the new-step drop zone and the note (D117-D146). */
-export function QueueFeaturePanel({ panel, nextId, onOpenTask, drag, onMove }: {
+export function QueueFeaturePanel({ panel, nextId, queue, onOpenTask, drag, onMove }: {
   panel: QueueFeature;
   /** The task listed first in `queue.order`: it reads "Queued · next". */
   nextId: string | null;
+  /** The committed queue: the next task shows why a start gate holds it. */
+  queue: TaskBoard["queue"];
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
   /** Present only in the desktop app; without it the panel is read-only. */
   drag?: Drag;
@@ -41,7 +44,7 @@ export function QueueFeaturePanel({ panel, nextId, onOpenTask, drag, onMove }: {
             {step.tasks.length > 1 && <span className="taskQueueStepNote">One worktree each</span>}
           </div>
           <ul className="taskQueueCards" aria-label={`Step ${step.step} tasks`}>
-            {step.tasks.map((task) => <QueueTaskCard key={task.id} task={task} nextQueued={task.id === nextId} onOpen={onOpenTask}
+            {step.tasks.map((task) => <QueueTaskCard key={task.id} task={task} nextQueued={task.id === nextId} waiting={waitingLine(queue, task.id)} onOpen={onOpenTask}
               move={drag && onMove && isMovableQueueTask(task) ? { drag: drag.cardHandlers(task.id), choices: moveChoices(panel, task), onMove: (to) => onMove(task.id, to) } : undefined} />)}
           </ul>
         </li>;

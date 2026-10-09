@@ -5,7 +5,8 @@
 // the plan; the store keeps only its SHA-256 digest and the mint time, in the existing `dispatch_token`
 // column as `<digest>:<mintMs>`, so no schema change is needed. The digest is never projected onto the
 // board. Task text is untrusted: it is concatenated only into the fixed prompt string, never into a
-// path or command line. Start gates (capacity, incident, clean tree, previous step) belong to a later part.
+// path or command line. The store judges the start gates (capacity, incident, clean tree, previous step) through
+// `gatesHold` before a token is minted, so a held start leaves nothing behind.
 //
 // The started session reports the token with its normalized session ID, and `bindDispatch` links the
 // two once and discards the digest. The token is the only authority: the session is not looked up,
@@ -17,7 +18,7 @@ import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "
 
 /** An unbound dispatch is live for this long after its mint; a bound one is never read again and never expires. */
 export const TASK_DISPATCH_UNBOUND_TTL_MS = 10 * 60 * 1000;
-export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "unavailable"]);
+export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
 
 const STARTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
 /** Providers a session can be started on. A task with no provider runs on Claude Code. */
@@ -85,9 +86,10 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
 /**
  * `start-plan`. `resolveFacts(provider)` returns `{ root, pluginReady }` from committed facts, `pluginReady`
  * for the plugin of the provider the session runs on, and is called only after the task, provider, and state
- * refusals. `transaction(work)` runs `work` in one write transaction.
+ * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts; a held
+ * start answers `gate_held` and mints nothing. `transaction(work)` runs `work` in one write transaction.
  */
-export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, now }) {
+export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, now }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id"]) : undefined;
   if (number === undefined) return { ok: false, error: "invalid" };
   const row = loadRow(database, repositoryId, number);
@@ -102,6 +104,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   try { facts = resolveFacts(provider); } catch { facts = null; }
   if (typeof facts?.root !== "string" || facts.root.length === 0) return { ok: false, error: "unavailable" };
   if (facts.pluginReady !== true) return { ok: false, error: "plugin_missing" };
+  if (gatesHold(task.id) !== false) return { ok: false, error: "gate_held" };
   const token = crypto.randomBytes(32).toString("base64url");
   const minted = transaction(() => {
     // The state may have moved since the read above; the mint stands only if the task is still startable.

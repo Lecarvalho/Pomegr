@@ -9,6 +9,7 @@ import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lo
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { TASK_SESSION_STATES, TASK_SESSION_TITLE_LENGTH, fillTaskSessions } from "../../../server/tasks/task-board.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
+import { passingGates } from "./queue-test-support.mjs";
 
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const DESKTOP = "d".repeat(40);
@@ -140,7 +141,7 @@ const getBoard = (port, headers) => send(port, { path: `/api/tasks?repositoryId=
 function linkTask(store, text = "Fix the SECRET-TASK-TEXT flaky test", sessionId = SESSION) {
   assert.equal(store.apply(REPOSITORY_ID, "create", { text }).ok, true);
   const number = Number(store.readBoard(REPOSITORY_ID).tasks.at(-1).id.slice(2));
-  const planned = store.planStart(REPOSITORY_ID, { id: `T-${number}` }, () => FACTS);
+  const planned = store.planStart(REPOSITORY_ID, { id: `T-${number}` }, () => FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(store.bindSession({ token: planned.plan.token, sessionId }), { ok: true });
 }
@@ -280,7 +281,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
     catalogSessions: () => { touched.push(["catalog"]); return [catalogRow()]; },
     repositoryInventory: new Proxy({}, { get(_target, key) { touched.push(["inventory", String(key)]); return undefined; } }),
   });
-  assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
+  assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
   assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });

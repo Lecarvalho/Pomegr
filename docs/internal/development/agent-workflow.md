@@ -31,7 +31,7 @@ Until a part creates a path it does not exist, and that part confirms the comman
 above and adds the test files they name. Present so far: `server/tasks/task-store.mjs`
 and `task-record.mjs`, `server/serving/task-routes.mjs`, `shared/task-contract.ts`,
 `desktop/runtime/task-action.mjs` and `task-dispatch.mjs`, `server/tasks/task-dispatch.mjs`,
-`task-report.mjs`, `task-checks.mjs`, and `task-stall.mjs`,
+`task-report.mjs`, `task-checks.mjs`, `task-stall.mjs`, and `task-gates.mjs`, `server/runtime/task-gate-facts.mjs`,
 `app/components/tasks/`, `app/tasks-store.ts`,
 `app/api/tasks/route.ts`, and the tests `tests/server/tasks/*.test.mjs`,
 `tests/desktop-task-action.test.mjs`, `tests/desktop-task-dispatch.test.mjs`, `tests/ui/tasks-store.test.tsx`,

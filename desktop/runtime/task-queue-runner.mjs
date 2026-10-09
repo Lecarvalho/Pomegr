@@ -7,10 +7,10 @@ const MIN_INTERVAL_MS = 5_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_STARTS = 16;
 // A start that fails for one of these reasons pauses the queue with the same fixed reason; every other
-// failure pauses it as `start_failed`. The rest never pause: a manual start is in flight or the task moved,
-// and the next tick asks the monitor again.
+// failure pauses it as `start_failed`. The rest never pause: a manual start is in flight, the task moved, or a
+// start gate closed between the monitor's answer and the start, and the next tick asks the monitor again.
 const PAUSE_REASONS = new Set(["cli_missing", "plugin_missing", "unsupported_platform"]);
-const SETTLED = new Set(["started", "busy", "not_startable", "not_found", "cancelled"]);
+const SETTLED = new Set(["started", "busy", "not_startable", "gate_held", "not_found", "cancelled"]);
 
 function trustedMonitorOrigin(value) {
   try {

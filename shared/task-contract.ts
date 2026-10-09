@@ -39,7 +39,37 @@ export type TaskReport = { at: string; results: { check: TaskCheck; passed: bool
  * needs the user (Needs review, Stalled, or Blocked by agent). `paused` names in `blockedBy` the task whose start
  * did not succeed, with the fixed `pauseReason`; `pauseReason` is null in every other status.
  */
-export type TaskQueue = { status: TaskQueueStatus; blockedBy: string | null; pauseReason: TaskQueuePauseReason | null; order: string[] };
+export type TaskQueue = {
+  status: TaskQueueStatus;
+  blockedBy: string | null;
+  pauseReason: TaskQueuePauseReason | null;
+  order: string[];
+  /** The start gates as the monitor last judged them. Absent from a board that is not ready and from an older monitor. */
+  gates?: TaskGates;
+};
+
+/** The usage a provider may have reached, in percent of its five-hour window, before no new session starts on it. */
+export type TaskGateThreshold = 70 | 85 | 95;
+/** `unknown` is missing, stale, or partial evidence. It holds a start like a failed gate and never counts as passed. */
+export type TaskGateUsageStatus = "ok" | "over" | "unknown";
+export type TaskGateProviderStatus = "ok" | "incident" | "unknown";
+export type TaskGateWorkingTree = "clean" | "dirty" | "unknown";
+/** Why a start is held. Fixed values only; never a path, a command, or error text. */
+export type TaskGateReason = "previous_step" | "usage_over" | "usage_unknown" | "provider_incident" | "provider_status_unknown" | "tree_dirty" | "tree_unknown";
+/** The whole percentages Usage limits already shows for the five-hour and seven-day windows, or null when not observed. */
+export type TaskGateUsage = { status: TaskGateUsageStatus; fiveHourPercent: number | null; sevenDayPercent: number | null };
+/**
+ * Every start is checked against these gates, from facts the monitor already committed. `next` is the task the
+ * queue would start next (`order[0]`), the earlier task of its feature it waits on, and the gates that hold it;
+ * no reason means it may start. `next` is null when no task is queued.
+ */
+export type TaskGates = {
+  threshold: TaskGateThreshold;
+  usage: Record<TaskProvider, TaskGateUsage>;
+  providerStatus: Record<TaskProvider, TaskGateProviderStatus>;
+  workingTree: TaskGateWorkingTree;
+  next: { taskId: string; provider: TaskProvider; blockedBy: string | null; reasons: TaskGateReason[] } | null;
+};
 
 export type Task = {
   id: string; // "T-<n>", monotonic per repository
@@ -97,6 +127,9 @@ export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];
 export const TASK_EFFORTS: readonly TaskEffort[] = ["low", "medium", "high", "xhigh"];
 export const TASK_QUEUE_STATUSES: readonly TaskQueueStatus[] = ["idle", "running", "blocked", "paused"];
 export const TASK_QUEUE_PAUSE_REASONS: readonly TaskQueuePauseReason[] = ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"];
+export const TASK_GATE_THRESHOLDS: readonly TaskGateThreshold[] = [70, 85, 95];
+export const DEFAULT_TASK_GATE_THRESHOLD: TaskGateThreshold = 85;
+export const TASK_GATE_REASONS: readonly TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
 export const TASK_ACTION_ERRORS: readonly TaskActionError[] = ["invalid", "not_found", "limit", "conflict", "unsupported"];
 /** Columns seeded, in this order, the first time a repository's board is read. */
 export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In progress", "Review", "Done"];

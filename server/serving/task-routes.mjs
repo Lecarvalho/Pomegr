@@ -14,7 +14,7 @@ const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, 
 // Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
 const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
 const START_STATUS = Object.freeze({
-  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, unsupported_provider: 422, unavailable: 503,
+  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, gate_held: 409, unsupported_provider: 422, unavailable: 503,
 });
 // Queue actions answer through their own handlers too. `queue-next` takes an empty body and answers the tasks the running
 // queues start now; `queue-pause` takes the usual envelope and records that a start did not succeed. Neither carries a board.
@@ -25,6 +25,15 @@ const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
+// The start gates, mirrored like the action list; tests/server/tasks/task-gates-serving.test.mjs pins them to task-gates.mjs.
+export const GATE_THRESHOLDS = Object.freeze([70, 85, 95]);
+export const GATE_REASONS = Object.freeze([
+  "previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown",
+]);
+const GATE_PROVIDERS = Object.freeze(["claude", "codex"]);
+const GATE_USAGE_STATUSES = Object.freeze(["ok", "over", "unknown"]);
+const GATE_PROVIDER_STATUSES = Object.freeze(["ok", "incident", "unknown"]);
+const GATE_TREE_STATES = Object.freeze(["clean", "dirty", "unknown"]);
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 function emptyBoard(readiness, repositoryId) {
@@ -56,17 +65,49 @@ export function projectRunModels(lookup) {
   return { codex };
 }
 
-// The store validated every record; the route only pins the contract's top-level keys, the queue's four keys, and the requested ID.
+const gatePercent = (value) => value === null || (Number.isInteger(value) && value >= 0 && value <= 100);
+
+/**
+ * The queue's start gates, rebuilt field by field: fixed statuses, whole percentages, the threshold, and the next
+ * task with its fixed reasons. One value outside the contract drops the whole block, so the board says nothing
+ * about the gates instead of something partial.
+ */
+export function projectGates(gates) {
+  if (!isPlainObject(gates) || !GATE_THRESHOLDS.includes(gates.threshold) || !GATE_TREE_STATES.includes(gates.workingTree)
+    || !isPlainObject(gates.usage) || !isPlainObject(gates.providerStatus)) return undefined;
+  const usage = {};
+  const providerStatus = {};
+  for (const provider of GATE_PROVIDERS) {
+    const reading = gates.usage[provider];
+    if (!isPlainObject(reading) || !GATE_USAGE_STATUSES.includes(reading.status) || !gatePercent(reading.fiveHourPercent)
+      || !gatePercent(reading.sevenDayPercent) || !GATE_PROVIDER_STATUSES.includes(gates.providerStatus[provider])) return undefined;
+    usage[provider] = { status: reading.status, fiveHourPercent: reading.fiveHourPercent, sevenDayPercent: reading.sevenDayPercent };
+    providerStatus[provider] = gates.providerStatus[provider];
+  }
+  let next = null;
+  if (gates.next !== null) {
+    const held = gates.next;
+    if (!isPlainObject(held) || typeof held.taskId !== "string" || !TASK_ID_PATTERN.test(held.taskId) || !GATE_PROVIDERS.includes(held.provider)
+      || !(held.blockedBy === null || (typeof held.blockedBy === "string" && TASK_ID_PATTERN.test(held.blockedBy)))
+      || !Array.isArray(held.reasons) || held.reasons.length > GATE_REASONS.length
+      || !held.reasons.every((reason) => GATE_REASONS.includes(reason))) return undefined;
+    next = { taskId: held.taskId, provider: held.provider, blockedBy: held.blockedBy, reasons: [...held.reasons] };
+  }
+  return { threshold: gates.threshold, usage, providerStatus, workingTree: gates.workingTree, next };
+}
+
+// The store validated every record; the route only pins the contract's top-level keys, the queue's keys, and the requested ID.
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
     || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)) {
     throw new TypeError("Task board unavailable");
   }
+  const gates = projectGates(board.queue.gates);
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks,
-    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order },
+    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(gates ? { gates } : {}) },
     runModels: projectRunModels(runModels),
   };
 }
@@ -76,9 +117,11 @@ function projectBoard(repositoryId, board, runModels) {
  * shares with `GET /api/provider-folders`; a denied client learns nothing beyond `desktop_only`.
  * `runModels` reads the last committed Codex client catalog from memory, and `resolveSessionFacts(sessionId)`
  * reads a linked session's title, state, and model from committed facts in memory (task-board.mjs validates them).
+ * `resolveGateFacts(repositoryId)` reads the start-gate facts the same way (task-gates.mjs validates them); it may
+ * queue an asynchronous refresh of the working-tree observation, never a synchronous read.
  * The route never acquires provider evidence and has no write path.
  */
-export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null }) {
+export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });
@@ -102,7 +145,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     return;
   }
   try {
-    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId, { resolveSessionFacts }), runModels);
+    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId, { resolveSessionFacts, resolveGateFacts }), runModels);
     response.writeHead(200, JSON_HEADERS);
     response.end(JSON.stringify(board));
   } catch {
@@ -152,8 +195,9 @@ function isPlainObject(value) {
 
 // `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
 // `resolveStart(repositoryId, provider)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
-// that precedes it. Neither answer ever carries the stored digest or an echo of task content.
-function serveStartAction({ response, taskStore, resolveStart, action, repositoryId, payload }) {
+// that precedes it. A start the gates hold answers the fixed `gate_held`, never which gate or its facts.
+// Neither answer ever carries the stored digest or an echo of task content.
+function serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId, payload }) {
   try {
     const planning = action === "start-plan";
     const call = planning ? taskStore?.planStart : taskStore?.abortStart;
@@ -162,7 +206,7 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
       return;
     }
     const result = planning
-      ? call(repositoryId, payload, (provider) => (typeof resolveStart === "function" ? resolveStart(repositoryId, provider) : null))
+      ? call(repositoryId, payload, (provider) => (typeof resolveStart === "function" ? resolveStart(repositoryId, provider) : null), resolveGateFacts)
       : call(repositoryId, payload);
     if (result?.ok === true) {
       writeActionResult(response, 200, planning ? { ok: true, plan: result.plan } : { ok: true });
@@ -176,14 +220,14 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
 }
 
 // `queue-next` answers only `{ ok: true, starts }`, each start a repository ID and a task ID re-validated here, at most 16.
-// It starts nothing and carries no board and no task content.
-function serveQueueNext({ response, taskStore, body }) {
+// It starts nothing and carries no board and no task content. A start the gates hold is simply not in the answer.
+function serveQueueNext({ response, taskStore, resolveGateFacts, body }) {
   try {
     if (!isPlainObject(body) || Object.keys(body).length > 0) {
       writeActionResult(response, 400, rejected("invalid"));
       return;
     }
-    const result = typeof taskStore?.nextQueueStarts === "function" ? taskStore.nextQueueStarts() : null;
+    const result = typeof taskStore?.nextQueueStarts === "function" ? taskStore.nextQueueStarts({ resolveGateFacts }) : null;
     if (result?.ok !== true || !Array.isArray(result.starts)) {
       writeActionResult(response, 503, rejected("unavailable"));
       return;
@@ -221,7 +265,7 @@ function serveQueuePause({ response, taskStore, repositoryId, payload }) {
  * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
  * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
  */
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -255,7 +299,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     return;
   }
   if (action === "queue-next") {
-    serveQueueNext({ response, taskStore, body });
+    serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;
   }
   const validEnvelope = isPlainObject(body) && Object.keys(body).every((key) => key === "repositoryId" || key === "payload")
@@ -273,7 +317,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     return;
   }
   if (START_ACTIONS.includes(action)) {
-    serveStartAction({ response, taskStore, resolveStart, action, repositoryId: body.repositoryId, payload: body.payload });
+    serveStartAction({ response, taskStore, resolveStart, resolveGateFacts, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
   try {
@@ -281,7 +325,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
       writeActionResult(response, 503, rejected("conflict"));
       return;
     }
-    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts });
+    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts });
     if (result?.ok === true) {
       writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
       return;

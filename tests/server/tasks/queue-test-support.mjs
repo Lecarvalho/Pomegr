@@ -11,6 +11,13 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 export const REPOSITORY = `repo-${"a1".repeat(12)}`;
 export const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
 export const FACTS = Object.freeze({ root: "C:/Work/SECRET-ROOT/repo", pluginReady: true });
+/** Start-gate facts that let every start through, and the resolver the store takes. */
+export const GATE_FACTS = Object.freeze({
+  usage: { claude: { fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { fiveHourPercent: 10, sevenDayPercent: 10 } },
+  providerStatus: { claude: "operational", codex: "operational" },
+  treeClean: true,
+});
+export const passingGates = () => GATE_FACTS;
 export const SESSION = "claude:0b8f2c1e-1111-4222-8333-444455556666";
 export const START_TIME = 1_000_000;
 const DIGEST = "ab".repeat(32);

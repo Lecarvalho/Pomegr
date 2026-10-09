@@ -41,6 +41,7 @@ function recordingStore(read = (repositoryId) => secretBoard(repositoryId)) {
 
 // The route is dispatched before any runtime read; a runtime that is touched at all fails the test.
 function untouchedRuntime(resolveRunModels) {
+  // The handler asks once, when it is built, whether the runtime has the start-gate lookup; nothing else is read.
   const touched = [];
   return { runtime: new Proxy({}, { get(_object, property) { touched.push(String(property)); return property === "resolveRunModels" ? resolveRunModels : undefined; } }), touched };
 }
@@ -109,7 +110,7 @@ test("an allowed same-computer GET serves the committed board, no-store, through
   assert.deepEqual(Object.keys(response.json).sort(), BOARD_KEYS);
   assert.deepEqual(calls, [["readBoard", REPOSITORY_ID]]);
   assert.deepEqual([...new Set(accessed)], ["readBoard"]);
-  assert.deepEqual(touched, ["resolveRunModels"], "a task GET reads only the committed run-model lookup, never provider acquisition");
+  assert.deepEqual(touched, ["resolveTaskGateFacts", "resolveRunModels"], "a task GET reads only the committed run-model lookup, never provider acquisition");
 });
 
 test("the served body carries only the contract keys even when the store returns extras", async (context) => {
@@ -171,7 +172,7 @@ test("writes and other methods are refused and never reach the store", async (co
   }
   assert.deepEqual(calls, []);
   assert.deepEqual(accessed, []);
-  assert.deepEqual(touched, []);
+  assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 });
 
 test("a malformed, missing, duplicated, or extra query is a 400 like repository-files, without reading the store", async (context) => {

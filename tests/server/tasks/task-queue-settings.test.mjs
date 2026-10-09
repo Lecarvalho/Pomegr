@@ -4,7 +4,7 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatc
 import { TASK_STORE_SCHEMA_VERSION } from "../../../server/tasks/task-store.mjs";
 import {
   OTHER_REPOSITORY, REPOSITORY, SESSION, START_TIME, createTask, metaValue, openTemporaryStore, pauseReasonKey, queueRow, queueSettings, queueTask,
-  setMeta, setQueueRow, startedTask, storedDispatch, updateTask, withDatabase,
+  setMeta, setQueueRow, startedTask, storedDispatch, updateTask, withDatabase, passingGates,
 } from "./queue-test-support.mjs";
 
 const EXPIRED = START_TIME - TASK_DISPATCH_UNBOUND_TTL_MS - 1;
@@ -15,7 +15,7 @@ test("the queue is off by default and a fresh board names no pause reason", asyn
   createTask(store);
   queueTask(store, "T-1");
   assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1"] });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });
 
 test("turning the queue on runs it, and turning it on again changes nothing", async (context) => {
@@ -159,7 +159,7 @@ test("turning the queue on after a pause clears the reason from meta and resumes
   const on = queueSettings(store, true);
   assert.deepEqual(on.board.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-1"] });
   assert.equal(metaValue(directory, pauseReasonKey()), null);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [{ repositoryId: REPOSITORY, taskId: "T-1" }] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [{ repositoryId: REPOSITORY, taskId: "T-1" }] });
 });
 
 test("a task that needs the user while the queue is paused or idle leaves the status alone until the queue is turned on", async (context) => {

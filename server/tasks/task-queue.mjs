@@ -111,6 +111,19 @@ export function queueWhenTurnedOn(tasks) {
 }
 
 /**
+ * The task a feature task waits on: the lowest-numbered task that is not done in the earliest step before its own
+ * that is not done, or null when every earlier step is done. `tasks` are `{ id, featureId, step, state }` and
+ * `features` are `{ id }`. A task without a feature, or one the rule cannot place, waits on nothing.
+ */
+export function previousStepBlocker(taskId, tasks, features) {
+  const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
+  const task = records.find((record) => record.id === taskId);
+  if (!task || !isStep(task.step)) return null;
+  const earlier = orderQueue(records, features).steps.find((entry) => entry.featureId === task.featureId && entry.step < task.step && !entry.done);
+  return earlier?.taskIds.find((id) => records.find((record) => record.id === id)?.state !== "done") ?? null;
+}
+
+/**
  * What a queue does next. `tasks` are `{ id, featureId, step, state, queuePosition, inFlight, unlinked }` and `features`
  * are `{ id }` in board order. The store supplies two facts the rule cannot know: `inFlight` is true for a task whose
  * session is linked and has no outcome yet, or whose start is still waiting for its session to report; `unlinked` is true
@@ -131,7 +144,6 @@ export function nextQueueStart(input) {
   if (candidateId === undefined) return null;
   const candidate = records.find((task) => task.id === candidateId);
   if (candidate.unlinked === true) return { pause: candidateId };
-  if (typeof candidate.featureId === "string" && isStep(candidate.step)
-    && steps.some((entry) => entry.featureId === candidate.featureId && entry.step < candidate.step && !entry.done)) return null;
+  if (isStep(candidate.step) && steps.some((entry) => entry.featureId === candidate.featureId && entry.step < candidate.step && !entry.done)) return null;
   return { start: candidateId };
 }

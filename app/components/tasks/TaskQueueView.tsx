@@ -5,6 +5,7 @@ import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { QueueBlockRules } from "./QueueBlockRules";
 import { QueueFeaturePanel } from "./QueueFeaturePanel";
 import { QueueSingleTasks } from "./QueueSingleTasks";
+import { StartGatesPanel } from "./StartGatesPanel";
 import { queueFeatures, singleQueueTasks } from "./task-queue-model";
 import { useQueueDrag } from "./use-queue-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
@@ -27,12 +28,15 @@ export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; 
   };
   const drag = useQueueDrag(board.tasks, reorder);
   const empty = panels.length === 0 && singles.length === 0;
-  return <div className="taskQueueView">
+  return <div className="taskQueueRow">
+    <div className="taskQueueView">
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
     {empty && <p className="taskBoardEmpty">{EMPTY_TEXT}</p>}
-    {panels.map((panel) => <QueueFeaturePanel key={panel.feature.id} panel={panel} nextId={nextId} onOpenTask={onOpenTask} drag={edits ? drag : undefined} onMove={edits ? reorder : undefined} />)}
-    {!empty && <QueueSingleTasks tasks={singles} nextId={nextId} onOpenTask={onOpenTask} />}
+    {panels.map((panel) => <QueueFeaturePanel key={panel.feature.id} panel={panel} nextId={nextId} queue={board.queue} onOpenTask={onOpenTask} drag={edits ? drag : undefined} onMove={edits ? reorder : undefined} />)}
+    {!empty && <QueueSingleTasks tasks={singles} nextId={nextId} queue={board.queue} onOpenTask={onOpenTask} />}
     <QueueBlockRules />
     <span className="visuallyHidden" role="status">{announcement}</span>
+    </div>
+    <StartGatesPanel queue={board.queue} edits={edits} />
   </div>;
 }

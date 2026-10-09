@@ -21,6 +21,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   invalid: "The session could not be started.",
   unavailable: "The session could not be started.",
   failed: "The session could not be started.",
+  gate_held: "A start gate holds this task. See Start gates in the Queue view.",
 };
 /** A retry cannot succeed after these, or after `started`, for as long as the panel stays open. */
 const FINAL = new Set<TaskStartStatus>(["started", "unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);

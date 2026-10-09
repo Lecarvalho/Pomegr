@@ -246,3 +246,28 @@
   .taskQueueBannerActions { flex: 1 1 100%; }
   .taskQueueBannerActions .commandSecondaryAction { flex: 1 1 0; }
 }
+
+/* Start gates (D35-D39, D156-D169): the capacity strip above the Board and the panel beside the Queue. The gate value
+   colours are the tone of the reading: green passes, error holds, muted is unknown or empty. */
+.taskCapacityStrip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskCapacityValue { color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskQueueRow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
+.taskQueueRow > .taskQueueView { flex: 999 1 480px; min-width: 0; }
+.taskQueueAside { flex: 1 1 280px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.taskGatesPanel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.taskGatesHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskGatesCaption { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskGateList { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskGateRow { display: flex; justify-content: space-between; gap: var(--space-3); }
+.taskGateRow dt { margin: 0; }
+.taskGateValue { margin: 0; text-align: right; overflow-wrap: anywhere; font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskGateValue.isMono { color: var(--command-ink); font: 400 var(--text-xs)/1.6 var(--font-data); }
+.taskGateValue.is-ok { color: var(--command-green); }
+.taskGateValue.is-error { color: var(--command-error); }
+.taskGateValue.is-muted { color: var(--command-muted); }
+.taskGateOver { font-family: var(--font-ui); }
+.taskGateField { display: flex; flex-direction: column; gap: var(--space-1); }
+.taskGateFieldLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskGateReadOnly { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueSingleWaiting { flex: 1 1 100%; }

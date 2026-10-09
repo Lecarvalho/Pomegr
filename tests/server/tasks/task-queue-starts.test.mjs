@@ -4,7 +4,7 @@ import { TASK_DISPATCH_UNBOUND_TTL_MS } from "../../../server/tasks/task-dispatc
 import { TASK_QUEUE_START_LIMIT } from "../../../server/tasks/task-queue-advance.mjs";
 import {
   FACTS, OTHER_REPOSITORY, REPOSITORY, SESSION, START_TIME, createTask, metaValue, openTemporaryStore, pauseReasonKey, queueRow, queueSettings,
-  queueTask, repositoryNumber, setQueueRow, startedTask, updateTask, withDatabase,
+  queueTask, repositoryNumber, setQueueRow, startedTask, updateTask, withDatabase, passingGates,
 } from "./queue-test-support.mjs";
 
 const MINUTE = 60_000;
@@ -25,8 +25,8 @@ test("every running queue answers its next task, in repository order, and starts
   store.apply(REPOSITORY, "queue_remove", { id: "T-1" });
   store.apply(REPOSITORY, "queue_add", { id: "T-1" });
   const stored = withDatabase(directory, (database) => database.prepare("SELECT repository_id, number, state, session_id, dispatch_token, updated_at FROM tasks ORDER BY repository_id, number").all().map((row) => ({ ...row })));
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] }, "asking again changes nothing");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] }, "asking again changes nothing");
   assert.deepEqual(withDatabase(directory, (database) => database.prepare("SELECT repository_id, number, state, session_id, dispatch_token, updated_at FROM tasks ORDER BY repository_id, number").all().map((row) => ({ ...row }))), stored);
 });
 
@@ -36,7 +36,7 @@ test("a queue that is idle, blocked, or paused answers nothing", async (context)
   queueTask(store, "T-1");
   for (const status of ["idle", "blocked", "paused"]) {
     setQueueRow(directory, status, status === "idle" ? null : "T-1");
-    assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, status);
+    assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, status);
     assert.equal(queueRow(directory).queue_status, status);
   }
 });
@@ -45,19 +45,19 @@ test("one task at a time: a live start or a linked session without an outcome ho
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { mintedAt: START_TIME - MINUTE });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "start waiting for its session");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "start waiting for its session");
   assert.equal(queueRow(directory).queue_status, "running");
 
   // The session reported back: the start is gone, the task has a session and no outcome yet.
   startedTask(directory, 1, { session: SESSION });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "session working on it");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "session working on it");
   clock.now += 24 * 60 * MINUTE;
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "time alone does not release a linked session");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "time alone does not release a linked session");
 
   // A task started by hand, outside the queue, holds it too.
   startedTask(directory, 1, { session: null, state: "not_queued" });
   startedTask(directory, 2, { session: "claude:manual-session" });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "manual start in flight");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "manual start in flight");
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
@@ -66,7 +66,7 @@ test("a task with an outcome frees the queue for the next task", async (context)
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { session: SESSION, state: "done" });
   updateTask(directory, 1, { queue_position: null });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
 });
 
 test("a start whose time ran out with no session pauses the queue as session_not_linked, once, and the same call still serves other repositories", async (context) => {
@@ -75,11 +75,11 @@ test("a start whose time ran out with no session pauses the queue as session_not
   runningRepository(store, OTHER_REPOSITORY, 1);
   startedTask(directory, 1, { mintedAt: clock.now });
   clock.now += TASK_DISPATCH_UNBOUND_TTL_MS - 1;
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] }, "still live on its last millisecond");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] }, "still live on its last millisecond");
   assert.equal(queueRow(directory).queue_status, "running");
 
   clock.now += 1;
-  const answer = store.nextQueueStarts();
+  const answer = store.nextQueueStarts({ resolveGateFacts: passingGates });
   assert.deepEqual(answer, { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] });
   assert.equal(JSON.stringify(answer).includes("session_not_linked"), false, "a pause is written, never returned");
   assert.deepEqual(queueRow(directory), { queue_status: "paused", queue_blocked_by: "T-1" });
@@ -88,7 +88,7 @@ test("a start whose time ran out with no session pauses the queue as session_not
   // The other repository's queue is untouched, and the paused one answers nothing more.
   assert.equal(queueRow(directory, OTHER_REPOSITORY).queue_status, "running");
   assert.equal(metaValue(directory, pauseReasonKey(OTHER_REPOSITORY)), null);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] });
   assert.equal(metaValue(directory, pauseReasonKey()), "session_not_linked");
 });
 
@@ -97,18 +97,18 @@ test("turning the queue on after a session_not_linked pause lets the same task s
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { mintedAt: clock.now });
   clock.now += TASK_DISPATCH_UNBOUND_TTL_MS;
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   assert.equal(queueRow(directory).queue_status, "paused");
   const on = queueSettings(store, true);
   assert.deepEqual(on.board.queue, { status: "running", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"] });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
 });
 
 test("a start that is not the first queued task does not pause the queue", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 2, { mintedAt: clock.now - 3 * TASK_DISPATCH_UNBOUND_TTL_MS });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
@@ -125,9 +125,9 @@ test("the queue waits for earlier feature steps and never skips ahead", async (c
   queueSettings(store, true);
   // T-1 is in step 1 and was never queued, so step 1 is not done: T-2 waits, and T-3 does not jump the line.
   assert.deepEqual(store.readBoard(REPOSITORY).tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   updateTask(directory, 1, { state: "done" });
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
 });
 
 test("a running queue whose rows do not project is skipped while the others are served", async (context) => {
@@ -135,14 +135,14 @@ test("a running queue whose rows do not project is skipped while the others are 
   runningRepository(store, REPOSITORY, 1);
   runningRepository(store, OTHER_REPOSITORY, 1);
   updateTask(directory, 1, { text: "" }, REPOSITORY);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1", OTHER_REPOSITORY)] });
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
 test("at most sixteen starts are answered, in repository order", async (context) => {
   const { store } = await openTemporaryStore(context);
   for (let number = 1; number <= 20; number += 1) runningRepository(store, repositoryNumber(number), 1);
-  const { starts } = store.nextQueueStarts();
+  const { starts } = store.nextQueueStarts({ resolveGateFacts: passingGates });
   assert.equal(TASK_QUEUE_START_LIMIT, 16);
   assert.deepEqual(starts, Array.from({ length: 16 }, (_, index) => start("T-1", repositoryNumber(index + 1))));
 });
@@ -150,29 +150,29 @@ test("at most sixteen starts are answered, in repository order", async (context)
 test("the queue runs a task through its session to the next one", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-1")] });
-  const planned = store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
+  const planned = store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, passingGates);
   assert.equal(planned.ok, true);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "start waiting for its session");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "start waiting for its session");
   assert.equal(store.bindSession({ token: planned.plan.token, sessionId: SESSION }).ok, true);
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "session working");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "session working");
   clock.now += 2 * TASK_DISPATCH_UNBOUND_TTL_MS;
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] }, "a bound session never expires");
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "a bound session never expires");
   assert.equal(store.completeTask({ sessionId: SESSION }, () => null).state, "done");
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
 test("a failed report blocks the queue and nothing starts until the user resolves it", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
-  const planned = store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS);
+  const planned = store.planStart(REPOSITORY, { id: "T-1" }, () => FACTS, passingGates);
   store.bindSession({ token: planned.plan.token, sessionId: SESSION });
   assert.equal(store.blockTask({ sessionId: SESSION, reason: "cannot continue" }).state, "blocked");
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   assert.deepEqual(queueRow(directory), { queue_status: "blocked", queue_blocked_by: "T-1" });
   assert.equal(store.apply(REPOSITORY, "resolve_done", { id: "T-1" }).board.queue.status, "running");
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [start("T-2")] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
 });
 
 test("pauseQueue pauses a running queue with the reported reason and names the task", async (context) => {
@@ -184,7 +184,7 @@ test("pauseQueue pauses a running queue with the reported reason and names the t
     assert.deepEqual(queueRow(directory), { queue_status: "paused", queue_blocked_by: "T-2" });
     assert.deepEqual(store.readBoard(REPOSITORY).queue, { status: "paused", blockedBy: "T-2", pauseReason: reason, order: ["T-1", "T-2"] });
   }
-  assert.deepEqual(store.nextQueueStarts(), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });
 
 test("pauseQueue changes nothing unless the queue is running, and still answers ok", async (context) => {
@@ -221,7 +221,7 @@ test("the queue methods answer a fixed unavailable error once the store is close
   const { store } = await openTemporaryStore(context);
   createTask(store);
   store.close();
-  assert.deepEqual(store.nextQueueStarts(), { ok: false, error: "unavailable" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: false, error: "unavailable" });
   assert.deepEqual(store.pauseQueue(REPOSITORY, { id: "T-1", reason: "start_failed" }), { ok: false, error: "unavailable" });
   assert.deepEqual(store.apply(REPOSITORY, "queue_settings", { on: true }), { ok: false, error: "conflict" });
 });

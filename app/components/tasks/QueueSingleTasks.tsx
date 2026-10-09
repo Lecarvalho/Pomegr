@@ -1,8 +1,9 @@
 "use client";
 
 import { useId } from "react";
-import type { Task } from "../../../shared/task-contract";
+import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { TaskRunLine } from "./TaskRunLine";
+import { waitingLine } from "./task-gates-model";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
 /** "Oct 9, 02:00" in local time, or null for a value that is not a time. */
@@ -23,7 +24,7 @@ function chipOf(task: Task, nextQueued: boolean) {
  * Tasks with no feature that are queued or further along (design contract D147-D155). They run after the features, one
  * at a time: queued ones in the order the monitor lists them, then the rest by task number.
  */
-export function QueueSingleTasks({ tasks, nextId, onOpenTask }: { tasks: Task[]; nextId: string | null; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
+export function QueueSingleTasks({ tasks, nextId, queue, onOpenTask }: { tasks: Task[]; nextId: string | null; queue: TaskBoard["queue"]; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
   const headingId = useId();
   return <section className="panel taskQueuePanel" aria-labelledby={headingId}>
     <div className="taskQueueHead">
@@ -36,6 +37,7 @@ export function QueueSingleTasks({ tasks, nextId, onOpenTask }: { tasks: Task[];
         {tasks.map((task) => {
           const chip = chipOf(task, task.id === nextId);
           const title = taskCardTitle(task);
+          const waiting = waitingLine(queue, task.id);
           return <li key={task.id} className="taskQueueSingle" data-task-id={task.id} data-task-state={task.state}>
             <span className="taskCardId">{task.id}</span>
             {onOpenTask
@@ -43,6 +45,7 @@ export function QueueSingleTasks({ tasks, nextId, onOpenTask }: { tasks: Task[];
               : <p className="taskCardTitle taskQueueSingleTitle" title={title}>{title}</p>}
             <TaskRunLine run={task.run} />
             <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
+            {waiting && <p className="taskCardWaiting taskQueueSingleWaiting">{waiting}</p>}
           </li>;
         })}
       </ul>}
