@@ -31,13 +31,16 @@ Until a part creates a path it does not exist, and that part confirms the comman
 above and adds the test files they name. Present so far: `server/tasks/task-store.mjs`
 and `task-record.mjs`, `server/serving/task-routes.mjs`, `shared/task-contract.ts`,
 `desktop/runtime/task-action.mjs`, `task-dispatch.mjs`, and `task-worktree.mjs`, `server/tasks/task-dispatch.mjs`,
-`task-report.mjs`, `task-checks.mjs`, `task-stall.mjs`, and `task-gates.mjs`, `server/runtime/task-gate-facts.mjs`,
+`task-report.mjs`, `task-checks.mjs`, `task-stall.mjs`, `task-gates.mjs`, and `task-session-link.mjs`, `server/runtime/task-gate-facts.mjs`,
+`server/serving/session-directory-tasks.mjs`, `app/components/tasks/SessionTaskCell.tsx`,
 `app/components/tasks/`, `app/tasks-store.ts`,
 `app/api/tasks/route.ts`, and the tests `tests/server/tasks/*.test.mjs`,
 `tests/desktop-task-action.test.mjs`, `tests/desktop-task-dispatch.test.mjs`, `tests/ui/tasks-store.test.tsx`,
 `tests/ui/repository-tasks.test.tsx`, and `tests/ui/new-task.test.tsx`. The development server refuses a LAN peer's
 `/api/tasks` read in `scripts/provider-folders-local-gate.mjs`
-(`node --test tests/provider-folders-local-gate.test.mjs`).
+(`node --test tests/provider-folders-local-gate.test.mjs`). The same gate marks a LAN peer's
+`/api/sessions` read with `x-pomegr-lan-gateway`, so the Sessions list serves it no task
+reference (`tests/server/tasks/task-session-link.test.mjs`, `tests/ui/sessions-view.test.tsx`).
 
 ## Server layout
 

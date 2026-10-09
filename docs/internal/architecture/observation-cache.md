@@ -2065,7 +2065,13 @@ and needs-input counts, that newest update time, and its 5 newest-created rows, 
 total group count. A grouped response has no cursor; the browser reads the rest of a group
 by requesting the ordinary paged directory with that project or provider scope. Groups
 expose only fields the rows already carry and are read from the same committed inventory
-with SQLite aggregation. The directory never receives a global
+with SQLite aggregation. A caller inside the monitor may also narrow a page to a bounded
+set of session IDs, or group it by a session-to-group map; both reach SQLite as one JSON
+parameter of at most 2000 validated IDs, and the index stores nothing from them. The task
+control plane uses them for the `feature` scope and `group=feature`, and joins each row's
+task reference from its own store when the page is served, for a same-computer client
+only (see [Tasks](tasks.md#privacy)). The catalog, its checkpoints, and the shell feed
+never hold a task reference. The directory never receives a global
 session array. The default catalog response is a separate small shell feed for live,
 needs-input, pinned, and selected destinations, capped at 200 rows; its length is not
 the inventory total. Header scans use batches of at most 100 rows and repeat on a
@@ -2472,7 +2478,7 @@ from fixture operation-count tests.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages (or bounded project/provider groups) from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
+| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages (or bounded project/provider/feature groups) from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |

@@ -22,6 +22,7 @@ import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
+import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
@@ -583,5 +584,14 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // The queue (task-queue-advance.mjs): which tasks the running queues start now, and the pause a failed start reports.
   const nextStarts = ({ resolveGateFacts = null } = {}) => dispatch(nextQueueStarts, { loadRows, resolveGateFacts, now });
   const pauseAt = (repositoryId, payload) => dispatch(pauseQueue, { repositoryId, payload });
-  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt, close });
+  // The Sessions list's task references (task-session-link.mjs): plain reads that answer null when the store cannot be used.
+  const link = (read, input) => {
+    if (!database) return null;
+    try { return read({ database, ...input }); } catch { return null; }
+  };
+  const sessionTasks = (sessionIds) => link(sessionTaskReferences, { sessionIds });
+  const featureLink = (featureId) => link(featureSessions, { featureId });
+  const featureLinks = () => link(featureSessionGroups, {});
+  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
+    sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
