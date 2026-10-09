@@ -133,6 +133,8 @@ describe("Task panel", () => {
     expect(dialog.getByText("Passed")).toHaveClass("isPassed");
     expect(dialog.getByText("Agent-reported")).toBeInTheDocument();
     expect(dialog.getByText(/Agent reported complete/)).toBeInTheDocument();
+    // The time is parenthesized so a locale time ending in a period never doubles the sentence's own.
+    expect(dialog.getByText(/Agent reported complete/).textContent).toMatch(/^Agent reported complete \(.+\)\.$/u);
     expect(dialog.getByText("Observed model differs")).toBeInTheDocument();
     expect(dialog.getByText("model-b")).toBeInTheDocument();
     expect(dialog.queryByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).not.toBeInTheDocument();

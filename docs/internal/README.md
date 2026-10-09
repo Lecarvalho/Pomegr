@@ -32,7 +32,7 @@ indexed in the [documentation index](../README.md).
 | Provider conformance | [Executable provider contract](../../server/providers/provider-contract.mjs) defines catalog, manifest, readiness, evidence, and conformance requirements. Transcript schemas stay in adapters. |
 | Provider and Pomegr limitations | [Limitations](architecture/limitations.md) owns the current inventory and generated capability matrix; executable manifests own capability declarations and behavior contracts own exact rules. |
 | Metrics and evidence | [Metrics](architecture/metrics.md) owns deterministic rules; [signal dictionary](architecture/signal-dictionary.md) defines stable evidence codes and limits. |
-| Task board and session dispatch | [Tasks](architecture/tasks.md) is the design contract for the board, queue, start gates, session binding, and agent task tools; the privacy rules are in [AGENTS.md](../../AGENTS.md). Delivery is part by part under the [task board plan](plans/task-board.md), so a rule binds a capability only once its part has shipped. |
+| Task board and session dispatch | [Tasks](architecture/tasks.md) is the design contract for the board, queue, start gates, session binding, and agent task tools; the privacy rules are in [AGENTS.md](../../AGENTS.md). The user guide is [Tasks](../public/using-pomegr/tasks.md). |
 | Interface design | [DESIGN.md](../../DESIGN.md) is the written contract. The existing `/design-system` page is the authoritative visual reference, backed by its [samples](../../app/components/design-system/) and shared tokens/components. No HTML preview or mockup is an authority; [design system gaps](plans/design-system-gaps.md) lists the accepted patterns the page still lacks. |
 | Release, acceptance, diagnostics, and website procedures | The [`operations/`](operations/desktop-releases.md) runbooks are the procedures of record: [desktop releases](operations/desktop-releases.md), [beta acceptance](operations/desktop-beta-acceptance.md), [clean-VM checklist](operations/desktop-clean-vm.md), [pipeline diagnostics](operations/pipeline-diagnostics.md), and [website operations](operations/website.md). The contracts above own behavior. |
 | Legal terms and rationale | Root [LICENSE](../../LICENSE), [NOTICE](../../NOTICE), [source notice](../../SOURCE.md), and [trademark policy](../../TRADEMARKS.md) retain their legal/packaging homes; the [license history](decisions/license-history.md) decision explains the transition. |
@@ -102,11 +102,6 @@ manual website deployment ([website operations](operations/website.md#6-publish-
 | [Codex Windows presence](decisions/codex-windows-presence.md) | Why Codex liveness evidence is ranked and labeled as it is, and which earlier proposals shipped, were superseded, or were rejected; the contract is in the [observation cache](architecture/observation-cache.md) |
 
 ## Plans and temporary work
-
-The [task board plan](plans/task-board.md) delivers the per-repository task board and
-the opt-in desktop dispatcher in 21 sequential parts, each a pull request that the
-user merges. Behavior it ships is recorded in [Tasks](architecture/tasks.md); the
-plan is deleted by its last part.
 
 The [provider observers and notifications plan](plans/provider-notifications.md)
 defines five approved sequential parts for one notification subsystem, including

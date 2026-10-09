@@ -33,7 +33,8 @@ const STALLED_NOTE = "The session ended with no report.";
 type Patch = { text?: string } & TaskFieldsInput;
 
 function reportLine(report: NonNullable<Task["report"]>) {
-  const time = Number.isFinite(Date.parse(report.at)) ? <> <time dateTime={report.at}>{sessionListTime(report.at)}</time></> : null;
+  // The time sits in parentheses: a locale whose time ends in a period ("p.m.") must not double the sentence's own.
+  const time = Number.isFinite(Date.parse(report.at)) ? <> (<time dateTime={report.at}>{sessionListTime(report.at)}</time>)</> : null;
   return report.blockReason === null
     ? <>Agent reported complete{time}.</>
     : <>Agent reported it cannot continue{time}: {report.blockReason}</>;

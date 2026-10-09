@@ -107,7 +107,7 @@
 .commandSearch input:focus-visible { outline: 0; }
 .commandSearch input::placeholder { color: var(--command-muted); opacity: 1; }
 .commandToolbar .commandSearch { width: min(360px, 42vw); height: 36px; }
-.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, max-content) minmax(0, 1fr); }
+.commandSessionsToolbar .commandToolbar { display: grid; grid-template-columns: minmax(240px, 360px) minmax(0, 1fr) auto; }
 .commandSessionsToolbar .commandSearch { width: 100%; }
 .commandSessionFilters { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 /* Keep filter controls above the legacy button shape and shell font resets. */
@@ -122,6 +122,11 @@
 .commandSessionsToolbar .commandToolbarCount { width: 11ch; margin: 0 var(--space-1) 0 0; line-height: inherit; text-align: right; }
 /* The count, the label, and the segments share one text baseline. */
 .commandSessionGroupBy { grid-column: 3; justify-self: end; display: flex; align-items: baseline; gap: var(--space-2); color: var(--command-muted); font: var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+/* Between the phone stack and a wide window, Group by takes a row of its own so it never sits on the filter chips. */
+@media (max-width: 1240px) {
+  .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(240px, 360px) minmax(0, 1fr); }
+  .commandSessionGroupBy { grid-column: 1 / -1; }
+}
 @media (max-width: 900px) {
   .commandSessionsToolbar .commandToolbar { grid-template-columns: minmax(0, 1fr); }
   .commandSessionFilters { width: 100%; max-width: 100%; }

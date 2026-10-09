@@ -9,7 +9,7 @@
     {
       "id": "using-pomegr",
       "title": "Using Pomegr",
-      "pages": ["using-pomegr/sessions-and-agents.md", "using-pomegr/repositories.md", "using-pomegr/reporting-plugins.md", "using-pomegr/phone-access.md", "using-pomegr/mcp-queries.md", "using-pomegr/settings.md"]
+      "pages": ["using-pomegr/sessions-and-agents.md", "using-pomegr/repositories.md", "using-pomegr/tasks.md", "using-pomegr/reporting-plugins.md", "using-pomegr/phone-access.md", "using-pomegr/mcp-queries.md", "using-pomegr/settings.md"]
     },
     {
       "id": "concepts",

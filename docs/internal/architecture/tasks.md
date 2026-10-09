@@ -6,52 +6,23 @@
 > [observation cache](observation-cache.md).
 > Authority: canonical design contract for tasks and dispatch, decided by the product
 > owner on 2026-10-08. [AGENTS.md](../../../AGENTS.md) holds the privacy invariants and
-> wins on conflict; an executable contract (`shared/task-contract.ts`, once it exists)
-> wins on exact field shapes.
+> wins on conflict; the executable contract `shared/task-contract.ts` wins on exact
+> field shapes.
 > Related code and checks: the owners and focused commands are routed in the
-> [agent workflow](../development/agent-workflow.md); the delivery order is in the
-> [task board plan](../plans/task-board.md).
+> [agent workflow](../development/agent-workflow.md).
 
-**Status: designed, not built.** This page describes the contract that the plan
-implements part by part. As of the charter part (2026-10-08) no task code exists: there is no task
-store, route, board, queue, tool, or dispatch. Paths in code spans below are the
-planned owners and may not exist yet. Each part that ships behavior updates this page
-in the same change, so read a rule as binding for a capability only once the plan has
-landed the part that builds it, and read the [status table](#what-is-built) for which
-that is.
+**Status: built.** Every capability on this page has shipped: the board, features and
+steps, the queue with its start gates and schedule, session start for Claude Code and
+Codex on Windows, session binding, the three agent tools, verified conditions, and the
+task reference on the Sessions list and in the session view. The user guide is
+[Tasks](../../public/using-pomegr/tasks.md). Report-less completion (a task finishing
+from a deterministic condition with no agent report) is deliberately not designed or
+implemented; see [Open questions and unassigned work](#open-questions-and-unassigned-work).
 
-Pomegr becomes an observer plus an opt-in dispatcher. Observation is unchanged: it
+Pomegr is an observer plus an opt-in dispatcher. Observation is unchanged: it
 reads provider data and never writes it. Tasks and dispatch are a separate control
 plane that lets the user queue work for a repository and have Pomegr start a new
 Claude Code or Codex session for it, in the desktop app only.
-
-## What is built
-
-| Capability | State |
-| --- | --- |
-| This contract and the privacy rules in AGENTS.md | Documentation only |
-| Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and the repository Tasks tab |
-| Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued |
-| Run-on, effort, and done-when fields | Built: the New task panel and the task panel opened from a card set them, and the card shows them. The task panel also edits the task text and deletes the task. Nothing reads them yet: no session is started and no condition is verified |
-| Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
-| Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
-| Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
-| Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with the thread identity in the tool call's `_meta`; an unbound call is refused and posts nothing |
-| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window |
-| Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
-| Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
-| `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
-| CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
-| Stalled | Built: after committed revisions the monitor sets a linked task with no report to Stalled once its session's committed facts establish the end (catalog state Closed or Stopped, or Unknown with the Codex writer released), persists it, and holds a running queue. Idle, Open, and a bare Unknown never stall a task. The task panel says the session ended with no report and offers Mark done and resume queue or Requeue task |
-| Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one step at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
-| Start gates | Built: every start, manual or queued, first passes the four gates, judged from committed facts. A queued task that a gate holds waits, with the reason shown on its Queue card, and the queue stays on; a manual start a gate holds is refused with one fixed status. The Queue view lists each gate's current reading and sets the usage threshold (70, 85, or 95 percent; 85 by default); the Board shows each provider's usage reading |
-| Parallel steps with worktrees | Built: the queued tasks of one feature step start together. A task of a step that holds more than one task starts in a Git worktree of its own, on the branch `tasks/<task id>`, under a Pomegr-owned directory of the desktop data root; a task alone in its step, or without a feature, starts in the repository root. The next step starts only when every task of the step is done |
-| Scheduling | Built: in the desktop app the Task panel gives a task its own start time, which makes it Scheduled, and the Queue view's Schedule panel sets a start time and a stop time for the queue. The queue starts a scheduled task only from its time on, and starts nothing before the queue's start time or from its stop time on. Each check happens when the desktop queue runner asks, so it needs Pomegr open, and no running session is ever stopped |
-| Task on the Sessions list | Built: for a same-computer client the Sessions list has a Task column (the task ID, a chip only for Needs review, Stalled, or Done, and the feature and step), a Feature filter chip, and Feature in Group by. The task reference is joined from the task store when a directory page is served; a LAN client gets the list without it |
-| Task in the session view | Built: for a same-computer client, a session started for a task shows the task ID, feature, and step in its header, one compact task row at the top of Overview whose heading opens the Task tab, and a read-only Task tab (the last tab) with the task text, planned and observed model, the definition of done, each check's result, and the feature's tasks of the same and the next step. A session with no task has no Task tab; a LAN client gets none of it |
-
-Report-less completion (a task finishing from a deterministic condition with no agent
-report) is deliberately not designed or implemented; see [Open questions](#open-questions).
 
 ## Ownership
 
@@ -90,14 +61,14 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   block reason 200.
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
   `apply(repositoryId, action, payload)`, and `close()`. `apply` returns the new board
-  or a fixed error: `invalid`, `not_found`, `limit`, `conflict`, or `unsupported`. Later
-  parts add actions, not methods.
+  or a fixed error: `invalid`, `not_found`, `limit`, `conflict`, or `unsupported`. A new
+  capability adds an action, not a method.
 - The first read of a repository seeds the default columns: Backlog, Ready, In
   progress, Review, and Done.
 
 ## Record
 
-The designed browser-visible shape follows. `shared/task-contract.ts` owns the
+The browser-visible shape follows. `shared/task-contract.ts` owns the
 executable version.
 
 ```ts
@@ -759,21 +730,63 @@ new data class.
 - Missing evidence is not success. A session that vanished is Stalled only after its
   end is established; unknown is shown as unknown.
 
-## Open questions
+## Open questions and unassigned work
+
+Each item is owned by the product owner; none is implemented until they answer.
 
 1. **Report-less completion.** May a deterministic condition, for example the pull
-   request being merged, complete a task when the agent never reported? The product
-   owner has not decided. Do not implement it; a session without a report is Stalled.
-2. **Browser read.** Should the same-computer browser read `GET /api/tasks`, as
-   designed, or should the board be desktop only? Until answered, the read follows the
-   `GET /api/provider-folders` gate and exposes nothing to the LAN.
+   request being merged, complete a task when the agent never reported? Do not
+   implement it; a session without a report is Stalled.
+2. **Browser read.** Should the same-computer browser keep reading `GET /api/tasks`, or
+   should the board be desktop only? Until answered, the read follows the
+   `GET /api/provider-folders` gate and exposes nothing to the LAN. The same answer
+   decides whether a paired LAN client may ever see task references on the Sessions
+   list and in the session view.
+3. **Product wording.** The root README, `PRODUCT.md`, the package description, the
+   plugin readmes, the landing pages, the public settings guide, the tray tooltip and
+   its test, and the
+   [product positioning decision](../decisions/product-positioning.md) still call
+   Pomegr a read-only observer. Observation is read-only; the product now also starts
+   sessions. No delivered change owned those files.
+4. **Board deep links.** The board has no address for the Queue view or one task, so
+   feature links and Open on board in the session view open the board only, and a task
+   ID on the Sessions list opens the board instead of the session's Task tab.
+5. **Session start outside Windows.** Other platforms answer the fixed
+   `unsupported_platform` result until a launcher is validated for them.
+
+## Known defects
+
+The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
+rules and reported these defects. None is fixed; the maintainer owns each, and the
+first two need a product-owner decision because they change decided behavior.
+
+1. **A stopped Codex turn stalls a live session.** A failed or interrupted Codex turn
+   reads as Stopped while its process is still present, so the task is set Stalled, the
+   queue holds, and the session's later `complete_task` is refused.
+2. **A linked task with no report can hold the queue with no exit.** When its session
+   never reaches an established end (after a restart of the computer or of Pomegr, or
+   after the session is cleared), Mark done and Requeue answer `conflict` and only
+   deleting the task frees the queue.
+3. **`add_task` from a task worktree targets another board.** The repository identity
+   comes from the Git top level, which differs in a worktree.
+4. **Claude Code binding depends on the hook running.** With hooks disabled or the hook
+   timing out, the MCP server accepts a session reference from tool input.
+5. **A condition can pass on an old fact.** The check facts carry no age test, so a
+   CI status or clean tree read before the agent's last push can pass.
+6. **A requeued parallel task with a dirty worktree cannot start.** The queue pauses
+   with `start_failed`, and the worktree path is private, so the user cannot clean it.
+7. **The queue's next task can name a task that already started.** A started task
+   keeps the Queued state until it reports, so a Waiting line can show on it.
+
+Not yet proven on a device: that a session started in a new task worktree links to its
+task, and that Codex sends the thread identity the binding reads.
 
 ## Change and verify
 
 Route the change with the [agent workflow](../development/agent-workflow.md), then run
 the focused commands of the owning row. A change that adds a field, route, tool, or
-surface to the task data class updates the AGENTS.md rule and this page together, and
-the first part that adds `server/tasks/` also adds its layer rule to
-`.dependency-cruiser.cjs` and its row to the server layout table. Run
+surface to the task data class updates the AGENTS.md rule, this page, and the
+[user guide](../../public/using-pomegr/tasks.md) together. `server/tasks/` has its own
+layer rule (`server-tasks-layer`) in `.dependency-cruiser.cjs`. Run
 `npm run check:boundaries` for import direction and `npm run check:docs` for this
 page.

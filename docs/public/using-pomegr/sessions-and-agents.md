@@ -32,7 +32,8 @@ not whether the work succeeded.
    A dash means you started the session yourself. A chip appears only for an
    outcome the session cannot show: **Needs review**, **Stalled**, or **Done**.
    The column and feature details are shown in the desktop app and in a browser
-   on the same computer, not on another device.
+   on the same computer, not on another device. A session started for a task also
+   has a **Task** tab; see [Tasks](tasks.md#see-a-task-from-sessions).
 
 ![The Sessions list in dark theme, filtered to the Pomegr project and the text Claude Code with All selected, showing four Claude Code sessions with their State, Last activity, Agents, and Context columns; one is In progress with 2/25 agents.](../images/sessions-and-agents/sessions-list.jpg)
 
