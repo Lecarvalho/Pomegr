@@ -2,16 +2,28 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { TASK_BOUNDS } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskColumnRole } from "../../../shared/task-contract";
 import { CommandIcon } from "../command-center/CommandIcon";
+import { CommandSelect } from "../command-center/CommandSelect";
 import { COLUMN_NAME_REQUIRED_MESSAGE } from "./task-desktop";
 import type { TaskBoardEdits } from "./use-task-board-edits";
 
 // Column header (design contract D50-D52): the name and the count. In the desktop app one Icon-role action opens an
-// inline editor under the header: rename, move left or right, delete. Delete is offered but unavailable while the
-// column holds tasks and for the last column, with the reason beside it. Nothing here renders without `edits`.
+// inline editor under the header: rename, move left or right, the state change that moves cards here, delete. Delete
+// is offered but unavailable while the column holds tasks and for the last column, with the reason beside it. Nothing
+// here renders without `edits`.
 
-type Column = { id: string; name: string };
+type Column = { id: string; name: string; role?: TaskColumnRole | null };
+
+/** When Pomegr moves a card to the column by itself. One column holds each choice but Never. */
+const ROLE_LABEL = "Pomegr moves a card here";
+const NO_ROLE = "none";
+const ROLE_OPTIONS: { value: TaskColumnRole | typeof NO_ROLE; label: string }[] = [
+  { value: NO_ROLE, label: "Never" },
+  { value: "in_progress", label: "When its session starts" },
+  { value: "review", label: "When it needs review" },
+  { value: "done", label: "When it is done" },
+];
 
 export function TaskColumnHeader({ column, headingId, index, columnCount, taskCount, hiddenCount = 0, edits, onMove, onDeleted }: {
   column: Column;
@@ -37,6 +49,7 @@ export function TaskColumnHeader({ column, headingId, index, columnCount, taskCo
   const [sent, setSent] = useState(column.name);
   const holdsTasks = taskCount + hiddenCount > 0;
   const onlyColumn = columnCount <= 1;
+  const role = column.role ?? NO_ROLE;
   const reason = holdsTasks ? "A column must be empty to be deleted." : onlyColumn ? "A board keeps at least one column." : null;
 
   // The name changed in the committed board: the field follows it.
@@ -89,6 +102,11 @@ export function TaskColumnHeader({ column, headingId, index, columnCount, taskCo
           disabled={index >= columnCount - 1} onClick={() => onMove("right")}><CommandIcon name="arrow" /></button>
         <button type="button" className="commandQuietAction" aria-label={`Delete column ${column.name}`} aria-describedby={reason ? noteId : undefined}
           disabled={reason !== null} onClick={() => void remove()}>Delete column</button>
+      </div>
+      <div className="taskGateField">
+        <span className="taskGateFieldLabel">{ROLE_LABEL}</span>
+        <CommandSelect aria-label={`${ROLE_LABEL}: ${column.name}`} value={role} options={ROLE_OPTIONS} disabled={edits.busy}
+          onChange={(value) => { if (value !== role) void edits.setColumnRole(column.id, value === NO_ROLE ? null : value); }} />
       </div>
       {reason && <p id={noteId} className="newTaskHelper">{reason}</p>}
     </div>}

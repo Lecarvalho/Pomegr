@@ -31,10 +31,14 @@ export const TASK_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 export const TASK_QUEUE_STATUSES = Object.freeze(["idle", "running", "blocked", "paused"]);
 export const TASK_QUEUE_PAUSE_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"]);
 export const DEFAULT_TASK_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
+/** The role a column may hold: where a card goes when its session links, needs review, or is done (task-columns.mjs). */
+export const TASK_COLUMN_ROLES = Object.freeze(["in_progress", "review", "done"]);
+/** The roles the default columns are seeded with, in the order of `DEFAULT_TASK_COLUMNS`. */
+export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress", "review", "done"]);
 // The fixed action list shared by the route (which rejects any other name) and the store (which
 // answers `unsupported` for a listed action whose part has not landed).
 export const TASK_ACTIONS = Object.freeze([
-  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete",
+  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role",
   "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 
@@ -342,6 +346,14 @@ export function normalizeColumnDeletePayload(value) {
   return id === undefined ? undefined : { id };
 }
 
+/** `column_role` names one column and its role, or null for none. Both keys are required. Returns `{ id, role }`, or undefined when invalid. */
+export function normalizeColumnRolePayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "role"]) || value.role === undefined) return undefined;
+  const id = columnIdOf(value.id);
+  const role = enumValue(value.role, TASK_COLUMN_ROLES);
+  return id === undefined || role === undefined ? undefined : { id, role };
+}
+
 function isoTime(value) {
   if (!Number.isSafeInteger(value) || value < 0) return undefined;
   const date = new Date(value);
@@ -416,7 +428,9 @@ export function normalizeStoredColumn(row) {
   if (!isPlainObject(row) || typeof row.id !== "string" || !COLUMN_ID.test(row.id)) return undefined;
   const name = normalizeColumnName(row.name);
   const position = nonNegativeInteger(row.position);
-  return name === undefined || position === undefined ? undefined : { id: row.id, name, position };
+  // The store reads the role from `meta` (task-columns.mjs); a row without one has no role.
+  const role = enumValue(row.role, TASK_COLUMN_ROLES);
+  return name === undefined || position === undefined || role === undefined ? undefined : { id: row.id, name, position, role };
 }
 
 export function normalizeStoredFeature(row) {

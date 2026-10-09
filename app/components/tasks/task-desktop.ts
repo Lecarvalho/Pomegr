@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskActionError, type TaskCheck, type TaskColumnRole, type TaskGateThreshold, type TaskQueueSchedule, type TaskRun } from "../../../shared/task-contract";
 import type { FeatureInput } from "./task-features";
 
 // The only way the renderer changes a task: the desktop preload's `taskAction` bridge (fixed IPC channel
@@ -46,7 +46,7 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 }
 
 /** The fixed actions this surface sends; the monitor validates each record. */
-type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "column_role" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -138,6 +138,14 @@ export function deleteDesktopColumn(repositoryId: string, id: string): Promise<T
   return sendTaskAction(repositoryId, "column_delete", { id });
 }
 
+/**
+ * Gives a column the role Pomegr moves cards by, or none with `null`. A role belongs to one column: the column that
+ * held it before loses it. No card moves until a task's state next changes.
+ */
+export function setDesktopColumnRole(repositoryId: string, id: string, role: TaskColumnRole | null): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "column_role", { id, role });
+}
+
 /** Creates a feature named `name` (one line, at most 80 characters). The new feature is read from the committed board. */
 export function createDesktopFeature(repositoryId: string, name: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "feature_create", { name });
@@ -220,13 +228,14 @@ export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 export const COLUMN_NAME_REQUIRED_MESSAGE = "The column needs a name.";
 
-export type ColumnAction = "create" | "rename" | "reorder" | "delete";
+export type ColumnAction = "create" | "rename" | "reorder" | "delete" | "role";
 
 /** One fixed message per column action; the monitor's own wording never reaches the board. */
 export function columnFailureMessage(action: ColumnAction, error: TaskActionError | "unavailable"): string {
   if (action === "create") return error === "limit" ? `The board is full: it holds ${TASK_BOUNDS.columnsPerRepository} columns.` : "The column could not be added.";
   if (action === "rename") return "The column could not be renamed.";
   if (action === "reorder") return "The column could not be moved.";
+  if (action === "role") return "The column's automatic move could not be changed.";
   return error === "conflict" ? "The column could not be deleted. It must be empty, and a board keeps one column." : "The column could not be deleted.";
 }
 

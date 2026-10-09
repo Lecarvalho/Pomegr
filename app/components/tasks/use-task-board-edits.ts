@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TaskBoard, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
+import type { TaskBoard, TaskColumnRole, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
   GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE, columnFailureMessage,
   createDesktopColumn, createDesktopFeature, deleteDesktopColumn, featureFailureMessage, moveDesktopTask, renameDesktopColumn, reorderDesktopColumn,
-  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type ColumnAction, type TaskActionResult, type TaskMove,
+  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopColumnRole, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type ColumnAction, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
 // Board edits made in the desktop app. A card move is optimistic: it is drawn in its new place at once and rolled
@@ -33,6 +33,8 @@ export type TaskBoardEdits = {
   renameColumn(id: string, name: string): Promise<boolean>;
   moveColumn(id: string, position: number): Promise<boolean>;
   deleteColumn(id: string): Promise<boolean>;
+  /** Sets which state change moves cards to a column, or none; waits for the committed board. */
+  setColumnRole(id: string, role: TaskColumnRole | null): Promise<boolean>;
   /** Creates a feature from the board's filter row; the committed board then lists it. */
   addFeature(name: string): Promise<boolean>;
   /** Moves a queued task of a feature to a step (the Queue view); waits for the committed board. */
@@ -146,6 +148,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     renameColumn: useCallback((id: string, name: string) => columnAction("rename", () => renameDesktopColumn(repositoryId, id, name)), [columnAction, repositoryId]),
     moveColumn: useCallback((id: string, position: number) => columnAction("reorder", () => reorderDesktopColumn(repositoryId, id, position)), [columnAction, repositoryId]),
     deleteColumn: useCallback((id: string) => columnAction("delete", () => deleteDesktopColumn(repositoryId, id)), [columnAction, repositoryId]),
+    setColumnRole: useCallback((id: string, role: TaskColumnRole | null) => columnAction("role", () => setDesktopColumnRole(repositoryId, id, role)), [columnAction, repositoryId]),
     addFeature: useCallback((name: string) => waitedAction(() => createDesktopFeature(repositoryId, name), featureFailureMessage), [waitedAction, repositoryId]),
     reorderQueueTask: useCallback((id: string, step: number) => waitedAction(() => reorderDesktopQueueTask(repositoryId, id, step), () => QUEUE_REORDER_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),

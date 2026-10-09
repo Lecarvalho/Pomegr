@@ -18,7 +18,7 @@ import type { TaskBoardEdits } from "./use-task-board-edits";
 type OpenTask = (task: Task, opener: HTMLElement) => void;
 
 /** Design contract D87, shown where cards can be dragged. */
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Columns are yours; moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done, to the column set for that in the column's menu. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 

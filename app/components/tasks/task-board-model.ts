@@ -3,7 +3,9 @@ import type { TaskMove } from "./task-desktop";
 import { taskColumns } from "./task-presentation";
 
 // Pure placement rules for the board: where a card sits, what a drop or a keyboard action asks for, and how an
-// optimistic move reads. A move only ever changes `columnId` and `position`; a card's state and chip are never touched.
+// optimistic move reads. A move only ever changes `columnId` and `position`; a card's state and chip
+// are never touched. The moves the monitor makes when a task's state changes arrive with the committed board and are
+// not modeled here.
 
 type BoardShape = Pick<TaskBoard, "columns" | "tasks">;
 

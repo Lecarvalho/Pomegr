@@ -1,4 +1,4 @@
-import { createEmptyTaskBoard, type Task, type TaskBoard, type TaskGates, type TaskQueue } from "../../../shared/task-contract";
+import { DEFAULT_TASK_COLUMN_ROLES, createEmptyTaskBoard, type Task, type TaskBoard, type TaskGates, type TaskQueue } from "../../../shared/task-contract";
 import type { TaskBoardEdits } from "../tasks/use-task-board-edits";
 
 // Synthetic task-board data shared by the task samples on /design-system. Every value is invented: no repository, path,
@@ -11,7 +11,7 @@ export const SAMPLE_FUTURE = "2099-01-01T02:00:00.000Z";
 export const SAMPLE_FUTURE_STOP = "2099-01-01T18:00:00.000Z";
 
 const COLUMNS = [["col-backlog", "Backlog"], ["col-ready", "Ready"], ["col-progress", "In progress"], ["col-review", "Review"], ["col-done", "Done"]]
-  .map(([id, name], position) => ({ id, name, position }));
+  .map(([id, name], position) => ({ id, name, position, role: DEFAULT_TASK_COLUMN_ROLES[position] ?? null }));
 const FEATURES = [{ id: SAMPLE_FEATURE_ID, name: "Upload reliability", done: false }, { id: "feature-cleanup", name: "Client cleanup", done: false }];
 const NO_RUN = { provider: null, model: null, effort: null } as const;
 
@@ -84,7 +84,7 @@ export const BOARD_EMPTY: TaskBoard = { ...createEmptyTaskBoard(SAMPLE_REPOSITOR
 export function inertEdits(board: TaskBoard): TaskBoardEdits {
   const none = async () => false;
   return {
-    board, failure: null, busy: false, settled: 0, moveTask: none, addColumn: none, renameColumn: none, moveColumn: none, deleteColumn: none, addFeature: none,
+    board, failure: null, busy: false, settled: 0, moveTask: none, addColumn: none, renameColumn: none, moveColumn: none, deleteColumn: none, setColumnRole: none, addFeature: none,
     reorderQueueTask: none, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none, reject() {},
   };
 }

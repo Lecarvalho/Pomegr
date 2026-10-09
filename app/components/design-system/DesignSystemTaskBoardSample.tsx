@@ -56,8 +56,8 @@ export function TaskBoardSection() {
       <Sample label="Column header" note="The name and a data-font count. Read-only in a browser.">
         <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-readonly" index={2} columnCount={5} taskCount={1} onMove={noop} onDeleted={noop} /></Frame>
       </Sample>
-      <Sample label="Column header, desktop app" note="One Icon-role action opens the inline editor: rename, move left or right, and Delete column, unavailable with its reason while the column holds tasks.">
-        <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-desktop" index={2} columnCount={5} taskCount={1} edits={EDITS} onMove={noop} onDeleted={noop} /></Frame>
+      <Sample label="Column header, desktop app" note="One Icon-role action opens the inline editor: rename, move left or right, the state change that moves cards here, and Delete column, unavailable with its reason while the column holds tasks.">
+        <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress", role: "in_progress" }} headingId="design-system-column-desktop" index={2} columnCount={5} taskCount={1} edits={EDITS} onMove={noop} onDeleted={noop} /></Frame>
       </Sample>
       <Sample label="Add column" note="Secondary role in the pane head, beside the queue switch and New task. It swaps in a one-line form.">
         <Frame><AddColumnAction edits={EDITS} full={false} /></Frame>

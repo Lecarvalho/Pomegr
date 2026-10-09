@@ -1,5 +1,5 @@
 import type { SessionActivityStatus } from "../../../shared/monitor-contract";
-import type { Task, TaskBoard, TaskState } from "../../../shared/task-contract";
+import type { Task, TaskBoard, TaskColumnRole, TaskState } from "../../../shared/task-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionState } from "../../dashboard-utils";
 
@@ -89,7 +89,7 @@ export function taskSessionHref(sessionId: string): string | null {
   }
 }
 
-export type TaskColumnView = { id: string; name: string; tasks: Task[] };
+export type TaskColumnView = { id: string; name: string; role: TaskColumnRole | null; tasks: Task[] };
 
 function idNumber(id: string) {
   return Number(id.slice(2));
@@ -106,6 +106,7 @@ export function taskColumns(board: Pick<TaskBoard, "columns" | "tasks">): TaskCo
     .map((column) => ({
       id: column.id,
       name: column.name,
+      role: column.role ?? null,
       tasks: (byColumn.get(column.id) ?? []).sort((left, right) => left.position - right.position || idNumber(left.id) - idNumber(right.id)),
     }));
 }

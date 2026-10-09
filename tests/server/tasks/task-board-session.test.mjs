@@ -165,11 +165,13 @@ test("GET /api/tasks fills a linked session only from the resolver handed in", a
   const response = await getBoard(port);
   assert.equal(response.status, 200);
   assert.equal(response.headers["cache-control"], "no-store");
-  assert.deepEqual(response.json.tasks[0].session, { id: SESSION, title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1" });
-  assert.equal(response.json.tasks[1].session, null);
+  // The link moved T-1 to the In progress column, so the tasks are read by ID, not by board order.
+  const served = (id) => response.json.tasks.find((task) => task.id === id);
+  assert.deepEqual(served("T-1").session, { id: SESSION, title: "Fix the flaky test", state: "needs_input", observedModel: "claude-opus-4-1" });
+  assert.equal(served("T-2").session, null);
   assert.deepEqual(calls, [SESSION]);
   // The stored board is untouched: the facts are borrowed per read, never persisted.
-  assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks[0].session, UNKNOWN(SESSION));
+  assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks.find((task) => task.id === "T-1").session, UNKNOWN(SESSION));
 });
 
 test("without a resolver the GET serves a linked session as unknown", async (context) => {

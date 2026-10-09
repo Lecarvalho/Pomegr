@@ -86,7 +86,7 @@ const rowOf = (directory, number, repositoryId = REPOSITORY_ID) => withDatabase(
   database.prepare("SELECT session_id, dispatch_token, state, column_id, position, queue_position FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, number));
 
-test("the planned token links the session, clears the digest, and changes nothing else", async (context) => {
+test("the planned token links the session, clears the digest, and moves the card to In progress", async (context) => {
   const env = await setup(context);
   create(env);
   const before = env.store.readBoard(REPOSITORY_ID).tasks[0];
@@ -102,7 +102,10 @@ test("the planned token links the session, clears the digest, and changes nothin
   assert.equal(row.dispatch_token, null);
   const after = env.store.readBoard(REPOSITORY_ID).tasks[0];
   assert.deepEqual(after.session, { id: SESSION, title: null, state: "unknown", observedModel: null });
-  for (const key of ["id", "text", "columnId", "position", "featureId", "step", "run", "doneWhen", "state", "scheduledAt", "report", "createdAt"]) {
+  const columns = env.store.readBoard(REPOSITORY_ID).columns;
+  assert.equal(columns.find((column) => column.id === before.columnId).role, null);
+  assert.equal(columns.find((column) => column.id === after.columnId).role, "in_progress");
+  for (const key of ["id", "text", "featureId", "step", "run", "doneWhen", "state", "scheduledAt", "report", "createdAt"]) {
     assert.deepEqual(after[key], before[key], key);
   }
   assert.ok(Date.parse(after.updatedAt) >= Date.parse(before.updatedAt));
@@ -122,8 +125,6 @@ test("a queued task keeps its state and queue position when bound", async (conte
   const after = rowOf(env.directory, 1);
   assert.equal(after.state, "queued");
   assert.equal(after.queue_position, before.queue_position);
-  assert.equal(after.column_id, before.column_id);
-  assert.equal(after.position, before.position);
 });
 
 test("a wrong token is not_found and leaves the dispatch alone", async (context) => {

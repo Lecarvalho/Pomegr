@@ -64,7 +64,11 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   or a fixed error: `invalid`, `not_found`, `limit`, `conflict`, or `unsupported`. A new
   capability adds an action, not a method.
 - The first read of a repository seeds the default columns: Backlog, Ready, In
-  progress, Review, and Done.
+  progress, Review, and Done. The last three are seeded with the column roles
+  `in_progress`, `review`, and `done` (see [Columns and card moves](#columns-and-card-moves)).
+- A column's role is kept in the store's `meta` table under
+  `column_role:<repositoryId>:<role>` with the column ID as the value, like the pause
+  reason, so the schema version does not change.
 
 ## Record
 
@@ -90,7 +94,7 @@ type Task = {
 type TaskBoard = {
   version: 1; readiness: "ready" | "loading" | "unavailable" | "desktop_only";
   repositoryId: string;
-  columns: { id: string; name: string; position: number }[];
+  columns: { id: string; name: string; position: number; role: "in_progress" | "review" | "done" | null }[];
   features: { id: string; name: string; done: boolean }[];
   tasks: Task[];
   queue: {
@@ -198,6 +202,45 @@ of the computer or of Pomegr, or a cleared session, can leave it so) keeps its s
 Pomegr never marks it Done or Stalled by itself, and the queue never advances past it by
 itself, because the task can matter to the whole feature; Mark done and Requeue work on
 it (see [Stop on trouble](#queue)).
+
+## Columns and card moves
+
+Decided by the product owner on 2026-10-09. It replaces the earlier rule that a card
+stays in its column whatever happens to its task.
+
+Columns are the user's: up to 12, renamed, reordered, and deleted at will. Pomegr
+therefore never recognizes a column by its name or its place. A column may hold one
+fixed role, and at most one column of a board holds each role:
+
+| Role | A card moves there when | The write that moves it |
+| --- | --- | --- |
+| `in_progress` | Its session links | `POST /api/agent/v1/tasks/bind` |
+| `review` | Its state becomes Needs review | Verification of a `complete_task` report |
+| `done` | Its state becomes Done | Verification of a `complete_task` report, or the user's Mark done (`resolve_done`) |
+
+- **Roles are set by the user.** The desktop action `column_role` takes `{ id, role }`,
+  with `role` one of the three values or null for none. Giving a column a role takes
+  that role from the column that held it and replaces the column's own earlier role.
+  Setting a role moves no card. Deleting a column removes its role. A new board has the
+  roles on its default In progress, Review, and Done columns; a board made before this
+  rule has none until the user sets them.
+- **The move is part of the state write.** The card's column changes in the same
+  transaction that persists the link, the report outcome, or the resolution
+  (`server/tasks/task-columns.mjs`, `moveTaskToRole`). The card lands last in the role's
+  column, and the column it left closes the gap.
+- **No column holds the role: the card stays.** The state still changes. A card already
+  in the role's column keeps its place.
+- **Blocked by agent and Stalled move nothing.** The card stays where it is, normally
+  the In progress column, and its chip and the Queue banner say that it needs the user.
+- **Requeue moves nothing.** A requeued card stays where it is and moves to the
+  In progress column when its new session links.
+- **A move by hand does not opt a card out.** The user may drag a card anywhere at any
+  time; it stays there until the task's next state change in the table, which moves it
+  again wherever it is. Moving a card by hand never changes its state or chip.
+- **No move is taken back.** Only the persisted writes in the table move a card. No
+  observation does: not a borrowed session state, not the queue, not a start, and not a
+  start gate. So Pomegr never moves a card and later moves it back because an
+  observation changed.
 
 ## Features and steps
 
@@ -624,7 +667,9 @@ supplies.
   catalog has no row for the session yet at session start, so the session is not looked
   up. The lookup is monitor-wide, by the SHA-256 digest of the token over every unlinked
   dispatch. In one write transaction the store sets the task's session, clears the
-  digest, and bumps the update time. It changes no state, column, or queue position.
+  digest, and bumps the update time, and moves the card to the column with the
+  `in_progress` role (see [Columns and card moves](#columns-and-card-moves)). It changes
+  no state or queue position.
 - The link is single assignment. A wrong or reused token, an unbound dispatch older than
   ten minutes, a task that already has a session, and a session already linked to
   another task all answer the same `not_found`, so the answer never says which failed.
@@ -708,7 +753,8 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
 - When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
-- Starting never changes the task's state, column, or queue position.
+- Starting never changes the task's state, column, or queue position. The card moves
+  only when the started session links.
 - After a manual start answers `worktree_dirty`, the task panel shows **Open folder**. It
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
   only and shows one line per fixed result (`opened`, `not_found`, `invalid`,
@@ -737,7 +783,7 @@ like any other.
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `column_create`,
-  `column_rename`, `column_reorder`, `column_delete`, `feature_create`, `queue_add`,
+  `column_rename`, `column_reorder`, `column_delete`, `column_role`, `feature_create`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. An action whose part has not landed answers a fixed `unsupported`
   result. Built so far: `create` with `{ text, run?, doneWhen? }`, `update` with
@@ -751,6 +797,8 @@ like any other.
   `{ id, position }` with the same clamping, and `column_delete` takes `{ id }`. A
   thirteenth column answers `limit`. Deleting a column that holds tasks, or the last
   column, answers `conflict`. Task and column positions stay dense after every action.
+  `column_role` takes exactly `{ id, role }`, `role` being `in_progress`, `review`,
+  `done`, or null; an unknown column answers `not_found`.
   `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
   duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
   feature with no task is listed with `done: false`. `create` and `update` take two
@@ -822,6 +870,8 @@ new data class.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
+- A column's role is not user-authored text: it is one of three fixed values or null,
+  served on `GET /api/tasks` beside the column name and nowhere else.
 - They never enter `/api/state`, session catalogs, reports, logs, notifications,
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
