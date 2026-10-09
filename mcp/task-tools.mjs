@@ -21,6 +21,14 @@ const modelSchema = z.string().max(120)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._+-]*(?:\[[A-Za-z0-9._-]{1,16}\])?$/u, "Use a model identifier without paths, spaces, or markup.")
   .describe("Optional model identifier for the session that will run the task.");
 
+/** Set by the Pomegr hook through `updatedInput`; the server refuses a reference that lacks the hook's proof. */
+function hookFields(hookBound) {
+  return hookBound ? {
+    session_ref: z.string().max(200).describe("Set by the Pomegr hook. Never supply this field.").optional(),
+    session_proof: z.string().max(100).describe("Set by the Pomegr hook. Never supply this field.").optional(),
+  } : {};
+}
+
 function inputShape(hookBound) {
   const shape = {
     text: z.string().trim().min(1).max(4000).describe("What the task asks an agent to do."),
@@ -33,11 +41,7 @@ function inputShape(hookBound) {
     own_condition: z.string().trim().min(1).max(500).optional().describe("Optional free-text condition the agent judges itself."),
     feature: z.string().trim().min(1).max(80).optional().describe("Optional name of an existing feature on the board."),
   };
-  if (hookBound) {
-    shape.session_ref = z.string().max(200)
-      .describe("Set by the Pomegr hook. Never supply this field.").optional();
-  }
-  return shape;
+  return { ...shape, ...hookFields(hookBound) };
 }
 
 export function buildAddTaskBody(ref, input) {
@@ -84,9 +88,6 @@ export function resolveCodexCallSession(meta) {
   return `codex:${thread}`;
 }
 
-function hookField(hookBound) {
-  return hookBound ? { session_ref: z.string().max(200).describe("Set by the Pomegr hook. Never supply this field.").optional() } : {};
-}
 
 function result(text, isError) {
   return { ...(isError ? { isError: true } : {}), content: [{ type: "text", text }] };
@@ -99,7 +100,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     inputSchema: z.object(inputShape(hookBound)).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async (input, extra) => {
-    const ref = resolveSession(input, extra);
+    const ref = await resolveSession(input, extra, "add_task");
     if (typeof ref !== "string" || !ref) return result(TASK_UNBOUND_TEXT, true);
     let answer;
     try {
@@ -136,9 +137,9 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
   server.registerTool("complete_task", {
     title: "Report the Pomegr task complete",
     description: "Report that the task Pomegr started this session for is complete. Pomegr then verifies the conditions the user checked and marks the task done or in need of review. It takes no input: the session is bound by the host, and each session reports once.",
-    inputSchema: z.object(hookField(hookBound)).strict(),
+    inputSchema: z.object(hookFields(hookBound)).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async (input, extra) => report(TASK_COMPLETE_PATH, resolveSession(input, extra), {}, (answer) => {
+  }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), {}, (answer) => {
     if (answer.state === "done") return "Task reported complete. Pomegr marked it done.";
     if (answer.state !== "needs_review") return null;
     const failed = (Array.isArray(answer.results) ? answer.results : [])
@@ -152,9 +153,9 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     inputSchema: z.object({
       reason: z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u, "Use one line of plain text.")
         .describe("Why the task cannot continue, in one line of at most 200 characters. No secrets, commands, or output."),
-      ...hookField(hookBound),
+      ...hookFields(hookBound),
     }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async (input, extra) => report(TASK_BLOCK_PATH, resolveSession(input, extra), { reason: input.reason },
+  }, async (input, extra) => report(TASK_BLOCK_PATH, await resolveSession(input, extra, "block_task"), { reason: input.reason },
     (answer) => (answer.state === "blocked" ? "Task reported as blocked. The user will resolve it." : null)));
 }

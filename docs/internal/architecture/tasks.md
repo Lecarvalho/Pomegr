@@ -95,7 +95,7 @@ type TaskBoard = {
   tasks: Task[];
   queue: {
     status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null;
-    pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | null;
+    pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | "worktree_dirty" | null;
     order: string[];
     schedule?: { startAt: string | null; stopAfter: string | null };   // absent when neither time is set
     gates?: {                              // absent from a board that is not ready and from an older monitor
@@ -127,11 +127,12 @@ type TaskBoard = {
   without a provider is invalid; an effort alone is valid.
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
-- `queue.order` holds task IDs only: the queued tasks in the order they would start (see
-  [Queue](#queue)). It adds no task content, and the private queue position never leaves
-  the monitor.
+- `queue.order` holds task IDs only: the queued tasks that have not started, in the order
+  they would start (see [Queue](#queue)). It adds no task content, and the private queue
+  position never leaves the monitor.
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
+  `worktree_dirty` says that a requeued task's own worktree holds uncommitted changes.
 - `queue.gates` is the [start gates](#start-gates) as the monitor last judged them: fixed
   statuses, the whole percentages Usage limits already shows, the threshold, and for the
   next task its provider, the earlier task it waits on, and the fixed reasons that hold
@@ -179,14 +180,24 @@ badge and chip derived from a task.
 
 Stalled is decided in `server/tasks/task-stall.mjs`. After each burst of committed
 revisions the monitor reads the committed facts of every session linked to a task that
-has no report. The task stalls when the catalog state is Closed or Stopped, or when the
-state is Unknown and the primary agent's liveness reason is `writer_released`. Idle,
-Open, Working, Needs input, a bare Unknown, and a session with no committed facts leave
-the task as it is, so a Codex session whose turn finished and whose state stays Idle
-does not stall its task. The decision is written to the task store once. A stalled task
-keeps its session link and has no report; a later report from that session is refused,
-and only Mark done or Requeue changes the state. The sweep reads memory and the task
-store only: no provider, Git, or GitHub read.
+has no report. The task stalls when the catalog state is Closed; or Stopped for a Claude
+Code session; or Stopped for a Codex session whose primary agent's liveness reason is
+`writer_released`; or Unknown with that same reason. A Codex session reads Stopped after
+a failed or interrupted turn while its process may still be present and able to report,
+so Codex Stopped alone never stalls a task, and its later `complete_task` is accepted. A
+Stopped state of an unrecognized provider is not an end. Idle, Open, Working, Needs
+input, a bare Unknown, and a session with no committed facts leave the task as it is, so
+a Codex session whose turn finished and whose state stays Idle does not stall its task.
+The decision is written to the task store once. A stalled task keeps its session link
+and has no report; a later report from that session is refused, and only Mark done or
+Requeue changes the state. The sweep reads memory and the task store only: no provider,
+Git, or GitHub read.
+
+A linked task whose session has not reported and whose end is not established (a restart
+of the computer or of Pomegr, or a cleared session, can leave it so) keeps its state.
+Pomegr never marks it Done or Stalled by itself, and the queue never advances past it by
+itself, because the task can matter to the whole feature; Mark done and Requeue work on
+it (see [Stop on trouble](#queue)).
 
 ## Features and steps
 
@@ -206,7 +217,17 @@ paths stay desktop-private and never reach the monitor store or browser state.
   when it already exists. Uncommitted changes of the repository root are not part of it.
 - **Reuse.** A worktree left by an earlier start of the task (a requeue) is used again only
   when Git still lists it on the task branch and its working tree is clean. Otherwise the
-  start fails and nothing is touched.
+  start fails and nothing is touched. When Git lists it on the task branch and the tree has
+  uncommitted changes, the start fails with the fixed `worktree_dirty` (the manual start's
+  status, and the queue's pause reason, see [Queue](#queue)); a `git status` that itself
+  fails is not known to be dirty and stays an ordinary failure, `failed` for a manual start
+  and `start_failed` for the queue.
+- **Open folder.** The user cleans a dirty worktree by hand, so the desktop can open it:
+  the fixed channel `pomegr:task-worktree-open` (see [Boundaries](#boundaries)) opens the
+  task's worktree folder in the file manager, only when the folder exists and Git, asked
+  from inside it, lists it on `tasks/<task ID>`. The path is resolved and opened in desktop
+  main and never reaches the renderer, the monitor, the task store, a log, or a report.
+  Pomegr removes nothing and still never removes a worktree that has uncommitted changes.
 - **Removal.** The desktop removes a worktree only when Git lists it as a worktree of the
   repository, its working tree is clean, and its HEAD holds no commit that exists nowhere
   else (no remote and no other local branch). The removal is Git's own unforced
@@ -227,8 +248,15 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   (T-2 before T-10); they are the tasks that run in parallel. After every feature task
   come the single queued tasks, which have no feature or step. They run in the order
   they were queued, because no other order is defined for them. A task in another state
-  is not in the order, even when it belongs to a queued task's feature. The first entry
-  is the task shown as next.
+  is not in the order, even when it belongs to a queued task's feature. A task that
+  already started is not in the order either: one with a linked session and no report, or
+  a dispatch still inside its ten minutes (`rowInFlight` in `task-record.mjs`, which judges
+  the dispatch with `dispatchStanding` from the leaf module `task-dispatch-standing.mjs`;
+  the board projection and the queue share this one rule). It keeps its state and its step, so its step
+  is not done, and a task of a later step waits on it (`blockedBy`). `queue.gates.next`
+  never names it. The Queue view shows it with the borrowed session state, or its own chip
+  until a session links, with no Waiting line, no next marker, and no move. The first
+  entry is the task shown as next.
 - **Queue position.** Adding a task to the queue stamps it with a private integer, one
   above the highest the repository holds. The monitor keeps it beside the task and uses
   it only to order single tasks. It is never part of a task record or of the board.
@@ -267,8 +295,13 @@ and only one step at a time. Every start first passes the [start gates](#start-g
 - **Pause.** A start that does not succeed pauses the queue and is not retried: the
   runner posts `POST /internal/tasks/queue-pause` with `{ id, reason }`, the monitor
   stores `paused` with the task in `blockedBy` and the fixed reason (`cli_missing`,
-  `plugin_missing`, `unsupported_platform`, or `start_failed`), and offers no next start
-  until the user turns the queue on again. A start whose terminal opened but whose
+  `plugin_missing`, `unsupported_platform`, `worktree_dirty`, or `start_failed`), and offers
+  no next start until the user turns the queue on again. The runner reports a start's
+  fixed status as the reason when it is one of the first four, and `start_failed` for any
+  other failure; `worktree_dirty` is a requeued parallel task whose own worktree holds
+  uncommitted changes, which Pomegr never removes. The user commits or discards them in
+  the folder (the Queue banner's Open folder, see [Boundaries](#boundaries)) and then turns
+  the queue on again. A start whose terminal opened but whose
   session never reported its token leaves an expired dispatch; the monitor pauses the
   queue on it with `session_not_linked` instead of starting the task again. Turning the
   queue on clears the reason and the repository's expired unlinked dispatches, which is
@@ -289,6 +322,17 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     report once more. Either one, on a blocked queue, names the lowest-numbered task
     that still needs the user in `blockedBy`, or sets the queue back to `running` when
     none is left. Both answer `conflict` for a task in any other state.
+  - **A linked task with no report.** Mark done and Requeue also accept a linked task
+    whose session has not reported (a session link, state Not queued, Queued, or
+    Scheduled, and no report). Pomegr never marks such a task Done or Stalled by itself,
+    and the queue never advances past it by itself, because the task can matter to the
+    whole feature; the user decides in the Pomegr UI, where the task panel offers **Mark
+    done** and **Requeue task** with a line that neither stops the session. Neither
+    action stops, attaches to, or writes to the session. Requeue clears the link, so a
+    later report from the old session is `not_found`; Mark done leaves an outcome, so a
+    later report is `already_reported`. A live dispatch with no linked session and a task
+    that is already Done still answer `conflict`. The agent's own path is `block_task`,
+    which works on such a task and blocks a running queue.
 - **No stop.** Pomegr never stops a running session, whether for a schedule, a
   gate, or a blocked queue.
 - **Scheduling.** A task or the queue can start at a given time, and the queue can
@@ -368,7 +412,8 @@ a repository's gate facts (a `GET /api/tasks`, a task action, `queue-next`, or
 observation is missing or 15 seconds old, the ask queues one asynchronous Git status of
 the root and answers with what is already committed. The first ask therefore reads
 unknown. At most 16 repositories are held, least recently asked first out; a repository
-nobody asks about is not inspected, so there is no timer. Roots, changed files, and Git
+nobody asks about is not inspected, so there is no timer. A read whose `git status`
+failed or timed out is unknown, never clean. Roots, changed files, and Git
 errors stay in the monitor: only clean, dirty, or unknown leaves it.
 
 What a held gate does:
@@ -402,7 +447,7 @@ the conditions the user checked and sets the state.
 
 - Pass: Done. Fail: Needs review. The agent can call `block_task` with a bounded
   reason; the state becomes Blocked by agent. A session that ends without a report is
-  Stalled.
+  Stalled once its end is established (see [States](#states)).
 - With no condition checked, the agent's `complete_task` report alone completes the
   task.
 - The report keeps only `{ check, passed }` results, the time, and the bounded block
@@ -412,7 +457,7 @@ the conditions the user checked and sets the state.
 - The facts are the bound session's committed public state in memory
   (`resolveTaskCheckFacts` in `server/runtime/task-session-lookup.mjs`), handed to the pure
   rule `verifyChecks(checks, facts)` as `{ treeClean, branchCommits, pullRequestStates,
-  ciPassed }`. The task branch is the branch recorded for that session.
+  ciPassed, readAt, workAt }`. The task branch is the branch recorded for that session.
   - Working tree clean: the live repository block lists no uncommitted file.
   - Commit on task branch: the branch is not the main branch and its base comparison
     shows a commit of its own, merged since or not.
@@ -426,12 +471,64 @@ the conditions the user checked and sets the state.
     open pull requests, or its merged ones when none is open, and passes only when each
     is `passed`. Pending, failed, no check, and no such pull request are not passed; a
     pull request whose status the monitor has not read is unknown. Verification reads
-    the status from memory (`pullRequestCheckStatus`) and never runs gh.
+    the status and the time of the read that established it from memory
+    (`pullRequestCheckRead`) and never runs gh.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
+- **A fact is judged only on a read made after the work it judges.** A condition never
+  passes on a fact older than the session's latest work that could have changed it. Each
+  fact carries the time it was read (`readAt`) and the latest work that could have
+  changed it (`workAt`), epoch milliseconds from committed memory with no clock, Git,
+  GitHub, or provider read. `verifyChecks` passes a fact only when its read time is a
+  finite number not earlier than its work time. A missing, malformed, or non-finite read
+  time is unknown, a read earlier than the work is unknown, a null work time means no
+  relevant work is recorded, and unknown is never a pass.
+  - **Read times** come from monitor-private `readAt` stamps that the producers commit
+    with the values they date. The repository block's `readAt` is the start of the Git
+    read its changed files and base comparison come from; it dates `tree_clean` and, while
+    the remote comparison is ready, `commit_on_branch`. The remote comparison's own
+    `checkedAt` does not date the local read and is not used. The
+    pull-request block's `readAt` is the start of the oldest read its items rest on (the
+    served `checkedAt` is the newest and is not used); it dates `pr_open` and `pr_merged`.
+    CI uses the oldest judged check-status read, bounded by the pull-request block's
+    `readAt`. Every read is dated by the moment it began, because what it saw is no
+    newer than that. Concurrent Git reads of one working tree share one inspection, and
+    each caller is dated by the start of that inspection (`_readStartedAt`, a private key
+    of the Git reader's answer), never by its own later call. A Git read whose
+    `git status` failed or timed out (`_statusUnknown`) commits no stamp, because its empty
+    file list is not a reading of the working tree. A block with no stamp (that one, a
+    restored one, or a historical one) leaves its facts unknown.
+  - **Work times** (`workTimes` in `task-session-lookup.mjs`). `tree_clean` is dated by
+    the latest end of the session's recorded file writes and the end of every finished
+    execution task, because any shell command can dirty the tree. A file write ends at
+    its call time plus its recorded wall duration, not at its call: a write that waited
+    for approval changes the file later than it was called.
+    `commit_on_branch`, `pr_open`, `pr_merged`, and `ci_passed` are dated by the latest end
+    of the session's finished `git`, `git_push`, and `pull_request` execution tasks. A task
+    still running or finished at no known time, and a file write with no recorded
+    result, make the matching facts unknown. A
+    truncated activity feed with no file write bounds the newest write by its oldest item.
+  - **Nothing new is persisted or served.** The times live in the lookup's result and the
+    monitor's memory. The `readAt` stamps travel in the committed public state of a live
+    session and are removed by `serializeServedSessionState`
+    (`server/repository/session-repository-enrichment.mjs`), which is the observation
+    store's default serializer and the `/api/state` serializer. The answer of
+    `complete_task` still carries only per-condition pass or fail.
 - Committed facts can trail the agent: a pull request opened seconds before the report
   may not be committed yet, and the task then needs review although the condition
   holds. The user resolves it with Mark done; the verification is not repeated.
+- **Limits of the age rule, stated plainly.**
+  - A report made before the next repository refresh judges an older fact, so it lands in
+    Needs review even when the condition now holds.
+  - A refresh enters the committed state only at the next evidence-driven derive, and an
+    identical derive keeps the older stamp, so a stamp can be older than the latest read.
+  - A running execution task of any kind (a dev server, for example) keeps `tree_clean`
+    unknown while it runs, and a running Git, push, or pull-request task does the same for
+    the four other conditions.
+  - Repository work is recognized only as a finished `git`, `git_push`, or `pull_request`
+    execution task. A compound or generic shell command, or another tool, that changes
+    the branch or a pull request is not counted, and only the newest retained execution
+    tasks are seen.
 - A task takes one report per dispatch. A second `complete_task` or `block_task`, and a
   report on a task that already has an outcome, change nothing.
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
@@ -450,24 +547,49 @@ A tool call is bound to the calling session by the harness, never by a value the
 supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
-  supplies the session on every call.
+  supplies the session on every call. The hook hands `session_ref` to `add_task`,
+  `complete_task`, and `block_task` through `updatedInput`, together with `session_proof`:
+  `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
+  issue time, keyed by the local agent-query capability token
+  (`plugin-src/task-binding-proof.mjs`, shared by hook and server). The hook code is
+  `bindClaudeQueryWrite` (async; it signs, or denies the call with a fixed text when it
+  has no token or no session) and `bindClaudeQuerySession` (reads only, synchronous, and
+  never binds a write tool). The token appears nowhere in the hook's output except as that
+  key.
+  - The Claude MCP server (`plugins/claude-code/mcp/server.mjs`) accepts a `session_ref`
+    only when it has the `claude:<uuid>` shape and its proof verifies against the token read
+    from the descriptor at call time: well-formed, issued at most 10 minutes ago (and at
+    most 5 seconds ahead), for this tool and this session, compared in constant time.
+    Anything else, including hooks disabled, a hook timeout, a model-typed `session_ref`,
+    a missing, malformed, expired, other-tool, other-session, or other-token proof, or no
+    readable token, answers the fixed unbound text and posts nothing. `session_ref` and
+    `session_proof` are never copied into a request body, and the server never falls back
+    to a launch-time session ID.
+  - The window is ten minutes because the hook issues the proof before the host's
+    permission prompt and the server verifies it after the user approves. This reliance on
+    the hook running before the prompt has not been exercised on a device.
 - **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
   (`threadId`, which must agree with `thread_id` in its turn metadata when that is
   present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`. A stdio MCP server
   does not receive `CODEX_THREAD_ID`: Codex 0.157 starts it with an allowlisted
   environment, so that variable is only the fallback. A Codex subagent thread has its
   own identity and therefore no linked task.
-- `add_task` targets the repository of the bound session. It never accepts a path or a
-  repository ID.
+- `add_task` targets the board of the task the calling session is linked to. The route
+  asks the task store (`sessionTasks`, a read of the task store alone: no Git, provider,
+  or path read) for the session's link first and uses the linked task's repository ID; the
+  session's committed repository identity is used only when the session is not linked or
+  the store cannot answer. So a session started in a task worktree adds to the repository
+  whose board holds the task, even when its committed identity differs, is missing, or is
+  not committed yet. It never accepts a path or a repository ID.
 - The monitor serves `add_task` as `POST /api/agent/v1/tasks/add`, beside the agent-query
   GETs and under the same gate: loopback host, no `Origin` header, and the agent token
   when one is configured. The body is a JSON object of at most 16 KiB with
   `Content-Type: application/json` and only these keys: `sessionRef` (`claude:<id>` or
   `codex:<id>`), `text`, and optionally `run`, `doneWhen`, and `feature` (a feature name).
   Any other key, including a repository ID or path, is `invalid`. The record rules are
-  the store's. The monitor resolves `sessionRef` to the session's repository identity from
-  committed facts, never reading Git or provider files, and creates the task as the
-  desktop `create` action does: last in the first column, not queued. A `feature` must
+  the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
+  a session without one, from the session's committed repository identity, never reading
+  Git or provider files, and creates the task as the desktop `create` action does: last in the first column, not queued. A `feature` must
   name an unfinished feature of that repository exactly; the task takes a new last step,
   and agents never create features.
 - The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
@@ -503,7 +625,10 @@ supplies.
   state, logs, reports, or notifications.
 
 A session that was not started from a task has no linked task; its tools can still add
-tasks to its repository.
+tasks to its repository. A session that is not linked, but that the user opened inside a
+task worktree, still resolves to the worktree's own committed identity, because no
+committed fact maps it to the repository whose board holds the task (see
+[Known defects](#known-defects)).
 
 ## Starting a session
 
@@ -518,15 +643,17 @@ Starting is desktop-only and explicit.
 3. The session prompt is a fixed template holding the task text, the done-when list, and
    the instruction to call `complete_task` or `block_task`.
 4. The start is refused with a fixed reason when the Pomegr plugin is not installed in
-   the repository, a gate holds (fixed result `gate_held`), or the platform is not
+   the repository, a gate holds (fixed result `gate_held`), a worktree reused for the
+   task has uncommitted changes (fixed result `worktree_dirty`), or the platform is not
    Windows (fixed result `unsupported_platform`).
 
 Built so far: the manual and the queued start of a Claude Code or Codex session behind the start gates, and the link of the started session to its task.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
   task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
-  `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`,
-  `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, or `failed`.
+  `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`, `gate_held`,
+  `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, `failed`, or
+  `worktree_dirty`.
 - Desktop main checks the platform and looks for the Claude Code and Codex executables,
   then shows the native confirmation, which names only the task ID. Only after the user
   confirms does it ask the monitor for the start plan, because the plan mints a
@@ -558,12 +685,25 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   prompt as one argument, each quoted by the Windows command-line rules. Claude Code
   takes `--model` and `--effort`; Codex takes `--model` and
   `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
-  included. The environment is the native allowlist of the started provider for the
-  active provider profile plus `POMEGR_TASK_TOKEN`. Pomegr keeps no handle to the session.
+  included. The environment is the user's own, as the desktop app inherited it at launch
+  (product-owner decision, 2026-10-09): the session's hooks and MCP servers need the
+  user's Node, tools, and settings, so the app's stripped runtime environment is not
+  used. Left out are only the app's own variables (`ELECTRON_*`, `POMEGR_SMOKE_*`,
+  `POMEGR_START_*`, the monitor origin and token); added is `POMEGR_TASK_TOKEN`. A
+  provider folder variable (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) is set only when the user
+  chose that folder in Settings or inherited the variable: naming the default folder makes
+  Claude Code read another user configuration file. Pomegr keeps no handle to the session.
 - When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
 - Starting never changes the task's state, column, or queue position.
+- After a manual start answers `worktree_dirty`, the task panel shows **Open folder**. It
+  calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
+  only and shows one line per fixed result (`opened`, `not_found`, `invalid`,
+  `unavailable`); the **Queue paused** banner offers the same button when the pause reason
+  is `worktree_dirty`. Desktop main resolves the folder (the task's worktree directory,
+  which must exist and be listed by Git on the task branch) and opens it with
+  `shell.openPath`; Windows only. No path, command, or error text crosses the channel.
 
 Claude Code and Codex are both startable. Pomegr never attaches to, writes input to,
 approves for, or stops the started process; afterwards it only observes the session
@@ -578,6 +718,7 @@ like any other.
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
+| `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task panel's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
@@ -710,11 +851,19 @@ new data class.
 - Provider and model names, effort, check results, and times are normalized enums or
   identifiers, not user content.
 - The pull-request check status is monitor-private. It is held only in memory, as one
-  fixed `passed`, `failed`, `pending`, or `none` value for at most 256 pull-request URLs,
-  and it is not part of the normalized pull-request item. It is never persisted and never
-  enters `/api/state`, a session domain, a repository snapshot, a report, a log, or
-  `GET /api/tasks`. Its only use is the CI passed condition, which exposes pass or fail.
-  Check names, URLs, conclusions, and counts are dropped when the list is normalized.
+  fixed `passed`, `failed`, `pending`, or `none` value together with the time of the read
+  that established it, for at most 256 pull-request URLs, and it is not part of the
+  normalized pull-request item. It is never persisted and never enters `/api/state`, a
+  session domain, a repository snapshot, a report, a log, or `GET /api/tasks`. Its only
+  use is the CI passed condition, which exposes pass or fail, and the time only refuses a
+  pass on a fact read before the session's latest relevant work. Check names, URLs,
+  conclusions, and counts are dropped when the list is normalized.
+- The committed repository and pull-request blocks of a live session state also carry a
+  monitor-private `readAt` (the start of the Git read, and the start of the oldest
+  pull-request read). The session-state serializer removes them before any serving, and
+  they never appear on `/api/state`, a session domain, a repository snapshot or sidecar, a
+  checkpoint, a report, a log, or `GET /api/tasks`. The ownership note is in the
+  [observation cache](observation-cache.md).
 
 ## Invariants and failure behavior
 
@@ -736,7 +885,8 @@ Each item is owned by the product owner; none is implemented until they answer.
 
 1. **Report-less completion.** May a deterministic condition, for example the pull
    request being merged, complete a task when the agent never reported? Do not
-   implement it; a session without a report is Stalled.
+   implement it; a session that ended without a report is Stalled, and a task whose
+   session has not reported waits for the user.
 2. **Browser read.** Should the same-computer browser keep reading `GET /api/tasks`, or
    should the board be desktop only? Until answered, the read follows the
    `GET /api/provider-folders` gate and exposes nothing to the LAN. The same answer
@@ -757,26 +907,23 @@ Each item is owned by the product owner; none is implemented until they answer.
 ## Known defects
 
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
-rules and reported these defects. None is fixed; the maintainer owns each, and the
-first two need a product-owner decision because they change decided behavior.
+rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
+above now describe the fixed behavior. Two items remain open, and the maintainer owns
+each. The stated limits of the age rule for done-when conditions are listed under
+[Completion](#completion).
 
-1. **A stopped Codex turn stalls a live session.** A failed or interrupted Codex turn
-   reads as Stopped while its process is still present, so the task is set Stalled, the
-   queue holds, and the session's later `complete_task` is refused.
-2. **A linked task with no report can hold the queue with no exit.** When its session
-   never reaches an established end (after a restart of the computer or of Pomegr, or
-   after the session is cleared), Mark done and Requeue answer `conflict` and only
-   deleting the task frees the queue.
-3. **`add_task` from a task worktree targets another board.** The repository identity
-   comes from the Git top level, which differs in a worktree.
-4. **Claude Code binding depends on the hook running.** With hooks disabled or the hook
-   timing out, the MCP server accepts a session reference from tool input.
-5. **A condition can pass on an old fact.** The check facts carry no age test, so a
-   CI status or clean tree read before the agent's last push can pass.
-6. **A requeued parallel task with a dirty worktree cannot start.** The queue pauses
-   with `start_failed`, and the worktree path is private, so the user cannot clean it.
-7. **The queue's next task can name a task that already started.** A started task
-   keeps the Queued state until it reports, so a Waiting line can show on it.
+1. **`add_task` from an unlinked session in a task worktree targets another board.** A
+   session the user opened by hand inside a task worktree still resolves to the
+   worktree's own committed identity (the Git top level), because no committed fact maps
+   it to the repository whose board holds the task. A session started for a task adds to
+   the right board.
+2. **A started task without a feature holds every start, but `queue.gates.next` does not
+   say so.** A started task with no feature is a step of its own that holds the queue,
+   yet `queue.gates.next` still names the next queued single task with no hold reason, so
+   the Queue view shows **Queued · next** on a task that does not start. A pinned test
+   keeps this behavior. A fixed reason such as `task_running` would widen the
+   [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
+   decides.
 
 Not yet proven on a device: that a session started in a new task worktree links to its
 task, and that Codex sends the thread identity the binding reads.

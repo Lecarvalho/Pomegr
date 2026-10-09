@@ -63,7 +63,8 @@ export function createTaskTreeObservation({ repositoryRoot, gitReader = readGitS
     entry.inFlight = true;
     entry.attemptedAt = now();
     Promise.resolve().then(() => gitReader(root, { forbiddenRoots: forbiddenRoots() })).then((state) => {
-      const known = state?.available === true && Array.isArray(state.files);
+      // A read whose `git status` failed lists no file without having read the tree: unknown, never clean.
+      const known = state?.available === true && Array.isArray(state.files) && state._statusUnknown !== true;
       entry.clean = known ? state.files.length === 0 : null;
       entry.checkedAt = known ? now() : null;
     }).catch(() => {

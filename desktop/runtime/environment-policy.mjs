@@ -103,6 +103,18 @@ export function minimalRuntimeEnvironment(source, overrides = {}, fileExists = e
   return Object.assign(environment, overrides);
 }
 
+// A provider session the user starts from the task board is the user's own terminal session: it gets the
+// environment the app inherited (its hooks and MCP servers need the user's Node, tools, and settings), without the
+// variables that belong to this app's own runtime or to one start. Stays in the Electron main process.
+const SESSION_EXCLUDED_ENVIRONMENT = /^(?:ELECTRON_.*|POMEGR_SMOKE_.*|POMEGR_START_.*|POMEGR_MONITOR_TOKEN|POMEGR_MONITOR_ORIGIN|POMEGR_TASK_TOKEN)$/iu;
+export function userSessionEnvironment(source) {
+  const environment = {};
+  for (const [name, value] of Object.entries(source || {})) {
+    if (typeof value === "string" && !SESSION_EXCLUDED_ENVIRONMENT.test(name)) environment[name] = value;
+  }
+  return environment;
+}
+
 export function keepOnlyRuntimeEnvironment(environment, overrides = {}, fileExists = existsSync) {
   const kept = minimalRuntimeEnvironment(environment, overrides, fileExists);
   for (const name of Object.keys(environment)) delete environment[name];

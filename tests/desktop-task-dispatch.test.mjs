@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 
-import { nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/runtime/environment-policy.mjs";
 import {
   createTaskStart,
   installTaskStartIpc,
   TASK_START_CHANNEL,
   TASK_START_LAUNCH_ARGUMENTS,
   TASK_START_STATUSES,
+  TASK_WORKTREE_OPEN_CHANNEL,
+  TASK_WORKTREE_OPEN_STATUSES,
   windowsArgument,
 } from "../desktop/runtime/task-dispatch.mjs";
 
@@ -20,7 +21,9 @@ const codexExe = "C:\\Users\\tester\\.local\\bin\\codex.exe";
 const root = "C:\\Work\\repo";
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
 const token = "A".repeat(43);
-const environment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", SECRET_KEY: "nope" };
+// The session gets the user's environment as inherited; only this app's own runtime variables are left out.
+const sessionEnvironment = { USERPROFILE: "C:\\Users\\tester", PATH: "C:\\Windows;C:\\Program Files\\nodejs", SystemRoot: "C:\\Windows", APPDATA: "C:\\Users\\tester\\AppData\\Roaming", HTTPS_PROXY: "http://proxy.test:8080" };
+const environment = { ...sessionEnvironment, ELECTRON_RUN_AS_NODE: "1", POMEGR_MONITOR_TOKEN: "app-private", POMEGR_SMOKE_NO_SYSTEM_NODE: "1", POMEGR_TASK_TOKEN: "stale" };
 
 const json = (value) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 const basePlan = () => ({ taskId: "T-3", provider: "claude", model: null, effort: null, repositoryRoot: root, prompt: "Do the thing", token });
@@ -67,7 +70,8 @@ const aborted = (h) => h.calls.filter((c) => c.url.endsWith("start-abort"));
 test("statuses are fixed and the channel is named", () => {
   assert.equal(TASK_START_CHANNEL, "pomegr:task-start");
   assert.ok(Object.isFrozen(TASK_START_STATUSES));
-  assert.equal(TASK_START_STATUSES.length, 13);
+  assert.equal(TASK_START_STATUSES.length, 14);
+  assert.ok(TASK_START_STATUSES.includes("worktree_dirty"));
   assert.ok(TASK_START_STATUSES.includes("gate_held"));
 });
 
@@ -85,13 +89,14 @@ test("starts with no model or effort, exact args and options", async () => {
   assert.equal(options.stdio, "ignore");
   assert.equal(options.windowsHide, true);
   assert.deepEqual(options.env, {
-    ...nativeClaudeEnvironment(environment),
+    ...sessionEnvironment,
     POMEGR_TASK_TOKEN: token,
     POMEGR_START_FILE: exe,
     POMEGR_START_ARGUMENTS: '"Do the thing"',
     POMEGR_START_DIRECTORY: root,
   });
-  assert.equal(options.env.SECRET_KEY, undefined);
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
   const text = JSON.stringify(out);
   for (const secret of [token, root, "Do the thing"]) assert.ok(!text.includes(secret));
   assert.deepEqual(h.calls[0].body, { repositoryId, payload: { id: "T-3" } });
@@ -268,7 +273,7 @@ test("the installer replaces the handler, removes it and never throws", async ()
     removeHandler: (c) => { removed.push(c); handlers.delete(c); },
   };
   const remove = installTaskStartIpc({ ipcMain, isTrustedEvent: () => true, monitorOrigin: origin, authorizationToken: "s", platform: "win32", fileExists: () => false, environment });
-  assert.deepEqual(removed, [TASK_START_CHANNEL]);
+  assert.deepEqual(removed, [TASK_START_CHANNEL, TASK_WORKTREE_OPEN_CHANNEL]);
   assert.deepEqual(await handlers.get(TASK_START_CHANNEL)({}, repositoryId, "T-3"), { status: "cli_missing" });
   remove();
   assert.equal(handlers.has(TASK_START_CHANNEL), false);
@@ -287,13 +292,14 @@ test("a Codex plan starts the Codex CLI with its own environment and the task to
   assert.deepEqual(args, [...TASK_START_LAUNCH_ARGUMENTS]);
   assert.equal(options.shell, false);
   assert.deepEqual(options.env, {
-    ...nativeCodexEnvironment(environment),
+    ...sessionEnvironment,
     POMEGR_TASK_TOKEN: token,
     POMEGR_START_FILE: codexExe,
     POMEGR_START_ARGUMENTS: '"Do the thing"',
     POMEGR_START_DIRECTORY: root,
   });
-  assert.equal(options.env.SECRET_KEY, undefined);
+  for (const name of ["ELECTRON_RUN_AS_NODE", "POMEGR_MONITOR_TOKEN", "POMEGR_SMOKE_NO_SYSTEM_NODE", "NODE_ENV"]) assert.equal(options.env[name], undefined, name);
+  assert.equal(options.env.PATH.includes("nodejs"), true, "the user's Node stays on the session's PATH");
 });
 
 test("Codex model and effort flags are passed only when set, xhigh by name", async () => {
@@ -509,4 +515,92 @@ test("a plan whose worktree field is not a boolean is malformed", async () => {
   assert.deepEqual(await go(h), { status: "failed" });
   assert.equal(h.spawns.length, 0);
   assert.deepEqual(worktrees.calls, []);
+});
+
+test("a dirty reused worktree answers worktree_dirty, aborts the dispatch and spawns nothing; other failures stay failed", async () => {
+  const worktrees = fakeWorktrees({ ok: false, reason: "dirty" });
+  const h = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees } });
+  assert.deepEqual(await go(h), { status: "worktree_dirty" });
+  assert.equal(h.spawns.length, 0);
+  assert.equal(aborted(h).length, 1);
+  for (const made of [{ ok: false }, { ok: false, reason: "other" }]) {
+    const other = harness({ plan: { ...basePlan(), worktree: true }, overrides: { worktrees: fakeWorktrees(made) } });
+    assert.deepEqual(await go(other), { status: "failed" });
+  }
+});
+
+/** The open channel: a fake worktrees with `locate`, an injected `openPath` and the same trust check as the start. */
+function openHarness({ located = worktreeDirectory, openPath, platform = "win32", withWorktrees = true } = {}) {
+  const opened = [];
+  const locates = [];
+  const worktrees = withWorktrees ? { locate: async (request) => { locates.push(request); if (located instanceof Error) throw located; return located; } } : null;
+  const starter = createTaskStart({
+    isTrustedEvent: (e) => e?.trusted === true,
+    platform,
+    worktrees,
+    openPath: openPath || (async (directory) => { opened.push(directory); return ""; }),
+  });
+  return { starter, opened, locates };
+}
+const open = (h, repo = repositoryId, id = "T-3", event = trusted) => h.starter.openWorktree(event, repo, id);
+
+test("the open channel is fixed and answers one of four statuses", async () => {
+  assert.equal(TASK_WORKTREE_OPEN_CHANNEL, "pomegr:task-worktree-open");
+  assert.deepEqual([...TASK_WORKTREE_OPEN_STATUSES], ["opened", "not_found", "invalid", "unavailable"]);
+  assert.ok(Object.isFrozen(TASK_WORKTREE_OPEN_STATUSES));
+  const h = openHarness();
+  assert.deepEqual(await open(h), { status: "opened" });
+  assert.deepEqual(h.opened, [worktreeDirectory]);
+  assert.deepEqual(h.locates, [{ repositoryId, taskId: "T-3" }]);
+});
+
+test("the open channel refuses an untrusted frame and bad IDs without locating anything", async () => {
+  const h = openHarness();
+  assert.deepEqual(await open(h, repositoryId, "T-3", { trusted: false }), { status: "invalid" });
+  assert.deepEqual(await open(h, repositoryId, "T-3", null), { status: "invalid" });
+  for (const [repo, id] of [["repo-x", "T-3"], [7, "T-3"], [repositoryId, "T-0"], [repositoryId, "../T-3"], [repositoryId, 3], [null, null]]) {
+    assert.deepEqual(await open(h, repo, id), { status: "invalid" });
+  }
+  assert.deepEqual(h.locates, []);
+  assert.deepEqual(h.opened, []);
+});
+
+test("an unlisted or missing worktree is not_found and opens nothing", async () => {
+  for (const located of [null, "relative\\dir", new Error("git")]) {
+    const h = openHarness({ located });
+    assert.deepEqual(await open(h), { status: "not_found" });
+    assert.deepEqual(h.opened, []);
+  }
+});
+
+test("no worktree root, a non-Windows platform, or an openPath failure is unavailable, with no path in any answer", async () => {
+  const cases = [
+    openHarness({ withWorktrees: false }),
+    openHarness({ platform: "linux" }),
+    openHarness({ openPath: async () => `${worktreeDirectory}: access denied` }),
+    openHarness({ openPath: async () => { throw new Error(worktreeDirectory); } }),
+  ];
+  for (const h of cases) {
+    const answer = await open(h);
+    assert.deepEqual(answer, { status: "unavailable" });
+    assert.equal(JSON.stringify(answer).includes("Data"), false);
+  }
+  const noOpener = createTaskStart({ isTrustedEvent: () => true, platform: "win32", worktrees: { locate: async () => worktreeDirectory } });
+  assert.deepEqual(await noOpener.openWorktree({}, repositoryId, "T-3"), { status: "unavailable" });
+});
+
+test("the open channel is installed and removed with the start channel", async () => {
+  const handlers = new Map();
+  const ipcMain = { handle: (channel, fn) => handlers.set(channel, fn), removeHandler: (channel) => handlers.delete(channel) };
+  const h = openHarness();
+  const remove = installTaskStartIpc({ ipcMain, starter: { start: async () => ({ status: "started" }), openWorktree: h.starter.openWorktree }, queueRunner: false });
+  assert.ok(handlers.has(TASK_WORKTREE_OPEN_CHANNEL));
+  assert.deepEqual(await handlers.get(TASK_WORKTREE_OPEN_CHANNEL)(trusted, repositoryId, "T-3"), { status: "opened" });
+  assert.deepEqual(await handlers.get(TASK_WORKTREE_OPEN_CHANNEL)({ trusted: false }, repositoryId, "T-3"), { status: "invalid" });
+  const thrower = new Map();
+  installTaskStartIpc({ ipcMain: { handle: (c, f) => thrower.set(c, f), removeHandler() {} }, starter: { openWorktree: async () => { throw new Error("secret"); } }, queueRunner: false });
+  assert.deepEqual(await thrower.get(TASK_WORKTREE_OPEN_CHANNEL)(trusted, repositoryId, "T-3"), { status: "unavailable" });
+  remove();
+  assert.equal(handlers.has(TASK_WORKTREE_OPEN_CHANNEL), false);
+  assert.equal(handlers.has(TASK_START_CHANNEL), false);
 });

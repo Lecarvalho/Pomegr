@@ -133,6 +133,7 @@ test("a start status maps to a fixed pause or to nothing", async () => {
   const expectations = {
     started: null, busy: null, not_startable: null, gate_held: null, not_found: null, cancelled: null,
     cli_missing: "cli_missing", plugin_missing: "plugin_missing", unsupported_platform: "unsupported_platform",
+    worktree_dirty: "worktree_dirty",
     failed: "start_failed", unavailable: "start_failed", invalid: "start_failed", unsupported_provider: "start_failed",
     surprise: "start_failed", "": "start_failed", 7: "start_failed", undefined: "start_failed", null: "start_failed",
   };

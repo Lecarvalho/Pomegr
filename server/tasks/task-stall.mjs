@@ -2,32 +2,46 @@
 //
 // The rule is decided once and persisted: when a linked task has no report and the committed facts of its
 // session establish that the session ended, the task becomes Stalled and holds a running queue. Ended means
-// the catalog state is Closed or Stopped, or the state is Unknown and the primary agent's liveness says the
-// Codex writer was released. Idle, Open, Working, Needs input, a bare Unknown, and a session the monitor
-// holds no facts for never stall a task. A stalled task never leaves that state by itself: only the user's
-// Mark done or Requeue resolves it, and a later report from the session changes nothing.
+// the catalog state is Closed (any provider), or Stopped for a Claude Code session, or Stopped for a Codex
+// session whose primary agent's liveness says the writer was released, or Unknown with that same released
+// writer. A Codex session reads Stopped after a failed or interrupted turn while its process may still be
+// present and able to report, so for Codex a Stopped state ends the session only together with a released
+// writer. A Stopped state of an unrecognized or missing provider is not an end, and neither is anything else
+// this module does not recognize. Idle, Open, Working, Needs input, a bare Unknown, and
+// a session the monitor holds no facts for never stall a task. A stalled task never leaves that state by
+// itself: only the user's Mark done or Requeue resolves it, and a later report from the session changes nothing.
+// A linked task that never reaches an established end keeps its state and holds the queue; the user resolves it
+// with the same two actions, and nothing here stops or touches a session.
 //
 // This module reads no route, runtime, Git, or provider data. The entry point hands it a
 // `resolveFacts(sessionId)` that reads committed memory only, and a `subscribe` for committed revisions.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { blockQueue } from "./task-report.mjs";
-import { isTaskSessionId, taskIdFromNumber } from "./task-record.mjs";
+import { IN_FLIGHT_STATES, isTaskSessionId, taskIdFromNumber } from "./task-record.mjs";
 
-const ENDED_STATES = Object.freeze(["closed", "stopped"]);
 /** States of a linked task whose session can still report; the same set `complete` and `block` accept. */
-const WAITING_STATES = Object.freeze(["not_queued", "queued", "scheduled"]);
-const WAITING_SQL = WAITING_STATES.map((state) => `'${state}'`).join(", ");
+const WAITING_SQL = IN_FLIGHT_STATES.map((state) => `'${state}'`).join(", ");
 /** Revisions arrive in bursts; one sweep follows the last of a burst. */
 const SWEEP_DELAY_MS = 1000;
 
+// Session IDs are `<provider>:<local id>`. The tasks layer may not import the provider contract, so the provider
+// is read from the prefix; anything else is no provider.
+const providerOfSession = (sessionId) => {
+  const separator = typeof sessionId === "string" ? sessionId.indexOf(":") : -1;
+  return separator > 0 ? sessionId.slice(0, separator) : null;
+};
+
 /**
  * True only when `facts` (`{ state, writerReleased }` from committed session facts) establish that the session
- * ended. Anything missing, malformed, or not recognized is not an end.
+ * ended. `providerId` is the session's provider: Stopped ends a `claude` session, and a `codex` session only when
+ * its writer was released. Anything missing, malformed, or not recognized (including the provider of a Stopped
+ * state) is not an end.
  */
-export function sessionEnded(facts) {
+export function sessionEnded(facts, providerId = null) {
   if (facts === null || typeof facts !== "object") return false;
-  if (ENDED_STATES.includes(facts.state)) return true;
+  if (facts.state === "closed") return true;
+  if (facts.state === "stopped") return providerId === "claude" || (providerId === "codex" && facts.writerReleased === true);
   return facts.state === "unknown" && facts.writerReleased === true;
 }
 
@@ -41,7 +55,7 @@ export function stallEndedTasks({ database, transaction, resolveFacts, now }) {
     WHERE session_id IS NOT NULL AND report_at IS NULL AND state IN (${WAITING_SQL}) ORDER BY repository_id, number`).all();
   const ended = waiting.filter((row) => {
     if (!isTaskSessionId(row.session_id)) return false;
-    try { return sessionEnded(resolveFacts(row.session_id)); } catch { return false; }
+    try { return sessionEnded(resolveFacts(row.session_id), providerOfSession(row.session_id)); } catch { return false; }
   });
   if (ended.length === 0) return { ok: true, stalled: 0 };
   const stalled = transaction(() => {

@@ -4,15 +4,18 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
-import { environmentValue, nativeClaudeEnvironment, nativeCodexEnvironment } from "./environment-policy.mjs";
+import { environmentValue, userSessionEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
 import { createTaskWorktrees } from "./task-worktree.mjs";
 
+export const TASK_WORKTREE_OPEN_CHANNEL = "pomegr:task-worktree-open";
+export const TASK_WORKTREE_OPEN_STATUSES = Object.freeze(["opened", "not_found", "invalid", "unavailable"]);
+
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
   "started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable", "gate_held",
-  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed",
+  "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "worktree_dirty",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -57,18 +60,17 @@ function powershellExecutable(environment, fileExists) {
 
 const result = (status) => Object.freeze({ status });
 
-// One entry per startable provider: where its CLI is, the environment it runs in, and its flags. A flag is
+// One entry per startable provider: where its CLI is and its flags. Every provider's session runs in the user's
+// own environment (`userSessionEnvironment`). A flag is
 // passed only when the task sets it. Codex takes the effort as a configuration override and accepts every
 // task effort by name, `xhigh` included.
 const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
-    environment: nativeClaudeEnvironment,
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["--effort", plan.effort] : [])],
   }),
   codex: Object.freeze({
     executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
-    environment: nativeCodexEnvironment,
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
   }),
 });
@@ -215,7 +217,7 @@ export function createTaskStart(options = {}) {
       try { made = worktrees ? await worktrees.ensure(place) : null; } catch { made = null; }
       if (made?.ok !== true || typeof made.directory !== "string" || !path.isAbsolute(made.directory) || /[\u0000\r\n"]/u.test(made.directory)) {
         await abort(repositoryId, taskId, plan.token);
-        return result("failed");
+        return result(made?.ok === false && made.reason === "dirty" ? "worktree_dirty" : "failed");
       }
       directory = made.directory;
     }
@@ -225,7 +227,7 @@ export function createTaskStart(options = {}) {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
         cwd: directory,
         env: {
-          ...provider.environment(sourceEnvironment),
+          ...userSessionEnvironment(sourceEnvironment),
           POMEGR_TASK_TOKEN: plan.token,
           POMEGR_START_FILE: executable,
           POMEGR_START_ARGUMENTS: args.map(windowsArgument).join(" "),
@@ -263,8 +265,26 @@ export function createTaskStart(options = {}) {
     return exclusive({ confirmRequired: false }, repositoryId, taskId);
   }
 
+  /**
+   * Opens a task's worktree folder in the file manager. The worktree must exist and be listed by Git on the task
+   * branch; nothing in it is touched, and only a fixed status leaves main, never the path or an error.
+   */
+  async function openWorktree(event, repositoryId, taskId) {
+    if (!isTrustedEvent(event)) return result("invalid");
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)) return result("invalid");
+    if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
+    if (disposed || platform !== "win32" || !worktrees?.locate || typeof options.openPath !== "function") return result("unavailable");
+    let directory = null;
+    try { directory = await worktrees.locate({ repositoryId, taskId }); } catch { directory = null; }
+    if (typeof directory !== "string" || !path.isAbsolute(directory)) return result("not_found");
+    try {
+      const failure = await options.openPath(directory);
+      return result(failure === "" ? "opened" : "unavailable");
+    } catch { return result("unavailable"); }
+  }
+
   // A started session is never touched: dispose only refuses further starts.
-  return Object.freeze({ start, startQueued, dispose() { disposed = true; } });
+  return Object.freeze({ start, startQueued, openWorktree, dispose() { disposed = true; } });
 }
 
 export function installTaskStartIpc(options = {}) {
@@ -280,6 +300,10 @@ export function installTaskStartIpc(options = {}) {
   ipcMain.handle(TASK_START_CHANNEL, async (event, repositoryId, taskId) => {
     try { return await starter.start(event, repositoryId, taskId); } catch { return result("failed"); }
   });
+  ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL);
+  ipcMain.handle(TASK_WORKTREE_OPEN_CHANNEL, async (event, repositoryId, taskId) => {
+    try { return await starter.openWorktree(event, repositoryId, taskId); } catch { return result("unavailable"); }
+  });
   runner?.start();
-  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); runner?.dispose(); starter.dispose?.(); };
+  return () => { ipcMain.removeHandler(TASK_START_CHANNEL); ipcMain.removeHandler(TASK_WORKTREE_OPEN_CHANNEL); runner?.dispose(); starter.dispose?.(); };
 }

@@ -381,6 +381,17 @@ async function readAgentJson(request, requestUrl, limit) {
   try { return { body: JSON.parse(raw.toString("utf8")) }; } catch { return { body: null }; }
 }
 
+// The repository whose board holds the task this session was started for, or null when the session is not
+// linked, the store cannot say, or the stored identity is not a repository ID.
+function linkedBoardRepositoryId(taskStore, sessionRef) {
+  try {
+    const repositoryId = typeof taskStore?.sessionTasks === "function" ? taskStore.sessionTasks([sessionRef])?.get(sessionRef)?.repositoryId : null;
+    return typeof repositoryId === "string" && REPOSITORY_ID_PATTERN.test(repositoryId) ? repositoryId : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * `POST /api/agent/v1/tasks/add`, the first agent write. The request handler has already applied the
  * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
@@ -408,12 +419,21 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, "unavailable");
       return;
     }
-    const session = resolveSession(body.sessionRef);
-    if (!session || session.found !== true) {
+    // A session started for a task adds to the board that holds that task, even when it runs in a task
+    // worktree whose committed repository identity is another one. The task store's link wins; it is
+    // read from the store alone, and a store that cannot answer leaves the committed identity in charge.
+    const linkedRepositoryId = linkedBoardRepositoryId(taskStore, body.sessionRef);
+    let session = null;
+    try {
+      session = resolveSession(body.sessionRef);
+    } catch (error) {
+      if (linkedRepositoryId === null) throw error;
+    }
+    if (linkedRepositoryId === null && (!session || session.found !== true)) {
       writeAgentAddResult(response, "session_not_found");
       return;
     }
-    const repositoryId = session.repositoryId;
+    const repositoryId = linkedRepositoryId ?? session.repositoryId;
     if (typeof repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(repositoryId)) {
       writeAgentAddResult(response, "repository_unavailable");
       return;

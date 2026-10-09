@@ -109,23 +109,32 @@ export function normalizeCheckStatus(rollup) {
   return statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "passed";
 }
 
-function recordCheckStatus(url, value) {
+// `checkedAt` is the time the gh read that produced `value` began (a cached read keeps its own time), kept in
+// memory with the status so a consumer can tell how old the fact is. A read older than the status already
+// held does not replace it.
+function recordCheckStatus(url, value, checkedAt) {
   const status = normalizeCheckStatus(value?.[GH_CHECK_FIELD]);
+  const parsed = Date.parse(checkedAt);
+  const readAt = Number.isFinite(parsed) ? parsed : Date.now();
+  const held = checkStatuses.get(url);
+  if (status !== null && held && held.readAt > readAt) return;
   checkStatuses.delete(url);
   if (status === null) return;
-  checkStatuses.set(url, status);
+  checkStatuses.set(url, { status, readAt });
   if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
 }
 
 /**
- * The aggregate check status last read for a normalized pull-request URL, or `null` when the latest
- * read did not establish one. A memory lookup: it never runs gh. For the task done-when rule only.
+ * The aggregate check status last read for a normalized pull-request URL together with the time (epoch
+ * milliseconds) the read that established it began, or `null` when the latest read did not establish one.
+ * A memory lookup: it never runs gh. For the task done-when rule only.
  *
  * @param {unknown} url
- * @returns {"passed" | "failed" | "pending" | "none" | null}
+ * @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null}
  */
-export function pullRequestCheckStatus(url) {
-  return (typeof url === "string" && checkStatuses.get(url)) || null;
+export function pullRequestCheckRead(url) {
+  const held = typeof url === "string" ? checkStatuses.get(url) : undefined;
+  return held ? { status: held.status, readAt: held.readAt } : null;
 }
 
 // Ask for the check field with the metadata; when that read fails, the metadata alone, so a gh that
@@ -158,12 +167,15 @@ export function normalizePullRequest(value, association = "session", fallbackUrl
   };
 }
 
+// A read is dated by the moment its gh call began: whatever it saw is no newer than that, and a change made
+// while the call ran may be missing from it. The cache lifetime still counts from the moment the call ended.
 async function cached(cache, key, loader) {
   const previous = cache.get(key);
   if (previous?.value && Date.now() - previous.timestamp < CACHE_TTL_MS) return previous.value;
   if (previous?.pending) return previous.pending;
+  const startedAt = new Date().toISOString();
   const pending = loader().then((loaded) => {
-    const value = { loaded, checkedAt: new Date().toISOString() };
+    const value = { loaded, checkedAt: startedAt };
     cache.set(key, { timestamp: Date.now(), value, pending: null });
     return value;
   });
@@ -177,9 +189,9 @@ async function metadataForUrl(cwd, url, ghRunner) {
     if (!output) return null;
     try { return JSON.parse(output); } catch { return null; }
   };
-  return ghRunner === runGh
-    ? cached(metadataCache, url, load)
-    : { loaded: await load(), checkedAt: new Date().toISOString() };
+  if (ghRunner === runGh) return cached(metadataCache, url, load);
+  const checkedAt = new Date().toISOString();
+  return { loaded: await load(), checkedAt };
 }
 
 async function pullRequestsForBranch(cwd, branch, ghRunner) {
@@ -194,9 +206,9 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
       return null;
     }
   };
-  return ghRunner === runGh
-    ? cached(branchCache, `${cwd}\u0000${branch}`, load)
-    : { loaded: await load(), checkedAt: new Date().toISOString() };
+  if (ghRunner === runGh) return cached(branchCache, `${cwd}\u0000${branch}`, load);
+  const checkedAt = new Date().toISOString();
+  return { loaded: await load(), checkedAt };
 }
 
 /**
@@ -225,7 +237,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
     const item = normalizePullRequest(result.loaded || {}, "session", url);
     if (!item) continue;
     itemsByUrl.set(item.url, item);
-    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded);
+    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded, result.checkedAt);
   }
   if (branchValues !== null) {
     queried = true;
@@ -234,16 +246,23 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
       const item = normalizePullRequest(value, "branch");
       if (!item) continue;
       if (!itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
-      recordCheckStatus(item.url, value);
+      recordCheckStatus(item.url, value, branchResult.checkedAt);
     }
   }
 
+  // The reads the items rest on, oldest first: a cached read keeps its own time, so the newest of them says
+  // when the block was last refreshed (`checkedAt`, served) and the oldest says how old its oldest item can be
+  // (`readAt`, monitor-private).
+  const reads = available
+    ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
+      .filter(Boolean).sort()
+    : [];
   return {
     status: !queried || available ? "ready" : "unavailable",
-    checkedAt: available
-      ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
-        .filter(Boolean).sort().at(-1) || null
-      : null,
+    checkedAt: reads.at(-1) || null,
+    // Monitor-private: the done-when rule judges the block by this time. The session state serializer
+    // removes it before the block is served, and the repository snapshot never copies it.
+    readAt: reads[0] || null,
     items: [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS),
   };
 }

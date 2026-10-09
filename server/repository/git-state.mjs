@@ -428,13 +428,21 @@ const gitStateInFlight = new Map();
  * forbidden roots share one in-flight inspection (the same Git commands at the same
  * moment), and each receives its own copy of the answer. Nothing is reused after the
  * inspection finishes, so every later call observes Git afresh.
+ *
+ * Two private keys date and qualify the answer for callers that judge it against later work:
+ * `_readStartedAt` is the moment the shared inspection began (a caller that joined it later
+ * still gets that earlier time), and `_statusUnknown` is true when `git status` failed or timed
+ * out, so the empty `files` list says nothing about the working tree. Callers strip both.
  */
 export function readGitStateAsync(cwd, options = {}) {
   const forbiddenRoots = Array.isArray(options?.forbiddenRoots) ? options.forbiddenRoots : [];
   const key = JSON.stringify([cwd || "", forbiddenRoots]);
   let pending = gitStateInFlight.get(key);
   if (!pending) {
-    pending = inspectGitStateAsync(cwd, { forbiddenRoots }).finally(() => { gitStateInFlight.delete(key); });
+    const startedAt = Date.now();
+    pending = inspectGitStateAsync(cwd, { forbiddenRoots })
+      .then((state) => ({ ...state, _readStartedAt: startedAt }))
+      .finally(() => { gitStateInFlight.delete(key); });
     gitStateInFlight.set(key, pending);
   }
   return pending.then((state) => structuredClone(state));
@@ -455,7 +463,7 @@ async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   const [branchOutput, headOutput, statusOutput, root] = await Promise.all([
     tryGitAsync(cwd, ["branch", "--show-current"], 1_500),
     tryGitAsync(cwd, ["rev-parse", "HEAD"], 1_500),
-    tryGitAsync(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], 2_500),
+    runGitAsync(cwd, ["status", "--porcelain=v1", "--untracked-files=all"], 2_500).catch(() => null),
     repositoryRootAsync(cwd),
   ]);
   let branch = branchOutput.trim();
@@ -463,7 +471,7 @@ async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
   if (!head) return empty;
   if (!branch) branch = `detached@${head.slice(0, 12)}`;
 
-  const files = repositoryFiles(statusOutput, root, forbiddenRoots);
+  const files = repositoryFiles(statusOutput ?? "", root, forbiddenRoots);
   const remoteState = branch.startsWith("detached@")
     ? { isMain: false, comparison: null, commits: await commitHistoryAsync(cwd, "HEAD"), remote: { status: "unavailable", checkedAt: null } }
     : await remoteRepositoryStateAsync(cwd, branch, head);
@@ -474,6 +482,7 @@ async function inspectGitStateAsync(cwd, { forbiddenRoots = [] } = {}) {
     branch: safeText(branch, 200),
     files,
     ...remoteState,
+    ...(statusOutput === null ? { _statusUnknown: true } : {}),
   };
 }
 

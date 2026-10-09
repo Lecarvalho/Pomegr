@@ -5,7 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createTaskLookups } from "../../../server/runtime/task-start-lookup.mjs";
-import { resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { resolveTaskCheckFacts, resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { readPullRequests } from "../../../server/repository/pull-requests.mjs";
+import { createSessionRepositoryEnrichment, serializeServedSessionState } from "../../../server/repository/session-repository-enrichment.mjs";
+import { SessionObservationStore } from "../../../server/sessions/checkpoints/session-observation-store.mjs";
+import { verifyChecks } from "../../../server/tasks/task-checks.mjs";
+import { TASK_CHECKS } from "../../../server/tasks/task-record.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
 import { TASK_SESSION_STATES, TASK_SESSION_TITLE_LENGTH, fillTaskSessions } from "../../../server/tasks/task-board.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
@@ -284,4 +289,217 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
   assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
   assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
+});
+
+// The done-when check facts carry the time each was read and the time of the work that could have changed it.
+const iso = (milliseconds) => new Date(milliseconds).toISOString();
+const checkRepository = (overrides = {}) => ({
+  available: true, historical: false, branch: "tasks/12", isMain: false, files: [],
+  comparison: { branch: "origin/main", kind: "base", ahead: 2, behind: 0, integrated: false },
+  remote: { status: "ready", checkedAt: iso(5_000) }, ...overrides,
+});
+const pullUrl = (number) => `https://github.com/PomegrHQ/pomegr/pull/${number}`;
+const openPull = (number = 1, state = "open") => ({ state, headBranch: "tasks/12", url: pullUrl(number) });
+const task = (workKind, finishedAt, status = "completed") => ({ id: `tool-${workKind}`, workKind, status, finishedAt });
+// The pull-request block's served `checkedAt` is its newest read; its private `readAt` is the start of its oldest.
+const pullBlock = (items = [openPull()], overrides = {}) => ({ status: "ready", checkedAt: iso(6_000), readAt: iso(6_000), items, ...overrides });
+const checkSession = (overrides = {}) => ({ repository: checkRepository(), pullRequests: pullBlock(), ...overrides });
+const checkState = (overrides = {}) => ({ session: checkSession(), executionTasks: [], agents: [], activity: { items: [], total: 0 }, ...overrides });
+const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_000 } : null);
+const checkFacts = (publicState, options = {}) => resolveTaskCheckFacts(SESSION, { observationStore: storeWith(publicState), checkRead: passedRead, ...options });
+
+test("each check fact carries the time it was read, from committed memory alone", () => {
+  // The pull-request block's oldest read, the oldest judged check read bounded by the pull-request block's, and no
+  // tree or branch read: a repository block with no stamp is not dated by the remote comparison's refresh time.
+  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: null, pullRequests: 6_000, ci: 6_000 });
+
+  // The repository block's own read dates the working tree and the comparison it computed.
+  const stamped = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(9_000) }) }) });
+  assert.deepEqual(checkFacts(stamped).readAt, { tree: 9_000, branch: 9_000, pullRequests: 6_000, ci: 6_000 });
+  // An older stamp than the remote refresh still wins: the comparison was computed by that read, not by the fetch.
+  const olderStamp = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(4_000) }) }) });
+  assert.deepEqual(checkFacts(olderStamp).readAt, { tree: 4_000, branch: 4_000, pullRequests: 6_000, ci: 6_000 });
+
+  // Without a ready remote refresh there is no comparison to date, stamped or not, and a malformed time is no time.
+  for (const remote of [{ status: "checking", checkedAt: iso(5_000) }, { status: "unavailable", checkedAt: null }, undefined]) {
+    const state = checkState({ session: checkSession({ repository: checkRepository({ remote, readAt: iso(9_000) }) }) });
+    assert.equal(checkFacts(state).readAt.branch, null, JSON.stringify(remote));
+  }
+  assert.equal(checkFacts(checkState({ session: checkSession({ repository: checkRepository({ remote: { status: "checking", checkedAt: null }, readAt: iso(9_000) }) }) })).readAt.branch, null);
+  for (const readAt of [null, undefined, "yesterday", 6_000]) {
+    const state = checkState({ session: checkSession({ repository: checkRepository({ readAt }) }) });
+    assert.equal(checkFacts(state).readAt.tree, null, String(readAt));
+  }
+
+  // The pull-request block is dated by its oldest read, never by the newest one it serves as `checkedAt`.
+  const oldest = checkState({ session: checkSession({ pullRequests: pullBlock([openPull()], { checkedAt: iso(8_000), readAt: iso(3_000) }) }) });
+  assert.equal(checkFacts(oldest).readAt.pullRequests, 3_000);
+  for (const readAt of [null, undefined, "yesterday", 6_000]) {
+    const state = checkState({ session: checkSession({ pullRequests: pullBlock([openPull()], { readAt }) }) });
+    assert.equal(checkFacts(state).readAt.pullRequests, null, String(readAt));
+  }
+  // A block with no stamp is not dated by its served check time.
+  const unstamped = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull()] } }) });
+  assert.equal(checkFacts(unstamped).readAt.pullRequests, null);
+
+  // CI uses the oldest read among the judged pull requests, bounded by the block's own, and an unread or undated one makes it unknown.
+  const two = checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1), openPull(2)], { readAt: iso(8_000) }) }) });
+  const reads = { [pullUrl(1)]: { status: "passed", readAt: 7_000 }, [pullUrl(2)]: { status: "passed", readAt: 4_000 } };
+  const oldestCheck = checkFacts(two, { checkRead: (url) => reads[url] ?? null });
+  assert.deepEqual([oldestCheck.ciPassed, oldestCheck.readAt.ci], [true, 4_000]);
+  // A status read after the committed block does not make the block's pull requests newer than the block.
+  const newerStatus = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1)], { readAt: iso(3_000) }) }) }), { checkRead: () => ({ status: "passed", readAt: 7_000 }) });
+  assert.deepEqual([newerStatus.ciPassed, newerStatus.readAt.ci], [true, 3_000]);
+  const unread = checkFacts(two, { checkRead: (url) => (url === pullUrl(1) ? reads[url] : null) });
+  assert.deepEqual([unread.ciPassed, unread.readAt.ci], [null, null]);
+  const undated = checkFacts(two, { checkRead: () => ({ status: "passed", readAt: Number.NaN }) });
+  assert.deepEqual([undated.ciPassed, undated.readAt.ci], [null, null]);
+  const unstampedBlock = checkFacts(unstamped);
+  assert.deepEqual([unstampedBlock.ciPassed, unstampedBlock.readAt.ci], [true, null]);
+  // No judged pull request is a known "not passed" that rests on no read.
+  const none = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([]) }) }));
+  assert.deepEqual([none.ciPassed, none.readAt.ci], [false, null]);
+});
+
+test("the work times are the latest end of the session's finished commands and recorded file changes", () => {
+  const workAt = (publicState) => checkFacts(publicState).workAt;
+  assert.deepEqual(workAt(checkState()), { tree: null, repository: null });
+
+  // Git, push, and pull-request commands move the repository work; any command moves the tree work.
+  const tasks = [task("test", iso(3_000)), task("git", iso(1_000)), task("git_push", iso(2_000)), task("pull_request", iso(1_500)), task("shell", iso(2_500))];
+  assert.deepEqual(workAt(checkState({ executionTasks: tasks })), { tree: 3_000, repository: 2_000 });
+  assert.deepEqual(workAt(checkState({ executionTasks: [task("test", iso(3_000))] })), { tree: 3_000, repository: null });
+
+  // A subagent's commands count, and so does a recorded file change; a read does not.
+  const subagent = { id: "agent-2", executionTasks: [task("git", iso(8_000))] };
+  assert.deepEqual(workAt(checkState({ agents: [subagent] })), { tree: 8_000, repository: 8_000 });
+  const feed = (...entries) => ({ items: entries.map(([workKind, time]) => ({ workKind, timestamp: iso(time), durationMs: 0 })), total: entries.length });
+  assert.deepEqual(workAt(checkState({ activity: feed(["write", 4_000], ["read", 9_000], ["write", 3_500]) })), { tree: 4_000, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: feed(["read", 9_000]) })), { tree: null, repository: null });
+
+  // A command still running, or finished at no known time, is work that is not over.
+  const never = Number.POSITIVE_INFINITY;
+  for (const open of [task("git", null, "running"), task("git", iso(1_000), "running"), task("git", null), task("git", "later")]) {
+    assert.deepEqual(workAt(checkState({ executionTasks: [task("git", iso(2_000)), open] })), { tree: never, repository: never });
+  }
+  // A running command of another kind leaves the repository work alone but not the tree.
+  assert.deepEqual(workAt(checkState({ executionTasks: [task("test", null, "running")] })), { tree: never, repository: null });
+
+  // A truncated activity feed that shows no file change bounds the newest one by its oldest item.
+  const truncated = { ...feed(["read", 6_000], ["read", 7_000]), total: 500 };
+  assert.deepEqual(workAt(checkState({ activity: truncated })), { tree: 6_000, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: { items: [], total: 500 } })), { tree: never, repository: null });
+  assert.deepEqual(workAt(checkState({ activity: { ...feed(["write", 4_000]), total: 500 } })), { tree: 4_000, repository: null });
+  // Malformed entries never throw.
+  assert.deepEqual(workAt(checkState({ executionTasks: [null, "x", 7], agents: [null, { executionTasks: "x" }], activity: { items: [null, 1] } })), { tree: null, repository: null });
+});
+
+test("a check judges a fact only when it was read after the work it judges", () => {
+  const passes = (publicState) => Object.fromEntries(verifyChecks(TASK_CHECKS, checkFacts(publicState)).map((result) => [result.check, result.passed]));
+  const stamped = (readAt, extra = {}) => checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(readAt) }) }), ...extra });
+  const all = { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: true };
+
+  assert.deepEqual(passes(stamped(9_000)), all);
+  // A repository block with no read stamp has no tree read time, so the tree is unknown.
+  assert.deepEqual(passes(checkState()), { ...all, tree_clean: false, commit_on_branch: false });
+  // A push that ended after the pull requests (6000) and the check status (7000) were read, but before the
+  // comparison (9000) was, leaves only the first two unknown.
+  const afterReads = { pr_open: false, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: false };
+  assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(7_500))] })), afterReads);
+  assert.deepEqual(passes(stamped(9_000, { executionTasks: [task("git_push", iso(4_000))] })), all);
+  // Any command after the tree was read, or a command still running, leaves the tree unknown.
+  assert.equal(passes(stamped(9_000, { executionTasks: [task("shell", iso(9_001))] })).tree_clean, false);
+  assert.equal(passes(stamped(9_000, { executionTasks: [task("test", null, "running")] })).tree_clean, false);
+  const write = (timestamp, durationMs) => ({ activity: { items: [{ workKind: "write", timestamp: iso(timestamp), durationMs }], total: 1 } });
+  assert.equal(passes(stamped(9_000, write(9_500, 0))).tree_clean, false);
+  assert.equal(passes(stamped(9_000, write(8_500, 100))).tree_clean, true);
+  // A file write is over when its call ends, not when it was made: one called before the read that ended after it
+  // (it waited for approval), or one with no recorded result, leaves the tree unknown.
+  assert.equal(checkFacts(stamped(9_000, write(1_000, 20_000))).workAt.tree, 21_000);
+  assert.equal(passes(stamped(9_000, write(1_000, 20_000))).tree_clean, false);
+  for (const durationMs of [null, undefined, -1, "soon"]) {
+    assert.equal(checkFacts(stamped(9_000, write(1_000, durationMs))).workAt.tree, Number.POSITIVE_INFINITY, String(durationMs));
+    assert.equal(passes(stamped(9_000, write(1_000, durationMs))).tree_clean, false, String(durationMs));
+  }
+});
+
+test("check facts are unknown, with no times, when the committed state does not establish them", () => {
+  const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
+    readAt: { tree: null, branch: null, pullRequests: null, ci: null }, workAt: { tree: null, repository: null } };
+  assert.deepEqual(resolveTaskCheckFacts("not a session", { observationStore: storeWith(checkState()) }), unknown);
+  assert.deepEqual(resolveTaskCheckFacts("claude:other", { observationStore: storeWith(checkState()) }), unknown);
+  assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ historical: true }) } })), unknown);
+  assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ available: false }) } })), unknown);
+});
+
+// A real enrichment refresh (not injected facts) stamps the blocks it commits; the done-when rule reads the stamps
+// from the committed state in the observation store, and the served form of that state carries none of them.
+async function refreshedBlocks({ files = [], delayMs = 5 } = {}) {
+  const jobs = [];
+  const branch = "tasks/12";
+  const url = pullUrl(4);
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return { available: true, branch, files, isMain: false, commits: [], _repositoryRoot: root,
+        comparison: { branch: "origin/main", kind: "base", ahead: 1, behind: 0, integrated: false }, remote: { status: "ready", checkedAt: iso(Date.now()) } };
+    },
+    pullRequestReader: (cwd, options) => readPullRequests([], { ...options, ghRunner: async () => JSON.stringify([{ number: 4, state: "OPEN", url, headRefName: branch }]) }),
+    now: Date.now,
+    cacheMs: 0,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  const evidence = { session: { cwd: "C:\\synthetic\\tree", recordedGitBranch: branch, startedAt: iso(0) }, pullRequestCreations: [], executionTasks: [] };
+  const binding = { state: "single", repositoryId: REPOSITORY_ID, root: evidence.session.cwd, fingerprint: "bound", recordedBranch: branch };
+  const before = Date.now();
+  enrichment.liveEnrichment(SESSION, evidence, binding, (task) => jobs.push(task)).enqueue();
+  while (jobs.length) await jobs.shift()();
+  const after = Date.now();
+  const { value } = enrichment.liveEnrichment(SESSION, evidence, binding, (task) => jobs.push(task));
+  return { value, before, after };
+}
+
+const committedStore = (publicState) => {
+  const store = new SessionObservationStore();
+  const [providerId, localSessionId] = [SESSION.slice(0, SESSION.indexOf(":")), SESSION.slice(SESSION.indexOf(":") + 1)];
+  assert.equal(store.publish({ providerId, localSessionId, evidence: {}, readiness: {}, publicState }).accepted, true);
+  return store;
+};
+
+test("tree_clean passes on a real stamped read that began after the work, not on one that began before it", async () => {
+  const { value, before, after } = await refreshedBlocks();
+  const readAt = Date.parse(value.repository.readAt);
+  assert.ok(readAt >= before && readAt < after, `${readAt} began within ${before}..${after}, before the read finished`);
+  assert.ok(Date.parse(value.pullRequests.readAt) <= Date.parse(value.pullRequests.checkedAt));
+
+  const stateAfter = (finishedAt) => ({ session: { id: SESSION, repository: value.repository, pullRequests: value.pullRequests }, executionTasks: [task("shell", finishedAt)], agents: [], activity: { items: [], total: 0 } });
+  const verdicts = (state) => Object.fromEntries(verifyChecks(["tree_clean", "pr_open", "commit_on_branch"], resolveTaskCheckFacts(SESSION, { observationStore: committedStore(state) })).map((result) => [result.check, result.passed]));
+
+  // The last command ended before the read began: the tree, the branch comparison, and the pull requests were all read after it.
+  assert.deepEqual(verdicts(stateAfter(iso(before - 1))), { tree_clean: true, pr_open: true, commit_on_branch: true });
+  // A command that ended after the read began may have changed what it saw.
+  assert.equal(verdicts(stateAfter(iso(after + 1))).tree_clean, false);
+  // A dirty tree is a known failure, whatever its age.
+  const dirty = await refreshedBlocks({ files: [{ status: "modified", path: "src/a.mjs" }] });
+  assert.equal(verifyChecks(["tree_clean"], resolveTaskCheckFacts(SESSION, { observationStore: committedStore({ session: { id: SESSION, repository: dirty.value.repository, pullRequests: dirty.value.pullRequests }, executionTasks: [], agents: [], activity: { items: [], total: 0 } }) }))[0].passed, false);
+});
+
+test("the stamped read times stay in the committed state and leave no served form", async () => {
+  const { value } = await refreshedBlocks();
+  const state = { connected: true, session: { id: SESSION, repository: value.repository, pullRequests: value.pullRequests } };
+  assert.equal(typeof value.repository.readAt, "string");
+  assert.equal(typeof value.pullRequests.readAt, "string");
+
+  const served = serializeServedSessionState(state);
+  assert.doesNotMatch(served, /readAt/u);
+  const withoutReadAt = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => key !== "readAt"));
+  assert.deepEqual(JSON.parse(served).session, { id: SESSION, repository: withoutReadAt(value.repository), pullRequests: withoutReadAt(value.pullRequests) });
+  assert.equal(typeof state.session.repository.readAt, "string", "serving does not change the committed state");
+
+  // The store serves the stripped form and keeps the stamped one for the done-when rule.
+  const store = committedStore(state);
+  assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt/u);
+  assert.equal(store.get("claude", SESSION.slice("claude:".length)).publicState.session.repository.readAt, value.repository.readAt);
 });

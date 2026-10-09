@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import test from "node:test";
 
 import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
-  registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
+  buildAddTaskBody, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
   TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
 import {
@@ -16,8 +20,12 @@ import {
   AGENT_TASK_COMPLETE_PATH,
   AGENT_TASK_WRITE_PATHS,
   createAgentTaskWriter,
+  readAgentQueryDescriptor,
 } from "../shared/agent-query-transport.mjs";
-import { bindClaudeQuerySession } from "../plugin-src/claude-query-session.mjs";
+import { bindClaudeQuerySession, bindClaudeQueryWrite, runClaudeQuerySessionHook } from "../plugin-src/claude-query-session.mjs";
+import {
+  createTaskBindingProof, TASK_BINDING_PROOF_FUTURE_SKEW_MS, TASK_BINDING_PROOF_WINDOW_MS, verifyTaskBindingProof,
+} from "../plugin-src/task-binding-proof.mjs";
 
 const SESSION_ID = "33333333-3333-4333-8333-333333333333";
 const SENTINEL = "TASK_TEXT_SENTINEL_9f3";
@@ -75,6 +83,29 @@ test("add_task schema is strict and bounded with no repository or path input", (
 test("session_ref exists only when the harness binds by hook", () => {
   assert.equal(parse(setup({ hookBound: false }).tool, { text: "x", session_ref: "claude:a" }).success, false);
   assert.equal(parse(setup({ hookBound: true }).tool, { text: "x", session_ref: "claude:a" }).success, true);
+  assert.equal(parse(setup({ hookBound: false }).tool, { text: "x", session_proof: "1.a" }).success, false);
+  assert.equal(parse(setup({ hookBound: true }).tool, { text: "x", session_ref: "claude:a", session_proof: "1.a" }).success, true);
+  assert.equal(parse(setup({ hookBound: true }).tool, { text: "x", session_proof: "x".repeat(101) }).success, false);
+  for (const hookBound of [false, true]) {
+    const { tools } = setup({ hookBound });
+    assert.equal(parse(tools.complete_task, { session_proof: "1.a" }).success, hookBound);
+    assert.equal(parse(tools.block_task, { reason: "r", session_proof: "1.a" }).success, hookBound);
+  }
+});
+
+test("resolveSession receives the tool name and may be async", async () => {
+  const server = fakeServer();
+  const seen = [];
+  const calls = [];
+  registerTaskTools(server, {
+    resolveSession: async (_input, _extra, tool) => { seen.push(tool); return "claude:x"; },
+    post: async (pathname, body) => { calls.push(body); return { ok: true, taskId: "T-1", state: "blocked" }; },
+  });
+  await server.tools.add_task.handler({ text: "x" });
+  await server.tools.complete_task.handler({});
+  await server.tools.block_task.handler({ reason: "r" });
+  assert.deepEqual(seen, ["add_task", "complete_task", "block_task"]);
+  assert.equal(calls.length, 3);
 });
 
 test("an unbound call returns the fixed refusal and posts nothing", async () => {
@@ -198,54 +229,6 @@ test("Codex server falls back to CODEX_THREAD_ID when a call carries no thread m
   assert.equal(calls.length, 1);
 });
 
-test("Claude server posts only with a hook-shaped session_ref", async () => {
-  const calls = [];
-  const taskPost = async (pathname, body) => { calls.push(body); return { ok: true, taskId: "T-3" }; };
-  const server = buildClaudeServer({ environment: { CLAUDE_CODE_SESSION_ID: SESSION_ID }, taskPost, query: async () => ({}) });
-  const tool = server._registeredTools.add_task;
-  assert.equal(tool._meta, undefined);
-  for (const input of [{ text: "x" }, { text: "x", session_ref: "claude:explicit" }, { text: "x", session_ref: `codex:${SESSION_ID}` }]) {
-    assert.equal((await tool.handler(input)).content[0].text, TASK_UNBOUND_TEXT);
-  }
-  assert.equal(calls.length, 0);
-  const out = await tool.handler({ text: "x", session_ref: `claude:${SESSION_ID}` });
-  assert.equal(out.content[0].text, "Task T-3 added to the board, not queued.");
-  assert.equal(calls[0].sessionRef, `claude:${SESSION_ID}`);
-});
-
-test("Claude hook binds add_task from the host transcript and never honors a model selector", () => {
-  const transcripts = [
-    path.resolve("private", `${SESSION_ID}.jsonl`),
-    path.resolve("private", SESSION_ID, "subagents", "agent-child.jsonl"),
-  ];
-  for (const prefix of ["mcp__pomegr__", "mcp__plugin_pomegr_pomegr__"]) {
-    for (const transcript_path of transcripts) {
-      const payload = { hook_event_name: "PreToolUse", tool_name: `${prefix}add_task`,
-        tool_input: { text: "t", feature: "F" }, transcript_path };
-      const out = bindClaudeQuerySession(payload).hookSpecificOutput;
-      assert.equal(out.permissionDecision, undefined);
-      assert.deepEqual(out.updatedInput, { text: "t", feature: "F", session_ref: `claude:${SESSION_ID}` });
-      for (const bad of [
-        { ...payload, tool_input: { text: "t", session_ref: "claude:other" } },
-        { ...payload, tool_input: { text: "t", repository: "r" } },
-        { ...payload, tool_input: [] },
-        { ...payload, tool_input: undefined },
-        { ...payload, transcript_path: "private-path-sentinel" },
-      ]) {
-        const denied = bindClaudeQuerySession(bad).hookSpecificOutput;
-        assert.equal(denied.permissionDecision, "deny");
-        assert.equal(denied.updatedInput, undefined);
-        assert.doesNotMatch(JSON.stringify(denied), /private-path-sentinel|claude:other|"repository"/u);
-      }
-    }
-  }
-  assert.equal(bindClaudeQuerySession({ hook_event_name: "PostToolUse", tool_name: "mcp__pomegr__add_task", tool_input: {} }), null);
-  assert.equal(bindClaudeQuerySession({ hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__add_task_lookalike", tool_input: {}, transcript_path: transcripts[0] }), null);
-  // Read tools keep their behavior: an explicit selector still passes through to the host.
-  const read = { hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__get_session_report", tool_input: { session_ref: "claude:x" }, transcript_path: transcripts[0] };
-  assert.equal(bindClaudeQuerySession(read), null);
-});
-
 const THREAD = "019a0000-2222-7333-8444-555566667777";
 const codexMeta = (overrides = {}) => ({ _meta: { threadId: THREAD, "x-codex-turn-metadata": { thread_id: THREAD, session_id: THREAD }, ...overrides } });
 
@@ -354,42 +337,222 @@ test("the report tools map every refusal to fixed text and never echo the monito
   assert.equal(unbound.calls.length, 0);
 });
 
-test("Claude server posts a report only with a hook-shaped session_ref", async () => {
+const TOKEN = "claude-capability-token-".padEnd(43, "k");
+const NOW = 1_800_000_000_000;
+const REF = `claude:${SESSION_ID}`;
+const OTHER_REF = "claude:44444444-4444-4444-8444-444444444444";
+
+function claudeServer({ token = TOKEN, answer } = {}) {
   const calls = [];
-  const taskPost = async (pathname, body) => { calls.push({ pathname, body }); return pathname === TASK_BLOCK_PATH ? { ok: true, state: "blocked" } : { ok: true, state: "done", results: [] }; };
-  const server = buildClaudeServer({ environment: { CLAUDE_CODE_SESSION_ID: SESSION_ID }, taskPost, query: async () => ({}) });
-  const { complete_task: complete, block_task: block } = server._registeredTools;
-  for (const input of [{}, { session_ref: "claude:explicit" }, { session_ref: `codex:${SESSION_ID}` }]) {
-    assert.equal((await complete.handler(input, codexMeta())).content[0].text, TASK_REPORT_UNBOUND_TEXT);
-    assert.equal((await block.handler({ reason: "stuck", ...input }, codexMeta())).content[0].text, TASK_REPORT_UNBOUND_TEXT);
+  const taskPost = async (pathname, body) => {
+    calls.push({ pathname, body });
+    return answer ?? (pathname === TASK_BLOCK_PATH ? { ok: true, state: "blocked" }
+      : pathname === TASK_COMPLETE_PATH ? { ok: true, state: "done", results: [] } : { ok: true, taskId: "T-3" });
+  };
+  const readBindingToken = typeof token === "function" ? token : async () => token;
+  const server = buildClaudeServer({
+    environment: { CLAUDE_CODE_SESSION_ID: SESSION_ID }, taskPost, query: async () => ({}), readBindingToken, now: () => NOW,
+  });
+  return { tools: server._registeredTools, calls };
+}
+
+const proofFor = (tool, overrides = {}) => createTaskBindingProof({ token: TOKEN, tool, sessionRef: REF, now: NOW, ...overrides });
+const CLAUDE_CALLS = {
+  add_task: { input: { text: "x" }, unbound: TASK_UNBOUND_TEXT, ok: "Task T-3 added to the board, not queued." },
+  complete_task: { input: {}, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported complete. Pomegr marked it done." },
+  block_task: { input: { reason: "stuck" }, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported as blocked. The user will resolve it." },
+};
+
+test("Claude server refuses every task tool unless session_ref carries the hook's proof", async () => {
+  for (const [name, { input, unbound }] of Object.entries(CLAUDE_CALLS)) {
+    const { tools, calls } = claudeServer();
+    assert.equal(tools[name]._meta, undefined);
+    const bad = [
+      {},
+      { session_ref: REF },
+      { session_ref: REF, session_proof: "not-a-proof" },
+      { session_ref: REF, session_proof: `${NOW}.${"A".repeat(43)}` },
+      { session_ref: REF, session_proof: proofFor(name, { sessionRef: OTHER_REF }) },
+      { session_ref: REF, session_proof: proofFor(name === "add_task" ? "block_task" : "add_task") },
+      { session_ref: REF, session_proof: proofFor(name, { now: NOW - TASK_BINDING_PROOF_WINDOW_MS - 1_000 }) },
+      { session_ref: REF, session_proof: proofFor(name, { now: NOW + TASK_BINDING_PROOF_FUTURE_SKEW_MS + 1_000 }) },
+      { session_ref: REF, session_proof: proofFor(name, { token: "another-capability-token-".padEnd(43, "z") }) },
+      { session_ref: "claude:explicit", session_proof: proofFor(name, { sessionRef: "claude:explicit" }) },
+      { session_ref: `codex:${SESSION_ID}`, session_proof: proofFor(name, { sessionRef: `codex:${SESSION_ID}` }) },
+      { session_proof: proofFor(name) },
+    ];
+    for (const extra of bad) {
+      const out = await tools[name].handler({ ...input, ...extra }, codexMeta());
+      assert.equal(out.isError, true, `${name} ${JSON.stringify(extra)}`);
+      assert.equal(out.content[0].text, unbound);
+    }
+    assert.equal(calls.length, 0, name);
   }
-  assert.equal(calls.length, 0);
-  await complete.handler({ session_ref: `claude:${SESSION_ID}` });
-  await block.handler({ reason: "stuck", session_ref: `claude:${SESSION_ID}` });
-  assert.deepEqual(calls, [
-    { pathname: TASK_COMPLETE_PATH, body: { sessionRef: `claude:${SESSION_ID}` } },
-    { pathname: TASK_BLOCK_PATH, body: { sessionRef: `claude:${SESSION_ID}`, reason: "stuck" } },
-  ]);
 });
 
-test("Claude hook binds complete_task and block_task from the host transcript and denies anything else", () => {
+test("Claude server refuses a signed call when it can read no capability token", async () => {
+  for (const token of [null, "", async () => undefined, async () => { throw new Error(SENTINEL); }]) {
+    for (const [name, { input, unbound }] of Object.entries(CLAUDE_CALLS)) {
+      const { tools, calls } = claudeServer({ token });
+      const out = await tools[name].handler({ ...input, session_ref: REF, session_proof: proofFor(name) });
+      assert.equal(out.content[0].text, unbound);
+      assert.doesNotMatch(JSON.stringify(out), new RegExp(SENTINEL, "u"));
+      assert.equal(calls.length, 0);
+    }
+  }
+});
+
+test("Claude server posts once for a hook-made proof and sends neither session_ref nor session_proof", async () => {
+  for (const [name, { input, ok }] of Object.entries(CLAUDE_CALLS)) {
+    const { tools, calls } = claudeServer();
+    const out = await tools[name].handler({ ...input, session_ref: REF, session_proof: proofFor(name, { now: NOW - TASK_BINDING_PROOF_WINDOW_MS + 1_000 }) });
+    assert.equal(out.isError, undefined, name);
+    assert.equal(out.content[0].text, ok);
+    assert.equal(calls.length, 1, name);
+    assert.equal(calls[0].body.sessionRef, REF);
+    assert.doesNotMatch(JSON.stringify(calls[0].body), /session_ref|session_proof|[0-9]{13}\./u);
+  }
+  assert.deepEqual(buildAddTaskBody(REF, { text: "t", session_ref: OTHER_REF, session_proof: "p" }), { sessionRef: REF, text: "t" });
+});
+
+test("Claude hook binds add_task from the host transcript, signs it, and never honors a model selector", async () => {
+  const transcripts = [
+    path.resolve("private", `${SESSION_ID}.jsonl`),
+    path.resolve("private", SESSION_ID, "subagents", "agent-child.jsonl"),
+  ];
+  const options = { readToken: async () => TOKEN, now: () => NOW };
+  for (const prefix of ["mcp__pomegr__", "mcp__plugin_pomegr_pomegr__"]) {
+    for (const transcript_path of transcripts) {
+      const payload = { hook_event_name: "PreToolUse", tool_name: `${prefix}add_task`,
+        tool_input: { text: "t", feature: "F" }, transcript_path };
+      const out = (await bindClaudeQueryWrite(payload, options)).hookSpecificOutput;
+      assert.equal(out.permissionDecision, undefined);
+      assert.deepEqual(out.updatedInput, { text: "t", feature: "F", session_ref: REF, session_proof: proofFor("add_task") });
+      assert.equal(verifyTaskBindingProof({ token: TOKEN, tool: "add_task", sessionRef: REF, proof: out.updatedInput.session_proof, now: NOW }), true);
+      assert.doesNotMatch(JSON.stringify(out), new RegExp(TOKEN, "u"));
+      for (const bad of [
+        { ...payload, tool_input: { text: "t", session_ref: "claude:other" } },
+        { ...payload, tool_input: { text: "t", session_proof: proofFor("add_task") } },
+        { ...payload, tool_input: { text: "t", repository: "r" } },
+        { ...payload, tool_input: [] },
+        { ...payload, tool_input: undefined },
+        { ...payload, transcript_path: "private-path-sentinel" },
+      ]) {
+        const denied = (await bindClaudeQueryWrite(bad, options)).hookSpecificOutput;
+        assert.equal(denied.permissionDecision, "deny");
+        assert.equal(denied.updatedInput, undefined);
+        assert.doesNotMatch(JSON.stringify(denied), /private-path-sentinel|claude:other|"repository"/u);
+        assert.doesNotMatch(JSON.stringify(denied), new RegExp(TOKEN, "u"));
+      }
+    }
+  }
+  assert.equal(await bindClaudeQueryWrite({ hook_event_name: "PostToolUse", tool_name: "mcp__pomegr__add_task", tool_input: {} }, options), null);
+  assert.equal(await bindClaudeQueryWrite({ hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__add_task_lookalike", tool_input: {}, transcript_path: transcripts[0] }, options), null);
+  // Read tools keep their behavior: an explicit selector still passes through to the host.
+  const read = { hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__get_session_report", tool_input: { session_ref: "claude:x" }, transcript_path: transcripts[0] };
+  assert.equal(bindClaudeQuerySession(read, options), null);
+  assert.equal(await bindClaudeQueryWrite(read, options), null);
+  // The read binder never binds a write tool: it has no signed path, so it answers nothing rather than an unsigned value.
+  assert.equal(bindClaudeQuerySession({ hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__add_task", tool_input: { text: "t" }, transcript_path: transcripts[0] }, options), null);
+});
+
+test("Claude hook binds complete_task and block_task, signed per tool, and denies anything else", async () => {
   const transcript_path = path.resolve("private", `${SESSION_ID}.jsonl`);
+  const options = { readToken: async () => TOKEN, now: () => NOW };
   for (const prefix of ["mcp__pomegr__", "mcp__plugin_pomegr_pomegr__"]) {
     const complete = { hook_event_name: "PreToolUse", tool_name: `${prefix}complete_task`, tool_input: {}, transcript_path };
     const block = { hook_event_name: "PreToolUse", tool_name: `${prefix}block_task`, tool_input: { reason: "stuck" }, transcript_path };
-    assert.deepEqual(bindClaudeQuerySession(complete).hookSpecificOutput, { hookEventName: "PreToolUse", updatedInput: { session_ref: `claude:${SESSION_ID}` } });
-    assert.deepEqual(bindClaudeQuerySession(block).hookSpecificOutput.updatedInput, { reason: "stuck", session_ref: `claude:${SESSION_ID}` });
+    assert.deepEqual((await bindClaudeQueryWrite(complete, options)).hookSpecificOutput,
+      { hookEventName: "PreToolUse", updatedInput: { session_ref: REF, session_proof: proofFor("complete_task") } });
+    assert.deepEqual((await bindClaudeQueryWrite(block, options)).hookSpecificOutput.updatedInput,
+      { reason: "stuck", session_ref: REF, session_proof: proofFor("block_task") });
     for (const bad of [
       { ...complete, tool_input: { session_ref: "claude:other" } },
+      { ...complete, tool_input: { session_proof: proofFor("complete_task") } },
       { ...complete, tool_input: { reason: "x" } },
       { ...block, tool_input: { reason: "x", id: "T-1" } },
       { ...block, transcript_path: "private-path-sentinel" },
     ]) {
-      const denied = bindClaudeQuerySession(bad).hookSpecificOutput;
+      const denied = (await bindClaudeQueryWrite(bad, options)).hookSpecificOutput;
       assert.equal(denied.permissionDecision, "deny");
       assert.equal(denied.updatedInput, undefined);
       assert.match(denied.permissionDecisionReason, /nothing was reported/u);
       assert.doesNotMatch(JSON.stringify(denied), /private-path-sentinel|claude:other/u);
     }
   }
+});
+
+test("Claude hook denies a write it cannot sign and never leaks the token", async () => {
+  const transcript_path = path.resolve("private", `${SESSION_ID}.jsonl`);
+  for (const readToken of [async () => null, async () => undefined, async () => "", async () => { throw new Error(TOKEN); }]) {
+    for (const [name, { input }] of Object.entries(CLAUDE_CALLS)) {
+      const denied = (await bindClaudeQueryWrite(
+        { hook_event_name: "PreToolUse", tool_name: `mcp__pomegr__${name}`, tool_input: input, transcript_path }, { readToken, now: () => NOW },
+      )).hookSpecificOutput;
+      assert.equal(denied.permissionDecision, "deny");
+      assert.equal(denied.updatedInput, undefined);
+      assert.doesNotMatch(JSON.stringify(denied), new RegExp(TOKEN, "u"));
+    }
+  }
+});
+
+test("the hook writes the signed binding and nothing else to stdout, from the real descriptor reader", async () => {
+  const dataRoot = await mkdtemp(path.join(os.tmpdir(), "pomegr-binding-"));
+  try {
+    await writeFile(path.join(dataRoot, "agent-query-runtime.json"), JSON.stringify({ version: 1, origin: "http://127.0.0.1:4317", token: TOKEN }));
+    const run = async (root) => {
+      let written = "";
+      const stream = Readable.from([JSON.stringify({
+        hook_event_name: "PreToolUse", tool_name: "mcp__pomegr__complete_task", tool_input: {}, transcript_path: path.resolve("private", `${SESSION_ID}.jsonl`),
+      })]);
+      await runClaudeQuerySessionHook(stream, { write: (text) => { written += text; } }, {
+        readToken: async () => (await readAgentQueryDescriptor({ dataRoot: root }))?.token ?? null, now: () => NOW,
+      });
+      return written;
+    };
+    const written = await run(dataRoot);
+    const out = JSON.parse(written).hookSpecificOutput;
+    assert.deepEqual(Object.keys(out.updatedInput).sort(), ["session_proof", "session_ref"]);
+    assert.equal(verifyTaskBindingProof({ token: TOKEN, tool: "complete_task", sessionRef: REF, proof: out.updatedInput.session_proof, now: NOW }), true);
+    assert.doesNotMatch(written, new RegExp(TOKEN, "u"));
+    assert.equal(JSON.parse(await run(path.join(dataRoot, "missing"))).hookSpecificOutput.permissionDecision, "deny");
+  } finally {
+    await rm(dataRoot, { recursive: true, force: true });
+  }
+});
+
+test("the binding proof is bound to token, tool, session, and a window that outlasts a slow approval, and never throws", () => {
+  const proof = createTaskBindingProof({ token: TOKEN, tool: "add_task", sessionRef: REF, now: NOW });
+  assert.match(proof, /^\d{13}\.[A-Za-z0-9_-]{43}$/u);
+  assert.equal(proof.startsWith(`${NOW}.`), true);
+  const check = (overrides) => verifyTaskBindingProof({ token: TOKEN, tool: "add_task", sessionRef: REF, proof, now: NOW, ...overrides });
+  assert.equal(check({}), true);
+  assert.equal(TASK_BINDING_PROOF_WINDOW_MS, 10 * 60_000);
+  assert.equal(check({ now: NOW + 9 * 60_000 }), true, "a permission prompt left open for nine minutes");
+  assert.equal(check({ now: NOW + TASK_BINDING_PROOF_WINDOW_MS }), true);
+  assert.equal(check({ now: NOW + TASK_BINDING_PROOF_WINDOW_MS + 1 }), false);
+  assert.equal(check({ now: NOW - TASK_BINDING_PROOF_FUTURE_SKEW_MS }), true);
+  assert.equal(check({ now: NOW - TASK_BINDING_PROOF_FUTURE_SKEW_MS - 1 }), false);
+  for (const overrides of [{ token: "other" + TOKEN }, { tool: "block_task" }, { sessionRef: OTHER_REF }, { proof: proof.slice(0, -1) }, { proof: proof + "A" },
+    { proof: `${NOW + 1}.${proof.split(".")[1]}` }, { proof: proof.replace(".", ":") }, { proof: `${proof.split(".")[1]}.${NOW}` }, { proof: "" }, { proof: "x".repeat(10_000) },
+    { proof: null }, { proof: 7 }, { proof: {} }, { token: null }, { token: "" }, { token: 7 }, { tool: "../x" }, { tool: null }, { sessionRef: "claude:a\nb" }, { sessionRef: null },
+    { now: Number.NaN }, { now: "x" }]) {
+    assert.equal(check(overrides), false, JSON.stringify(overrides));
+  }
+  assert.equal(verifyTaskBindingProof(), false);
+  assert.equal(verifyTaskBindingProof(null), false);
+  assert.equal(verifyTaskBindingProof({ get token() { throw new Error("boom"); } }), false);
+  for (const bad of [{ token: "" }, { tool: "Add" }, { sessionRef: "a\nb" }, { now: 1.5 }, { now: 0 }]) {
+    assert.equal(createTaskBindingProof({ token: TOKEN, tool: "add_task", sessionRef: REF, now: NOW, ...bad }), null, JSON.stringify(bad));
+  }
+  assert.equal(createTaskBindingProof(), null);
+  assert.notEqual(proof, createTaskBindingProof({ token: TOKEN, tool: "add_task", sessionRef: REF, now: NOW + 1 }));
+  assert.doesNotMatch(proof, new RegExp(TOKEN, "u"));
+});
+
+test("the proof comparison is constant-time over equal-length buffers", () => {
+  const source = readFileSync(new URL("../plugin-src/task-binding-proof.mjs", import.meta.url), "utf8");
+  assert.match(source, /timingSafeEqual\(given, expected\)/u);
+  assert.match(source, /given\.length === expected\.length/u);
+  assert.doesNotMatch(source, /(?:given|expected)\s*===\s*(?:given|expected)/u);
 });

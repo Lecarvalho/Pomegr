@@ -476,6 +476,53 @@ describe("Task panel resolutions", () => {
     }
   });
 
+  it("offers Mark done and Requeue for a linked task whose session has not reported, and says neither stops the session", async () => {
+    const session = { id: "claude:abc126", title: "Working session", state: "working", observedModel: null };
+    setBoard([task(20, { text: "In flight", state: "queued", session })]);
+    const { user, dialog } = await open("Working session", "T-20");
+    const done = dialog.getByRole("button", { name: "Mark done" });
+    const requeue = dialog.getByRole("button", { name: "Requeue task" });
+    // The session's own state stays on the chip; both exits are secondary so Start session keeps the one primary role.
+    expect(dialog.getByText("In progress")).toHaveClass("commandChip");
+    expect(done).toHaveClass("commandSecondaryAction");
+    expect(requeue).toHaveClass("commandSecondaryAction");
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
+    expect(dialog.getByText("The session has not reported. Mark done and Requeue do not stop it.")).toHaveClass("newTaskPanelNote");
+    expect(done.compareDocumentPosition(dialog.getByRole("button", { name: "Delete task" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(done);
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-20" }));
+    await user.click(requeue);
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_requeue", { id: "T-20" }));
+    expect(taskAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers those two exits for every waiting state with a linked session, and for no task without one or with an outcome", async () => {
+    const session = { id: "claude:abc127", title: null, state: "unknown", observedModel: null };
+    setBoard([
+      task(21, { state: "not_queued", session }), task(22, { state: "scheduled", scheduledAt: "2026-10-09T10:00:00.000Z", session }),
+      task(23, { state: "queued" }), task(24, { state: "done", session }),
+    ]);
+    const first = await open("Task text 21", "T-21");
+    expect(first.dialog.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
+    for (const [text, id, offered] of [["Task text 22", "T-22", true], ["Task text 23", "T-23", false], ["Task text 24", "T-24", false]] as const) {
+      await first.user.click(screen.getByRole("button", { name: text }));
+      const dialog = within(screen.getByRole("dialog", { name: `Task ${id}` }));
+      expect(dialog.queryByRole("button", { name: "Mark done" }) !== null).toBe(offered);
+      expect(dialog.queryByRole("button", { name: "Requeue task" }) !== null).toBe(offered);
+      expect(dialog.queryByText(/do not stop it/u) !== null).toBe(offered);
+    }
+  });
+
+  it("hides the exits of a task awaiting a report while the delete confirmation is open", async () => {
+    setBoard([task(20, { text: "In flight", state: "queued", session: { id: "claude:abc126", title: "Working session", state: "working", observedModel: null } })]);
+    const { user, dialog } = await open("Working session", "T-20");
+    await user.click(dialog.getByRole("button", { name: "Delete task" }));
+    expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
+    expect(dialog.queryByText(/do not stop it/u)).not.toBeInTheDocument();
+  });
+
   it("shows one fixed line when the monitor refuses a resolution", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const { user, dialog } = await open("Task store and privacy rules", "T-12");

@@ -329,6 +329,7 @@ describe("the paused Queue banner", () => {
     ["unsupported_platform", "starting sessions is available on Windows only."],
     ["start_failed", "the terminal window could not be opened."],
     ["session_not_linked", "its terminal opened, but the session did not report back."],
+    ["worktree_dirty", "its worktree has uncommitted changes, and Pomegr never removes them."],
     [null, "the start did not succeed."],
   ])("words the %s reason on both views", async (pauseReason, reason) => {
     setBoard({ status: "paused", blockedBy: "T-15", pauseReason });
@@ -338,6 +339,69 @@ describe("the paused Queue banner", () => {
     expect(within(banner()).getByText(body)).toBeInTheDocument();
     await showQueue();
     expect(within(banner()).getByText(body)).toBeInTheDocument();
+  });
+
+  describe("Open folder", () => {
+    const taskWorktreeOpen = vi.fn<(repositoryId: string, taskId: string) => Promise<unknown>>();
+    beforeEach(() => { taskWorktreeOpen.mockReset(); taskWorktreeOpen.mockResolvedValue({ status: "opened" }); });
+
+    it("is offered for a dirty worktree on the desktop and calls the bridge with the two IDs only", async () => {
+      setBridge({ taskAction, taskWorktreeOpen });
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+      await renderOn("queue");
+      await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
+      expect(taskWorktreeOpen).toHaveBeenCalledExactlyOnceWith(repositoryId, "T-15");
+      expect(within(banner()).queryByText("The folder could not be opened.")).not.toBeInTheDocument();
+    });
+
+    it.each<[string, string]>([
+      ["opened", "The folder is open."],
+      ["not_found", "The worktree folder was not found."],
+      ["invalid", "The folder could not be opened."],
+      ["unavailable", "The folder could not be opened."],
+      ["something else", "The folder could not be opened."],
+    ])("shows one fixed line for the %s result and never a path", async (status, line) => {
+      taskWorktreeOpen.mockResolvedValue({ status, path: "D:\\private-folder\\worktree" });
+      setBridge({ taskAction, taskWorktreeOpen });
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+      await renderOn("queue");
+      await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
+      expect(await within(banner()).findByRole("status")).toHaveTextContent(line);
+      expect(banner()).not.toHaveTextContent("private-folder");
+    });
+
+    it("shows one fixed line when the bridge throws", async () => {
+      taskWorktreeOpen.mockRejectedValue(new Error("D:\\private-folder"));
+      setBridge({ taskAction, taskWorktreeOpen });
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+      await renderOn("queue");
+      await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
+      expect(await within(banner()).findByRole("status")).toHaveTextContent("The folder could not be opened.");
+      expect(banner()).not.toHaveTextContent("private-folder");
+    });
+
+    it("is absent on a desktop build that cannot open a folder, and the dirty reason is still worded", async () => {
+      setBridge({ taskAction });
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+      await renderOn("queue");
+      expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+      expect(within(banner()).getByRole("button", { name: "Open T-15" })).toBeInTheDocument();
+      expect(banner()).toHaveTextContent("its worktree has uncommitted changes");
+    });
+
+    it("is absent without the desktop bridge and for every other reason", async () => {
+      setBridge(undefined);
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+      await renderOn("queue");
+      expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+    });
+
+    it("is absent for a paused queue with another reason", async () => {
+      setBridge({ taskAction, taskWorktreeOpen });
+      setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "start_failed" });
+      await renderOn("queue");
+      expect(within(banner()).queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+    });
   });
 
   it("does not name a task when the monitor names none", async () => {

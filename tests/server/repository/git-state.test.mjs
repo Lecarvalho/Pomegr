@@ -82,7 +82,9 @@ test("reads recent commits and upstream divergence on the main branch", async (c
     { status: " M", path: "tracked.txt" },
     { status: "??", path: "untracked.txt" },
   ]);
-  assert.deepEqual(asyncState, state);
+  const { _readStartedAt: asyncStartedAt, ...asyncAnswer } = asyncState;
+  assert.equal(Number.isFinite(asyncStartedAt), true);
+  assert.deepEqual(asyncAnswer, state);
 });
 
 test("shows only commits unique to a feature branch", async (context) => {
@@ -182,4 +184,31 @@ test("treats squash-merged branch changes as integrated instead of ahead", async
 
   assert.deepEqual(state.comparison, { branch: "origin/main", kind: "base", ahead: 0, behind: 1, integrated: true });
   assert.deepEqual(state.commits, []);
+});
+
+test("overlapping reads share one inspection and are both dated by its start", async (context) => {
+  const { repository } = await repositoryFixture(context);
+  const before = Date.now();
+  const first = readGitStateAsync(repository);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  const joinedAt = Date.now();
+  const [one, two] = await Promise.all([first, readGitStateAsync(repository)]);
+
+  assert.equal(Number.isFinite(one._readStartedAt), true);
+  assert.equal(two._readStartedAt, one._readStartedAt, "the caller that joined is as old as the inspection it joined");
+  assert.equal(one._readStartedAt >= before && one._readStartedAt < joinedAt, true, "the start precedes the second call");
+  const later = await readGitStateAsync(repository);
+  assert.equal(later._readStartedAt >= joinedAt, true, "a finished inspection is never reused");
+});
+
+test("a failed git status is marked unknown instead of read as a clean tree", async (context) => {
+  const { repository } = await repositoryFixture(context);
+  await writeFile(path.join(repository, "untracked.txt"), "local\n");
+  assert.equal(Object.hasOwn(await readGitStateAsync(repository), "_statusUnknown"), false);
+
+  await writeFile(path.join(repository, ".git", "index"), "not an index");
+  const state = await readGitStateAsync(repository);
+  assert.equal(state.available, true);
+  assert.deepEqual(state.files, []);
+  assert.equal(state._statusUnknown, true);
 });

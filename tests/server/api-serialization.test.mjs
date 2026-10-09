@@ -635,3 +635,24 @@ test("task content added through the store stays out of the observation API", as
     .map(async (route) => (await fetch(`${origin}${route}`)).text()));
   assert.doesNotMatch(bodies.join("\n"), /AGENT_TASK_(?:TEXT|OWN)_MUST_NOT_LEAK/u);
 });
+
+test("the monitor-private read times of the repository and pull-request blocks never reach /api/state", async (context) => {
+  const { claude } = await syntheticProviders(context);
+  const state = {
+    connected: true, source: claude.source, capabilities: claude.capabilities, view: "live",
+    session: {
+      id: "claude:claude-fixture-parent",
+      repository: { available: true, historical: false, branch: "tasks/12", isMain: false, files: [], comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, readAt: "2026-10-09T10:00:00.000Z" },
+      pullRequests: { status: "ready", checkedAt: "2026-10-09T10:00:02.000Z", readAt: "2026-10-09T10:00:01.000Z", items: [] },
+    },
+  };
+  const runtime = { async analyze() { return state; }, analyzeEmpty() { return { connected: false, source: claude.source, capabilities: claude.capabilities, view: "live" }; } };
+  const origin = await startSyntheticMonitor(context, { runtime });
+  const response = await fetch(`${origin}/api/state`);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(body, /readAt/u);
+  const served = JSON.parse(body);
+  assert.equal(served.session.repository.branch, "tasks/12");
+  assert.equal(served.session.pullRequests.checkedAt, "2026-10-09T10:00:02.000Z");
+});

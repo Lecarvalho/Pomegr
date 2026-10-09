@@ -1758,10 +1758,14 @@ recorded work, meaning an open turn or an unmatched input wait, counts as live o
 a writer could still resolve it: the thread has owning-runtime status or a confirmed
 owner, or its own lock or its root's lock is not released. Otherwise the thread reports
 status `unknown`, evidence `unavailable`, freshness `stale`, and reason `writer_released`,
-with its original observation timestamp. An unreadable lock, a missing lock directory,
-or a non-Windows platform gives no release evidence and keeps the recorded state. Release
-never establishes completion, idle, stopped, or success, and it never changes checkpoints
-or recorded lifecycle state. A Codex surface that wrote rollouts without taking writer
+with its original observation timestamp. A thread whose recorded turn failed or was
+interrupted (status `stopped`, evidence `observed`) with the same conditions keeps status,
+evidence and freshness and adds only reason `writer_released`; it is not rewritten to
+Unknown. An unreadable lock, a missing lock directory, or a non-Windows platform gives no
+release evidence and keeps the recorded state. Release never establishes completion, idle,
+or success, and never turns a thread into Stopped, and it never changes checkpoints or
+recorded lifecycle state. The task board reads that reason (see
+[Tasks](tasks.md#states)) to stall a Codex task; a Stopped thread without it never stalls one. A Codex surface that wrote rollouts without taking writer
 locks would be misread as released. Every surface observed so far takes the lock.
 
 The lifecycle hook bridge, detached owner watcher, snapshot/lease persistence, and
@@ -3289,6 +3293,20 @@ copy of that answer. A finished inspection is never reused, so each session's ch
 its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`) run once
 per directory: concurrent callers share the lookup, and its answer is reused for the same
 300-second freshness the providers' memoized repository resolver already applies.
+The committed public state of a live session may carry monitor-private `readAt` stamps on
+`session.repository` (the start of the Git read its working-tree files and branch comparison
+come from) and `session.pullRequests` (the start of the oldest read its items rest on).
+The task board's done-when rule dates a fact by them and refuses a fact read before the
+session's latest relevant work (see [Tasks](tasks.md#completion)). The store's served
+serialization omits them, so revision and unchanged-detection ignore them, and no
+response, domain, snapshot, sidecar, checkpoint, report, or log carries one. Restored and
+historical states carry none. The Git reader's answer carries two private keys that the
+enrichment and the start-gate observation consume and never pass on: `_readStartedAt`,
+the start of the shared inspection, so a caller that joins an inspection already under way
+is dated by that inspection and not by its own later call; and `_statusUnknown`, set when
+`git status` failed or timed out, in which case the block is committed with its empty file
+list as before but with no stamp. The served `session.pullRequests.checkedAt` is the start
+of the newest pull-request read, not its end.
 A live session with no repository binding (a Codex session without one proven repository,
 or a Claude session without a recorded branch) has nothing to check: its repository
 readiness is `ready` with no repository, a factual empty result, so it cannot hold the

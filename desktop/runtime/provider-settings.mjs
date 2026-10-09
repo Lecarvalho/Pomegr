@@ -62,6 +62,19 @@ export function providerSettingsEnvironment(environment, folders, { homeDir, dat
   return result;
 }
 
+// The environment a provider session started by Pomegr runs in. A folder nobody chose (no desktop setting and no
+// inherited variable) is left unset here, although the monitor's environment names its default: Claude Code keeps
+// its user configuration file beside the default folder, and inside the folder once `CLAUDE_CONFIG_DIR` is set,
+// so naming the default would start the session on another configuration than the user's own terminal has.
+export function providerSessionEnvironment(environment, folders, options) {
+  const result = providerSettingsEnvironment(environment, folders, options);
+  const selected = normalizeProviderFolders(folders);
+  for (const key of PROVIDER_FOLDER_KEYS) {
+    if (!selected[key] && !environmentValue(environment, ENVIRONMENT_KEYS[key])) setEnvironment(result, ENVIRONMENT_KEYS[key], undefined);
+  }
+  return result;
+}
+
 async function readableDirectory(directory) {
   try { return (await stat(directory)).isDirectory() && (await access(directory, constants.R_OK), true); } catch { return false; }
 }

@@ -3,6 +3,9 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { defaultAgentQueryDataRoot, readAgentQueryDescriptor } from "../shared/agent-query-transport.mjs";
+import { createTaskBindingProof } from "./task-binding-proof.mjs";
+
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
@@ -40,12 +43,30 @@ function currentSessionId(transcriptPath) {
     && path.basename(directory) === "subagents" && UUID.test(owner) ? owner : null;
 }
 
+/** The local agent-query capability the server verifies a binding proof against; null when unavailable. */
+async function defaultReadToken() {
+  try {
+    return (await readAgentQueryDescriptor({ dataRoot: defaultAgentQueryDataRoot() }))?.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Write tools never honor a model-supplied selector. The binding is the host's
- * current transcript, or the call is denied. No permission decision is allowed
- * here, so the host still asks the user as it normally would for a write.
+ * current transcript, signed with the local capability so the MCP server can tell
+ * this value from one the model typed, or the call is denied. No permission
+ * decision is allowed here, so the host still asks the user as it normally would
+ * for a write. The token and the proof reach stdout only as `session_proof`.
+ *
+ * Always async, and null for any other event or tool. The read binder below stays synchronous; the hook runner asks this
+ * one first, so neither function returns a Promise on one path and a plain value on another.
  */
-function bindWriteTool(payload, name) {
+export async function bindClaudeQueryWrite(payload, { readToken = defaultReadToken, now = Date.now } = {}) {
+  if (payload?.hook_event_name !== "PreToolUse") return null;
+  const match = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
+  if (!match) return null;
+  const name = match[1];
   const deny = { hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED[name],
   } };
@@ -54,16 +75,21 @@ function bindWriteTool(payload, name) {
     || Object.keys(input).some((key) => !WRITE_FIELDS[name].includes(key))) return deny;
   const id = currentSessionId(payload.transcript_path);
   if (!id) return deny;
+  const sessionRef = `claude:${id}`;
+  let proof = null;
+  try {
+    proof = createTaskBindingProof({ token: await readToken(), tool: name, sessionRef, now: now() });
+  } catch { /* No proof is a denial; never echo why. */ }
+  if (!proof) return deny;
   return { hookSpecificOutput: {
     hookEventName: "PreToolUse",
-    updatedInput: { ...input, session_ref: `claude:${id}` },
+    updatedInput: { ...input, session_ref: sessionRef, session_proof: proof },
   } };
 }
 
+/** Binds the current session for a read tool, synchronously. A write tool is never bound here: see bindClaudeQueryWrite. */
 export function bindClaudeQuerySession(payload) {
   if (payload?.hook_event_name !== "PreToolUse") return null;
-  const write = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
-  if (write) return bindWriteTool(payload, write[1]);
   const match = typeof payload.tool_name === "string" ? TOOL.exec(payload.tool_name) : null;
   if (!match) return null;
   const input = payload.tool_input;
@@ -84,7 +110,7 @@ export function bindClaudeQuerySession(payload) {
   } };
 }
 
-export async function runClaudeQuerySessionHook(stream = process.stdin, output = process.stdout) {
+export async function runClaudeQuerySessionHook(stream = process.stdin, output = process.stdout, options = {}) {
   if (stream.isTTY) return;
   let bytes = 0;
   const chunks = [];
@@ -96,7 +122,8 @@ export async function runClaudeQuerySessionHook(stream = process.stdin, output =
       }
       chunks.push(Buffer.from(chunk));
     }
-    const result = bindClaudeQuerySession(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    const event = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const result = (await bindClaudeQueryWrite(event, options)) ?? bindClaudeQuerySession(event);
     if (result) output.write(`${JSON.stringify(result)}\n`);
   } catch { /* Missing binding fails unavailable in MCP; never echo hook content. */ }
 }

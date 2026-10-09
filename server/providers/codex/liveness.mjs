@@ -136,6 +136,20 @@ export function createCodexLivenessCoordinator(options = {}) {
     return released;
   }
 
+  // A recorded failed or interrupted turn reads Stopped while its process may
+  // still be present and able to resolve it. Release adds only the reason: the
+  // recorded status, evidence, and freshness stay, so Stopped is never retracted
+  // and the row still renders as Stopped. Live (heuristic or open-turn) rollouts
+  // take `releasedLiveness` instead.
+  function isRecordedStop(liveness) {
+    return liveness?.live === false && liveness.status === "stopped"
+      && liveness.source === "structured_lifecycle" && liveness.evidence === "observed";
+  }
+
+  function releasedStopLiveness(liveness) {
+    return { ...liveness, reason: "writer_released" };
+  }
+
   function hasCurrentWriterLock(thread) {
     const localId = isSafeCodexSessionId(thread?.localId) ? thread.localId : null;
     if (!writerLocksRoot || !localId) return false;
@@ -300,8 +314,13 @@ export function createCodexLivenessCoordinator(options = {}) {
         ? rolloutEvidence(thread.rolloutFile, checkedAt, implementation, thread.runtimeAvailability || null, Boolean(owner))
         : null;
       // A current owning-runtime snapshot is authoritative for its loaded task.
-      const released = !app && !owner && rollout?.live === true && writerReleased(thread, lockState);
-      const liveness = app || (released ? releasedLiveness(rollout) : rollout);
+      // Release never outranks an owning runtime or a confirmed owner. The lock
+      // reads stay inside this observation; only the fixed reason is exposed.
+      const unowned = !app && !owner;
+      const released = unowned && rollout?.live === true && writerReleased(thread, lockState);
+      const stopReleased = unowned && isRecordedStop(rollout) && writerReleased(thread, lockState);
+      const liveness = app || (released ? releasedLiveness(rollout)
+        : stopReleased ? releasedStopLiveness(rollout) : rollout);
       return {
         ...thread,
         liveStatus: liveness?.status || "unknown",

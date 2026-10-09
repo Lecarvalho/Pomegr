@@ -39,14 +39,15 @@ export function queueFeatures(board: Pick<TaskBoard, "features" | "tasks">): Que
 export function singleQueueTasks(board: Pick<TaskBoard, "tasks" | "queue">): Task[] {
   const order = new Map(board.queue.order.map((id, index) => [id, index]));
   const listed = board.tasks.filter((task) => task.featureId === null && task.state !== "not_queued" && task.state !== "done");
-  const waits = (task: Task) => task.state === "queued" || (task.state === "scheduled" && order.has(task.id));
+  // A started task keeps its queued state but is not in the order: it is listed with the rest, never as waiting.
+  const waits = (task: Task) => (task.state === "queued" || task.state === "scheduled") && order.has(task.id);
   const queued = listed.filter(waits).sort((left, right) => (order.get(left.id) ?? Infinity) - (order.get(right.id) ?? Infinity) || byTaskNumber(left, right));
   return [...queued, ...listed.filter((task) => !waits(task)).sort(byTaskNumber)];
 }
 
-/** Only a queued task of a feature can be moved between steps. */
+/** Only a queued task of a feature that has not started (no linked session) can be moved between steps. */
 export function isMovableQueueTask(task: Task) {
-  return task.state === "queued" && task.featureId !== null && task.step !== null;
+  return task.state === "queued" && task.session === null && task.featureId !== null && task.step !== null;
 }
 
 /**

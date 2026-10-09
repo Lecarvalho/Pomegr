@@ -12,12 +12,10 @@
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
-import { isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, taskIdFromNumber } from "./task-record.mjs";
+import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
 
-/** States a session can still report on. An outcome (done, needs review, blocked, stalled) is final for its dispatch. */
-const REPORTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
 /** Outcomes that need the user and hold the queue. */
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
 
@@ -26,7 +24,8 @@ const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "
 
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
 
-const reportable = (row) => REPORTABLE_STATES.has(row.state) && (row.report_at ?? null) === null;
+// A session can still report on a task in flight that has no report yet; an outcome is final for its dispatch.
+const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
 
 // The first task that needs the user holds a running queue; a queue already blocked keeps its first blocker.
 export function blockQueue(database, repositoryId, taskId) {
@@ -96,15 +95,23 @@ export function reportBlock({ database, transaction, payload, now }) {
   return stored ? { ok: true, state: "blocked" } : { ok: false, error: "already_reported" };
 }
 
+// A linked task whose session has not reported is in flight: the session could still report, and nothing marks it
+// done or stalled by itself, so it can hold the queue with no exit. The user resolves it like an outcome.
+const awaitingReport = (row) => rowInFlight(row) && reportable(row);
+
 function unresolvedTask(database, repositoryId, payload) {
   const input = normalizeQueueTaskPayload(payload);
   if (!input) return { error: "invalid" };
-  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id, report_at FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { error: "not_found" };
-  return UNRESOLVED_STATES.includes(task.state) ? { number: input.number } : { error: "conflict" };
+  return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
 
-/** `resolve_done`: the user accepts a task that needs review, is blocked, or stalled. Its report and session link stay as recorded. */
+/**
+ * `resolve_done`: the user accepts a task that needs review, is blocked, or stalled, or a linked task whose session
+ * has not reported. Its report and session link stay as recorded. It never touches the session: a report that
+ * arrives afterwards is refused, because the task has an outcome.
+ */
 export function resolveDone({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
@@ -116,7 +123,8 @@ export function resolveDone({ database, repositoryId }, payload) {
 
 /**
  * `resolve_requeue`: the user sends the task back to the end of the queue for a new session. The report, the
- * session link, and any dispatch are cleared, so the task can be started and reported on once more.
+ * session link, and any dispatch are cleared, so the task can be started and reported on once more. The same
+ * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped.
  */
 export function resolveRequeue({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);

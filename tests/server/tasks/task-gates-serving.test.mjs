@@ -319,6 +319,11 @@ test("a failed or unavailable Git read is unknown, and only the most recently as
   tree.read(REPOSITORY);
   await settle();
   assert.equal(tree.read(REPOSITORY), null);
+  answer = () => ({ available: true, files: [], _statusUnknown: true });
+  now += TASK_GATE_TREE_REFRESH_MS;
+  tree.read(REPOSITORY);
+  await settle();
+  assert.equal(tree.read(REPOSITORY), null, "a failed git status lists no file and is not a clean tree");
   answer = () => ({ available: true, files: [] });
   now += TASK_GATE_TREE_REFRESH_MS;
   tree.read(REPOSITORY);

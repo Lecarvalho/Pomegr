@@ -7,6 +7,7 @@
 // tests/server/tasks/task-record.test.mjs pins every constant below to that contract.
 
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
+import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { orderQueue, taskIsDue } from "./task-queue.mjs";
 
 export const TASK_BOUNDS = Object.freeze({
@@ -28,7 +29,7 @@ export const TASK_STATES = Object.freeze(["not_queued", "queued", "scheduled", "
 export const TASK_PROVIDERS = Object.freeze(["claude", "codex"]);
 export const TASK_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 export const TASK_QUEUE_STATUSES = Object.freeze(["idle", "running", "blocked", "paused"]);
-export const TASK_QUEUE_PAUSE_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"]);
+export const TASK_QUEUE_PAUSE_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"]);
 export const DEFAULT_TASK_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
 // The fixed action list shared by the route (which rejects any other name) and the store (which
 // answers `unsupported` for a listed action whose part has not landed).
@@ -430,6 +431,24 @@ export function emptyBoard(repositoryId, readiness) {
 }
 
 /**
+ * States a task can still be in while no outcome is recorded for its dispatch: its session is working on it, or has yet
+ * to link. A session may only report on a task in one of them; an outcome (done, needs review, blocked, stalled) is final.
+ */
+export const IN_FLIGHT_STATES = Object.freeze(["not_queued", "queued", "scheduled"]);
+
+/**
+ * The one rule for a task that already started: its session is linked and has not reported, or its start is
+ * still inside the ten minutes it waits for the session to link. `at` is the clock in epoch milliseconds. Without it a
+ * dispatch cannot be judged live, so only a linked row counts as in flight (a live dispatch with no session
+ * yet is then missed, never a task wrongly held).
+ */
+export function rowInFlight(row, at) {
+  const linked = (row.session_id ?? null) !== null;
+  if (linked && IN_FLIGHT_STATES.includes(row.state)) return true;
+  return at !== undefined && dispatchStanding(row.dispatch_token, at) === "live";
+}
+
+/**
  * Builds the browser board from one repository's stored rows. Returns undefined when any row is
  * outside the contract or the rows disagree with each other, so a damaged store is reported as
  * unavailable instead of served partially. `at` is the clock in epoch milliseconds: with it, a scheduled task
@@ -464,6 +483,7 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     projectedTasks.map((task, index) => ({
       id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: tasks[index].queue_position ?? null,
       due: task.state === "scheduled" && at !== undefined && taskIsDue(tasks[index].scheduled_at ?? null, at),
+      inFlight: rowInFlight(tasks[index], at),
     })),
     projectedFeatures,
   );
