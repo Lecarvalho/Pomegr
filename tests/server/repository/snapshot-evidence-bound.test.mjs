@@ -133,6 +133,11 @@ async function monitorRun(context, directory, { publish = null, live = null } = 
     const original = store[method].bind(store);
     store[method] = async (...args) => { const result = await original(...args); sidecarReads += 1; return result; };
   }
+  // Finished sidecar writes are counted here, so a test waits for one without opening the file: on Windows a reader
+  // holding the sidecar open makes the store's rename over it fail.
+  let sidecarWrites = 0;
+  const writeSnapshot = store.writeRepositorySnapshot.bind(store);
+  store.writeRepositorySnapshot = async (...args) => { const result = await writeSnapshot(...args); sidecarWrites += 1; return result; };
   let publisher;
   const catalogRow = (isLive) => ({ localId: fixtureEvidence.localId, title: "Synthetic", project: "synthetic", updatedAt: EVIDENCE_AT, isLive, needsInput: false, activityStatus: isLive ? "working" : "idle" });
   const gitReads = [];
@@ -173,7 +178,7 @@ async function monitorRun(context, directory, { publish = null, live = null } = 
     publisher.publishSession("codex", fixtureEvidence.localId, evidence);
   };
   if (publish) await setSession(publish.evidence, publish.isLive);
-  return { runtime, stop, setSession, sidecarReads: () => sidecarReads, gitReads };
+  return { runtime, stop, setSession, sidecarReads: () => sidecarReads, sidecarWrites: () => sidecarWrites, gitReads };
 }
 
 /** Everything a browser can read about the recorded repository snapshot of the session, without revisions. */
@@ -273,7 +278,8 @@ test("a resumed session records a new snapshot over an ignored one, and the new 
   // No start time means no commit-window read, so the live check starts no Git process.
   const liveEvidence = { ...historicalEvidence(), historical: false, session: { ...historicalEvidence().session, startedAt: null, updatedAt: resumedAt } };
   const run = await monitorRun(context, directory, { live: { now: resumedAt }, publish: { evidence: liveEvidence, isLive: true } });
-  await waitFor(async () => (await sha(file)) !== before, "the live check to replace the old snapshot");
+  await waitFor(() => run.sidecarWrites() > 0, "the live check to replace the old snapshot");
+  assert.notEqual(await sha(file), before);
   const replaced = JSON.parse(await readFile(file, "utf8")).snapshot;
   assert.equal(replaced.checkedAt, at(5_000, resumedAt), "the new snapshot carries the new check time");
   assert.equal(replaced.branch, RECORDED_BRANCH, "and the live branch, not the old sidecar's");

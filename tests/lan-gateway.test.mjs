@@ -124,6 +124,8 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
     assert.equal(observed.at(-1).headers.host, new URL(upstreamOrigin).host);
     assert.equal(observed.at(-1).headers["x-pomegr-desktop-authorization"], AUTHORIZATION);
     assert.equal(observed.at(-1).headers.cookie, undefined);
+    // Every forwarded request is marked, so the upstream never takes a LAN client for a same-computer one.
+    assert.equal(observed.at(-1).headers["x-pomegr-lan-gateway"], "1");
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders?source=client`, { headers: { Cookie: cookie } })).status, 403);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { method: "POST", headers: { Cookie: cookie } })).status, 405);
     assert.equal((await fetch(`${gateway.origin}/api/provider-folders`, { method: "HEAD", headers: { Cookie: cookie } })).status, 405);

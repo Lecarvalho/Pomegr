@@ -16,8 +16,11 @@ import {
 } from "./signal-contract.mjs";
 import { normalizeSessionTitle, SESSION_TITLE_MAX_LENGTH } from "../scripts/session-title.mjs";
 import { AGENT_QUERY_INSTRUCTIONS, registerAgentQueryTools, resolveCurrentSessionRef } from "../../../mcp/agent-query-tools.mjs";
-import { createAgentQueryReader, defaultAgentQueryDataRoot } from "../../../shared/agent-query-transport.mjs";
+import { createAgentQueryReader, createAgentTaskWriter, defaultAgentQueryDataRoot, readAgentQueryDescriptor } from "../../../shared/agent-query-transport.mjs";
+import { verifyTaskBindingProof } from "../../../plugin-src/task-binding-proof.mjs";
+import { registerTaskTools, TASK_TOOL_INSTRUCTIONS } from "../../../mcp/task-tools.mjs";
 
+const HOOK_SESSION_REF = /^claude:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const reportingAnnotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const titleAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const label = z.string().trim().min(1).max(SIGNAL_MAX_LABEL_LENGTH)
@@ -60,7 +63,7 @@ function rejected(text) {
 export function buildPomegrMcpServer(options = {}) {
   const server = new McpServer(
     { name: "pomegr", version: "0.8.3" },
-    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS },
+    { instructions: "Follow .pomegr/signals.md when present. Assign a concise native session title through rename_session after the work is clear, report bounded project-specific transitions and session progress, and clear resolved state when no replacement applies. " + AGENT_QUERY_INSTRUCTIONS + " " + TASK_TOOL_INSTRUCTIONS },
   );
 
   server.registerTool("report_agent_signal", {
@@ -138,6 +141,27 @@ export function buildPomegrMcpServer(options = {}) {
     ? options.currentSessionRef
     : resolveCurrentSessionRef(options.environment ?? process.env);
   registerAgentQueryTools(server, { query, currentSessionRef });
+  // Only the PreToolUse hook sets session_ref, and the schema cannot tell its value from one the model typed
+  // when hooks are off or time out. So the reference counts only with the hook's proof, keyed by the local
+  // capability token read at call time. Never fall back to the launch-time session ID.
+  const taskDataRoot = options.dataRoot ?? defaultAgentQueryDataRoot();
+  const readBindingToken = options.readBindingToken
+    ?? (async () => (await readAgentQueryDescriptor({ dataRoot: taskDataRoot }))?.token ?? null);
+  const now = options.now ?? Date.now;
+  registerTaskTools(server, {
+    resolveSession: async (input, _extra, tool) => {
+      const ref = input?.session_ref;
+      if (typeof ref !== "string" || !HOOK_SESSION_REF.test(ref) || typeof input.session_proof !== "string") return null;
+      try {
+        const token = await readBindingToken();
+        return verifyTaskBindingProof({ token, tool, sessionRef: ref, proof: input.session_proof, now: now() }) ? ref : null;
+      } catch {
+        return null;
+      }
+    },
+    post: options.taskPost ?? createAgentTaskWriter({ dataRoot: taskDataRoot }),
+    hookBound: true,
+  });
 
   return server;
 }

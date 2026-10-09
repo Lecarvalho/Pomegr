@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createMonitorRuntime } from "../../server/server.mjs";
 import { createProviderRegistry } from "../../server/providers/registry.mjs";
+import { openTaskStore } from "../../server/tasks/task-store.mjs";
 import { WORK_KINDS } from "../../server/normalize/work-kind.mjs";
 import { createCodexUsageLimitsCoordinator } from "../../server/providers/codex/usage-limits.mjs";
 import { parseProviderUsageLimits } from "../../server/providers/provider-contract.mjs";
@@ -618,4 +620,39 @@ test("HTTP fallbacks never serialize arbitrary exception messages", async (conte
   assert.doesNotMatch(serialized, /MUST_NOT_LEAK/);
   assert.match(serialized, /Session catalog error/);
   assert.match(serialized, /Monitor error/);
+});
+
+test("task content added through the store stays out of the observation API", async (context) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-serialization-tasks-"));
+  const taskStore = openTaskStore({ directory });
+  context.after(async () => { taskStore.close(); await rm(directory, { recursive: true, force: true }); });
+  const { claude, codex } = await syntheticProviders(context);
+  const origin = await startSyntheticMonitor(context, { providerRegistry: createProviderRegistry([claude, codex]), taskStore });
+  assert.equal(taskStore.apply("repo-0123456789abcdef01234567", "create", {
+    text: "AGENT_TASK_TEXT_MUST_NOT_LEAK", doneWhen: { checks: [], own: "AGENT_TASK_OWN_MUST_NOT_LEAK" },
+  }).ok, true);
+  const bodies = await Promise.all(["/api/sessions", "/api/state?sessionId=claude%3Aclaude-fixture-parent", "/api/home", "/api/notifications"]
+    .map(async (route) => (await fetch(`${origin}${route}`)).text()));
+  assert.doesNotMatch(bodies.join("\n"), /AGENT_TASK_(?:TEXT|OWN)_MUST_NOT_LEAK/u);
+});
+
+test("the monitor-private read times of the repository and pull-request blocks never reach /api/state", async (context) => {
+  const { claude } = await syntheticProviders(context);
+  const state = {
+    connected: true, source: claude.source, capabilities: claude.capabilities, view: "live",
+    session: {
+      id: "claude:claude-fixture-parent",
+      repository: { available: true, historical: false, branch: "tasks/12", isMain: false, files: [], comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, readAt: "2026-10-09T10:00:00.000Z" },
+      pullRequests: { status: "ready", checkedAt: "2026-10-09T10:00:02.000Z", readAt: "2026-10-09T10:00:01.000Z", items: [] },
+    },
+  };
+  const runtime = { async analyze() { return state; }, analyzeEmpty() { return { connected: false, source: claude.source, capabilities: claude.capabilities, view: "live" }; } };
+  const origin = await startSyntheticMonitor(context, { runtime });
+  const response = await fetch(`${origin}/api/state`);
+  const body = await response.text();
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(body, /readAt/u);
+  const served = JSON.parse(body);
+  assert.equal(served.session.repository.branch, "tasks/12");
+  assert.equal(served.session.pullRequests.checkedAt, "2026-10-09T10:00:02.000Z");
 });

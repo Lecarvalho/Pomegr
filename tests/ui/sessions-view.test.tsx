@@ -302,4 +302,103 @@ describe("Sessions view", () => {
     await user.click(screen.getByRole("button", { name: "Clear provider filter: Codex" }));
     await screen.findByRole("button", { name: "Show all 9 in Codex" });
   });
+
+  describe("task and feature", () => {
+    const REPOSITORY = "repo-0123456789abcdef01234567";
+    const FEATURE = "feat-0123456789ab";
+    const task = (id: string, state: "needs_review" | "stalled" | "blocked" | "done" | null, step: number | null = 2) =>
+      ({ id, repositoryId: REPOSITORY, state, featureId: step === null ? null : FEATURE, feature: step === null ? null : "Task board v1", step });
+    const rows = [
+      { ...session(5), isLive: true, activityStatus: "working" as const, task: task("T-14", null) },
+      { ...session(4), task: task("T-12", "needs_review") },
+      { ...session(3), task: task("T-13", "done") },
+      { ...session(2), task: task("T-9", "stalled", null) },
+      { ...session(1), task: task("T-8", "blocked", 1) },
+      { ...session(0), task: null },
+    ];
+    const stubDirectory = (answer: (url: string) => Record<string, unknown>) => {
+      const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(String(url).includes("/api/sessions?mode=directory") ? answer(String(url)) : {}), { status: 200 })));
+      vi.stubGlobal("fetch", fetchMock);
+      return fetchMock;
+    };
+    const rowOf = (title: string) => screen.getByText(title).closest("tr") as HTMLElement;
+
+    it("shows the Task column second, with a chip only for Needs review, Stalled or Done", async () => {
+      stubDirectory(() => directorySnapshot(rows, { matchedCount: 6, taskReadiness: "ready" }));
+      render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+      await waitFor(() => expect(screen.getByText("Session 5")).toBeInTheDocument());
+      expect(screen.getAllByRole("columnheader").slice(0, 3).map((header) => header.textContent)).toEqual(["Session", "Task", "State"]);
+      const cell = (title: string) => rowOf(title).querySelector("td.commandSessionCellTask") as HTMLElement;
+      // While the session works on the task, State is the only status.
+      expect(cell("Session 5")).toHaveTextContent("T-14Task board v1 · step 2");
+      expect(cell("Session 5").querySelector(".commandChip")).toBeNull();
+      expect(cell("Session 4").querySelector(".commandChip.warning")).toHaveTextContent("Needs review");
+      expect(cell("Session 3").querySelector(".commandChip.neutral")).toHaveTextContent("Done");
+      expect(cell("Session 2").querySelector(".commandChip.warning")).toHaveTextContent("Stalled");
+      expect(cell("Session 2")).toHaveTextContent(/^T-9Stalled$/);
+      expect(cell("Session 1").querySelector(".commandChip")).toBeNull();
+      expect(cell("Session 0")).toHaveTextContent(/^—$/);
+      expect(screen.getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/repositories/${REPOSITORY}?tab=tasks`);
+      expect(screen.getByText(/A dash means you started the session yourself\./)).toBeInTheDocument();
+    });
+
+    it("has no Task column and no footnote for a client that gets no task reference", async () => {
+      stubDirectory(() => directorySnapshot([session(1)], { matchedCount: 1, taskReadiness: "desktop_only" }));
+      render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+      await waitFor(() => expect(screen.getByText("Session 1")).toBeInTheDocument());
+      expect(screen.queryByRole("columnheader", { name: "Task" })).not.toBeInTheDocument();
+      expect(screen.queryByText(/A dash means/)).not.toBeInTheDocument();
+      expect(screen.getAllByRole("columnheader").slice(0, 2).map((header) => header.textContent)).toEqual(["Session", "State"]);
+    });
+
+    it("groups by feature, opens one feature as a filter chip, and clears it", async () => {
+      const group = { key: FEATURE, label: "Task board v1", count: 7, live: 1, needs: 0, latestUpdatedAt: rows[0].updatedAt, sessions: rows.slice(0, 2) };
+      const fetchMock = stubDirectory((url) => url.includes(`feature=${FEATURE}`)
+        ? directorySnapshot(rows.slice(0, 3), { matchedCount: 7, taskReadiness: "ready", feature: { id: FEATURE, name: "Task board v1 (renamed)" } })
+        : url.includes("group=feature")
+          ? directorySnapshot([], { matchedCount: 7, taskReadiness: "ready", groupBy: "feature", groupCount: 1, groups: [group] })
+          : directorySnapshot(rows, { matchedCount: 6, taskReadiness: "ready" }));
+      const user = userEvent.setup();
+      render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+      await waitFor(() => expect(screen.getByText("Session 5")).toBeInTheDocument());
+      const groupBy = screen.getByRole("group", { name: "Group by" });
+      expect(Array.from(groupBy.querySelectorAll("button")).map((button) => button.textContent)).toEqual(["Recent", "Repository", "Provider", "Feature"]);
+      await user.click(screen.getByRole("button", { name: "Feature" }));
+
+      await waitFor(() => expect(screen.getByRole("button", { name: /Task board v1.*7 sessions/ })).toBeInTheDocument());
+      expect(window.localStorage.getItem("pomegr-sessions-group-by")).toBe("feature");
+      // The group header names the feature, so a row shows only its step.
+      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent(/^T-14Step 2$/);
+      expect(rowOf("Session 5")).toHaveTextContent("Pomegr · Codex");
+      expect(screen.getByText(/1 feature · 7 sessions · Only sessions started for a feature's task are listed\./)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Show all 7 in Task board v1" }));
+
+      const chip = await screen.findByRole("button", { name: "Clear feature filter: Task board v1 (renamed)" });
+      expect(chip).toHaveTextContent("Feature: Task board v1 (renamed)");
+      expect(fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes(`feature=${FEATURE}`)).every((url) => !url.includes("group="))).toBe(true);
+      expect(screen.getByRole("navigation", { name: "Session pages" })).toBeInTheDocument();
+      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent("T-14Task board v1 · step 2");
+      await user.click(chip);
+
+      await waitFor(() => expect(screen.queryByRole("button", { name: /Clear feature filter/ })).not.toBeInTheDocument());
+      expect(String(fetchMock.mock.calls.at(-1)?.[0])).toContain("group=feature");
+    });
+
+    it("explains an empty Feature grouping instead of an empty catalog", async () => {
+      window.localStorage.setItem("pomegr-sessions-group-by", "feature");
+      let readiness = "ready";
+      stubDirectory(() => directorySnapshot([], { matchedCount: 0, taskReadiness: readiness, groupBy: "feature", groupCount: 0, groups: [] }));
+      const first = render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+      expect(await screen.findByText("No feature sessions")).toBeInTheDocument();
+      first.unmount();
+
+      readiness = "desktop_only";
+      render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+      expect(await screen.findByText("Features are not shown here")).toBeInTheDocument();
+      expect(screen.queryByText("No sessions observed")).not.toBeInTheDocument();
+    });
+  });
 });

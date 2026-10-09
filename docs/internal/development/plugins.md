@@ -14,10 +14,12 @@ For installation, repository setup, and troubleshooting, read the [Reporting plu
 | Delegated-report detection | `SubagentStop` hook | `SubagentStop` hook |
 | Signal and progress tools | Seven shared tools | Seven shared tools |
 | Observation query tools | Seven shared tools | Seven shared tools |
+| Task board tools | `add_task`, `complete_task`, `block_task`, bound by the thread identity in each tool call's `_meta` | `add_task`, `complete_task`, `block_task`, bound by a `PreToolUse` hook |
+| Task session link | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set | `SessionStart` hook on `startup`, silent, only when `POMEGR_TASK_TOKEN` is set |
 | Native session-title tool | Provider automatic naming | `rename_session` |
 | Session line above the prompt | Not available | Function-hook module |
 
-Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local, read-only capability and return only bounded normalized evidence. The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
+Neither plugin sends transcript contents or provider credentials to Pomegr. Observation queries use a separate local capability and return only bounded normalized evidence. The same capability authorizes the agent writes: `add_task`, which sends the task fields the agent supplied to the local monitor, and `complete_task` and `block_task`, which send only the bound session and, for a block, a one-line reason; see [Task board and dispatch](../architecture/tasks.md). The generated MCP runtimes include their npm dependencies and do not import from the client repository, plugin-root `node_modules`, or the rest of the Pomegr checkout.
 
 ## Public directories
 
@@ -117,6 +119,10 @@ Signals are agent-reported guidance and may become stale; they are not authorita
 Both packages register `SessionStart`. The hook searches upward from its working directory to the repository root for `.pomegr/signals.md`, validates the file, and returns a bounded copy as additional context under `[Pomegr reporting policy loaded]`. A compact fixed reminder identifies observation queries as decision-triggered and cautions against polling or causal interpretation; it does not change the repository policy schema.
 
 Every `SessionStart` also emits one bounded `[Pomegr plugin metadata]` line containing only the installed plugin version, policy status (`valid`, `invalid`, or `missing`), and recognized policy version. Pomegr accepts that line only from provider-owned hook context, records the provider transcript timestamp as the observation time, and never treats an absent observation as proof that the plugin is uninstalled. Historical views retain the version and policy state observed in that session rather than substituting the current machine configuration.
+
+The Claude Code package registers a second, separate `SessionStart` hook on `startup` only (`scripts/bind-task.bundle.mjs`). When `POMEGR_TASK_TOKEN` is set to a well-formed opaque token, the hook posts the token and `claude:<session_id>` from the hook input to `POST /api/agent/v1/tasks/bind` on the loopback monitor, once, with a 2-second request bound under the 5-second hook timeout. Because `SessionStart` stdout enters the model's context and the transcript, it is silent in every outcome: no stdout, stderr, or log; the token is read only from the environment and sent only in the request body; it always exits 0 and ignores an unavailable monitor or a refusal. Without the variable, or with a malformed value, it does nothing.
+
+The Codex package registers the same script the same way (`node "${PLUGIN_ROOT}/scripts/bind-task.bundle.mjs" --provider codex`, `startup` only) and posts `codex:<session_id>` from the hook input. Codex replays the session's launch environment into hook commands, which is how the token reaches the hook; a Codex stdio MCP server starts with an allowlisted environment and never sees it. Like every Codex plugin hook, it runs only after the user has reviewed and trusted the hook definitions in `/hooks`, so a task session started before that review is not linked.
 
 Both packages also register an all-tool `PostToolUse` reminder hook. Reminder state is stored only as bounded version, timestamp, and counter records under provider plugin data, with SHA-256 session filenames, owner-only permissions, atomic writes, 30-day expiry, and a 256-file cap. Missing, disabled, malformed, or unwritable policy/data suppresses reminders and never blocks a session.
 

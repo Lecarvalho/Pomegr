@@ -1,12 +1,18 @@
 import { createHomeReadiness } from "../normalize/observation-readiness.mjs";
 import { safeProviderFolder } from "../normalize/provider-folders.mjs";
 import { isSafeRecordedRepositoryPath } from "../repository/repository-snapshot.mjs";
+import { serializeServedSessionState } from "../repository/session-repository-enrichment.mjs";
 import { createEmptyProviderStatusSnapshot } from "../../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mjs";
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
+import { serveSessionDirectoryWithTasks, validFeatureQuery } from "./session-directory-tasks.mjs";
+import {
+  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, TASK_ACTION_PATH_PREFIX,
+  serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
+} from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -32,6 +38,7 @@ function requestRevision(requestUrl, request) {
 /** Create the loopback monitor's HTTP serving boundary around a prepared runtime. */
 export function createRequestHandler({
   runtime,
+  taskStore = null,
   authorizationToken: rawAuthorizationToken = "",
   agentAuthorizationToken: rawAgentAuthorizationToken = "",
   responseHeaders = null,
@@ -44,6 +51,11 @@ export function createRequestHandler({
     ? requireDesktopToken(rawAgentAuthorizationToken, "MONITOR_INVALID_AGENT_AUTHORIZATION")
     : "";
   const extraResponseHeaders = typeof responseHeaders === "function" ? responseHeaders : () => ({});
+  // A linked task's session facts, read lazily from committed memory only; absent, the board shows them unknown.
+  const resolveSessionFacts = (id) => runtime.resolveTaskSessionFacts?.(id);
+  // The start-gate facts of a repository, from committed memory only; read lazily like the session facts.
+  // A runtime without the lookup serves a board with no gates, and holds every start.
+  const resolveGateFacts = typeof runtime.resolveTaskGateFacts === "function" ? (repositoryId) => runtime.resolveTaskGateFacts(repositoryId) : null;
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -51,12 +63,18 @@ export function createRequestHandler({
     const requestUrl = new URL(request.url || "/", "http://127.0.0.1");
     const isAgentQuery = requestUrl.pathname === "/api/agent/v1"
       || requestUrl.pathname.startsWith("/api/agent/v1/");
+    // The same-computer read gate shared by the provider-folder and task-board routes.
+    const sameComputerRead = request.headers.host === expectedHost
+      && request.headers.origin === undefined
+      && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
+    if (requestUrl.pathname === "/api/tasks") {
+      serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead,
+        runModels: () => runtime.resolveRunModels?.(), resolveSessionFacts, resolveGateFacts });
+      return;
+    }
     if (requestUrl.pathname === "/api/provider-folders") {
-      const authorized = request.headers.host === expectedHost
-        && request.headers.origin === undefined
-        && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
       response.setHeader("Cache-Control", "no-store");
-      if (!authorized) {
+      if (!sameComputerRead) {
         response.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" });
         response.end("Unauthorized");
         return;
@@ -94,6 +112,23 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
+      // The agent write paths (add, bind, complete, block); every other agent route stays GET-only.
+      const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
+        : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute
+          : requestUrl.pathname === AGENT_TASK_COMPLETE_PATH || requestUrl.pathname === AGENT_TASK_BLOCK_PATH ? serveAgentTaskReportRoute : null;
+      if (agentTaskWrite) {
+        if (request.method !== "POST") {
+          response.writeHead(405, { Allow: "POST" });
+          response.end();
+          return;
+        }
+        await agentTaskWrite({
+          request, response, requestUrl, taskStore,
+          resolveSession: typeof runtime.resolveTaskSession === "function" ? (ref) => runtime.resolveTaskSession(ref) : null,
+          resolveCheckFacts: typeof runtime.resolveTaskCheckFacts === "function" ? (ref) => runtime.resolveTaskCheckFacts(ref) : null,
+        });
+        return;
+      }
       if (request.method !== "GET") {
         response.writeHead(405, { Allow: "GET" });
         response.end();
@@ -167,7 +202,8 @@ export function createRequestHandler({
     }
     const repositoryCaptureRequest = requestUrl.pathname === "/internal/repository-inventory/capture";
     const repositoryPluginRequest = ["/internal/repository-plugin/recheck", "/internal/repository-plugin/prepare"].includes(requestUrl.pathname);
-    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest;
+    const taskActionRequest = requestUrl.pathname.startsWith(TASK_ACTION_PATH_PREFIX);
+    const privateActionRequest = repositoryCaptureRequest || repositoryPluginRequest || taskActionRequest;
     const desktopReadAllowed = !privateActionRequest && (!authorizationToken || (
       ["GET", "HEAD"].includes(request.method || "")
       && request.headers.host === expectedHost
@@ -191,6 +227,13 @@ export function createRequestHandler({
       response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     }
     response.setHeader("Cache-Control", "no-store");
+    if (taskActionRequest) {
+      await serveTaskActionRoute({
+        request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts,
+        resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),
+      });
+      return;
+    }
     if (repositoryPluginRequest) {
       const preparing = requestUrl.pathname.endsWith("/prepare");
       const allowedKeys = new Set(preparing ? ["repositoryId", "provider", "action"] : ["repositoryId", "provider"]);
@@ -322,7 +365,7 @@ export function createRequestHandler({
       try {
         if (runtime.observationActive?.()) {
           if (requestUrl.searchParams.get("mode") === "directory") {
-            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "pageSize", "cursor"]);
+            const allowed = new Set(["mode", "query", "filter", "project", "repositoryId", "provider", "group", "feature", "session", "tasks", "pageSize", "cursor"]);
             const oneEach = [...requestUrl.searchParams.keys()].every((key) => allowed.has(key) && requestUrl.searchParams.getAll(key).length === 1);
             const filter = requestUrl.searchParams.get("filter") || "all";
             const pageSize = requestUrl.searchParams.get("pageSize") || "";
@@ -333,19 +376,25 @@ export function createRequestHandler({
             const cursor = requestUrl.searchParams.get("cursor") || "";
             const provider = requestUrl.searchParams.get("provider") || "";
             const group = requestUrl.searchParams.get("group") || "";
-            if (!oneEach || !["all", "live", "needs"].includes(filter) || !["", "claude", "codex"].includes(provider) || !["", "project", "provider"].includes(group)
+            const feature = requestUrl.searchParams.get("feature") || "";
+            const tasks = requestUrl.searchParams.get("tasks") || "";
+            // One session's own row, for the session view's task reference. It excludes every other scope.
+            const session = requestUrl.searchParams.get("session") || "";
+            const sessionScope = !session || (Boolean(parseProviderSessionId(session)) && session.length <= 200
+              && !query && !project && !repositoryId && !provider && !group && !feature && !cursor);
+            if (!oneEach || !["all", "live", "needs"].includes(filter) || !["", "claude", "codex"].includes(provider) || !["", "project", "provider", "feature"].includes(group)
+              || !validFeatureQuery(feature) || !["", "1"].includes(tasks) || !sessionScope
               || (pageSize && !/^(?:[1-9]|[1-9][0-9]|100)$/.test(pageSize)) || !boundedText(query, 120)
               || !boundedText(project, 160) || !boundedText(repositoryId, 160) || !/^[A-Za-z0-9_-]{0,256}$/u.test(cursor)) {
               response.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
               response.end(JSON.stringify({ error: "Invalid session directory query" })); return;
             }
-            const page = runtime.serveSessionDirectory?.({
-              query, filter, project, repositoryId, provider, group, pageSize: pageSize ? Number(pageSize) : 25, cursor,
-            });
+            // Task references are joined here from the task store, for a same-computer client the proxy marked.
+            const page = serveSessionDirectoryWithTasks({ runtime, taskStore, allowed: tasks === "1" && sameComputerRead, feature, session, groupFeature: group === "feature",
+              query: { query, filter, project, repositoryId, provider, group: group === "feature" ? "" : group, pageSize: pageSize ? Number(pageSize) : 25, cursor } });
             response.writeHead(200, { "Cache-Control": "no-store", "Content-Type": "application/json; charset=utf-8",
               "X-Pomegr-Revision": String(page?.revision ?? 0), ETag: `"${page?.revision ?? 0}"` });
-            response.end(JSON.stringify(page || { revision: 0, sessions: [], matchedCount: 0, counts: { all: 0, live: 0, needs: 0 }, pageSize: 25, nextCursor: null,
-              coverage: { status: "discovering", knownCount: 0, exactTotal: null, observedAt: null, lastCompletedTotal: null, lastCompletedAt: null } }));
+            response.end(JSON.stringify(page));
             return;
           }
           const safeId = (value) => Boolean(parseProviderSessionId(value));
@@ -695,7 +744,7 @@ export function createRequestHandler({
           writeCommitted(result, result.loadingState || runtime.analyzeEmpty());
           return;
         }
-        const body = JSON.stringify(await runtime.analyze(sessionId));
+        const body = serializeServedSessionState(await runtime.analyze(sessionId));
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(body);
       } catch {

@@ -35,6 +35,30 @@ describe("CommandSelect", () => {
     expect(trigger()).toHaveAttribute("data-value", "alpha");
   });
 
+  it("draws one heading per option group, keeps headings out of the options, and names the group on the closed control", () => {
+    const grouped: CommandSelectOption[] = [
+      { value: "", label: "Not set" },
+      { value: "a:one", label: "one", group: "Alpha" }, { value: "a:default", label: "Default model", group: "Alpha" },
+      { value: "b:default", label: "Default model", group: "Beta" },
+    ];
+    function Grouped() {
+      const [value, setValue] = useState("");
+      return <CommandSelect aria-label="Grouped" value={value} options={grouped} onChange={setValue} />;
+    }
+    render(<Grouped />);
+    const control = screen.getByRole("combobox", { name: "Grouped" });
+    fireEvent.click(control);
+    const list = screen.getByRole("listbox", { name: "Grouped" });
+    expect([...list.querySelectorAll(".commandSelectGroup")].map((heading) => heading.textContent)).toEqual(["Alpha", "Beta"]);
+    expect(within(list).getAllByRole("option").map((option) => option.textContent)).toEqual(["Not set", "one, Alpha", "Default model, Alpha", "Default model, Beta"]);
+    // Arrow keys step over the headings: the second option follows the first.
+    fireEvent.keyDown(control, { key: "ArrowDown" });
+    expect(document.getElementById(control.getAttribute("aria-activedescendant") ?? "")).toHaveTextContent("one, Alpha");
+    fireEvent.click(within(list).getByRole("option", { name: "Default model, Beta" }));
+    expect(control).toHaveTextContent("Beta · Default model");
+    expect(control).toHaveAttribute("data-value", "b:default");
+  });
+
   it("follows native select keys: arrows, Home/End, typeahead, Enter, and Escape", () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);

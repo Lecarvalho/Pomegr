@@ -58,3 +58,43 @@ test("local peers cannot authorize arbitrary hosts, ports, or cross-origin reque
     assert.equal(result.status, 404);
   }
 });
+
+test("development task-board reads answer remote LAN peers a desktop_only board with no task content", () => {
+  for (const remote of ["192.168.1.10", "::ffff:192.168.1.10", undefined]) {
+    for (const url of ["/api/tasks?repositoryId=repo-0123456789abcdef01234567", "/api/tasks/", "/api/t%61sks"]) {
+      const result = request(url, remote);
+      assert.equal(result.forwarded, false);
+      assert.equal(result.status, 200);
+      assert.equal(result.headers["Cache-Control"], "no-store");
+      assert.deepEqual(JSON.parse(result.body), {
+        version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [],
+        queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] },
+      });
+    }
+  }
+  for (const remote of ["127.0.0.1", "::1", "192.168.1.20"]) {
+    assert.equal(request("/api/tasks?repositoryId=repo-0123456789abcdef01234567", remote).forwarded, true);
+  }
+  assert.equal(request("/api/tasks", "192.168.1.20", { origin: "http://attacker.example" }).status, 200);
+  assert.equal(request("/api/tasks", "192.168.1.20", { origin: "http://attacker.example" }).forwarded, false);
+});
+
+test("a Sessions read is never refused, and a peer that is not local is marked so it gets no task reference", () => {
+  const marker = (result) => {
+    const fetchHeaders = new Headers();
+    for (let index = 0; index < result.input.rawHeaders.length; index += 2) fetchHeaders.append(result.input.rawHeaders[index], result.input.rawHeaders[index + 1]);
+    return [result.forwarded, result.status, result.input.headers["x-pomegr-lan-gateway"] ?? null, fetchHeaders.get("x-pomegr-lan-gateway")];
+  };
+  // A LAN peer, whatever Host it sends, is forwarded with the marker.
+  for (const headers of [{}, { host: "127.0.0.1:3003" }, { host: "192.168.1.20:3003" }, { host: "localhost:3003", "sec-fetch-site": "same-origin" }]) {
+    assert.deepEqual(marker(request("/api/sessions?mode=directory", "192.168.1.10", headers)), [true, null, "1", "1"]);
+  }
+  assert.deepEqual(marker(request("/api/sessions/", undefined)), [true, null, "1", "1"]);
+  // A local peer with a foreign origin is not a same-computer read either.
+  assert.deepEqual(marker(request("/api/sessions", "127.0.0.1", { origin: "http://attacker.example" })), [true, null, "1", "1"]);
+  for (const remote of ["127.0.0.1", "::1", "192.168.1.20"]) {
+    const local = request("/api/sessions?mode=directory", remote, { host: "192.168.1.20:3003" });
+    assert.deepEqual(marker(local), [true, null, null, null]);
+    assert.equal(local.input.headers.host, "localhost:3003");
+  }
+});

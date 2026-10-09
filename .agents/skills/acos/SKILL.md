@@ -49,7 +49,7 @@ log records what ran.
 |------------|--------|------|
 | `/acos <task>` | Size, compose, present, GO, execute, close. | the loop below |
 | `/acos plan <task>` | Size, ask the run mode, cut and compose; write the plan or the one manifest; stop. | `references/sizing.md` |
-| `/acos run <path> [n]` | Run a manifest, run dir, or plan dir + part (default: first not `done`). A bare id resolves under `runs/`. | step 4 onward |
+| `/acos run <path> [n]` | Run a manifest, run dir, or plan dir + part (default: first not `done`): settle its strategy, print it, start. A bare id resolves under `runs/`. | `references/manifest.md`, `references/execute.md` |
 | `/acos init` | Derive `config.yaml` from the repo. | `references/maintain.md` |
 | `/acos calibrate` | Learn from past runs into `calibration.md`. Own session. | `references/maintain.md` |
 | `/acos save-preset <name>` | Save the last run's shape as `presets/<name>.yaml`. | `references/maintain.md` |
@@ -65,6 +65,7 @@ log records what ran.
    reservations from the counts, never the reverse. Fits: one manifest.
    Does not fit: ask the run mode (`single`, `sequential`, `parallel`),
    cut for it, confirm the cut, write the plan, present it and stop.
+   Inside a part the plan only suggests workers and slices.
    `references/sizing.md`.
 3. **Compose.** Build the manifest from a preset or ad hoc from blocks,
    resolve tiers and placeholders, estimate, validate.
@@ -72,9 +73,13 @@ log records what ran.
 4. **Present.** Write `runs/<id>/manifest.yaml`, print the one-screen
    summary, then stop: no stage, no agent, no further reads until GO.
    `gates.go: auto` in `config.yaml` (never a preset) skips the wait;
-   say so in the header.
+   say so in the header. A written manifest started with `/acos run`
+   does not wait either: the command was the GO.
    `references/manifest.md`.
-5. **Execute.** Stage by stage through its adapter, checking each; on
+5. **Execute.** For a part of a plan, settle your strategy first:
+   catch up on what earlier parts found, read what you need, re-cut
+   your own work, rewrite the manifest, print it and start without
+   waiting. Then stage by stage through its adapter, checking each; on
    failure apply `on_fail`; log drift and discoveries without asking.
    `references/execute.md`, `references/adapters.md`,
    `references/workflow.md` for `adapter: workflow`.
@@ -94,9 +99,18 @@ Budget
   reservations is volume (never a budget, forecast, actual, spend or
   fit), compared only with `worker_tokens_total` when set. Delegate
   because work is separable, never to hide volume.
-- **Estimates act at compose time only.** Nothing is re-sized after GO;
-  `calibrate` judges them afterwards. Never write a reservation as an
-  actual.
+- **A worker aims at about 170k** and is never planned past
+  `limits.worker_context_tokens` (200k as shipped). How much work that
+  is has no formula: you judge it from the kind of work (scripted and
+  mechanical, or a decision in every file) and the size of the files.
+  Work that would take one worker further is more slices or a more
+  precise brief, not a longer run.
+- **The plan suggests; the part's orchestrator settles.** `/acos plan`
+  sizes from counts and proposes workers and slices. Whoever runs a
+  part re-sizes and re-cuts its own work at the start, with what
+  earlier parts learned, and again whenever the work shows the strategy
+  wrong. `calibrate` judges both afterwards. Never write a reservation
+  as an actual.
 
 Shape
 - **The mode shapes the cut.** `single`: one session, you orchestrate
@@ -106,16 +120,17 @@ Shape
   requests cannot conflict, in one worktree unless a part cannot share
   it. Ask before cutting unless the request says.
 - **In `single` you are there until the end.** Delegate every group,
-  brief from structure, read verdicts instead of files, diffs and
-  artifacts. Edit inline only what is cheaper than a spawn. Your lane
-  for the whole plan must fit before GO.
-- **Whoever opens a file edits it.** A file read to plan and read again
-  to implement is paid twice. Cut and brief from structure, let the
-  implementer be the first to open its files, and give it the signature
-  it needs instead of a file it does not own. Only a `fast`-tier locate
-  pass reads without editing. If the repo's coupling forces files open
-  just to learn who changes what, say it out loud in the cut and the
-  presentation.
+  read what you need to cut and brief, then verdicts instead of diffs
+  and artifacts. Edit inline only what is cheaper than a spawn. Your
+  lane for the whole plan must fit; reading it cannot hold goes to a
+  delegated `plan` stage that writes the briefs.
+- **You read to plan; no two workers read one file.** Open what decides
+  how the work splits and write briefs a worker follows almost
+  mechanically: that reading is your job and counts in your lane. What
+  to avoid is two workers opening the same file: each file has one
+  worker, and what another needs from it goes in its brief as a
+  signature. A habit, not a law. At plan time, for parts that run
+  later, cut from structure: the reading belongs to whoever runs them.
 - **Inline by default**, outside `single`. Delegate only for an independent judgement
   (review), disjoint slices worth running in parallel (fan-out), a script
   whose output must be looked at (evidence), a wide read that returns one
@@ -131,11 +146,12 @@ Shape
 - **Cut vertically; one owner per file.** A part carries one capability
   through every layer it touches. Never cut by layer. An unavoidable
   shared file has one owner and is named in the later part's `assumes`.
-- **Fan-out only for real slices:** two or more groups sharing no file,
-  each worth a worker's startup and fitting its worker's context. You
-  brief each slice from structure; implementers never see each other's
-  briefs. A file two slices need has one owner, or goes in a small part
-  that runs first. Never more agents than independent groups.
+- **Slices share no file.** Each is worth a worker's startup and sized
+  near the worker target. Disjoint groups run side by side; a group too
+  big for one worker is split at its thinnest seam, the interface
+  across it fixed in both briefs, or its second worker runs after the
+  first. Implementers never see each other's briefs. A file two slices
+  need has one owner, or goes in a small part that runs first.
 - **Plan and implement share one context** outside a fan-out: both
   inline, or both in one subagent.
 - **Review once per plan**, in a part near the end, unless a part is
@@ -160,9 +176,13 @@ Models and effort
   a session set up for it.
 
 Running
-- **After GO, no re-approval.** Adjust, log drift, continue. The only
-  questions: `on_fail: ask`, a gate, or a discovery that invalidates the
-  part's intent.
+- **After GO, no re-approval.** Adjust, rewrite the manifest to what is
+  running, log drift, continue. The only questions: `on_fail: ask`, a
+  gate, or a discovery that invalidates the part's intent. A larger
+  volume than the plan suggested is not one of them.
+- **Say the strategy, then start.** When a part starts, print how you
+  will run it (slices, workers, order) and begin; the user challenges
+  while you work.
 - **Discoveries change the plan now**, before the part that found them
   closes. A missed target becomes a named later part's acceptance check,
   with the evidence of where the time or the failure went.

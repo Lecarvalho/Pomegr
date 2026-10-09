@@ -1,5 +1,5 @@
 {
-  "description": "Load a repository's bounded Pomegr reporting policy, supply applicable rows to declared subagents, report a delegated agent that finished without reporting, and optionally check cached account-usage guardrails.",
+  "description": "Load a repository's bounded Pomegr reporting policy, supply applicable rows to declared subagents, report a delegated agent that finished without reporting, link a session that Pomegr started for a task to that task, and optionally check cached account-usage guardrails.",
   "modules": ["./register.tsx"],
   "hooks": {
     "SessionStart": [
@@ -18,6 +18,17 @@
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/usage-guard.bundle.mjs", "--provider", "claude"],
             "timeout": 5,
             "additionalContextLimit": 1600
+          }
+        ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/bind-task.bundle.mjs"],
+            "timeout": 5
           }
         ]
       }
@@ -57,6 +68,17 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/rename-session.bundle.mjs"],
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__(plugin_pomegr_pomegr|pomegr)__(add_task|complete_task|block_task)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/query-session.bundle.mjs"],
             "timeout": 5
           }
         ]

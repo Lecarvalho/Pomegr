@@ -1758,10 +1758,14 @@ recorded work, meaning an open turn or an unmatched input wait, counts as live o
 a writer could still resolve it: the thread has owning-runtime status or a confirmed
 owner, or its own lock or its root's lock is not released. Otherwise the thread reports
 status `unknown`, evidence `unavailable`, freshness `stale`, and reason `writer_released`,
-with its original observation timestamp. An unreadable lock, a missing lock directory,
-or a non-Windows platform gives no release evidence and keeps the recorded state. Release
-never establishes completion, idle, stopped, or success, and it never changes checkpoints
-or recorded lifecycle state. A Codex surface that wrote rollouts without taking writer
+with its original observation timestamp. A thread whose recorded turn failed or was
+interrupted (status `stopped`, evidence `observed`) with the same conditions keeps status,
+evidence and freshness and adds only reason `writer_released`; it is not rewritten to
+Unknown. An unreadable lock, a missing lock directory, or a non-Windows platform gives no
+release evidence and keeps the recorded state. Release never establishes completion, idle,
+or success, and never turns a thread into Stopped, and it never changes checkpoints or
+recorded lifecycle state. The task board reads that reason (see
+[Tasks](tasks.md#states)) to stall a Codex task; a Stopped thread without it never stalls one. A Codex surface that wrote rollouts without taking writer
 locks would be misread as released. Every surface observed so far takes the lock.
 
 The lifecycle hook bridge, detached owner watcher, snapshot/lease persistence, and
@@ -2051,7 +2055,9 @@ first record and keeps the scan incomplete. Only a complete scan prunes rows who
 is gone, including a registration that ended without ever writing a transcript.
 
 `/api/sessions?mode=directory` serves a bounded page from committed normalized inventory.
-Search, lifecycle filters, and project/repository scope execute monitor-side. Rows are
+Search, lifecycle filters, and project/repository scope execute monitor-side. A `session`
+scope narrows the page to one validated session ID and excludes every other scope; the
+session view uses it to read its own row. Rows are
 always ordered newest-created first; there is no other directory order. Pages default to
 25 rows and cannot exceed 100. SQLite performs filtering, counting, ordering, and page
 selection without materializing the complete inventory in memory. A cursor binds to the
@@ -2065,7 +2071,13 @@ and needs-input counts, that newest update time, and its 5 newest-created rows, 
 total group count. A grouped response has no cursor; the browser reads the rest of a group
 by requesting the ordinary paged directory with that project or provider scope. Groups
 expose only fields the rows already carry and are read from the same committed inventory
-with SQLite aggregation. The directory never receives a global
+with SQLite aggregation. A caller inside the monitor may also narrow a page to a bounded
+set of session IDs, or group it by a session-to-group map; both reach SQLite as one JSON
+parameter of at most 2000 validated IDs, and the index stores nothing from them. The task
+control plane uses them for the `feature` scope and `group=feature`, and joins each row's
+task reference from its own store when the page is served, for a same-computer client
+only (see [Tasks](tasks.md#privacy)). The catalog, its checkpoints, and the shell feed
+never hold a task reference. The directory never receives a global
 session array. The default catalog response is a separate small shell feed for live,
 needs-input, pinned, and selected destinations, capped at 200 rows; its length is not
 the inventory total. Header scans use batches of at most 100 rows and repeat on a
@@ -2472,7 +2484,7 @@ from fixture operation-count tests.
 
 | Endpoint | Committed domain | Consumers |
 | --- | --- | --- |
-| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages (or bounded project/provider groups) from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
+| `/api/sessions` | A bounded shell feed with committed summaries and primary-agent `cacheTiming`, or `mode=directory` pages (or bounded project/provider/feature groups) from the normalized header inventory with query-bound cursors, coverage, and counts; header pages do not carry detail metrics | Application shell, Sessions directory, sidebar, Home destination labels |
 | `/api/events` | No committed data; server-sent invalidations with domain and revision, session ID for session domains/history, and history total only | Immediate revision-gated refresh trigger |
 | `/api/state?sessionId=...` | One session's normalized public state and per-domain readiness | Individual session view and report generation |
 | `/api/session-domain?sessionId=...&domain=...` | One of `session-summary`, `agents`, `agent`, `signals`, `repository`, `resources`, or `details`; `agent` also requires a normalized `agentId` | Session regions during migration from composed state |
@@ -3281,6 +3293,20 @@ copy of that answer. A finished inspection is never reused, so each session's ch
 its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`) run once
 per directory: concurrent callers share the lookup, and its answer is reused for the same
 300-second freshness the providers' memoized repository resolver already applies.
+The committed public state of a live session may carry monitor-private `readAt` stamps on
+`session.repository` (the start of the Git read its working-tree files and branch comparison
+come from) and `session.pullRequests` (the start of the oldest read its items rest on).
+The task board's done-when rule dates a fact by them and refuses a fact read before the
+session's latest relevant work (see [Tasks](tasks.md#completion)). The store's served
+serialization omits them, so revision and unchanged-detection ignore them, and no
+response, domain, snapshot, sidecar, checkpoint, report, or log carries one. Restored and
+historical states carry none. The Git reader's answer carries two private keys that the
+enrichment and the start-gate observation consume and never pass on: `_readStartedAt`,
+the start of the shared inspection, so a caller that joins an inspection already under way
+is dated by that inspection and not by its own later call; and `_statusUnknown`, set when
+`git status` failed or timed out, in which case the block is committed with its empty file
+list as before but with no stamp. The served `session.pullRequests.checkedAt` is the start
+of the newest pull-request read, not its end.
 A live session with no repository binding (a Codex session without one proven repository,
 or a Claude session without a recorded branch) has nothing to check: its repository
 readiness is `ready` with no repository, a factual empty result, so it cannot hold the

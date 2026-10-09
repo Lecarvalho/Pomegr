@@ -1,0 +1,343 @@
+/* Repository Tasks tab: the task board (design contract D45-D67, D86, D87). Tokens only. State chips
+   are the shared .commandChip outline label; a tone recolors its text and never fills it, except Queued (D61), which
+   takes the raised fill. */
+.repositoryTasksTab { display: grid; gap: var(--space-4); }
+
+/* Board: columns scroll sideways instead of shrinking below 220px. */
+.taskBoardScroller { overflow-x: auto; }
+.taskBoardScroller:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskBoardGrid { display: grid; grid-template-columns: repeat(var(--task-columns, 5), minmax(220px, 1fr)); gap: var(--space-3); align-items: stretch; }
+.taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); border-radius: var(--panel-radius); }
+.taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) 0; }
+.taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskColumnList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); list-style: none; }
+
+/* Card: green border while the bound session works, amber for a state that needs the user. */
+.taskCard { position: relative; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.taskCard.isLive { border-color: var(--command-green); }
+.taskCard.isAttention { border-color: var(--command-amber); }
+.taskCardTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); }
+.taskCardId { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
+.taskCardChip { flex: 0 0 auto; white-space: nowrap; }
+.taskCardChip.isInk { color: var(--command-ink); }
+.taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskCard.isDone .taskCardTitle { color: var(--command-muted); }
+/* The title is the card's open control: the Quiet role drawn as plain title text. */
+.taskCardOpen.commandQuietAction { padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
+.taskCardOpen.commandQuietAction:hover:not(:disabled) .taskCardTitle { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 761px) and (pointer: fine) { .taskCardOpen.commandQuietAction { min-height: 0; } }
+.taskCardRun { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskCardPlanned { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskCardDetail { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskCardDetail code { font: inherit; font-family: var(--font-data); }
+/* Planned and observed model differ (D73): the one amber text line, never a fill. */
+.taskCardDetail.taskCardModelDiffers { color: var(--command-amber); }
+/* Open session (D75): the Text link role, last on the card and not stretched across it. */
+.taskCardLink { align-self: flex-start; }
+
+/* Moving cards: dragging is the desktop app only. The column under a dragged card takes the raised fill (D48) and
+   a movable card shows the grab cursor (D53); the dragged card itself does not change (D86). */
+.taskColumn.isDropTarget { background: var(--command-panel-2); }
+.taskCard.isMovable { cursor: grab; }
+.taskBoardError { margin: 0; }
+.taskBoardFootnote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Keyboard alternative: four Icon-role move actions in one toolbar. It is drawn while the card holds keyboard focus,
+   stays in the accessibility tree otherwise, and is always drawn on a coarse pointer, where dragging may not work. */
+.taskCardMoves { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.taskCard:not(:has(:focus-visible)) .taskCardMoves { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; border: 0; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) {
+  .taskCard:not(:has(:focus-visible)) .taskCardMoves { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
+}
+.taskMove[data-move="up"] > svg { transform: rotate(-90deg); }
+.taskMove[data-move="down"] > svg { transform: rotate(90deg); }
+.taskMove[data-move="left"] > svg, .taskColumnMove[data-column-move="left"] > svg { transform: rotate(180deg); }
+
+/* Column management: Add column beside New task (D28, D29) and an inline editor under a column header. */
+.taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
+.taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskAddColumn .taskOwnInput { flex: 0 1 200px; }
+.taskColumnEditor { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); }
+.taskColumnName { width: 100%; }
+.taskColumnActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
+.taskColumnActions .commandQuietAction { margin-left: auto; }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskAddColumn .taskOwnInput, .taskColumnName { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  .taskAddColumn .commandQuietAction, .taskColumnActions .commandQuietAction { width: auto; }
+}
+
+/* Loading, unavailable, desktop-only and empty states. */
+.taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }
+.taskBoardSkeletonColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
+.taskBoardSkeletonColumn span { width: 40%; height: 16px; border-radius: var(--control-radius); background: var(--command-panel-2); }
+.taskBoardSkeletonColumn span:last-child { width: 100%; height: 64px; border-radius: var(--panel-radius); }
+.taskBoardNotice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); }
+.taskBoardNotice p, .taskBoardEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
+
+/* Tasks tab head: the New task action sits at the far right, the desktop-app note is one quiet line (D29). */
+.taskNewAction { flex: 0 0 auto; }
+
+/* New task and Task side panels (design contract D184-D194, D234-D238, D239-D249, D295-D299). Fixed to the right
+   edge below the header, like the Agents evidence drawer; no entrance motion (the contract declares none). The Task
+   panel reuses the .newTaskPanel chrome. */
+.newTaskPanel { position: fixed; z-index: 40; top: 60px; right: 0; bottom: 0; box-sizing: border-box; width: min(640px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--command-line); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+.newTaskPanelHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-6); border-bottom: 1px solid var(--command-line); }
+.newTaskPanelHeader h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.newTaskPanelRepository { min-width: 0; overflow: hidden; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.newTaskPanelSpacer { flex: 1 1 0; }
+/* Close is the Icon role drawn at the touch size (role default 32). */
+.newTaskPanelHeader .commandIconAction { flex: 0 0 auto; width: 44px; height: 44px; }
+.newTaskPanelBody { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
+.newTaskField { display: flex; flex-direction: column; gap: var(--space-1); }
+.newTaskField label { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskEffortLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskField textarea { box-sizing: border-box; display: block; width: 100%; padding: var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); resize: vertical; }
+.newTaskField textarea::placeholder { color: var(--command-muted); opacity: 1; }
+.newTaskField textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.newTaskHelper, .newTaskError { margin: 0; font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskHelper { color: var(--command-muted); }
+.newTaskError { color: var(--command-error); }
+.newTaskPanelFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--command-line); background: var(--command-ground); }
+.newTaskPanelNote { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Create and add another is the Secondary role drawn at 36 with the stronger line and panel fill (role default 32). */
+@media (min-width: 761px) and (pointer: fine) {
+  .newTaskPanelFooter .commandSecondaryAction { min-height: var(--control-height); border-color: var(--command-line-strong); background: var(--command-panel); }
+}
+@media (max-width: 1080px) { .newTaskPanel { top: 56px; } }
+@media (max-width: 760px) {
+  .newTaskPanelBody { padding: var(--space-4); }
+  .newTaskPanelFooter { padding: var(--space-3) var(--space-4); }
+  .newTaskPanelSpacer { display: none; }
+  .newTaskPanelNote { flex: 1 0 100%; }
+}
+
+/* Run on and Effort (D195-D205, D252-D261): the select grows, the four-way Effort sits beside it. Segments are drawn
+   at the control height on a fine pointer; phone and coarse pointers keep the 44px role size. */
+.taskRunGroup { display: flex; flex-direction: column; gap: var(--space-2); }
+.taskRunRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+.taskRunOn { flex: 1 1 220px; min-width: 0; }
+.taskRunOn .commandSelect { display: grid; }
+@media (min-width: 761px) and (pointer: fine) { .taskEffort > button { min-height: var(--control-height); } }
+.taskModelNotice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--command-amber); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskModelNoticeTitle { color: var(--command-amber); font-weight: 500; }
+.taskModelNotice code { font: 400 var(--text-xs)/1.4 var(--font-data); }
+
+/* Done when (D206-D216, D265-D272): two columns in New task, one list in the Task panel. */
+.taskDoneWhen { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; }
+.taskDoneWhen legend { padding: 0; margin-bottom: var(--space-1); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskChecks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); }
+.taskChecks.isList { grid-template-columns: minmax(0, 1fr); }
+.taskCheckRow { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; border-top: 1px solid var(--command-line); }
+.taskChecks:not(.isList) .taskCheckRow:nth-last-child(-n+2), .taskChecks.isList .taskCheckRow:last-child { border-bottom: 1px solid var(--command-line); }
+.taskCheckRow input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--command-brand); }
+.taskCheckRow label:not(.commandVisuallyHidden) { flex: 1 1 auto; min-width: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+.taskCheckResult.isPassed { color: var(--command-green); }
+.taskCheckResult.isFailed { color: var(--command-error); }
+.taskOwnInput { box-sizing: border-box; flex: 1 1 auto; min-width: 0; min-height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskOwnInput::placeholder { color: var(--command-muted); opacity: 1; }
+.taskOwnInput:focus-visible, .taskCheckRow input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskDoneWhenNote { margin-top: var(--space-2); }
+@media (max-width: 760px) {
+  .taskChecks { grid-template-columns: minmax(0, 1fr); }
+  .taskChecks:not(.isList) .taskCheckRow:nth-last-child(2) { border-bottom: 0; }
+}
+
+/* Task panel header, title group and footer (D240-D249, D295, D298, D299). */
+.taskPanelId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskPanelTitle { display: flex; flex-direction: column; gap: var(--space-2); }
+.taskPanelHeading { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskPanelConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* Delete task is the Quiet role drawn at the control height (role default 28). */
+@media (min-width: 761px) and (pointer: fine) { .taskPanelFooter .commandQuietAction { min-height: var(--control-height); } }
+
+/* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
+   disclosure between two lines, and rows that lead with the step number only in the Task panel. */
+.taskFeatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.taskFeatureRow .commandSelect { display: grid; }
+.taskFeatureName { width: 100%; }
+.taskFeatureDetails { border-top: 1px solid var(--command-line); border-bottom: 1px solid var(--command-line); }
+.taskFeatureDetails > summary { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; cursor: pointer; list-style: none; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskFeatureDetails > summary::-webkit-details-marker { display: none; }
+.taskFeatureDetails > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskFeatureChevron { flex: 0 0 auto; color: var(--command-muted); }
+.taskFeatureCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskFeatureNum { font-family: var(--font-data); }
+.taskFeatureList { margin: 0; padding: 0 0 var(--space-2); list-style: none; font-size: var(--text-sm); }
+.taskFeatureItem { display: flex; align-items: center; gap: var(--space-2); min-height: var(--control-compact); }
+.taskFeatureItem.hasStep { border-top: 1px solid var(--command-line); }
+.taskFeatureStep { flex: 0 0 20px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskFeatureId { flex: 0 0 40px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskFeatureTitle { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskFeatureItem.isDone .taskFeatureTitle { color: var(--command-muted); }
+/* The sibling title opens that task: the Quiet role drawn as plain title text, like a card's. */
+.taskFeatureOpen.commandQuietAction { flex: 1 1 auto; min-width: 0; padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
+.taskFeatureOpen.commandQuietAction:hover:not(:disabled) .taskFeatureTitle { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 761px) and (pointer: fine) { .taskFeatureOpen.commandQuietAction { min-height: 0; } }
+@media (max-width: 760px) { .taskFeatureRow { grid-template-columns: minmax(0, 1fr); } }
+
+/* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
+.taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.taskFilterCount { color: var(--command-muted); font: 400 var(--text-xs)/1 var(--font-data); }
+.taskCardFeature { overflow-wrap: anywhere; }
+
+/* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
+   the board card at the compact padding. Drag-over takes the raised fill; a step whose tasks are all done never does. */
+.taskQueueView { display: grid; gap: var(--space-4); }
+.taskQueuePanel { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
+.taskQueueHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.taskQueueHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskQueueCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueNum { font-family: var(--font-data); }
+.taskQueueSteps { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.taskQueueStep { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); padding: var(--space-2); border-radius: var(--panel-radius); }
+.taskQueueStep + .taskQueueStep { border-top: 1px solid var(--command-line); }
+.taskQueueStep.isDragOver, .taskQueueNewStep.isDragOver { background: var(--command-panel-2); }
+.taskQueueStepLabel { flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; padding-top: var(--space-2); }
+.taskQueueStepName { color: var(--command-ink); font: 650 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueStepMode, .taskQueueStepNote { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
+.taskQueueStepNote { font-weight: 400; }
+.taskQueueCards { flex: 1 1 320px; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.taskQueueCard { gap: var(--space-1); padding: var(--space-2) var(--space-3); cursor: default; }
+.taskQueueCard.isMovable { cursor: grab; }
+.taskQueueNewStep { padding: var(--space-3) var(--space-2); border: 1px dashed var(--command-line-strong); border-radius: var(--panel-radius); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
+.taskQueueNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Keyboard alternative: the move select is drawn while the card holds keyboard focus (or on a coarse pointer) and
+   stays in the accessibility tree otherwise, like the board's move toolbar. */
+.taskQueueMove .commandSelect { display: grid; }
+.taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; border: 0; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) {
+  .taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
+}
+.taskQueueSingles { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.taskQueueSingle { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+.taskQueueSingle .taskCardId { flex: 0 0 auto; }
+.taskQueueSingleTitle { flex: 1 1 240px; min-width: 0; }
+.taskCardChip.isInk { background: var(--command-panel-2); border-color: transparent; }
+@media (max-width: 760px) {
+  .taskQueueStepLabel { flex: 1 0 100%; padding-top: 0; }
+  .taskQueueCards { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Queue switch, banner and block rules (D30-D34, D108-D114, D178-D183). The switch is the Segmented role beside the view
+   switch. The banner sits on the error-soft panel with the error line; its Secondary actions take the stronger line and
+   panel fill (role default: panel line, no fill) and Requeue is the Quiet role in ink (role default: muted). */
+.taskQueueSwitch { display: inline-flex; align-items: center; gap: var(--space-2); }
+.taskQueueBanner { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--command-error); border-radius: var(--panel-radius); background: var(--color-error-soft); }
+.taskQueueBanner[data-view="board"] { gap: var(--space-4); }
+.taskQueueBannerText { flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.taskQueueBannerTitle { margin: 0; color: var(--command-error); font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueBannerBody { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskQueueBannerActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskQueueBannerActions .commandSecondaryAction { border-color: var(--command-line-strong); background: var(--command-panel); }
+.taskQueueBannerActions .commandQuietAction { color: var(--command-ink); }
+.taskBlockRulesPanel { gap: var(--space-2); }
+.taskBlockRules { display: grid; gap: var(--space-1); margin: 0; padding: 0 0 0 var(--space-4); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskBlockState { font-weight: 500; }
+.taskBlockState.isReview { color: var(--command-amber); }
+.taskBlockState.isError { color: var(--command-error); }
+@media (max-width: 760px) {
+  .taskQueueSwitch { display: flex; }
+  .taskQueueSwitch .commandSegmented { flex: 1 1 auto; }
+  .taskQueueBannerActions { flex: 1 1 100%; }
+  .taskQueueBannerActions .commandSecondaryAction { flex: 1 1 0; }
+}
+
+/* Start gates (D35-D39, D156-D169): the capacity strip above the Board and the panel beside the Queue. The gate value
+   colours are the tone of the reading: green passes, error holds, muted is unknown or empty. */
+.taskCapacityStrip { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskCapacityValue { color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskQueueRow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
+.taskQueueRow > .taskQueueView { flex: 999 1 480px; min-width: 0; }
+.taskQueueAside { flex: 1 1 280px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.taskGatesPanel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.taskGatesHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskGatesCaption { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskGateList { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskGateRow { display: flex; justify-content: space-between; gap: var(--space-3); }
+.taskGateRow dt { margin: 0; }
+.taskGateValue { margin: 0; text-align: right; overflow-wrap: anywhere; font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskGateValue.isMono { color: var(--command-ink); font: 400 var(--text-xs)/1.6 var(--font-data); }
+.taskGateValue.is-ok { color: var(--command-green); }
+.taskGateValue.is-error { color: var(--command-error); }
+.taskGateValue.is-muted { color: var(--command-muted); }
+.taskGateOver { font-family: var(--font-ui); }
+.taskGateField { display: flex; flex-direction: column; gap: var(--space-1); }
+.taskGateFieldLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskGateReadOnly { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+/* Schedule (D170-D177): the panel shares the gates panel's frame, heading, field and caption. A time field is the form
+   field of D176: control height, the stronger line, the data font. */
+.taskScheduleMode { align-self: flex-start; }
+.taskTimeInput { box-sizing: border-box; width: 100%; min-height: var(--control-height); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-data); }
+.taskTimeInput:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskTimeInput:disabled { opacity: .48; }
+.taskCardWaiting { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueSingleWaiting { flex: 1 1 100%; }
+
+/* Session view task surfaces (design contract D361-D380 and D397-D440): the header meta, the compact Overview panel and
+   the read-only Task tab. The panels are the shared .panel frame; every value is a token. */
+.sessionTaskMeta { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskMetaGroup { display: inline-flex; align-items: center; gap: var(--space-1); }
+.sessionTaskMetaId { font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskMetaId.isPlain { color: var(--command-ink); }
+.sessionTaskMetaFeature { font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskMetaStep { font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
+@media (min-width: 761px) { .sessionTaskMeta .commandTextLink { min-height: 0; } }
+
+.sessionTaskSummary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); }
+.sessionTaskHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.sessionTaskHeading code, .sessionTaskPanelHeading code { font-family: var(--font-data); font-weight: 500; }
+.sessionTaskHeading .panelHeadingLink { text-decoration: none; }
+.sessionTaskCell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sessionTaskEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
+.sessionTaskValue { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskValue code, .sessionTaskFeatureLine code { font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskValue.isDiffers { color: var(--command-amber); }
+.sessionTaskBlocked { color: var(--command-error); }
+.sessionTaskNote { flex: 1 1 100%; margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSummary .sessionTaskNote { flex: 1 1 240px; }
+
+.sessionTaskTab { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
+.sessionTaskTab > .sessionTaskPanel { flex: 999 1 480px; }
+.sessionTaskPanel { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
+.sessionTaskSide { flex: 1 1 380px; max-width: 480px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.sessionTaskSide .sessionTaskPanel { gap: var(--space-2); }
+.sessionTaskPanelHead, .sessionTaskFeatureHead { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.sessionTaskPanelHead { align-items: center; }
+.sessionTaskFeatureHead { align-items: baseline; }
+.sessionTaskPanelHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); overflow-wrap: anywhere; }
+.sessionTaskStarted { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSpacer { flex: 1 1 0; }
+.sessionTaskBlock, .sessionTaskChecks { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.sessionTaskBlock.isRuled, .sessionTaskChecks.isRuled, .sessionTaskRunFacts { padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
+.sessionTaskLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskText { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); overflow-wrap: anywhere; white-space: pre-wrap; }
+.sessionTaskStatus { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskRunFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.sessionTaskFeatureLine { margin: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskCheckList { margin: 0; padding: 0; list-style: none; }
+.sessionTaskCheck { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control-height); border-top: 1px solid var(--command-line); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskCheckResult.is-passed { color: var(--command-green); }
+.sessionTaskCheckResult.is-failed { color: var(--command-error); }
+
+.sessionTaskFeatureLink.commandTextLink { color: var(--command-ink); font: inherit; }
+.sessionTaskProgress { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskProgress code { font-family: var(--font-data); }
+.sessionTaskSideLabel { color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.sessionTaskSideLabel.isNext { padding-top: var(--space-2); }
+.sessionTaskRows { margin: 0; padding: 0; list-style: none; }
+.sessionTaskRow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: start; padding: var(--space-2) 0; border-top: 1px solid var(--command-line); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+@media (max-width: 760px) { .sessionTaskRow { align-items: center; } }
+.sessionTaskRowId { padding-top: 1px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.sessionTaskRowTitle, .sessionTaskRowTitle.commandTextLink { min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskRow.isDone .sessionTaskRowTitle { color: var(--command-muted); }
+.sessionTaskBlockedNote { margin: 0; color: var(--command-error); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+@media (max-width: 760px) {
+  .sessionTaskRunFacts { grid-template-columns: minmax(0, 1fr); }
+  .sessionTaskSide { max-width: none; }
+}

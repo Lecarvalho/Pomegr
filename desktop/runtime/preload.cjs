@@ -4,7 +4,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const DESKTOP_THEME_CHANNEL = "pomegr:set-native-theme";
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
-const HOME_UPDATE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+const TASK_ACTIONS = new Set([
+  "create", "update", "delete", "move",
+  "column_create", "column_rename", "column_reorder", "column_delete",
+  "feature_create",
+  "queue_add", "queue_remove", "queue_reorder", "queue_settings",
+  "resolve_done", "resolve_requeue",
+]);
+const HOME_UPDATE_ID =/^[a-z0-9][a-z0-9-]{0,63}$/u;
 const STORAGE_SETTING_ENUMS = {
   retentionDays: new Set([30, 90, 180, 365, 0]),
   storeMaxMb: new Set([250, 500, 1024, 2048]),
@@ -99,6 +107,21 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
       || (provider !== "claude" && provider !== "codex") || (action !== "recheck" && action !== "install" && action !== "update")) return Promise.resolve("unavailable");
     return ipcRenderer.invoke("pomegr:repository-plugin-action", repositoryId, provider, action);
+  },
+  taskAction(repositoryId, action, payload) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || !TASK_ACTIONS.has(action)
+      || !payload || typeof payload !== "object" || Array.isArray(payload)) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-action", repositoryId, action, payload);
+  },
+  taskStart(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
+  },
+  taskWorktreeOpen(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-worktree-open", repositoryId, taskId);
   },
   setNativeTheme,
   quit() {

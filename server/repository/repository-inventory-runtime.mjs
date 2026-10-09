@@ -484,6 +484,8 @@ export function createRepositoryInventoryRuntime(options = {}) {
     stopPluginObservation: pluginSetup.stop,
     refreshPluginSetup: pluginSetup.refresh,
     readPluginSetup: pluginSetup.read,
+    // Monitor-private recognized root of a repository seen this run; null when unknown. Never served to a browser.
+    repositoryRoot: (repositoryId) => targets.get(repositoryId)?.root ?? null,
     preparePluginAction: pluginSetup.prepare,
     readRepositories: (revision) => cache.read(revision),
     readRevision,

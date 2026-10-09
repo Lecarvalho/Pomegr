@@ -5,8 +5,18 @@ const CACHE_TTL_MS = 60_000;
 const GH_TIMEOUT_MS = 6_000;
 const GITHUB_PULL_REQUEST_URL = /https:\/\/github\.com\/([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})\/pull\/(\d{1,10})(?![A-Za-z0-9/?#])/g;
 const GH_FIELDS = "number,title,state,url,headRefName,baseRefName,isDraft,mergedAt,additions,deletions,updatedAt";
+// Asked for with the metadata when gh can read it; a gh that cannot answers the metadata alone.
+const GH_CHECK_FIELD = "statusCheckRollup";
+const MAX_CHECK_ENTRIES = 200;
+const MAX_CHECK_STATUSES = 256;
+const PASSED_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+const FAILED_CONCLUSIONS = new Set(["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE"]);
+const PENDING_RUN_STATUSES = new Set(["QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"]);
 const metadataCache = new Map();
 const branchCache = new Map();
+// Monitor-private: the latest check status read for a canonical pull-request URL. It never joins the
+// normalized pull-request item, so no browser surface carries it.
+const checkStatuses = new Map();
 
 /**
  * Read bounded URLs from normalized provider evidence. Provider transcript
@@ -68,6 +78,71 @@ function normalizedState(value) {
   return state === "open" || state === "closed" ? state : "unknown";
 }
 
+// One recognized check entry as passed, failed, or pending; anything else is unknown.
+function checkEntryStatus(entry) {
+  if (entry?.__typename === "CheckRun") {
+    if (entry.status === "COMPLETED") return PASSED_CONCLUSIONS.has(entry.conclusion) ? "passed" : FAILED_CONCLUSIONS.has(entry.conclusion) ? "failed" : null;
+    return PENDING_RUN_STATUSES.has(entry.status) ? "pending" : null;
+  }
+  if (entry?.__typename === "StatusContext") {
+    if (entry.state === "SUCCESS") return "passed";
+    if (entry.state === "FAILURE" || entry.state === "ERROR") return "failed";
+    return entry.state === "PENDING" || entry.state === "EXPECTED" ? "pending" : null;
+  }
+  return null;
+}
+
+/**
+ * Normalize gh's `statusCheckRollup` list to the aggregate check status of a pull request's head
+ * commit: `none` (no check), `failed` (any check failed), `pending` (none failed, one unfinished), or
+ * `passed`. A missing, oversized, or unrecognized list is `null` (unknown). Names, URLs, and every
+ * other field of a check are dropped here.
+ *
+ * @param {unknown} rollup
+ * @returns {"passed" | "failed" | "pending" | "none" | null}
+ */
+export function normalizeCheckStatus(rollup) {
+  if (!Array.isArray(rollup) || rollup.length > MAX_CHECK_ENTRIES) return null;
+  if (rollup.length === 0) return "none";
+  const statuses = rollup.map(checkEntryStatus);
+  if (statuses.includes(null)) return null;
+  return statuses.includes("failed") ? "failed" : statuses.includes("pending") ? "pending" : "passed";
+}
+
+// `checkedAt` is the time the gh read that produced `value` began (a cached read keeps its own time), kept in
+// memory with the status so a consumer can tell how old the fact is. A read older than the status already
+// held does not replace it.
+function recordCheckStatus(url, value, checkedAt) {
+  const status = normalizeCheckStatus(value?.[GH_CHECK_FIELD]);
+  const parsed = Date.parse(checkedAt);
+  const readAt = Number.isFinite(parsed) ? parsed : Date.now();
+  const held = checkStatuses.get(url);
+  if (status !== null && held && held.readAt > readAt) return;
+  checkStatuses.delete(url);
+  if (status === null) return;
+  checkStatuses.set(url, { status, readAt });
+  if (checkStatuses.size > MAX_CHECK_STATUSES) checkStatuses.delete(checkStatuses.keys().next().value);
+}
+
+/**
+ * The aggregate check status last read for a normalized pull-request URL together with the time (epoch
+ * milliseconds) the read that established it began, or `null` when the latest read did not establish one.
+ * A memory lookup: it never runs gh. For the task done-when rule only.
+ *
+ * @param {unknown} url
+ * @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null}
+ */
+export function pullRequestCheckRead(url) {
+  const held = typeof url === "string" ? checkStatuses.get(url) : undefined;
+  return held ? { status: held.status, readAt: held.readAt } : null;
+}
+
+// Ask for the check field with the metadata; when that read fails, the metadata alone, so a gh that
+// cannot read checks still answers the pull request.
+async function readGhJson(ghRunner, cwd, args) {
+  return await ghRunner(cwd, [...args, `${GH_FIELDS},${GH_CHECK_FIELD}`]) || ghRunner(cwd, [...args, GH_FIELDS]);
+}
+
 export function normalizePullRequest(value, association = "session", fallbackUrl = "") {
   const reference = pullRequestReference(typeof value?.url === "string" ? value.url : fallbackUrl);
   const number = Number(value?.number || reference?.number);
@@ -92,12 +167,15 @@ export function normalizePullRequest(value, association = "session", fallbackUrl
   };
 }
 
+// A read is dated by the moment its gh call began: whatever it saw is no newer than that, and a change made
+// while the call ran may be missing from it. The cache lifetime still counts from the moment the call ended.
 async function cached(cache, key, loader) {
   const previous = cache.get(key);
   if (previous?.value && Date.now() - previous.timestamp < CACHE_TTL_MS) return previous.value;
   if (previous?.pending) return previous.pending;
+  const startedAt = new Date().toISOString();
   const pending = loader().then((loaded) => {
-    const value = { loaded, checkedAt: new Date().toISOString() };
+    const value = { loaded, checkedAt: startedAt };
     cache.set(key, { timestamp: Date.now(), value, pending: null });
     return value;
   });
@@ -107,19 +185,19 @@ async function cached(cache, key, loader) {
 
 async function metadataForUrl(cwd, url, ghRunner) {
   const load = async () => {
-    const output = await ghRunner(cwd, ["pr", "view", url, "--json", GH_FIELDS]);
+    const output = await readGhJson(ghRunner, cwd, ["pr", "view", url, "--json"]);
     if (!output) return null;
     try { return JSON.parse(output); } catch { return null; }
   };
-  return ghRunner === runGh
-    ? cached(metadataCache, url, load)
-    : { loaded: await load(), checkedAt: new Date().toISOString() };
+  if (ghRunner === runGh) return cached(metadataCache, url, load);
+  const checkedAt = new Date().toISOString();
+  return { loaded: await load(), checkedAt };
 }
 
 async function pullRequestsForBranch(cwd, branch, ghRunner) {
   if (!cwd || !branch || branch.startsWith("detached@") || branch.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) || branch.includes("..")) return null;
   const load = async () => {
-    const output = await ghRunner(cwd, ["pr", "list", "--state", "all", "--head", branch, "--limit", String(MAX_PULL_REQUESTS), "--json", GH_FIELDS]);
+    const output = await readGhJson(ghRunner, cwd, ["pr", "list", "--state", "all", "--head", branch, "--limit", String(MAX_PULL_REQUESTS), "--json"]);
     if (!output) return null;
     try {
       const parsed = JSON.parse(output);
@@ -128,9 +206,9 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
       return null;
     }
   };
-  return ghRunner === runGh
-    ? cached(branchCache, `${cwd}\u0000${branch}`, load)
-    : { loaded: await load(), checkedAt: new Date().toISOString() };
+  if (ghRunner === runGh) return cached(branchCache, `${cwd}\u0000${branch}`, load);
+  const checkedAt = new Date().toISOString();
+  return { loaded: await load(), checkedAt };
 }
 
 /**
@@ -157,23 +235,34 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
 
   for (const { url, result } of metadata) {
     const item = normalizePullRequest(result.loaded || {}, "session", url);
-    if (item) itemsByUrl.set(item.url, item);
+    if (!item) continue;
+    itemsByUrl.set(item.url, item);
+    if (result.loaded !== null) recordCheckStatus(item.url, result.loaded, result.checkedAt);
   }
   if (branchValues !== null) {
     queried = true;
     available = true;
     for (const value of branchValues) {
       const item = normalizePullRequest(value, "branch");
-      if (item && !itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
+      if (!item) continue;
+      if (!itemsByUrl.has(item.url)) itemsByUrl.set(item.url, item);
+      recordCheckStatus(item.url, value, branchResult.checkedAt);
     }
   }
 
+  // The reads the items rest on, oldest first: a cached read keeps its own time, so the newest of them says
+  // when the block was last refreshed (`checkedAt`, served) and the oldest says how old its oldest item can be
+  // (`readAt`, monitor-private).
+  const reads = available
+    ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
+      .filter(Boolean).sort()
+    : [];
   return {
     status: !queried || available ? "ready" : "unavailable",
-    checkedAt: available
-      ? [...metadata.filter(({ result }) => result.loaded !== null).map(({ result }) => result.checkedAt), branchValues !== null ? branchResult.checkedAt : null]
-        .filter(Boolean).sort().at(-1) || null
-      : null,
+    checkedAt: reads.at(-1) || null,
+    // Monitor-private: the done-when rule judges the block by this time. The session state serializer
+    // removes it before the block is served, and the repository snapshot never copies it.
+    readAt: reads[0] || null,
     items: [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS),
   };
 }

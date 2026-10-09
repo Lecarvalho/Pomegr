@@ -45,6 +45,11 @@ import { AgentInspectorSection, AgentRosterSection } from "./DesignSystemAgentSa
 import { Sample, SAMPLE_TIME, Section, sampleAgent } from "./DesignSystemKit";
 import { EventsRailSection } from "./DesignSystemEventsSample";
 import { HomeUpdateSection } from "./DesignSystemHomeUpdateSample";
+import { TaskFieldsSection } from "./DesignSystemTaskFieldsSample";
+import { TaskBoardSection } from "./DesignSystemTaskBoardSample";
+import { TaskQueueSection } from "./DesignSystemTaskQueueSample";
+import { TaskGatesSection } from "./DesignSystemTaskGatesSample";
+import { SessionTaskSection } from "./DesignSystemSessionTaskSample";
 import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
 // Layer 1 of the web-only gate: the desktop preload exposes `window.pomegrDesktop`
@@ -83,6 +88,11 @@ export function DesignSystemView() {
     <PanelsSection />
     <EventsRailSection />
     <HomeUpdateSection />
+    <TaskFieldsSection />
+    <TaskBoardSection />
+    <TaskQueueSection />
+    <TaskGatesSection />
+    <SessionTaskSection />
     <CommandTableSection />
     <SettingsRailSection />
     <TypographySection />

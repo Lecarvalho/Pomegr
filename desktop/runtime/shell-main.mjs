@@ -39,7 +39,7 @@ import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
-import { createProviderSettingsController, installProviderSettingsIpc, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, providerSessionEnvironment, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
 import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
@@ -56,6 +56,9 @@ import { boundedDesktopVersion, createDesktopUpdaterController, createWindowsUpd
 import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-action.mjs";
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
+import { installTaskActionIpc } from "./task-action.mjs";
+import { installTaskStartIpc } from "./task-dispatch.mjs";
+import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -108,6 +111,8 @@ let claudeUsageIntegration;
 let removeClaudeUsageIpc;
 let removeRepositoryInventoryIpc;
 let removeRepositoryPluginActionIpc;
+let removeTaskActionIpc;
+let removeTaskStartIpc;
 let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
@@ -435,6 +440,10 @@ async function stopRuntime() {
     removeRepositoryInventoryIpc = undefined;
     removeRepositoryPluginActionIpc?.();
     removeRepositoryPluginActionIpc = undefined;
+    removeTaskActionIpc?.();
+    removeTaskActionIpc = undefined;
+    removeTaskStartIpc?.();
+    removeTaskStartIpc = undefined;
     repositoryPluginCli?.dispose();
     repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
@@ -495,6 +504,7 @@ async function startDesktop() {
     if (value) launchEnvironment[key] = value;
   }
   const providerEnvironment = providerSettingsEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
+  const taskSessionEnvironment = providerSessionEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot }); // before process.env is stripped
   async function restartApp() {
     persistCurrentWindowState();
     try {
@@ -693,6 +703,35 @@ async function startDesktop() {
             confirm: confirmRepositoryPluginAction,
             runPlan: (plan) => repositoryPluginCli?.run(plan) || "unavailable",
           }),
+        });
+        removeTaskActionIpc = installTaskActionIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
+        });
+        removeTaskStartIpc = installTaskStartIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
+          environment: taskSessionEnvironment,
+          worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
+          openPath: (directory) => shell.openPath(directory),
+          confirm: async ({ taskId }) => {
+            if (!mainWindow || mainWindow.isDestroyed()) return false;
+            const answer = await dialog.showMessageBox(mainWindow, {
+              type: "question",
+              title: "Start a session",
+              message: `Start task ${taskId}?`,
+              detail: "A session will open in a new terminal window in this repository, or in the task's own worktree when its step runs in parallel, on the provider set in the task's Run on (Claude Code when none is set).",
+              buttons: ["Start session", "Cancel"],
+              defaultId: 1,
+              cancelId: 1,
+              noLink: true,
+            });
+            return answer.response === 0;
+          },
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

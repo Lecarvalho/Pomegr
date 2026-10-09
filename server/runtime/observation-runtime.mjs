@@ -15,6 +15,7 @@ import { createSessionObservationCoordinator } from "./session-observation-coord
 import { SessionObservationStore } from "../sessions/checkpoints/session-observation-store.mjs";
 import { createProviderStatusObservation } from "./provider-status-observation.mjs";
 import { createAgentsObservation } from "./agents-observation.mjs";
+import { createTaskLookups } from "./task-start-lookup.mjs";
 import { createAgentQueryProjectionCache } from "../sessions/domain/agent-query-projection.mjs";
 import { createRepositoryInventoryRuntime } from "../repository/repository-inventory-runtime.mjs";
 import { attachFileHistory } from "../repository/file-history-domain.mjs";
@@ -91,7 +92,6 @@ export function createObservationRuntime(options = {}) {
   let observationServingActive = false;
   let observationStartPromise = null;
   let unsubscribeObservation = null;
-
   // A provider whose legacy evidence was launch-bound recorded launch-bound sidecars without a repository ID.
   const adoptsUnboundSidecar = (providerId) => registry.legacyRepositoryAttribution?.(providerId) === "launch";
   const validateObservation = ({ localSessionId, evidence }) => {
@@ -780,6 +780,7 @@ export function createObservationRuntime(options = {}) {
       repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
+    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory, runModels: options.runModels, gateSources: { usageLimits: () => usageResponseCache.current()?.value || null, providerStatus: () => providerStatus.read()?.snapshot?.value || null, forbiddenRoots: () => Object.values(registry.providerFolders?.folders || {}).filter(Boolean), gitReader: options.taskTreeReader } }),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

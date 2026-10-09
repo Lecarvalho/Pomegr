@@ -13,6 +13,7 @@ source.
 | Find a session and understand the first results | [Follow your first session](public/get-started/first-session.md) |
 | Read session states and inspect a session's agents | [Sessions and agents](public/using-pomegr/sessions-and-agents.md) |
 | Browse repositories and the files their sessions changed | [Repositories](public/using-pomegr/repositories.md) |
+| Plan a repository's work on a task board and have the desktop app start sessions for it | [Tasks](public/using-pomegr/tasks.md) |
 | Install the reporting plugin and set up a repository's reporting policy | [Reporting plugins](public/using-pomegr/reporting-plugins.md) |
 | Share Pomegr read-only with a paired phone on your private network | [Phone access](public/using-pomegr/phone-access.md) |
 | Let a coding agent query provider health, usage limits, and context | [MCP queries](public/using-pomegr/mcp-queries.md) |

@@ -196,3 +196,94 @@ test("a released child stays live while its root lock is held and an unanswered 
   assert.deepEqual([session.isLive, session.needsInput, session.activityStatus], [false, false, "unknown"]);
   assert.deepEqual(family.threads.map((item) => item.liveness.reason), ["writer_released", "writer_released"]);
 });
+
+for (const endType of ["task_failed", "task_interrupted", "turn_aborted"]) {
+  test(`a recorded Stopped thread (${endType}) keeps Stopped and gains writer_released only when no writer could resolve it`, async (context) => {
+    const { files, sources } = await abandonedRollout(context, {
+      stopped: [boundary(0, "task_started", "failed-turn"), boundary(1_000, endType, "failed-turn")],
+      open: [boundary(0, "task_started", "open-turn")],
+    });
+    const stoppedAt = new Date(START + 1_000).toISOString();
+    const threads = [thread("stopped-root", { rolloutFile: files.stopped })];
+    let lock = "released"; let owner = null;
+    const coordinator = createCodexLivenessCoordinator({ now: () => START + 4 * 60 * 60_000, cacheMs: 0,
+      currentWriterOwner: () => owner, writerLockState: () => lock });
+    coordinator.observeLifecycleSources(sources);
+
+    const released = coordinator.observe(threads);
+    const session = released.sessions.get("stopped-root");
+    assert.deepEqual([session.isLive, session.needsInput, session.activityStatus], [false, false, "stopped"]);
+    assert.equal(released.threads[0].liveStatus, "stopped");
+    assert.equal(released.threads[0].livenessLive, false);
+    assert.equal(released.threads[0].presenceConfirmed, false);
+    assert.deepEqual(released.threads[0].liveness, { source: "structured_lifecycle", observedAt: stoppedAt,
+      evidence: "observed", freshness: "current", reason: "writer_released" });
+    assert.equal(session.observedAt, stoppedAt, "a released lock never renews the recorded timestamp");
+
+    const plain = { source: "structured_lifecycle", observedAt: stoppedAt, evidence: "observed", freshness: "current" };
+    for (const state of ["held", "unavailable"]) {
+      lock = state;
+      const result = coordinator.observe(threads);
+      assert.equal(result.threads[0].liveStatus, "stopped", state);
+      assert.deepEqual(result.threads[0].liveness, plain, `${state} lock is not evidence of release`);
+      assert.equal(result.sessions.get("stopped-root").activityStatus, "stopped", state);
+    }
+
+    lock = "released"; owner = { pid: 4242, processStartIdentity: "134000000000000000" };
+    const owned = coordinator.observe(threads);
+    assert.equal(owned.threads[0].liveStatus, "stopped");
+    assert.equal(owned.threads[0].presenceConfirmed, true);
+    assert.deepEqual(owned.threads[0].liveness, plain, "a confirmed owner outranks the lock read");
+    assert.deepEqual([owned.sessions.get("stopped-root").isLive, owned.sessions.get("stopped-root").activityStatus], [true, "stopped"]);
+
+    // A live (open-turn) rollout keeps its own release shape beside a released Stopped thread.
+    owner = null;
+    const family = coordinator.observe([threads[0], thread("open-root", { rolloutFile: files.open })]);
+    assert.deepEqual(family.threads.map((item) => [item.liveStatus, item.liveness.reason]),
+      [["stopped", "writer_released"], ["unknown", "writer_released"]]);
+  });
+}
+
+test("a recorded Idle thread never gains writer_released, and a Stopped child waits on its root's lock", async (context) => {
+  const { files, sources } = await abandonedRollout(context, {
+    idle: [boundary(0, "task_started", "done-turn"), boundary(1_000, "task_complete", "done-turn")],
+    root: [boundary(0, "task_started", "root-turn"), boundary(1_000, "task_failed", "root-turn")],
+    child: [boundary(0, "task_started", "child-turn"), boundary(1_000, "task_failed", "child-turn")],
+  });
+  const locks = new Map([["idle-root", "released"], ["family-root", "held"], ["family-child", "released"]]);
+  const coordinator = createCodexLivenessCoordinator({ now: () => START + 60 * 60_000, cacheMs: 0,
+    writerLockState: (localId) => locks.get(localId) || "unavailable" });
+  coordinator.observeLifecycleSources(sources);
+  const threads = [thread("idle-root", { rolloutFile: files.idle }), thread("family-root", { rolloutFile: files.root }),
+    thread("family-child", { parentThreadId: "family-root", sessionId: "family-root", rolloutFile: files.child })];
+  const held = coordinator.observe(threads);
+  assert.deepEqual(held.threads.map((item) => [item.liveStatus, item.liveness.reason]),
+    [["idle", undefined], ["stopped", undefined], ["stopped", undefined]]);
+  locks.set("family-root", "released");
+  const released = coordinator.observe(threads);
+  assert.deepEqual(released.threads.map((item) => [item.liveStatus, item.liveness.reason]),
+    [["idle", undefined], ["stopped", "writer_released"], ["stopped", "writer_released"]]);
+  assert.equal(released.sessions.get("family-root").activityStatus, "stopped");
+});
+
+test("the Stopped release read applies only on Windows with a provider lock directory", async (context) => {
+  const { root, files, sources } = await abandonedRollout(context, {
+    stopped: [boundary(0, "task_started", "failed-turn"), boundary(1_000, "task_failed", "failed-turn")] });
+  const threads = [thread("stopped-root", { rolloutFile: files.stopped })];
+  const locksRoot = path.join(root, "thread-writer-locks");
+  const reasonFor = (platform, readWriterLock = () => ({ state: "missing" })) => {
+    const coordinator = createCodexLivenessCoordinator({ now: () => START + 60 * 60_000, cacheMs: 0,
+      writerLocksRoot: locksRoot, platform, readWriterLock });
+    coordinator.observeLifecycleSources(sources);
+    const observed = coordinator.observe(threads);
+    assert.equal(observed.sessions.get("stopped-root").activityStatus, "stopped");
+    return observed.threads[0].liveness.reason;
+  };
+  assert.equal(reasonFor("win32"), undefined, "without the lock directory there is no release evidence");
+  await mkdir(locksRoot);
+  assert.equal(reasonFor("win32"), "writer_released");
+  assert.equal(reasonFor("win32", () => ({ state: "unlocked", identity: "x" })), "writer_released");
+  assert.equal(reasonFor("win32", () => ({ state: "held", identity: "x" })), undefined);
+  assert.equal(reasonFor("win32", () => ({ state: "unavailable" })), undefined);
+  assert.equal(reasonFor("linux"), undefined, "other platforms do not inherit Windows lock semantics");
+});

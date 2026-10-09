@@ -370,3 +370,34 @@ test("grouped directory bounds the group list and matches the memory fallback",a
   assert.deepEqual(fallback.groups.map((group)=>[group.key,group.count,group.sessions.map((session)=>session.id)]),
     [["Other",4,["codex:session-7","codex:session-5","codex:session-3","codex:session-1"]],["Pomegr",4,["codex:session-6","codex:session-4","codex:session-2","codex:session-0"]]]);
 });
+
+test("a session set narrows or groups the directory in the durable index and the memory fallback",async(t)=>{
+  const {inventory,store}=await fixture(t);
+  load(inventory,"codex",40);load(inventory,"claude",12);
+  inventory.updateHeaders("codex",[row(10,{isLive:true})]);
+  const memory=createSessionCatalogInventory({providers:["codex","claude"]});
+  memory.updateHeaders("codex",Array.from({length:40},(_,index)=>row(index,index===10?{isLive:true}:{})));
+  memory.updateHeaders("claude",Array.from({length:12},(_,index)=>row(index)));
+  const sessionIds=["codex:session-10","claude:session-3","codex:session-39","codex:missing","not an id",7,"codex:session-10"];
+  const members=new Map([["codex:session-10","b"],["codex:session-11","b"],["claude:session-3","a"],["codex:missing","c"],["bad id","a"],["codex:session-1",""]]);
+  const sets={members,labels:new Map([["a","Alpha"],["b","Beta\u0000"]])};
+  const before=store.database.prepare("SELECT total_changes() AS n").get().n;
+  for (const index of [inventory,memory]) {
+    const narrowed=index.directory({sessionIds,pageSize:2});
+    assert.equal(narrowed.matchedCount,3);assert.equal(narrowed.counts.all,52);
+    assert.deepEqual(narrowed.sessions.map((session)=>session.id),["codex:session-39","codex:session-10"]);
+    assert.deepEqual(index.directory({sessionIds,pageSize:2,cursor:narrowed.nextCursor}).sessions.map((session)=>session.id),["claude:session-3"]);
+    // A cursor is bound to its set, and an empty set matches nothing rather than everything.
+    assert.equal(index.directory({sessionIds:["codex:session-10"],cursor:narrowed.nextCursor}).cursorReset,true);
+    assert.equal(index.directory({sessionIds:[]}).matchedCount,0);
+    assert.deepEqual(index.directory({sessionIds,filter:"live"}).sessions.map((session)=>session.id),["codex:session-10"]);
+    const grouped=index.directory({group:"set",sets});
+    assert.equal(grouped.groupBy,"set");assert.equal(grouped.groupCount,2);assert.equal(grouped.matchedCount,3);
+    assert.deepEqual(grouped.groups.map((group)=>[group.key,group.label,group.count,group.live,group.sessions.map((session)=>session.id)]),
+      [["b","Beta",2,1,["codex:session-11","codex:session-10"]],["a","Alpha",1,0,["claude:session-3"]]]);
+    assert.deepEqual(index.directory({group:"set",sets,provider:"claude"}).groups.map((group)=>[group.key,group.count]),[["a",1]]);
+    // A set grouping without a valid map is an ordinary page.
+    assert.equal(index.directory({group:"set"}).groups,undefined);assert.equal(index.directory({group:"set",sets:{members:{}}}).matchedCount,52);
+  }
+  assert.equal(store.database.prepare("SELECT total_changes() AS n").get().n,before);
+});

@@ -13,6 +13,7 @@ import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monit
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
 import { createNotificationObservation } from "./runtime/notification-observation.mjs";
 import { createReleaseObservation } from "./runtime/release-observation.mjs";
+import { createRunModelCatalog } from "./runtime/run-model-catalog.mjs";
 import { createNotificationPersistence } from "./notifications/notification-persistence.mjs";
 import { catalogSourceScopeKey } from "./sessions/catalog/session-catalog-runtime.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
@@ -20,6 +21,8 @@ import { createPipelineOperationsSnapshot } from "./diagnostics/pipeline-operati
 import { startPipelineOperationsTransport } from "./diagnostics/pipeline-operations-transport.mjs";
 import { createRequestHandler } from "./serving/request-handler.mjs";
 import { EMPTY_PROVIDER_FOLDERS } from "./normalize/provider-folders.mjs";
+import { createTaskStallWatcher } from "./tasks/task-stall.mjs";
+import { openTaskStore } from "./tasks/task-store.mjs";
 import { reconcileSessionActivityFallback, reconcileSessionCurrentActivity } from "./sessions/domain/session-current-activity.mjs";
 import {
   closeServer,
@@ -111,10 +114,11 @@ export function createMonitorRuntime(options = {}) {
     }));
   const notifications = createNotificationObservation({ now, persistence: notificationPersistence,
     sourceScope: notificationSourceScope });
+  const runModels = createRunModelCatalog();
   const releases = options.releaseObservation || createReleaseObservation({
     modelOptions: { codexHome: providerFolders.codexHome, now },
     ...(options.releaseObservationOptions || {}), accept: notifications.acceptReleaseObservations,
-    acceptModels: notifications.acceptModelObservations, now,
+    acceptModels: (values) => { runModels.accept(values); return notifications.acceptModelObservations(values); }, now,
   });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
@@ -548,6 +552,7 @@ export function createMonitorRuntime(options = {}) {
   }
 
   const observation = createObservationRuntime({
+    runModels,
     ...options,
     repositoryInventoryOptions: {
       ...(options.repositoryInventoryOptions || {}),
@@ -630,6 +635,12 @@ export function createMonitorRuntime(options = {}) {
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
     serveNotifications: notifications.read,
+    resolveRunModels: observation.resolveRunModels,
+    resolveTaskStart: observation.resolveTaskStart,
+    resolveTaskSession: observation.resolveTaskSession,
+    resolveTaskSessionFacts: observation.resolveTaskSessionFacts,
+    resolveTaskCheckFacts: observation.resolveTaskCheckFacts,
+    resolveTaskGateFacts: observation.resolveTaskGateFacts,
     serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
     serveRepositoryFiles: observation.serveRepositoryFiles,
@@ -644,10 +655,29 @@ export function createMonitorRuntime(options = {}) {
   });
 }
 
+// The task store is the control plane's own private store in the data root, outside the observation
+// cache's retention and prune cycle. Like the other data-root stores, an injected runtime or checkpoint
+// store (a test, an embedded runtime) or `monitorStore: false` never opens the real one, and an explicit
+// `taskStore` is used as given and left to its owner to close. A failed open leaves the board unavailable.
+function resolveTaskStore(options) {
+  if (options.taskStore !== undefined) return { store: options.taskStore || null, owned: false };
+  if (options.runtime !== undefined || options.checkpointStore !== undefined || options.monitorStore === false) {
+    return { store: null, owned: false };
+  }
+  try {
+    const directory = path.join(resolvePomegrDataRoot(options.pomegrPaths), "tasks-v1");
+    return { store: openTaskStore({ directory }), owned: true };
+  } catch {
+    options.logger?.warn?.("[pomegr] Task store unavailable.");
+    return { store: null, owned: false };
+  }
+}
+
 export function createMonitorRequestHandler(options = {}) {
   const runtime = options.runtime || createMonitorRuntime(options);
   return createRequestHandler({
     runtime,
+    taskStore: options.taskStore || null,
     authorizationToken: options.authorizationToken,
     agentAuthorizationToken: options.agentAuthorizationToken,
   });
@@ -668,16 +698,26 @@ export async function startMonitorServer(options = {}) {
   let operationsTransport;
   let startupExtension;
   let stopObservationPromise;
+  let ownedTaskStore = null;
+  let stallWatcher = null;
   const stopObservationOnce = () => {
     stopObservationPromise ??= Promise.resolve().then(() => runtime?.stopObservation?.());
     return stopObservationPromise;
+  };
+  const closeOwnedTaskStore = () => {
+    stallWatcher?.stop();
+    const store = ownedTaskStore;
+    ownedTaskStore = null;
+    try { store?.close(); } catch { /* shutdown stays bounded */ }
   };
   try {
     const port = requirePort(options.port ?? PORT, "MONITOR_INVALID_PORT");
     const host = requireLoopbackHost(options.host ?? HOST, "MONITOR_INVALID_HOST");
     const registry = options.providerRegistry || providerRegistry;
+    const tasks = resolveTaskStore(options);
+    if (tasks.owned) ownedTaskStore = tasks.store;
     runtime = options.runtime || createMonitorRuntime({ ...options, pipelineTrace: options.pipelineTrace || null });
-    server = (options.serverFactory || createMonitorServer)({ ...options, runtime });
+    server = (options.serverFactory || createMonitorServer)({ ...options, runtime, taskStore: tasks.store });
     await listen(server, { host, port, startupErrorCode: "MONITOR_START_FAILED" });
     handle = createLocalServiceHandle(server, {
       host,
@@ -687,6 +727,7 @@ export async function startMonitorServer(options = {}) {
         void stopObservationOnce().catch(() => {});
         void operationsTransport?.close();
         void startupExtension?.close?.();
+        closeOwnedTaskStore();
       },
     });
     if ((port !== 0 || options.pipelineOperationsAtEphemeralPort === true)
@@ -709,6 +750,11 @@ export async function startMonitorServer(options = {}) {
       }));
     }
     await runtime.startObservation?.();
+    // A linked task whose session ended without a report stalls, decided from committed session facts.
+    if (tasks.store && typeof runtime.resolveTaskSessionFacts === "function") {
+      stallWatcher = createTaskStallWatcher({ taskStore: tasks.store, subscribe: runtime.subscribeRevisionEvents,
+        resolveSessionFacts: (id) => runtime.resolveTaskSessionFacts(id) });
+    }
     // Provider-owned watch targets remain private and are initialized only
     // after the listener and background observation lifecycle are ready.
     await registry.watchTargets();
@@ -721,6 +767,7 @@ export async function startMonitorServer(options = {}) {
         await operationsTransport?.close();
         await startupExtension?.close?.();
         await handle.close();
+        closeOwnedTaskStore();
       })();
       return closePromise;
     };
@@ -732,6 +779,7 @@ export async function startMonitorServer(options = {}) {
     try { await startupExtension?.close?.(); } catch { /* preserve bounded startup failure */ }
     if (handle) await handle.close();
     else await closeServer(server);
+    closeOwnedTaskStore();
     throw safeServiceError(error, "MONITOR_START_FAILED");
   }
 }

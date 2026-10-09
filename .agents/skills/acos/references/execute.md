@@ -1,17 +1,54 @@
 # Execute and close
 
+## Strategy
+
+A manifest written by `/acos plan` is a suggestion, sized from counts
+by a planner that had not read the code. Before the first stage of a
+part, make it yours. A manifest you composed in this session with the
+files already open is yours: go to Start.
+
+1. **Catch up.** `plan.yaml` `discoveries`, earlier parts' `actual`,
+   the previous handoff. Scale reservations by the measured ratio
+   (`sizing.md` §2).
+2. **Read to plan.** Open what decides how the work splits and what a
+   brief must say (`sizing.md` §3, Reading). Reading your lane cannot
+   hold goes to a delegated `plan` stage that writes the briefs.
+3. **Re-cut your own work.** Stages, slices, order, tiers and checks
+   are yours to change. Cut where a cut is needed: judge each worker
+   from the kind of work and the size of its files (`sizing.md` §2,
+   Worker target), aim at about 170k, never past
+   `limits.worker_context_tokens`, and give every file one worker.
+   Fixed: the part's intent and acceptance, its `owns` while other
+   sessions edit the tree, and parts already `done`.
+4. **Brief so the work is mechanical.** Per slice: the steps file by
+   file, the decisions already taken, every signature it shares with
+   another slice, the tests, what done looks like. The less a worker
+   has to discover, the shorter its run.
+5. **Rewrite `manifest.yaml`** to what will run, estimate included.
+   The first drift entry of the log says how it differs from the
+   suggestion; nothing when it does not.
+6. **Say it and start.** Print the summary (`manifest.md`, Present)
+   ending `Starting now; interrupt to change.` Do not wait and do not
+   ask, whatever the new volume. What the user says while you work is
+   applied like any other change of strategy.
+
+Do it again mid-part when the work shows the strategy wrong: a slice
+far larger than sized, a seam that does not hold, a worker that comes
+back half done. Re-cut what remains, rewrite the manifest, log the
+drift, say it in one line, continue.
+
 ## Start
 
-From GO on, `manifest.yaml` is never edited. Start `log.yaml` beside it:
+Start `log.yaml` beside the manifest:
 manifest id, `sessions` with this session's id when exposed (Claude
 Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
 `CODEX_THREAD_ID`), a start timestamp, `drift: []`.
 
 `part.mode` decides what surrounds the stages:
 
-- `single`: GO covered the whole plan. Run it wave by wave: spawn the
-  delegated stages of every part in the wave in one message, check
-  each, verify the merged tree, close those parts, start the next wave
+- `single`: GO covered the whole plan. Run it wave by wave: settle the
+  strategy of every part in the wave, spawn their delegated stages in
+  one message, check each, verify the merged tree, close those parts, start the next wave
   without stopping or asking. One `log.yaml` per part, no handoff
   between them. Keep from each worker its verdict and paths, nothing
   else. A session that dies is resumed with `/acos run <plan>`, from
@@ -78,17 +115,22 @@ Whatever `on_fail` says:
 
 ## Drift
 
-A plan that turns out wrong is changed, not re-approved: drop or add a
-stage, swap a tier or effort, fix a check. Append to `log.yaml`:
+A plan that turns out wrong is changed, not re-approved: re-cut the
+slices, drop or add a stage, swap a tier or effort, fix a check.
+Rewrite `manifest.yaml` in place so it says what is running, and
+append to `log.yaml`:
 
 ```yaml
+- at_stage: strategy
+  change: "stages[implement]: 1 worker, 30 files -> implement-a, -b, -c, 10 files each"
+  reason: "large files, a decision in each: one worker would run far past 200k; three near 150k along the module seams"
 - at_stage: implement
   change: "stages[review]: dropped"
   reason: "three-line change, reviewed inline"
 ```
 
-No new manifest. Retries and escalation within the rules are records,
-not drift.
+The manifest is the current strategy; the drift entries are how it got
+there. Retries and escalation within the rules are records, not drift.
 
 ## Discovery
 
@@ -99,9 +141,12 @@ cause, later part's scope, order, ownership or acceptance target).
 - Invalidates this part's intent: stop and ask once (re-scope, continue,
   stop).
 - In a plan: append it to `plan.yaml` `discoveries` (date, part,
-  finding, evidence path), show the adjusted cut for later parts in the
-  confirm-the-cut form (`sizing.md` §4), and on OK rewrite their entries
-  and manifests. `done` parts are never rewritten.
+  finding, evidence path) and update the entries of the later parts it
+  changes (summary, `owns`, `after`, acceptance), saying so in one
+  line. Their manifests are left to their own orchestrators, which
+  re-cut from the discoveries when they start. `done` parts are never
+  rewritten; a part running in another session is told through the
+  handoff.
 
 ## Close
 

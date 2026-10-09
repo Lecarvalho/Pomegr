@@ -187,6 +187,13 @@ module.exports = {
       to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]notifications[/\\\\]", "^server[/\\\\]normalize[/\\\\]"] },
     },
     {
+      name: "server-tasks-layer",
+      comment: "The task control plane depends only on shared value primitives and store persistence, never on the runtime, serving, observation, or provider adapters.",
+      severity: "error",
+      from: { path: "^server[/\\\\]tasks[/\\\\]" },
+      to: { path: "^server[/\\\\]", pathNot: ["^server[/\\\\]tasks[/\\\\]", "^server[/\\\\]normalize[/\\\\]", "^server[/\\\\]persistence[/\\\\]"] },
+    },
+    {
       name: "only-entry-points-import-runtime-and-serving",
       comment: "The runtime and HTTP serving are composed only by the server entry points.",
       severity: "error",
