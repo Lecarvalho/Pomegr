@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 const DESKTOP_THEME_CHANNEL = "pomegr:set-native-theme";
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const TASK_ACTIONS = new Set([
   "create", "update", "delete", "move",
   "column_create", "column_rename", "column_reorder", "column_delete",
@@ -111,6 +112,11 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || !TASK_ACTIONS.has(action)
       || !payload || typeof payload !== "object" || Array.isArray(payload)) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-action", repositoryId, action, payload);
+  },
+  taskStart(repositoryId, taskId) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)
+      || typeof taskId !== "string" || !TASK_ID.test(taskId)) return Promise.resolve({ status: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-start", repositoryId, taskId);
   },
   setNativeTheme,
   quit() {

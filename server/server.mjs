@@ -13,6 +13,7 @@ import { createEmptyMonitorState, createEmptyUsageLimits } from "../shared/monit
 import { createObservationRuntime } from "./runtime/observation-runtime.mjs";
 import { createNotificationObservation } from "./runtime/notification-observation.mjs";
 import { createReleaseObservation } from "./runtime/release-observation.mjs";
+import { createRunModelCatalog } from "./runtime/run-model-catalog.mjs";
 import { createNotificationPersistence } from "./notifications/notification-persistence.mjs";
 import { catalogSourceScopeKey } from "./sessions/catalog/session-catalog-runtime.mjs";
 import { resolvePomegrDataRoot } from "../shared/pomegr-paths.mjs";
@@ -112,10 +113,11 @@ export function createMonitorRuntime(options = {}) {
     }));
   const notifications = createNotificationObservation({ now, persistence: notificationPersistence,
     sourceScope: notificationSourceScope });
+  const runModels = createRunModelCatalog();
   const releases = options.releaseObservation || createReleaseObservation({
     modelOptions: { codexHome: providerFolders.codexHome, now },
     ...(options.releaseObservationOptions || {}), accept: notifications.acceptReleaseObservations,
-    acceptModels: notifications.acceptModelObservations, now,
+    acceptModels: (values) => { runModels.accept(values); return notifications.acceptModelObservations(values); }, now,
   });
   const scheduleEnrichment = options.scheduleEnrichment || ((task) => setImmediate(task));
   const scheduleHomeRefresh = options.scheduleHomeRefresh || ((task) => setImmediate(task));
@@ -549,6 +551,7 @@ export function createMonitorRuntime(options = {}) {
   }
 
   const observation = createObservationRuntime({
+    runModels,
     ...options,
     repositoryInventoryOptions: {
       ...(options.repositoryInventoryOptions || {}),
@@ -631,6 +634,9 @@ export function createMonitorRuntime(options = {}) {
     serveAgents: observation.serveAgents,
     serveProviderStatus: observation.serveProviderStatus,
     serveNotifications: notifications.read,
+    resolveRunModels: observation.resolveRunModels,
+    resolveTaskStart: observation.resolveTaskStart,
+    resolveTaskSession: observation.resolveTaskSession,
     serveStorage: observation.serveStorage,
     serveRepositories: observation.serveRepositories,
     serveRepositoryFiles: observation.serveRepositoryFiles,

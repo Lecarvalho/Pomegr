@@ -24,7 +24,7 @@ export function NewTaskPanel({ repositoryId, repositoryName, board, refresh, onC
   repositoryId: string;
   repositoryName: string | null;
   /** The committed board: its unfinished features and their tasks fill the Feature fields. */
-  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
+  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { runModels?: NonNullable<TaskBoard["runModels"]>; queue?: Pick<TaskBoard["queue"], "order"> };
   refresh(): Promise<void>;
   onCreated(): void;
   onClose(): void;
@@ -36,7 +36,7 @@ export function NewTaskPanel({ repositoryId, repositoryName, board, refresh, onC
   const field = useRef<HTMLTextAreaElement>(null);
   const mounted = useRef(false);
   const inFlight = useRef(false);
-  const models = useTaskModelOptions();
+  const models = useTaskModelOptions(board.runModels);
   const [text, setText] = useState("");
   const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);

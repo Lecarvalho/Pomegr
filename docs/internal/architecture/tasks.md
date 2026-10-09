@@ -37,7 +37,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
 | Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with `CODEX_THREAD_ID`; an unbound call is refused and posts nothing |
-| Start a Claude Code session and bind it to its task | Not built |
+| Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet, and the started session is not linked to its task yet, so the card shows no session |
+| Bind a started session to its task | Not built |
 | Start a Codex session | Not built |
 | `complete_task`, `block_task`, verified conditions | Not built |
 | Stalled, queue advance, start gates | Not built |
@@ -117,6 +118,7 @@ type TaskBoard = {
   features: { id: string; name: string; done: boolean }[];
   tasks: Task[];
   queue: { status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null; order: string[] };
+  runModels?: { codex: { id: string; label: string | null }[] };  // at most 64; empty when no catalog is committed; absent from an older monitor
 };
 ```
 
@@ -128,7 +130,12 @@ type TaskBoard = {
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at
   most 120 identifier characters, never a path, markup, or prose. A card shows the
   planned provider and model beside the observed model; the observed model is
-  evidence, the planned one is intent. A model belongs to one provider, so a model
+  evidence, the planned one is intent. The Run on list offers Claude's newest observed
+  model of each family and, for Codex, only `runModels.codex`: the last committed Codex
+  client catalog (visible, non-alias rows) that the hourly model read already holds in
+  memory. The GET never triggers a catalog read, the list is a client catalog and never
+  account entitlement, and with no committed catalog Codex offers only its Default model.
+  A model belongs to one provider, so a model
   without a provider is invalid; an effort alone is valid.
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
@@ -299,6 +306,40 @@ Starting is desktop-only and explicit.
    the repository, a gate fails, or the platform is not Windows (fixed result
    `unsupported_platform`).
 
+Built so far: the manual start of a Claude Code session, with no start gate.
+
+- The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
+  task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
+  `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`,
+  `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, or `failed`.
+- Desktop main checks the platform and finds the Claude Code executable, then shows the
+  native confirmation, which names only the task ID. Only after the user confirms does it
+  ask the monitor for the start plan, because the plan mints a single-use token.
+- `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
+  model, effort, the repository root resolved monitor-side, the prompt, and the dispatch
+  token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
+  session is linked, and no dispatch is live. A task with no provider starts Claude Code;
+  a Codex task answers `unsupported_provider`. The monitor refuses with `plugin_missing`
+  unless the committed plugin setup of the repository shows the Claude Code plugin
+  installed, ready, and enabled, and with `unavailable` when it has not identified the
+  repository's root in the current run.
+- The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
+  dispatch is live for ten minutes; after that the task can be started again.
+- Desktop main validates the plan, then opens the terminal through one fixed PowerShell
+  command (`Start-Process`), run with `spawn`, an argument array, and `shell: false`. A
+  detached child of a windowless app gets no console, so the executable cannot be
+  spawned directly. The command line is constant: the executable, its argument string,
+  and the directory travel only as environment variables, which PowerShell reads as
+  values and never parses as script, and which are removed before the session starts.
+  The argument string holds `--model` and `--effort` only when set, followed by the
+  prompt as one argument, each quoted by the Windows command-line rules. The environment
+  is the native Claude allowlist of the active provider profile plus
+  `POMEGR_TASK_TOKEN`. Pomegr keeps no handle to the session.
+- When the plan is malformed or the launcher fails or does not end within 15 seconds,
+  desktop main calls
+  `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
+- Starting never changes the task's state, column, or queue position.
+
 Claude Code and Codex are both startable. Pomegr never attaches to, writes input to,
 approves for, or stops the started process; afterwards it only observes the session
 like any other.
@@ -310,6 +351,8 @@ like any other.
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`. A denied client gets `readiness: "desktop_only"` and no task content |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
+| `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
+| `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes; no other path may be added without updating the AGENTS.md rule |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `column_create`,

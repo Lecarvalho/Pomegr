@@ -8,7 +8,7 @@ import { createMonitorServer } from "../../../server/server.mjs";
 const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
-const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
+const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"];
 const EMPTY_QUEUE = { status: "idle", blockedBy: null, order: [] };
 
 function secretBoard(repositoryId = REPOSITORY_ID) {
@@ -40,9 +40,9 @@ function recordingStore(read = (repositoryId) => secretBoard(repositoryId)) {
 }
 
 // The route is dispatched before any runtime read; a runtime that is touched at all fails the test.
-function untouchedRuntime() {
+function untouchedRuntime(resolveRunModels) {
   const touched = [];
-  return { runtime: new Proxy({}, { get(_object, property) { touched.push(String(property)); return undefined; } }), touched };
+  return { runtime: new Proxy({}, { get(_object, property) { touched.push(String(property)); return property === "resolveRunModels" ? resolveRunModels : undefined; } }), touched };
 }
 
 async function listen(server) {
@@ -50,8 +50,8 @@ async function listen(server) {
   return server.address().port;
 }
 
-function startRoute(context, { taskStore, authorizationToken = "" } = {}) {
-  const { runtime, touched } = untouchedRuntime();
+function startRoute(context, { taskStore, authorizationToken = "", resolveRunModels } = {}) {
+  const { runtime, touched } = untouchedRuntime(resolveRunModels);
   const server = http.createServer(createRequestHandler({ runtime, taskStore, authorizationToken }));
   context.after(() => new Promise((resolve) => server.close(resolve)));
   return listen(server).then((port) => ({ port, touched }));
@@ -94,7 +94,7 @@ function assertDesktopOnly(response, repositoryId) {
   assertNoStoreJson(response);
   assert.deepEqual(response.json, {
     version: 1, readiness: "desktop_only", repositoryId,
-    columns: [], features: [], tasks: [], queue: EMPTY_QUEUE,
+    columns: [], features: [], tasks: [], queue: EMPTY_QUEUE, runModels: { codex: [] },
   });
   assertNoTaskContent(response);
 }
@@ -105,11 +105,11 @@ test("an allowed same-computer GET serves the committed board, no-store, through
   const response = await send(port, { path: query() });
   assert.equal(response.status, 200);
   assertNoStoreJson(response);
-  assert.deepEqual(response.json, secretBoard());
+  assert.deepEqual(response.json, { ...secretBoard(), runModels: { codex: [] } });
   assert.deepEqual(Object.keys(response.json).sort(), BOARD_KEYS);
   assert.deepEqual(calls, [["readBoard", REPOSITORY_ID]]);
   assert.deepEqual([...new Set(accessed)], ["readBoard"]);
-  assert.deepEqual(touched, [], "a task GET never reaches the observation runtime or any provider acquisition");
+  assert.deepEqual(touched, ["resolveRunModels"], "a task GET reads only the committed run-model lookup, never provider acquisition");
 });
 
 test("the served body carries only the contract keys even when the store returns extras", async (context) => {
@@ -200,7 +200,7 @@ test("a malformed, missing, duplicated, or extra query is a 400 like repository-
 });
 
 test("a missing store, a throwing read, or a malformed board is unavailable and empty, never a ready board", async (context) => {
-  const unavailable = { version: 1, readiness: "unavailable", repositoryId: REPOSITORY_ID, columns: [], features: [], tasks: [], queue: EMPTY_QUEUE };
+  const unavailable = { version: 1, readiness: "unavailable", repositoryId: REPOSITORY_ID, columns: [], features: [], tasks: [], queue: EMPTY_QUEUE, runModels: { codex: [] } };
   const cases = [
     ["missing store", undefined],
     ["throwing read", recordingStore(() => { throw new Error("C:\\private\\path failed"); }).store],
@@ -225,7 +225,7 @@ test("a store that reports itself unavailable or loading is served as given, wit
     const { port } = await startRoute(context, { taskStore: store });
     const response = await send(port, { path: query() });
     assert.equal(response.status, 200);
-    assert.deepEqual(response.json, { version: 1, readiness, repositoryId: REPOSITORY_ID, columns: [], features: [], tasks: [], queue: EMPTY_QUEUE });
+    assert.deepEqual(response.json, { version: 1, readiness, repositoryId: REPOSITORY_ID, columns: [], features: [], tasks: [], queue: EMPTY_QUEUE, runModels: { codex: [] } });
   }
 });
 
@@ -251,4 +251,33 @@ test("the monitor server composes the injected task store into the same gated ro
 test("the LAN gateway does not forward the task board", async () => {
   const gateway = await readFile(new URL("../../../desktop/runtime/lan-gateway.mjs", import.meta.url), "utf8");
   assert.ok(!gateway.includes("/api/tasks"), "tasks stay off the LAN gateway route list");
+});
+
+test("the board carries runModels.codex from the injected lookup: bounded to 64, invalid ids and labels dropped", async (context) => {
+  const rows = [
+    { id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-6.1-sol", label: "duplicate" }, { id: "gpt-5.2", label: "bad\nlabel" },
+    { id: "C:\\models\\x", label: "path" }, { id: "../x", label: null }, { id: "x".repeat(121), label: null }, { id: "", label: null }, null,
+    ...Array.from({ length: 80 }, (_, index) => ({ id: `model-${index}`, label: index === 0 ? "L".repeat(65) : `Model ${index}` })),
+  ];
+  const { store } = recordingStore();
+  const { port } = await startRoute(context, { taskStore: store, resolveRunModels: () => rows });
+  const response = await send(port, { path: query() });
+  const codex = response.json.runModels.codex;
+  assert.equal(codex.length, 64);
+  assert.deepEqual(codex.slice(0, 3), [{ id: "gpt-6.1-sol", label: "GPT-6.1 Sol" }, { id: "gpt-5.2", label: null }, { id: "model-0", label: null }]);
+  assert.ok(codex.every((row) => Object.keys(row).sort().join() === "id,label"));
+});
+
+test("a throwing or missing run-model lookup serves an empty list, and a denied client never reads it", async (context) => {
+  const { store } = recordingStore();
+  const throwing = await startRoute(context, { taskStore: store, resolveRunModels: () => { throw new Error("boom"); } });
+  assert.deepEqual((await send(throwing.port, { path: query() })).json.runModels, { codex: [] });
+  const missing = await startRoute(context, { taskStore: store });
+  assert.deepEqual((await send(missing.port, { path: query() })).json.runModels, { codex: [] });
+  let reads = 0;
+  const denied = await startRoute(context, { taskStore: store, authorizationToken: TOKEN, resolveRunModels: () => { reads += 1; return [{ id: "gpt-6.1-sol", label: null }]; } });
+  const response = await send(denied.port, { path: query() });
+  assert.equal(response.json.readiness, "desktop_only");
+  assert.deepEqual(response.json.runModels, { codex: [] });
+  assert.equal(reads, 0);
 });

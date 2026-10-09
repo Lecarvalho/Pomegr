@@ -1,3 +1,5 @@
+import { validModelIdentifier, validModelLabel } from "../../shared/model-notification.mjs";
+
 // The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
 // action list is mirrored here; tests/server/tasks/task-actions.test.mjs pins it to `TASK_ACTIONS` in task-record.mjs.
 export const TASK_ACTIONS = Object.freeze([
@@ -9,8 +11,14 @@ export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
 const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
 const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
+// Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
+const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
+const START_STATUS = Object.freeze({
+  invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, unsupported_provider: 422, unavailable: 503,
+});
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
+const RUN_MODEL_LIMIT = 64;
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
 
 function emptyBoard(readiness, repositoryId) {
@@ -18,11 +26,32 @@ function emptyBoard(readiness, repositoryId) {
     version: 1, readiness, repositoryId,
     columns: [], features: [], tasks: [],
     queue: { status: "idle", blockedBy: null, order: [] },
+    runModels: { codex: [] },
   };
 }
 
+/**
+ * The Run on list: the last committed Codex client catalog, at most 64 distinct rows with a validated identifier
+ * and a validated one-line label (or null). A lookup that is missing or throws yields an empty list.
+ * It is a client catalog, never account entitlement.
+ */
+export function projectRunModels(lookup) {
+  const codex = [];
+  try {
+    const rows = typeof lookup === "function" ? lookup() : [];
+    const seen = new Set();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      if (codex.length >= RUN_MODEL_LIMIT) break;
+      if (!row || !validModelIdentifier(row.id) || seen.has(row.id)) continue;
+      seen.add(row.id);
+      codex.push({ id: row.id, label: validModelLabel(row.label) ? row.label : null });
+    }
+  } catch { codex.length = 0; }
+  return { codex };
+}
+
 // The store validated every record; the route only pins the contract's top-level keys and the requested ID.
-function projectBoard(repositoryId, board) {
+function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
     || !board.queue || typeof board.queue !== "object" || !Array.isArray(board.queue.order)) {
@@ -31,15 +60,17 @@ function projectBoard(repositoryId, board) {
   return {
     version: 1, readiness: board.readiness, repositoryId,
     columns: board.columns, features: board.features, tasks: board.tasks, queue: board.queue,
+    runModels: projectRunModels(runModels),
   };
 }
 
 /**
  * Committed-store task board GET. `authorized` is the same-computer decision the request handler
  * shares with `GET /api/provider-folders`; a denied client learns nothing beyond `desktop_only`.
+ * `runModels` reads the last committed Codex client catalog from memory.
  * The route never acquires provider evidence and has no write path.
  */
-export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized }) {
+export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });
@@ -63,7 +94,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     return;
   }
   try {
-    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId));
+    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId), runModels);
     response.writeHead(200, JSON_HEADERS);
     response.end(JSON.stringify(board));
   } catch {
@@ -111,15 +142,40 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+// `start-plan` answers `{ ok: true, plan }` and `start-abort` `{ ok: true }`; a refusal is a fixed code only.
+// `resolveStart(repositoryId)` supplies committed facts `{ root, pluginReady }` and is never called for a refusal
+// that precedes it. Neither answer ever carries the stored digest or an echo of task content.
+function serveStartAction({ response, taskStore, resolveStart, action, repositoryId, payload }) {
+  try {
+    const planning = action === "start-plan";
+    const call = planning ? taskStore?.planStart : taskStore?.abortStart;
+    if (typeof call !== "function") {
+      writeActionResult(response, 503, rejected("unavailable"));
+      return;
+    }
+    const result = planning
+      ? call(repositoryId, payload, () => (typeof resolveStart === "function" ? resolveStart(repositoryId) : null))
+      : call(repositoryId, payload);
+    if (result?.ok === true) {
+      writeActionResult(response, 200, planning ? { ok: true, plan: result.plan } : { ok: true });
+      return;
+    }
+    const error = Object.hasOwn(START_STATUS, result?.error) ? result.error : "unavailable";
+    writeActionResult(response, START_STATUS[error], rejected(error));
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
 /**
  * `POST /internal/tasks/<action>`. The request handler has already applied the private-action gate
  * (desktop token, loopback host, no Origin, POST), so a refused request never reaches this function
  * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
  * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
  */
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action)) {
+  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -158,6 +214,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
   }
   if (Buffer.byteLength(JSON.stringify(body.payload), "utf8") > TASK_PAYLOAD_LIMIT_BYTES) {
     writeActionResult(response, 413, rejected("invalid"));
+    return;
+  }
+  if (START_ACTIONS.includes(action)) {
+    serveStartAction({ response, taskStore, resolveStart, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
   try {

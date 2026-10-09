@@ -57,6 +57,7 @@ import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-act
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import { installTaskActionIpc } from "./task-action.mjs";
+import { installTaskStartIpc } from "./task-dispatch.mjs";
 import {
   clampWindowState,
   applyDesktopNativeTheme,
@@ -110,6 +111,7 @@ let removeClaudeUsageIpc;
 let removeRepositoryInventoryIpc;
 let removeRepositoryPluginActionIpc;
 let removeTaskActionIpc;
+let removeTaskStartIpc;
 let repositoryPluginCli;
 let privateMonitorOrigin;
 let phoneAccess;
@@ -439,6 +441,8 @@ async function stopRuntime() {
     removeRepositoryPluginActionIpc = undefined;
     removeTaskActionIpc?.();
     removeTaskActionIpc = undefined;
+    removeTaskStartIpc?.();
+    removeTaskStartIpc = undefined;
     repositoryPluginCli?.dispose();
     repositoryPluginCli = undefined;
     claudeUsageIntegration?.dispose();
@@ -703,6 +707,27 @@ async function startDesktop() {
           isTrustedEvent: trustedDesktopEvent,
           monitorOrigin: privateMonitorOrigin,
           authorizationToken,
+        });
+        removeTaskStartIpc = installTaskStartIpc({
+          ipcMain,
+          isTrustedEvent: trustedDesktopEvent,
+          monitorOrigin: privateMonitorOrigin,
+          authorizationToken,
+          environment: providerEnvironment,
+          confirm: async ({ taskId }) => {
+            if (!mainWindow || mainWindow.isDestroyed()) return false;
+            const answer = await dialog.showMessageBox(mainWindow, {
+              type: "question",
+              title: "Start a Claude Code session",
+              message: `Start task ${taskId}?`,
+              detail: "A Claude Code session will open in a new terminal window in this repository.",
+              buttons: ["Start session", "Cancel"],
+              defaultId: 1,
+              cancelId: 1,
+              noLink: true,
+            });
+            return answer.response === 0;
+          },
         });
         void behaviorController.initializeLogin().catch(() => {});
         removeWindowLifecycle = installDesktopWindowLifecycle(mainWindow, {

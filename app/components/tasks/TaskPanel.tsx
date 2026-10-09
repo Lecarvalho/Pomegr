@@ -17,6 +17,7 @@ import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./t
 import { useEscapeToClose, useTaskModelOptions } from "./task-panel-hooks";
 import { taskCardTitle, taskChip } from "./task-presentation";
 import { useFeatureCreation } from "./use-feature-creation";
+import { useTaskStart } from "./use-task-start";
 
 // Task side panel (design contract D239-D294, D295, D298, D299), opened from a card. It reuses the New task
 // panel's drawer chrome. A select, segment or checkbox saves when it changes; the Task textarea, the
@@ -46,7 +47,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   repositoryId: string;
   task: Task;
   /** The committed board: its features and their tasks fill the Feature fields and the folded list. */
-  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
+  board: Pick<TaskBoard, "columns" | "features" | "tasks"> & { runModels?: NonNullable<TaskBoard["runModels"]>; queue?: Pick<TaskBoard["queue"], "order"> };
   refresh(): Promise<void>;
   /** Opens a sibling's own panel from the folded list. */
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
@@ -57,7 +58,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const titleId = useId();
   const fieldId = useId();
   const errorId = useId();
-  const models = useTaskModelOptions();
+  const models = useTaskModelOptions(board.runModels);
   const [text, setText] = useState(task.text);
   const [run, setRun] = useState<TaskRun>(task.run);
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(() => doneWhenFromTask(task.doneWhen));
@@ -93,6 +94,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
 
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
+  const start = useTaskStart(repositoryId, task, text.trim() !== task.text, refresh);
   const sessionTitle = task.session?.title ?? null;
 
   const save = async (patch: Patch) => {
@@ -226,6 +228,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
         onCommitName={() => void commitName()} onCancelName={cancelName} onOpenTask={onOpenTask} />
     </div>
     <footer className="newTaskPanelFooter taskPanelFooter">
+      {start.available && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
       <span className="newTaskPanelSpacer" aria-hidden="true" />
       {confirming
         ? <div className="taskPanelConfirm" role="group" aria-label="Confirm delete">
@@ -234,6 +237,9 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
           <button ref={cancel} type="button" className="commandQuietAction" disabled={deleting} onClick={() => setConfirming(false)}>Keep task</button>
         </div>
         : <>
+          {start.available && <button type="button" className="commandPrimaryAction" disabled={start.disabled} onClick={() => void start.run()}>
+            {start.pending ? "Starting…" : "Start session"}
+          </button>}
           {(task.state === "not_queued" || task.state === "queued") && <button type="button" className="commandSecondaryAction" disabled={queueing} onClick={() => void changeQueue(task.state === "not_queued")}>
             {task.state === "not_queued" ? "Add to queue" : "Remove from queue"}
           </button>}

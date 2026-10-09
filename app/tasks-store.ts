@@ -11,7 +11,9 @@ const RETRY_DELAY_MS = 5_000;
 const READY_DELAY_MS = 10_000;
 
 // Documented per-repository bounds (AGENTS.md "Task board and dispatch"). A body past them is malformed.
-const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200 };
+const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64 };
+const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
 
 const READINESS = new Set<TaskBoard["readiness"]>(["ready", "loading", "unavailable", "desktop_only"]);
 const CHECKS = new Set<TaskCheck>(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"]);
@@ -97,7 +99,22 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   // The start order is IDs only: at most one entry per task, each a task ID.
   const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));
   if (!order) return null;
-  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, order } };
+  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, order }, runModels: parseRunModels(body.runModels) };
+}
+
+/** The Codex client catalog; an older monitor omits it, and an invalid row is dropped rather than offered. */
+function parseRunModels(value: unknown): NonNullable<TaskBoard["runModels"]> {
+  const rows = record(value)?.codex;
+  const codex: NonNullable<TaskBoard["runModels"]>["codex"] = [];
+  if (Array.isArray(rows)) {
+    for (const entry of rows) {
+      const row = record(entry);
+      if (codex.length >= LIMITS.runModels) break;
+      if (!row || typeof row.id !== "string" || !MODEL_IDENTIFIER.test(row.id) || row.id.length > LIMITS.model || codex.some((known) => known.id === row.id)) continue;
+      codex.push({ id: row.id, label: text(row.label, LIMITS.runModelLabel) && SINGLE_LINE.test(row.label) ? row.label : null });
+    }
+  }
+  return { codex };
 }
 
 function isVisible() {
