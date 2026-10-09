@@ -504,8 +504,7 @@ async function startDesktop() {
     if (value) launchEnvironment[key] = value;
   }
   const providerEnvironment = providerSettingsEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
-  // Taken now, before the web runtime strips process.env: a started task session runs in the user's own environment.
-  const taskSessionEnvironment = providerSessionEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot });
+  const taskSessionEnvironment = providerSessionEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot }); // before process.env is stripped
   async function restartApp() {
     persistCurrentWindowState();
     try {
