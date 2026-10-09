@@ -1,6 +1,6 @@
 // The private task store: one monitor-owned SQLite file, separate from the observation
 // cache (monitor.sqlite) and from its retention and prune cycle, so pruning session history
-// never deletes a task. Task text, the own condition, and column and feature names are
+// never deletes a task. Task text, the own condition, and feature names are
 // user-authored content held only here; this module never logs them or throws them.
 //
 // Unlike monitor.sqlite this store is not a rebuildable index: a file that is malformed, or
@@ -19,15 +19,14 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
-import { clearColumnRoles, readColumnRoles, seedColumnRoles, setColumnRole, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
+import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
-  normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeCreatePayload, normalizeDeletePayload,
   normalizeFeatureCreatePayload, normalizeMovePayload, normalizeQueueAddPayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
@@ -293,17 +292,9 @@ function deleteTask({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-// Positions stay dense (0..n-1) in every column (task-columns.mjs) and among the columns. Each write below reads the
-// affected order, changes it as a list, and writes the whole list back, so a gap or a tie left by an
-// earlier write is closed by the next action that touches the same list.
-const columnIdsInOrder = (database, repositoryId) =>
-  preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId).map((row) => row.id);
-
-function writeColumnOrder(database, repositoryId, ids) {
-  const update = preparedStatement(database, "UPDATE columns SET position = ? WHERE repository_id = ? AND id = ? AND position <> ?");
-  ids.forEach((id, index) => update.run(index, repositoryId, id, index));
-}
-
+// Positions stay dense (0..n-1) in every column (task-columns.mjs). Each write below reads the affected order, changes it
+// as a list, and writes the whole list back, so a gap or a tie left by an earlier write is closed by the next action
+// that touches the same list.
 const columnExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
@@ -325,51 +316,6 @@ function moveTask({ database, repositoryId }, payload) {
   }
   writeTaskOrder(database, repositoryId, order);
   if (sourceColumnId !== input.columnId) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, sourceColumnId));
-  return { ok: true };
-}
-
-function createColumn({ database, repositoryId }, payload) {
-  const input = normalizeColumnCreatePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  ensureRepository(database, repositoryId);
-  const ids = columnIdsInOrder(database, repositoryId);
-  if (ids.length >= TASK_BOUNDS.columnsPerRepository) return { ok: false, error: "limit" };
-  // Names may repeat: the opaque ID is the identity. A new column is always the last one.
-  const id = newOpaqueId("col");
-  preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)").run(id, repositoryId, input.name, ids.length);
-  writeColumnOrder(database, repositoryId, [...ids, id]);
-  return { ok: true };
-}
-
-function renameColumn({ database, repositoryId }, payload) {
-  const input = normalizeColumnRenamePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
-  preparedStatement(database, "UPDATE columns SET name = ? WHERE repository_id = ? AND id = ?").run(input.name, repositoryId, input.id);
-  return { ok: true };
-}
-
-function reorderColumn({ database, repositoryId }, payload) {
-  const input = normalizeColumnReorderPayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
-  const order = columnIdsInOrder(database, repositoryId).filter((id) => id !== input.id);
-  order.splice(Math.min(input.position, order.length), 0, input.id);
-  writeColumnOrder(database, repositoryId, order);
-  return { ok: true };
-}
-
-// A column that still holds tasks, and the last column, cannot go: the board must always have a
-// first column for a new task to land in, and no task is ever moved or removed on its owner's behalf.
-function deleteColumn({ database, repositoryId }, payload) {
-  const input = normalizeColumnDeletePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  if (!columnExists(database, repositoryId, input.id)) return { ok: false, error: "not_found" };
-  const ids = columnIdsInOrder(database, repositoryId);
-  if (ids.length <= 1 || taskNumbersInOrder(database, repositoryId, input.id).length > 0) return { ok: false, error: "conflict" };
-  preparedStatement(database, "DELETE FROM columns WHERE repository_id = ? AND id = ?").run(repositoryId, input.id);
-  clearColumnRoles(database, repositoryId, input.id);
-  writeColumnOrder(database, repositoryId, ids.filter((id) => id !== input.id));
   return { ok: true };
 }
 
@@ -463,7 +409,6 @@ function reorderQueuedTask({ database, repositoryId }, payload) {
 // its first write. A listed action absent from this table answers `unsupported` until its part lands.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
-  column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn, column_role: setColumnRole,
   feature_create: createFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
@@ -484,9 +429,22 @@ class ActionRejected extends Error {
 export function openTaskStore({ directory, now = Date.now } = {}) {
   let database = openDatabase(directory);
 
+  const repositoryExists = (repositoryId) => preparedStatement(database, "SELECT 1 FROM repositories WHERE repository_id = ?").get(repositoryId) !== undefined;
+
+  // A board written before the columns were fixed is brought to the five (task-columns.mjs) in one transaction, and the
+  // write stands only if the whole board then projects. A board that already matches is not written.
+  const reconcileColumns = (repositoryId) => reconcileFixedColumns(database, repositoryId, () => newOpaqueId("col"));
+
   function seedColumns(repositoryId) {
-    if (preparedStatement(database, "SELECT 1 FROM repositories WHERE repository_id = ?").get(repositoryId)) return;
-    runTransaction(database, () => ensureRepository(database, repositoryId));
+    if (!repositoryExists(repositoryId)) {
+      runTransaction(database, () => ensureRepository(database, repositoryId));
+      return;
+    }
+    if (hasFixedColumns(database, repositoryId)) return;
+    runTransaction(database, () => {
+      reconcileColumns(repositoryId);
+      if (!projectBoard(repositoryId, loadRows(repositoryId), { at: now() })) throw new ActionRejected("conflict");
+    });
   }
 
   function storedSchedule(repositoryId) {
@@ -512,6 +470,16 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
   // committed start-gate facts the same way; without it every gate reads unknown. `resolveCheckFacts(sessionId)`
   // supplies the facts the done-when checks judge; without it a waiting task carries no reading of its checks.
+  // Every stored board is brought to the five when the store opens, so a write that never reads the board (a session
+  // link, a report) already finds the role columns. A board that cannot be brought there is left as it is.
+  if (database) {
+    try {
+      for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM repositories").all()) {
+        try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
+      }
+    } catch { /* the store is read again on the first board read */ }
+  }
+
   const served = (board, { resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) =>
     fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), resolveGateFacts, at: now() });
 
@@ -536,6 +504,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     if (!database) return { ok: false, error: "conflict" };
     try {
       const board = runTransaction(database, () => {
+        if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
         const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
         // The write stands only if the whole board, the new row included, still projects.

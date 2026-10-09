@@ -10,7 +10,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const IMPLEMENTED = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-actions-"));
@@ -62,7 +62,7 @@ const taskCount = (databasePath) => withRawDatabase(databasePath, (database) => 
 
 test("the route's mirrored action list equals the record module's fixed list", () => {
   assert.deepEqual([...ROUTE_ACTIONS], [...TASK_ACTIONS]);
-  assert.equal(TASK_ACTIONS.length, 16);
+  assert.equal(TASK_ACTIONS.length, 11);
 });
 
 test("create lands as the last card of the first column with the next ID and every other field at its default", async (t) => {
@@ -99,7 +99,7 @@ test("create seeds a repository that was never read and lands in its first colum
   assert.equal(result.board.tasks[0].columnId, result.board.columns[0].id);
 });
 
-test("the first column is the one at the lowest position, wherever the columns were reordered", async (t) => {
+test("a board whose columns were reordered is restored by the first write, and create lands in Backlog", async (t) => {
   const temp = await temporaryDirectory(t);
   const first = openTaskStore({ directory: temp.directory });
   const columns = first.readBoard(REPOSITORY).columns;
@@ -109,19 +109,23 @@ test("the first column is the one at the lowest position, wherever the columns w
     database.prepare("UPDATE columns SET position = 0 WHERE id = ?").run(columns[3].id);
   });
   const store = openStore(temp);
-  const result = store.apply(REPOSITORY, "create", { text: "Into the new first column" });
-  assert.equal(result.board.tasks[0].columnId, columns[3].id);
+  const result = store.apply(REPOSITORY, "create", { text: "Into Backlog" });
+  assert.equal(result.board.tasks[0].columnId, columns[0].id);
+  assert.deepEqual(result.board.columns.map((column) => column.id), columns.map((column) => column.id));
 });
 
-test("create with no column to land in is a conflict and writes nothing", async (t) => {
+test("create on a repository whose columns were all removed brings back the five and lands in Backlog", async (t) => {
   const temp = await temporaryDirectory(t);
   const first = openTaskStore({ directory: temp.directory });
   first.readBoard(REPOSITORY);
   first.close();
   withRawDatabase(temp.databasePath, (database) => database.exec("DELETE FROM columns"));
   const store = openStore(temp);
-  assert.deepEqual(store.apply(REPOSITORY, "create", { text: "Nowhere to go" }), { ok: false, error: "conflict" });
-  assert.equal(taskCount(temp.databasePath), 0);
+  const result = store.apply(REPOSITORY, "create", { text: "Back on the board" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.board.columns.map((column) => column.name), ["Backlog", "Ready", "In progress", "Review", "Done"]);
+  assert.equal(result.board.tasks[0].columnId, result.board.columns[0].id);
+  assert.equal(taskCount(temp.databasePath), 1);
 });
 
 test("create rejects invalid text and payload shapes, and a rejection writes nothing", async (t) => {
@@ -337,7 +341,7 @@ test("every listed action has a handler and a name outside the list answers unsu
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
   assert.deepEqual(TASK_ACTIONS.filter((name) => !IMPLEMENTED.includes(name)), []);
-  for (const action of ["unknown_action", "start-plan", "queue-next", "queue-pause", "__proto__"]) {
+  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "start-plan", "queue-next", "queue-pause", "__proto__"]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { id: "T-1", text: "x" }), { ok: false, error: "unsupported" }, action);
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);

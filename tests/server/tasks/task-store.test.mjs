@@ -72,7 +72,7 @@ function keysOf(value) {
   return Object.keys(value).toSorted();
 }
 
-const ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create",
+const ACTIONS = ["create", "update", "delete", "move", "feature_create",
   "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 test("the first read seeds the five default columns in order and a ready, idle board", async (t) => {
@@ -111,7 +111,7 @@ test("columns are seeded once per repository and keep their IDs across reads and
   assert.deepEqual(counts, { repositories: 2, columns: 10 });
 });
 
-test("a repository whose columns were all removed is not seeded again", async (t) => {
+test("a repository whose columns were all removed gets the five again, with new IDs", async (t) => {
   const temp = await temporaryDirectory(t);
   const { directory, databasePath } = temp;
   const first = openTaskStore({ directory });
@@ -119,7 +119,9 @@ test("a repository whose columns were all removed is not seeded again", async (t
   first.close();
   withRawDatabase(databasePath, (database) => database.exec("DELETE FROM columns"));
   const second = openStore(temp);
-  assert.deepEqual(second.readBoard(REPOSITORY).columns, []);
+  const columns = second.readBoard(REPOSITORY).columns;
+  assert.deepEqual(columns.map((column) => [column.name, column.position, column.role]),
+    [["Backlog", 0, null], ["Ready", 1, null], ["In progress", 2, "in_progress"], ["Review", 3, "review"], ["Done", 4, "done"]]);
 });
 
 test("stored tasks, features, and queue state survive close and reopen", async (t) => {
@@ -263,9 +265,9 @@ test("unknown action names answer unsupported and change nothing", async (t) => 
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  const implemented = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+  const implemented = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
   assert.deepEqual(ACTIONS.filter((name) => !implemented.includes(name)), [], "every listed action has a handler");
-  for (const action of ["unknown_action", "__proto__", "constructor", "", null, 7]) {
+  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "__proto__", "constructor", "", null, 7]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { text: "Ship it" }), { ok: false, error: "unsupported" }, String(action));
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);

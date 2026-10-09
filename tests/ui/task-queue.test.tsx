@@ -131,13 +131,11 @@ describe("the Board | Queue switch", () => {
     expect(within(group).getByRole("button", { name: "Board" })).toHaveAttribute("aria-pressed", "true");
     expect(within(group).getByRole("button", { name: "Queue" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add column" })).toBeInTheDocument();
 
     await userEvent.click(within(group).getByRole("button", { name: "Queue" }));
     expect(within(group).getByRole("button", { name: "Queue" })).toHaveAttribute("aria-pressed", "true");
     expect(within(group).getByRole("button", { name: "Board" })).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add column" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
 
     await userEvent.click(within(group).getByRole("button", { name: "Board" }));

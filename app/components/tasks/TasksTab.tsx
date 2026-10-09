@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRepositoryInventory } from "../../repository-inventory-client";
 import { useTasks } from "../../tasks-store";
 import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
-import { AddColumnAction } from "./AddColumnAction";
 import { AddFeatureAction } from "./AddFeatureAction";
 import { NewTaskPanel } from "./NewTaskPanel";
 import { QueueControl } from "./QueueControl";
@@ -18,17 +17,16 @@ import { useTaskBoardEdits } from "./use-task-board-edits";
 type OpenPanel = { kind: "new" } | { kind: "task"; id: string } | null;
 
 /**
- * Repository page Tasks tab: the stored board for this repository. Tasks are created, edited and moved, and columns
- * managed, in the desktop app only; any other client reads the board.
+ * Repository page Tasks tab: the stored board for this repository. Tasks are created, edited and moved
+ * in the desktop app only; any other client reads the board.
  */
 export function TasksTab({ repositoryId }: { repositoryId: string }) {
   const { board: committed, refresh } = useTasks(repositoryId);
   // The board drawn is the committed one with the moves the monitor has not shown yet applied.
   const edits = useTaskBoardEdits(repositoryId, committed, refresh);
   const board = edits.board;
-  const fullNoteId = useId();
   const { snapshot } = useRepositoryInventory();
-  // Decided on the first client render: `pending` is only the server pass, and draws neither the action nor the note.
+  // Decided on the first client render: `pending` is only the server pass, and draws no action.
   const desktop = useTaskDesktopAvailability();
   const [panel, setPanel] = useState<OpenPanel>(null);
   const [view, setView] = useState<TaskView>("board");
@@ -51,7 +49,6 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
   const deleted = useCallback(() => { opener.current = trigger.current; setPanel(null); }, []);
   const ready = board.readiness === "ready";
   const queueLine = queueStatusLine(board.queue.status);
-  const columnsFull = board.columns.length >= TASK_BOUNDS.columnsPerRepository;
   const openNew = () => { opener.current = trigger.current; setPanel({ kind: "new" }); };
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setPanel({ kind: "task", id: task.id }); }, []);
   return <div className="repositoryTasksTab" aria-busy={board.readiness === "loading"}>
@@ -60,7 +57,6 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
         <h2>Tasks</h2>
         <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
         {desktop === "absent" && <p className="taskBoardNote">Tasks are created and edited in the Pomegr desktop app.</p>}
-        {desktop === "available" && columnsFull && <p id={fullNoteId} className="taskBoardNote">The board holds {TASK_BOUNDS.columnsPerRepository} columns, the most it allows.</p>}
         {/* A blocked or paused queue is worded by its banner instead. */}
         {ready && queueLine && <p className="taskBoardNote">{queueLine}</p>}
       </div>
@@ -70,7 +66,6 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
           <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Queue</button>
         </div>}
         {desktop === "available" && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
-        {desktop === "available" && ready && view === "board" && <AddColumnAction edits={edits} full={columnsFull} describedBy={fullNoteId} />}
         {/* The Board's filter row carries this action once a feature exists; without one the row is not drawn. */}
         {desktop === "available" && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
         {desktop === "available" && <button ref={trigger} type="button" className="commandPrimaryAction taskNewAction" aria-haspopup="dialog" onClick={openNew}>New task</button>}

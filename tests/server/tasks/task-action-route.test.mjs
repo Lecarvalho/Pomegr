@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -130,7 +130,7 @@ test("update, delete, and not_found travel through the route with fixed statuses
   assert.deepEqual(other.json.board.tasks.map((task) => task.id), ["T-1"]);
 });
 
-test("move and the column actions travel through the route with the store's fixed statuses", async (context) => {
+test("move travels through the route with the store's fixed statuses", async (context) => {
   const store = await realStore(context);
   const { port, touched } = await startRoute(context, { taskStore: store });
   await action("create", REPOSITORY_ID, { text: "first" }, { port });
@@ -141,27 +141,15 @@ test("move and the column actions travel through the route with the store's fixe
   assert.equal(moved.status, 200);
   assert.deepEqual(moved.json.board.tasks.map((task) => [task.id, task.columnId, task.position]), [["T-1", backlog.id, 0], ["T-2", ready.id, 0]]);
   assert.deepEqual({ ...store.readBoard(REPOSITORY_ID), runModels: { codex: [] } }, moved.json.board);
-
-  const created = await action("column_create", REPOSITORY_ID, { name: "Blocked" }, { port });
-  assert.equal(created.status, 200);
-  const blocked = created.json.board.columns.at(-1);
-  assert.deepEqual([blocked.name, blocked.position], ["Blocked", 5]);
-  const renamed = await action("column_rename", REPOSITORY_ID, { id: blocked.id, name: "Parked" }, { port });
-  assert.equal(renamed.json.board.columns.at(-1).name, "Parked");
-  const reordered = await action("column_reorder", REPOSITORY_ID, { id: blocked.id, position: 0 }, { port });
-  assert.deepEqual(reordered.json.board.columns.map((column) => column.name), ["Parked", "Backlog", "Ready", "In progress", "Review", "Done"]);
-  const deleted = await action("column_delete", REPOSITORY_ID, { id: blocked.id }, { port });
-  assert.equal(deleted.status, 200);
-  assert.equal(deleted.json.board.columns.length, 5);
   assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 
-  assertFixedError(await action("column_delete", REPOSITORY_ID, { id: backlog.id }, { port }), 409, "conflict");
   assertFixedError(await action("move", REPOSITORY_ID, { id: "T-9", columnId: ready.id, position: 0 }, { port }), 404, "not_found");
-  assertFixedError(await action("column_rename", REPOSITORY_ID, { id: `col-${"0".repeat(12)}`, name: SECRET_TEXT }, { port }), 404, "not_found");
   assertFixedError(await action("move", REPOSITORY_ID, { id: "T-1", columnId: ready.id, position: -1 }, { port }), 400, "invalid");
-  assertFixedError(await action("column_create", REPOSITORY_ID, { name: SECRET_TEXT.repeat(4), extra: 1 }, { port }), 400, "invalid");
-  for (let count = 5; count < 12; count += 1) assert.equal((await action("column_create", REPOSITORY_ID, { name: `Extra ${count}` }, { port })).status, 200);
-  assertFixedError(await action("column_create", REPOSITORY_ID, { name: "Too many" }, { port }), 409, "limit");
+  // The column actions are gone: the route refuses their names like any unknown action.
+  for (const name of ["column_create", "column_rename", "column_reorder", "column_delete", "column_role"]) {
+    assertFixedError(await action(name, REPOSITORY_ID, { id: backlog.id, name: SECRET_TEXT }, { port }), 404, "invalid");
+  }
+  assert.equal(store.readBoard(REPOSITORY_ID).columns.length, 5);
 });
 
 test("feature_create and feature placement travel through the route with the fixed statuses", async (context) => {

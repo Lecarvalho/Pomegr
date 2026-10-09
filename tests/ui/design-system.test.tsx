@@ -302,13 +302,6 @@ describe("Design-system reference page", () => {
     const readOnlyHeader = sample(board, "Column header");
     expect(within(readOnlyHeader).getByRole("heading", { level: 3, name: "In progress" })).toBeInTheDocument();
     expect(within(readOnlyHeader).queryByRole("button")).toBeNull();
-    const desktopHeader = sample(board, "Column header, desktop app");
-    await user.click(within(desktopHeader).getByRole("button", { name: "Edit column In progress" }));
-    expect(within(desktopHeader).getByRole("textbox", { name: "Column name" })).toHaveValue("In progress");
-    expect(within(desktopHeader).getByRole("button", { name: "Delete column In progress" })).toBeDisabled();
-    expect(within(desktopHeader).getByText("A column must be empty to be deleted.")).toBeInTheDocument();
-    await user.click(within(sample(board, "Add column")).getByRole("button", { name: /Add column/ }));
-    expect(within(sample(board, "Add column")).getByRole("textbox")).toBeInTheDocument();
 
     const filter = sample(board, "Feature filter");
     expect(within(filter).getByRole("button", { name: /^All/, pressed: true })).toHaveClass("commandSecondaryAction");
@@ -339,7 +332,7 @@ describe("Design-system reference page", () => {
 
     const desktop = sample(board, "Board, desktop app (queue on)");
     expect(desktop.querySelectorAll(".taskCard[draggable='true']")).toHaveLength(8);
-    expect(desktop.querySelectorAll(".taskColumnEdit")).toHaveLength(5);
+    expect(desktop.querySelectorAll(".taskColumnHeader button")).toHaveLength(0);
     expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to another column/);
     expect(within(desktop).queryByRole("region", { name: "Queue status" })).toBeNull();
     expect(within(desktop).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();

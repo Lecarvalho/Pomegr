@@ -1,10 +1,13 @@
-// Column roles and the card move that follows a task's state.
+// The fixed five columns, their roles, and the card move that follows a task's state.
 //
-// Columns are the user's: up to twelve, renamed, reordered, and deleted at will, so a column is never recognized by
-// its name or its place. A column may instead hold one fixed role (`in_progress`, `review`, `done`), and at most one
-// column of a repository holds each role. The roles are kept in the existing `meta` table under
-// `column_role:<repositoryId>:<role>` with the column ID as the value, so the schema version does not change and an
-// older build still opens the store. A row that names a column the repository no longer has is no role.
+// Every board has exactly five columns in this order: Backlog, Ready, In progress, Review, Done. None is added,
+// renamed, reordered, or removed. The last three carry the roles `in_progress`, `review`, and `done`; Backlog and Ready
+// carry none. The roles are kept in the existing `meta` table under `column_role:<repositoryId>:<role>` with the
+// column ID as the value, so the schema version does not change and an older build still opens the store. A row that
+// names a column the repository no longer has is no role.
+//
+// A store written before the columns were fixed may hold other columns. `reconcileFixedColumns` brings such a board
+// to the five in one transaction, moving tasks and never deleting one.
 //
 // A card moves only inside the write that persists the state it follows: the session link (`in_progress`), a
 // report verified as Needs review (`review`) or Done (`done`), and the user's Mark done (`done`). Blocked, Stalled, and
@@ -13,7 +16,7 @@
 // ever taken back.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { COLUMN_ID, DEFAULT_TASK_COLUMN_ROLES, TASK_COLUMN_ROLES, normalizeColumnRolePayload } from "./task-record.mjs";
+import { COLUMN_ID, DEFAULT_TASK_COLUMNS, DEFAULT_TASK_COLUMN_ROLES, STORED_COLUMN_READ_BOUNDS, TASK_COLUMN_ROLES, normalizeStoredColumn } from "./task-record.mjs";
 
 const roleKey = (repositoryId, role) => `column_role:${repositoryId}:${role}`;
 
@@ -38,26 +41,6 @@ const writeRole = (database, repositoryId, role, columnId) =>
 /** Gives the freshly seeded default columns their roles. `columnIds` are in the order of `DEFAULT_TASK_COLUMNS`. */
 export function seedColumnRoles(database, repositoryId, columnIds) {
   DEFAULT_TASK_COLUMN_ROLES.forEach((role, index) => { if (role !== null && columnIds[index]) writeRole(database, repositoryId, role, columnIds[index]); });
-}
-
-/** Takes every role off one column, for a column that is deleted or set to no role. */
-export function clearColumnRoles(database, repositoryId, columnId) {
-  for (const role of TASK_COLUMN_ROLES) {
-    if (storedRoleColumn(database, repositoryId, role) === columnId) preparedStatement(database, "DELETE FROM meta WHERE key = ?").run(roleKey(repositoryId, role));
-  }
-}
-
-/**
- * `column_role`: `{ id, role }` gives one column a role, or none with `role: null`. A column holds one role, and a role
- * one column: the column's earlier role goes, and the column that held the role before loses it. No card moves.
- */
-export function setColumnRole({ database, repositoryId }, payload) {
-  const input = normalizeColumnRolePayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  if (preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, input.id) === undefined) return { ok: false, error: "not_found" };
-  clearColumnRoles(database, repositoryId, input.id);
-  if (input.role !== null) writeRole(database, repositoryId, input.role, input.id);
-  return { ok: true };
 }
 
 // Positions stay dense (0..n-1) in every column. Each write reads the affected order, changes it as a list, and
@@ -85,4 +68,64 @@ export function moveTaskToRole(database, repositoryId, number, role) {
   preparedStatement(database, "UPDATE tasks SET column_id = ?, position = ? WHERE repository_id = ? AND number = ?").run(columnId, order.length, repositoryId, number);
   writeTaskOrder(database, repositoryId, [...order, number]);
   writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, task.column_id));
+}
+
+const storedColumns = (database, repositoryId) =>
+  preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId);
+
+/** True when the repository's columns are already exactly the five, in place, with their roles. Issues no write. */
+export function hasFixedColumns(database, repositoryId) {
+  const columns = storedColumns(database, repositoryId);
+  if (columns.length !== DEFAULT_TASK_COLUMNS.length) return false;
+  if (!columns.every((column, index) => column.position === index && column.name === DEFAULT_TASK_COLUMNS[index])) return false;
+  return DEFAULT_TASK_COLUMN_ROLES.every((role, index) => role === null || storedRoleColumn(database, repositoryId, role) === columns[index].id);
+}
+
+/**
+ * Brings the repository's board to the fixed five columns. The caller owns the transaction and passes `newColumnId()`,
+ * which makes a fresh opaque column ID. A board that already matches is not written; so is a board over the read bounds of
+ * an older store or with a column row outside the stored contract, which stays unavailable. Each stored column goes to the slot of its role, else of its name (trimmed,
+ * case-insensitive), else Backlog. The first column that matches a slot by role or name stays that slot's row, so its tasks
+ * keep their column; a slot with none gets a new row. Every other column is merged into its slot: its tasks follow the
+ * tasks already there, in stored column order and then their own order, and its row is deleted. No task is changed beyond
+ * its column and position, and none is deleted.
+ */
+export function reconcileFixedColumns(database, repositoryId, newColumnId) {
+  if (hasFixedColumns(database, repositoryId)) return;
+  const columns = storedColumns(database, repositoryId);
+  const roles = readColumnRoles(database, repositoryId);
+  // A column row outside the stored contract is never repaired: the board stays unavailable and unwritten.
+  if (columns.length > STORED_COLUMN_READ_BOUNDS.columns || columns.some((column) => normalizeStoredColumn({ ...column, role: roles.get(column.id) ?? null }) === undefined)) return;
+
+  const slotByName = new Map(DEFAULT_TASK_COLUMNS.map((name, slot) => [name.toLowerCase(), slot]));
+  const resolved = columns.map((column) => {
+    const role = roles.get(column.id);
+    if (role !== undefined) return { column, slot: DEFAULT_TASK_COLUMN_ROLES.indexOf(role), direct: true };
+    const slot = slotByName.get(String(column.name).trim().toLowerCase());
+    return slot === undefined ? { column, slot: 0, direct: false } : { column, slot, direct: true };
+  });
+
+  const slotIds = DEFAULT_TASK_COLUMNS.map((_, slot) => resolved.find((entry) => entry.direct && entry.slot === slot)?.column.id ?? null);
+  const order = DEFAULT_TASK_COLUMNS.map(() => []);
+  // Read every order before any task moves, so the lists below do not depend on the writes in between.
+  slotIds.forEach((id, slot) => { if (id !== null) order[slot].push(...taskNumbersInOrder(database, repositoryId, id)); });
+  for (const { column, slot } of resolved) if (column.id !== slotIds[slot]) order[slot].push(...taskNumbersInOrder(database, repositoryId, column.id));
+  const insert = preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)");
+  slotIds.forEach((id, slot) => {
+    if (id !== null) return;
+    slotIds[slot] = newColumnId();
+    insert.run(slotIds[slot], repositoryId, DEFAULT_TASK_COLUMNS[slot], slot);
+  });
+
+  const moveTasks = preparedStatement(database, "UPDATE tasks SET column_id = ? WHERE repository_id = ? AND column_id = ?");
+  const deleteColumn = preparedStatement(database, "DELETE FROM columns WHERE repository_id = ? AND id = ?");
+  for (const { column, slot } of resolved) {
+    if (column.id === slotIds[slot]) continue;
+    moveTasks.run(slotIds[slot], repositoryId, column.id);
+    deleteColumn.run(repositoryId, column.id);
+  }
+  const update = preparedStatement(database, "UPDATE columns SET name = ?, position = ? WHERE repository_id = ? AND id = ?");
+  slotIds.forEach((id, slot) => update.run(DEFAULT_TASK_COLUMNS[slot], slot, repositoryId, id));
+  order.forEach((numbers) => writeTaskOrder(database, repositoryId, numbers));
+  DEFAULT_TASK_COLUMN_ROLES.forEach((role, slot) => { if (role !== null) writeRole(database, repositoryId, role, slotIds[slot]); });
 }

@@ -4,7 +4,6 @@ import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { TASK_BOUNDS } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
@@ -152,8 +151,10 @@ test("move closes a gap left in a column by earlier writes", async (t) => {
   const moved = store.apply(REPOSITORY, "move", { id: "T-3", columnId: first.id, position: 0 });
   assert.deepEqual(positions(moved.board, first.id), [0, 1, 2]);
   assert.deepEqual(ids(moved.board, first.id), ["T-3", "T-1", "T-2"]);
-  const reordered = store.apply(REPOSITORY, "column_reorder", { id: second.id, position: 0 });
-  assertDense(reordered.board);
+  // The stray column positions were closed by the fixed five (task-columns.mjs); no task left its column.
+  assertDense(moved.board);
+  assert.deepEqual(names(moved.board), ["Backlog", "Ready", "In progress", "Review", "Done"]);
+  assert.equal(second.id, moved.board.columns[1].id);
 });
 
 test("move refuses unknown and foreign tasks and columns with not_found and malformed payloads with invalid, writing nothing", async (t) => {
@@ -184,168 +185,15 @@ test("move refuses unknown and foreign tasks and columns with not_found and malf
   assert.deepEqual(store.readBoard(OTHER_REPOSITORY), foreign);
 });
 
-test("column_create appends a column, allows duplicate names, trims, and stops at the bound with limit", async (t) => {
-  const { store } = await temporaryStore(t);
-  const created = store.apply(REPOSITORY, "column_create", { name: "  Blocked  " });
-  assert.equal(created.ok, true);
-  assert.deepEqual(names(created.board), ["Backlog", "Ready", "In progress", "Review", "Done", "Blocked"]);
-  assertDense(created.board);
-  assert.match(created.board.columns[5].id, /^col-[0-9a-f]{12}$/u);
-
-  const duplicate = store.apply(REPOSITORY, "column_create", { name: "Blocked" });
-  assert.equal(duplicate.ok, true);
-  assert.deepEqual(names(duplicate.board).slice(-2), ["Blocked", "Blocked"]);
-  assert.equal(new Set(duplicate.board.columns.map((column) => column.id)).size, 7);
-
-  let board = duplicate.board;
-  while (board.columns.length < TASK_BOUNDS.columnsPerRepository) {
-    const result = store.apply(REPOSITORY, "column_create", { name: `Extra ${board.columns.length}` });
-    assert.equal(result.ok, true);
-    board = result.board;
-  }
-  assert.equal(board.columns.length, 12);
-  assertDense(board);
-  assert.deepEqual(store.apply(REPOSITORY, "column_create", { name: "One too many" }), { ok: false, error: "limit" });
-  assert.deepEqual(store.readBoard(REPOSITORY), board);
-  // The bound is per repository, and the longest name is valid.
-  const other = store.apply(OTHER_REPOSITORY, "column_create", { name: "n".repeat(TASK_BOUNDS.columnNameLength) });
-  assert.equal(other.ok, true);
-  assert.equal(other.board.columns.length, 6);
-  // Deleting a column makes room again.
-  assert.equal(store.apply(REPOSITORY, "column_delete", { id: board.columns.at(-1).id }).ok, true);
-  assert.equal(store.apply(REPOSITORY, "column_create", { name: "Room again" }).ok, true);
-});
-
-test("column_create seeds a repository that was never read, and rejects malformed names", async (t) => {
-  const { store } = await temporaryStore(t);
-  const invalid = [undefined, null, "Blocked", [], {}, { name: "" }, { name: "   " }, { name: 5 }, { name: null }, { name: ["x"] }, { name: "n".repeat(TASK_BOUNDS.columnNameLength + 1) },
-    { name: "two\nlines" }, { name: "tab\there" }, { name: "bad \ud800 surrogate" }, { name: "Ok", position: 0 }, { name: "Ok", id: `col-${"a".repeat(12)}` }];
-  for (const payload of invalid) assert.deepEqual(store.apply(REPOSITORY, "column_create", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  // The rejections seeded nothing, so the first valid create still builds the default board plus one.
-  const created = store.apply(REPOSITORY, "column_create", { name: "Blocked" });
-  assert.deepEqual(names(created.board), ["Backlog", "Ready", "In progress", "Review", "Done", "Blocked"]);
-});
-
-test("column_rename changes one name and nothing else, and refuses unknown, foreign, and malformed input", async (t) => {
-  const { store } = await temporaryStore(t);
-  const board = seededBoard(store);
-  const [first, second] = board.columns;
-  const renamed = store.apply(REPOSITORY, "column_rename", { id: second.id, name: "  Doing  " });
-  assert.equal(renamed.ok, true);
-  assert.deepEqual(names(renamed.board), ["Backlog", "Doing", "In progress", "Review", "Done"]);
-  assert.deepEqual({ ...renamed.board, columns: board.columns }, board);
-  // A name that another column already has is allowed.
-  assert.equal(store.apply(REPOSITORY, "column_rename", { id: first.id, name: "Doing" }).ok, true);
-
-  assert.deepEqual(store.apply(REPOSITORY, "column_rename", { id: UNKNOWN_COLUMN, name: "x" }), { ok: false, error: "not_found" });
-  assert.deepEqual(store.apply(OTHER_REPOSITORY, "column_rename", { id: second.id, name: "Foreign" }), { ok: false, error: "not_found" });
-  const invalid = [undefined, null, [], {}, { id: second.id }, { name: "x" }, { id: second.id, name: "" }, { id: second.id, name: "n".repeat(TASK_BOUNDS.columnNameLength + 1) },
-    { id: second.id, name: "a\nb" }, { id: second.id, name: 7 }, { id: "col-nope", name: "x" }, { id: 7, name: "x" }, { id: second.id, name: "x", position: 0 }];
-  for (const payload of invalid) assert.deepEqual(store.apply(REPOSITORY, "column_rename", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  assert.deepEqual(names(store.readBoard(REPOSITORY)).slice(0, 2), ["Doing", "Doing"]);
-  assert.equal(store.readBoard(OTHER_REPOSITORY).columns.some((column) => column.name === "Foreign"), false);
-});
-
-test("column_reorder moves one column to a 0-based index, clamps to last, keeps positions dense, and leaves tasks alone", async (t) => {
-  const { store } = await temporaryStore(t);
-  const board = seededBoard(store);
-  const [backlog, ready, progress, review, done] = board.columns;
-  const reorder = (id, position) => {
-    const result = store.apply(REPOSITORY, "column_reorder", { id, position });
-    assert.equal(result.ok, true);
-    assertDense(result.board);
-    // Tasks keep their column and position; the list is ordered by column, so compare by ID.
-    assert.deepEqual(result.board.tasks.toSorted((a, b) => a.id.localeCompare(b.id)), board.tasks.toSorted((a, b) => a.id.localeCompare(b.id)));
-    return names(result.board);
-  };
-  assert.deepEqual(reorder(done.id, 0), ["Done", "Backlog", "Ready", "In progress", "Review"]);
-  assert.deepEqual(reorder(done.id, 4), ["Backlog", "Ready", "In progress", "Review", "Done"]);
-  assert.deepEqual(reorder(backlog.id, 2), ["Ready", "In progress", "Backlog", "Review", "Done"]);
-  assert.deepEqual(reorder(review.id, 1), ["Ready", "Review", "In progress", "Backlog", "Done"]);
-  assert.deepEqual(reorder(ready.id, 99), ["Review", "In progress", "Backlog", "Done", "Ready"]);
-  assert.deepEqual(reorder(progress.id, Number.MAX_SAFE_INTEGER), ["Review", "Backlog", "Done", "Ready", "In progress"]);
-  // Dropping a column where it is changes nothing.
-  assert.deepEqual(reorder(progress.id, 4), ["Review", "Backlog", "Done", "Ready", "In progress"]);
-
-  // The first column is whichever sits at position 0, so new tasks follow a reorder.
-  const created = store.apply(REPOSITORY, "create", { text: "lands in the new first column" });
-  assert.equal(created.board.tasks.find((task) => task.id === "T-5").columnId, review.id);
-  // The order survives a restart.
-  assert.deepEqual(names(store.readBoard(REPOSITORY)), ["Review", "Backlog", "Done", "Ready", "In progress"]);
-});
-
-test("column_reorder refuses unknown, foreign, and malformed input and writes nothing", async (t) => {
-  const { store } = await temporaryStore(t);
-  const board = seededBoard(store);
-  const [first, second] = board.columns;
-  assert.deepEqual(store.apply(REPOSITORY, "column_reorder", { id: UNKNOWN_COLUMN, position: 0 }), { ok: false, error: "not_found" });
-  assert.deepEqual(store.apply(OTHER_REPOSITORY, "column_reorder", { id: first.id, position: 0 }), { ok: false, error: "not_found" });
-  const invalid = [undefined, null, [], {}, { id: first.id }, { position: 0 }, { id: first.id, position: -1 }, { id: first.id, position: 0.5 }, { id: first.id, position: "1" },
-    { id: first.id, position: null }, { id: first.id, position: Number.NaN }, { id: "col-nope", position: 0 }, { id: 4, position: 0 }, { id: second.id, position: 0, name: "x" }];
-  for (const payload of invalid) assert.deepEqual(store.apply(REPOSITORY, "column_reorder", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  assert.deepEqual(store.readBoard(REPOSITORY), board);
-});
-
-test("column_delete removes an empty column, closes the gap, and refuses a column with tasks or the last column", async (t) => {
-  const { store } = await temporaryStore(t);
-  const board = seededBoard(store);
-  const [first, second, third, fourth, fifth] = board.columns;
-  assert.deepEqual([ids(board, first.id).length, ids(board, second.id).length], [3, 1]);
-
-  // Tasks keep a column in place, wherever it sits.
-  assert.deepEqual(store.apply(REPOSITORY, "column_delete", { id: first.id }), { ok: false, error: "conflict" });
-  assert.deepEqual(store.apply(REPOSITORY, "column_delete", { id: second.id }), { ok: false, error: "conflict" });
-  assert.deepEqual(store.readBoard(REPOSITORY), board);
-
-  const removed = store.apply(REPOSITORY, "column_delete", { id: third.id });
-  assert.equal(removed.ok, true);
-  assert.deepEqual(removed.board.columns.map((column) => [column.name, column.position]), [["Backlog", 0], ["Ready", 1], ["Review", 2], ["Done", 3]]);
-  assert.deepEqual(removed.board.tasks, board.tasks);
-  assert.equal(store.apply(REPOSITORY, "column_delete", { id: third.id }).error, "not_found");
-
-  // Emptying a column by moving its cards out lets it go.
-  for (const id of ids(removed.board, first.id)) assert.equal(store.apply(REPOSITORY, "move", { id, columnId: second.id, position: 0 }).ok, true);
-  assert.equal(store.apply(REPOSITORY, "column_delete", { id: first.id }).ok, true);
-  assert.equal(store.apply(REPOSITORY, "column_delete", { id: fourth.id }).ok, true);
-  assert.equal(store.apply(REPOSITORY, "column_delete", { id: fifth.id }).ok, true);
-  const last = store.readBoard(REPOSITORY);
-  assert.deepEqual(names(last), ["Ready"]);
-  assertDense(last);
-
-  // The last column stays, even though it holds tasks and even once it is empty.
-  assert.deepEqual(store.apply(REPOSITORY, "column_delete", { id: second.id }), { ok: false, error: "conflict" });
-  for (const task of last.tasks) store.apply(REPOSITORY, "delete", { id: task.id });
-  assert.deepEqual(store.apply(REPOSITORY, "column_delete", { id: second.id }), { ok: false, error: "conflict" });
-  assert.equal(store.readBoard(REPOSITORY).columns.length, 1);
-  // A new task still lands in it, and a repository with a single column is not seeded again.
-  assert.equal(store.apply(REPOSITORY, "create", { text: "still has a home" }).board.tasks[0].columnId, second.id);
-});
-
-test("column_delete refuses unknown, foreign, and malformed input and writes nothing", async (t) => {
-  const { store } = await temporaryStore(t);
-  const board = seededBoard(store);
-  const [first, , , , fifth] = board.columns;
-  store.apply(OTHER_REPOSITORY, "create", { text: "foreign" });
-  assert.deepEqual(store.apply(REPOSITORY, "column_delete", { id: UNKNOWN_COLUMN }), { ok: false, error: "not_found" });
-  assert.deepEqual(store.apply(OTHER_REPOSITORY, "column_delete", { id: fifth.id }), { ok: false, error: "not_found" });
-  const invalid = [undefined, null, [], {}, { id: "" }, { id: "col-nope" }, { id: 5 }, { id: fifth.id, name: "x" }, { id: first.id, position: 0 }, { column: fifth.id }];
-  for (const payload of invalid) assert.deepEqual(store.apply(REPOSITORY, "column_delete", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  assert.deepEqual(store.readBoard(REPOSITORY), board);
-  assert.equal(store.readBoard(OTHER_REPOSITORY).columns.length, 5);
-});
-
-test("a long run of mixed moves and column changes keeps every position dense and survives a restart", async (t) => {
+test("a long run of moves keeps every position dense and survives a restart", async (t) => {
   const { store, directory } = await temporaryStore(t);
   for (let index = 0; index < 12; index += 1) store.apply(REPOSITORY, "create", { text: `task ${index}` });
-  store.apply(REPOSITORY, "column_create", { name: "Extra" });
   let board = store.readBoard(REPOSITORY);
-  // A deterministic walk: every step is a move or a column reorder.
+  // A deterministic walk of moves across the five columns.
   for (let step = 1; step <= 60; step += 1) {
     const column = board.columns[(step * 5) % board.columns.length];
     const task = board.tasks[(step * 7) % board.tasks.length];
-    const result = step % 6 === 0
-      ? store.apply(REPOSITORY, "column_reorder", { id: column.id, position: step % 8 })
-      : store.apply(REPOSITORY, "move", { id: task.id, columnId: column.id, position: step % 5 });
+    const result = store.apply(REPOSITORY, "move", { id: task.id, columnId: column.id, position: step % 5 });
     assert.equal(result.ok, true, `step ${step}`);
     board = result.board;
     assertDense(board);
@@ -358,4 +206,15 @@ test("a long run of mixed moves and column changes keeps every position dense an
   } finally {
     reopened.close();
   }
+});
+
+test("the column actions are gone: each answers unsupported, writes nothing, and the five columns stay fixed", async (t) => {
+  const { store } = await temporaryStore(t);
+  const before = store.readBoard(REPOSITORY);
+  const [backlog] = before.columns;
+  for (const action of ["column_create", "column_rename", "column_reorder", "column_delete", "column_role"]) {
+    assert.deepEqual(store.apply(REPOSITORY, action, { id: backlog.id, name: "Other", position: 1, role: "done" }), { ok: false, error: "unsupported" }, action);
+  }
+  assert.deepEqual(store.readBoard(REPOSITORY), before);
+  assert.deepEqual(names(before), ["Backlog", "Ready", "In progress", "Review", "Done"]);
 });

@@ -52,21 +52,17 @@
 }
 .taskMove[data-move="up"] > svg { transform: rotate(-90deg); }
 .taskMove[data-move="down"] > svg { transform: rotate(90deg); }
-.taskMove[data-move="left"] > svg, .taskColumnMove[data-column-move="left"] > svg { transform: rotate(180deg); }
+.taskMove[data-move="left"] > svg { transform: rotate(180deg); }
 
-/* Column management: Add column beside New task (D28, D29) and an inline editor under a column header. */
+/* Head actions beside New task (D28, D29); .taskAddColumn is the Add feature form. */
 .taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 .taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskAddColumn .taskOwnInput { flex: 0 1 200px; }
-.taskColumnEditor { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-panel); }
-.taskColumnName { width: 100%; }
-.taskColumnActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); }
-.taskColumnActions .commandQuietAction { margin-left: auto; }
 @media (max-width: 760px), (pointer: coarse) {
-  .taskAddColumn .taskOwnInput, .taskColumnName { min-height: 44px; }
+  .taskAddColumn .taskOwnInput { min-height: 44px; }
 }
 @media (max-width: 760px) {
-  .taskAddColumn .commandQuietAction, .taskColumnActions .commandQuietAction { width: auto; }
+  .taskAddColumn .commandQuietAction { width: auto; }
 }
 
 /* Loading, unavailable, desktop-only and empty states. */

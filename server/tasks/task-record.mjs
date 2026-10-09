@@ -12,15 +12,16 @@ import { orderQueue, taskIsDue } from "./task-queue.mjs";
 
 export const TASK_BOUNDS = Object.freeze({
   tasksPerRepository: 500,
-  columnsPerRepository: 12,
   featuresPerRepository: 50,
   textLength: 4000,
   ownConditionLength: 500,
-  columnNameLength: 40,
   featureNameLength: 80,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
 });
+// What an older store may hold in columns, read before the board is brought to the fixed five (task-columns.mjs).
+// Not a bound a user meets: a store over them stays unavailable and unwritten.
+export const STORED_COLUMN_READ_BOUNDS = Object.freeze({ columns: 12, nameLength: 40 });
 /** A start or stop time may lie at most this far ahead, and a new one at most `SCHEDULE_PAST_TOLERANCE_MS` behind the clock. */
 export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
 const SCHEDULE_PAST_TOLERANCE_MS = 60_000;
@@ -31,14 +32,14 @@ export const TASK_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh"]);
 export const TASK_QUEUE_STATUSES = Object.freeze(["idle", "running", "blocked", "paused"]);
 export const TASK_QUEUE_PAUSE_REASONS = Object.freeze(["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked", "worktree_dirty"]);
 export const DEFAULT_TASK_COLUMNS = Object.freeze(["Backlog", "Ready", "In progress", "Review", "Done"]);
-/** The role a column may hold: where a card goes when its session links, needs review, or is done (task-columns.mjs). */
+/** The role one of the fixed columns holds: where a card goes when its session links, needs review, or is done (task-columns.mjs). */
 export const TASK_COLUMN_ROLES = Object.freeze(["in_progress", "review", "done"]);
 /** The roles the default columns are seeded with, in the order of `DEFAULT_TASK_COLUMNS`. */
 export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress", "review", "done"]);
 // The fixed action list shared by the route (which rejects any other name) and the store (which
 // answers `unsupported` for a listed action whose part has not landed).
 export const TASK_ACTIONS = Object.freeze([
-  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "column_role",
+  "create", "update", "delete", "move",
   "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 
@@ -99,7 +100,7 @@ export function normalizeOwnCondition(value) {
 }
 
 export function normalizeColumnName(value) {
-  return boundedText(value, TASK_BOUNDS.columnNameLength, { multiline: false });
+  return boundedText(value, STORED_COLUMN_READ_BOUNDS.nameLength, { multiline: false });
 }
 
 export function normalizeFeatureName(value) {
@@ -316,44 +317,6 @@ export function normalizeMovePayload(value) {
   return number === undefined || columnId === undefined || position === undefined ? undefined : { number, columnId, position: position + 0 };
 }
 
-/** `column_create` carries only the name. Returns `{ name }`, or undefined when invalid. */
-export function normalizeColumnCreatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["name"])) return undefined;
-  const name = normalizeColumnName(value.name);
-  return name === undefined ? undefined : { name };
-}
-
-/** `column_rename` names one column and its new name. Returns `{ id, name }`, or undefined when invalid. */
-export function normalizeColumnRenamePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "name"])) return undefined;
-  const id = columnIdOf(value.id);
-  const name = normalizeColumnName(value.name);
-  return id === undefined || name === undefined ? undefined : { id, name };
-}
-
-/** `column_reorder` puts one column at a 0-based index among the columns; the store clamps it to the last. */
-export function normalizeColumnReorderPayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "position"])) return undefined;
-  const id = columnIdOf(value.id);
-  const position = nonNegativeInteger(value.position);
-  return id === undefined || position === undefined ? undefined : { id, position: position + 0 };
-}
-
-/** `column_delete` names one column. Returns `{ id }`, or undefined when invalid. */
-export function normalizeColumnDeletePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
-  const id = columnIdOf(value.id);
-  return id === undefined ? undefined : { id };
-}
-
-/** `column_role` names one column and its role, or null for none. Both keys are required. Returns `{ id, role }`, or undefined when invalid. */
-export function normalizeColumnRolePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "role"]) || value.role === undefined) return undefined;
-  const id = columnIdOf(value.id);
-  const role = enumValue(value.role, TASK_COLUMN_ROLES);
-  return id === undefined || role === undefined ? undefined : { id, role };
-}
-
 function isoTime(value) {
   if (!Number.isSafeInteger(value) || value < 0) return undefined;
   const date = new Date(value);
@@ -470,7 +433,7 @@ export function rowInFlight(row, at) {
  */
 export function projectBoard(repositoryId, { repository, columns, features, tasks }, { at } = {}) {
   if (!isRepositoryId(repositoryId) || !isPlainObject(repository)) return undefined;
-  if (columns.length > TASK_BOUNDS.columnsPerRepository || features.length > TASK_BOUNDS.featuresPerRepository
+  if (columns.length > STORED_COLUMN_READ_BOUNDS.columns || features.length > TASK_BOUNDS.featuresPerRepository
     || tasks.length > TASK_BOUNDS.tasksPerRepository) return undefined;
   const status = repository.queue_status;
   const blockedBy = repository.queue_blocked_by ?? null;
