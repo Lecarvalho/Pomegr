@@ -182,14 +182,14 @@ test("no other agent write path exists", async (context) => {
   const store = await realStore(context);
   const { port } = await start(context, store);
   const body = JSON.stringify({ sessionRef: "claude:known", text: "x" });
-  for (const requestPath of ["/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/block", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
+  for (const requestPath of ["/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block/x", "/api/agent/v1/tasks/resolve", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       const response = await send(port, { method, path: requestPath, body });
       assert.equal(response.status, 405, `${method} ${requestPath}`);
       assert.equal(response.headers.allow, "GET");
     }
   }
-  const missing = await send(port, { method: "GET", path: "/api/agent/v1/tasks/complete", headers: { "x-pomegr-agent-authorization": TOKEN } });
+  const missing = await send(port, { method: "GET", path: "/api/agent/v1/tasks/resolve", headers: { "x-pomegr-agent-authorization": TOKEN } });
   assert.equal(missing.status, 404);
   const wrong = await send(port, { method: "GET", path: ADD, headers: { "x-pomegr-agent-authorization": TOKEN } });
   assert.equal(wrong.status, 405);

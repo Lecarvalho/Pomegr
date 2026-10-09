@@ -6,11 +6,17 @@ import { pathToFileURL } from "node:url";
 const MAX_INPUT_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
-const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task)$/u;
+const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|complete_task|block_task)$/u;
 const WRITE_FIELDS = {
   add_task: ["text", "provider", "model", "effort", "done_when", "own_condition", "feature"],
+  complete_task: [],
+  block_task: ["reason"],
 };
-const WRITE_DENIED = "Pomegr could not bind this task to the current session, so it was not added.";
+const WRITE_DENIED = {
+  add_task: "Pomegr could not bind this task to the current session, so it was not added.",
+  complete_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
+  block_task: "Pomegr could not bind this report to the current session, so nothing was reported.",
+};
 const SELF_GRANTED = "get_agent_context";
 const FIELDS = {
   get_session_report: ["session_ref"],
@@ -41,7 +47,7 @@ function currentSessionId(transcriptPath) {
  */
 function bindWriteTool(payload, name) {
   const deny = { hookSpecificOutput: {
-    hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED,
+    hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED[name],
   } };
   const input = payload.tool_input;
   if (!input || typeof input !== "object" || Array.isArray(input)

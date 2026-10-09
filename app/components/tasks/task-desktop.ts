@@ -40,7 +40,7 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 }
 
 /** The fixed actions this surface sends; the monitor validates each record. */
-type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder";
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -143,6 +143,16 @@ export function reorderDesktopQueueTask(repositoryId: string, id: string, step: 
 }
 
 /** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
+/** Accepts a task that needs review, is blocked, or stalled as done; a queue it was holding runs again. */
+export function resolveDesktopTaskDone(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "resolve_done", { id });
+}
+
+/** Sends such a task back to the end of the queue for a new session; its report and session link are cleared. */
+export function requeueDesktopTask(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "resolve_requeue", { id });
+}
+
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
     ? `The board is full: it holds ${TASK_BOUNDS.tasksPerRepository} tasks.`
@@ -155,6 +165,8 @@ export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
 export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
 export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
+export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";
+export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 export const COLUMN_NAME_REQUIRED_MESSAGE = "The column needs a name.";
 

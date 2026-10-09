@@ -20,6 +20,7 @@ import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-s
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
+import { reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
@@ -459,6 +460,7 @@ const ACTIONS = Object.freeze({
   column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
   feature_create: createFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask,
+  resolve_done: resolveDone, resolve_requeue: resolveRequeue,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
@@ -545,5 +547,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const planStart = (repositoryId, payload, resolveFacts) => dispatch(startPlan, { repositoryId, payload, resolveFacts, now });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
-  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, close });
+  // The agent's report (task-report.mjs): `resolveFacts()` supplies committed repository facts for the checks.
+  const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
+  const blockTask = (payload) => dispatch(reportBlock, { payload, now });
+  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, close });
 }

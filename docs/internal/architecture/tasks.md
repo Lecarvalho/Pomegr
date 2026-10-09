@@ -36,11 +36,11 @@ Claude Code or Codex session for it, in the desktop app only.
 | Move and columns | Built: in the desktop app a card is dragged to another column or onto a card to place it before that card, with move actions on the card as the keyboard alternative; columns are added, renamed, reordered, and deleted. Moving a card never changes its state |
 | Features | Built (server): `feature_create`, and `create`/`update` attach a task to a feature at a step. The desktop UI is a separate change |
 | Queue view and ordering | Built: the Tasks tab has a Board and a Queue view. The Queue view lists each feature's steps and the single queued tasks. In the desktop app a queued task is dragged to another step or to a new last step (keyboard alternative on the card), and the task panel adds a task to the queue and removes it. The monitor orders the queue and serves the order. No session is started yet |
-| Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with `CODEX_THREAD_ID`; an unbound call is refused and posts nothing |
+| Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with the thread identity in the tool call's `_meta`; an unbound call is refused and posts nothing |
 | Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet |
 | Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
 | Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
-| `complete_task`, `block_task`, verified conditions | Not built |
+| `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task. CI passed has no source yet and is never confirmed |
 | Stalled, queue advance, start gates | Not built |
 | Parallel steps with worktrees, scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
@@ -168,8 +168,8 @@ task state.
 
 | State | Meaning | Set by |
 | --- | --- | --- |
-| Not queued | On the board, not in the queue | Creation, removal from the queue, or a requeue before re-adding |
-| Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue |
+| Not queued | On the board, not in the queue | Creation, or removal from the queue |
+| Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue, or requeues a task that needs review, is blocked, or stalled |
 | Scheduled | Waiting for its own start time | The user sets a time |
 | Needs review | The agent reported complete but a checked condition failed | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end |
@@ -217,6 +217,16 @@ sessions lands, the queue only holds and orders tasks.
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
   starts until the user resolves it, by **Mark done and resume** (`resolve_done`) or
   **Requeue** (`resolve_requeue`). Sessions already running continue.
+  - A report changes the stored status only of a queue that is `running`: it becomes
+    `blocked`, and a queue that is already blocked keeps its first blocker. An `idle` or
+    `paused` queue keeps its status, so the part that turns the queue on must refuse to
+    start while any task needs review, is blocked, or is stalled.
+  - `resolve_done` sets such a task to Done and keeps its report and session link.
+    `resolve_requeue` puts it back at the end of the queue as Queued and clears its
+    report, session link, and any dispatch, so a new session can be started for it and
+    report once more. Either one, on a blocked queue, names the lowest-numbered task
+    that still needs the user in `blockedBy`, or sets the queue back to `running` when
+    none is left. Both answer `conflict` for a task in any other state.
 - **No stop.** Pomegr never stops a running session, whether for a schedule, a
   gate, or a blocked queue.
 - **Scheduling.** A task or the queue can start at a given time, and the queue can
@@ -265,6 +275,33 @@ the conditions the user checked and sets the state.
   reason. Command output, diffs, and provider payloads are never kept or exposed.
 - Verification uses committed facts and never blocks on acquisition. A fact that is
   unknown is not a pass.
+- The facts are the bound session's committed public state in memory
+  (`resolveTaskCheckFacts` in `server/runtime/task-session-lookup.mjs`), handed to the pure
+  rule `verifyChecks(checks, facts)` as `{ treeClean, branchCommits, pullRequestStates,
+  ciPassed }`. The task branch is the branch recorded for that session.
+  - Working tree clean: the live repository block lists no uncommitted file.
+  - Commit on task branch: the branch is not the main branch and its base comparison
+    shows a commit of its own, merged since or not.
+  - Pull request open, Pull request merged: the ready pull-request block holds a pull
+    request whose head is the task branch in that state.
+  - CI passed: no committed source yet, so it is always not passed. The task panel
+    says "Not available yet" and the tool names it so.
+  - An unavailable or historical repository block, a missing base comparison, and a
+    pull-request block that is not ready are unknown.
+- Committed facts can trail the agent: a pull request opened seconds before the report
+  may not be committed yet, and the task then needs review although the condition
+  holds. The user resolves it with Mark done; the verification is not repeated.
+- A task takes one report per dispatch. A second `complete_task` or `block_task`, and a
+  report on a task that already has an outcome, change nothing.
+- The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
+  `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
+  `reason` of at most 200 characters for a block; any other key is `invalid`. The
+  session is the only input that names a task. The answer is
+  `{ schemaVersion: 1, ok: true, state, results }` (`state` is `done`, `needs_review`, or
+  `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
+  with `invalid` (400), `not_found` (404, no task is linked to the session),
+  `already_reported` (409), or `unavailable` (503). It never carries a task ID, task
+  content, or a repository fact.
 
 ## Session binding
 
@@ -273,8 +310,12 @@ supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
   supplies the session on every call.
-- **Codex**: `CODEX_THREAD_ID`, as `resolveCurrentSessionRef` in `mcp/agent-query-tools.mjs`
-  already does for the read tools.
+- **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
+  (`threadId`, which must agree with `thread_id` in its turn metadata when that is
+  present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`. A stdio MCP server
+  does not receive `CODEX_THREAD_ID`: Codex 0.157 starts it with an allowlisted
+  environment, so that variable is only the fallback. A Codex subagent thread has its
+  own identity and therefore no linked task.
 - `add_task` targets the repository of the bound session. It never accepts a path or a
   repository ID.
 - The monitor serves `add_task` as `POST /api/agent/v1/tasks/add`, beside the agent-query
@@ -395,7 +436,7 @@ like any other.
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
-| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools (`complete` and `block` are not built yet) |
+| `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `column_create`,
@@ -439,8 +480,9 @@ like any other.
   the steps are renumbered densely in the same transaction (a step the move empties
   disappears) without changing the update time of other tasks, and the task stays
   `queued`. The three actions start no session and leave the stored queue status as it is.
-  There is no insertion of a step between two others yet. `queue_settings`, `resolve_done`,
-  and `resolve_requeue` still answer `unsupported`.
+  There is no insertion of a step between two others yet. `resolve_done` and
+  `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` still answers
+  `unsupported`.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

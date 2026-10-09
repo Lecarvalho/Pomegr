@@ -386,3 +386,69 @@ export async function serveAgentTaskBindRoute({ request, response, requestUrl, t
     writeAgentBindResult(response, "unavailable");
   }
 }
+
+export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
+export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
+// A session reference (at most 135 characters) and a block reason (at most 200) fit well inside this.
+const AGENT_REPORT_BODY_LIMIT_BYTES = 2048;
+const AGENT_BLOCK_REASON_LIMIT = 200;
+const AGENT_REPORT_STATUS = Object.freeze({ invalid: 400, not_found: 404, already_reported: 409, unavailable: 503 });
+const REPORT_CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"]);
+
+function writeAgentReportResult(response, reason, answer = null, { close = false } = {}) {
+  const ok = reason === null;
+  response.writeHead(ok ? 200 : AGENT_REPORT_STATUS[reason], {
+    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
+  });
+  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, ...answer } : { schemaVersion: 1, ok: false, reason }));
+}
+
+// Only the fixed check names and booleans the store recorded reach the agent.
+function reportResults(results) {
+  return (Array.isArray(results) ? results : [])
+    .filter((result) => REPORT_CHECKS.includes(result?.check) && typeof result.passed === "boolean")
+    .map((result) => ({ check: result.check, passed: result.passed }));
+}
+
+/**
+ * `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for.
+ * The request handler has already applied the agent-query gate. The body is `{ sessionRef }`, plus a one-line
+ * `reason` for a block; the session is the only input that names a task, so a session with no linked task is
+ * `not_found`, and a task takes one report per dispatch (`already_reported`). On `complete` the store verifies
+ * the checked conditions from `resolveCheckFacts(sessionRef)`, committed repository facts read from memory.
+ * The answer carries the resulting state and, for `complete`, one `{ check, passed }` per checked condition;
+ * never a task ID, task content, command output, or any repository fact.
+ */
+export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null }) {
+  const blocking = requestUrl.pathname === AGENT_TASK_BLOCK_PATH;
+  const read = await readAgentJson(request, requestUrl, AGENT_REPORT_BODY_LIMIT_BYTES);
+  if (read.failed) {
+    writeAgentReportResult(response, "invalid", null, { close: true });
+    return;
+  }
+  const { body } = read;
+  const keys = blocking ? ["sessionRef", "reason"] : ["sessionRef"];
+  const valid = isPlainObject(body) && Object.keys(body).length === keys.length && keys.every((key) => Object.hasOwn(body, key))
+    && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+    && (!blocking || (typeof body.reason === "string" && body.reason.trim().length > 0 && body.reason.length <= AGENT_BLOCK_REASON_LIMIT));
+  if (!valid) {
+    writeAgentReportResult(response, "invalid");
+    return;
+  }
+  try {
+    const call = blocking ? taskStore?.blockTask : taskStore?.completeTask;
+    if (typeof call !== "function") {
+      writeAgentReportResult(response, "unavailable");
+      return;
+    }
+    const result = blocking
+      ? call({ sessionId: body.sessionRef, reason: body.reason })
+      : call({ sessionId: body.sessionRef }, () => (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
+    if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
+    else if (result?.ok === true && (result.state === "done" || result.state === "needs_review")) {
+      writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results) });
+    } else writeAgentReportResult(response, Object.hasOwn(AGENT_REPORT_STATUS, result?.error) ? result.error : "unavailable");
+  } catch {
+    writeAgentReportResult(response, "unavailable");
+  }
+}
