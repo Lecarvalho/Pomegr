@@ -90,7 +90,9 @@ describe("Design-system reference page", () => {
     expect(screen.getByText("--space-4")).toBeInTheDocument();
     expect(screen.queryByText(/Design system unavailable here/)).not.toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+    // The first render of the whole page is cold and its role queries walk every sample; a hosted
+    // Windows runner takes just over the default five seconds for it.
+  }, 20_000);
 
   it("renders static lane and single-chart samples with a neutral, described minimap", () => {
     render(<DesignSystemView />);
