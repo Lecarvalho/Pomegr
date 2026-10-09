@@ -9,7 +9,8 @@
 //
 // The schema already holds full Task rows (queue, session link, report, dispatch token), so
 // later parts add actions to `ACTIONS` rather than migrate. Task rows are written only by
-// those actions; this part has none, so the store seeds columns and reads.
+// those actions. Every action runs in one transaction and commits only when the whole board
+// still projects within the contract, so a write can never leave a board the user cannot read.
 
 import crypto from "node:crypto";
 import { mkdirSync, statSync } from "node:fs";
@@ -17,7 +18,10 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { DEFAULT_TASK_COLUMNS, emptyBoard, isRepositoryId, projectBoard } from "./task-record.mjs";
+import {
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeCreatePayload, normalizeDeletePayload,
+  normalizeUpdatePayload, projectBoard, taskIdFromNumber,
+} from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
 
@@ -150,9 +154,83 @@ function newOpaqueId(prefix) {
   return `${prefix}-${crypto.randomBytes(6).toString("hex")}`;
 }
 
-// Actions by name. Each takes `{ database, repositoryId }` and the payload, and returns the
-// new board or a fixed error code. Later parts add entries here; none ships in this part.
-const ACTIONS = Object.freeze({});
+/** Seeds the default columns for a repository seen for the first time. The caller owns the transaction. */
+function ensureRepository(database, repositoryId) {
+  const inserted = preparedStatement(database, "INSERT OR IGNORE INTO repositories (repository_id, created_at) VALUES (?, ?)").run(repositoryId, Date.now());
+  if (Number(inserted.changes) === 0) return;
+  const insertColumn = preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)");
+  DEFAULT_TASK_COLUMNS.forEach((name, position) => insertColumn.run(newOpaqueId("col"), repositoryId, name, position));
+}
+
+// Task numbers are monotonic per repository and never reused. The next number is kept beside the
+// schema version in `meta`, so deleting the newest task cannot hand its number to the next one.
+const nextNumberKey = (repositoryId) => `next_task_number:${repositoryId}`;
+
+function nextTaskNumber(database, repositoryId) {
+  const stored = Number(preparedStatement(database, "SELECT value FROM meta WHERE key = ?").get(nextNumberKey(repositoryId))?.value);
+  const highest = Number(preparedStatement(database, "SELECT MAX(number) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest ?? 0);
+  return Math.max(Number.isSafeInteger(stored) ? stored : 1, highest + 1);
+}
+
+function reserveTaskNumber(database, repositoryId, atLeast) {
+  preparedStatement(database, "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(nextNumberKey(repositoryId), String(atLeast));
+}
+
+function createTask({ database, repositoryId }, payload) {
+  const input = normalizeCreatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  ensureRepository(database, repositoryId);
+  const count = Number(preparedStatement(database, "SELECT COUNT(*) AS n FROM tasks WHERE repository_id = ?").get(repositoryId).n);
+  if (count >= TASK_BOUNDS.tasksPerRepository) return { ok: false, error: "limit" };
+  // A new task always lands as the last card of the first column.
+  const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
+  if (!first) return { ok: false, error: "conflict" };
+  const last = preparedStatement(database, "SELECT MAX(position) AS last FROM tasks WHERE repository_id = ? AND column_id = ?").get(repositoryId, first.id);
+  const position = last?.last === null || last?.last === undefined ? 0 : Number(last.last) + 1;
+  const number = nextTaskNumber(database, repositoryId);
+  if (taskIdFromNumber(number) === undefined) return { ok: false, error: "limit" };
+  const now = Date.now();
+  preparedStatement(database, "INSERT INTO tasks (repository_id, number, text, column_id, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(repositoryId, number, input.text, first.id, position, now, now);
+  reserveTaskNumber(database, repositoryId, number + 1);
+  return { ok: true };
+}
+
+function updateTask({ database, repositoryId }, payload) {
+  const input = normalizeUpdatePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const updated = preparedStatement(database, "UPDATE tasks SET text = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(input.text, Date.now(), repositoryId, input.number);
+  return Number(updated.changes) === 0 ? { ok: false, error: "not_found" } : { ok: true };
+}
+
+function deleteTask({ database, repositoryId }, payload) {
+  const input = normalizeDeletePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const task = preparedStatement(database, "SELECT column_id, position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  if (!task) return { ok: false, error: "not_found" };
+  const reserved = nextTaskNumber(database, repositoryId);
+  preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
+  // The deleted number stays retired even when it was newer than the stored counter.
+  reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
+  preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
+    .run(repositoryId, task.column_id, task.position);
+  return { ok: true };
+}
+
+// Actions by name. Each takes `{ database, repositoryId }` and the payload inside the store's
+// transaction, and returns `{ ok: true }` or a fixed error code. It validates the payload before
+// its first write. A listed action absent from this table answers `unsupported` until its part lands.
+const ACTIONS = Object.freeze({ create: createTask, update: updateTask, delete: deleteTask });
+
+/** Raised inside a transaction to roll it back with a fixed error code. */
+class ActionRejected extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
 
 /**
  * Opens the task store in `directory`. Synchronous and never throws: a store that is missing
@@ -163,12 +241,7 @@ export function openTaskStore({ directory } = {}) {
 
   function seedColumns(repositoryId) {
     if (preparedStatement(database, "SELECT 1 FROM repositories WHERE repository_id = ?").get(repositoryId)) return;
-    runTransaction(database, () => {
-      const inserted = preparedStatement(database, "INSERT OR IGNORE INTO repositories (repository_id, created_at) VALUES (?, ?)").run(repositoryId, Date.now());
-      if (Number(inserted.changes) === 0) return;
-      const insertColumn = preparedStatement(database, "INSERT INTO columns (id, repository_id, name, position) VALUES (?, ?, ?, ?)");
-      DEFAULT_TASK_COLUMNS.forEach((name, position) => insertColumn.run(newOpaqueId("col"), repositoryId, name, position));
-    });
+    runTransaction(database, () => ensureRepository(database, repositoryId));
   }
 
   function loadRows(repositoryId) {
@@ -199,10 +272,17 @@ export function openTaskStore({ directory } = {}) {
     // A store that cannot be used refuses the write before any handler can touch it.
     if (!database) return { ok: false, error: "conflict" };
     try {
-      const result = handler({ database, repositoryId }, payload);
-      return result.ok ? { ok: true, board: readBoard(repositoryId) } : { ok: false, error: result.error };
-    } catch {
-      return { ok: false, error: "conflict" };
+      const board = runTransaction(database, () => {
+        const result = handler({ database, repositoryId }, payload);
+        if (!result.ok) throw new ActionRejected(result.error);
+        // The write stands only if the whole board, the new row included, still projects.
+        const projected = projectBoard(repositoryId, loadRows(repositoryId));
+        if (!projected) throw new ActionRejected("conflict");
+        return projected;
+      });
+      return { ok: true, board };
+    } catch (error) {
+      return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
   }
 

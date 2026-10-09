@@ -405,6 +405,17 @@ the active tab backed by `?tab=` in the URL. Overview shows snapshot facts,
 linked setup summaries, and the five most recent associated sessions. Plugin
 groups plugin installation instructions and native actions by provider.
 Reporting shows the shared policy state with always-visible setup guidance.
+In the desktop app the Tasks pane head ends with a primary **New task** action;
+a browser instead reads one muted line saying tasks are created and edited in the
+desktop app, decided at first render. The action opens the New task panel, a
+non-modal dialog fixed to the right edge below the app bar, `min(640px, 100%)`
+wide, in the form of the Agents evidence drawer: Close or Escape dismisses it and
+focus returns to the action. Its header holds the title, the repository name, and
+a 44px icon Close; its footer holds **Create task** (primary), **Create and add
+another** (secondary, 36px with the strong line on the panel fill at 761px and
+wider with a fine pointer), and the muted note **Goes to Backlog, not queued**.
+Both sizes are intentional local deviations from the role defaults, taken from
+the task-board design.
 Git uses the shared neutral chip with an 8px gap before its placeholder title. The Context
 inventory tab uses one section per provider, including an explicit not-yet-available
 state for Codex, a revision select when

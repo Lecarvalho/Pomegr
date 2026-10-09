@@ -1,3 +1,14 @@
+// The serving layer may not import `server/tasks/` (dependency-cruiser `server-serving-layer`), so the fixed
+// action list is mirrored here; tests/server/tasks/task-actions.test.mjs pins it to `TASK_ACTIONS` in task-record.mjs.
+export const TASK_ACTIONS = Object.freeze([
+  "create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete",
+  "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+]);
+export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
+// The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
+const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
+const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
+const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8" };
@@ -59,5 +70,109 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     // A missing store or a throwing read is unavailable, never an empty ready board.
     response.writeHead(503, JSON_HEADERS);
     response.end(JSON.stringify(emptyBoard("unavailable", repositoryId)));
+  }
+}
+
+function writeActionResult(response, status, body, { close = false } = {}) {
+  response.writeHead(status, { ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}) });
+  response.end(JSON.stringify(body));
+}
+
+const rejected = (error) => ({ ok: false, error });
+
+/** Reads the request body up to `limit` bytes. Resolves null when the body is larger, without buffering the rest. */
+function readLimitedBody(request, limit) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      request.removeListener("data", onData);
+      request.removeListener("end", onEnd);
+      request.removeListener("error", onError);
+      resolve(value);
+    };
+    const onData = (chunk) => {
+      size += chunk.length;
+      if (size > limit) { request.pause(); finish(null); return; }
+      chunks.push(chunk);
+    };
+    const onEnd = () => finish(Buffer.concat(chunks));
+    const onError = (error) => { if (!settled) { settled = true; reject(error); } };
+    request.on("data", onData);
+    request.on("end", onEnd);
+    request.on("error", onError);
+  });
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/**
+ * `POST /internal/tasks/<action>`. The request handler has already applied the private-action gate
+ * (desktop token, loopback host, no Origin, POST), so a refused request never reaches this function
+ * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
+ * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
+ */
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore }) {
+  const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
+  if (!TASK_ACTIONS.includes(action)) {
+    writeActionResult(response, 404, rejected("invalid"));
+    return;
+  }
+  const declared = Number(request.headers["content-length"] || 0);
+  if (requestUrl.search) {
+    writeActionResult(response, 400, rejected("invalid"));
+    return;
+  }
+  if (declared > TASK_BODY_LIMIT_BYTES) {
+    writeActionResult(response, 413, rejected("invalid"), { close: true });
+    return;
+  }
+  let raw;
+  try {
+    raw = await readLimitedBody(request, TASK_BODY_LIMIT_BYTES);
+  } catch {
+    writeActionResult(response, 400, rejected("invalid"), { close: true });
+    return;
+  }
+  if (raw === null) {
+    writeActionResult(response, 413, rejected("invalid"), { close: true });
+    return;
+  }
+  let body;
+  try {
+    body = JSON.parse(raw.toString("utf8"));
+  } catch {
+    writeActionResult(response, 400, rejected("invalid"));
+    return;
+  }
+  const validEnvelope = isPlainObject(body) && Object.keys(body).every((key) => key === "repositoryId" || key === "payload")
+    && typeof body.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(body.repositoryId) && isPlainObject(body.payload);
+  if (!validEnvelope) {
+    writeActionResult(response, 400, rejected("invalid"));
+    return;
+  }
+  if (Buffer.byteLength(JSON.stringify(body.payload), "utf8") > TASK_PAYLOAD_LIMIT_BYTES) {
+    writeActionResult(response, 413, rejected("invalid"));
+    return;
+  }
+  try {
+    if (typeof taskStore?.apply !== "function") {
+      writeActionResult(response, 503, rejected("conflict"));
+      return;
+    }
+    const result = taskStore.apply(body.repositoryId, action, body.payload);
+    if (result?.ok === true) {
+      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
+      return;
+    }
+    const error = Object.hasOwn(ACTION_STATUS, result?.error) ? result.error : "conflict";
+    writeActionResult(response, ACTION_STATUS[error], rejected(error));
+  } catch {
+    writeActionResult(response, 503, rejected("conflict"));
   }
 }

@@ -49,6 +49,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/report-save.mjs",
   "desktop/runtime/repository-inventory-action.mjs",
   "desktop/runtime/repository-plugin-action.mjs",
+  "desktop/runtime/task-action.mjs",
   "desktop/runtime/plugin-cli.mjs",
   "desktop/runtime/security-policy.mjs",
   "desktop/runtime/shell-stage.mjs",
