@@ -108,6 +108,21 @@ describe("SessionTaskTab", () => {
     expect(panel).toHaveTextContent("Cannot reach the remote.");
   });
 
+  it("shows the monitor's reading of each check while the task waits for its report", () => {
+    const session = { id: sessionId, title: null, state: "working", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: false }] };
+    setBoard(board({ tasks: [{ ...mine, session }, ...siblings] }));
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    expect(within(panel).getAllByRole("listitem").map((row) => row.textContent)).toEqual(["Pull request openHolds now", "Working tree cleanNot yet"]);
+  });
+
+  it("keeps a reading out of a task that has an outcome or a report", () => {
+    const session = { id: sessionId, title: null, state: "closed", observedModel: null, checks: [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }] };
+    expect(checkRows({ ...mine, session, state: "stalled" }).map((row) => row.result)).toEqual(["No report", "No report"]);
+    const report = { at: "2026-10-09T10:00:00.000Z", results: [{ check: "pr_open" as const, passed: false }], blockReason: null };
+    expect(checkRows({ ...mine, session, state: "needs_review", report }).map((row) => row.result)).toEqual(["Did not pass", "Not checked"]);
+  });
+
   it("does not wait forever for a report that will not come", () => {
     expect(checkRows({ ...mine, state: "stalled" }).map((row) => row.result)).toEqual(["No report", "No report"]);
   });

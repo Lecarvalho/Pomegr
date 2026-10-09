@@ -241,6 +241,55 @@ test("the store fills sessions only when it is handed a resolver", async (contex
   assert.equal(applied.board.tasks[0].session.state, "stopped");
 });
 
+// The reading of a waiting task's checks: the report's own rule, on the facts the report would be judged on.
+const waiting = (overrides = {}) => ({ ...linked("T-1", SESSION), state: "queued", report: null, doneWhen: { checks: ["ci_passed", "pr_open"], own: null }, ...overrides });
+const OPEN_PULL = { pullRequestStates: ["open"], ciPassed: false, readAt: { pullRequests: 20, ci: 20 }, workAt: { repository: 10 } };
+
+test("a waiting task carries the reading the report's rule gives for its checked conditions", () => {
+  const calls = [];
+  const filled = fillTaskSessions({ tasks: [waiting(), unlinked("T-2")] }, () => null, (id) => { calls.push(id); return OPEN_PULL; });
+  assert.deepEqual(calls, [SESSION]);
+  assert.deepEqual(filled.tasks[0].session, { ...UNKNOWN(SESSION), checks: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }] });
+  assert.deepEqual(filled.tasks[0].session.checks, verifyChecks(["ci_passed", "pr_open"], OPEN_PULL));
+  // A fact read before the work that could have changed it is not a pass here either.
+  const stale = fillTaskSessions({ tasks: [waiting()] }, () => null, () => ({ ...OPEN_PULL, workAt: { repository: 30 } }));
+  assert.deepEqual(stale.tasks[0].session.checks.map((entry) => entry.passed), [false, false]);
+});
+
+test("a task with a report, an outcome, or no checked condition carries no reading and reads no fact", () => {
+  const report = { at: "2026-10-09T10:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null };
+  const never = () => { throw new Error("check facts read"); };
+  for (const task of [waiting({ report, state: "needs_review" }), waiting({ state: "stalled" }), waiting({ state: "done" }), waiting({ doneWhen: { checks: [], own: null } })]) {
+    assert.deepEqual(fillTaskSessions({ tasks: [task] }, () => null, never).tasks[0].session, UNKNOWN(SESSION));
+  }
+});
+
+test("GET /api/tasks serves the reading from the lookup the report is verified with, and only pass or fail", async (context) => {
+  const calls = [];
+  const runtime = { resolveTaskCheckFacts(id) { calls.push(id); return { ...OPEN_PULL, root: "C:/SECRET-ROOT", url: "https://SECRET-PULL" }; } };
+  const { store, port } = await serving(context, runtime);
+  assert.equal(store.apply(REPOSITORY_ID, "create", { text: "with checks", doneWhen: { checks: ["pr_open", "ci_passed"], own: null } }).ok, true);
+  const planned = store.planStart(REPOSITORY_ID, { id: "T-1" }, () => FACTS, passingGates);
+  assert.deepEqual(store.bindSession({ token: planned.plan.token, sessionId: SESSION }), { ok: true });
+  const response = await getBoard(port);
+  assert.deepEqual(response.json.tasks[0].session, { ...UNKNOWN(SESSION), checks: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }] });
+  assert.deepEqual(calls, [SESSION]);
+  assert.ok(!response.text.includes("SECRET") && !response.text.includes("readAt") && !response.text.includes("workAt"));
+  // The reading is borrowed per read, never stored.
+  assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks[0].session, UNKNOWN(SESSION));
+  const denied = await getBoard(port, { "content-type": "application/json" });
+  assert.deepEqual(denied.json.tasks, []);
+  assert.deepEqual(calls, [SESSION]);
+});
+
+test("no check resolver, one that throws, or no facts gives no reading and keeps the session", () => {
+  for (const resolver of [undefined, null, "not a function", () => null, () => undefined, () => { throw new Error("store gone"); }]) {
+    assert.deepEqual(fillTaskSessions({ tasks: [waiting()] }, () => ({ state: "idle" }), resolver).tasks[0].session, { ...UNKNOWN(SESSION), state: "idle" });
+  }
+  // Facts that establish nothing are a reading too: nothing passes.
+  assert.deepEqual(fillTaskSessions({ tasks: [waiting()] }, () => null, () => ({})).tasks[0].session.checks.map((entry) => entry.passed), [false, false]);
+});
+
 // The runtime lookup: committed catalog row and committed public state, nothing else.
 const catalogRow = (overrides) => ({ id: SESSION, title: "Fix the flaky test", activityStatus: "working", isLive: true, ...overrides });
 const storeWith = (publicState) => ({ get: (provider, id) => (provider === "claude" && id === SESSION.slice("claude:".length) ? { publicState } : undefined) });

@@ -35,7 +35,12 @@ export type TaskColumnRole = "in_progress" | "review" | "done";
 export type TaskColumn = { id: string; name: string; position: number; role?: TaskColumnRole | null };
 export type TaskFeature = { id: string; name: string; done: boolean };
 export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null };
-export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null };
+/**
+ * `checks` is the monitor's reading of the task's checked conditions while the task waits for its report, by the rule
+ * and from the facts that will judge the report. It is absent once a report or an outcome is recorded, when no
+ * condition is checked, and from an older monitor. It is a reading as of this board, not a result.
+ */
+export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null; checks?: { check: TaskCheck; passed: boolean }[] };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null };
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
