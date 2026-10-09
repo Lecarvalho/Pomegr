@@ -1,7 +1,7 @@
 {
   "name": "pomegr",
   "displayName": "Pomegr",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "description": "Configure and report bounded, repository-specific coding-agent signals to the local Pomegr observer.",
   "icon": "./assets/icon.png",
   "types": "./types/index.d.ts",
