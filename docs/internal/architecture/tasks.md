@@ -700,7 +700,8 @@ Starting is desktop-only and explicit.
 3. The session prompt is a fixed template holding the task text, the done-when list, and
    the instruction to call `complete_task` or `block_task`.
 4. The start is refused with a fixed reason when the Pomegr plugin is not installed in
-   the repository, a gate holds (fixed result `gate_held`), a worktree reused for the
+   the repository or is older than the first version with the task hook and tools
+   (fixed result `plugin_missing` for both), a gate holds (fixed result `gate_held`), a worktree reused for the
    task has uncommitted changes (fixed result `worktree_dirty`), or the platform is not
    Windows (fixed result `unsupported_platform`).
 
@@ -725,7 +726,12 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   a Codex task starts Codex, and any other provider value answers
   `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed
   plugin setup of the repository shows the Pomegr plugin of that provider installed,
-  ready, and enabled, and with `unavailable` when it has not identified the
+  ready, enabled, and at version 0.9.0 or later (`MINIMUM_TASK_PLUGIN_VERSION` in
+  `server/runtime/task-start-lookup.mjs`, the first version with the bind hook and the
+  task tools; the Claude Code and Codex plugins share the version). An older plugin
+  reuses `plugin_missing`, for the manual start status and the queue pause reason
+  alike. A version that is unknown or cannot be compared is unknown and holds the
+  start like a missing plugin, never a pass. The monitor refuses with `unavailable` when it has not identified the
   repository's root in the current run. Last, it refuses with `gate_held` when a
   [start gate](#start-gates) holds the task.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
@@ -971,7 +977,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more. Five items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. Four items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
 [Completion](#completion).
 
 1. **`add_task` from an unlinked session in a task worktree targets another board.** A
@@ -986,15 +992,11 @@ three more. Five items remain open, and the maintainer owns each. The stated lim
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
    decides.
-3. **The start gate does not check the plugin's version.** A start needs the Pomegr plugin
-   installed and enabled, but not a version that has the bind hook and the task tools
-   (0.9.0 or later). With an older plugin the session starts, never links, and the card
-   keeps its own chip.
-4. **The task panel keeps its start line after the task changes.** After a start the panel
+3. **The task panel keeps its start line after the task changes.** After a start the panel
    shows "Session started in a new terminal window." and keeps Start session disabled for
    as long as it stays open, also after Requeue or after the task is done. Closing and
    opening the panel clears it.
-5. **A held manual start does not say which gate holds.** The panel reads "A start gate
+4. **A held manual start does not say which gate holds.** The panel reads "A start gate
    holds this task. See Start gates in the Queue view." although the fixed hold reasons
    are already served on `GET /api/tasks`.
 

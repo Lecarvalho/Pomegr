@@ -71,7 +71,7 @@ describe("Start session", () => {
   it.each([
     ["unsupported_platform", "Starting sessions is available on Windows only.", true],
     ["cli_missing", "The provider's command-line tool was not found on this computer.", true],
-    ["plugin_missing", "Install the Pomegr plugin in this repository to start sessions.", true],
+    ["plugin_missing", "Install or update the Pomegr plugin in this repository to start sessions.", true],
     ["unsupported_provider", "Sessions cannot be started on this provider.", true],
     ["not_startable", "This task cannot be started right now.", false],
     ["not_found", "This task no longer exists.", false],

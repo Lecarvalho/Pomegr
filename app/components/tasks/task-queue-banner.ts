@@ -25,7 +25,7 @@ const SESSIONS_CONTINUE = "Running sessions continue.";
 /** One clause per fixed pause reason; the monitor sends the value only, never an error text. */
 const PAUSE_REASONS: Record<TaskQueuePauseReason, string> = {
   cli_missing: "the provider's command-line tool was not found on this computer.",
-  plugin_missing: "the Pomegr plugin is not installed in this repository.",
+  plugin_missing: "the Pomegr plugin is not installed in this repository, or needs an update.",
   unsupported_platform: "starting sessions is available on Windows only.",
   start_failed: "the terminal window could not be opened.",
   session_not_linked: "its terminal opened, but the session did not report back.",
