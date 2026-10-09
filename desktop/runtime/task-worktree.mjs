@@ -1,5 +1,5 @@
 import { execFile as execFileChild } from "node:child_process";
-import { mkdirSync, statSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 // Git worktrees for tasks that run in parallel. The tasks of one feature step start together, so each gets a
@@ -30,11 +30,16 @@ function defaultDirectoryExists(directory) {
   try { return statSync(directory).isDirectory(); } catch { return false; }
 }
 
-/** Git prints worktree paths with forward slashes; Windows paths compare without case. */
+// The path the file system itself gives a directory: Windows short names (`RUNNER~1`) and links are resolved, so a
+// directory reached through one compares equal to the long path Git lists. A path that does not exist stays as written.
+function canonicalPath(value) {
+  try { return realpathSync.native(value); } catch { return path.resolve(value); }
+}
+
+/** Git prints worktree paths with forward slashes and in their long form; Windows paths compare without case. */
 function samePath(left, right, platform) {
-  const a = path.resolve(left);
-  const b = path.resolve(right);
-  return platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+  const same = (a, b) => (platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b);
+  return same(path.resolve(left), path.resolve(right)) || same(canonicalPath(left), canonicalPath(right));
 }
 
 /** The branch Git lists for the worktree at `directory`, `""` for a detached one, or null when it lists none there. */

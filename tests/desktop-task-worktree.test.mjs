@@ -234,3 +234,34 @@ test("locate answers the directory only when it exists and Git lists it on the t
   }
   assert.deepEqual(h.calls, []);
 });
+
+// Windows can hand out a directory under its 8.3 short name (a CI runner's temporary folder is `RUNNER~1`), while Git
+// lists a worktree by its long path. The same directory must still be recognized, or a task's worktree is never reused.
+function shortPath(directory) {
+  try {
+    const answer = execFileSync("cmd.exe", ["/d", "/c", "for %I in (.) do @echo %~sI"], { cwd: directory, encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return answer && answer.toLowerCase() !== directory.toLowerCase() ? answer : null;
+  } catch { return null; }
+}
+
+test("with real Git: a worktree root reached through a Windows short name is still reused", { skip: process.platform !== "win32" || !gitAvailable() }, async (context) => {
+  const base = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "pomegr task worktree long name ")));
+  context.after(() => { rmSync(base, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 }); });
+  const short = shortPath(base);
+  if (!short) { context.skip("this volume gives no short names"); return; }
+  const repository = path.join(base, "repo");
+  const git = (cwd, ...args) => execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+  execFileSync("git", ["init", "--quiet", repository], { windowsHide: true, stdio: "ignore" });
+  for (const [key, value] of [["user.name", "Test"], ["user.email", "test@example.invalid"], ["commit.gpgsign", "false"], ["core.autocrlf", "false"]]) git(repository, "config", key, value);
+  writeFileSync(path.join(repository, "file.txt"), "one\n");
+  git(repository, "add", ".");
+  git(repository, "commit", "--quiet", "-m", "first");
+
+  const worktrees = createTaskWorktrees({ root: path.join(short, TASK_WORKTREE_DIRECTORY) });
+  const at = { repositoryRoot: repository, repositoryId, taskId: "T-1" };
+  const first = await worktrees.ensure(at);
+  assert.deepEqual([first.ok, first.created], [true, true]);
+  assert.deepEqual(await worktrees.ensure(at), { ok: true, directory: first.directory, created: false, branchCreated: false });
+  writeFileSync(path.join(first.directory, "draft.txt"), "work\n");
+  assert.deepEqual(await worktrees.ensure(at), { ok: false, reason: "dirty" });
+});
