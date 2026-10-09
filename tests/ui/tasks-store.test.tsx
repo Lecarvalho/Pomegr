@@ -160,6 +160,31 @@ describe("parseTaskBoard", () => {
     }
   });
 
+  it("keeps the start gates and the schedule whole, and drops either one when a value is outside the contract", () => {
+    const gates = {
+      threshold: 85,
+      usage: { claude: { status: "ok", fiveHourPercent: 62, sevenDayPercent: 31 }, codex: { status: "unknown", fiveHourPercent: null, sevenDayPercent: null } },
+      providerStatus: { claude: "ok", codex: "incident" }, workingTree: "clean",
+      next: { taskId: "T-2", provider: "claude", blockedBy: null, reasons: ["usage_over", "after_queue_stop"] },
+    };
+    const schedule = { startAt: null, stopAfter: "2026-10-09T07:00:00.000Z" };
+    const queue = (extra: object) => board({ queue: { status: "running", blockedBy: null, pauseReason: null, order: ["T-2"], ...extra } as TaskBoard["queue"] });
+    expect(parseTaskBoard(queue({ gates: { ...gates, root: "C:/repo" }, schedule: { ...schedule, zone: "x" } }), repositoryId)?.queue)
+      .toEqual({ status: "running", blockedBy: null, pauseReason: null, order: ["T-2"], schedule, gates });
+    expect(parseTaskBoard(queue({ gates: { ...gates, next: null } }), repositoryId)?.queue.gates?.next).toBeNull();
+    for (const broken of [{ ...gates, threshold: 80 }, { ...gates, workingTree: "C:/repo" }, { ...gates, usage: { ...gates.usage, codex: { status: "ok", fiveHourPercent: 140, sevenDayPercent: 1 } } },
+      { ...gates, providerStatus: { claude: "ok" } }, { ...gates, next: { ...gates.next, reasons: ["spawn ENOENT"] } }, { ...gates, next: { ...gates.next, taskId: "task" } }, "ok", null]) {
+      const parsed = parseTaskBoard(queue({ gates: broken }), repositoryId);
+      expect(parsed?.readiness).toBe("ready");
+      expect(parsed?.queue.gates).toBeUndefined();
+    }
+    for (const broken of [{ startAt: null, stopAfter: null }, { startAt: "soon", stopAfter: null }, { startAt: 5, stopAfter: null }, { stopAfter: "2026-10-09T07:00:00.000Z" }, "07:00", null]) {
+      const parsed = parseTaskBoard(queue({ schedule: broken }), repositoryId);
+      expect(parsed?.readiness).toBe("ready");
+      expect(parsed?.queue.schedule).toBeUndefined();
+    }
+  });
+
   it("keeps one fixed pause reason on a paused queue and reads anything else as none", () => {
     const queue = (status: string, pauseReason: unknown) => board({ queue: { status, blockedBy: "T-2", pauseReason, order: ["T-2"] } as TaskBoard["queue"] });
     for (const reason of ["cli_missing", "plugin_missing", "unsupported_platform", "start_failed", "session_not_linked"]) {

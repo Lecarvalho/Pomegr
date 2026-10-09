@@ -7,7 +7,7 @@
 // tests/server/tasks/task-record.test.mjs pins every constant below to that contract.
 
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
-import { orderQueue } from "./task-queue.mjs";
+import { orderQueue, taskIsDue } from "./task-queue.mjs";
 
 export const TASK_BOUNDS = Object.freeze({
   tasksPerRepository: 500,
@@ -20,6 +20,9 @@ export const TASK_BOUNDS = Object.freeze({
   blockReasonLength: 200,
   modelIdentifierLength: 120,
 });
+/** A start or stop time may lie at most this far ahead, and a new one at most `SCHEDULE_PAST_TOLERANCE_MS` behind the clock. */
+export const TASK_SCHEDULE_HORIZON_MS = 366 * 24 * 60 * 60 * 1000;
+const SCHEDULE_PAST_TOLERANCE_MS = 60_000;
 export const TASK_CHECKS = Object.freeze(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"]);
 export const TASK_STATES = Object.freeze(["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"]);
 export const TASK_PROVIDERS = Object.freeze(["claude", "codex"]);
@@ -225,11 +228,55 @@ export function normalizeDeletePayload(value) {
   return number === undefined ? undefined : { number };
 }
 
-/** `queue_add` and `queue_remove` name one task. Returns `{ number }`, or undefined when invalid. */
+/** `queue_remove` names one task. Returns `{ number }`, or undefined when invalid. */
 export function normalizeQueueTaskPayload(value) {
   if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
   const number = taskNumberFromId(value.id);
   return number === undefined ? undefined : { number };
+}
+
+/** An instant as the contract writes it (`2026-10-09T02:00:00.000Z`), in epoch milliseconds, or undefined. */
+function instantOf(value) {
+  if (typeof value !== "string" || value.length !== 24) return undefined;
+  const time = Date.parse(value);
+  return Number.isSafeInteger(time) && new Date(time).toISOString() === value ? time : undefined;
+}
+
+/** A time the user sets now: not behind the clock (beyond a small tolerance) and inside the horizon. */
+const settableAt = (time, at) => time >= at - SCHEDULE_PAST_TOLERANCE_MS && time <= at + TASK_SCHEDULE_HORIZON_MS;
+
+/**
+ * `queue_add` names one task and, optionally, its own start time: `at` is an instant, or absent or null for none.
+ * `now` is the clock in epoch milliseconds. Returns `{ number, at }` with `at` in epoch milliseconds or null, or
+ * undefined when invalid; a time behind the clock or past the horizon is invalid.
+ */
+export function normalizeQueueAddPayload(value, now) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "at"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  if (number === undefined) return undefined;
+  if (value.at === undefined || value.at === null) return { number, at: null };
+  const at = instantOf(value.at);
+  return at === undefined || !settableAt(at, now) ? undefined : { number, at };
+}
+
+/**
+ * The `schedule` of `queue_settings`: exactly `{ startAt, stopAfter }`, each an instant or null. A time that changes
+ * must be settable now; one that is sent back as stored (`stored`, epoch milliseconds or null) is kept even when it
+ * has passed, so the other one can still be edited. A stop time must come after the start time. Returns both in
+ * epoch milliseconds or null, or undefined when invalid.
+ */
+export function normalizeQueueSchedule(value, stored, now) {
+  if (!isPlainObject(value) || Object.keys(value).length !== 2 || !hasOnlyKeys(value, ["startAt", "stopAfter"])
+    || value.startAt === undefined || value.stopAfter === undefined) return undefined;
+  const one = (raw, kept) => {
+    if (raw === null) return null;
+    const time = instantOf(raw);
+    return time === undefined || (time !== kept && !settableAt(time, now)) ? undefined : time;
+  };
+  const startAt = one(value.startAt, stored?.startAt ?? null);
+  const stopAfter = one(value.stopAfter, stored?.stopAfter ?? null);
+  if (startAt === undefined || stopAfter === undefined) return undefined;
+  return startAt !== null && stopAfter !== null && stopAfter <= startAt ? undefined : { startAt, stopAfter };
 }
 
 /**
@@ -385,9 +432,10 @@ export function emptyBoard(repositoryId, readiness) {
 /**
  * Builds the browser board from one repository's stored rows. Returns undefined when any row is
  * outside the contract or the rows disagree with each other, so a damaged store is reported as
- * unavailable instead of served partially.
+ * unavailable instead of served partially. `at` is the clock in epoch milliseconds: with it, a scheduled task
+ * whose time has come is in the queue order; without it no scheduled task is.
  */
-export function projectBoard(repositoryId, { repository, columns, features, tasks }) {
+export function projectBoard(repositoryId, { repository, columns, features, tasks }, { at } = {}) {
   if (!isRepositoryId(repositoryId) || !isPlainObject(repository)) return undefined;
   if (columns.length > TASK_BOUNDS.columnsPerRepository || features.length > TASK_BOUNDS.featuresPerRepository
     || tasks.length > TASK_BOUNDS.tasksPerRepository) return undefined;
@@ -413,9 +461,14 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   // The queue order carries task IDs only. The private queue position of a stored row feeds the rule
   // and goes no further; the projected task has no field for it.
   const { order } = orderQueue(
-    projectedTasks.map((task, index) => ({ id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: tasks[index].queue_position ?? null })),
+    projectedTasks.map((task, index) => ({
+      id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: tasks[index].queue_position ?? null,
+      due: task.state === "scheduled" && at !== undefined && taskIsDue(tasks[index].scheduled_at ?? null, at),
+    })),
     projectedFeatures,
   );
+  const startAt = optionalIsoTime(repository.start_at) ?? null;
+  const stopAfter = optionalIsoTime(repository.stop_after) ?? null;
   return {
     version: 1,
     readiness: "ready",
@@ -424,7 +477,9 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     // A feature is done when it has tasks and every one of them is done.
     features: projectedFeatures.map((feature) => ({ id: feature.id, name: feature.name, done: doneByFeature.get(feature.id) === true })),
     tasks: projectedTasks.toSorted((a, b) => columnOrder.get(a.columnId) - columnOrder.get(b.columnId) || a.position - b.position || taskNumber(a) - taskNumber(b)),
-    queue: { status, blockedBy, pauseReason, order },
+    // The queue's own times are kept beside the repository row like the pause reason; one that is not a time reads as
+    // not set, and a queue with neither carries no schedule.
+    queue: { status, blockedBy, pauseReason, order, ...(startAt === null && stopAfter === null ? {} : { schedule: { startAt, stopAfter } }) },
   };
 }
 

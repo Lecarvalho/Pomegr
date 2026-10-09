@@ -475,6 +475,19 @@ The next queued task's card adds one muted **Waiting:** line while a gate holds
 it and the queue is on. All three are local to the Tasks tab and use the
 `taskGate*` classes in `app/styles/tasks.css`.
 
+Under it, in the same column, the **Schedule** panel shares the gates panel's frame,
+heading, field, and caption classes. In the desktop app it holds a `.commandSegmented`
+pair, **Run now** and **Start at a time**, a **Start at** time field shown only for the
+second, a **Stop starting tasks after** time field, one muted line under a field that
+names the day of its stored time or says that it has passed, and the fixed note that a
+running session is never stopped and Pomegr must be open. A browser reads the same two
+values as a two-row definition list. A time field (`.taskTimeInput`) is a native `time`
+or `datetime-local` input at control height with the stronger control line, the control
+radius, and the data font; the Task panel's **Start at** field uses it for a task's own
+start time. A scheduled task's chip reads **Scheduled** in the info tone, with its time
+in the Queue view's single-task row, and its card adds one muted **Starts** line until
+its session is linked. `/design-system` renders the time field under Task fields.
+
 ### File tree and file history panel
 
 FileTree (`app/components/repositories/FileTree.tsx`) is a shared, fetch-free

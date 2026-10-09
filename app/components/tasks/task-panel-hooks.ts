@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAgents } from "../../agents-client";
 import type { TaskBoard } from "../../../shared/task-contract";
 import { modelsByProvider, type TaskModelOptions } from "./task-fields";
@@ -27,4 +27,14 @@ export function useEscapeToClose(onClose: () => void) {
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
+}
+
+/** The clock in epoch milliseconds, read once and again every minute, for lines that say whether a time has passed. */
+export function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  return now;
 }

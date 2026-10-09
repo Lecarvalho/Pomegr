@@ -53,7 +53,7 @@ async function showQueue() {
   render(<TasksTab repositoryId={repositoryId} />);
   await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
 }
-const panel = () => screen.getByRole("complementary", { name: "Start gates" });
+const panel = () => screen.getByRole("region", { name: "Start gates" });
 const row = (label: string) => within(panel()).getByText(label).closest("div") as HTMLElement;
 
 describe("the Start gates panel", () => {

@@ -7,6 +7,7 @@ import { CommandIcon } from "../command-center/CommandIcon";
 import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
+import { TaskStartTimeField } from "./TaskStartTimeField";
 import {
   DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE,
   RESOLVE_DONE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask, deleteDesktopTask, removeDesktopQueueTask, requeueDesktopTask,
@@ -23,8 +24,9 @@ import { useTaskStart } from "./use-task-start";
 // chrome. A select, segment or checkbox saves when it changes; the Task textarea, the own-condition input and
 // a new feature's name save when they lose focus after a change. A task that needs review, is blocked or
 // stalled leads the footer with Mark done and resume queue and Requeue task (D296, D297). The footer also
-// offers Add to queue (Not queued) or Remove from queue (Queued) before Delete task: the design has no such
-// control, so this is the orchestrator's decision.
+// offers Add to queue (Not queued) or Remove from queue (Queued, Scheduled) before Delete task: the design has no
+// such control, so this is the orchestrator's decision. A task that still waits for a session has a Start at field:
+// its own start time, which makes it Scheduled.
 
 const STALLED_NOTE = "The session ended with no report.";
 
@@ -96,6 +98,8 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const start = useTaskStart(repositoryId, task, text.trim() !== task.text, refresh);
   // A task that needs the user offers its resolutions instead of Start session, so the footer keeps one primary action.
   const showStart = start.available && !unresolved;
+  const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
+  const schedulable = waiting && task.session === null;
   const sessionTitle = taskSessionTitle(task);
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
 
@@ -241,6 +245,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
         onDraftChange={setDoneWhen} onCommit={commitDoneWhen} />
       <FeatureFields draft={feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
         onCommitName={() => void commitName()} onCancelName={cancelName} onOpenTask={onOpenTask} />
+      {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
     </div>
     <footer className="newTaskPanelFooter taskPanelFooter">
       {showStart && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
@@ -259,7 +264,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
           {showStart && <button type="button" className="commandPrimaryAction" disabled={start.disabled} onClick={() => void start.run()}>
             {start.pending ? "Starting…" : "Start session"}
           </button>}
-          {(task.state === "not_queued" || task.state === "queued") && <button type="button" className="commandSecondaryAction" disabled={queueing} onClick={() => void changeQueue(task.state === "not_queued")}>
+          {waiting && <button type="button" className="commandSecondaryAction" disabled={queueing} onClick={() => void changeQueue(task.state === "not_queued")}>
             {task.state === "not_queued" ? "Add to queue" : "Remove from queue"}
           </button>}
           <button type="button" className="commandQuietAction" onClick={() => setConfirming(true)}>Delete task</button>

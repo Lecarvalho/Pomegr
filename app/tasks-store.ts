@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
-import { TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard, type Task, type TaskBoard, type TaskCheck, type TaskQueuePauseReason, type TaskState } from "../shared/task-contract";
+import {
+  TASK_GATE_REASONS, TASK_GATE_THRESHOLDS, TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard,
+  type Task, type TaskBoard, type TaskCheck, type TaskGateReason, type TaskGates, type TaskGateThreshold, type TaskGateUsage, type TaskProvider, type TaskQueuePauseReason, type TaskQueueSchedule, type TaskState,
+} from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks). Task text is user-authored content, so it
 // lives only in this module's memory: never in browser storage, a URL, or the notification layer.
@@ -22,6 +25,11 @@ const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const PROVIDERS = new Set(["claude", "codex"]);
 const QUEUE_STATUSES = new Set(["idle", "running", "blocked", "paused"]);
 const PAUSE_REASONS = new Set<string>(TASK_QUEUE_PAUSE_REASONS);
+const GATE_REASONS = new Set<string>(TASK_GATE_REASONS);
+const GATE_PROVIDERS: TaskProvider[] = ["claude", "codex"];
+const GATE_USAGE_STATUSES = new Set(["ok", "over", "unknown"]);
+const GATE_PROVIDER_STATUSES = new Set(["ok", "incident", "unknown"]);
+const GATE_TREE_STATES = new Set(["clean", "dirty", "unknown"]);
 
 type Json = Record<string, unknown>;
 
@@ -79,6 +87,45 @@ function validFeature(value: unknown): value is TaskBoard["features"][number] {
   return Boolean(feature) && text(feature!.id, LIMITS.label) && text(feature!.name, LIMITS.featureName) && typeof feature!.done === "boolean";
 }
 
+function percent(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100);
+}
+
+/** The start gates, kept whole or not at all: one value outside the contract and the board carries no gates. */
+function parseGates(value: unknown): TaskGates | undefined {
+  const gates = record(value);
+  const usage = record(gates?.usage);
+  const status = record(gates?.providerStatus);
+  if (!gates || !usage || !status || !TASK_GATE_THRESHOLDS.includes(gates.threshold as TaskGateThreshold) || !GATE_TREE_STATES.has(gates.workingTree as string)) return undefined;
+  const readings = {} as Record<TaskProvider, TaskGateUsage>;
+  const statuses = {} as TaskGates["providerStatus"];
+  for (const provider of GATE_PROVIDERS) {
+    const reading = record(usage[provider]);
+    if (!reading || !GATE_USAGE_STATUSES.has(reading.status as string) || !percent(reading.fiveHourPercent) || !percent(reading.sevenDayPercent)
+      || !GATE_PROVIDER_STATUSES.has(status[provider] as string)) return undefined;
+    readings[provider] = { status: reading.status as TaskGateUsage["status"], fiveHourPercent: reading.fiveHourPercent, sevenDayPercent: reading.sevenDayPercent };
+    statuses[provider] = status[provider] as TaskGates["providerStatus"][TaskProvider];
+  }
+  let next: TaskGates["next"] = null;
+  if (gates.next !== null) {
+    const held = record(gates.next);
+    const reasons = held ? listOf(held.reasons, GATE_REASONS.size, (entry): entry is TaskGateReason => typeof entry === "string" && GATE_REASONS.has(entry)) : null;
+    if (!held || !reasons || typeof held.taskId !== "string" || !TASK_ID_PATTERN.test(held.taskId) || !GATE_PROVIDERS.includes(held.provider as TaskProvider)
+      || !(held.blockedBy === null || (typeof held.blockedBy === "string" && TASK_ID_PATTERN.test(held.blockedBy)))) return undefined;
+    next = { taskId: held.taskId, provider: held.provider as TaskProvider, blockedBy: held.blockedBy, reasons };
+  }
+  return { threshold: gates.threshold as TaskGateThreshold, usage: readings, providerStatus: statuses, workingTree: gates.workingTree as TaskGates["workingTree"], next };
+}
+
+/** The queue's own start and stop times; anything that is not two times or nulls reads as no schedule. */
+function parseSchedule(value: unknown): TaskQueueSchedule | undefined {
+  const schedule = record(value);
+  if (!schedule) return undefined;
+  const { startAt, stopAfter } = schedule;
+  if (!(startAt === null || timestamp(startAt)) || !(stopAfter === null || timestamp(stopAfter)) || (startAt === null && stopAfter === null)) return undefined;
+  return { startAt, stopAfter };
+}
+
 function contentFreeBoard(repositoryId: string, readiness: TaskBoard["readiness"]): TaskBoard {
   return createEmptyTaskBoard(repositoryId, readiness);
 }
@@ -102,7 +149,13 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   if (!order) return null;
   // A pause reason is one fixed value, and only a paused queue has one; anything else reads as none.
   const pauseReason = queue.status === "paused" && typeof queue.pauseReason === "string" && PAUSE_REASONS.has(queue.pauseReason) ? queue.pauseReason as TaskQueuePauseReason : null;
-  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order }, runModels: parseRunModels(body.runModels) };
+  const gates = parseGates(queue.gates);
+  const schedule = parseSchedule(queue.schedule);
+  return {
+    version: 1, readiness, repositoryId, columns, features, tasks,
+    queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}) },
+    runModels: parseRunModels(body.runModels),
+  };
 }
 
 /** The Codex client catalog; an older monitor omits it, and an invalid row is dropped rather than offered. */
