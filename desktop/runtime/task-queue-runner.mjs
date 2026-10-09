@@ -48,8 +48,8 @@ function pauseReason(status) {
 }
 
 /**
- * Low-priority advance of the task queue. The monitor decides which task of a queue-enabled repository is next;
- * this runner only asks, starts each answer through the starter (the same path as a
+ * Low-priority advance of the task queue. The monitor decides which tasks of a queue-enabled repository are next
+ * (the queued tasks of one step start together); this runner only asks, starts each answer in turn through the starter (the same path as a
  * manual start, minus the confirmation the user gave by turning the queue on) and pauses the queue with a fixed
  * reason when a start fails, so a failure is never retried in a loop. One unref'd timer chain, so a tick never
  * overlaps the previous one and the runner never keeps the app alive. It holds only repository and task IDs
@@ -89,14 +89,20 @@ export function createTaskQueueRunner(options = {}) {
     if (disposed) return;
     let answer;
     try { answer = await post("queue-next", {}); } catch { return; }
+    // The tasks of one step arrive together. A queue paused by one of them starts nothing more in this tick.
+    const paused = new Set();
     for (const { repositoryId, taskId } of startsFrom(answer)) {
       if (disposed) return;
+      if (paused.has(repositoryId)) continue;
       let status;
       try { status = (await starter.startQueued(repositoryId, taskId))?.status; } catch { status = undefined; }
       // A start refused because the app is closing is no failure: leave the queue as it is.
       if (disposed) return;
       const reason = pauseReason(status);
-      if (reason) await pause(repositoryId, taskId, reason);
+      if (reason) {
+        paused.add(repositoryId);
+        await pause(repositoryId, taskId, reason);
+      }
     }
   }
 

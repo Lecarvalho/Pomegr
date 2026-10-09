@@ -86,12 +86,13 @@ test("a startable task yields the plan with null model and effort", async (conte
   assert.equal(response.headers["cache-control"], "no-store");
   assert.deepEqual(Object.keys(response.json), ["ok", "plan"]);
   const body = response.json.plan;
-  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "repositoryRoot", "prompt", "token"]);
+  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "repositoryRoot", "worktree", "prompt", "token"]);
   assert.equal(body.taskId, "T-1");
   assert.equal(body.provider, "claude");
   assert.equal(body.model, null);
   assert.equal(body.effort, null);
   assert.equal(body.repositoryRoot, ROOT);
+  assert.equal(body.worktree, false);
   assert.match(body.token, /^[A-Za-z0-9_-]{43}$/u);
   assert.deepEqual(env.lookups, [REPOSITORY_ID]);
 });
@@ -251,4 +252,25 @@ test("token, digest, mint time and root never reach the board, other action resu
   for (const text of texts) {
     for (const secret of [token, digest, String(env.clock.now), ROOT, "SECRET-ROOT"]) assert.ok(!text.includes(secret), secret);
   }
+});
+
+test("the plan asks for a worktree only for a task of a step that holds more than one task", async (context) => {
+  const env = await setup(context);
+  const feature = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Search" });
+  assert.equal(feature.ok, true);
+  const featureId = feature.board.features[0].id;
+  create(env, { featureId, step: 1 });
+  create(env, { featureId, step: 1 });
+  create(env, { featureId, step: 2 });
+  create(env, {});
+  // A step counts its tasks of any state, so a done sibling still means a worktree.
+  withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done' WHERE number = 1").run());
+  const second = await plan(env, { id: "T-2" });
+  assert.equal(second.json.plan.worktree, true);
+  assert.equal(second.json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");
+  assert.equal((await plan(env, { id: "T-4" })).json.plan.worktree, false, "no feature");
+  // T-3 waits on step 1 (T-2 is not done), so the gate holds it.
+  refused(await plan(env, { id: "T-3" }), 409, "gate_held");
+  withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done', dispatch_token = NULL WHERE number = 2").run());
+  assert.equal((await plan(env, { id: "T-3" })).json.plan.worktree, false, "alone in its step");
 });

@@ -41,7 +41,7 @@ test("a queue that is idle, blocked, or paused answers nothing", async (context)
   }
 });
 
-test("one task at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
+test("one step at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { mintedAt: START_TIME - MINUTE });
@@ -224,4 +224,50 @@ test("the queue methods answer a fixed unavailable error once the store is close
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: false, error: "unavailable" });
   assert.deepEqual(store.pauseQueue(REPOSITORY, { id: "T-1", reason: "start_failed" }), { ok: false, error: "unavailable" });
   assert.deepEqual(store.apply(REPOSITORY, "queue_settings", { on: true }), { ok: false, error: "conflict" });
+});
+
+/** A running queue over one feature: `steps` lists the step of each task, T-1 first. */
+function runningFeature(store, steps) {
+  const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
+  assert.equal(feature.ok, true);
+  const featureId = feature.board.features[0].id;
+  steps.forEach((step, index) => {
+    createTask(store, REPOSITORY, { featureId, step });
+    queueTask(store, `T-${index + 1}`);
+  });
+  assert.equal(queueSettings(store, true).ok, true);
+}
+
+test("the queued tasks of one step are answered together, and the next step waits for all of them", async (context) => {
+  const { store, clock, directory } = await openTemporaryStore(context);
+  runningFeature(store, [1, 1, 2]);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1"), start("T-2")] });
+  // T-1 started; T-2 has not yet: it is still answered, alone.
+  startedTask(directory, 1, { mintedAt: clock.now });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
+  startedTask(directory, 1, { session: SESSION });
+  startedTask(directory, 2, { session: "claude:second-session" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "the step is in flight");
+  // One task done is not the step done.
+  updateTask(directory, 1, { state: "done", queue_position: null });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  updateTask(directory, 2, { state: "done", queue_position: null });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
+});
+
+test("each task of a step is judged by the gates on its own", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  runningFeature(store, [1, 1]);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", model: null, effort: null } }).ok, true);
+  const codexOver = () => ({ ...passingGates(), usage: { ...passingGates().usage, codex: { fiveHourPercent: 99, sevenDayPercent: 10 } } });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [start("T-2")] });
+  assert.equal(store.readBoard(REPOSITORY).queue.status, "running");
+});
+
+test("the starts of one step stop at the sixteen-start limit", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  runningFeature(store, Array.from({ length: TASK_QUEUE_START_LIMIT + 2 }, () => 1));
+  const answer = store.nextQueueStarts({ resolveGateFacts: passingGates });
+  assert.equal(answer.starts.length, TASK_QUEUE_START_LIMIT);
+  assert.deepEqual(answer.starts[TASK_QUEUE_START_LIMIT - 1], start(`T-${TASK_QUEUE_START_LIMIT}`));
 });

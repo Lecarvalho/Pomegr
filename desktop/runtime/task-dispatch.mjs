@@ -7,6 +7,7 @@ import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-au
 import { environmentValue, nativeClaudeEnvironment, nativeCodexEnvironment } from "./environment-policy.mjs";
 import { resolveCodexExecutable } from "./plugin-cli.mjs";
 import { createTaskQueueRunner } from "./task-queue-runner.mjs";
+import { createTaskWorktrees } from "./task-worktree.mjs";
 
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
@@ -96,13 +97,14 @@ function validatePlan(plan, taskId, directoryExists) {
   if (!(plan.model === null || (typeof plan.model === "string" && MODEL.test(plan.model)))) return null;
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
   if (typeof plan.token !== "string" || !TOKEN.test(plan.token)) return null;
+  if (!(plan.worktree === undefined || typeof plan.worktree === "boolean")) return null;
   const { prompt, repositoryRoot: root } = plan;
   if (typeof prompt !== "string" || !prompt || prompt.length > PROMPT_MAX || prompt.includes("\u0000") || prompt.startsWith("-")) return null;
   if (typeof root !== "string" || /[\u0000\r\n"]/u.test(root) || !path.isAbsolute(root) || path.resolve(root) !== root) return null;
   let exists = false;
   try { exists = directoryExists(root) === true; } catch { exists = false; }
   if (!exists) return null;
-  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root };
+  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true };
 }
 
 /** Resolves true when the launcher exits with code 0 in time, false otherwise. Never throws. */
@@ -132,7 +134,10 @@ function waitForLaunch(child, timeoutMs) {
  * task's own provider CLI is missing. The session runs in its own terminal window and is never killed or
  * tracked by Pomegr. Nothing but a fixed status reaches the renderer. The queue runner starts the next task
  * through `startQueued`, the same path without a renderer event or a confirmation, because the user turned the
- * queue on; both entry points share one in-flight slot, so a manual and a queued start never overlap.
+ * queue on; both entry points share one in-flight slot, so a manual and a queued start never overlap. When the
+ * plan asks for a worktree (a task of a step that runs in parallel), the session starts in the task's own Git
+ * worktree (`task-worktree.mjs`) instead of the repository root; a worktree that cannot be made or safely reused
+ * fails the start. A worktree made for a start that then fails is removed again, by the rule that discards no work.
  */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -147,6 +152,8 @@ export function createTaskStart(options = {}) {
   const directoryExists = options.directoryExists || defaultDirectoryExists;
   const spawn = options.spawn || spawnChild;
   const confirm = options.confirm || (async () => false);
+  const worktrees = options.worktrees
+    || (options.worktreeRoot ? createTaskWorktrees({ root: options.worktreeRoot, environment: sourceEnvironment, platform }) : null);
   let disposed = false;
   let active = false;
 
@@ -201,17 +208,28 @@ export function createTaskStart(options = {}) {
       await abort(repositoryId, taskId, plan.token);
       return result("cli_missing");
     }
+    let directory = plan.root;
+    let made = null;
+    if (plan.worktree) {
+      const place = { repositoryRoot: plan.root, repositoryId, taskId };
+      try { made = worktrees ? await worktrees.ensure(place) : null; } catch { made = null; }
+      if (made?.ok !== true || typeof made.directory !== "string" || !path.isAbsolute(made.directory) || /[\u0000\r\n"]/u.test(made.directory)) {
+        await abort(repositoryId, taskId, plan.token);
+        return result("failed");
+      }
+      directory = made.directory;
+    }
     const args = [...provider.flags(plan), plan.prompt];
     let started = false;
     try {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
-        cwd: plan.root,
+        cwd: directory,
         env: {
           ...provider.environment(sourceEnvironment),
           POMEGR_TASK_TOKEN: plan.token,
           POMEGR_START_FILE: executable,
           POMEGR_START_ARGUMENTS: args.map(windowsArgument).join(" "),
-          POMEGR_START_DIRECTORY: plan.root,
+          POMEGR_START_DIRECTORY: directory,
         },
         shell: false,
         stdio: "ignore",
@@ -221,6 +239,9 @@ export function createTaskStart(options = {}) {
     } catch { started = false; }
     if (!started) {
       await abort(repositoryId, taskId, plan.token);
+      if (made?.created === true) {
+        try { await worktrees.remove({ repositoryRoot: plan.root, repositoryId, taskId, deleteBranch: made.branchCreated === true }); } catch { /* kept */ }
+      }
       return result("failed");
     }
     return result("started");

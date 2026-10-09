@@ -129,21 +129,31 @@ export function previousStepBlocker(taskId, tasks, features) {
  * session is linked and has no outcome yet, or whose start is still waiting for its session to report; `unlinked` is true
  * for a task whose start expired with no session ever linked.
  *
- * Returns `{ start: taskId }`, `{ pause: taskId }`, or null for nothing to do. The queue only acts while `running`, one
- * task at a time, and always on `orderQueue`'s first task, so the task the board marks as next and the task that starts
- * next are one task. A candidate whose earlier feature steps are not all done waits: the queue never skips ahead to a
- * later task.
+ * Returns `{ starts: taskIds }`, `{ pause: taskId }`, or null for nothing to do. The queue only acts while `running`, one
+ * step at a time. With nothing in flight the step is the one of `orderQueue`'s first task, so the task the board marks as
+ * next is always among the starts, and the starts are every queued task of that step: the tasks of one step run in
+ * parallel. A task without a feature is a step of its own. While tasks are in flight, only the queued rest of their own
+ * step may join them; tasks in flight outside one feature step hold the queue. A step whose earlier feature steps are
+ * not all done waits: the queue never skips ahead to a later task.
  */
 export function nextQueueStart(input) {
   const { status, tasks, features } = isRecord(input) ? input : {};
   if (status !== "running") return null;
   const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
-  if (records.some((task) => task.inFlight === true)) return null;
   const { order, steps } = orderQueue(records, features);
-  const candidateId = order[0];
-  if (candidateId === undefined) return null;
-  const candidate = records.find((task) => task.id === candidateId);
-  if (candidate.unlinked === true) return { pause: candidateId };
-  if (isStep(candidate.step) && steps.some((entry) => entry.featureId === candidate.featureId && entry.step < candidate.step && !entry.done)) return null;
-  return { start: candidateId };
+  const byId = new Map();
+  for (const task of records) if (!byId.has(task.id)) byId.set(task.id, task);
+  const stepOf = (id) => steps.find((entry) => entry.taskIds.includes(id)) ?? null;
+
+  const waiting = order.filter((id) => byId.get(id).inFlight !== true);
+  if (waiting.length === 0) return null;
+  const flying = records.filter((task) => task.inFlight === true);
+  const current = stepOf(flying.length > 0 ? flying[0].id : waiting[0]);
+  if (flying.length > 0 && (current === null || flying.some((task) => stepOf(task.id) !== current))) return null;
+  const candidates = current === null ? [waiting[0]] : waiting.filter((id) => current.taskIds.includes(id));
+  if (candidates.length === 0) return null;
+  const unlinked = candidates.find((id) => byId.get(id).unlinked === true);
+  if (unlinked !== undefined) return { pause: unlinked };
+  if (current !== null && steps.some((entry) => entry.featureId === current.featureId && entry.step < current.step && !entry.done)) return null;
+  return { starts: candidates };
 }
