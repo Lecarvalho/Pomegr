@@ -4,7 +4,8 @@ import path from "node:path";
 
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { claudeDiscoveryEnvironment, resolveClaudeExecutable } from "./claude-auth.mjs";
-import { environmentValue, nativeClaudeEnvironment } from "./environment-policy.mjs";
+import { environmentValue, nativeClaudeEnvironment, nativeCodexEnvironment } from "./environment-policy.mjs";
+import { resolveCodexExecutable } from "./plugin-cli.mjs";
 
 export const TASK_START_CHANNEL = "pomegr:task-start";
 export const TASK_START_STATUSES = Object.freeze([
@@ -54,6 +55,22 @@ function powershellExecutable(environment, fileExists) {
 
 const result = (status) => Object.freeze({ status });
 
+// One entry per startable provider: where its CLI is, the environment it runs in, and its flags. A flag is
+// passed only when the task sets it. Codex takes the effort as a configuration override and accepts every
+// task effort by name, `xhigh` included.
+const PROVIDERS = Object.freeze({
+  claude: Object.freeze({
+    executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
+    environment: nativeClaudeEnvironment,
+    flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["--effort", plan.effort] : [])],
+  }),
+  codex: Object.freeze({
+    executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
+    environment: nativeCodexEnvironment,
+    flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
+  }),
+});
+
 function trustedMonitorOrigin(value) {
   try {
     const url = new URL(value);
@@ -74,7 +91,7 @@ function defaultDirectoryExists(directory) {
 
 /** Returns a validated plan, or null when anything about it is unsafe to use. */
 function validatePlan(plan, taskId, directoryExists) {
-  if (!isPlainObject(plan) || plan.provider !== "claude" || plan.taskId !== taskId) return null;
+  if (!isPlainObject(plan) || !Object.hasOwn(PROVIDERS, plan.provider) || plan.taskId !== taskId) return null;
   if (!(plan.model === null || (typeof plan.model === "string" && MODEL.test(plan.model)))) return null;
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
   if (typeof plan.token !== "string" || !TOKEN.test(plan.token)) return null;
@@ -84,7 +101,7 @@ function validatePlan(plan, taskId, directoryExists) {
   let exists = false;
   try { exists = directoryExists(root) === true; } catch { exists = false; }
   if (!exists) return null;
-  return { model: plan.model, effort: plan.effort, token: plan.token, prompt, root };
+  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root };
 }
 
 /** Resolves true when the launcher exits with code 0 in time, false otherwise. Never throws. */
@@ -108,9 +125,11 @@ function waitForLaunch(child, timeoutMs) {
 }
 
 /**
- * Native-only start of one Claude Code session for one task. The confirmation precedes the plan request
- * because the monitor mints a single-use token with the plan. The session runs in its own terminal window and
- * is never killed or tracked by Pomegr. Nothing but a fixed status reaches the renderer.
+ * Native-only start of one Claude Code or Codex session for one task. The confirmation precedes the plan
+ * request because the monitor mints a single-use token with the plan, so the provider is known only after it:
+ * a start is refused before the confirmation when no provider CLI is installed, and after the plan when the
+ * task's own provider CLI is missing. The session runs in its own terminal window and is never killed or
+ * tracked by Pomegr. Nothing but a fixed status reaches the renderer.
  */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -150,8 +169,11 @@ export function createTaskStart(options = {}) {
     if (typeof taskId !== "string" || !TASK_ID.test(taskId)) return result("invalid");
     if (disposed || !monitorOrigin || !authorizationToken) return result("unavailable");
     if (platform !== "win32") return result("unsupported_platform");
-    const executable = resolveClaudeExecutable(claudeDiscoveryEnvironment(sourceEnvironment), fileExists);
-    if (!executable) return result("cli_missing");
+    const executables = {};
+    for (const [name, provider] of Object.entries(PROVIDERS)) {
+      try { executables[name] = provider.executable(sourceEnvironment, fileExists, platform) || null; } catch { executables[name] = null; }
+    }
+    if (!Object.values(executables).some(Boolean)) return result("cli_missing");
     const launcher = powershellExecutable(sourceEnvironment, fileExists);
     if (!launcher) return result("unavailable");
     if (await confirm({ taskId }) !== true) return result("cancelled");
@@ -171,17 +193,19 @@ export function createTaskStart(options = {}) {
       return result("failed");
     }
 
-    const args = [
-      ...(plan.model ? ["--model", plan.model] : []),
-      ...(plan.effort ? ["--effort", plan.effort] : []),
-      plan.prompt,
-    ];
+    const provider = PROVIDERS[plan.provider];
+    const executable = executables[plan.provider];
+    if (!executable) {
+      await abort(repositoryId, taskId, plan.token);
+      return result("cli_missing");
+    }
+    const args = [...provider.flags(plan), plan.prompt];
     let started = false;
     try {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
         cwd: plan.root,
         env: {
-          ...nativeClaudeEnvironment(sourceEnvironment),
+          ...provider.environment(sourceEnvironment),
           POMEGR_TASK_TOKEN: plan.token,
           POMEGR_START_FILE: executable,
           POMEGR_START_ARGUMENTS: args.map(windowsArgument).join(" "),

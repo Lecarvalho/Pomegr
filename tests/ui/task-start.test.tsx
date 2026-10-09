@@ -69,9 +69,9 @@ describe("Start session", () => {
 
   it.each([
     ["unsupported_platform", "Starting sessions is available on Windows only.", true],
-    ["cli_missing", "Claude Code was not found on this computer.", true],
+    ["cli_missing", "The provider's command-line tool was not found on this computer.", true],
     ["plugin_missing", "Install the Pomegr plugin in this repository to start sessions.", true],
-    ["unsupported_provider", "Starting Codex sessions is not available yet.", true],
+    ["unsupported_provider", "Sessions cannot be started on this provider.", true],
     ["not_startable", "This task cannot be started right now.", false],
     ["not_found", "This task no longer exists.", false],
     ["busy", "Another session is being started.", false],
@@ -107,7 +107,6 @@ describe("Start session", () => {
     ["a linked session", { session: { id: "s", title: "Linked work", state: "idle", observedModel: null } }, "A session is already linked to this task.", "Linked work"],
     ["done", { state: "done" as const }, "This task is done.", "Write the thing"],
     ["needs_review", { state: "needs_review" as const }, "Resolve this task before starting it again.", "Write the thing"],
-    ["a Codex run", { run: { provider: "codex" as const, model: null, effort: null } }, "Starting Codex sessions is not available yet.", "Write the thing"],
   ])("is disabled with its reason for %s", async (_name, overrides, reason, cardName) => {
     setBoard(task(overrides));
     const user = userEvent.setup();

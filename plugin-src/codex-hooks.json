@@ -19,6 +19,16 @@
             "additionalContextLimit": 1600
           }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/bind-task.bundle.mjs\" --provider codex",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [

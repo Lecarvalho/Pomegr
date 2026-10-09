@@ -39,7 +39,7 @@ Claude Code or Codex session for it, in the desktop app only.
 | Agent tool `add_task` | Built: both plugins register the MCP tool `add_task`, which posts to `POST /api/agent/v1/tasks/add`. The task lands in the first column of the calling session's repository, not queued. Claude Code binds the call with a `PreToolUse` hook, Codex with `CODEX_THREAD_ID`; an unbound call is refused and posts nothing |
 | Start a Claude Code session | Built: in the desktop app on Windows, the task panel's Start session action asks for a native confirmation and opens a Claude Code session for the task in a new terminal window. Start gates are not checked yet |
 | Bind a started session to its task | Built: the started session posts its dispatch token and session ID to `POST /api/agent/v1/tasks/bind`, the monitor links the two once, and the board's `session` carries the session's title, state, and observed model from committed facts |
-| Start a Codex session | Not built |
+| Start a Codex session | Built: the same Start session action opens a Codex session when the task's Run on names Codex, and the Codex plugin's `SessionStart` hook links it to the task |
 | `complete_task`, `block_task`, verified conditions | Not built |
 | Stalled, queue advance, start gates | Not built |
 | Parallel steps with worktrees, scheduling | Not built |
@@ -296,7 +296,11 @@ supplies.
 - A started session carries an opaque random dispatch token in `POMEGR_TASK_TOKEN`. The
   plugin's session-start hook reports the token and the session ID to the monitor, which
   links the task to the session. `complete_task` and `block_task` act only on the task
-  linked to the bound session.
+  linked to the bound session. Both plugins run the same hook script on `startup` only;
+  the Codex plugin passes `--provider codex` and sends `codex:<session_id>`. The session
+  ID always comes from the hook input. Codex replays its launch environment into hook
+  commands but starts a stdio MCP server with an allowlisted environment, so the token
+  reaches the hook and never the Codex MCP server.
 - The monitor serves the link as `POST /api/agent/v1/tasks/bind`, under the same gate and
   with the same content-type and size checks as `add`. The body is a JSON object of at
   most 1 KiB with exactly `token` (the dispatch token) and `sessionRef` (the normalized
@@ -335,22 +339,27 @@ Starting is desktop-only and explicit.
    the repository, a gate fails, or the platform is not Windows (fixed result
    `unsupported_platform`).
 
-Built so far: the manual start of a Claude Code session, with no start gate, and the link of the started session to its task.
+Built so far: the manual start of a Claude Code or Codex session, with no start gate, and the link of the started session to its task.
 
 - The renderer calls the fixed IPC channel `pomegr:task-start` with a repository ID and a
   task ID. It gets back one fixed status and nothing else: `started`, `cancelled`,
   `unsupported_platform`, `cli_missing`, `plugin_missing`, `not_startable`,
   `unsupported_provider`, `not_found`, `busy`, `invalid`, `unavailable`, or `failed`.
-- Desktop main checks the platform and finds the Claude Code executable, then shows the
-  native confirmation, which names only the task ID. Only after the user confirms does it
-  ask the monitor for the start plan, because the plan mints a single-use token.
+- Desktop main checks the platform and looks for the Claude Code and Codex executables,
+  then shows the native confirmation, which names only the task ID. Only after the user
+  confirms does it ask the monitor for the start plan, because the plan mints a
+  single-use token. The provider is therefore known only from the plan: with no provider
+  executable installed the start answers `cli_missing` before the confirmation, and when
+  the plan's own provider executable is missing desktop main aborts the dispatch and
+  answers `cli_missing`.
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
   model, effort, the repository root resolved monitor-side, the prompt, and the dispatch
   token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
   session is linked, and no dispatch is live. A task with no provider starts Claude Code;
-  a Codex task answers `unsupported_provider`. The monitor refuses with `plugin_missing`
-  unless the committed plugin setup of the repository shows the Claude Code plugin
-  installed, ready, and enabled, and with `unavailable` when it has not identified the
+  a Codex task starts Codex, and any other provider value answers
+  `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed
+  plugin setup of the repository shows the Pomegr plugin of that provider installed,
+  ready, and enabled, and with `unavailable` when it has not identified the
   repository's root in the current run.
 - The monitor stores only the SHA-256 digest of the token and its mint time. An unbound
   dispatch is live for ten minutes; after that the task can be started again. The
@@ -362,11 +371,13 @@ Built so far: the manual start of a Claude Code session, with no start gate, and
   spawned directly. The command line is constant: the executable, its argument string,
   and the directory travel only as environment variables, which PowerShell reads as
   values and never parses as script, and which are removed before the session starts.
-  The argument string holds `--model` and `--effort` only when set, followed by the
-  prompt as one argument, each quoted by the Windows command-line rules. The environment
-  is the native Claude allowlist of the active provider profile plus
-  `POMEGR_TASK_TOKEN`. Pomegr keeps no handle to the session.
-- When the plan is malformed or the launcher fails or does not end within 15 seconds,
+  The argument string holds the model and effort flags only when set, followed by the
+  prompt as one argument, each quoted by the Windows command-line rules. Claude Code
+  takes `--model` and `--effort`; Codex takes `--model` and
+  `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
+  included. The environment is the native allowlist of the started provider for the
+  active provider profile plus `POMEGR_TASK_TOKEN`. Pomegr keeps no handle to the session.
+- When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
 - Starting never changes the task's state, column, or queue position.

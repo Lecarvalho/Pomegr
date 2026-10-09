@@ -12,10 +12,10 @@ const LINES: Record<TaskStartStatus, string | null> = {
   started: "Session started in a new terminal window.",
   cancelled: null,
   unsupported_platform: "Starting sessions is available on Windows only.",
-  cli_missing: "Claude Code was not found on this computer.",
+  cli_missing: "The provider's command-line tool was not found on this computer.",
   plugin_missing: "Install the Pomegr plugin in this repository to start sessions.",
   not_startable: "This task cannot be started right now.",
-  unsupported_provider: "Starting Codex sessions is not available yet.",
+  unsupported_provider: "Sessions cannot be started on this provider.",
   not_found: "This task no longer exists.",
   busy: "Another session is being started.",
   invalid: "The session could not be started.",
@@ -29,7 +29,6 @@ function boardReason(task: Task, unsaved: boolean): string | null {
   if (task.session !== null) return "A session is already linked to this task.";
   if (task.state === "done") return "This task is done.";
   if (task.state !== "not_queued" && task.state !== "queued" && task.state !== "scheduled") return "Resolve this task before starting it again.";
-  if (task.run.provider === "codex") return LINES.unsupported_provider;
   if (unsaved) return "Save your changes first.";
   return null;
 }

@@ -8,7 +8,7 @@ import { Readable } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { runClaudeBindTaskHook } from "../plugin-src/claude-bind-task.mjs";
+import { runBindTaskHook } from "../plugin-src/bind-task.mjs";
 import {
   AGENT_QUERY_AUTH_HEADER,
   AGENT_QUERY_DESCRIPTOR_FILENAME,
@@ -24,6 +24,10 @@ const bundlePath = path.join(pluginRoot, "scripts", "bind-task.bundle.mjs");
 const SESSION_ID = "44444444-4444-4444-8444-444444444444";
 const TASK_TOKEN = "Kq3_vN8xZp-2LmT7yR5wBd0HsJ6cEa1U";
 const BIND_SCRIPT = "scripts/bind-task.bundle.mjs";
+const codexPluginRoot = path.join(repositoryRoot, "plugins", "pomegr");
+const codexBundlePath = path.join(codexPluginRoot, "scripts", "bind-task.bundle.mjs");
+// Codex thread IDs are version 7 UUIDs.
+const CODEX_SESSION_ID = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 
 async function withTemporaryDirectory(run) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-bind-"));
@@ -82,12 +86,12 @@ function hookInput(overrides = {}) {
 }
 
 /** Runs the generated bundle the way Claude Code does. Async, because the monitor lives in this process. */
-function runBundle({ script = bundlePath, dataRoot, taskToken, input, extraEnv = {} }) {
+function runBundle({ script = bundlePath, args = [], dataRoot, taskToken, input, extraEnv = {} }) {
   const env = { ...process.env, NODE_PATH: "", POMEGR_DATA_DIR: dataRoot, ...extraEnv };
   delete env.POMEGR_TASK_TOKEN;
   if (taskToken !== undefined) env.POMEGR_TASK_TOKEN = taskToken;
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [script], { env, cwd: dataRoot, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [script, ...args], { env, cwd: dataRoot, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -235,7 +239,7 @@ test("hook input without a bindable root startup session sends nothing", async (
 test("the hook function reports a plain status and never leaks the token", async () => {
   const calls = [];
   const run = (post, { environment = { POMEGR_TASK_TOKEN: TASK_TOKEN }, input = hookInput() } = {}) =>
-    runClaudeBindTaskHook({ stream: Readable.from([input]), environment, post });
+    runBindTaskHook({ stream: Readable.from([input]), environment, post });
   const record = (result) => async (pathname, body) => {
     calls.push({ pathname, body });
     if (result instanceof Error) throw result;
@@ -299,4 +303,98 @@ test("the agent write transport carries exactly the add and bind paths", () => {
   assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH]);
   assert.equal(Object.isFrozen(AGENT_TASK_WRITE_PATHS), true);
   assert.equal(AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/bind");
+});
+
+test("the Codex bundle binds the hook's session as a Codex reference and prints nothing", async () => {
+  await withTemporaryDirectory((dataRoot) => withMonitor(answer(200, { schemaVersion: 1, ok: true }), async ({ origin, requests }) => {
+    const capability = createAgentQueryCapability();
+    await writeDescriptor(dataRoot, origin, capability);
+    const input = hookInput({ session_id: CODEX_SESSION_ID });
+    assertSilentSuccess(await runBundle({ script: codexBundlePath, args: ["--provider", "codex"], dataRoot, input }));
+    assert.equal(requests.length, 0);
+    // The session comes from the hook input only: a thread ID in the environment is never read.
+    const result = await runBundle({
+      script: codexBundlePath, args: ["--provider", "codex"], dataRoot, taskToken: TASK_TOKEN, input,
+      extraEnv: { CODEX_THREAD_ID: "0199a213-0000-7000-8000-000000000000" },
+    });
+    assertSilentSuccess(result);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, AGENT_TASK_BIND_PATH);
+    assert.equal(requests[0].headers[AGENT_QUERY_AUTH_HEADER], capability);
+    assert.equal(requests[0].body, JSON.stringify({ token: TASK_TOKEN, sessionRef: `codex:${CODEX_SESSION_ID}` }));
+  }));
+});
+
+test("an unknown or missing provider argument binds nothing", async () => {
+  await withTemporaryDirectory((dataRoot) => withMonitor(answer(200, { schemaVersion: 1, ok: true }), async ({ origin, requests }) => {
+    await writeDescriptor(dataRoot, origin, createAgentQueryCapability());
+    for (const args of [["--provider", "gemini"], ["--provider"], ["--provider", ""]]) {
+      assertSilentSuccess(await runBundle({ script: codexBundlePath, args, dataRoot, taskToken: TASK_TOKEN, input: hookInput() }));
+    }
+    assert.equal(requests.length, 0);
+  }));
+  const post = async () => ({ ok: true });
+  const run = (provider) => runBindTaskHook({
+    provider, stream: Readable.from([hookInput()]), environment: { POMEGR_TASK_TOKEN: TASK_TOKEN }, post,
+  });
+  assert.equal(await run("gemini"), "skipped");
+  assert.equal(await run("codex"), "bound");
+});
+
+test("the Codex hooks declare the bind hook on startup only, in source and generated form", async () => {
+  const sourceFile = path.join(repositoryRoot, "plugin-src", "codex-hooks.json");
+  const generatedFile = path.join(codexPluginRoot, "hooks", "hooks.json");
+  for (const file of [sourceFile, generatedFile]) {
+    const hooks = JSON.parse(await readFile(file, "utf8")).hooks;
+    const declared = [];
+    for (const [event, groups] of Object.entries(hooks)) {
+      for (const group of groups) {
+        for (const hook of group.hooks) {
+          if (hook.command?.includes("bind-task")) declared.push({ event, group, hook });
+        }
+      }
+    }
+    assert.equal(declared.length, 1, file);
+    const [{ event, group, hook }] = declared;
+    assert.equal(event, "SessionStart");
+    assert.equal(group.matcher, "startup");
+    assert.equal(group.hooks.length, 1);
+    assert.deepEqual(hook, { type: "command", command: `node "\${PLUGIN_ROOT}/${BIND_SCRIPT}" --provider codex`, timeout: 5 });
+    // The policy hook stays first, with its wider matcher.
+    assert.equal(hooks.SessionStart[0].matcher, "startup|resume|clear|compact");
+  }
+  const source = await readFile(sourceFile, "utf8");
+  const generated = await readFile(generatedFile, "utf8");
+  assert.equal(generated.replace(/\r\n/gu, "\n"), source.replace(/\r\n/gu, "\n"));
+});
+
+test("the Codex bind hook runs under PowerShell after plugin-root expansion", { skip: process.platform !== "win32" }, async () => {
+  await withTemporaryDirectory((dataRoot) => withMonitor(answer(200, { schemaVersion: 1, ok: true }), async ({ origin, requests }) => {
+    await writeDescriptor(dataRoot, origin, createAgentQueryCapability());
+    const installed = path.join(dataRoot, "installed Pomegr plugin");
+    await cp(codexPluginRoot, installed, { recursive: true });
+    const hooks = JSON.parse(await readFile(path.join(installed, "hooks", "hooks.json"), "utf8")).hooks;
+    const command = hooks.SessionStart[1].hooks[0].command.replaceAll("${PLUGIN_ROOT}", installed.replaceAll("\\", "/"));
+    const env = { ...process.env, NODE_PATH: "", POMEGR_DATA_DIR: dataRoot, POMEGR_TASK_TOKEN: TASK_TOKEN };
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { env, cwd: dataRoot, stdio: ["pipe", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("error", reject);
+      child.on("close", (status) => resolve({ status, stdout, stderr }));
+      child.stdin.end(hookInput({ session_id: CODEX_SESSION_ID }));
+    });
+    assertSilentSuccess(result);
+    assert.equal(requests.length, 1);
+    assert.equal(JSON.parse(requests[0].body).sessionRef, `codex:${CODEX_SESSION_ID}`);
+  }));
+});
+
+test("the generated Codex bundle holds no token and has no output path", async () => {
+  const bundle = await readFile(codexBundlePath, "utf8");
+  assert.ok(bundle.includes("POMEGR_TASK_TOKEN"));
+  assert.equal(bundle.includes(TASK_TOKEN), false);
+  assert.doesNotMatch(bundle, /console\.|process\.stdout|process\.stderr|stdout\.write|stderr\.write|appendFile|createWriteStream/u);
 });
