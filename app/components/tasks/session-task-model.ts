@@ -123,11 +123,20 @@ export function definitionStatus(task: Task): string {
 
 export type CheckRow = { check: TaskCheck; label: string; result: string; tone: "waiting" | "passed" | "failed" };
 
-/** One row per checked condition: the result the report recorded, or why there is none yet. */
+/**
+ * One row per checked condition: the result the report recorded, or, while the task waits for its report, the monitor's
+ * reading of the condition (`session.checks`, the rule and the facts that will judge the report). The reading is worded
+ * as of now, never as a result, because the report's verification decides.
+ */
 export function checkRows(task: Task): CheckRow[] {
   return task.doneWhen.checks.map((check) => {
     const label = CHECK_LABELS[check];
-    if (!task.report) return { check, label, result: OUTCOME_STATES.has(task.state) ? "No report" : "Waiting for report", tone: "waiting" };
+    if (!task.report) {
+      if (OUTCOME_STATES.has(task.state)) return { check, label, result: "No report", tone: "waiting" };
+      const reading = task.session?.checks?.find((entry) => entry.check === check);
+      if (!reading) return { check, label, result: "Waiting for report", tone: "waiting" };
+      return reading.passed ? { check, label, result: "Holds now", tone: "passed" } : { check, label, result: "Not yet", tone: "waiting" };
+    }
     const found = task.report.results.find((entry) => entry.check === check);
     if (!found) return { check, label, result: "Not checked", tone: "waiting" };
     return found.passed ? { check, label, result: "Passed", tone: "passed" } : { check, label, result: "Did not pass", tone: "failed" };

@@ -130,9 +130,11 @@ function projectBoard(repositoryId, board, runModels) {
  * reads a linked session's title, state, and model from committed facts in memory (task-board.mjs validates them).
  * `resolveGateFacts(repositoryId)` reads the start-gate facts the same way (task-gates.mjs validates them); it may
  * queue an asynchronous refresh of the working-tree observation, never a synchronous read.
+ * `resolveCheckFacts(sessionId)` reads the facts the done-when checks judge, from committed memory only, for the
+ * reading a waiting task carries (task-board.mjs).
  * The route never acquires provider evidence and has no write path.
  */
-export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null }) {
+export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });
@@ -156,7 +158,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     return;
   }
   try {
-    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId, { resolveSessionFacts, resolveGateFacts }), runModels);
+    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts }), runModels);
     response.writeHead(200, JSON_HEADERS);
     response.end(JSON.stringify(board));
   } catch {
@@ -276,7 +278,7 @@ function serveQueuePause({ response, taskStore, repositoryId, payload }) {
  * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
  * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
  */
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -336,7 +338,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
       writeActionResult(response, 503, rejected("conflict"));
       return;
     }
-    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts });
+    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
     if (result?.ok === true) {
       writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
       return;

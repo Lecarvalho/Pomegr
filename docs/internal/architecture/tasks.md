@@ -87,7 +87,8 @@ type Task = {
   doneWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   scheduledAt: string | null;
-  session: { id: string; title: string | null; state: string; observedModel: string | null } | null;
+  session: { id: string; title: string | null; state: string; observedModel: string | null;
+    checks?: { check: TaskCheck; passed: boolean }[] } | null;
   report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null } | null;
   createdAt: string; updatedAt: string;
 };
@@ -159,6 +160,9 @@ type TaskBoard = {
   and a model that is not a request model identifier is null. With no facts the
   session is `{ id, title: null, state: "unknown", observedModel: null }`: unknown,
   never guessed. The facts are borrowed per read and never stored.
+- `session.checks` is the monitor's reading of the checked conditions of a task that
+  waits for its report (see [Completion](#completion)). It is absent from every other
+  task.
 
 ## States
 
@@ -557,6 +561,28 @@ the conditions the user checked and sets the state.
     (`server/repository/session-repository-enrichment.mjs`), which is the observation
     store's default serializer and the `/api/state` serializer. The answer of
     `complete_task` still carries only per-condition pass or fail.
+- **One source for a condition, before and after the report.** While a linked task has
+  no report and no outcome (its state is still Not queued, Queued, or Scheduled) and has
+  a checked condition, every board that leaves the monitor carries `session.checks`: one
+  `{ check, passed }` per checked condition, from `verifyChecks` on the facts
+  `resolveTaskCheckFacts` returns at that read. `fillTaskSessions` computes it with the
+  rule and the lookup that verify the report, so the board cannot say something else
+  than the report would. A runtime without the lookup, a lookup that throws, and a
+  lookup with no facts give no reading.
+  - It is a reading as of that board, not a result and not a task state. It is never
+    stored, it moves no card, and it changes no state. The session's Task tab words it
+    as of now ("Holds now", "Not yet") under the heading that says the conditions are
+    checked when the agent reports; without a reading the row says "Waiting for report".
+    A reading can change with the next read, like the start gates' readings; only the
+    report's verification is final.
+  - Once a report or an outcome is recorded the board carries no reading, and the Task
+    tab shows the report's own results ("Passed", "Did not pass") or "No report".
+  - The age rule applies to the reading too, so a pull request the Repository tab
+    already lists reads "Not yet" until the pull-request read is later than the session's
+    latest Git, push, or pull-request command. That is what a report made at that moment
+    would be judged on.
+  - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
+    item, or path.
 - Committed facts can trail the agent: a pull request opened seconds before the report
   may not be committed yet, and the task then needs review although the condition
   holds. The user resolves it with Mark done; the verification is not repeated.
@@ -771,7 +797,7 @@ like any other.
 
 | Surface | Who | What it carries |
 | --- | --- | --- |
-| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model. A denied client gets `readiness: "desktop_only"` and no task content |
+| `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client; the LAN gateway forwards the path but marks its requests, and a marked request never gets the marker | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |

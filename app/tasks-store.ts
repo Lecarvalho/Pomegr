@@ -61,10 +61,13 @@ function validTask(value: unknown): value is Task {
   const report = task.report === null ? null : record(task.report);
   // A null session or report is valid; a present value that is not an object is not.
   if (!run || !doneWhen || (task.session !== null && !session) || (task.report !== null && !report)) return false;
-  const results = report ? listOf(report.results, CHECKS.size, (entry): entry is Json => {
+  const validResult = (entry: unknown): entry is Json => {
     const result = record(entry);
     return Boolean(result) && CHECKS.has(result!.check as TaskCheck) && typeof result!.passed === "boolean";
-  }) : [];
+  };
+  const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
+  // The reading of a waiting task's checks; an older monitor serves none.
+  const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
   const checks = listOf(doneWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
@@ -73,7 +76,7 @@ function validTask(value: unknown): value is Task {
     && (run.effort === null || EFFORTS.has(run.effort as string))
     && checks !== null && nullableText(doneWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt))
-    && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model)))
+    && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
 }

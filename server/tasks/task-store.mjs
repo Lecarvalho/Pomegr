@@ -510,9 +510,10 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   // `resolveSessionFacts(sessionId)` is supplied by the entry point from committed facts (see task-board.mjs).
   // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
-  // committed start-gate facts the same way; without it every gate reads unknown.
-  const served = (board, { resolveSessionFacts = null, resolveGateFacts = null }) =>
-    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts), resolveGateFacts, at: now() });
+  // committed start-gate facts the same way; without it every gate reads unknown. `resolveCheckFacts(sessionId)`
+  // supplies the facts the done-when checks judge; without it a waiting task carries no reading of its checks.
+  const served = (board, { resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) =>
+    fillQueueGates({ database, board: fillTaskSessions(board, resolveSessionFacts, resolveCheckFacts), resolveGateFacts, at: now() });
 
   function readBoard(repositoryId, resolvers = {}) {
     // An invalid ID is not echoed back, and a store that cannot be used serves no content.
