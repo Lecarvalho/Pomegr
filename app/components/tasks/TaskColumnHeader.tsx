@@ -13,12 +13,14 @@ import type { TaskBoardEdits } from "./use-task-board-edits";
 
 type Column = { id: string; name: string };
 
-export function TaskColumnHeader({ column, headingId, index, columnCount, taskCount, edits, onMove, onDeleted }: {
+export function TaskColumnHeader({ column, headingId, index, columnCount, taskCount, hiddenCount = 0, edits, onMove, onDeleted }: {
   column: Column;
   headingId: string;
   index: number;
   columnCount: number;
   taskCount: number;
+  /** Cards a feature filter hides: they still keep the column from being deleted. */
+  hiddenCount?: number;
   edits?: TaskBoardEdits;
   onMove(side: "left" | "right"): void;
   onDeleted(): void;
@@ -33,7 +35,7 @@ export function TaskColumnHeader({ column, headingId, index, columnCount, taskCo
   const [seen, setSeen] = useState(column.name);
   // The name last sent, so Enter and the blur that follows it send one rename even before the board shows it.
   const [sent, setSent] = useState(column.name);
-  const holdsTasks = taskCount > 0;
+  const holdsTasks = taskCount + hiddenCount > 0;
   const onlyColumn = columnCount <= 1;
   const reason = holdsTasks ? "A column must be empty to be deleted." : onlyColumn ? "A board keeps at least one column." : null;
 

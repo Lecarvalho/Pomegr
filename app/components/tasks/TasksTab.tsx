@@ -62,7 +62,7 @@ export function TasksTab({ repositoryId }: { repositoryId: string }) {
       </div>}
     </header>
     <TaskBoardView board={board} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined} />
-    {desktop === "available" && panel?.kind === "new" && <NewTaskPanel repositoryId={repositoryId} repositoryName={repositoryName} onCreated={changed} onClose={close} />}
-    {desktop === "available" && openTask && <TaskPanel key={openTask.id} repositoryId={repositoryId} task={openTask} onChanged={changed} onDeleted={deleted} onClose={close} />}
+    {desktop === "available" && panel?.kind === "new" && <NewTaskPanel repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onClose={close} />}
+    {desktop === "available" && openTask && <TaskPanel key={openTask.id} repositoryId={repositoryId} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
   </div>;
 }

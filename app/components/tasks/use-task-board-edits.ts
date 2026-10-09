@@ -4,13 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TaskBoard } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
-  MOVE_FAILURE_MESSAGE, columnFailureMessage, createDesktopColumn, deleteDesktopColumn, moveDesktopTask,
-  renameDesktopColumn, reorderDesktopColumn, type ColumnAction, type TaskActionResult, type TaskMove,
+  MOVE_FAILURE_MESSAGE, columnFailureMessage, createDesktopColumn, createDesktopFeature, deleteDesktopColumn, featureFailureMessage,
+  moveDesktopTask, renameDesktopColumn, reorderDesktopColumn, type ColumnAction, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
 // Board edits made in the desktop app. A card move is optimistic: it is drawn in its new place at once and rolled
-// back, with one fixed message, only if the monitor refuses it. Column actions are not optimistic; they wait for the
-// committed board before the control returns. Actions run one at a time, in the order they were made.
+// back, with one fixed message, only if the monitor refuses it. Column and feature actions are not optimistic; they
+// wait for the committed board before the control returns. Actions run one at a time, in the order they were made.
 
 /** An acknowledged move that the committed board has not shown yet is dropped after this long, the polling interval. */
 const CONFIRM_FALLBACK_MS = 10_000;
@@ -32,6 +32,8 @@ export type TaskBoardEdits = {
   renameColumn(id: string, name: string): Promise<boolean>;
   moveColumn(id: string, position: number): Promise<boolean>;
   deleteColumn(id: string): Promise<boolean>;
+  /** Creates a feature from the board's filter row; the committed board then lists it. */
+  addFeature(name: string): Promise<boolean>;
   /** Shows a fixed message for an input the board refused before sending anything. */
   reject(message: string): void;
 };
@@ -110,17 +112,18 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     });
   }, [enqueue, refresh, repositoryId]);
 
-  const columnAction = useCallback((action: ColumnAction, send: () => Promise<TaskActionResult>) => {
+  const waitedAction = useCallback((send: () => Promise<TaskActionResult>, message: (error: Extract<TaskActionResult, { ok: false }>["error"]) => string) => {
     setFailure(null);
     setRunning((count) => count + 1);
     return enqueue(async () => {
       const result = await send();
-      if (result.ok) await refresh(); else setFailure(columnFailureMessage(action, result.error));
+      if (result.ok) await refresh(); else setFailure(message(result.error));
       setRunning((count) => count - 1);
       setSettled((count) => count + 1);
       return result.ok;
     });
   }, [enqueue, refresh]);
+  const columnAction = useCallback((action: ColumnAction, send: () => Promise<TaskActionResult>) => waitedAction(send, (error) => columnFailureMessage(action, error)), [waitedAction]);
 
   return {
     board: display,
@@ -132,6 +135,7 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     renameColumn: useCallback((id: string, name: string) => columnAction("rename", () => renameDesktopColumn(repositoryId, id, name)), [columnAction, repositoryId]),
     moveColumn: useCallback((id: string, position: number) => columnAction("reorder", () => reorderDesktopColumn(repositoryId, id, position)), [columnAction, repositoryId]),
     deleteColumn: useCallback((id: string) => columnAction("delete", () => deleteDesktopColumn(repositoryId, id)), [columnAction, repositoryId]),
+    addFeature: useCallback((name: string) => waitedAction(() => createDesktopFeature(repositoryId, name), featureFailureMessage), [waitedAction, repositoryId]),
     reject: useCallback((message: string) => setFailure(message), []),
   };
 }

@@ -1,11 +1,13 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
+import { FeatureFilter } from "./FeatureFilter";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, type CardMoveKind } from "./task-board-model";
+import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
 import { taskColumns, type TaskColumnView } from "./task-presentation";
 import { useCardDrag, type ColumnDropHandlers } from "./use-card-drag";
 import type { TaskBoardEdits } from "./use-task-board-edits";
@@ -28,7 +30,13 @@ function TaskBoardSkeleton() {
 type Restore = { find(): HTMLElement | null; settled: number };
 
 function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits }) {
-  const columns = taskColumns(board);
+  const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
+  // A filter hides cards, so positions drawn would not be positions on the monitor: nothing can move while one is on.
+  const filter = effectiveFeatureFilter(board, chosenFilter);
+  const filtered = filter !== ALL_FEATURES;
+  const allColumns = taskColumns(board);
+  const columns = filtered ? allColumns.map((column) => ({ ...column, tasks: column.tasks.filter((task) => matchesFeatureFilter(task, filter)) })) : allColumns;
+  const lines = useMemo(() => featureLines(board), [board]);
   const scroller = useRef<HTMLDivElement>(null);
   const restore = useRef<Restore | null>(null);
   const [announcement, setAnnouncement] = useState("");
@@ -66,7 +74,7 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
     setAnnouncement(column ? `${id} moved to ${column.name}, position ${Math.min(move.position, column.tasks.length) + 1}.` : "");
     void edits.moveTask(move);
   };
-  const cardMoveFor = (task: Task): TaskCardMove | undefined => edits ? {
+  const cardMoveFor = (task: Task): TaskCardMove | undefined => edits && !filtered ? {
     drag: drag.cardHandlers(task.id),
     available: Object.fromEntries(KINDS.map((kind) => [kind, cardMove(board, task.id, kind) !== null])) as TaskCardMove["available"],
     onMove: (kind) => moveCard(task.id, kind),
@@ -80,10 +88,12 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
   return <>
     {board.tasks.length === 0 && <p className="taskBoardEmpty">No tasks on this board yet.</p>}
     {edits?.failure && <p className="newTaskError taskBoardError" role="alert">{edits.failure}</p>}
+    {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} index={index} columnCount={columns.length} onOpen={onOpenTask} edits={edits}
-          dropTarget={drag.overColumn === column.id} drop={edits ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor}
+          hiddenCount={(allColumns[index]?.tasks.length ?? 0) - column.tasks.length} lines={lines}
+          dropTarget={drag.overColumn === column.id} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor}
           onMoveColumn={moveColumn} onDeleted={() => scroller.current?.focus({ preventScroll: true })} />)}
       </div>
     </div>}
@@ -92,8 +102,10 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
   </>;
 }
 
-function TaskColumn({ column, index, columnCount, onOpen, edits, dropTarget, drop, cardMoveFor, onMoveColumn, onDeleted }: {
+function TaskColumn({ column, index, columnCount, hiddenCount, lines, onOpen, edits, dropTarget, drop, cardMoveFor, onMoveColumn, onDeleted }: {
   column: TaskColumnView;
+  hiddenCount: number;
+  lines: ReadonlyMap<string, string>;
   index: number;
   columnCount: number;
   onOpen?: OpenTask;
@@ -106,9 +118,9 @@ function TaskColumn({ column, index, columnCount, onOpen, edits, dropTarget, dro
 }) {
   const headingId = useId();
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
-    <TaskColumnHeader column={column} headingId={headingId} index={index} columnCount={columnCount} taskCount={column.tasks.length} edits={edits}
+    <TaskColumnHeader column={column} headingId={headingId} index={index} columnCount={columnCount} taskCount={column.tasks.length} hiddenCount={hiddenCount} edits={edits}
       onMove={(side) => onMoveColumn(column.id, side === "left" ? index - 1 : index + 1, side)} onDeleted={onDeleted} />
-    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
+    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} featureLine={lines.get(task.id)} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
   </section>;
 }
 

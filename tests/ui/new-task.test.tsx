@@ -105,8 +105,8 @@ describe("with the desktop bridge", () => {
     expect(dialog).toHaveTextContent("Run on");
     expect(dialog).toHaveTextContent("Effort");
     expect(dialog).toHaveTextContent("Done when");
-    // Feature and Step belong to the feature part.
-    expect(screen.queryByText(/Feature|Step in feature/)).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
+    expect(screen.getByRole("combobox", { name: "Step in feature" })).toBeDisabled();
   });
 
   it("disables both create buttons while the text is empty or only whitespace", async () => {

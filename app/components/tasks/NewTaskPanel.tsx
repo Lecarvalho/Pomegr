@@ -1,24 +1,31 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { TASK_BOUNDS, type TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskBoard, type TaskRun } from "../../../shared/task-contract";
 import { CommandIcon } from "../command-center/CommandIcon";
+import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, createPayload, type DoneWhenDraft } from "./task-fields";
+import { NO_FEATURE_DRAFT, featureCreateInput, type FeatureDraft } from "./task-features";
 import { useEscapeToClose, useTaskModelOptions } from "./task-panel-hooks";
+import { useFeatureCreation } from "./use-feature-creation";
 
-// New task side panel (design contract D184-D216, D234-D238): Task, Run on, Effort and Done when. Nothing is
-// preselected in Run on and Effort; Pull request open and Working tree clean start checked. The Feature and
-// Step fields (D217-D233) belong to the feature part and are not drawn.
+// New task side panel (design contract D184-D238): Task, Run on, Effort, Done when, then Feature and Step in feature
+// with the folded list of the feature's tasks. Nothing is preselected in Run on and Effort; Pull request open and
+// Working tree clean start checked, and the feature is No feature.
 
 /**
- * The only mutation here goes through the desktop bridge (`createDesktopTask`). Success calls `onCreated`
- * so the board is re-read; the monitor's committed answer is what the board then shows.
+ * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
+ * feature, which comes first). Success calls `onCreated` so the board is re-read; the monitor's committed
+ * answer is what the board then shows.
  */
-export function NewTaskPanel({ repositoryId, repositoryName, onCreated, onClose }: {
+export function NewTaskPanel({ repositoryId, repositoryName, board, refresh, onCreated, onClose }: {
   repositoryId: string;
   repositoryName: string | null;
+  /** The committed board: its unfinished features and their tasks fill the Feature fields. */
+  board: Pick<TaskBoard, "columns" | "features" | "tasks">;
+  refresh(): Promise<void>;
   onCreated(): void;
   onClose(): void;
 }) {
@@ -33,10 +40,14 @@ export function NewTaskPanel({ repositoryId, repositoryName, onCreated, onClose 
   const [text, setText] = useState("");
   const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
+  const [featureError, setFeatureError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const createFeature = useFeatureCreation(repositoryId, board, refresh);
   const trimmed = text.trim();
-  const canSubmit = trimmed.length > 0 && !busy;
+  const featureName = feature.name.trim();
+  const canSubmit = trimmed.length > 0 && !busy && (!feature.creating || featureName.length > 0);
 
   useEffect(() => {
     mounted.current = true;
@@ -50,7 +61,20 @@ export function NewTaskPanel({ repositoryId, repositoryName, onCreated, onClose 
     inFlight.current = true;
     setBusy(true);
     setFailure(null);
-    const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, doneWhen));
+    setFeatureError(null);
+    let draft = feature;
+    if (feature.creating) {
+      const created = await createFeature(featureName);
+      if (!created.ok) {
+        inFlight.current = false;
+        if (mounted.current) { setBusy(false); setFeatureError(created.message); }
+        return;
+      }
+      // The feature exists now: a retry after a failed task must attach to it, not create it again.
+      draft = { ...feature, creating: false, featureId: created.id, name: "" };
+      if (mounted.current) setFeature(draft);
+    }
+    const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, doneWhen, featureCreateInput(draft, null)));
     inFlight.current = false;
     // The task exists once the monitor says so, even if the panel was closed in the meantime.
     if (result.ok) onCreated();
@@ -84,6 +108,8 @@ export function NewTaskPanel({ repositoryId, repositoryName, onCreated, onClose 
       </div>
       <RunFields run={run} models={models} onChange={setRun} />
       <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+      <FeatureFields draft={feature} board={board} error={featureError}
+        onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
     </div>
     <footer className="newTaskPanelFooter">
       <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit(false)}>Create task</button>
