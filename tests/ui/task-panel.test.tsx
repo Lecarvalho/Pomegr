@@ -423,6 +423,20 @@ describe("Task panel resolutions", () => {
     return { user, dialog: within(screen.getByRole("dialog", { name: `Task ${id}` })) };
   }
 
+  it("says a stalled task's session ended with no report and offers both resolutions", async () => {
+    setBoard([task(15, { text: "Stalled work", state: "stalled", doneWhen: { checks: ["pr_open"], own: null },
+      session: { id: "claude:abc125", title: null, state: "closed", observedModel: null } })]);
+    const { user, dialog } = await open("Stalled work", "T-15");
+    expect(dialog.getByText("Stalled")).toHaveClass("commandChip", "warning");
+    expect(dialog.queryByText("Closed")).not.toBeInTheDocument();
+    expect(dialog.getByText("The session ended with no report.")).toBeInTheDocument();
+    expect(dialog.queryByText(/Agent reported/u)).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Requeue task" })).toHaveClass("commandSecondaryAction");
+    await user.click(dialog.getByRole("button", { name: "Mark done and resume queue" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-15" }));
+  });
+
   it("leads the footer of a task in review with Mark done and Requeue, before Delete", async () => {
     const { user, dialog } = await open("Task store and privacy rules", "T-12");
     const done = dialog.getByRole("button", { name: "Mark done and resume queue" });

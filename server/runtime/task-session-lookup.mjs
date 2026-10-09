@@ -28,7 +28,9 @@ function sessionTitle(value) {
  * A linked session's borrowed facts, from committed memory only: the catalog row (its title and the
  * `activityStatus` the Sessions list State column renders), then the observation store's committed public
  * state (a title the row lacks, and the primary agent's latest reported model). `null` when neither holds
- * the session. `fillTaskSessions` validates every field. No provider, Git, or new evidence read.
+ * the session. `writerReleased` is true when the primary agent's committed liveness says the Codex writer was
+ * released; with an Unknown state it establishes that the session ended (`sessionEnded` in task-stall.mjs).
+ * `fillTaskSessions` validates every field it serves. No provider, Git, or new evidence read.
  */
 export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }) {
   const parsed = parseProviderSessionId(sessionRef);
@@ -41,6 +43,7 @@ export function resolveTaskSessionFacts(sessionRef, { observationStore, catalogS
     title: sessionTitle(entry?.title) ?? sessionTitle(committed?.session?.title),
     state: entry?.activityStatus ?? "unknown",
     observedModel: typeof primary?.model === "string" ? primary.model : null,
+    writerReleased: primary?.liveness?.reason === "writer_released",
   };
 }
 

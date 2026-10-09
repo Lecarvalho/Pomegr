@@ -21,6 +21,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
+import { stallEndedTasks } from "./task-stall.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
@@ -550,5 +551,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // The agent's report (task-report.mjs): `resolveFacts()` supplies committed repository facts for the checks.
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
-  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, close });
+  // A session that ended without a report (task-stall.mjs): `resolveFacts(sessionId)` supplies committed session facts.
+  const stallEnded = (resolveFacts) => dispatch(stallEndedTasks, { resolveFacts, now });
+  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, close });
 }
