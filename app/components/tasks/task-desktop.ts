@@ -40,7 +40,7 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 }
 
 /** The fixed actions this surface sends; the monitor validates each record. */
-type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "resolve_done" | "resolve_requeue";
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder" | "queue_settings" | "resolve_done" | "resolve_requeue";
 
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -142,7 +142,14 @@ export function reorderDesktopQueueTask(repositoryId: string, id: string, step: 
   return sendTaskAction(repositoryId, "queue_reorder", { id, step });
 }
 
-/** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
+/**
+ * Turns the repository's queue on or off. Turning it on again while it is paused retries the start that failed; the
+ * monitor holds the status, so the board only shows it once it has committed.
+ */
+export function setDesktopQueue(repositoryId: string, on: boolean): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_settings", { on });
+}
+
 /** Accepts a task that needs review, is blocked, or stalled as done; a queue it was holding runs again. */
 export function resolveDesktopTaskDone(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_done", { id });
@@ -153,6 +160,7 @@ export function requeueDesktopTask(repositoryId: string, id: string): Promise<Ta
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
 
+/** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
     ? `The board is full: it holds ${TASK_BOUNDS.tasksPerRepository} tasks.`
@@ -163,6 +171,7 @@ export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
 export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
+export const QUEUE_SETTINGS_FAILURE_MESSAGE = "The queue setting could not be changed.";
 export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
 export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done.";

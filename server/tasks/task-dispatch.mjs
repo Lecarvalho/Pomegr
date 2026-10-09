@@ -59,6 +59,16 @@ function parseStoredDispatch(value) {
 
 const isLive = (stored, now) => stored !== null && now - stored.mintedAt < TASK_DISPATCH_UNBOUND_TTL_MS && now >= stored.mintedAt;
 
+/**
+ * How an unbound dispatch column value stands at `now`: `none` for no value, `live` inside its ten minutes, and `expired`
+ * for a value that has run out or that no dispatch could have written. Only the queue reads this, to tell a start that
+ * is still waiting for its session from one that never reported back.
+ */
+export function dispatchStanding(value, now) {
+  if (value === null || value === undefined) return "none";
+  return isLive(parseStoredDispatch(value), now) ? "live" : "expired";
+}
+
 function taskNumber(payload, keys) {
   if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return undefined;
   if (!Object.keys(payload).every((key) => keys.includes(key)) || !keys.every((key) => Object.hasOwn(payload, key))) return undefined;

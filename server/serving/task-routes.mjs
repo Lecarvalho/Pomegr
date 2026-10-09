@@ -16,6 +16,12 @@ const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
 const START_STATUS = Object.freeze({
   invalid: 400, not_found: 404, not_startable: 409, plugin_missing: 409, unsupported_provider: 422, unavailable: 503,
 });
+// Queue actions answer through their own handlers too. `queue-next` takes an empty body and answers the tasks the running
+// queues start now; `queue-pause` takes the usual envelope and records that a start did not succeed. Neither carries a board.
+const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
+const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
+const QUEUE_START_LIMIT = 16;
+const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
 const RUN_MODEL_LIMIT = 64;
@@ -25,7 +31,7 @@ function emptyBoard(readiness, repositoryId) {
   return {
     version: 1, readiness, repositoryId,
     columns: [], features: [], tasks: [],
-    queue: { status: "idle", blockedBy: null, order: [] },
+    queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
     runModels: { codex: [] },
   };
 }
@@ -50,7 +56,7 @@ export function projectRunModels(lookup) {
   return { codex };
 }
 
-// The store validated every record; the route only pins the contract's top-level keys and the requested ID.
+// The store validated every record; the route only pins the contract's top-level keys, the queue's four keys, and the requested ID.
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
     || !Array.isArray(board.columns) || !Array.isArray(board.features) || !Array.isArray(board.tasks)
@@ -59,7 +65,8 @@ function projectBoard(repositoryId, board, runModels) {
   }
   return {
     version: 1, readiness: board.readiness, repositoryId,
-    columns: board.columns, features: board.features, tasks: board.tasks, queue: board.queue,
+    columns: board.columns, features: board.features, tasks: board.tasks,
+    queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order },
     runModels: projectRunModels(runModels),
   };
 }
@@ -168,6 +175,46 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
   }
 }
 
+// `queue-next` answers only `{ ok: true, starts }`, each start a repository ID and a task ID re-validated here, at most 16.
+// It starts nothing and carries no board and no task content.
+function serveQueueNext({ response, taskStore, body }) {
+  try {
+    if (!isPlainObject(body) || Object.keys(body).length > 0) {
+      writeActionResult(response, 400, rejected("invalid"));
+      return;
+    }
+    const result = typeof taskStore?.nextQueueStarts === "function" ? taskStore.nextQueueStarts() : null;
+    if (result?.ok !== true || !Array.isArray(result.starts)) {
+      writeActionResult(response, 503, rejected("unavailable"));
+      return;
+    }
+    const starts = [];
+    for (const entry of result.starts) {
+      if (starts.length >= QUEUE_START_LIMIT) break;
+      if (isPlainObject(entry) && typeof entry.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(entry.repositoryId)
+        && typeof entry.taskId === "string" && TASK_ID_PATTERN.test(entry.taskId)) starts.push({ repositoryId: entry.repositoryId, taskId: entry.taskId });
+    }
+    writeActionResult(response, 200, { ok: true, starts });
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
+// `queue-pause`: the store validates the payload and the task; the answer is `{ ok: true }` or a fixed code only.
+function serveQueuePause({ response, taskStore, repositoryId, payload }) {
+  try {
+    const result = typeof taskStore?.pauseQueue === "function" ? taskStore.pauseQueue(repositoryId, payload) : null;
+    if (result?.ok === true) {
+      writeActionResult(response, 200, { ok: true });
+      return;
+    }
+    const error = Object.hasOwn(QUEUE_STATUS, result?.error) ? result.error : "unavailable";
+    writeActionResult(response, QUEUE_STATUS[error], rejected(error));
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
 /**
  * `POST /internal/tasks/<action>`. The request handler has already applied the private-action gate
  * (desktop token, loopback host, no Origin, POST), so a refused request never reaches this function
@@ -176,7 +223,7 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
  */
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action)) {
+  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -207,6 +254,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     writeActionResult(response, 400, rejected("invalid"));
     return;
   }
+  if (action === "queue-next") {
+    serveQueueNext({ response, taskStore, body });
+    return;
+  }
   const validEnvelope = isPlainObject(body) && Object.keys(body).every((key) => key === "repositoryId" || key === "payload")
     && typeof body.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(body.repositoryId) && isPlainObject(body.payload);
   if (!validEnvelope) {
@@ -215,6 +266,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
   }
   if (Buffer.byteLength(JSON.stringify(body.payload), "utf8") > TASK_PAYLOAD_LIMIT_BYTES) {
     writeActionResult(response, 413, rejected("invalid"));
+    return;
+  }
+  if (action === "queue-pause") {
+    serveQueuePause({ response, taskStore, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
   if (START_ACTIONS.includes(action)) {

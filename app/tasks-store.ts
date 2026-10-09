@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useSyncExternalStore } from "react";
-import { TASK_ID_PATTERN, createEmptyTaskBoard, type Task, type TaskBoard, type TaskCheck, type TaskState } from "../shared/task-contract";
+import { TASK_ID_PATTERN, TASK_QUEUE_PAUSE_REASONS, createEmptyTaskBoard, type Task, type TaskBoard, type TaskCheck, type TaskQueuePauseReason, type TaskState } from "../shared/task-contract";
 
 // Client for the committed task board (GET /api/tasks). Task text is user-authored content, so it
 // lives only in this module's memory: never in browser storage, a URL, or the notification layer.
@@ -21,6 +21,7 @@ const STATES = new Set<TaskState>(["not_queued", "queued", "scheduled", "needs_r
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const PROVIDERS = new Set(["claude", "codex"]);
 const QUEUE_STATUSES = new Set(["idle", "running", "blocked", "paused"]);
+const PAUSE_REASONS = new Set<string>(TASK_QUEUE_PAUSE_REASONS);
 
 type Json = Record<string, unknown>;
 
@@ -99,7 +100,9 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   // The start order is IDs only: at most one entry per task, each a task ID.
   const order = listOf(queue.order, LIMITS.tasks, (entry): entry is string => typeof entry === "string" && TASK_ID_PATTERN.test(entry));
   if (!order) return null;
-  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, order }, runModels: parseRunModels(body.runModels) };
+  // A pause reason is one fixed value, and only a paused queue has one; anything else reads as none.
+  const pauseReason = queue.status === "paused" && typeof queue.pauseReason === "string" && PAUSE_REASONS.has(queue.pauseReason) ? queue.pauseReason as TaskQueuePauseReason : null;
+  return { version: 1, readiness, repositoryId, columns, features, tasks, queue: { status: queue.status as TaskBoard["queue"]["status"], blockedBy: queue.blockedBy, pauseReason, order }, runModels: parseRunModels(body.runModels) };
 }
 
 /** The Codex client catalog; an older monitor omits it, and an invalid row is dropped rather than offered. */

@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -186,7 +186,7 @@ test("queue_add, queue_reorder, and queue_remove travel through the route with t
   await action("create", REPOSITORY_ID, { text: "single" }, { port });
   const added = await action("queue_add", REPOSITORY_ID, { id: "T-3" }, { port });
   assert.equal(added.status, 200);
-  assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, order: ["T-3"] });
+  assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-2" }, { port })).json.board.queue.order, ["T-2", "T-3"]);
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-1", "T-2", "T-3"]);
   const reordered = await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port });
@@ -207,15 +207,19 @@ test("queue_add, queue_reorder, and queue_remove travel through the route with t
   assert.deepEqual(touched, []);
 });
 
-test("every other listed action answers the fixed unsupported result and changes nothing", async (context) => {
+test("every listed action has a handler, so none answers the fixed unsupported result", async (context) => {
   const store = await realStore(context);
   const { port } = await startRoute(context, { taskStore: store });
   await action("create", REPOSITORY_ID, { text: "stay" }, { port });
   const before = store.readBoard(REPOSITORY_ID);
-  for (const name of TASK_ACTIONS.filter((candidate) => !IMPLEMENTED_ACTIONS.includes(candidate))) {
-    assertFixedError(await action(name, REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 501, "unsupported");
+  assert.deepEqual(TASK_ACTIONS.filter((candidate) => !IMPLEMENTED_ACTIONS.includes(candidate)), []);
+  for (const name of TASK_ACTIONS.filter((candidate) => candidate !== "queue_settings")) {
+    const response = await action(name, REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT, unknownKey: true }, { port });
+    assert.notEqual(response.status, 501, name);
   }
-  assert.deepEqual(store.readBoard(REPOSITORY_ID), before);
+  assert.equal((await action("queue_settings", REPOSITORY_ID, { on: "yes", text: SECRET_TEXT }, { port })).status, 400);
+  assert.equal(store.readBoard(REPOSITORY_ID).queue.status, "idle");
+  assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks.map((task) => task.text), before.tasks.map((task) => task.text));
 });
 
 test("an unknown action is a fixed 404 that echoes nothing and never reaches the store", async (context) => {
@@ -399,7 +403,7 @@ test("GET /api/tasks behaves exactly as before: desktop_only for denied clients,
     assert.equal(denied.headers["cache-control"], "no-store");
     assert.deepEqual(denied.json, {
       version: 1, readiness: "desktop_only", repositoryId: REPOSITORY_ID,
-      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, runModels: { codex: [] },
+      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, runModels: { codex: [] },
     });
     assert.ok(!denied.text.includes(SECRET_TEXT));
   }

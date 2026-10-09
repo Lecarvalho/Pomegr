@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
+import { QueueBlockRules } from "./QueueBlockRules";
 import { QueueFeaturePanel } from "./QueueFeaturePanel";
 import { QueueSingleTasks } from "./QueueSingleTasks";
 import { queueFeatures, singleQueueTasks } from "./task-queue-model";
@@ -12,7 +13,7 @@ const EMPTY_TEXT = "Nothing is in the queue yet. Open a task on the Board and ch
 
 /**
  * The Queue view of a ready board (design contract D101-D155): one panel per unfinished feature with its steps, then
- * the single tasks. The monitor owns the start order; this view draws it and, with `edits` (the desktop app), lets a
+ * the single tasks, then the fixed rules for when the queue blocks (D178-D183). The monitor owns the start order; this view draws it and, with `edits` (the desktop app), lets a
  * queued task move to another step by drag or from the keyboard. Without `edits` it is read-only.
  */
 export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: (task: Task, opener: HTMLElement) => void; edits?: TaskBoardEdits }) {
@@ -31,6 +32,7 @@ export function TaskQueueView({ board, onOpenTask, edits }: { board: TaskBoard; 
     {empty && <p className="taskBoardEmpty">{EMPTY_TEXT}</p>}
     {panels.map((panel) => <QueueFeaturePanel key={panel.feature.id} panel={panel} nextId={nextId} onOpenTask={onOpenTask} drag={edits ? drag : undefined} onMove={edits ? reorder : undefined} />)}
     {!empty && <QueueSingleTasks tasks={singles} nextId={nextId} onOpenTask={onOpenTask} />}
+    <QueueBlockRules />
     <span className="visuallyHidden" role="status">{announcement}</span>
   </div>;
 }

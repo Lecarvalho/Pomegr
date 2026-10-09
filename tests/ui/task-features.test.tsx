@@ -59,7 +59,7 @@ const features = [
 ];
 
 function boardOf(overrides: Partial<TaskBoard> = {}): TaskBoard {
-  return { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, order: [] }, ...overrides };
+  return { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides };
 }
 function publish(board: TaskBoard) {
   act(() => { mock.board = board; for (const listener of [...mock.listeners]) listener(); });

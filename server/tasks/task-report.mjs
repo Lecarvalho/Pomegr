@@ -34,8 +34,8 @@ export function blockQueue(database, repositoryId, taskId) {
     .run(taskId, repositoryId);
 }
 
-// After a resolution: a blocked queue names the lowest-numbered task that still needs the user, or runs again when none does.
-function releaseQueue(database, repositoryId) {
+// After a resolution or a deletion: a blocked queue names the lowest-numbered task that still needs the user, or runs again when none does.
+export function releaseQueue(database, repositoryId) {
   const repository = preparedStatement(database, "SELECT queue_status FROM repositories WHERE repository_id = ?").get(repositoryId);
   if (repository?.queue_status !== "blocked") return;
   const next = preparedStatement(database, `SELECT MIN(number) AS number FROM tasks WHERE repository_id = ? AND state IN (${UNRESOLVED_STATES.map(() => "?").join(", ")})`)

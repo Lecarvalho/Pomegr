@@ -7,6 +7,7 @@ import {
   TASK_EFFORTS as CONTRACT_EFFORTS,
   TASK_ID_PATTERN as CONTRACT_TASK_ID_PATTERN,
   TASK_PROVIDERS as CONTRACT_PROVIDERS,
+  TASK_QUEUE_PAUSE_REASONS as CONTRACT_QUEUE_PAUSE_REASONS,
   TASK_QUEUE_STATUSES as CONTRACT_QUEUE_STATUSES,
   TASK_REPOSITORY_ID_PATTERN as CONTRACT_REPOSITORY_ID_PATTERN,
   TASK_STATES as CONTRACT_STATES,
@@ -18,6 +19,7 @@ import {
   TASK_CHECKS,
   TASK_EFFORTS,
   TASK_PROVIDERS,
+  TASK_QUEUE_PAUSE_REASONS,
   TASK_QUEUE_STATUSES,
   TASK_STATES,
   emptyBoard,
@@ -67,6 +69,7 @@ test("the monitor's mirrored constants match shared/task-contract.ts", () => {
   assert.deepEqual([...TASK_PROVIDERS], [...CONTRACT_PROVIDERS]);
   assert.deepEqual([...TASK_EFFORTS], [...CONTRACT_EFFORTS]);
   assert.deepEqual([...TASK_QUEUE_STATUSES], [...CONTRACT_QUEUE_STATUSES]);
+  assert.deepEqual([...TASK_QUEUE_PAUSE_REASONS], [...CONTRACT_QUEUE_PAUSE_REASONS]);
   assert.deepEqual([...DEFAULT_TASK_COLUMNS], [...CONTRACT_DEFAULT_COLUMNS]);
   assert.equal(isRepositoryId(REPOSITORY), CONTRACT_REPOSITORY_ID_PATTERN.test(REPOSITORY));
   for (const value of ["T-1", "T-0", "T-01", "T-999999999", "T-9999999999", "t-1", "T-"]) {
@@ -263,7 +266,7 @@ test("the board orders columns and tasks and derives feature completion", () => 
     { id: FEATURE, name: "Billing", done: true },
     { id: `feat-${"0".repeat(11)}2`, name: "Empty", done: false },
   ]);
-  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-3", order: [] });
+  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-3", pauseReason: null, order: [] });
 
   const pending = projectBoard(REPOSITORY, {
     repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
@@ -294,10 +297,19 @@ test("a board with inconsistent or out-of-bound rows is not projected", () => {
   assert.equal(projectBoard(REPOSITORY, { ...base, tasks: tasks(TASK_BOUNDS.tasksPerRepository + 1) }), undefined);
 });
 
+test("a pause reason is projected only for a paused queue and only from the fixed list", () => {
+  const paused = (reason, status = "paused") => projectBoard(REPOSITORY, {
+    repository: { queue_status: status, queue_blocked_by: "T-2", pause_reason: reason }, columns: columnRows, features: [], tasks: [],
+  }).queue;
+  for (const reason of TASK_QUEUE_PAUSE_REASONS) assert.deepEqual(paused(reason), { status: "paused", blockedBy: "T-2", pauseReason: reason, order: [] });
+  for (const reason of ["unknown", "", null, undefined, 7, {}, "Start_Failed", "C:\secret\path"]) assert.equal(paused(reason).pauseReason, null, String(reason));
+  for (const status of ["idle", "running", "blocked"]) assert.equal(paused("start_failed", status).pauseReason, null, status);
+});
+
 test("an empty board carries no content", () => {
   assert.deepEqual(emptyBoard(REPOSITORY, "unavailable"), {
     version: 1, readiness: "unavailable", repositoryId: REPOSITORY, columns: [], features: [], tasks: [],
-    queue: { status: "idle", blockedBy: null, order: [] },
+    queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] },
   });
 });
 
@@ -313,7 +325,7 @@ test("the projected queue order lists queued task IDs only and keeps the private
       storedTask({ number: 6, state: "queued", queue_position: "junk", position: 5 }),
     ],
   });
-  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, order: ["T-3", "T-2", "T-5", "T-1", "T-6"] });
+  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3", "T-2", "T-5", "T-1", "T-6"] });
   for (const task of board.tasks) assert.equal(Object.hasOwn(task, "queuePosition"), false);
   assert.equal(JSON.stringify(board).includes("queue_position"), false);
 });

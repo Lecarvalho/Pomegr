@@ -43,7 +43,8 @@ Claude Code or Codex session for it, in the desktop app only.
 | `complete_task`, `block_task`, verified conditions | Built: both plugins register `complete_task` and `block_task`. The monitor verifies the checked conditions from the bound session's committed repository facts and sets Done or Needs review, or stores the block reason and sets Blocked by agent. The task panel shows each result and resolves a task with Mark done and resume queue or Requeue task |
 | CI passed as a verified condition | Built: the monitor's existing pull-request read also asks GitHub for the check status, keeps one fixed aggregate status per pull request in private memory, and the CI passed condition passes only when the task branch's pull request has every check passed |
 | Stalled | Built: after committed revisions the monitor sets a linked task with no report to Stalled once its session's committed facts establish the end (catalog state Closed or Stopped, or Unknown with the Codex writer released), persists it, and holds a running queue. Idle, Open, and a bare Unknown never stall a task. The task panel says the session ended with no report and offers Mark done and resume queue or Requeue task |
-| Queue advance, start gates | Not built |
+| Queue advance | Built: in the desktop app the Tasks tab turns a repository's queue on or off (off by default). With the queue on, the desktop queue runner asks the monitor for the next start and opens that task's session with no prompt, one task at a time. A task that needs review, stalled, or was blocked holds the queue behind a banner until the user resolves it; a start that does not succeed pauses the queue with a fixed reason |
+| Start gates | Not built |
 | Parallel steps with worktrees, scheduling | Not built |
 | Task on the Sessions list and in the session view | Not built |
 
@@ -119,7 +120,11 @@ type TaskBoard = {
   columns: { id: string; name: string; position: number }[];
   features: { id: string; name: string; done: boolean }[];
   tasks: Task[];
-  queue: { status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null; order: string[] };
+  queue: {
+    status: "idle" | "running" | "blocked" | "paused"; blockedBy: string | null;
+    pauseReason: "cli_missing" | "plugin_missing" | "unsupported_platform" | "start_failed" | "session_not_linked" | null;
+    order: string[];
+  };
   runModels?: { codex: { id: string; label: string | null }[] };  // at most 64; empty when no catalog is committed; absent from an older monitor
 };
 ```
@@ -144,6 +149,8 @@ type TaskBoard = {
 - `queue.order` holds task IDs only: the queued tasks in the order they would start (see
   [Queue](#queue)). It adds no task content, and the private queue position never leaves
   the monitor.
+- `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
+  a start the queue made did not succeed and never carries a path, command, or error text.
 - A feature is `done` when every task attached to it is done. Only unfinished
   features are offered when attaching a task.
 - `session` is a borrowed, normalized reference to the bound session (see
@@ -207,8 +214,7 @@ paths stay desktop-private and never reach the monitor store or browser state.
 
 The queue is the ordered set of queued tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
-and only one start at a time subject to the gates below. Until the part that starts
-sessions lands, the queue only holds and orders tasks.
+and only one start at a time. The start gates below are not checked yet.
 
 - **Order.** `queue.order` on the board lists the IDs of the tasks in state `queued`, in the
   order they would start, one ID per task. Features come in board order. Inside a
@@ -226,14 +232,44 @@ sessions lands, the queue only holds and orders tasks.
   tasks of any state and whether the step is done (it has tasks and each one is done).
   The store uses that rule to refuse a move into a done step.
 
+- **On and off.** The stored status is per repository and starts as `idle`, which is the
+  queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
+  `blocked` with the lowest-numbered task that needs review, is stalled, or is blocked in
+  `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
+  off never touches a running session.
+- **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
+  repository. Nothing starts unless the status is `running`. Nothing starts while any
+  task of the repository is in flight: it has a linked session and no outcome, or a
+  dispatch that is still live. Otherwise the candidate is the first entry of
+  `queue.order`, so the task shown as next is the task that starts. A candidate in a
+  feature waits while an earlier step of that feature is not done; the queue never
+  skips ahead to a later task.
+- **Runner.** The desktop main process polls `POST /internal/tasks/queue-next` (desktop
+  token, body `{}`) every 15 seconds on one unreferenced timer. The answer holds at most
+  16 `{ repositoryId, taskId }` pairs, one per repository whose queue has a next start,
+  and no task content. The runner starts them one after another through the same
+  dispatcher a manual start uses, without the native confirmation, because the user
+  turned the queue on. A manual start and a queued start never overlap. The next start
+  is served only on this route, never on `GET /api/tasks`.
+- **Pause.** A start that does not succeed pauses the queue and is not retried: the
+  runner posts `POST /internal/tasks/queue-pause` with `{ id, reason }`, the monitor
+  stores `paused` with the task in `blockedBy` and the fixed reason (`cli_missing`,
+  `plugin_missing`, `unsupported_platform`, or `start_failed`), and offers no next start
+  until the user turns the queue on again. A start whose terminal opened but whose
+  session never reported its token leaves an expired dispatch; the monitor pauses the
+  queue on it with `session_not_linked` instead of starting the task again. Turning the
+  queue on clears the reason and the repository's expired unlinked dispatches, which is
+  the retry. A task that moved or a manual start in flight pauses nothing; the next poll
+  asks again. The reason is kept in the store's `meta` table under
+  `queue_pause_reason:<repositoryId>`, so the schema version stays 1.
 - **Stop on trouble.** Any failed check (Needs review), stalled task, or agent block
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
   starts until the user resolves it, by **Mark done and resume** (`resolve_done`) or
   **Requeue** (`resolve_requeue`). Sessions already running continue.
   - A report changes the stored status only of a queue that is `running`: it becomes
     `blocked`, and a queue that is already blocked keeps its first blocker. An `idle` or
-    `paused` queue keeps its status, so the part that turns the queue on must refuse to
-    start while any task needs review, is blocked, or is stalled.
+    `paused` queue keeps its status; turning the queue on then computes `blocked` when any
+    task needs review, is blocked, or is stalled.
   - `resolve_done` sets such a task to Done and keeps its report and session link.
     `resolve_requeue` puts it back at the end of the queue as Queued and clears its
     report, session link, and any dispatch, so a new session can be started for it and
@@ -456,6 +492,7 @@ like any other.
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
+| `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
@@ -501,8 +538,8 @@ like any other.
   disappears) without changing the update time of other tasks, and the task stays
   `queued`. The three actions start no session and leave the stored queue status as it is.
   There is no insertion of a step between two others yet. `resolve_done` and
-  `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` still answers
-  `unsupported`.
+  `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` takes
+  exactly `{ on }`, a boolean (see [Queue](#queue)).
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

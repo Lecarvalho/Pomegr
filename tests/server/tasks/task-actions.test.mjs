@@ -10,7 +10,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const IMPLEMENTED = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-actions-"));
@@ -332,11 +332,12 @@ test("a write that would leave an unreadable board is rolled back", async (t) =>
   assert.equal(withRawDatabase(temp.databasePath, (database) => database.prepare("SELECT text FROM tasks WHERE number = 1").get().text), "Fine text");
 });
 
-test("the implemented actions leave the remaining listed actions unsupported", async (t) => {
+test("every listed action has a handler and a name outside the list answers unsupported", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
-  for (const action of TASK_ACTIONS.filter((name) => !IMPLEMENTED.includes(name))) {
+  assert.deepEqual(TASK_ACTIONS.filter((name) => !IMPLEMENTED.includes(name)), []);
+  for (const action of ["unknown_action", "start-plan", "queue-next", "queue-pause", "__proto__"]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { id: "T-1", text: "x" }), { ok: false, error: "unsupported" }, action);
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);

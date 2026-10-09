@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { FeatureFilter } from "./FeatureFilter";
+import { QueueBanner } from "./QueueBanner";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
@@ -131,7 +132,7 @@ export type TaskView = "board" | "queue";
 
 /**
  * Columns with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
- * data. Cards open the Task panel only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard and columns can be managed;
+ * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task panel only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard and columns can be managed;
  * without it the board is read-only: no draggable card, no control, no mutation.
  */
 export function TaskBoardView({ board, onOpenTask, edits, view = "board" }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView }) {
@@ -141,5 +142,8 @@ export function TaskBoardView({ board, onOpenTask, edits, view = "board" }: { bo
     <span className="commandChip">Desktop only</span>
     <p>The task board is available in the Pomegr desktop app on this computer.</p>
   </section>;
-  return view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} />;
+  return <>
+    <QueueBanner board={board} view={view} onOpenTask={onOpenTask} edits={edits} />
+    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} />}
+  </>;
 }

@@ -78,7 +78,7 @@ test("queue_add queues a task at the end and lists it in the order", async (t) =
   const first = queue(store, "T-3");
   assert.equal(first.ok, true);
   assert.equal(taskOf(first.board, "T-3").state, "queued");
-  assert.deepEqual(first.board.queue, { status: "idle", blockedBy: null, order: ["T-3"] });
+  assert.deepEqual(first.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
   const second = queue(store, "T-1");
   assert.deepEqual(second.board.queue.order, ["T-3", "T-1"]);
   assert.deepEqual(storedPositions(databasePath), [[1, 1], [2, null], [3, 0]]);
@@ -177,8 +177,8 @@ test("the queue actions leave the stored queue status and its blocker as they ar
   addTask(store);
   addTask(store);
   withRawDatabase(databasePath, (database) => database.prepare("UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = 'T-2' WHERE repository_id = ?").run(REPOSITORY));
-  assert.deepEqual(queue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", order: ["T-1"] });
-  assert.deepEqual(unqueue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", order: [] });
+  assert.deepEqual(queue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: ["T-1"] });
+  assert.deepEqual(unqueue(store, "T-1").board.queue, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: [] });
   for (const task of store.readBoard(REPOSITORY).tasks) assert.deepEqual([task.session, task.report, task.scheduledAt], [null, null, null]);
 });
 
@@ -368,7 +368,7 @@ test("the served board carries the order as task IDs and no private queue field"
   queue(store, "T-1");
   for (const board of [store.readBoard(REPOSITORY), reorder(store, "T-4", 1).board]) {
     const wire = JSON.parse(JSON.stringify(board));
-    assert.deepEqual(Object.keys(wire.queue).toSorted(), ["blockedBy", "order", "status"]);
+    assert.deepEqual(Object.keys(wire.queue).toSorted(), ["blockedBy", "order", "pauseReason", "status"]);
     assert.ok(wire.queue.order.every((id) => /^T-[1-9][0-9]*$/u.test(id)));
     assert.equal(new Set(wire.queue.order).size, wire.queue.order.length);
     for (const task of wire.tasks) assert.deepEqual(Object.keys(task).toSorted(), TASK_KEYS);

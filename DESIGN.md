@@ -432,6 +432,19 @@ and Delete task are 36px at 761px and wider with a fine pointer, also local
 deviations taken from the task-board design. A card shows the provider badge, the
 planned model and effort in the data font, and one muted Done when line, each only
 when set. `/design-system` renders the fields with static models under Task fields.
+In the desktop app the pane head also holds the queue switch, a two-way segmented
+control (Off, On) named Queue with a muted Queue eyebrow before it; On stays
+pressed while the queue is blocked or paused. Every client reads one muted line
+saying whether the queue is off or on. While the queue is blocked or paused, a
+Queue status banner sits above the Board and above the Queue: the error-soft
+fill with the error line, a title in the error color, body text in ink, and its
+actions on the right, wrapping under the text when narrow. The Board banner has
+one secondary **Open T-n**; the Queue banner adds, in the desktop app, a
+secondary **Mark done and resume** and a quiet **Requeue T-n** drawn in ink. The
+banner's secondary actions use the strong line on the panel fill, a local
+deviation taken from the task-board design. The Queue view ends with the **When
+the queue blocks** panel, a three-item list whose state words carry the amber
+(Needs review) and error (Stalled, Blocked by agent) colors.
 Git uses the shared neutral chip with an 8px gap before its placeholder title. The Context
 inventory tab uses one section per provider, including an explicit not-yet-available
 state for Codex, a revision select when

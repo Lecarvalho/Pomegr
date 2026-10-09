@@ -88,3 +88,50 @@ export function orderQueue(tasks, features) {
 
   return { order, steps };
 }
+
+/** Outcomes that need the user and hold a running queue. */
+const UNRESOLVED_STATES = new Set(["needs_review", "stalled", "blocked"]);
+
+/**
+ * The status a queue takes when the user turns it on. `tasks` are `{ id, state }`. A queue that finds a task needing
+ * the user (Needs review, Stalled, or Blocked by agent) starts blocked and names the lowest-numbered one; otherwise
+ * it runs. A record without a valid task ID is ignored. Returns `{ status, blockedBy }`.
+ */
+export function queueWhenTurnedOn(tasks) {
+  let blockedBy = null;
+  let lowest = Number.POSITIVE_INFINITY;
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    const number = isRecord(task) && UNRESOLVED_STATES.has(task.state) ? taskNumber(task.id) : undefined;
+    if (number !== undefined && number < lowest) {
+      lowest = number;
+      blockedBy = task.id;
+    }
+  }
+  return blockedBy === null ? { status: "running", blockedBy: null } : { status: "blocked", blockedBy };
+}
+
+/**
+ * What a queue does next. `tasks` are `{ id, featureId, step, state, queuePosition, inFlight, unlinked }` and `features`
+ * are `{ id }` in board order. The store supplies two facts the rule cannot know: `inFlight` is true for a task whose
+ * session is linked and has no outcome yet, or whose start is still waiting for its session to report; `unlinked` is true
+ * for a task whose start expired with no session ever linked.
+ *
+ * Returns `{ start: taskId }`, `{ pause: taskId }`, or null for nothing to do. The queue only acts while `running`, one
+ * task at a time, and always on `orderQueue`'s first task, so the task the board marks as next and the task that starts
+ * next are one task. A candidate whose earlier feature steps are not all done waits: the queue never skips ahead to a
+ * later task.
+ */
+export function nextQueueStart(input) {
+  const { status, tasks, features } = isRecord(input) ? input : {};
+  if (status !== "running") return null;
+  const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
+  if (records.some((task) => task.inFlight === true)) return null;
+  const { order, steps } = orderQueue(records, features);
+  const candidateId = order[0];
+  if (candidateId === undefined) return null;
+  const candidate = records.find((task) => task.id === candidateId);
+  if (candidate.unlinked === true) return { pause: candidateId };
+  if (typeof candidate.featureId === "string" && isStep(candidate.step)
+    && steps.some((entry) => entry.featureId === candidate.featureId && entry.step < candidate.step && !entry.done)) return null;
+  return { start: candidateId };
+}
