@@ -1,4 +1,4 @@
-import type { TaskBoard } from "../../../shared/task-contract";
+import { createEmptyTaskBoard, type TaskBoard } from "../../../shared/task-contract";
 import { proxyMonitorJson } from "../monitor-proxy";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +26,7 @@ function isSameComputerRequest(request: Request, url: URL) {
 }
 
 function contentFreeBoard(repositoryId: string, readiness: "unavailable" | "desktop_only"): TaskBoard {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } };
+  return createEmptyTaskBoard(repositoryId, readiness);
 }
 
 export async function GET(request: Request) {

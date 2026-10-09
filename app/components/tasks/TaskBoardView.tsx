@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { FeatureFilter } from "./FeatureFilter";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
+import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
 import { cardMove, type CardMoveKind } from "./task-board-model";
 import { ALL_FEATURES, effectiveFeatureFilter, featureLines, matchesFeatureFilter, type FeatureFilterValue } from "./task-features";
@@ -92,7 +93,7 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
         {columns.map((column, index) => <TaskColumn key={column.id} column={column} index={index} columnCount={columns.length} onOpen={onOpenTask} edits={edits}
-          hiddenCount={(allColumns[index]?.tasks.length ?? 0) - column.tasks.length} lines={lines}
+          hiddenCount={(allColumns[index]?.tasks.length ?? 0) - column.tasks.length} lines={lines} nextId={board.queue.order[0] ?? null}
           dropTarget={drag.overColumn === column.id} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor}
           onMoveColumn={moveColumn} onDeleted={() => scroller.current?.focus({ preventScroll: true })} />)}
       </div>
@@ -102,10 +103,12 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
   </>;
 }
 
-function TaskColumn({ column, index, columnCount, hiddenCount, lines, onOpen, edits, dropTarget, drop, cardMoveFor, onMoveColumn, onDeleted }: {
+function TaskColumn({ column, index, columnCount, hiddenCount, lines, nextId, onOpen, edits, dropTarget, drop, cardMoveFor, onMoveColumn, onDeleted }: {
   column: TaskColumnView;
   hiddenCount: number;
   lines: ReadonlyMap<string, string>;
+  /** The queued task the monitor lists first: its chip reads "Queued · next". */
+  nextId: string | null;
   index: number;
   columnCount: number;
   onOpen?: OpenTask;
@@ -120,21 +123,23 @@ function TaskColumn({ column, index, columnCount, hiddenCount, lines, onOpen, ed
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} index={index} columnCount={columnCount} taskCount={column.tasks.length} hiddenCount={hiddenCount} edits={edits}
       onMove={(side) => onMoveColumn(column.id, side === "left" ? index - 1 : index + 1, side)} onDeleted={onDeleted} />
-    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} featureLine={lines.get(task.id)} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
+    {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
   </section>;
 }
 
+export type TaskView = "board" | "queue";
+
 /**
- * Columns with a name and a count, each holding its task cards. Cards open the Task panel only when `onOpenTask` is
- * given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard and columns can be managed;
+ * Columns with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
+ * data. Cards open the Task panel only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard and columns can be managed;
  * without it the board is read-only: no draggable card, no control, no mutation.
  */
-export function TaskBoardView({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits }) {
+export function TaskBoardView({ board, onOpenTask, edits, view = "board" }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
     <span className="commandChip">Desktop only</span>
     <p>The task board is available in the Pomegr desktop app on this computer.</p>
   </section>;
-  return <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} />;
+  return view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} />;
 }

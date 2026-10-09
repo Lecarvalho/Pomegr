@@ -25,7 +25,12 @@ export type TaskFeature = { id: string; name: string; done: boolean };
 export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null };
 export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null };
-export type TaskQueue = { status: TaskQueueStatus; blockedBy: string | null };
+/**
+ * `order` holds the IDs of the queued tasks in the order they would start: features in board order, each
+ * feature's steps ascending, tasks of one step by task number, then tasks without a feature in the order they
+ * were queued. Its first entry is the "Queued · next" task. It carries IDs only, at most one per task.
+ */
+export type TaskQueue = { status: TaskQueueStatus; blockedBy: string | null; order: string[] };
 
 export type Task = {
   id: string; // "T-<n>", monotonic per repository
@@ -83,5 +88,5 @@ export const DEFAULT_TASK_COLUMNS: readonly string[] = ["Backlog", "Ready", "In 
 
 /** A board with no content, for loading, unavailable, and desktop-only answers. */
 export function createEmptyTaskBoard(repositoryId: string, readiness: TaskBoardReadiness): TaskBoard {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } };
+  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } };
 }

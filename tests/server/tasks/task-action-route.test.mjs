@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "column_create", "column_rename", "column_reorder", "column_delete", "feature_create", "queue_add", "queue_remove", "queue_reorder"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -175,6 +175,36 @@ test("feature_create and feature placement travel through the route with the fix
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port }), 409, "conflict");
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "" }, { port }), 400, "invalid");
   assertFixedError(await action("create", REPOSITORY_ID, { text: "x", featureId: `feat-${"0".repeat(12)}` }, { port }), 404, "not_found");
+});
+
+test("queue_add, queue_reorder, and queue_remove travel through the route with the fixed statuses", async (context) => {
+  const store = await realStore(context);
+  const { port, touched } = await startRoute(context, { taskStore: store });
+  const feature = (await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port })).json.board.features[0];
+  await action("create", REPOSITORY_ID, { text: "one", featureId: feature.id }, { port });
+  await action("create", REPOSITORY_ID, { text: "two", featureId: feature.id }, { port });
+  await action("create", REPOSITORY_ID, { text: "single" }, { port });
+  const added = await action("queue_add", REPOSITORY_ID, { id: "T-3" }, { port });
+  assert.equal(added.status, 200);
+  assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, order: ["T-3"] });
+  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-2" }, { port })).json.board.queue.order, ["T-2", "T-3"]);
+  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-1", "T-2", "T-3"]);
+  const reordered = await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port });
+  assert.equal(reordered.status, 200);
+  assert.deepEqual(reordered.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 1], ["T-3", null]]);
+  const separated = await action("queue_reorder", REPOSITORY_ID, { id: "T-2", step: 2 }, { port });
+  assert.deepEqual(separated.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
+  const removed = await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.json.board.queue.order, ["T-1", "T-3"]);
+  assert.equal(JSON.stringify(removed.json).includes("queuePosition"), false);
+  assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port }), 409, "conflict");
+  assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port }), 409, "conflict");
+  assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-9" }, { port }), 404, "not_found");
+  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 0 }, { port }), 400, "invalid");
+  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-3", step: 1 }, { port }), 409, "conflict");
+  assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 400, "invalid");
+  assert.deepEqual(touched, []);
 });
 
 test("every other listed action answers the fixed unsupported result and changes nothing", async (context) => {
@@ -369,7 +399,7 @@ test("GET /api/tasks behaves exactly as before: desktop_only for denied clients,
     assert.equal(denied.headers["cache-control"], "no-store");
     assert.deepEqual(denied.json, {
       version: 1, readiness: "desktop_only", repositoryId: REPOSITORY_ID,
-      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null },
+      columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] },
     });
     assert.ok(!denied.text.includes(SECRET_TEXT));
   }

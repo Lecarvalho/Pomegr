@@ -13,10 +13,10 @@ import { taskCardTitle, taskChip } from "./task-presentation";
 // Feature, Step in feature and the folded "In this feature" list, shared by the New task and Task panels (design
 // contract D217-D233 and D273-D294). Controls only report changes; each panel decides when a change is saved.
 
-type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks">;
+type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
 
-function SiblingRow({ task, step, onOpenTask }: { task: Task; step: boolean; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
-  const chip = taskChip(task);
+function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: boolean; nextQueued: boolean; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
+  const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);
   return <li className={`taskFeatureItem${step ? " hasStep" : ""}${task.state === "done" ? " isDone" : ""}`} data-task-id={task.id}>
     {step && <span className="taskFeatureStep">{task.step}</span>}
@@ -42,7 +42,7 @@ function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: Boar
       <span className="taskFeatureCount"><span className="taskFeatureNum">{total}</span> {total === 1 ? "task" : "tasks"} · <span className="taskFeatureNum">{done}</span> done</span>
     </summary>
     {rows.length > 0 && <ul className="taskFeatureList">
-      {rows.map((task) => <SiblingRow key={task.id} task={task} step={selfId !== undefined} onOpenTask={onOpenTask} />)}
+      {rows.map((task) => <SiblingRow key={task.id} task={task} step={selfId !== undefined} nextQueued={task.id === board.queue?.order[0]} onOpenTask={onOpenTask} />)}
     </ul>}
   </details>;
 }

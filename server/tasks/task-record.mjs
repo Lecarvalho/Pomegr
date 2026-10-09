@@ -7,6 +7,7 @@
 // tests/server/tasks/task-record.test.mjs pins every constant below to that contract.
 
 import { normalizedRequestModel } from "../normalize/request-snapshots.mjs";
+import { orderQueue } from "./task-queue.mjs";
 
 export const TASK_BOUNDS = Object.freeze({
   tasksPerRepository: 500,
@@ -218,6 +219,24 @@ export function normalizeDeletePayload(value) {
   return number === undefined ? undefined : { number };
 }
 
+/** `queue_add` and `queue_remove` name one task. Returns `{ number }`, or undefined when invalid. */
+export function normalizeQueueTaskPayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  return number === undefined ? undefined : { number };
+}
+
+/**
+ * `queue_reorder` moves one queued task of a feature to a step. Both keys are required and `step` is an
+ * integer of at least 1; whether the step exists is the store's to judge. Returns `{ number, step }`,
+ * or undefined when invalid.
+ */
+export function normalizeQueueReorderPayload(value) {
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "step"])) return undefined;
+  const number = taskNumberFromId(value.id);
+  return number === undefined || !Number.isSafeInteger(value.step) || value.step < 1 ? undefined : { number, step: value.step };
+}
+
 function nonNegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -354,7 +373,7 @@ export function normalizeStoredFeature(row) {
 
 /** A board with no content, for unavailable and loading answers. */
 export function emptyBoard(repositoryId, readiness) {
-  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } };
+  return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } };
 }
 
 /**
@@ -383,6 +402,12 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   for (const task of projectedTasks) {
     if (task.featureId !== null) doneByFeature.set(task.featureId, (doneByFeature.get(task.featureId) ?? true) && task.state === "done");
   }
+  // The queue order carries task IDs only. The private queue position of a stored row feeds the rule
+  // and goes no further; the projected task has no field for it.
+  const { order } = orderQueue(
+    projectedTasks.map((task, index) => ({ id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: tasks[index].queue_position ?? null })),
+    projectedFeatures,
+  );
   return {
     version: 1,
     readiness: "ready",
@@ -391,7 +416,7 @@ export function projectBoard(repositoryId, { repository, columns, features, task
     // A feature is done when it has tasks and every one of them is done.
     features: projectedFeatures.map((feature) => ({ id: feature.id, name: feature.name, done: doneByFeature.get(feature.id) === true })),
     tasks: projectedTasks.toSorted((a, b) => columnOrder.get(a.columnId) - columnOrder.get(b.columnId) || a.position - b.position || taskNumber(a) - taskNumber(b)),
-    queue: { status, blockedBy },
+    queue: { status, blockedBy, order },
   };
 }
 

@@ -9,7 +9,7 @@ const REPOSITORY_ID = "repo-0123456789abcdef01234567";
 const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
-const EMPTY_QUEUE = { status: "idle", blockedBy: null };
+const EMPTY_QUEUE = { status: "idle", blockedBy: null, order: [] };
 
 function secretBoard(repositoryId = REPOSITORY_ID) {
   return {
@@ -207,6 +207,7 @@ test("a missing store, a throwing read, or a malformed board is unavailable and 
     ["non-object board", recordingStore(() => null).store],
     ["desktop_only from a store", recordingStore(() => ({ ...secretBoard(), readiness: "desktop_only" })).store],
     ["missing arrays", recordingStore(() => ({ version: 1, readiness: "ready", queue: EMPTY_QUEUE })).store],
+    ["queue without an order", recordingStore(() => ({ ...secretBoard(), queue: { status: "idle", blockedBy: null } })).store],
   ];
   for (const [label, taskStore] of cases) {
     const { port } = await startRoute(context, { taskStore });

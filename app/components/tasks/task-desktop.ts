@@ -32,7 +32,7 @@ export function useTaskDesktopAvailability(): TaskDesktopAvailability {
 }
 
 /** The fixed actions this surface sends; the monitor validates each record. */
-type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create";
+type TaskActionName = "create" | "update" | "delete" | "move" | "column_create" | "column_rename" | "column_reorder" | "column_delete" | "feature_create" | "queue_add" | "queue_remove" | "queue_reorder";
 
 /** Sends one fixed task action through the bridge. Never throws: an IPC failure is `unavailable`. */
 async function sendTaskAction(repositoryId: string, action: TaskActionName, payload: unknown): Promise<TaskActionResult> {
@@ -102,6 +102,24 @@ export function createDesktopFeature(repositoryId: string, name: string): Promis
   return sendTaskAction(repositoryId, "feature_create", { name });
 }
 
+/** A `not_queued` task becomes `queued`; any other state answers `conflict`. */
+export function addDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_add", { id });
+}
+
+/** A `queued` task becomes `not_queued`. */
+export function removeDesktopQueueTask(repositoryId: string, id: string): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_remove", { id });
+}
+
+/**
+ * Moves a queued task of a feature to `step`, from 1 to the feature's highest step + 1 (a new last step). The
+ * monitor renumbers steps densely and answers `conflict` for a step whose tasks are all done.
+ */
+export function reorderDesktopQueueTask(repositoryId: string, id: string, step: number): Promise<TaskActionResult> {
+  return sendTaskAction(repositoryId, "queue_reorder", { id, step });
+}
+
 /** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
@@ -112,6 +130,9 @@ export function createFailureMessage(error: TaskActionError | "unavailable"): st
 export const UPDATE_FAILURE_MESSAGE = "The change could not be saved.";
 export const DELETE_FAILURE_MESSAGE = "The task could not be deleted.";
 export const MOVE_FAILURE_MESSAGE = "The card could not be moved.";
+export const QUEUE_REORDER_FAILURE_MESSAGE = "The task could not be moved to that step.";
+export const QUEUE_ADD_FAILURE_MESSAGE = "The task could not be added to the queue.";
+export const QUEUE_REMOVE_FAILURE_MESSAGE = "The task could not be removed from the queue.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 export const COLUMN_NAME_REQUIRED_MESSAGE = "The column needs a name.";
 

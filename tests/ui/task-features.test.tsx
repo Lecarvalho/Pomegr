@@ -59,7 +59,7 @@ const features = [
 ];
 
 function boardOf(overrides: Partial<TaskBoard> = {}): TaskBoard {
-  return { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null }, ...overrides };
+  return { version: 1, readiness: "ready", repositoryId, columns, features, tasks: tasks(), queue: { status: "idle", blockedBy: null, order: [] }, ...overrides };
 }
 function publish(board: TaskBoard) {
   act(() => { mock.board = board; for (const listener of [...mock.listeners]) listener(); });
@@ -104,7 +104,7 @@ async function openNew(user: ReturnType<typeof userEvent.setup>) {
   return within(screen.getByRole("dialog", { name: "New task" }));
 }
 async function openTask(user: ReturnType<typeof userEvent.setup>, title: string, id: string) {
-  await user.click(screen.getByRole("button", { name: title }));
+  await user.click(within(document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement).getByRole("button", { name: title }));
   return within(screen.getByRole("dialog", { name: `Task ${id}` }));
 }
 const lastCall = (action: string) => taskAction.mock.calls.filter((call) => call[1] === action).at(-1)?.[2];

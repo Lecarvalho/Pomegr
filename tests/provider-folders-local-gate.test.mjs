@@ -68,7 +68,7 @@ test("development task-board reads answer remote LAN peers a desktop_only board 
       assert.equal(result.headers["Cache-Control"], "no-store");
       assert.deepEqual(JSON.parse(result.body), {
         version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [],
-        queue: { status: "idle", blockedBy: null },
+        queue: { status: "idle", blockedBy: null, order: [] },
       });
     }
   }

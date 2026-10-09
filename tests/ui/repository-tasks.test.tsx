@@ -35,7 +35,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 }
 
 function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
-  return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [], queue: { status: "idle", blockedBy: null }, ...overrides };
+  return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] }, ...overrides };
 }
 
 const column = (name: string) => screen.getByRole("region", { name });

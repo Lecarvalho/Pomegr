@@ -1,5 +1,6 @@
 /* Repository Tasks tab: the task board (design contract D45-D67, D86, D87). Tokens only. State chips
-   are the shared .commandChip outline label; a tone recolors its text and never fills it. */
+   are the shared .commandChip outline label; a tone recolors its text and never fills it, except Queued (D61), which
+   takes the raised fill. */
 .repositoryTasksTab { display: grid; gap: var(--space-4); }
 
 /* Board: columns scroll sideways instead of shrinking below 220px. */
@@ -178,3 +179,41 @@
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
 .taskFilterCount { color: var(--command-muted); font: 400 var(--text-xs)/1 var(--font-data); }
 .taskCardFeature { overflow-wrap: anywhere; }
+
+/* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
+   the board card at the compact padding. Drag-over takes the raised fill; a step whose tasks are all done never does. */
+.taskQueueView { display: grid; gap: var(--space-4); }
+.taskQueuePanel { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
+.taskQueueHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.taskQueueHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskQueueCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueNum { font-family: var(--font-data); }
+.taskQueueSteps { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.taskQueueStep { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); padding: var(--space-2); border-radius: var(--panel-radius); }
+.taskQueueStep + .taskQueueStep { border-top: 1px solid var(--command-line); }
+.taskQueueStep.isDragOver, .taskQueueNewStep.isDragOver { background: var(--command-panel-2); }
+.taskQueueStepLabel { flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; padding-top: var(--space-2); }
+.taskQueueStepName { color: var(--command-ink); font: 650 var(--text-xs)/1.4 var(--font-ui); }
+.taskQueueStepMode, .taskQueueStepNote { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
+.taskQueueStepNote { font-weight: 400; }
+.taskQueueCards { flex: 1 1 320px; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.taskQueueCard { gap: var(--space-1); padding: var(--space-2) var(--space-3); cursor: default; }
+.taskQueueCard.isMovable { cursor: grab; }
+.taskQueueNewStep { padding: var(--space-3) var(--space-2); border: 1px dashed var(--command-line-strong); border-radius: var(--panel-radius); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
+.taskQueueNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Keyboard alternative: the move select is drawn while the card holds keyboard focus (or on a coarse pointer) and
+   stays in the accessibility tree otherwise, like the board's move toolbar. */
+.taskQueueMove .commandSelect { display: grid; }
+.taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; border: 0; clip-path: inset(50%); white-space: nowrap; }
+@media (pointer: coarse) {
+  .taskQueueCard:not(:has(:focus-visible)):not(:has([aria-expanded="true"])) .taskQueueMove { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip-path: none; white-space: normal; }
+}
+.taskQueueSingles { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.taskQueueSingle { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+.taskQueueSingle .taskCardId { flex: 0 0 auto; }
+.taskQueueSingleTitle { flex: 1 1 240px; min-width: 0; }
+.taskCardChip.isInk { background: var(--command-panel-2); border-color: transparent; }
+@media (max-width: 760px) {
+  .taskQueueStepLabel { flex: 1 0 100%; padding-top: 0; }
+  .taskQueueCards { grid-template-columns: minmax(0, 1fr); }
+}

@@ -12,7 +12,7 @@ function localIdentity() {
 // task content; a denied provider-folders read stays unavailable.
 const gatedRoutes = new Map([
   ["/api/provider-folders", { status: 404, body: '{"error":"Provider folders unavailable."}' }],
-  ["/api/tasks", { status: 200, body: JSON.stringify({ version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null } }) }],
+  ["/api/tasks", { status: 200, body: JSON.stringify({ version: 1, readiness: "desktop_only", repositoryId: "", columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, order: [] } }) }],
 ]);
 
 // Vite listens on the LAN during development. Check the actual peer before the

@@ -21,7 +21,8 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeColumnCreatePayload, normalizeColumnDeletePayload,
   normalizeColumnRenamePayload, normalizeColumnReorderPayload, normalizeCreatePayload, normalizeDeletePayload,
-  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeUpdatePayload, projectBoard, taskIdFromNumber,
+  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -382,6 +383,72 @@ function createFeature({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
+// The queue is the set of tasks in state `queued`, ordered by the pure `orderQueue` rule when the board is
+// projected. These actions change a task's state and step only; they start no session and leave the queue
+// status as stored. A task that leaves `queued` here gets a null `queue_position`.
+const queuePositionAfterHighest = (database, repositoryId) => {
+  const highest = preparedStatement(database, "SELECT MAX(queue_position) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest;
+  return highest === null || highest === undefined || !Number.isSafeInteger(Number(highest)) ? 0 : Number(highest) + 1;
+};
+
+function stepCounts(database, repositoryId, featureId, step) {
+  const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
+    .get(repositoryId, featureId, step);
+  return { total: Number(row.total), done: Number(row.done) };
+}
+
+// A step is done when it holds tasks and every one of them is done, the same rule `orderQueue` reports.
+function stepIsDone(database, repositoryId, featureId, step) {
+  const { total, done } = stepCounts(database, repositoryId, featureId, step);
+  return total > 0 && total === done;
+}
+
+function addToQueue({ database, repositoryId }, payload) {
+  const input = normalizeQueueTaskPayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  if (!task) return { ok: false, error: "not_found" };
+  if (task.state !== "not_queued") return { ok: false, error: "conflict" };
+  // A task joins at the end: a position above every position the repository ever handed out.
+  preparedStatement(database, "UPDATE tasks SET state = 'queued', queue_position = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(queuePositionAfterHighest(database, repositoryId), Date.now(), repositoryId, input.number);
+  return { ok: true };
+}
+
+function removeFromQueue({ database, repositoryId }, payload) {
+  const input = normalizeQueueTaskPayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  if (!task) return { ok: false, error: "not_found" };
+  if (task.state !== "queued") return { ok: false, error: "conflict" };
+  preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(Date.now(), repositoryId, input.number);
+  return { ok: true };
+}
+
+// Moves a queued task to another step of its own feature. A task without a feature has no step: it runs in
+// the order it was queued. A step from 1 to the feature's highest + 1 (a new last step), measured before the
+// move, is valid, and a step that is already done refuses a task. The steps then close up around the move.
+function reorderQueuedTask({ database, repositoryId }, payload) {
+  const input = normalizeQueueReorderPayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const task = preparedStatement(database, "SELECT state, feature_id, step FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  if (!task) return { ok: false, error: "not_found" };
+  if (task.state !== "queued" || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
+  const highest = highestStep(database, repositoryId, task.feature_id);
+  if (stepWithin(input.step, highest) === undefined) return { ok: false, error: "invalid" };
+  // Its own step, or a new last step for the lone task of the last step, leaves the task where it is.
+  const current = Number(task.step);
+  if (input.step === current || (input.step === highest + 1 && current === highest && stepCounts(database, repositoryId, task.feature_id, current).total === 1)) {
+    return { ok: true };
+  }
+  if (stepIsDone(database, repositoryId, task.feature_id, input.step)) return { ok: false, error: "conflict" };
+  preparedStatement(database, "UPDATE tasks SET step = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(input.step, Date.now(), repositoryId, input.number);
+  renumberSteps(database, repositoryId, task.feature_id);
+  return { ok: true };
+}
+
 // Actions by name. Each takes `{ database, repositoryId }` and the payload inside the store's
 // transaction, and returns `{ ok: true }` or a fixed error code. It validates the payload before
 // its first write. A listed action absent from this table answers `unsupported` until its part lands.
@@ -389,6 +456,7 @@ const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   column_create: createColumn, column_rename: renameColumn, column_reorder: reorderColumn, column_delete: deleteColumn,
   feature_create: createFeature,
+  queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
