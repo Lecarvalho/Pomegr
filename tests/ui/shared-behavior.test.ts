@@ -230,6 +230,9 @@ describe("monitor proxy", () => {
     expect((await upstreamFor("http://192.168.1.20:3003/api/sessions?mode=directory&tasks=1", { host: "192.168.1.20:3003" })).has("tasks")).toBe(false);
     expect((await upstreamFor(local, { host: "127.0.0.1:3003", origin: "http://evil.example" })).has("tasks")).toBe(false);
     expect((await upstreamFor(local, { host: "127.0.0.1:3003", "sec-fetch-site": "cross-site" })).has("tasks")).toBe(false);
+    // The session view's own-row read is forwarded with the same marker.
+    const own = await upstreamFor("http://127.0.0.1:3003/api/sessions?mode=directory&session=codex%3Aone&pageSize=1", { host: "127.0.0.1:3003" });
+    expect([own.get("session"), own.get("tasks")]).toEqual(["codex:one", "1"]);
     // Only the directory carries task references.
     expect((await upstreamFor("http://127.0.0.1:3003/api/sessions?selected=codex%3Aone", { host: "127.0.0.1:3003" })).has("tasks")).toBe(false);
   });

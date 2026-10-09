@@ -22,9 +22,11 @@ function withTasks(sessions, references) {
 /**
  * `query` is the validated catalog query. `feature` narrows to the sessions started for one feature's tasks and
  * `groupFeature` groups by feature; both read the task store and neither reaches the catalog as task data: the
- * catalog only sees a set of session IDs.
+ * catalog only sees a set of session IDs. `session` narrows the page to one validated session ID, which is how the
+ * session view reads its own row's task reference; it is a session ID, not task data, so it narrows for every client.
  */
-export function serveSessionDirectoryWithTasks({ runtime, taskStore = null, allowed = false, query, feature = "", groupFeature = false }) {
+export function serveSessionDirectoryWithTasks({ runtime, taskStore = null, allowed = false, query, feature = "", groupFeature = false, session = "" }) {
+  if (session) query = { ...query, group: "", sessionIds: [session] };
   const directory = (input) => runtime.serveSessionDirectory?.(input) || { ...EMPTY_PAGE };
   const grouped = groupFeature && !feature;
   // Without the task store's answer a feature scope matches nothing; it never falls back to every session.

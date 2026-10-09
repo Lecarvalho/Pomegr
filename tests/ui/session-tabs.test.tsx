@@ -3,15 +3,15 @@ import type { SessionSummaryDomain } from "../../shared/session-domain-contract"
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SessionTabs } from "../../app/components/dashboard/SessionTabs";
+import { SessionTabs, type SessionTaskTabState } from "../../app/components/dashboard/SessionTabs";
 import type { SessionTab } from "../../app/components/dashboard/session-route";
 import { sessionSummaryFixture } from "./session-summary-test-fixture";
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-function mount(active: SessionTab, overrides: Parameters<typeof sessionSummaryFixture>[0] = {}) {
+function mount(active: SessionTab, overrides: Parameters<typeof sessionSummaryFixture>[0] = {}, task: SessionTaskTabState = "absent") {
   const onSelect = vi.fn();
-  const view = render(<SessionTabs active={active} summary={sessionSummaryFixture(overrides)} onSelect={onSelect} />);
+  const view = render(<SessionTabs active={active} task={task} summary={sessionSummaryFixture(overrides)} onSelect={onSelect} />);
   return { ...view, onSelect };
 }
 
@@ -64,9 +64,9 @@ describe("SessionTabs", () => {
     const onSelect = vi.fn();
     const summary = (readiness: SessionSummaryDomain["resourceAvailability"]["readiness"], hasData: boolean | null) =>
       sessionSummaryFixture({ resourceAvailability: { readiness, hasData } });
-    const { rerender } = render(<SessionTabs active="resources" summary={summary("loading", null)} onSelect={onSelect} />);
+    const { rerender } = render(<SessionTabs active="resources" task="absent" summary={summary("loading", null)} onSelect={onSelect} />);
     expect(onSelect).not.toHaveBeenCalled();
-    rerender(<SessionTabs active="resources" summary={summary("unavailable", null)} onSelect={onSelect} />);
+    rerender(<SessionTabs active="resources" task="absent" summary={summary("unavailable", null)} onSelect={onSelect} />);
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect).toHaveBeenCalledWith("overview");
   });
@@ -74,12 +74,12 @@ describe("SessionTabs", () => {
   it("does not re-run the redirect effect on an unrelated re-render with the same resource readiness", () => {
     const onSelect = vi.fn();
     const summary = sessionSummaryFixture({ resourceAvailability: { readiness: "unavailable", hasData: null } });
-    const { rerender } = render(<SessionTabs active="overview" summary={summary} onSelect={onSelect} />);
+    const { rerender } = render(<SessionTabs active="overview" task="absent" summary={summary} onSelect={onSelect} />);
     expect(onSelect).not.toHaveBeenCalled();
     // A fresh summary object with the same primitive readiness/hasData values
     // simulates an unrelated poll re-render; the effect must not re-fire
     // (and here it shouldn't fire at all, since the active tab is Overview).
-    rerender(<SessionTabs active="overview" summary={sessionSummaryFixture({ resourceAvailability: { readiness: "unavailable", hasData: null } })} onSelect={onSelect} />);
+    rerender(<SessionTabs active="overview" task="absent" summary={sessionSummaryFixture({ resourceAvailability: { readiness: "unavailable", hasData: null } })} onSelect={onSelect} />);
     expect(onSelect).not.toHaveBeenCalled();
   });
 
