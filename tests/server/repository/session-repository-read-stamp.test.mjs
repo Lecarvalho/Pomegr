@@ -11,14 +11,14 @@ const withoutReadAt = (block) => Object.fromEntries(Object.entries(block).filter
 const binding = { state: "single", repositoryId: REPOSITORY_ID, root: ROOT, fingerprint: `bound:${ROOT}`, recordedBranch: "codex/live" };
 const evidence = { session: { cwd: ROOT, recordedGitBranch: "codex/live", startedAt: iso(0) }, pullRequestCreations: [], executionTasks: [] };
 
-function fixture({ startedAt } = {}) {
+function fixture({ startedAt, statusUnknown = false } = {}) {
   const jobs = [];
   const checks = [];
   const clock = { now: 5_000 };
   const enrichment = createSessionRepositoryEnrichment({
     gitReader: async (root) => {
       const acquired = { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root,
-        ...(startedAt === undefined ? {} : { _readStartedAt: startedAt }) };
+        ...(startedAt === undefined ? {} : { _readStartedAt: startedAt }), ...(statusUnknown ? { _statusUnknown: true } : {}) };
       clock.now = 6_500;
       return acquired;
     },
@@ -53,6 +53,13 @@ test("a Git read that joined an inspection already under way is as old as that i
   assert.equal((await impossible.refresh()).repository.readAt, iso(5_000));
   const malformed = fixture({ startedAt: "yesterday" });
   assert.equal((await malformed.refresh()).repository.readAt, iso(5_000));
+});
+
+test("a read whose git status failed commits no stamp, so nothing is judged on its empty file list", async () => {
+  const value = await fixture({ startedAt: 4_200, statusUnknown: true }).refresh();
+  assert.equal(Object.hasOwn(value.repository, "readAt"), false);
+  assert.equal(Object.hasOwn(value.repository, "_statusUnknown"), false);
+  assert.deepEqual(value.repository.files, []);
 });
 
 test("the served form drops both private read times and changes nothing else", async () => {

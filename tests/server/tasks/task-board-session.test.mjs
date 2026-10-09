@@ -309,9 +309,9 @@ const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_
 const checkFacts = (publicState, options = {}) => resolveTaskCheckFacts(SESSION, { observationStore: storeWith(publicState), checkRead: passedRead, ...options });
 
 test("each check fact carries the time it was read, from committed memory alone", () => {
-  // The pull-request block's oldest read, the remote comparison's refresh time (no block stamp), the oldest judged check
-  // read bounded by the pull-request block's, and no tree read.
-  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: 5_000, pullRequests: 6_000, ci: 6_000 });
+  // The pull-request block's oldest read, the oldest judged check read bounded by the pull-request block's, and no
+  // tree or branch read: a repository block with no stamp is not dated by the remote comparison's refresh time.
+  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: null, pullRequests: 6_000, ci: 6_000 });
 
   // The repository block's own read dates the working tree and the comparison it computed.
   const stamped = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(9_000) }) }) });
@@ -321,8 +321,8 @@ test("each check fact carries the time it was read, from committed memory alone"
   assert.deepEqual(checkFacts(olderStamp).readAt, { tree: 4_000, branch: 4_000, pullRequests: 6_000, ci: 6_000 });
 
   // Without a ready remote refresh there is no comparison to date, stamped or not, and a malformed time is no time.
-  for (const remote of [{ status: "checking", checkedAt: iso(5_000) }, { status: "ready", checkedAt: null }, { status: "ready", checkedAt: "soon" }, undefined]) {
-    const state = checkState({ session: checkSession({ repository: checkRepository({ remote }) }) });
+  for (const remote of [{ status: "checking", checkedAt: iso(5_000) }, { status: "unavailable", checkedAt: null }, undefined]) {
+    const state = checkState({ session: checkSession({ repository: checkRepository({ remote, readAt: iso(9_000) }) }) });
     assert.equal(checkFacts(state).readAt.branch, null, JSON.stringify(remote));
   }
   assert.equal(checkFacts(checkState({ session: checkSession({ repository: checkRepository({ remote: { status: "checking", checkedAt: null }, readAt: iso(9_000) }) }) })).readAt.branch, null);
@@ -373,7 +373,7 @@ test("the work times are the latest end of the session's finished commands and r
   // A subagent's commands count, and so does a recorded file change; a read does not.
   const subagent = { id: "agent-2", executionTasks: [task("git", iso(8_000))] };
   assert.deepEqual(workAt(checkState({ agents: [subagent] })), { tree: 8_000, repository: 8_000 });
-  const feed = (...entries) => ({ items: entries.map(([workKind, time]) => ({ workKind, timestamp: iso(time) })), total: entries.length });
+  const feed = (...entries) => ({ items: entries.map(([workKind, time]) => ({ workKind, timestamp: iso(time), durationMs: 0 })), total: entries.length });
   assert.deepEqual(workAt(checkState({ activity: feed(["write", 4_000], ["read", 9_000], ["write", 3_500]) })), { tree: 4_000, repository: null });
   assert.deepEqual(workAt(checkState({ activity: feed(["read", 9_000]) })), { tree: null, repository: null });
 
@@ -401,7 +401,7 @@ test("a check judges a fact only when it was read after the work it judges", () 
 
   assert.deepEqual(passes(stamped(9_000)), all);
   // A repository block with no read stamp has no tree read time, so the tree is unknown.
-  assert.deepEqual(passes(checkState()), { ...all, tree_clean: false });
+  assert.deepEqual(passes(checkState()), { ...all, tree_clean: false, commit_on_branch: false });
   // A push that ended after the pull requests (6000) and the check status (7000) were read, but before the
   // comparison (9000) was, leaves only the first two unknown.
   const afterReads = { pr_open: false, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: false };
@@ -410,8 +410,17 @@ test("a check judges a fact only when it was read after the work it judges", () 
   // Any command after the tree was read, or a command still running, leaves the tree unknown.
   assert.equal(passes(stamped(9_000, { executionTasks: [task("shell", iso(9_001))] })).tree_clean, false);
   assert.equal(passes(stamped(9_000, { executionTasks: [task("test", null, "running")] })).tree_clean, false);
-  assert.equal(passes(stamped(9_000, { activity: { items: [{ workKind: "write", timestamp: iso(9_500) }], total: 1 } })).tree_clean, false);
-  assert.equal(passes(stamped(9_000, { activity: { items: [{ workKind: "write", timestamp: iso(8_500) }], total: 1 } })).tree_clean, true);
+  const write = (timestamp, durationMs) => ({ activity: { items: [{ workKind: "write", timestamp: iso(timestamp), durationMs }], total: 1 } });
+  assert.equal(passes(stamped(9_000, write(9_500, 0))).tree_clean, false);
+  assert.equal(passes(stamped(9_000, write(8_500, 100))).tree_clean, true);
+  // A file write is over when its call ends, not when it was made: one called before the read that ended after it
+  // (it waited for approval), or one with no recorded result, leaves the tree unknown.
+  assert.equal(checkFacts(stamped(9_000, write(1_000, 20_000))).workAt.tree, 21_000);
+  assert.equal(passes(stamped(9_000, write(1_000, 20_000))).tree_clean, false);
+  for (const durationMs of [null, undefined, -1, "soon"]) {
+    assert.equal(checkFacts(stamped(9_000, write(1_000, durationMs))).workAt.tree, Number.POSITIVE_INFINITY, String(durationMs));
+    assert.equal(passes(stamped(9_000, write(1_000, durationMs))).tree_clean, false, String(durationMs));
+  }
 });
 
 test("check facts are unknown, with no times, when the committed state does not establish them", () => {

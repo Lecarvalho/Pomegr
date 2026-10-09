@@ -80,6 +80,12 @@ The last row, **Your own condition**, is free text up to 500 characters. The
 agent judges it, and Pomegr does not evaluate it. A fact Pomegr has not observed
 is unknown, and unknown never passes.
 
+A condition also passes only when Pomegr read its fact after the session's last
+related work. If a command ran after the last read, or Pomegr could not date the
+fact, the condition does not pass and the task lands in **Needs review**, even when
+it now holds. A command that is still running, such as a development server,
+keeps **Working tree clean** from passing until it ends.
+
 ### Move cards and manage columns
 
 - **Move a card.** Drag it to another column, or onto a card to place it before
@@ -157,6 +163,12 @@ owns under the desktop app's data folder.
   Worktrees of finished tasks stay until you remove them.
 - A requeued task reuses its worktree only if Git still lists it on the task
   branch and it is clean. Otherwise the start fails and nothing is touched.
+- When a start is refused because the task's worktree has uncommitted changes, the
+  task panel says "This task's worktree has uncommitted changes. Pomegr never
+  removes them. Open the folder to commit or discard them, then try again." and
+  offers **Open folder**. Commit or discard the changes there, then start the
+  session again. **Open folder** works in the desktop app on Windows. When the queue
+  made the start, it pauses instead (see [When the queue stops](#when-the-queue-stops)).
 
 ## Run the queue
 
@@ -176,6 +188,10 @@ are all done accepts none. Tasks with no feature appear under **Single tasks**.
 - **One step at a time.** The queue starts every queued task of the current step
   in the same check, one after another. It starts nothing in a later step, or a
   later single task, until earlier work has reported and is done.
+- **Started tasks.** A task whose session has started is no longer shown as next or
+  as waiting. It keeps its state and shows its session's state, and later steps
+  wait for it. While a task with no feature is running, the queue starts nothing,
+  even when the Queue view still marks the next single task **Queued · next**.
 - **Timing.** The desktop app asks for the next start every 15 seconds, so the
   queue works only while Pomegr is open.
 
@@ -196,6 +212,15 @@ choose one of two actions.
 > task can show **Needs review** though the condition now holds. Choose **Mark
 > done and resume queue**; Pomegr does not repeat the check.
 
+A task whose session never reports holds the queue too. Pomegr never marks it done
+or stalled by itself while it cannot tell that the session ended, for example
+after the computer or Pomegr restarted, and the queue never moves past it, because
+the task can matter to the whole feature. Open the task and choose **Mark done**
+or **Requeue task**; the panel says "The session has not reported. Mark done and
+Requeue do not stop it." Neither action stops the session. **Mark done** accepts
+the task, and a later report from that session changes nothing. **Requeue task**
+clears the session link, so a later report from the old session is not accepted.
+
 A start that fails pauses the queue instead. The **Queue paused** banner names the
 task and one of these reasons. Fix it, then select **On** again to retry.
 
@@ -204,6 +229,7 @@ task and one of these reasons. Fix it, then select **On** again to retry.
 | The provider's command-line tool was not found. | Install Claude Code or Codex on this computer. |
 | The Pomegr plugin is not installed in this repository. | Install it; see [Reporting plugins](reporting-plugins.md#install-the-plugin). |
 | Starting sessions is available on Windows only. | Start tasks from a Windows computer. |
+| Its worktree has uncommitted changes, and Pomegr never removes them. | Select **Open folder** in the banner (desktop app, Windows), commit or discard the changes there, then select **On** again. |
 | The terminal window could not be opened. | Select **On** to retry. |
 | The terminal opened, but the session did not report back. | Check the plugin, and for Codex that its hooks are trusted. |
 
@@ -257,20 +283,27 @@ the coding tool, not by anything the model supplies.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. It lands in the first column, not queued. It may carry **Run on**, **Done when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Done when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 
 `complete_task` and `block_task` act only on the task linked to the calling
-session. A task takes one report per start; a second report changes nothing. If
-every checked condition passes, the task is **Done**; if one fails, it is **Needs
-review**. When no condition is checked, the agent's report alone completes the
-task, which is the agent's word, not a check. A session that ends without a report
-leaves the task **Stalled**, but only once Pomegr has established the session's
-end, for example a **Closed** or **Stopped** session. An **Idle** or **Open**
-session never stalls a task. A stalled task leaves that state only through **Mark
-done and resume queue** or **Requeue task**. Pomegr keeps only each condition's
-pass or fail and the block reason, never command output or diffs.
+session. In Claude Code, the coding tool ties each call to its session; if Claude
+Code hooks are off or the hook times out, an agent's add, complete, or block call is
+refused and nothing is added or reported. When Claude Code asks you to approve such
+a call, you have up to ten minutes to do so; after that the call is refused and the
+agent can try again. A task takes one report per start; a second report changes
+nothing. If every checked condition passes, the task is **Done**; if one fails, it
+is **Needs review**. When no condition is checked, the agent's report alone
+completes the task, which is the agent's word, not a check. A session that ends
+without a report leaves the task **Stalled**, but only once Pomegr has established
+the session's end, for example a **Closed** session or a **Stopped** Claude Code
+session. A Codex session reads **Stopped** after a failed or interrupted turn while
+it may still be able to report, so **Stopped** alone does not stall a Codex task; it
+stalls only once Pomegr sees that Codex no longer holds the session (Windows). An
+**Idle** or **Open** session never stalls a task. A stalled task leaves that state
+only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
+each condition's pass or fail and the block reason, never command output or diffs.
 
 ## See a task from Sessions
 

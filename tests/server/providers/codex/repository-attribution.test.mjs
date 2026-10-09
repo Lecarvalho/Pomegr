@@ -51,6 +51,9 @@ async function providerWithEvidence(t, targets) {
   });
   await inventory.ready;
   provider.setRepositoryResolver(inventory.resolveRepository);
+  // The catalog header waits only briefly for the Git root lookup and names an unanswered one "Unknown project"
+  // until the next poll, so the lookup is answered once here before the header is judged.
+  await inventory.resolveRepository(launch, { requireGit: true });
   // The launch directory is a plain (non-Git) temp directory here, so before any
   // mutation is proven the session-identity rule names the project after that
   // directory itself rather than claiming an unproven repository.
@@ -102,6 +105,8 @@ test("Codex provider names the project from the launch directory when it is itse
   await inventory.ready;
   provider.setRepositoryResolver(inventory.resolveRepository);
   const { repositoryId } = await inventory.resolveRepository(launchRepository, { requireGit: true });
+  // The header resolves the nested launch directory, a different lookup key, within its short wait.
+  await inventory.resolveRepository(nestedLaunchCwd, { requireGit: true });
 
   // A fresh provider (in-memory attribution tracker is empty, as after a restart)
   // and no completed structured file edit yet: catalog rows must still show the

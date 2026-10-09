@@ -73,8 +73,8 @@ const REPOSITORY_WORK_KINDS = new Set(["git", "git_push", "pull_request"]);
 
 // The latest time of work in the session's committed public state that could have changed a repository fact:
 // `tree` (recorded file changes and any finished shell command) and `repository` (finished Git, push, and pull-request
-// commands). Null means no such work is recorded. A command still running, or finished at no known time, is
-// `Infinity`: the work is not over, so no fact read so far can be later than it. Bounded feeds count too: when the
+// commands). Null means no such work is recorded. A command still running, a file write with no recorded result, or
+// work finished at no known time, is `Infinity`: the work is not over, so no fact read so far can be later than it. Bounded feeds count too: when the
 // activity feed is truncated and shows no file change, the newest change is at or before its oldest item.
 function workTimes(state) {
   const tasks = [...(Array.isArray(state?.executionTasks) ? state.executionTasks : []),
@@ -83,7 +83,13 @@ function workTimes(state) {
   const endOf = (task) => (task?.status === "running" ? Number.POSITIVE_INFINITY : timeOf(task?.finishedAt) ?? Number.POSITIVE_INFINITY);
   const ends = tasks.filter((task) => task && typeof task === "object").map((task) => ({ kind: task.workKind, end: endOf(task) }));
   const items = Array.isArray(state?.activity?.items) ? state.activity.items : [];
-  const writes = items.filter((item) => item?.workKind === "write").map((item) => timeOf(item.timestamp) ?? Number.POSITIVE_INFINITY);
+  // A file write's item is dated by its call; the file changes when the call ends (`timestamp + durationMs`). A
+  // write with no recorded result (waiting for approval, still running) is not over.
+  const writeEnd = (item) => {
+    const start = timeOf(item.timestamp);
+    return start !== null && Number.isSafeInteger(item.durationMs) && item.durationMs >= 0 ? start + item.durationMs : Number.POSITIVE_INFINITY;
+  };
+  const writes = items.filter((item) => item?.workKind === "write").map(writeEnd);
   const oldest = items.map((item) => timeOf(item?.timestamp)).filter((time) => time !== null);
   const truncated = Number.isSafeInteger(state?.activity?.total) && state.activity.total > items.length;
   if (truncated && writes.length === 0) writes.push(oldest.length > 0 ? Math.min(...oldest) : Number.POSITIVE_INFINITY);
@@ -107,8 +113,8 @@ function workTimes(state) {
  * pull-requests.mjs), committed with the values it dates and removed before the state is served:
  * - `readAt.tree` is the repository block's `readAt`, the start of the Git read its changed files come from.
  * - `readAt.branch` is the same read when the block carries a ready comparison (the Git read computed it against the
- *   last refreshed base); a block with no stamp falls back to the time the remote comparison was refreshed
- *   (`repository.remote.checkedAt`). No ready comparison is no read.
+ *   last refreshed base). The remote comparison's own `checkedAt` does not date the local read and is not used.
+ *   No ready comparison is no read.
  * - `readAt.pullRequests` is the pull-request block's `readAt`, the start of the oldest read its items rest on; the
  *   served `checkedAt` is the newest read and is not used.
  * - `readAt.ci` is the oldest read among the judged pull requests' check statuses and the pull-request block's own
@@ -134,7 +140,7 @@ export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead 
   const ci = branchPulls ? ciPassed(branchPulls, checkRead) : { value: null, readAt: null };
   const blockReadAt = timeOf(repository.readAt);
   const pullsReadAt = timeOf(pulls?.readAt);
-  const comparisonReadAt = repository.remote?.status === "ready" ? blockReadAt ?? timeOf(repository.remote.checkedAt) : null;
+  const comparisonReadAt = repository.remote?.status === "ready" ? blockReadAt : null;
   return {
     treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
     branchCommits,
