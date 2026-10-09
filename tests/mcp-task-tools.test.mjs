@@ -8,6 +8,8 @@ import { registerTaskTools, TASK_ADD_PATH, TASK_UNBOUND_TEXT, TASK_UNAVAILABLE_T
 import {
   AGENT_QUERY_AUTH_HEADER,
   AGENT_TASK_ADD_PATH,
+  AGENT_TASK_BIND_PATH,
+  AGENT_TASK_WRITE_PATHS,
   createAgentTaskWriter,
 } from "../shared/agent-query-transport.mjs";
 import { bindClaudeQuerySession } from "../plugin-src/claude-query-session.mjs";
@@ -141,11 +143,23 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.headers[AGENT_QUERY_AUTH_HEADER], "t".repeat(43));
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
-  for (const bad of ["/api/agent/v1/tasks/complete", "/api/agent/v1/sessions", "/api/agent/v1/tasks/add/../x", "/api/tasks"]) {
+  // The bind path is the second and last write path; nothing else is reachable.
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH]);
+  const bind = createAgentTaskWriter({ ...base, fetchFn: respond(200, { schemaVersion: 1, ok: true }) });
+  assert.deepEqual(await bind(AGENT_TASK_BIND_PATH, { token: "x".repeat(16), sessionRef: "claude:a" }), { schemaVersion: 1, ok: true });
+  assert.equal(requests[1].url, "http://127.0.0.1:4317/api/agent/v1/tasks/bind");
+  assert.equal(requests[1].init.method, "POST");
+  assert.equal(requests[1].init.headers[AGENT_QUERY_AUTH_HEADER], "t".repeat(43));
+  assert.equal(requests[1].init.body, JSON.stringify({ token: "x".repeat(16), sessionRef: "claude:a" }));
+  for (const bad of [
+    "/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/block", "/api/agent/v1/sessions", "/api/agent/v1/tasks/add/../x",
+    "/api/tasks", "/api/agent/v1/tasks/bind/", "/api/agent/v1/tasks/bind?token=x", "/api/agent/v1/tasks/bind/x", "/api/agent/v1/tasks/Bind", "",
+  ]) {
     await assert.rejects(() => write(bad, {}), /AGENT_QUERY_PATH_INVALID/u);
+    await assert.rejects(() => bind(bad, {}), /AGENT_QUERY_PATH_INVALID/u);
   }
   await assert.rejects(() => write(AGENT_TASK_ADD_PATH, { text: "a".repeat(16 * 1024) }), /AGENT_QUERY_BODY_INVALID/u);
-  assert.equal(requests.length, 1);
+  assert.equal(requests.length, 2);
 
   const refused = createAgentTaskWriter({ ...base, fetchFn: respond(422, { schemaVersion: 1, ok: false, reason: "invalid" }) });
   assert.deepEqual(await refused(AGENT_TASK_ADD_PATH, {}), { schemaVersion: 1, ok: false, reason: "invalid" });

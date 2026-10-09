@@ -1,16 +1,21 @@
-// Session dispatch for one task: the start plan the desktop turns into a terminal, and its abort.
+// Session dispatch for one task: the start plan the desktop turns into a terminal, its abort, and the
+// bind that links the started session to the task.
 //
 // A plan is minted only after every refusal passed. The opaque token leaves this module once, inside
 // the plan; the store keeps only its SHA-256 digest and the mint time, in the existing `dispatch_token`
 // column as `<digest>:<mintMs>`, so no schema change is needed. The digest is never projected onto the
 // board. Task text is untrusted: it is concatenated only into the fixed prompt string, never into a
 // path or command line. Start gates (capacity, incident, clean tree, previous step) belong to a later part.
+//
+// The started session reports the token with its normalized session ID, and `bindDispatch` links the
+// two once and discards the digest. The token is the only authority: the session is not looked up,
+// because the catalog has no row for it yet at session start.
 
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { isRepositoryId, isTaskId, normalizeStoredTask } from "./task-record.mjs";
+import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
-/** An unbound dispatch is live for this long after its mint; a session start binds it earlier (a later part). */
+/** An unbound dispatch is live for this long after its mint; a bound one is never read again and never expires. */
 export const TASK_DISPATCH_UNBOUND_TTL_MS = 10 * 60 * 1000;
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "unavailable"]);
 
@@ -120,4 +125,45 @@ export function startAbort({ database, transaction, repositoryId, payload }) {
     }
   }
   return { ok: true };
+}
+
+const BIND_REFUSED = Object.freeze({ ok: false, error: "not_found" });
+
+/**
+ * `bind`: links the session that reported a live dispatch token to the task that minted it, in one write
+ * transaction, and clears the digest. The lookup is monitor-wide: the token is the only input that names a
+ * task. A wrong or reused token, an expired unbound dispatch, a task that already has a session, and a session
+ * already linked to another task all answer the same `not_found`, so the answer says nothing about which
+ * one failed and never carries a task or repository. The link is single assignment; it changes no state,
+ * column, or queue position, and a linked task is never startable again.
+ */
+export function bindDispatch({ database, transaction, payload, now }) {
+  const shaped = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+    && Object.keys(payload).length === 2 && Object.hasOwn(payload, "token") && Object.hasOwn(payload, "sessionId");
+  if (!shaped || typeof payload.token !== "string" || !TOKEN_PATTERN.test(payload.token) || !isTaskSessionId(payload.sessionId)) {
+    return { ok: false, error: "invalid" };
+  }
+  const supplied = Buffer.from(digestOf(payload.token), "hex");
+  const at = now();
+  return transaction(() => {
+    // Every unlinked dispatch is compared, so the time taken does not depend on which row matches.
+    let match = null;
+    const candidates = preparedStatement(database, "SELECT repository_id, number, dispatch_token FROM tasks WHERE session_id IS NULL AND dispatch_token IS NOT NULL").all();
+    for (const row of candidates) {
+      const stored = parseStoredDispatch(row.dispatch_token);
+      const matches = stored !== null && crypto.timingSafeEqual(supplied, Buffer.from(stored.digest, "hex"));
+      if (matches && isLive(stored, at)) match = row;
+    }
+    if (match === null) return BIND_REFUSED;
+    if (preparedStatement(database, "SELECT 1 FROM tasks WHERE session_id = ?").get(payload.sessionId) !== undefined) return BIND_REFUSED;
+    try {
+      const linked = preparedStatement(database, "UPDATE tasks SET session_id = ?, dispatch_token = NULL, updated_at = ? WHERE repository_id = ? AND number = ? AND session_id IS NULL AND dispatch_token = ?")
+        .run(payload.sessionId, Date.now(), match.repository_id, match.number, match.dispatch_token);
+      return Number(linked.changes) === 1 ? { ok: true } : BIND_REFUSED;
+    } catch (error) {
+      // The unique `tasks_session` index is the last guard of single assignment; anything else is unavailable.
+      if (/constraint/iu.test(String(error?.message))) return BIND_REFUSED;
+      throw error;
+    }
+  });
 }

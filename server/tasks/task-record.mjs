@@ -46,6 +46,11 @@ export function isRepositoryId(value) {
   return typeof value === "string" && REPOSITORY_ID.test(value);
 }
 
+/** A normalized session ID the store may link to a task (`claude:<id>`); the same pattern a stored link must satisfy. */
+export function isTaskSessionId(value) {
+  return typeof value === "string" && SESSION_ID.test(value);
+}
+
 export function taskIdFromNumber(number) {
   return Number.isSafeInteger(number) && number >= 1 && number <= 999_999_999 ? `T-${number}` : undefined;
 }
@@ -351,8 +356,8 @@ export function normalizeStoredTask(row) {
     doneWhen: { checks, own },
     state: row.state,
     scheduledAt,
-    // A linked session's title, state, and model are borrowed from observation by a later part;
-    // until observation supplies them they are unknown, never guessed.
+    // A linked session's title, state, and model are borrowed from committed observation by
+    // `fillTaskSessions` (task-board.mjs); until it supplies them they are unknown, never guessed.
     session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null },
     report, createdAt, updatedAt,
   };

@@ -1,13 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { TASK_BOUNDS, type Task, type TaskBoard, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
-import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionListTime } from "../../dashboard-utils";
 import { CommandIcon } from "../command-center/CommandIcon";
 import { FeatureFields } from "./FeatureFields";
 import { DoneWhenField, RunFields } from "./TaskFields";
+import { TaskSessionLink } from "./TaskSessionLink";
 import {
   DELETE_FAILURE_MESSAGE, FEATURE_ATTACH_FAILURE_MESSAGE, QUEUE_ADD_FAILURE_MESSAGE, QUEUE_REMOVE_FAILURE_MESSAGE, UPDATE_FAILURE_MESSAGE, addDesktopQueueTask,
   deleteDesktopTask, removeDesktopQueueTask, updateDesktopTask, type TaskFieldsInput,
@@ -15,7 +14,7 @@ import {
 import { doneWhenFromTask, observedModelDiffers, toDoneWhen, type DoneWhenDraft } from "./task-fields";
 import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
 import { useEscapeToClose, useTaskModelOptions } from "./task-panel-hooks";
-import { taskCardTitle, taskChip } from "./task-presentation";
+import { taskCardTitle, taskChip, taskSessionHref, taskSessionTitle } from "./task-presentation";
 import { useFeatureCreation } from "./use-feature-creation";
 import { useTaskStart } from "./use-task-start";
 
@@ -26,14 +25,6 @@ import { useTaskStart } from "./use-task-start";
 // from queue (Queued) before Delete task: the design has no such control, so this is the orchestrator's decision.
 
 type Patch = { text?: string } & TaskFieldsInput;
-
-function sessionHref(sessionId: string) {
-  try {
-    return `/sessions/${encodeSessionRoute(sessionId)}`;
-  } catch {
-    return "/sessions";
-  }
-}
 
 function reportLine(report: NonNullable<Task["report"]>) {
   const time = Number.isFinite(Date.parse(report.at)) ? <> <time dateTime={report.at}>{sessionListTime(report.at)}</time></> : null;
@@ -95,7 +86,8 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
   const chip = taskChip(task, task.id === board.queue?.order[0]);
   const results = useMemo(() => new Map<TaskCheck, boolean>((task.report?.results ?? []).map((entry) => [entry.check, entry.passed])), [task.report]);
   const start = useTaskStart(repositoryId, task, text.trim() !== task.text, refresh);
-  const sessionTitle = task.session?.title ?? null;
+  const sessionTitle = taskSessionTitle(task);
+  const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
 
   const save = async (patch: Patch) => {
     setFailure(null);
@@ -206,7 +198,10 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
     <div className="newTaskPanelBody">
       <div className="taskPanelTitle">
         <h2 id={titleId} className="taskPanelHeading">{taskCardTitle(task)}</h2>
-        {sessionTitle && <span className="newTaskHelper">Title from the session{task.session && <> · <Link className="commandTextLink" href={sessionHref(task.session.id)}>Open session</Link></>}</span>}
+        {(sessionTitle !== null || hasSessionLink) && <span className="newTaskHelper">
+          {sessionTitle !== null && <>Title from the session{hasSessionLink && " · "}</>}
+          {task.session && <TaskSessionLink sessionId={task.session.id} />}
+        </span>}
         <div className="newTaskField">
           <label htmlFor={fieldId}>Task</label>
           <textarea id={fieldId} rows={3} maxLength={TASK_BOUNDS.textLength} value={text} aria-describedby={failure ? errorId : undefined}
@@ -217,7 +212,7 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
       <div className="taskRunGroup">
         <RunFields run={run} models={models} onChange={changeRun} />
         {observedModelDiffers(run.model, task.session?.observedModel) && <div className="taskModelNotice" role="status">
-          <span className="taskModelNoticeTitle">Observed model differs</span>
+          <span className="taskModelNoticeTitle">Observed model differs</span>{" "}
           <span>Planned <code>{run.model}</code>, latest recorded request used <code>{task.session?.observedModel}</code>.</span>
         </div>}
       </div>

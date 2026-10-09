@@ -7,7 +7,10 @@ import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mj
 import { parseProviderSessionId } from "../providers/provider-contract.mjs";
 import { DEFAULT_RETENTION_DAYS, DEFAULT_THRESHOLD_MB } from "../persistence/store-retention.mjs";
 import { serveNotificationRoute } from "./notification-routes.mjs";
-import { AGENT_TASK_ADD_PATH, TASK_ACTION_PATH_PREFIX, serveAgentTaskAddRoute, serveTaskActionRoute, serveTaskRoute } from "./task-routes.mjs";
+import {
+  AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, TASK_ACTION_PATH_PREFIX, serveAgentTaskAddRoute, serveAgentTaskBindRoute,
+  serveTaskActionRoute, serveTaskRoute,
+} from "./task-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -46,6 +49,8 @@ export function createRequestHandler({
     ? requireDesktopToken(rawAgentAuthorizationToken, "MONITOR_INVALID_AGENT_AUTHORIZATION")
     : "";
   const extraResponseHeaders = typeof responseHeaders === "function" ? responseHeaders : () => ({});
+  // A linked task's session facts, read lazily from committed memory only; absent, the board shows them unknown.
+  const resolveSessionFacts = (id) => runtime.resolveTaskSessionFacts?.(id);
   return async (request, response) => {
     const localAddress = request.socket?.localAddress;
     const localPort = request.socket?.localPort;
@@ -59,7 +64,7 @@ export function createRequestHandler({
       && (!authorizationToken || requestHasDesktopAuthorization(request, authorizationToken));
     if (requestUrl.pathname === "/api/tasks") {
       serveTaskRoute({ request, response, requestUrl, taskStore, authorized: sameComputerRead,
-        runModels: () => runtime.resolveRunModels?.() });
+        runModels: () => runtime.resolveRunModels?.(), resolveSessionFacts });
       return;
     }
     if (requestUrl.pathname === "/api/provider-folders") {
@@ -102,14 +107,16 @@ export function createRequestHandler({
       }
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Content-Type", "application/json; charset=utf-8");
-      // The one agent write path; every other agent route stays GET-only.
-      if (requestUrl.pathname === AGENT_TASK_ADD_PATH) {
+      // The agent write paths (add, bind); every other agent route stays GET-only.
+      const agentTaskWrite = requestUrl.pathname === AGENT_TASK_ADD_PATH ? serveAgentTaskAddRoute
+        : requestUrl.pathname === AGENT_TASK_BIND_PATH ? serveAgentTaskBindRoute : null;
+      if (agentTaskWrite) {
         if (request.method !== "POST") {
           response.writeHead(405, { Allow: "POST" });
           response.end();
           return;
         }
-        await serveAgentTaskAddRoute({
+        await agentTaskWrite({
           request, response, requestUrl, taskStore,
           resolveSession: typeof runtime.resolveTaskSession === "function" ? (ref) => runtime.resolveTaskSession(ref) : null,
         });
@@ -215,7 +222,7 @@ export function createRequestHandler({
     response.setHeader("Cache-Control", "no-store");
     if (taskActionRequest) {
       await serveTaskActionRoute({
-        request, response, requestUrl, taskStore,
+        request, response, requestUrl, taskStore, resolveSessionFacts,
         resolveStart: (repositoryId) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId) : null),
       });
       return;

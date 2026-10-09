@@ -1,5 +1,6 @@
 import type { SessionActivityStatus } from "../../../shared/monitor-contract";
 import type { Task, TaskBoard, TaskState } from "../../../shared/task-contract";
+import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionState } from "../../dashboard-utils";
 
 export const taskStateLabels: Record<TaskState, string> = {
@@ -16,7 +17,8 @@ export const taskStateLabels: Record<TaskState, string> = {
 const OUTCOME_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked", "done"]);
 /** Outcomes that hold the queue and need the user, so the card carries the attention border. */
 const ATTENTION_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked"]);
-const SESSION_STATUSES = new Set<SessionActivityStatus>(["working", "needs_input", "idle", "open", "stopped", "closed", "unknown"]);
+/** What the Sessions list State column shows once the monitor holds committed facts. `unknown` is the monitor saying it has none yet. */
+const BORROWED_STATUSES = new Set<SessionActivityStatus>(["working", "needs_input", "idle", "open", "stopped", "closed"]);
 
 type ChipTone = "neutral" | "info" | "positive" | "warning";
 
@@ -31,17 +33,27 @@ export type TaskChip = {
 };
 
 /**
+ * The session state a task borrows, in the Sessions list's own label and state. Only a task with a linked session and no
+ * outcome of its own borrows, and only once the monitor holds committed facts for that session: `unknown` (or any value
+ * the list does not render) keeps the task's own chip, so a session state is never shown and then retracted.
+ */
+function borrowedSessionState(task: Task) {
+  if (!task.session || OUTCOME_STATES.has(task.state)) return null;
+  const status = task.session.state as SessionActivityStatus;
+  return BORROWED_STATUSES.has(status) ? sessionState({ activityStatus: status }) : null;
+}
+
+/**
  * The chip is the task's own state, except that while a session is bound and the task has no outcome
  * yet it shows that session's state, borrowed. There is no Running task state, and nothing is derived
  * here: whatever the monitor committed is what the card shows. `nextQueued` is true for the one task the monitor
  * lists first in `queue.order`: it reads "Queued · next".
  */
 export function taskChip(task: Task, nextQueued = false): TaskChip {
-  if (task.session && !OUTCOME_STATES.has(task.state)) {
-    const status = SESSION_STATUSES.has(task.session.state as SessionActivityStatus) ? task.session.state as SessionActivityStatus : "unknown";
-    const { label, state } = sessionState({ activityStatus: status });
-    const tone: ChipTone = state === "active" ? "positive" : state === "attention" ? "warning" : "neutral";
-    return { label, tone, ink: false, border: state === "active" ? "live" : "none" };
+  const borrowed = borrowedSessionState(task);
+  if (borrowed) {
+    const tone: ChipTone = borrowed.state === "active" ? "positive" : borrowed.state === "attention" ? "warning" : "neutral";
+    return { label: borrowed.label, tone, ink: false, border: borrowed.state === "active" ? "live" : "none" };
   }
   const attention = ATTENTION_STATES.has(task.state);
   const tone: ChipTone = attention ? "warning" : task.state === "scheduled" ? "info" : "neutral";
@@ -49,9 +61,24 @@ export function taskChip(task: Task, nextQueued = false): TaskChip {
   return { label, tone, ink: task.state === "queued", border: attention ? "attention" : "none" };
 }
 
+/** The linked session's catalog title when it is a non-empty string, else null. */
+export function taskSessionTitle(task: Task): string | null {
+  const title = task.session?.title;
+  return typeof title === "string" && title.trim() !== "" ? title : null;
+}
+
 /** The card shows the task text until its session has a title, then the session title. */
 export function taskCardTitle(task: Task) {
-  return task.session?.title || task.text;
+  return taskSessionTitle(task) ?? task.text;
+}
+
+/** The session view the Sessions list links its row to for this ID, or null for an ID the route cannot carry. */
+export function taskSessionHref(sessionId: string): string | null {
+  try {
+    return `/sessions/${encodeSessionRoute(sessionId)}`;
+  } catch {
+    return null;
+  }
 }
 
 export type TaskColumnView = { id: string; name: string; tasks: Task[] };

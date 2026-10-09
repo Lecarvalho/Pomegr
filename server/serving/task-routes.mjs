@@ -67,10 +67,11 @@ function projectBoard(repositoryId, board, runModels) {
 /**
  * Committed-store task board GET. `authorized` is the same-computer decision the request handler
  * shares with `GET /api/provider-folders`; a denied client learns nothing beyond `desktop_only`.
- * `runModels` reads the last committed Codex client catalog from memory.
+ * `runModels` reads the last committed Codex client catalog from memory, and `resolveSessionFacts(sessionId)`
+ * reads a linked session's title, state, and model from committed facts in memory (task-board.mjs validates them).
  * The route never acquires provider evidence and has no write path.
  */
-export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null }) {
+export function serveTaskRoute({ request, response, requestUrl, taskStore, authorized, runModels = null, resolveSessionFacts = null }) {
   response.setHeader("Cache-Control", "no-store");
   if (request.method !== "GET") {
     response.writeHead(405, { Allow: "GET" });
@@ -94,7 +95,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
     return;
   }
   try {
-    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId), runModels);
+    const board = projectBoard(repositoryId, taskStore?.readBoard(repositoryId, { resolveSessionFacts }), runModels);
     response.writeHead(200, JSON_HEADERS);
     response.end(JSON.stringify(board));
   } catch {
@@ -173,7 +174,7 @@ function serveStartAction({ response, taskStore, resolveStart, action, repositor
  * and never writes. The body is `{ repositoryId, payload }`; the answer is `{ ok: true, board }` or
  * `{ ok: false, error }`, never an echo of the input. The monitor validates the whole record.
  */
-export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null }) {
+export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
   if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
@@ -225,7 +226,7 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
       writeActionResult(response, 503, rejected("conflict"));
       return;
     }
-    const result = taskStore.apply(body.repositoryId, action, body.payload);
+    const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts });
     if (result?.ok === true) {
       writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
       return;
@@ -253,6 +254,23 @@ function writeAgentAddResult(response, reason, taskId = null, { close = false } 
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true, taskId } : { schemaVersion: 1, ok: false, reason }));
 }
 
+// The shared prelude of the agent write routes: a JSON content type, no query or chunked body, and a body within
+// `limit` bytes that parses. `failed` means the connection is closed after an `invalid` answer; a body that does
+// not parse is `null`, which each route refuses as `invalid` without closing.
+async function readAgentJson(request, requestUrl, limit) {
+  const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+  if (requestUrl.search || mediaType !== "application/json" || request.headers["transfer-encoding"] !== undefined
+    || Number(request.headers["content-length"] || 0) > limit) return { failed: true };
+  let raw;
+  try {
+    raw = await readLimitedBody(request, limit);
+  } catch {
+    return { failed: true };
+  }
+  if (raw === null) return { failed: true };
+  try { return { body: JSON.parse(raw.toString("utf8")) }; } catch { return { body: null }; }
+}
+
 /**
  * `POST /api/agent/v1/tasks/add`, the first agent write. The request handler has already applied the
  * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
@@ -260,25 +278,12 @@ function writeAgentAddResult(response, reason, taskId = null, { close = false } 
  * The answer carries the new task ID and never an echo of task content. The store validates the record.
  */
 export async function serveAgentTaskAddRoute({ request, response, requestUrl, taskStore, resolveSession }) {
-  const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
-  if (requestUrl.search || mediaType !== "application/json" || request.headers["transfer-encoding"] !== undefined
-    || Number(request.headers["content-length"] || 0) > TASK_PAYLOAD_LIMIT_BYTES) {
+  const read = await readAgentJson(request, requestUrl, TASK_PAYLOAD_LIMIT_BYTES);
+  if (read.failed) {
     writeAgentAddResult(response, "invalid", null, { close: true });
     return;
   }
-  let raw;
-  try {
-    raw = await readLimitedBody(request, TASK_PAYLOAD_LIMIT_BYTES);
-  } catch {
-    writeAgentAddResult(response, "invalid", null, { close: true });
-    return;
-  }
-  if (raw === null) {
-    writeAgentAddResult(response, "invalid", null, { close: true });
-    return;
-  }
-  let body;
-  try { body = JSON.parse(raw.toString("utf8")); } catch { body = null; }
+  const { body } = read;
   const feature = isPlainObject(body) ? body.feature : undefined;
   const valid = isPlainObject(body) && Object.keys(body).every((key) => AGENT_TASK_KEYS.has(key))
     && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
@@ -333,5 +338,51 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
     writeAgentAddResult(response, null, newest.id);
   } catch {
     writeAgentAddResult(response, "unavailable");
+  }
+}
+
+export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
+// A token (at most 128 characters) and a session reference (at most 135) fit well inside this.
+const AGENT_BIND_BODY_LIMIT_BYTES = 1024;
+const AGENT_BIND_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
+
+function writeAgentBindResult(response, reason, { close = false } = {}) {
+  const ok = reason === null;
+  response.writeHead(ok ? 200 : AGENT_BIND_STATUS[reason], {
+    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
+  });
+  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
+}
+
+/**
+ * `POST /api/agent/v1/tasks/bind`: the started session reports its dispatch token and its normalized session ID,
+ * and the store links the two once. The request handler has already applied the agent-query gate. The token is
+ * the only authority, so the route does not look the session up, and every refusal after a well-formed request
+ * (wrong or reused token, expired dispatch, task or session already linked) is the same `not_found`. The answer
+ * never carries a task, repository, or any task content. The store validates the token and the session ID.
+ */
+export async function serveAgentTaskBindRoute({ request, response, requestUrl, taskStore }) {
+  const read = await readAgentJson(request, requestUrl, AGENT_BIND_BODY_LIMIT_BYTES);
+  if (read.failed) {
+    writeAgentBindResult(response, "invalid", { close: true });
+    return;
+  }
+  const { body } = read;
+  const valid = isPlainObject(body) && Object.keys(body).every((key) => key === "token" || key === "sessionRef")
+    && typeof body.token === "string" && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef);
+  if (!valid) {
+    writeAgentBindResult(response, "invalid");
+    return;
+  }
+  try {
+    if (typeof taskStore?.bindSession !== "function") {
+      writeAgentBindResult(response, "unavailable");
+      return;
+    }
+    const result = taskStore.bindSession({ token: body.token, sessionId: body.sessionRef });
+    if (result?.ok === true) writeAgentBindResult(response, null);
+    else writeAgentBindResult(response, Object.hasOwn(AGENT_BIND_STATUS, result?.error) ? result.error : "unavailable");
+  } catch {
+    writeAgentBindResult(response, "unavailable");
   }
 }
