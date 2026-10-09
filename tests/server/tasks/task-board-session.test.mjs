@@ -6,6 +6,9 @@ import path from "node:path";
 import test from "node:test";
 import { createTaskLookups } from "../../../server/runtime/task-start-lookup.mjs";
 import { resolveTaskCheckFacts, resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { readPullRequests } from "../../../server/repository/pull-requests.mjs";
+import { createSessionRepositoryEnrichment, serializeServedSessionState } from "../../../server/repository/session-repository-enrichment.mjs";
+import { SessionObservationStore } from "../../../server/sessions/checkpoints/session-observation-store.mjs";
 import { verifyChecks } from "../../../server/tasks/task-checks.mjs";
 import { TASK_CHECKS } from "../../../server/tasks/task-record.mjs";
 import { createRequestHandler } from "../../../server/serving/request-handler.mjs";
@@ -298,41 +301,63 @@ const checkRepository = (overrides = {}) => ({
 const pullUrl = (number) => `https://github.com/PomegrHQ/pomegr/pull/${number}`;
 const openPull = (number = 1, state = "open") => ({ state, headBranch: "tasks/12", url: pullUrl(number) });
 const task = (workKind, finishedAt, status = "completed") => ({ id: `tool-${workKind}`, workKind, status, finishedAt });
-const checkSession = (overrides = {}) => ({
-  repository: checkRepository(), pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull()] }, ...overrides,
-});
+// The pull-request block's served `checkedAt` is its newest read; its private `readAt` is the start of its oldest.
+const pullBlock = (items = [openPull()], overrides = {}) => ({ status: "ready", checkedAt: iso(6_000), readAt: iso(6_000), items, ...overrides });
+const checkSession = (overrides = {}) => ({ repository: checkRepository(), pullRequests: pullBlock(), ...overrides });
 const checkState = (overrides = {}) => ({ session: checkSession(), executionTasks: [], agents: [], activity: { items: [], total: 0 }, ...overrides });
 const passedRead = (url) => (url === pullUrl(1) ? { status: "passed", readAt: 7_000 } : null);
 const checkFacts = (publicState, options = {}) => resolveTaskCheckFacts(SESSION, { observationStore: storeWith(publicState), checkRead: passedRead, ...options });
 
 test("each check fact carries the time it was read, from committed memory alone", () => {
-  // The pull-request block's own check time, the remote comparison's refresh time, the oldest judged check read, and no tree read.
-  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: 5_000, pullRequests: 6_000, ci: 7_000 });
+  // The pull-request block's oldest read, the remote comparison's refresh time (no block stamp), the oldest judged check
+  // read bounded by the pull-request block's, and no tree read.
+  assert.deepEqual(checkFacts(checkState()).readAt, { tree: null, branch: 5_000, pullRequests: 6_000, ci: 6_000 });
 
+  // The repository block's own read dates the working tree and the comparison it computed.
   const stamped = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(9_000) }) }) });
-  assert.deepEqual(checkFacts(stamped).readAt, { tree: 9_000, branch: 9_000, pullRequests: 6_000, ci: 7_000 });
+  assert.deepEqual(checkFacts(stamped).readAt, { tree: 9_000, branch: 9_000, pullRequests: 6_000, ci: 6_000 });
+  // An older stamp than the remote refresh still wins: the comparison was computed by that read, not by the fetch.
+  const olderStamp = checkState({ session: checkSession({ repository: checkRepository({ readAt: iso(4_000) }) }) });
+  assert.deepEqual(checkFacts(olderStamp).readAt, { tree: 4_000, branch: 4_000, pullRequests: 6_000, ci: 6_000 });
 
-  // Without a ready remote refresh the comparison has no read time, and a malformed time is no time.
+  // Without a ready remote refresh there is no comparison to date, stamped or not, and a malformed time is no time.
   for (const remote of [{ status: "checking", checkedAt: iso(5_000) }, { status: "ready", checkedAt: null }, { status: "ready", checkedAt: "soon" }, undefined]) {
     const state = checkState({ session: checkSession({ repository: checkRepository({ remote }) }) });
     assert.equal(checkFacts(state).readAt.branch, null, JSON.stringify(remote));
   }
-  for (const checkedAt of [null, undefined, "yesterday", 6_000]) {
-    const state = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt, items: [openPull()] } }) });
-    assert.equal(checkFacts(state).readAt.pullRequests, null, String(checkedAt));
+  assert.equal(checkFacts(checkState({ session: checkSession({ repository: checkRepository({ remote: { status: "checking", checkedAt: null }, readAt: iso(9_000) }) }) })).readAt.branch, null);
+  for (const readAt of [null, undefined, "yesterday", 6_000]) {
+    const state = checkState({ session: checkSession({ repository: checkRepository({ readAt }) }) });
+    assert.equal(checkFacts(state).readAt.tree, null, String(readAt));
   }
 
-  // CI uses the oldest read among the judged pull requests, and an unread or undated one makes it unknown.
-  const two = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull(1), openPull(2)] } }) });
+  // The pull-request block is dated by its oldest read, never by the newest one it serves as `checkedAt`.
+  const oldest = checkState({ session: checkSession({ pullRequests: pullBlock([openPull()], { checkedAt: iso(8_000), readAt: iso(3_000) }) }) });
+  assert.equal(checkFacts(oldest).readAt.pullRequests, 3_000);
+  for (const readAt of [null, undefined, "yesterday", 6_000]) {
+    const state = checkState({ session: checkSession({ pullRequests: pullBlock([openPull()], { readAt }) }) });
+    assert.equal(checkFacts(state).readAt.pullRequests, null, String(readAt));
+  }
+  // A block with no stamp is not dated by its served check time.
+  const unstamped = checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [openPull()] } }) });
+  assert.equal(checkFacts(unstamped).readAt.pullRequests, null);
+
+  // CI uses the oldest read among the judged pull requests, bounded by the block's own, and an unread or undated one makes it unknown.
+  const two = checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1), openPull(2)], { readAt: iso(8_000) }) }) });
   const reads = { [pullUrl(1)]: { status: "passed", readAt: 7_000 }, [pullUrl(2)]: { status: "passed", readAt: 4_000 } };
-  const oldest = checkFacts(two, { checkRead: (url) => reads[url] ?? null });
-  assert.deepEqual([oldest.ciPassed, oldest.readAt.ci], [true, 4_000]);
+  const oldestCheck = checkFacts(two, { checkRead: (url) => reads[url] ?? null });
+  assert.deepEqual([oldestCheck.ciPassed, oldestCheck.readAt.ci], [true, 4_000]);
+  // A status read after the committed block does not make the block's pull requests newer than the block.
+  const newerStatus = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([openPull(1)], { readAt: iso(3_000) }) }) }), { checkRead: () => ({ status: "passed", readAt: 7_000 }) });
+  assert.deepEqual([newerStatus.ciPassed, newerStatus.readAt.ci], [true, 3_000]);
   const unread = checkFacts(two, { checkRead: (url) => (url === pullUrl(1) ? reads[url] : null) });
   assert.deepEqual([unread.ciPassed, unread.readAt.ci], [null, null]);
   const undated = checkFacts(two, { checkRead: () => ({ status: "passed", readAt: Number.NaN }) });
   assert.deepEqual([undated.ciPassed, undated.readAt.ci], [null, null]);
+  const unstampedBlock = checkFacts(unstamped);
+  assert.deepEqual([unstampedBlock.ciPassed, unstampedBlock.readAt.ci], [true, null]);
   // No judged pull request is a known "not passed" that rests on no read.
-  const none = checkFacts(checkState({ session: checkSession({ pullRequests: { status: "ready", checkedAt: iso(6_000), items: [] } }) }));
+  const none = checkFacts(checkState({ session: checkSession({ pullRequests: pullBlock([]) }) }));
   assert.deepEqual([none.ciPassed, none.readAt.ci], [false, null]);
 });
 
@@ -375,7 +400,7 @@ test("a check judges a fact only when it was read after the work it judges", () 
   const all = { pr_open: true, tree_clean: true, commit_on_branch: true, pr_merged: false, ci_passed: true };
 
   assert.deepEqual(passes(stamped(9_000)), all);
-  // The tree has no read time of its own until the repository producer stamps one, so it is unknown.
+  // A repository block with no read stamp has no tree read time, so the tree is unknown.
   assert.deepEqual(passes(checkState()), { ...all, tree_clean: false });
   // A push that ended after the pull requests (6000) and the check status (7000) were read, but before the
   // comparison (9000) was, leaves only the first two unknown.
@@ -396,4 +421,76 @@ test("check facts are unknown, with no times, when the committed state does not 
   assert.deepEqual(resolveTaskCheckFacts("claude:other", { observationStore: storeWith(checkState()) }), unknown);
   assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ historical: true }) } })), unknown);
   assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ available: false }) } })), unknown);
+});
+
+// A real enrichment refresh (not injected facts) stamps the blocks it commits; the done-when rule reads the stamps
+// from the committed state in the observation store, and the served form of that state carries none of them.
+async function refreshedBlocks({ files = [], delayMs = 5 } = {}) {
+  const jobs = [];
+  const branch = "tasks/12";
+  const url = pullUrl(4);
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return { available: true, branch, files, isMain: false, commits: [], _repositoryRoot: root,
+        comparison: { branch: "origin/main", kind: "base", ahead: 1, behind: 0, integrated: false }, remote: { status: "ready", checkedAt: iso(Date.now()) } };
+    },
+    pullRequestReader: (cwd, options) => readPullRequests([], { ...options, ghRunner: async () => JSON.stringify([{ number: 4, state: "OPEN", url, headRefName: branch }]) }),
+    now: Date.now,
+    cacheMs: 0,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  const evidence = { session: { cwd: "C:\\synthetic\\tree", recordedGitBranch: branch, startedAt: iso(0) }, pullRequestCreations: [], executionTasks: [] };
+  const binding = { state: "single", repositoryId: REPOSITORY_ID, root: evidence.session.cwd, fingerprint: "bound", recordedBranch: branch };
+  const before = Date.now();
+  enrichment.liveEnrichment(SESSION, evidence, binding, (task) => jobs.push(task)).enqueue();
+  while (jobs.length) await jobs.shift()();
+  const after = Date.now();
+  const { value } = enrichment.liveEnrichment(SESSION, evidence, binding, (task) => jobs.push(task));
+  return { value, before, after };
+}
+
+const committedStore = (publicState) => {
+  const store = new SessionObservationStore();
+  const [providerId, localSessionId] = [SESSION.slice(0, SESSION.indexOf(":")), SESSION.slice(SESSION.indexOf(":") + 1)];
+  assert.equal(store.publish({ providerId, localSessionId, evidence: {}, readiness: {}, publicState }).accepted, true);
+  return store;
+};
+
+test("tree_clean passes on a real stamped read that began after the work, not on one that began before it", async () => {
+  const { value, before, after } = await refreshedBlocks();
+  const readAt = Date.parse(value.repository.readAt);
+  assert.ok(readAt >= before && readAt < after, `${readAt} began within ${before}..${after}, before the read finished`);
+  assert.ok(Date.parse(value.pullRequests.readAt) <= Date.parse(value.pullRequests.checkedAt));
+
+  const stateAfter = (finishedAt) => ({ session: { id: SESSION, repository: value.repository, pullRequests: value.pullRequests }, executionTasks: [task("shell", finishedAt)], agents: [], activity: { items: [], total: 0 } });
+  const verdicts = (state) => Object.fromEntries(verifyChecks(["tree_clean", "pr_open", "commit_on_branch"], resolveTaskCheckFacts(SESSION, { observationStore: committedStore(state) })).map((result) => [result.check, result.passed]));
+
+  // The last command ended before the read began: the tree, the branch comparison, and the pull requests were all read after it.
+  assert.deepEqual(verdicts(stateAfter(iso(before - 1))), { tree_clean: true, pr_open: true, commit_on_branch: true });
+  // A command that ended after the read began may have changed what it saw.
+  assert.equal(verdicts(stateAfter(iso(after + 1))).tree_clean, false);
+  // A dirty tree is a known failure, whatever its age.
+  const dirty = await refreshedBlocks({ files: [{ status: "modified", path: "src/a.mjs" }] });
+  assert.equal(verifyChecks(["tree_clean"], resolveTaskCheckFacts(SESSION, { observationStore: committedStore({ session: { id: SESSION, repository: dirty.value.repository, pullRequests: dirty.value.pullRequests }, executionTasks: [], agents: [], activity: { items: [], total: 0 } }) }))[0].passed, false);
+});
+
+test("the stamped read times stay in the committed state and leave no served form", async () => {
+  const { value } = await refreshedBlocks();
+  const state = { connected: true, session: { id: SESSION, repository: value.repository, pullRequests: value.pullRequests } };
+  assert.equal(typeof value.repository.readAt, "string");
+  assert.equal(typeof value.pullRequests.readAt, "string");
+
+  const served = serializeServedSessionState(state);
+  assert.doesNotMatch(served, /readAt/u);
+  const withoutReadAt = (block) => Object.fromEntries(Object.entries(block).filter(([key]) => key !== "readAt"));
+  assert.deepEqual(JSON.parse(served).session, { id: SESSION, repository: withoutReadAt(value.repository), pullRequests: withoutReadAt(value.pullRequests) });
+  assert.equal(typeof state.session.repository.readAt, "string", "serving does not change the committed state");
+
+  // The store serves the stripped form and keeps the stamped one for the done-when rule.
+  const store = committedStore(state);
+  assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt/u);
+  assert.equal(store.get("claude", SESSION.slice("claude:".length)).publicState.session.repository.readAt, value.repository.readAt);
 });

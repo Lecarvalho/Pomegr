@@ -1,6 +1,7 @@
 import { createHomeReadiness } from "../normalize/observation-readiness.mjs";
 import { safeProviderFolder } from "../normalize/provider-folders.mjs";
 import { isSafeRecordedRepositoryPath } from "../repository/repository-snapshot.mjs";
+import { serializeServedSessionState } from "../repository/session-repository-enrichment.mjs";
 import { createEmptyProviderStatusSnapshot } from "../../shared/provider-status.mjs";
 import { requestHasAgentQueryAuthorization, requestHasDesktopAuthorization, requireDesktopToken } from "../../shared/local-auth.mjs";
 import { SESSION_DOMAIN_NAMES } from "../sessions/domain/session-domain-store.mjs";
@@ -743,7 +744,7 @@ export function createRequestHandler({
           writeCommitted(result, result.loadingState || runtime.analyzeEmpty());
           return;
         }
-        const body = JSON.stringify(await runtime.analyze(sessionId));
+        const body = serializeServedSessionState(await runtime.analyze(sessionId));
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(body);
       } catch {

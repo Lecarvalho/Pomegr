@@ -254,6 +254,8 @@ export function TaskPanel({ repositoryId, task, board, refresh, onOpenTask, onCh
     </div>
     <footer className="newTaskPanelFooter taskPanelFooter">
       {showStart && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.line}</span>}
+      {showStart && start.folder.line && <span className="newTaskPanelNote" role="status" aria-live="polite">{start.folder.line}</span>}
+      {showStart && start.folder.offered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
       {unresolved && !confirming && <>
         <button type="button" className="commandPrimaryAction" disabled={resolving} onClick={() => void resolve(true)}>Mark done and resume queue</button>
         <button type="button" className="commandSecondaryAction" disabled={resolving} onClick={() => void resolve(false)}>Requeue task</button>

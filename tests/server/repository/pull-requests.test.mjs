@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { normalizeCheckStatus, normalizePullRequest, pullRequestCheckRead, pullRequestCheckStatus, pullRequestUrls, readPullRequests } from "../../../server/repository/pull-requests.mjs";
+import { normalizeCheckStatus, normalizePullRequest, pullRequestCheckRead, pullRequestUrls, readPullRequests } from "../../../server/repository/pull-requests.mjs";
 import { pullRequestCreationEvents, readClaudePullRequestCreations } from "../../../server/providers/claude/pull-requests.mjs";
 import { parseCodexPullRequestRecords } from "../../../server/providers/codex/pull-requests.mjs";
 
@@ -101,7 +101,7 @@ test("historical sessions never infer PRs from the current branch", async () => 
   });
 
   assert.equal(branchLookup, false);
-  assert.deepEqual(result, { status: "ready", checkedAt: null, items: [] });
+  assert.deepEqual(result, { status: "ready", checkedAt: null, readAt: null, items: [] });
 });
 
 test("reconstructs session PR associations from the complete transcript", async (context) => {
@@ -205,23 +205,24 @@ test("the check status is read with the pull request and kept out of the normali
   };
   const read = (rollups) => readPullRequests([], { cwd: "C:\\repo", branch: "tasks/13", sessionCreations: [{ url: url(7) }], ghRunner: ghRunner(rollups) });
 
-  assert.equal(pullRequestCheckStatus(url(7)), null);
+  const checkStatus = (value) => pullRequestCheckRead(value)?.status ?? null;
+  assert.equal(checkStatus(url(7)), null);
   const result = await read({ 7: [run("IN_PROGRESS")], 6: [run("COMPLETED", "SUCCESS")] });
   assert.ok(fields.every((value) => value.endsWith(",statusCheckRollup")));
-  assert.equal(pullRequestCheckStatus(url(7)), "pending");
-  assert.equal(pullRequestCheckStatus(url(6)), "passed");
+  assert.equal(checkStatus(url(7)), "pending");
+  assert.equal(checkStatus(url(6)), "passed");
   assert.deepEqual(result.items.map((item) => item.number), [7, 6]);
   assert.doesNotMatch(JSON.stringify(result), /statusCheckRollup|passed|pending|PRIVATE/u);
-  assert.deepEqual(Object.keys(result), ["status", "checkedAt", "items"]);
+  assert.deepEqual(Object.keys(result), ["status", "checkedAt", "readAt", "items"]);
 
   // The newest read replaces the status; a read that does not establish one clears it.
   await read({ 7: [run("COMPLETED", "FAILURE")], 6: [] });
-  assert.equal(pullRequestCheckStatus(url(7)), "failed");
-  assert.equal(pullRequestCheckStatus(url(6)), "none");
+  assert.equal(checkStatus(url(7)), "failed");
+  assert.equal(checkStatus(url(6)), "none");
   await read({ 7: [run("MADE_UP")] });
-  assert.equal(pullRequestCheckStatus(url(7)), null);
-  assert.equal(pullRequestCheckStatus(url(6)), null);
-  for (const value of [undefined, null, 7, "", "https://example.invalid/pull/7"]) assert.equal(pullRequestCheckStatus(value), null);
+  assert.equal(checkStatus(url(7)), null);
+  assert.equal(checkStatus(url(6)), null);
+  for (const value of [undefined, null, 7, "", "https://example.invalid/pull/7"]) assert.equal(checkStatus(value), null);
 });
 
 test("a check status keeps the time of the read that established it, and a read that establishes nothing clears it", async () => {
@@ -237,7 +238,6 @@ test("a check status keeps the time of the read that established it, and a read 
   assert.deepEqual(Object.keys(first), ["status", "readAt"]);
   assert.equal(first.status, "passed");
   assert.ok(Number.isSafeInteger(first.readAt) && first.readAt >= before && first.readAt <= after, `${first.readAt} in ${before}..${after}`);
-  assert.equal(pullRequestCheckStatus(url), "passed");
 
   // A lookup never renews the time, and the caller cannot change what is held.
   const heldAt = first.readAt;
@@ -256,7 +256,6 @@ test("a check status keeps the time of the read that established it, and a read 
   // A read that establishes no status clears the entry, time included.
   await read([run("MADE_UP")]);
   assert.equal(pullRequestCheckRead(url), null);
-  assert.equal(pullRequestCheckStatus(url), null);
   for (const value of [undefined, null, 21, "", "https://example.invalid/pull/21"]) assert.equal(pullRequestCheckRead(value), null);
 });
 
@@ -269,7 +268,6 @@ test("at most 256 check statuses are held, the oldest read first out", async () 
   assert.equal(pullRequestCheckRead(url(45))?.status, "passed");
   assert.equal(pullRequestCheckRead(url(44)), null);
   assert.equal(pullRequestCheckRead(url(1)), null);
-  assert.equal(pullRequestCheckStatus(url(44)), null);
 });
 
 test("a gh that cannot read checks still answers the pull request, with an unknown check status", async () => {
@@ -287,5 +285,48 @@ test("a gh that cannot read checks still answers the pull request, with an unkno
   assert.equal(calls.length, 2);
   assert.equal(calls[0], `${calls[1]},statusCheckRollup`);
   assert.deepEqual(result.items.map(({ number, state }) => ({ number, state })), [{ number: 9, state: "open" }]);
-  assert.equal(pullRequestCheckStatus(url), null);
+  assert.equal(pullRequestCheckRead(url), null);
+});
+
+test("a read is dated by the moment its gh call began, not the moment it ended", async () => {
+  const url = "https://github.com/PomegrHQ/pomegr-checks/pull/31";
+  const calls = [];
+  const ghRunner = async (_cwd, args) => {
+    calls.push(Date.now());
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return args[1] === "view" ? JSON.stringify({ number: 31, state: "OPEN", url, headRefName: "tasks/31", statusCheckRollup: [run("COMPLETED", "SUCCESS")] }) : "[]";
+  };
+  const result = await readPullRequests([], { cwd: "C:\\repo", branch: "tasks/31", sessionCreations: [{ url }], ghRunner });
+  const finished = Date.now();
+
+  // The metadata read began first, the branch read after it ended: the block is as old as its oldest read.
+  assert.equal(calls.length, 2);
+  assert.ok(Date.parse(result.readAt) <= calls[0], `${result.readAt} not after the first call at ${calls[0]}`);
+  assert.ok(Date.parse(result.checkedAt) <= calls[1], `${result.checkedAt} not after the second call at ${calls[1]}`);
+  assert.ok(Date.parse(result.readAt) < Date.parse(result.checkedAt), "the oldest read is older than the newest");
+  assert.ok(Date.parse(result.checkedAt) < finished - 25, "the served time is no later than the start of the last call");
+  assert.ok(pullRequestCheckRead(url).readAt <= calls[0], "the check status carries the start of the read that established it");
+});
+
+test("the block keeps the time of the oldest read it rests on, privately, and a block with no read has none", async () => {
+  const url = "https://github.com/PomegrHQ/pomegr-checks/pull/32";
+  let delay = 0;
+  const ghRunner = async (_cwd, args) => {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    return args[1] === "view" ? JSON.stringify({ number: 32, state: "OPEN", url, headRefName: "tasks/32" }) : "[]";
+  };
+  const both = await readPullRequests([], { cwd: "C:\\repo", branch: "tasks/32", sessionCreations: [{ url }], ghRunner });
+  assert.ok(Date.parse(both.readAt) <= Date.parse(both.checkedAt));
+
+  // Only the branch read contributes when the session has no pull request of its own; one read is both times.
+  const branchOnly = await readPullRequests([], { cwd: "C:\\repo", branch: "tasks/32", ghRunner });
+  assert.equal(branchOnly.readAt, branchOnly.checkedAt);
+  assert.ok(branchOnly.readAt);
+
+  // A gh that answers nothing makes the block unavailable, with no read time and no served time.
+  const none = await readPullRequests([], { cwd: "C:\\repo", branch: "tasks/32", sessionCreations: [{ url }], ghRunner: async () => null });
+  assert.deepEqual([none.status, none.checkedAt, none.readAt], ["unavailable", null, null]);
+  // No query at all is a ready block that rests on no read.
+  const unqueried = await readPullRequests([], { cwd: "C:\\repo", branch: "detached@abc", ghRunner });
+  assert.deepEqual([unqueried.status, unqueried.checkedAt, unqueried.readAt], ["ready", null, null]);
 });

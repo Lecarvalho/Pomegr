@@ -85,16 +85,16 @@ export function createTaskWorktrees(options = {}) {
     return list.ok ? listedBranch(list.stdout, directory, platform) : null;
   }
 
-  async function clean(directory) {
-    const status = await git(directory, ["status", "--porcelain", "--untracked-files=normal"]);
-    return status.ok && status.stdout.trim() === "";
-  }
-
   /** `clean`, `dirty`, or `unknown` when Git's status itself failed: a failed status is never known to be dirty. */
   async function treeState(directory) {
     const status = await git(directory, ["status", "--porcelain", "--untracked-files=normal"]);
     if (!status.ok) return "unknown";
     return status.stdout.trim() === "" ? "clean" : "dirty";
+  }
+
+  /** True only for a tree known to be clean: an unknown state is not clean. */
+  async function clean(directory) {
+    return await treeState(directory) === "clean";
   }
 
   /**

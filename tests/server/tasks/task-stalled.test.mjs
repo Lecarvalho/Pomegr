@@ -60,7 +60,7 @@ function setQueue(env, status, blockedBy = null) {
 
 test("only an established end counts as ended", () => {
   assert.equal(sessionEnded({ state: "closed" }), true);
-  assert.equal(sessionEnded({ state: "stopped" }), true);
+  assert.equal(sessionEnded({ state: "stopped" }, "claude"), true);
   assert.equal(sessionEnded({ state: "unknown", writerReleased: true }), true);
   for (const state of ["working", "needs_input", "idle", "open", "unknown", "ended", "", null, undefined]) {
     assert.equal(sessionEnded({ state, writerReleased: false }), false, String(state));
@@ -85,6 +85,25 @@ test("a Codex session that reads Stopped ended only when its writer was released
   }
   assert.equal(sessionEnded({ state: "closed" }, "claude"), true);
   assert.equal(sessionEnded({ state: "idle", writerReleased: true }, "codex"), false);
+});
+
+test("a Stopped state ends only a recognized provider's session; Closed ends any, Unknown needs a released writer", () => {
+  for (const providerId of [null, undefined, "", "gemini", "CLAUDE", "Codex", 7]) {
+    for (const facts of [{ state: "stopped", writerReleased: false }, { state: "stopped" }, { state: "stopped", writerReleased: true }]) {
+      assert.equal(sessionEnded(facts, providerId), false, `${String(providerId)} ${JSON.stringify(facts)}`);
+    }
+    assert.equal(sessionEnded({ state: "closed" }, providerId), true, String(providerId));
+    assert.equal(sessionEnded({ state: "unknown", writerReleased: true }, providerId), true, String(providerId));
+    assert.equal(sessionEnded({ state: "unknown", writerReleased: false }, providerId), false, String(providerId));
+  }
+  assert.equal(sessionEnded({ state: "stopped", writerReleased: false }), false);
+});
+
+test("a stopped session of an unrecognized provider prefix leaves the task as it is", async (context) => {
+  const env = await setup(context);
+  const id = startedTask(env, "gemini:019a0000-2222-7333-8444-555566667777");
+  assert.deepEqual(env.store.stallEndedTasks(() => ({ state: "stopped", writerReleased: true })), { ok: true, stalled: 0 });
+  assert.equal(taskOf(env, id).state, "not_queued");
 });
 
 test("a linked task whose session closed with no report is stalled, and the decision is persisted", async (context) => {

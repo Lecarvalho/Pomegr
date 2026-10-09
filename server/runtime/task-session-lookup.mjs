@@ -102,14 +102,18 @@ function workTimes(state) {
  * last read for each (`pullRequestCheckRead`, monitor-private memory). No Git, GitHub, or provider read.
  *
  * Each fact carries the time it was read (`readAt`, epoch milliseconds or null) and the latest work that could have
- * changed it (`workAt`, see `workTimes`), so the rule can refuse a fact older than the work it judges:
- * - `readAt.pullRequests` is the pull-request block's own check time.
- * - `readAt.branch` is the time the committed remote comparison was refreshed (`repository.remote.checkedAt`), or the
- *   repository block's own `readAt` when it carries one; the comparison was computed at or after it.
- * - `readAt.tree` is the repository block's own `readAt` and nothing else: the committed working-tree files carry no
- *   read time of their own, so until the repository producer stamps one the tree fact is unknown.
- * - `readAt.ci` is the oldest read among the judged pull requests' check statuses.
- * Nothing here reads the request clock.
+ * changed it (`workAt`, see `workTimes`), so the rule can refuse a fact older than the work it judges. The repository and
+ * pull-request blocks carry a monitor-private `readAt` stamped by their producers (session-repository-enrichment.mjs and
+ * pull-requests.mjs), committed with the values it dates and removed before the state is served:
+ * - `readAt.tree` is the repository block's `readAt`, the start of the Git read its changed files come from.
+ * - `readAt.branch` is the same read when the block carries a ready comparison (the Git read computed it against the
+ *   last refreshed base); a block with no stamp falls back to the time the remote comparison was refreshed
+ *   (`repository.remote.checkedAt`). No ready comparison is no read.
+ * - `readAt.pullRequests` is the pull-request block's `readAt`, the start of the oldest read its items rest on; the
+ *   served `checkedAt` is the newest read and is not used.
+ * - `readAt.ci` is the oldest read among the judged pull requests' check statuses and the pull-request block's own
+ *   `readAt`: the judged set comes from the committed block, so a check status read after the block does not date it.
+ * A block without its stamp (a restored or historical one) leaves its facts unknown. Nothing here reads the request clock.
  */
 export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead = pullRequestCheckRead }) {
   const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
@@ -129,8 +133,8 @@ export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead 
     : null;
   const ci = branchPulls ? ciPassed(branchPulls, checkRead) : { value: null, readAt: null };
   const blockReadAt = timeOf(repository.readAt);
-  const comparisonReadAt = repository.remote?.status === "ready" ? timeOf(repository.remote.checkedAt) : null;
-  const branchReads = [blockReadAt, comparisonReadAt].filter((time) => time !== null);
+  const pullsReadAt = timeOf(pulls?.readAt);
+  const comparisonReadAt = repository.remote?.status === "ready" ? blockReadAt ?? timeOf(repository.remote.checkedAt) : null;
   return {
     treeClean: Array.isArray(repository.files) ? repository.files.length === 0 : null,
     branchCommits,
@@ -138,9 +142,9 @@ export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead 
     ciPassed: ci.value,
     readAt: {
       tree: blockReadAt,
-      branch: branchReads.length > 0 ? Math.max(...branchReads) : null,
-      pullRequests: timeOf(pulls?.checkedAt),
-      ci: ci.readAt,
+      branch: comparisonReadAt,
+      pullRequests: pullsReadAt,
+      ci: ci.readAt !== null && pullsReadAt !== null ? Math.min(ci.readAt, pullsReadAt) : null,
     },
     workAt: workTimes(state),
   };

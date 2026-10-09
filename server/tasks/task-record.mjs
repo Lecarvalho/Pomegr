@@ -430,8 +430,11 @@ export function emptyBoard(repositoryId, readiness) {
   return { version: 1, readiness, repositoryId, columns: [], features: [], tasks: [], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] } };
 }
 
-// States of a task with a linked session that has not reported: the session is working on it.
-const IN_FLIGHT_STATES = new Set(["not_queued", "queued", "scheduled"]);
+/**
+ * States a task can still be in while no outcome is recorded for its dispatch: its session is working on it, or has yet
+ * to link. A session may only report on a task in one of them; an outcome (done, needs review, blocked, stalled) is final.
+ */
+export const IN_FLIGHT_STATES = Object.freeze(["not_queued", "queued", "scheduled"]);
 
 /**
  * The one rule for a task that already started: its session is linked and has not reported, or its start is
@@ -441,7 +444,7 @@ const IN_FLIGHT_STATES = new Set(["not_queued", "queued", "scheduled"]);
  */
 export function rowInFlight(row, at) {
   const linked = (row.session_id ?? null) !== null;
-  if (linked && IN_FLIGHT_STATES.has(row.state)) return true;
+  if (linked && IN_FLIGHT_STATES.includes(row.state)) return true;
   return at !== undefined && dispatchStanding(row.dispatch_token, at) === "live";
 }
 

@@ -8,8 +8,13 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  * returned, logged, or put in a message. Both sides import this one module.
  */
 const PREFIX = "pomegr-task-binding/v1";
+/*
+ * The hook issues a proof before the host asks the user to approve the write, and the MCP server verifies it only after
+ * the approval, so the window must outlast a slow human decision. Ten minutes does; the proof stays bound to the tool name
+ * and the session, so a longer life lets nothing be replayed against another tool, session, or token.
+ */
 /** A proof older than this, or issued more than FUTURE_SKEW_MS ahead of the verifier, is refused. */
-export const TASK_BINDING_PROOF_WINDOW_MS = 60_000;
+export const TASK_BINDING_PROOF_WINDOW_MS = 10 * 60_000;
 export const TASK_BINDING_PROOF_FUTURE_SKEW_MS = 5_000;
 const TOOL = /^[a-z][a-z_]{0,31}$/u;
 const SESSION_REF = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,199}$/u;

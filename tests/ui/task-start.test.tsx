@@ -153,6 +153,103 @@ describe("Start session", () => {
   });
 });
 
+describe("Open folder after a dirty worktree", () => {
+  const taskWorktreeOpen = vi.fn<(repositoryId: string, taskId: string) => Promise<unknown>>();
+  beforeEach(() => {
+    taskWorktreeOpen.mockReset();
+    taskWorktreeOpen.mockResolvedValue({ status: "opened" });
+    taskStart.mockResolvedValue({ status: "worktree_dirty" });
+    setBridge({ taskAction, taskStart, taskWorktreeOpen });
+  });
+  async function startDirty() {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const dialog = await openPanel(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));
+    return { user, dialog };
+  }
+
+  it("is hidden until a start answers worktree_dirty", async () => {
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const dialog = await openPanel(user);
+    expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+    taskStart.mockResolvedValueOnce({ status: "gate_held" });
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("A start gate holds this task"));
+    expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+  });
+
+  it("is a secondary action that sends the two IDs only and is offered with the dirty line", async () => {
+    const { user, dialog } = await startDirty();
+    const open = dialog.getByRole("button", { name: "Open folder" });
+    expect(open).toHaveClass("commandSecondaryAction");
+    expect(taskWorktreeOpen).not.toHaveBeenCalled();
+    await user.click(open);
+    await waitFor(() => expect(taskWorktreeOpen).toHaveBeenCalledTimes(1));
+    expect(taskWorktreeOpen).toHaveBeenCalledWith(repositoryId, "T-1");
+    expect(taskStart).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["opened", "The folder is open."],
+    ["not_found", "The worktree folder was not found."],
+    ["invalid", "The folder could not be opened."],
+    ["unavailable", "The folder could not be opened."],
+    ["something_new", "The folder could not be opened."],
+  ])("shows one fixed status line for the %s result and never a path", async (status, line) => {
+    taskWorktreeOpen.mockResolvedValue({ status, path: "D:\\private-folder\\worktree" });
+    const { user, dialog } = await startDirty();
+    await user.click(dialog.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(dialog.getAllByRole("status")).toHaveLength(2));
+    expect(dialog.getAllByRole("status")[1]).toHaveTextContent(line);
+    expect(dialog.getAllByRole("status")[0]).toHaveTextContent("This task's worktree has uncommitted changes.");
+    expect(screen.getByRole("dialog", { name: "Task T-1" })).not.toHaveTextContent("private-folder");
+  });
+
+  it("shows the fixed line when the bridge throws", async () => {
+    taskWorktreeOpen.mockRejectedValue(new Error("D:\\private-folder"));
+    const { user, dialog } = await startDirty();
+    await user.click(dialog.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(dialog.getAllByRole("status")).toHaveLength(2));
+    expect(dialog.getAllByRole("status")[1]).toHaveTextContent("The folder could not be opened.");
+    expect(screen.getByRole("dialog", { name: "Task T-1" })).not.toHaveTextContent("private-folder");
+  });
+
+  it("disables itself while the folder opens and ignores a second click", async () => {
+    let resolve!: (value: unknown) => void;
+    taskWorktreeOpen.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { user, dialog } = await startDirty();
+    await user.dblClick(dialog.getByRole("button", { name: "Open folder" }));
+    expect(taskWorktreeOpen).toHaveBeenCalledTimes(1);
+    expect(dialog.getByRole("button", { name: "Open folder" })).toBeDisabled();
+    resolve({ status: "opened" });
+    await waitFor(() => expect(dialog.getByRole("button", { name: "Open folder" })).toBeEnabled());
+    expect(dialog.getAllByRole("status")[1]).toHaveTextContent("The folder is open.");
+  });
+
+  it("goes away, with its line, when the next start answers something else", async () => {
+    const { user, dialog } = await startDirty();
+    await user.click(dialog.getByRole("button", { name: "Open folder" }));
+    await waitFor(() => expect(dialog.getAllByRole("status")).toHaveLength(2));
+    taskStart.mockResolvedValueOnce({ status: "busy" });
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Another session is being started."));
+    expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+  });
+
+  it("is absent on a desktop build that cannot open a folder", async () => {
+    setBridge({ taskAction, taskStart });
+    const user = userEvent.setup();
+    render(<TasksTab repositoryId={repositoryId} />);
+    const dialog = await openPanel(user);
+    await user.click(dialog.getByRole("button", { name: "Start session" }));
+    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));
+    expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
+  });
+});
+
 describe("the desktop start and folder wrappers", () => {
   it("pass worktree_dirty through as its own start status, never as a generic failure", async () => {
     taskStart.mockResolvedValue({ status: "worktree_dirty" });

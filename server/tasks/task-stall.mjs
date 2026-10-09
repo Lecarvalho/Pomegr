@@ -2,10 +2,12 @@
 //
 // The rule is decided once and persisted: when a linked task has no report and the committed facts of its
 // session establish that the session ended, the task becomes Stalled and holds a running queue. Ended means
-// the catalog state is Closed, or Stopped for a Claude Code session, or the state is Unknown and the primary
-// agent's liveness says the Codex writer was released. A Codex session reads Stopped after a failed or
-// interrupted turn while its process may still be present and able to report, so for Codex a Stopped state
-// ends the session only together with a released writer. Idle, Open, Working, Needs input, a bare Unknown, and
+// the catalog state is Closed (any provider), or Stopped for a Claude Code session, or Stopped for a Codex
+// session whose primary agent's liveness says the writer was released, or Unknown with that same released
+// writer. A Codex session reads Stopped after a failed or interrupted turn while its process may still be
+// present and able to report, so for Codex a Stopped state ends the session only together with a released
+// writer. A Stopped state of an unrecognized or missing provider is not an end, and neither is anything else
+// this module does not recognize. Idle, Open, Working, Needs input, a bare Unknown, and
 // a session the monitor holds no facts for never stall a task. A stalled task never leaves that state by
 // itself: only the user's Mark done or Requeue resolves it, and a later report from the session changes nothing.
 // A linked task that never reaches an established end keeps its state and holds the queue; the user resolves it
@@ -16,11 +18,10 @@
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { blockQueue } from "./task-report.mjs";
-import { isTaskSessionId, taskIdFromNumber } from "./task-record.mjs";
+import { IN_FLIGHT_STATES, isTaskSessionId, taskIdFromNumber } from "./task-record.mjs";
 
 /** States of a linked task whose session can still report; the same set `complete` and `block` accept. */
-const WAITING_STATES = Object.freeze(["not_queued", "queued", "scheduled"]);
-const WAITING_SQL = WAITING_STATES.map((state) => `'${state}'`).join(", ");
+const WAITING_SQL = IN_FLIGHT_STATES.map((state) => `'${state}'`).join(", ");
 /** Revisions arrive in bursts; one sweep follows the last of a burst. */
 const SWEEP_DELAY_MS = 1000;
 
@@ -33,13 +34,14 @@ const providerOfSession = (sessionId) => {
 
 /**
  * True only when `facts` (`{ state, writerReleased }` from committed session facts) establish that the session
- * ended. `providerId` is the session's provider: a Codex session that reads Stopped ended only when its writer
- * was released. Anything missing, malformed, or not recognized is not an end.
+ * ended. `providerId` is the session's provider: Stopped ends a `claude` session, and a `codex` session only when
+ * its writer was released. Anything missing, malformed, or not recognized (including the provider of a Stopped
+ * state) is not an end.
  */
 export function sessionEnded(facts, providerId = null) {
   if (facts === null || typeof facts !== "object") return false;
   if (facts.state === "closed") return true;
-  if (facts.state === "stopped") return providerId !== "codex" || facts.writerReleased === true;
+  if (facts.state === "stopped") return providerId === "claude" || (providerId === "codex" && facts.writerReleased === true);
   return facts.state === "unknown" && facts.writerReleased === true;
 }
 

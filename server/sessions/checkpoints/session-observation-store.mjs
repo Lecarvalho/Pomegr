@@ -1,3 +1,5 @@
+import { serializeServedSessionState } from "../../repository/session-repository-enrichment.mjs";
+
 const DEFAULT_MAX_ENTRIES = 100;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -66,7 +68,9 @@ export class SessionObservationStore {
 
   constructor({
     validateCandidate = () => true,
-    serialize = JSON.stringify,
+    // The served form drops the repository and pull-request blocks' monitor-private read times; the committed
+    // public state keeps them for the task done-when rule.
+    serialize = serializeServedSessionState,
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxBytes = DEFAULT_MAX_BYTES,
     now = () => Date.now(),

@@ -173,12 +173,11 @@ export function nextQueueStart(input) {
   const stepOf = (id) => steps.find((entry) => entry.taskIds.includes(id)) ?? null;
 
   // `orderQueue` already leaves a task in flight out of `order`.
-  const waiting = order;
-  if (waiting.length === 0) return null;
+  if (order.length === 0) return null;
   const flying = records.filter((task) => task.inFlight === true);
-  const current = stepOf(flying.length > 0 ? flying[0].id : waiting[0]);
+  const current = stepOf(flying.length > 0 ? flying[0].id : order[0]);
   if (flying.length > 0 && (current === null || flying.some((task) => stepOf(task.id) !== current))) return null;
-  const candidates = current === null ? [waiting[0]] : waiting.filter((id) => current.taskIds.includes(id));
+  const candidates = current === null ? [order[0]] : order.filter((id) => current.taskIds.includes(id));
   if (candidates.length === 0) return null;
   const unlinked = candidates.find((id) => byId.get(id).unlinked === true);
   if (unlinked !== undefined) return { pause: unlinked };

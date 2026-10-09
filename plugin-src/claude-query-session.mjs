@@ -58,8 +58,15 @@ async function defaultReadToken() {
  * this value from one the model typed, or the call is denied. No permission
  * decision is allowed here, so the host still asks the user as it normally would
  * for a write. The token and the proof reach stdout only as `session_proof`.
+ *
+ * Always async, and null for any other event or tool. The read binder below stays synchronous; the hook runner asks this
+ * one first, so neither function returns a Promise on one path and a plain value on another.
  */
-async function bindWriteTool(payload, name, { readToken = defaultReadToken, now = Date.now } = {}) {
+export async function bindClaudeQueryWrite(payload, { readToken = defaultReadToken, now = Date.now } = {}) {
+  if (payload?.hook_event_name !== "PreToolUse") return null;
+  const match = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
+  if (!match) return null;
+  const name = match[1];
   const deny = { hookSpecificOutput: {
     hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: WRITE_DENIED[name],
   } };
@@ -80,11 +87,9 @@ async function bindWriteTool(payload, name, { readToken = defaultReadToken, now 
   } };
 }
 
-/** Reads resolve synchronously; a write tool resolves to its signed binding or a denial, so callers await. */
-export function bindClaudeQuerySession(payload, options = {}) {
+/** Binds the current session for a read tool, synchronously. A write tool is never bound here: see bindClaudeQueryWrite. */
+export function bindClaudeQuerySession(payload) {
   if (payload?.hook_event_name !== "PreToolUse") return null;
-  const write = typeof payload.tool_name === "string" ? WRITE_TOOL.exec(payload.tool_name) : null;
-  if (write) return bindWriteTool(payload, write[1], options);
   const match = typeof payload.tool_name === "string" ? TOOL.exec(payload.tool_name) : null;
   if (!match) return null;
   const input = payload.tool_input;
@@ -117,7 +122,8 @@ export async function runClaudeQuerySessionHook(stream = process.stdin, output =
       }
       chunks.push(Buffer.from(chunk));
     }
-    const result = await bindClaudeQuerySession(JSON.parse(Buffer.concat(chunks).toString("utf8")), options);
+    const event = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const result = (await bindClaudeQueryWrite(event, options)) ?? bindClaudeQuerySession(event);
     if (result) output.write(`${JSON.stringify(result)}\n`);
   } catch { /* Missing binding fails unavailable in MCP; never echo hook content. */ }
 }

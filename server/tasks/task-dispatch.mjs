@@ -14,10 +14,10 @@
 
 import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { TASK_DISPATCH_UNBOUND_TTL_MS, dispatchStanding, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
+import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
-export { TASK_DISPATCH_UNBOUND_TTL_MS, dispatchStanding };
+export { TASK_DISPATCH_UNBOUND_TTL_MS };
 
 export const TASK_START_ERRORS = Object.freeze(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
 

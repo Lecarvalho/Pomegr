@@ -12,12 +12,10 @@
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
-import { isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, taskIdFromNumber } from "./task-record.mjs";
+import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
 
-/** States a session can still report on. An outcome (done, needs review, blocked, stalled) is final for its dispatch. */
-const REPORTABLE_STATES = new Set(["not_queued", "queued", "scheduled"]);
 /** Outcomes that need the user and hold the queue. */
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
 
@@ -26,7 +24,8 @@ const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "
 
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
 
-const reportable = (row) => REPORTABLE_STATES.has(row.state) && (row.report_at ?? null) === null;
+// A session can still report on a task in flight that has no report yet; an outcome is final for its dispatch.
+const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
 
 // The first task that needs the user holds a running queue; a queue already blocked keeps its first blocker.
 export function blockQueue(database, repositoryId, taskId) {
@@ -98,7 +97,7 @@ export function reportBlock({ database, transaction, payload, now }) {
 
 // A linked task whose session has not reported is in flight: the session could still report, and nothing marks it
 // done or stalled by itself, so it can hold the queue with no exit. The user resolves it like an outcome.
-const awaitingReport = (row) => (row.session_id ?? null) !== null && reportable(row);
+const awaitingReport = (row) => rowInFlight(row) && reportable(row);
 
 function unresolvedTask(database, repositoryId, payload) {
   const input = normalizeQueueTaskPayload(payload);

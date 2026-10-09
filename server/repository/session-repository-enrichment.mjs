@@ -33,6 +33,42 @@ function sameRoot(left, right) {
   return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
+// Monitor-private read time. A live repository block carries `readAt` (the start of the Git read its working
+// tree and branch comparison come from) and a pull-request block carries `readAt` (the start of the oldest
+// read its items rest on), both ISO timestamps. The task done-when rule judges a committed fact by them
+// (`resolveTaskCheckFacts`). They live in the committed public state, so the one serializer that serves it
+// removes them; no served surface, response, checkpoint, sidecar, report, or log carries one.
+const PRIVATE_READ_KEY = "readAt";
+
+function carriesReadStamp(block) {
+  return block !== null && typeof block === "object" && Object.hasOwn(block, PRIVATE_READ_KEY);
+}
+
+function withoutReadStamp(block) {
+  const served = { ...block };
+  delete served[PRIVATE_READ_KEY];
+  return served;
+}
+
+/** The session state as it is served: without the monitor-private read times of its repository and pull-request blocks. */
+export function servedSessionState(state) {
+  const session = state?.session;
+  if (!session || typeof session !== "object" || (!carriesReadStamp(session.repository) && !carriesReadStamp(session.pullRequests))) return state;
+  return {
+    ...state,
+    session: {
+      ...session,
+      ...(carriesReadStamp(session.repository) ? { repository: withoutReadStamp(session.repository) } : {}),
+      ...(carriesReadStamp(session.pullRequests) ? { pullRequests: withoutReadStamp(session.pullRequests) } : {}),
+    },
+  };
+}
+
+/** The serialized form of a session state for every browser-facing response. */
+export function serializeServedSessionState(state) {
+  return JSON.stringify(servedSessionState(state));
+}
+
 /**
  * Live repository readiness from the enrichment check state:
  * - `none`: no repository binding to check; a factual empty result (`ready`).
@@ -54,9 +90,13 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
   async function refresh(entry, input) {
     if (!input.root) return false;
     let repository; let resolvedRoot;
+    // The Git read is dated by the moment its call began: what it saw is no newer than that, and a change made
+    // while it ran may be missing from it. A reader that joined an inspection already under way says when that
+    // inspection began (`_readStartedAt`), which is earlier, and the earlier time wins.
+    const readStartedAt = now();
     try {
       const acquired = await gitReader(input.root, { forbiddenRoots: Object.values(providerFolders?.folders || {}).filter(Boolean) });
-      const { _repositoryRoot: root = null, ...publicRepository } = acquired;
+      const { _repositoryRoot: root = null, _readStartedAt: inspectionStartedAt, ...publicRepository } = acquired;
       if ((!input.exactRoot && (!root || !path.isAbsolute(root))) || (input.exactRoot && !sameRoot(root, input.root))
         || !publicRepository.available || publicRepository.branch !== input.branch) {
         if (entry.generation === input.generation) {
@@ -68,7 +108,8 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
         }
         return false;
       }
-      repository = { ...publicRepository, historical: false };
+      const readAt = Number.isFinite(inspectionStartedAt) ? Math.min(readStartedAt, inspectionStartedAt) : readStartedAt;
+      repository = { ...publicRepository, historical: false, ...(Number.isFinite(readAt) ? { readAt: new Date(readAt).toISOString() } : {}) };
       resolvedRoot = root;
     } catch { return false; }
     let pullRequests;
