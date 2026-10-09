@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createProviderSettingsController, installProviderSettingsIpc, normalizeProviderFolders, providerSettingsEnvironment, PROVIDER_SETTINGS_CHANNELS, resolveProviderFolders, restartProviderSettingsApp } from "../desktop/runtime/provider-settings.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, normalizeProviderFolders, providerSessionEnvironment, providerSettingsEnvironment, PROVIDER_SETTINGS_CHANNELS, resolveProviderFolders, restartProviderSettingsApp } from "../desktop/runtime/provider-settings.mjs";
 import { createDesktopSettingsStore, normalizeDesktopSettings } from "../desktop/runtime/settings.mjs";
 import { createDesktopBehaviorController } from "../desktop/runtime/desktop-behavior.mjs";
 import { minimalRuntimeEnvironment, monitorPrivateEnvironment, nativeClaudeEnvironment, nativeCodexEnvironment } from "../desktop/runtime/environment-policy.mjs";
@@ -74,6 +74,24 @@ test("effective profile roots align native and monitor readers without entering 
   assert.equal(providerSettingsEnvironment({ POMEGR_USAGE_SNAPSHOTS_DIR: explicit }, folders, { homeDir, dataRoot }).POMEGR_USAGE_SNAPSHOTS_DIR, explicit);
   const desktop = createDesktopBehaviorController({ settings: { ...normalizeDesktopSettings(), providerFolders: folders } });
   assert.doesNotMatch(JSON.stringify(desktop.snapshot()), /private-profile|providerFolders/);
+});
+
+test("a started session names a provider folder only when the user chose or inherited one", () => {
+  // With nothing chosen the monitor still gets the default folder, but a session must not: Claude Code reads another
+  // user configuration file once CLAUDE_CONFIG_DIR is set, even to the default folder.
+  assert.equal(providerSettingsEnvironment({}, defaults, { homeDir, dataRoot }).CLAUDE_CONFIG_DIR, path.join(homeDir, ".claude"));
+  const plain = providerSessionEnvironment({ PATH: "kept" }, defaults, { homeDir, dataRoot });
+  for (const variable of ["CLAUDE_CONFIG_DIR", "CLAUDE_PROJECTS_DIR", "CODEX_HOME"]) assert.equal(Object.hasOwn(plain, variable), false, variable);
+  assert.equal(plain.PATH, "kept");
+  assert.equal(Object.hasOwn(nativeClaudeEnvironment(plain, {}, () => false), "CLAUDE_CONFIG_DIR"), false);
+
+  const chosen = providerSessionEnvironment({}, { ...defaults, claudeConfigDir: profile }, { homeDir, dataRoot });
+  assert.equal(chosen.CLAUDE_CONFIG_DIR, profile);
+  assert.equal(Object.hasOwn(chosen, "CLAUDE_PROJECTS_DIR"), false, "the derived session folder is not named");
+  assert.equal(Object.hasOwn(chosen, "CODEX_HOME"), false);
+  const inherited = providerSessionEnvironment({ claude_config_dir: profile, CODEX_HOME: path.join(homeDir, "codex-inherited") }, defaults, { homeDir, dataRoot });
+  assert.equal(inherited.CLAUDE_CONFIG_DIR, profile);
+  assert.equal(inherited.CODEX_HOME, path.join(homeDir, "codex-inherited"));
 });
 
 test("native selection stages a private path, cancel/discard preserve persisted settings, and confirmation owns commit", async () => {

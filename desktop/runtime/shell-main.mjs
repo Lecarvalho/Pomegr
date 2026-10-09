@@ -39,7 +39,7 @@ import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
-import { createProviderSettingsController, installProviderSettingsIpc, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
+import { createProviderSettingsController, installProviderSettingsIpc, providerSessionEnvironment, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
 import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
 import { createLanSharingController, installPhoneAccessIpc, PHONE_ACCESS_CHANNELS } from "./lan-sharing.mjs";
 import {
@@ -714,7 +714,7 @@ async function startDesktop() {
           isTrustedEvent: trustedDesktopEvent,
           monitorOrigin: privateMonitorOrigin,
           authorizationToken,
-          environment: providerEnvironment,
+          environment: providerSessionEnvironment(process.env, desktopSettings.providerFolders, { homeDir: app.getPath("home"), dataRoot: desktopPaths.dataRoot }),
           worktreeRoot: path.join(desktopPaths.dataRoot, TASK_WORKTREE_DIRECTORY),
           openPath: (directory) => shell.openPath(directory),
           confirm: async ({ taskId }) => {
