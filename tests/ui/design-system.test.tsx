@@ -17,8 +17,8 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Typography and tokens"];
-const SAMPLE_SOURCES = ["DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample"].map((name) => `app/components/design-system/${name}.tsx`);
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Typography and tokens"];
+const SAMPLE_SOURCES = ["DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample"].map((name) => `app/components/design-system/${name}.tsx`);
 
 function source(relativePath: string) {
   return readFileSync(path.join(process.cwd(), relativePath), "utf8");
@@ -91,6 +91,24 @@ describe("Design-system reference page", () => {
     expect(single.querySelectorAll(".requestRoleSegment")).toHaveLength(32);
     expect(within(single).getByLabelText("Agent roles in view")).toHaveTextContent(/orchestrator ×1.*explore ×1/);
     expect(single.querySelector(".requestRoleNamed")).toHaveTextContent(/#34.*Primary agent.*orchestrator/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders the Task fields samples from static data: grouped Run on, optional Effort and Done when", async () => {
+    const user = userEvent.setup();
+    render(<DesignSystemView />);
+    const section = screen.getByRole("heading", { level: 2, name: "Task fields" }).closest("section") as HTMLElement;
+    const selects = within(section).getAllByRole("combobox", { name: "Run on" });
+    expect(selects[0]).toHaveTextContent("Claude Code · model-large");
+    expect(selects[1]).toHaveTextContent("Not set");
+    const efforts = within(section).getAllByRole("button", { name: "High" });
+    expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
+    await user.click(efforts[0]);
+    expect(efforts[0]).toHaveAttribute("aria-pressed", "false");
+    expect(efforts[0].parentElement).toHaveClass("commandSegmented");
+    expect(within(section).getAllByRole("checkbox", { name: "Pull request open" })[0]).toBeChecked();
+    expect(within(section).getByText("Not passed")).toBeInTheDocument();
+    expect(within(section).getByText("Passed")).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

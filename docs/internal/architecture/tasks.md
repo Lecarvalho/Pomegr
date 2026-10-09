@@ -31,8 +31,9 @@ Claude Code or Codex session for it, in the desktop app only.
 | --- | --- |
 | This contract and the privacy rules in AGENTS.md | Documentation only |
 | Task store, board read, Tasks tab | Built: the store, `GET /api/tasks`, and the repository Tasks tab |
-| Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued. The store also applies `update` (text) and `delete`, which no surface calls yet |
-| Run-on and done-when fields, move, columns, features | Not built |
+| Task creation | Built: in the desktop app, the Tasks tab's New task panel creates a task from its text. The task lands last in the first column, not queued |
+| Run-on, effort, and done-when fields | Built: the New task panel and the task panel opened from a card set them, and the card shows them. The task panel also edits the task text and deletes the task. Nothing reads them yet: no session is started and no condition is verified |
+| Move, columns, features | Not built |
 | Queue view and ordering | Not built |
 | Agent tool `add_task` | Not built |
 | Start a Claude Code session and bind it to its task | Not built |
@@ -126,7 +127,8 @@ type TaskBoard = {
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at
   most 120 identifier characters, never a path, markup, or prose. A card shows the
   planned provider and model beside the observed model; the observed model is
-  evidence, the planned one is intent.
+  evidence, the planned one is intent. A model belongs to one provider, so a model
+  without a provider is invalid; an effort alone is valid.
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - A feature is `done` when every task attached to it is done. Only unfinished
@@ -278,8 +280,11 @@ like any other.
   `column_rename`, `column_reorder`, `column_delete`, `feature_create`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. An action whose part has not landed answers a fixed `unsupported`
-  result. Built so far: `create` with `{ text }`, `update` with `{ id, text }`, and
-  `delete` with `{ id }`; a payload with any other key is `invalid`.
+  result. Built so far: `create` with `{ text, run?, doneWhen? }`, `update` with
+  `{ id, text?, run?, doneWhen? }`, and `delete` with `{ id }`; a payload with any other
+  key is `invalid`. In `update` at least one of the three fields is required, a field
+  that is present replaces the stored one whole (a null `run` or `doneWhen` clears it),
+  and an absent field is left as stored.
 - The list is written three times, because the layers may not import each other:
   `server/tasks/task-record.mjs`, `server/serving/task-routes.mjs` (pinned to the first
   by `tests/server/tasks/task-actions.test.mjs`), and `desktop/runtime/task-action.mjs`

@@ -22,6 +22,13 @@
 .taskCardChip.isInk { color: var(--command-ink); }
 .taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
 .taskCard.isDone .taskCardTitle { color: var(--command-muted); }
+/* The title is the card's open control: the Quiet role drawn as plain title text. */
+.taskCardOpen.commandQuietAction { padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
+.taskCardOpen.commandQuietAction:hover:not(:disabled) .taskCardTitle { text-decoration: underline; text-underline-offset: 3px; }
+@media (min-width: 761px) and (pointer: fine) { .taskCardOpen.commandQuietAction { min-height: 0; } }
+.taskCardRun { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskCardPlanned { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskCardDetail { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }
@@ -34,9 +41,9 @@
 /* Tasks tab head: the New task action sits at the far right, the desktop-app note is one quiet line (D29). */
 .taskNewAction { flex: 0 0 auto; }
 
-/* New task side panel (design contract D184-D194, D234-D238). Fixed to the right edge below the header, like the
-   Agents evidence drawer; no entrance motion (the contract declares none). Run on, Done when, Feature and Step
-   (D195-D233) are part 4 and are not drawn. */
+/* New task and Task side panels (design contract D184-D194, D234-D238, D239-D249, D295-D299). Fixed to the right
+   edge below the header, like the Agents evidence drawer; no entrance motion (the contract declares none). The Task
+   panel reuses the .newTaskPanel chrome. Feature and Step (D217-D233, D273-D294) are not drawn. */
 .newTaskPanel { position: fixed; z-index: 40; top: 60px; right: 0; bottom: 0; box-sizing: border-box; width: min(640px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--command-line); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
 .newTaskPanelHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-6); border-bottom: 1px solid var(--command-line); }
 .newTaskPanelHeader h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
@@ -47,6 +54,7 @@
 .newTaskPanelBody { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
 .newTaskField { display: flex; flex-direction: column; gap: var(--space-1); }
 .newTaskField label { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.newTaskEffortLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
 .newTaskField textarea { box-sizing: border-box; display: block; width: 100%; padding: var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); resize: vertical; }
 .newTaskField textarea::placeholder { color: var(--command-muted); opacity: 1; }
 .newTaskField textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
@@ -66,3 +74,43 @@
   .newTaskPanelSpacer { display: none; }
   .newTaskPanelNote { flex: 1 0 100%; }
 }
+
+/* Run on and Effort (D195-D205, D252-D261): the select grows, the four-way Effort sits beside it. Segments are drawn
+   at the control height on a fine pointer; phone and coarse pointers keep the 44px role size. */
+.taskRunGroup { display: flex; flex-direction: column; gap: var(--space-2); }
+.taskRunRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
+.taskRunOn { flex: 1 1 220px; min-width: 0; }
+.taskRunOn .commandSelect { display: grid; }
+@media (min-width: 761px) and (pointer: fine) { .taskEffort > button { min-height: var(--control-height); } }
+.taskModelNotice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--command-amber); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskModelNoticeTitle { color: var(--command-amber); font-weight: 500; }
+.taskModelNotice code { font: 400 var(--text-xs)/1.4 var(--font-data); }
+
+/* Done when (D206-D216, D265-D272): two columns in New task, one list in the Task panel. */
+.taskDoneWhen { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; }
+.taskDoneWhen legend { padding: 0; margin-bottom: var(--space-1); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskChecks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); }
+.taskChecks.isList { grid-template-columns: minmax(0, 1fr); }
+.taskCheckRow { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; border-top: 1px solid var(--command-line); }
+.taskChecks:not(.isList) .taskCheckRow:nth-last-child(-n+2), .taskChecks.isList .taskCheckRow:last-child { border-bottom: 1px solid var(--command-line); }
+.taskCheckRow input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--command-brand); }
+.taskCheckRow label:not(.commandVisuallyHidden) { flex: 1 1 auto; min-width: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
+.taskCheckResult.isPassed { color: var(--command-green); }
+.taskCheckResult.isFailed { color: var(--command-error); }
+.taskOwnInput { box-sizing: border-box; flex: 1 1 auto; min-width: 0; min-height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskOwnInput::placeholder { color: var(--command-muted); opacity: 1; }
+.taskOwnInput:focus-visible, .taskCheckRow input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskDoneWhenNote { margin-top: var(--space-2); }
+@media (max-width: 760px) {
+  .taskChecks { grid-template-columns: minmax(0, 1fr); }
+  .taskChecks:not(.isList) .taskCheckRow:nth-last-child(2) { border-bottom: 0; }
+}
+
+/* Task panel header, title group and footer (D240-D249, D295, D298, D299). */
+.taskPanelId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskPanelTitle { display: flex; flex-direction: column; gap: var(--space-2); }
+.taskPanelHeading { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskPanelConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+/* Delete task is the Quiet role drawn at the control height (role default 28). */
+@media (min-width: 761px) and (pointer: fine) { .taskPanelFooter .commandQuietAction { min-height: var(--control-height); } }

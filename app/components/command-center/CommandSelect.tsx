@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -20,6 +21,8 @@ export type CommandSelectOption<V extends string | number = string> = {
   icon?: ReactNode;
   /** Visually hidden text appended to the option's accessible name, for example "running". */
   iconLabel?: string;
+  /** Heading drawn above the first of consecutive options that share it; the closed control reads "group · label". */
+  group?: string;
 };
 
 type CommandSelectProps<V extends string | number> = {
@@ -213,7 +216,7 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
       onBlur={close}
     >
       {selected?.icon && <span className="commandSelectIcon" aria-hidden="true">{selected.icon}</span>}
-      <span className="commandSelectValue">{selected ? selected.label : placeholder}</span>
+      <span className="commandSelectValue">{selected ? (selected.group ? `${selected.group} · ${selected.label}` : selected.label) : placeholder}</span>
       {selected?.iconLabel && <span className="commandVisuallyHidden">, {selected.iconLabel}</span>}
     </button>
     {open && host && createPortal(
@@ -227,8 +230,9 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
         // Keep focus on the trigger so aria-activedescendant stays meaningful.
         onMouseDown={(event) => event.preventDefault()}
       >
-        {options.map((option, index) => <li
-          key={String(option.value)}
+        {options.map((option, index) => <Fragment key={String(option.value)}>
+          {option.group && option.group !== options[index - 1]?.group && <li role="presentation" aria-hidden="true" className="commandSelectGroup">{option.group}</li>}
+          <li
           id={optionId(index)}
           role="option"
           aria-selected={index === selectedIndex}
@@ -240,8 +244,10 @@ export function CommandSelect<V extends string | number>({ options, value, onCha
         >
           {hasIcons && <span className="commandSelectIcon" aria-hidden="true">{option.icon}</span>}
           <span className="commandSelectValue">{option.label}</span>
+          {option.group && <span className="commandVisuallyHidden">, {option.group}</span>}
           {option.iconLabel && <span className="commandVisuallyHidden">, {option.iconLabel}</span>}
-        </li>)}
+        </li>
+        </Fragment>)}
       </ul>,
       host,
     )}

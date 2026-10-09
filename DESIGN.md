@@ -271,7 +271,7 @@ A live reference of all six roles and their states, plus selects, chips and pill
 
 Search and filters use neutral backgrounds, one-pixel control rules, 4px corners, Inter control text, and an accessible focus ring. Inputs expand to 44px on coarse/mobile surfaces.
 
-Every single-select dropdown uses `CommandSelect` (`app/components/command-center/CommandSelect.tsx`, re-exported from `CommandPage.tsx`); do not add a native `<select>`. It is a select-only combobox: the trigger keeps a muted chevron inset 14px from the edge, reserved end padding, and shared hover/focus/disabled states, and the stronger line also marks it open. The listbox opens in a fixed `--command-panel` overlay (one-pixel strong line, control radius, overlay shadow, at most 320px tall, flipped above when the space below is short) portaled to the body, or into the enclosing modal `<dialog>`. Options are 32px rows (44px on coarse pointers); the active option takes the raised tone and the selected option the brand text at 600. Focus stays on the trigger with `aria-activedescendant`; arrows, Home/End, Page Up/Down, typeahead, Enter/Space, Escape, and Tab follow the native select. An option may carry a decorative glyph with a visually hidden `iconLabel`; the Activities agent scope uses the green status dot with “running” for agents whose wall time is still advancing in a live session.
+Every single-select dropdown uses `CommandSelect` (`app/components/command-center/CommandSelect.tsx`, re-exported from `CommandPage.tsx`); do not add a native `<select>`. It is a select-only combobox: the trigger keeps a muted chevron inset 14px from the edge, reserved end padding, and shared hover/focus/disabled states, and the stronger line also marks it open. The listbox opens in a fixed `--command-panel` overlay (one-pixel strong line, control radius, overlay shadow, at most 320px tall, flipped above when the space below is short) portaled to the body, or into the enclosing modal `<dialog>`. Options are 32px rows (44px on coarse pointers); the active option takes the raised tone and the selected option the brand text at 600. Focus stays on the trigger with `aria-activedescendant`; arrows, Home/End, Page Up/Down, typeahead, Enter/Space, Escape, and Tab follow the native select. An option may name a `group`: consecutive options that share one sit under a muted `--text-xs` heading that is not selectable, the closed control reads “group · label”, and each option appends the group to its accessible name (the task Run on field groups models by provider). An option may carry a decorative glyph with a visually hidden `iconLabel`; the Activities agent scope uses the green status dot with “running” for agents whose wall time is still advancing in a live session.
 
 ### Inline Explanations
 
@@ -416,6 +416,22 @@ another** (secondary, 36px with the strong line on the panel fill at 761px and
 wider with a fine pointer), and the muted note **Goes to Backlog, not queued**.
 Both sizes are intentional local deviations from the role defaults, taken from
 the task-board design.
+Below the Task field the panel holds the task fields, shared with the Task panel
+and all optional: **Run on**, one `CommandSelect` grouped by provider that lists
+each provider's observed models and a Default model entry, with Not set as its
+clear state; **Effort**, a four-way segmented control (Low, Medium, High, Xhigh)
+whose pressed segment clears when pressed again; and **Done when**, a fieldset of
+five native checkboxes in two columns (one at 760px and narrower) plus a last
+checkbox beside a text field for a condition the agent judges. A card's title
+opens the Task panel, the same drawer for one stored task: its header holds the
+task ID, the state chip, and a 44px icon Close task; a select, segment, or
+checkbox saves on change, and the Task text and the own condition save on blur.
+Its footer holds **Delete task** (quiet), which swaps in an inline confirmation
+with a secondary delete and a quiet Keep task; no native dialog. Effort segments
+and Delete task are 36px at 761px and wider with a fine pointer, also local
+deviations taken from the task-board design. A card shows the provider badge, the
+planned model and effort in the data font, and one muted Done when line, each only
+when set. `/design-system` renders the fields with static models under Task fields.
 Git uses the shared neutral chip with an 8px gap before its placeholder title. The Context
 inventory tab uses one section per provider, including an explicit not-yet-available
 state for Codex, a revision select when

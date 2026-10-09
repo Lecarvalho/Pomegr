@@ -106,14 +106,18 @@ function enumValue(value, allowed) {
   return typeof value === "string" && allowed.includes(value) ? value : undefined;
 }
 
-/** The planned main-agent settings. Every part is optional; an unknown key is invalid. */
+/**
+ * The planned main-agent settings. Every part is optional; an unknown key is invalid. A model
+ * names one provider's model, so a model without its provider is invalid.
+ */
 export function normalizeRun(value) {
   if (value === undefined || value === null) return { provider: null, model: null, effort: null };
   if (!isPlainObject(value) || !hasOnlyKeys(value, ["provider", "model", "effort"])) return undefined;
   const provider = enumValue(value.provider, TASK_PROVIDERS);
   const model = normalizeModelIdentifier(value.model);
   const effort = enumValue(value.effort, TASK_EFFORTS);
-  return provider === undefined || model === undefined || effort === undefined ? undefined : { provider, model, effort };
+  if (provider === undefined || model === undefined || effort === undefined) return undefined;
+  return model !== null && provider === null ? undefined : { provider, model, effort };
 }
 
 /** Checks are unique and known; the result is in the fixed contract order. */
@@ -146,19 +150,30 @@ function taskNumberFromId(value) {
   return isTaskId(value) ? Number(value.slice(2)) : undefined;
 }
 
-/** `create` carries the free-text task and nothing else. Returns `{ text }`, or undefined when invalid. */
+/**
+ * `create` carries the task text and, optionally, the planned run and the done-when conditions.
+ * Returns `{ text, run, doneWhen }` with every absent part at its empty value, or undefined when invalid.
+ */
 export function normalizeCreatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["text"])) return undefined;
-  const text = normalizeTaskText(value.text);
-  return text === undefined ? undefined : { text };
+  return normalizeTaskInput(value);
 }
 
-/** `update` edits the text of one task. Returns `{ number, text }`, or undefined when invalid. */
+/**
+ * `update` edits one task. `text`, `run`, and `doneWhen` are each optional, at least one is
+ * required, and a field that is present replaces the stored one whole: a null `run` or
+ * `doneWhen` clears it, and an absent field is left as stored. Returns `{ number }` plus only
+ * the fields that were present, or undefined when invalid.
+ */
 export function normalizeUpdatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "doneWhen"])) return undefined;
   const number = taskNumberFromId(value.id);
-  const text = normalizeTaskText(value.text);
-  return number === undefined || text === undefined ? undefined : { number, text };
+  if (number === undefined) return undefined;
+  const update = { number };
+  if (value.text !== undefined) update.text = normalizeTaskText(value.text);
+  if (value.run !== undefined) update.run = normalizeRun(value.run);
+  if (value.doneWhen !== undefined) update.doneWhen = normalizeDoneWhen(value.doneWhen);
+  const fields = Object.keys(update).filter((key) => key !== "number");
+  return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
 }
 
 /** `delete` names one task. Returns `{ number }`, or undefined when invalid. */
