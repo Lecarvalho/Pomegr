@@ -548,6 +548,7 @@ describe("feature styles", () => {
     expect(rule(".taskFeatureDetails")).toMatch(/border-top: 1px solid var\(--command-line\); border-bottom: 1px solid var\(--command-line\)/);
     expect(rule(".taskFeatureDetails > summary")).toMatch(/min-height: 44px[^}]*500 var\(--text-sm\)/);
     expect(rule(".taskFeatureItem")).toMatch(/gap: var\(--space-2\); min-height: var\(--control-compact\)/);
+    expect(rule(".taskFeatureTitle")).toMatch(/overflow: hidden; display: -webkit-box[^}]*-webkit-line-clamp: 2; line-clamp: 2/);
     expect(rule(".taskFeatureId")).toMatch(/flex: 0 0 40px[^}]*var\(--font-data\)/);
     expect(rule(".taskFeatureFilter")).toMatch(/gap: var\(--space-2\)/);
     expect(rule(".taskFilterEyebrow")).toMatch(/500 var\(--text-caption\)[^}]*text-transform: uppercase/);

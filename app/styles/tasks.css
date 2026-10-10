@@ -238,7 +238,7 @@
 .taskFeatureItem.hasStep { border-top: 1px solid var(--command-line); }
 .taskFeatureStep { flex: 0 0 20px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskFeatureId { flex: 0 0 40px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.taskFeatureTitle { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskFeatureTitle { flex: 1 1 auto; min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .taskFeatureItem.isDone .taskFeatureTitle { color: var(--command-muted); }
 /* The sibling title opens that task: the Quiet role drawn as plain title text, like a card's. */
 .taskFeatureOpen.commandQuietAction { flex: 1 1 auto; min-width: 0; padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
@@ -406,7 +406,7 @@
 .sessionTaskRow { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: start; padding: var(--space-2) 0; border-top: 1px solid var(--command-line); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 @media (max-width: 760px) { .sessionTaskRow { align-items: center; } }
 .sessionTaskRowId { padding-top: 1px; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.sessionTaskRowTitle, .sessionTaskRowTitle.commandTextLink { min-width: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.sessionTaskRowTitle, .sessionTaskRowTitle.commandTextLink { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow-wrap: anywhere; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .sessionTaskRow.isDone .sessionTaskRowTitle { color: var(--command-muted); }
 .sessionTaskBlockedNote { margin: 0; color: var(--command-error); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 @media (max-width: 760px) {
