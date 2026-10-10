@@ -31,7 +31,7 @@ function RelatedRow({ task, sessionId, boardHref }: { task: Task; sessionId: str
   const title = taskCardTitle(task);
   return <li className={`sessionTaskRow${task.state === "done" ? " isDone" : ""}`} data-task-id={task.id}>
     <span className="sessionTaskRowId">{task.id}</span>
-    {href ? <Link className="commandTextLink sessionTaskRowTitle" href={href}>{title}</Link> : <span className="sessionTaskRowTitle">{title}</span>}
+    {href ? <Link className="commandTextLink sessionTaskRowTitle" href={href} title={title}>{title}</Link> : <span className="sessionTaskRowTitle" title={title}>{title}</span>}
     <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
   </li>;
 }

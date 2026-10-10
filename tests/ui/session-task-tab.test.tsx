@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionTaskReference } from "../../shared/session-catalog-contract";
@@ -171,6 +173,15 @@ describe("SessionTaskTab", () => {
     expect(within(next).getByRole("link", { name: "Run plan" })).toHaveAttribute("href", boardHref);
     expect(within(next).getByText("Done")).toHaveClass("commandChip");
     expect(side.querySelector(".sessionTaskBlockedNote")).toBeNull();
+  });
+
+  it("crops a related task's title to two lines and keeps the whole title as its tooltip", () => {
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const title = within(screen.getByRole("complementary", { name: "Feature" })).getByRole("link", { name: "Run plan" });
+    expect(title).toHaveClass("sessionTaskRowTitle");
+    expect(title).toHaveAttribute("title", "Run plan");
+    const styles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    expect(styles).toMatch(/\.sessionTaskRowTitle, \.sessionTaskRowTitle\.commandTextLink \{[^}]*overflow: hidden; display: -webkit-box[^}]*-webkit-line-clamp: 2; line-clamp: 2/);
   });
 
   it("explains a blocked queue under the Next rows", () => {
