@@ -21,7 +21,7 @@ function task(overrides: Partial<Task> = {}): Task {
   return {
     id: "T-1", text: "Write the thing", columnId: "col-1", position: 1, featureId: null, step: null,
     run: { provider: "claude", model: null, effort: null }, doneWhen: { checks: [], own: null },
-    state: "not_queued", scheduledAt: null, session: null, report: null,
+    state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }

@@ -25,9 +25,10 @@ import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseRe
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
+import { deleteTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeCreatePayload, normalizeDeletePayload,
-  normalizeFeatureCreatePayload, normalizeMovePayload, normalizeQueueAddPayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -238,7 +239,23 @@ function createTask({ database, repositoryId }, payload) {
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
       JSON.stringify(input.doneWhen.checks), input.doneWhen.own, now, now, input.featureId, step);
   reserveTaskNumber(database, repositoryId, number + 1);
-  return { ok: true };
+  return { ok: true, number };
+}
+
+// Promotes one GitHub issue: a snapshot of its title and stripped body becomes an ordinary task in the first column
+// with the default run and done-when values, and the issue number is kept beside it (task-source.mjs). It is a store
+// action only: no route or desktop channel carries it, so no caller can supply issue text. An issue that already has a
+// task is `conflict`; text over the task bound is `limit`.
+function promoteIssue({ database, repositoryId }, payload) {
+  const input = normalizePromotePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  for (const issueNumber of readTaskSources(database, repositoryId).values()) if (issueNumber === input.number) return { ok: false, error: "conflict" };
+  const text = composePromotedText(input);
+  if (text.length > TASK_BOUNDS.textLength) return { ok: false, error: "limit" };
+  const created = createTask({ database, repositoryId }, { text });
+  if (!created.ok) return created;
+  writeTaskSource(database, repositoryId, created.number, input.number);
+  return { ok: true, number: created.number };
 }
 
 function updateTask({ database, repositoryId }, payload) {
@@ -282,6 +299,7 @@ function deleteTask({ database, repositoryId }, payload) {
   if (!task) return { ok: false, error: "not_found" };
   const reserved = nextTaskNumber(database, repositoryId);
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
+  deleteTaskSource(database, repositoryId, input.number);
   // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -412,6 +430,8 @@ const ACTIONS = Object.freeze({
   feature_create: createFeature,
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
+  // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
+  promote_issue: promoteIssue,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
@@ -456,13 +476,16 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
     // A column's role is kept in `meta` like the pause reason (task-columns.mjs).
     const roles = readColumnRoles(database, repositoryId);
+    // A promoted task's issue number is kept in `meta` like the roles (task-source.mjs).
+    const sources = readTaskSources(database, repositoryId);
     return {
       // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
       columns: preparedStatement(database, "SELECT id, name, position FROM columns WHERE repository_id = ? ORDER BY position, id").all(repositoryId)
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
-      tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId),
+      tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null })),
     };
   }
 
@@ -498,6 +521,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
 
   function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
+    let taskId = null;
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
     // A store that cannot be used refuses the write before any handler can touch it.
@@ -507,15 +531,32 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
         const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
+        // Only `promote_issue` answers the task it made.
+        taskId = action === "promote_issue" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
         const projected = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
-      return { ok: true, board: served(board, resolvers) };
+      return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
     }
+  }
+
+  // The GitHub issues already promoted in one repository as `Map<issueNumber, taskId>`, from the stored sources of
+  // tasks that still exist. A plain committed read: an unusable store or an invalid ID answers an empty map.
+  function promotedIssues(repositoryId) {
+    const promoted = new Map();
+    if (!database || !isRepositoryId(repositoryId)) return promoted;
+    try {
+      const existing = new Set(preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ?").all(repositoryId).map((row) => Number(row.number)));
+      for (const [taskNumber, issueNumber] of readTaskSources(database, repositoryId)) {
+        const taskId = taskIdFromNumber(taskNumber);
+        if (existing.has(taskNumber) && taskId !== undefined && !promoted.has(issueNumber)) promoted.set(issueNumber, taskId);
+      }
+    } catch { /* an unreadable store promotes nothing */ }
+    return promoted;
   }
 
   // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; a bind links the session that
@@ -560,6 +601,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const sessionTasks = (sessionIds) => link(sessionTaskReferences, { sessionIds });
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
-  return Object.freeze({ readBoard, apply, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
+  return Object.freeze({ readBoard, apply, promotedIssues, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
     sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

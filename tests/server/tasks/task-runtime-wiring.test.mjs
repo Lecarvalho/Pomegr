@@ -11,3 +11,10 @@ test("the monitor runtime forwards every task lookup the request handler reads",
   assert.deepEqual([...read].sort(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
   for (const name of read) assert.match(monitor, new RegExp(`\\b${name}: observation\\.${name}\\b`, "u"), name);
 });
+
+test("the monitor runtime forwards the GitHub issue composition the request handler reads", () => {
+  const handler = readFileSync(new URL("../../../server/serving/request-handler.mjs", import.meta.url), "utf8");
+  const monitor = readFileSync(new URL("../../../server/server.mjs", import.meta.url), "utf8");
+  assert.match(handler, /runtime\.taskIssues\b/u);
+  assert.match(monitor, /\btaskIssues: observation\.taskIssues\b/u);
+});

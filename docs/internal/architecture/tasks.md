@@ -92,6 +92,7 @@ type Task = {
   session: { id: string; title: string | null; state: string; observedModel: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
   report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null } | null;
+  source: { kind: "github_issue"; number: number } | null;   // set once, by a promote
   createdAt: string; updatedAt: string;
 };
 type TaskBoard = {
@@ -752,7 +753,10 @@ Starting is desktop-only and explicit.
    `shell: false`. Task text is untrusted user content and is never interpolated into
    a command line or a path.
 3. The session prompt is a fixed template holding the task text, the done-when list, and
-   the instruction to call `complete_task` or `block_task`.
+   the instruction to call `complete_task` or `block_task`. For a task promoted from a
+   GitHub issue it also holds one fixed line with the issue number, asking for
+   `Closes #<number>` in the pull request. Only the integer from the task store enters
+   that line, and no issue is read when a session starts.
 4. The start is refused with a fixed reason when the Pomegr plugin is not installed in
    the repository or is older than the first version with the task hook and tools
    (fixed result `plugin_missing` for both), a gate holds (fixed result `gate_held`), a worktree reused for the
@@ -827,6 +831,52 @@ Claude Code and Codex are both startable. Pomegr never attaches to, writes input
 approves for, or stops the started process; afterwards it only observes the session
 like any other.
 
+## GitHub issues
+
+Decided by the product owner on 2026-10-09. Pomegr's own task store stays the source of
+truth for execution: GitHub is a source of task text, never a source of task state. This
+part is the monitor and desktop side only. The Promote issues page is not built yet, and
+Pomegr writes nothing to GitHub.
+
+- **Connection.** Pomegr never reads, stores, refreshes, or forwards a GitHub token. Every
+  read runs as the owner through the installed GitHub CLI, so a private repository works
+  when the owner's `gh` session can read it. `server/repository/issues.mjs` calls `gh`
+  with `execFile`, an argument array, a deadline, and an output size cap. The connection
+  is `connected`, `not_signed_in`, or `cli_missing`. A repository's access is a
+  visibility (`private`, `public`, `unknown`) and capabilities from `read_issues`,
+  `create_issues`, `issues_disabled`, and `no_access`. No username, path, command, URL,
+  or error text leaves the reader.
+- **When a read happens.** Only on an explicit desktop operation: `status`, `list`, or
+  `promote` on the `pomegr:task-issues` channel. No GET, queue step, session start, or
+  agent tool reads GitHub.
+- **The list.** At most 100 open issues; a pull request is never an issue. Each issue is
+  normalized to its number, a one-line title of at most 200 characters, the body cut to at
+  most 20000 characters for the preview, the hidden HTML comments in that body (their
+  count and at most 64 ranges), the character count of the task text a promote would
+  store, a too-long flag, an author association (`owner`, `member`, `collaborator`, or
+  `outsider` for anything else), the update time, and a SHA-256 digest of the original
+  title and body. `server/runtime/task-issues.mjs` holds the last list in memory for at
+  most 16 repositories. It is never persisted.
+- **Promote.** The caller sends a repository ID, an issue number, and the digest of what it
+  showed. The monitor reads that one issue again. A different digest, or an issue that is
+  already promoted, answers `conflict`; an issue that is gone, closed, or a pull request
+  answers `not_found`; task text over 4000 characters answers `limit` and is never
+  truncated. The caller never supplies task text.
+- **Snapshot, not reference.** A promote copies the title, a blank line, and the body with
+  its HTML comments removed into ordinary task text, in the first column. Comments on the
+  issue are never read. The task text can then be edited like any other. The store keeps
+  the source in its `meta` table under `task_source:<repositoryId>:<taskId>`, so the
+  schema version is unchanged, and deletes it with the task; an issue whose task was
+  deleted can be promoted again.
+- **Sign-in.** `sign_in` is an explicit native action behind a native confirmation, on
+  Windows only. It opens the GitHub CLI's own sign-in in a visible terminal with `spawn`,
+  a fixed argument array, and `shell: false`, and answers one fixed status (`opened`,
+  `cancelled`, `cli_missing`, `unsupported_platform`, `unavailable`). It takes no command,
+  path, or URL from the renderer and never reads or forwards a credential.
+- **Accepted risk.** The prompt's issue number lets the started agent read the whole issue
+  thread with its own `gh`, including comments Pomegr never copied. The product owner
+  accepted this on 2026-10-09.
+
 ## Boundaries
 
 | Surface | Who | What it carries |
@@ -839,6 +889,8 @@ like any other.
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
+| `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `sign_in`, a repository ID, and for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest. `status`, `list`, and `promote` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
+| `POST /internal/tasks/github-status`, `issues-list`, and `issue-promote` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
@@ -923,6 +975,13 @@ like any other.
 
 Task text, the own condition, and feature names are user-authored content, a new data
 class. Column names are five fixed values.
+
+- Issue titles and bodies are third-party content, text written by other people. They are
+  served only by `POST /internal/tasks/issues-list` to desktop main and from there to the
+  trusted renderer. They never enter `GET /api/tasks`, `/api/state`, a session domain, a
+  catalog, a checkpoint, a report, a log, a notification, or diagnostics, and browser and
+  LAN clients never receive them. Once promoted, the copied text is ordinary task text
+  and follows the rules below. `GET /api/tasks` gains only `Task.source`.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
@@ -1019,7 +1078,11 @@ Each item is owned by the product owner; none is implemented until they answer.
 4. **Board deep links.** The board has no address for the Queue view or one task, so
    feature links and Open on board in the session view open the board only, and a task
    ID on the Sessions list opens the board instead of the session's Task tab.
-5. **Session start outside Windows.** Other platforms answer the fixed
+5. **Promote issues page and creating an issue.** The page that lists issues and the task
+   modal's issue mode are not built; the routes and the channel above have no user
+   interface yet. Creating a GitHub issue from a task, Pomegr's first write to an
+   external service, is not built either.
+6. **Session start outside Windows.** Other platforms answer the fixed
    `unsupported_platform` result until a launcher is validated for them.
 
 ## Known defects

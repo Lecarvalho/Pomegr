@@ -1,0 +1,338 @@
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import test from "node:test";
+import {
+  ISSUE_LIST_LIMIT, ISSUE_TASK_TEXT_LIMIT, createIssueReader, normalizeIssue, stripHiddenComments,
+} from "../../../server/repository/issues.mjs";
+
+const ROOT = "C:\\Work\\SECRET-ROOT\\repo";
+
+function raw(overrides = {}) {
+  return {
+    number: 7, title: "Fix the parser", body: "It crashes.", state: "open", author_association: "MEMBER",
+    updated_at: "2026-10-09T10:00:00Z", user: { login: "SECRET-LOGIN" }, html_url: "https://github.com/SECRET-OWNER/repo/issues/7",
+    ...overrides,
+  };
+}
+
+// A fake `gh` at the injected execFile seam. `answer(args, options)` returns `{ stdout }` or `{ error, stderr }`.
+function fakeGh(answer) {
+  const calls = [];
+  const execFile = (file, args, options, callback) => {
+    calls.push({ file, args, options });
+    const result = answer(args, options);
+    setImmediate(() => (result.error ? callback(result.error, "", result.stderr ?? "") : callback(null, result.stdout, "")));
+  };
+  return { execFile, calls };
+}
+
+const failure = (stderr, code = 1) => ({ error: Object.assign(new Error(`Command failed: gh\n${stderr}`), { code }), stderr });
+const missing = () => ({ error: Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }), stderr: "" });
+const reader = (answer, options = {}) => {
+  const gh = fakeGh(answer);
+  return { gh, reader: createIssueReader({ execFile: gh.execFile, ...options }) };
+};
+
+test("a pull request, a non-object, and an out-of-range number are not issues", () => {
+  assert.equal(normalizeIssue(raw({ pull_request: { url: "x" } })), null);
+  for (const value of [null, undefined, "issue", [], 5]) assert.equal(normalizeIssue(value), null);
+  for (const number of [0, -1, 1.5, "7", 1_000_000_000, Number.NaN]) assert.equal(normalizeIssue(raw({ number })), null);
+  assert.equal(normalizeIssue(raw({ title: 3 })), null);
+  assert.equal(normalizeIssue(raw({ title: " \u0007\n " })), null);
+});
+
+test("a title is one bounded line", () => {
+  const issue = normalizeIssue(raw({ title: "  Fix\tthe\r\n\u0001parser \u2028 now  " }));
+  assert.equal(issue.title, "Fix the parser now");
+  const long = normalizeIssue(raw({ title: "x".repeat(500) }));
+  assert.equal(long.title.length, 200);
+  // A cut never leaves half a surrogate pair.
+  const emoji = normalizeIssue(raw({ title: `${"a".repeat(199)}\u{1F600}` }));
+  assert.equal(emoji.title.isWellFormed(), true);
+  assert.equal(emoji.title.length, 199);
+  assert.equal(normalizeIssue(raw({ title: "bad \ud800 surrogate" })).title.isWellFormed(), true);
+});
+
+test("the author association maps to the fixed enum", () => {
+  for (const [value, expected] of [["OWNER", "owner"], ["MEMBER", "member"], ["COLLABORATOR", "collaborator"], ["CONTRIBUTOR", "outsider"],
+    ["FIRST_TIME_CONTRIBUTOR", "outsider"], ["NONE", "outsider"], ["SOMETHING_NEW", "outsider"], [undefined, "outsider"], [null, "outsider"], [7, "outsider"]]) {
+    assert.equal(normalizeIssue(raw({ author_association: value })).authorAssociation, expected, String(value));
+  }
+});
+
+test("updatedAt is an ISO instant or null", () => {
+  assert.equal(normalizeIssue(raw()).updatedAt, "2026-10-09T10:00:00.000Z");
+  assert.equal(normalizeIssue(raw({ updated_at: "not a date" })).updatedAt, null);
+  assert.equal(normalizeIssue(raw({ updated_at: undefined })).updatedAt, null);
+});
+
+test("an issue carries exactly the contract keys and nothing of the author", () => {
+  const issue = normalizeIssue(raw());
+  assert.deepEqual(Object.keys(issue).toSorted(), ["authorAssociation", "body", "bodyTruncated", "characters", "digest", "hiddenComments", "number", "taskText", "title", "tooLong", "updatedAt"]);
+  const text = JSON.stringify(issue);
+  assert.ok(!text.includes("SECRET"));
+});
+
+test("hidden comments are counted, ranged by offset into the served body, and stripped from the task text", () => {
+  const none = normalizeIssue(raw({ body: "Plain body." }));
+  assert.deepEqual(none.hiddenComments, { count: 0, ranges: [] });
+  assert.equal(none.taskText, "Fix the parser\n\nPlain body.");
+
+  const single = normalizeIssue(raw({ body: "Before <!-- secret note --> after" }));
+  assert.deepEqual(single.hiddenComments, { count: 1, ranges: [{ start: 7, end: 27 }] });
+  assert.equal(single.body.slice(7, 27), "<!-- secret note -->");
+  assert.equal(single.taskText, "Fix the parser\n\nBefore  after");
+  assert.ok(!single.taskText.includes("secret note"));
+
+  const body = "a<!--1-->b<!--2-->c";
+  const multiple = normalizeIssue(raw({ body }));
+  assert.equal(multiple.hiddenComments.count, 2);
+  assert.deepEqual(multiple.hiddenComments.ranges.map(({ start, end }) => body.slice(start, end)), ["<!--1-->", "<!--2-->"]);
+  assert.equal(multiple.taskText, "Fix the parser\n\nabc");
+
+  const multiline = normalizeIssue(raw({ body: "x\n<!--\nline one\nline two\n-->\ny" }));
+  assert.equal(multiline.hiddenComments.count, 1);
+  assert.equal(multiline.taskText, "Fix the parser\n\nx\n\ny");
+});
+
+test("an unterminated comment runs to the end of the body and counts as one", () => {
+  const issue = normalizeIssue(raw({ body: "Visible <!-- never closed\nhidden still" }));
+  assert.equal(issue.hiddenComments.count, 1);
+  assert.deepEqual(issue.hiddenComments.ranges, [{ start: 8, end: issue.body.length }]);
+  assert.equal(issue.taskText, "Fix the parser\n\nVisible");
+});
+
+test("at most 64 ranges are reported while the count stays real, bounded at 1000", () => {
+  const some = normalizeIssue(raw({ body: "<!--x-->".repeat(100) }));
+  assert.equal(some.hiddenComments.count, 100);
+  assert.equal(some.hiddenComments.ranges.length, 64);
+  assert.equal(some.taskText, some.title);
+  const many = normalizeIssue(raw({ body: "<!---->".repeat(1500) }));
+  assert.equal(many.hiddenComments.count, 1000);
+  assert.equal(many.hiddenComments.ranges.length, 64);
+});
+
+test("a body that is only hidden comments leaves the title as the task text", () => {
+  const issue = normalizeIssue(raw({ body: "<!-- template -->\n\n" }));
+  assert.equal(issue.taskText, "Fix the parser");
+  assert.equal(issue.characters, "Fix the parser".length);
+  assert.equal(normalizeIssue(raw({ body: null })).taskText, "Fix the parser");
+});
+
+test("stripHiddenComments matches the task text body and drops characters a task cannot hold", () => {
+  assert.equal(stripHiddenComments("  a <!-- b --> c\u0007d  "), "a  cd");
+  assert.equal(stripHiddenComments(undefined), "");
+  const issue = normalizeIssue(raw({ body: "keep <!-- gone --> this\u001b[31m" }));
+  assert.equal(issue.taskText, `${issue.title}\n\n${stripHiddenComments(issue.body)}`);
+});
+
+test("the digest is SHA-256 over the original title, a newline, and the original body, and changes with either", () => {
+  const issue = normalizeIssue(raw({ title: "  Fix\tit  ", body: "Body <!-- c -->" }));
+  assert.match(issue.digest, /^[0-9a-f]{64}$/u);
+  assert.equal(issue.digest, crypto.createHash("sha256").update("  Fix\tit  \nBody <!-- c -->", "utf8").digest("hex"));
+  assert.equal(normalizeIssue(raw({ title: "  Fix\tit  ", body: "Body <!-- c -->" })).digest, issue.digest);
+  assert.notEqual(normalizeIssue(raw({ title: "  Fix\tit  ", body: "Body <!-- d -->" })).digest, issue.digest);
+  assert.notEqual(normalizeIssue(raw({ title: "Fix it", body: "Body <!-- c -->" })).digest, issue.digest);
+  assert.equal(normalizeIssue(raw({ title: "T", body: null })).digest, crypto.createHash("sha256").update("T\n", "utf8").digest("hex"));
+});
+
+test("tooLong flips between 4000 and 4001 characters of task text", () => {
+  const title = "T";
+  const fit = normalizeIssue(raw({ title, body: "b".repeat(ISSUE_TASK_TEXT_LIMIT - title.length - 2) }));
+  assert.equal(fit.characters, 4000);
+  assert.equal(fit.tooLong, false);
+  const over = normalizeIssue(raw({ title, body: "b".repeat(ISSUE_TASK_TEXT_LIMIT - title.length - 1) }));
+  assert.equal(over.characters, 4001);
+  assert.equal(over.tooLong, true);
+});
+
+test("the preview body is bounded at 20000 characters and a cut body is always tooLong", () => {
+  const exact = normalizeIssue(raw({ body: "b".repeat(20_000) }));
+  assert.equal(exact.body.length, 20_000);
+  assert.equal(exact.bodyTruncated, false);
+  const over = normalizeIssue(raw({ body: "b".repeat(20_001) }));
+  assert.equal(over.body.length, 20_000);
+  assert.equal(over.bodyTruncated, true);
+  assert.equal(over.tooLong, true);
+  // Hidden comments hide most of a long body; the cut body is still too long to promote.
+  const hidden = normalizeIssue(raw({ body: `<!--${"x".repeat(25_000)}-->ok` }));
+  assert.equal(hidden.bodyTruncated, true);
+  assert.equal(hidden.tooLong, true);
+  assert.equal(hidden.hiddenComments.ranges[0].end, 20_000);
+  assert.equal(hidden.characters, "Fix the parser\n\nok".length);
+  // The digest covers the whole original body, not the cut one.
+  assert.notEqual(normalizeIssue(raw({ body: `${"b".repeat(20_000)}x` })).digest, normalizeIssue(raw({ body: `${"b".repeat(20_000)}y` })).digest);
+});
+
+test("connection: connected, not signed in, and CLI missing, with no stderr leaving", async () => {
+  const connected = reader(() => ({ stdout: "Logged in to github.com account SECRET-LOGIN" }));
+  assert.equal(await connected.reader.connection(), "connected");
+  assert.deepEqual(connected.gh.calls[0].args, ["auth", "status", "--hostname", "github.com"]);
+  assert.equal(connected.gh.calls[0].file, "gh");
+
+  assert.equal(await reader(() => missing()).reader.connection(), "cli_missing");
+  assert.equal(await reader(() => failure("You are not logged into any GitHub hosts. SECRET-LOGIN")).reader.connection(), "not_signed_in");
+  assert.equal(await reader(() => failure("boom", "ETIMEDOUT")).reader.connection(), "not_signed_in");
+  const timedOut = Object.assign(new Error("timed out"), { killed: true, signal: "SIGTERM", code: null });
+  assert.equal(await reader(() => ({ error: timedOut, stderr: "" })).reader.connection(), "not_signed_in");
+  const throwing = createIssueReader({ execFile: () => { throw new Error("sync failure SECRET"); } });
+  assert.equal(await throwing.connection(), "not_signed_in");
+});
+
+test("repositoryAccess maps visibility and capabilities", async () => {
+  const view = (value) => reader(() => ({ stdout: JSON.stringify(value) }));
+  const privateWrite = view({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "WRITE" });
+  assert.deepEqual(await privateWrite.reader.repositoryAccess(ROOT), { visibility: "private", capabilities: ["read_issues", "create_issues"] });
+  assert.deepEqual(privateWrite.gh.calls[0].args, ["repo", "view", "--json", "visibility,hasIssuesEnabled,viewerPermission"]);
+  assert.equal(privateWrite.gh.calls[0].options.cwd, ROOT);
+
+  assert.deepEqual(await view({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "READ" }).reader.repositoryAccess(ROOT),
+    { visibility: "private", capabilities: ["read_issues"] });
+  assert.deepEqual(await view({ visibility: "INTERNAL", hasIssuesEnabled: true, viewerPermission: "TRIAGE" }).reader.repositoryAccess(ROOT),
+    { visibility: "private", capabilities: ["read_issues", "create_issues"] });
+  assert.deepEqual(await view({ visibility: "PUBLIC", hasIssuesEnabled: true, viewerPermission: "READ" }).reader.repositoryAccess(ROOT),
+    { visibility: "public", capabilities: ["read_issues", "create_issues"] });
+  for (const permission of ["ADMIN", "MAINTAIN"]) {
+    assert.deepEqual(await view({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: permission }).reader.repositoryAccess(ROOT),
+      { visibility: "private", capabilities: ["read_issues", "create_issues"] });
+  }
+  assert.deepEqual(await view({ visibility: "PUBLIC", hasIssuesEnabled: false, viewerPermission: "ADMIN" }).reader.repositoryAccess(ROOT),
+    { visibility: "public", capabilities: ["issues_disabled"] });
+  assert.deepEqual(await view({ visibility: "SOMETHING", hasIssuesEnabled: true, viewerPermission: "READ" }).reader.repositoryAccess(ROOT),
+    { visibility: "unknown", capabilities: ["read_issues"] });
+});
+
+test("repositoryAccess answers no access for every failed read", async () => {
+  const closed = { visibility: "unknown", capabilities: ["no_access"] };
+  assert.deepEqual(await reader(() => failure("Could not resolve to a Repository SECRET")).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => missing()).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => ({ stdout: "not json" })).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => ({ stdout: "{}" })).reader.repositoryAccess(""), closed);
+});
+
+test("listOpenIssues reads the REST list, drops pull requests, and keeps at most 100", async () => {
+  const list = [raw({ number: 1 }), raw({ number: 2, pull_request: {} }), raw({ number: 3, author_association: "NONE" })];
+  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(list) }));
+  const result = await r.listOpenIssues(ROOT);
+  assert.equal(result.status, "ok");
+  assert.deepEqual(result.issues.map((issue) => issue.number), [1, 3]);
+  assert.equal(result.truncated, false);
+  assert.deepEqual(gh.calls[0].args, ["api", "repos/{owner}/{repo}/issues?state=open&per_page=100"]);
+  assert.equal(gh.calls[0].options.cwd, ROOT);
+  assert.equal(gh.calls[0].options.windowsHide, true);
+  assert.equal(gh.calls[0].options.timeout, 8000);
+  assert.equal(gh.calls[0].options.maxBuffer, 8 * 1024 * 1024);
+
+  const full = Array.from({ length: ISSUE_LIST_LIMIT }, (_, index) => raw({ number: index + 1 }));
+  const truncated = await reader(() => ({ stdout: JSON.stringify(full) })).reader.listOpenIssues(ROOT);
+  assert.equal(truncated.issues.length, 100);
+  assert.equal(truncated.truncated, true);
+  const surplus = await reader(() => ({ stdout: JSON.stringify([...full, raw({ number: 101 })]) })).reader.listOpenIssues(ROOT);
+  assert.equal(surplus.issues.length, 100);
+  assert.equal(surplus.truncated, true);
+  // A full page of pull requests is still a truncated read of the raw list.
+  const prs = await reader(() => ({ stdout: JSON.stringify(full.map((item) => ({ ...item, pull_request: {} }))) })).reader.listOpenIssues(ROOT);
+  assert.deepEqual(prs, { status: "ok", issues: [], truncated: true });
+  assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.listOpenIssues(ROOT), { status: "ok", issues: [], truncated: false });
+});
+
+test("a private repository lists and reads issues like any other", async () => {
+  const gh = fakeGh((args) => (args[0] === "repo"
+    ? { stdout: JSON.stringify({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "WRITE" }) }
+    : { stdout: JSON.stringify(args[1].endsWith("/issues/7") ? raw() : [raw()]) }));
+  const r = createIssueReader({ execFile: gh.execFile });
+  assert.equal((await r.repositoryAccess(ROOT)).visibility, "private");
+  assert.equal((await r.listOpenIssues(ROOT)).issues.length, 1);
+  assert.equal((await r.readIssue(ROOT, 7)).status, "ok");
+});
+
+test("every fixed list failure", async () => {
+  const status = async (answer) => (await reader(answer).reader.listOpenIssues(ROOT));
+  const empty = (value) => ({ status: value, issues: [], truncated: false });
+  assert.deepEqual(await status(() => missing()), empty("cli_missing"));
+  assert.deepEqual(await status(() => failure("gh: Bad credentials (HTTP 401)")), empty("not_signed_in"));
+  assert.deepEqual(await status(() => failure("To get started with GitHub CLI, please run:  gh auth login")), empty("not_signed_in"));
+  assert.deepEqual(await status(() => failure("gh: Not Found (HTTP 404)")), empty("no_access"));
+  assert.deepEqual(await status(() => failure("gh: Resource not accessible (HTTP 403)")), empty("no_access"));
+  assert.deepEqual(await status(() => failure("gh: Issues are disabled for this repo (HTTP 410)")), empty("issues_disabled"));
+  assert.deepEqual(await status(() => failure("gh: Server Error (HTTP 502)")), empty("unavailable"));
+  assert.deepEqual(await status(() => ({ error: Object.assign(new Error("timed out"), { killed: true, signal: "SIGTERM" }), stderr: "" })), empty("unavailable"));
+  assert.deepEqual(await status(() => ({ error: Object.assign(new Error("maxBuffer"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" }), stderr: "" })), empty("unavailable"));
+  assert.deepEqual(await status(() => ({ stdout: "{ not json" })), empty("unavailable"));
+  assert.deepEqual(await status(() => ({ stdout: "{}" })), empty("unavailable"));
+  assert.deepEqual(await reader(() => ({ stdout: "[]" }), { maxBytes: 1 }).reader.listOpenIssues(ROOT), empty("unavailable"));
+  assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.listOpenIssues(""), empty("unavailable"));
+});
+
+test("readIssue reads one issue by number", async () => {
+  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw()) }));
+  const result = await r.readIssue(ROOT, 7);
+  assert.equal(result.status, "ok");
+  assert.equal(result.issue.number, 7);
+  assert.deepEqual(gh.calls[0].args, ["api", "repos/{owner}/{repo}/issues/7"]);
+  assert.ok(gh.calls[0].args.every((argument) => typeof argument === "string"));
+});
+
+test("readIssue answers not found for a closed issue, a pull request, and a mismatched number", async () => {
+  const one = (value, number = 7) => reader(() => ({ stdout: JSON.stringify(value) })).reader.readIssue(ROOT, number);
+  assert.deepEqual(await one(raw({ state: "closed" })), { status: "not_found", issue: null });
+  assert.deepEqual(await one(raw({ pull_request: {} })), { status: "not_found", issue: null });
+  assert.deepEqual(await one(raw({ number: 8 })), { status: "unavailable", issue: null });
+  assert.deepEqual(await one([]), { status: "unavailable", issue: null });
+});
+
+test("every fixed single-read failure", async () => {
+  const status = async (answer) => (await reader(answer).reader.readIssue(ROOT, 7));
+  const none = (value) => ({ status: value, issue: null });
+  assert.deepEqual(await status(() => missing()), none("cli_missing"));
+  assert.deepEqual(await status(() => failure("gh: Bad credentials (HTTP 401)")), none("not_signed_in"));
+  assert.deepEqual(await status(() => failure("gh: Not Found (HTTP 404)")), none("not_found"));
+  assert.deepEqual(await status(() => failure("gh: Forbidden (HTTP 403)")), none("no_access"));
+  assert.deepEqual(await status(() => failure("gh: Gone (HTTP 410)")), none("issues_disabled"));
+  assert.deepEqual(await status(() => failure("something else")), none("unavailable"));
+  assert.deepEqual(await status(() => ({ stdout: "nope" })), none("unavailable"));
+  assert.deepEqual(await reader(() => ({ stdout: "{}" })).reader.readIssue("", 7), none("unavailable"));
+});
+
+test("the issue number is validated and never reaches a command unvalidated", async () => {
+  for (const number of [0, -3, 1.5, "7", "7; rm -rf /", 1_000_000_000, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw()) }));
+    assert.deepEqual(await r.readIssue(ROOT, number), { status: "not_found", issue: null }, String(number));
+    assert.equal(gh.calls.length, 0, `${String(number)} must not start gh`);
+  }
+  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw({ number: 999_999_999 })) }));
+  assert.equal((await r.readIssue(ROOT, 999_999_999)).status, "ok");
+  assert.equal(gh.calls[0].args[1], "repos/{owner}/{repo}/issues/999999999");
+});
+
+test("every call uses an argument array and no shell, and the deadline and cap are configurable", async () => {
+  const { reader: r, gh } = reader(() => ({ stdout: "[]" }), { timeoutMs: 1234, maxBytes: 4321 });
+  await r.connection();
+  await r.repositoryAccess(ROOT);
+  await r.listOpenIssues(ROOT);
+  await r.readIssue(ROOT, 3);
+  assert.equal(gh.calls.length, 4);
+  for (const call of gh.calls) {
+    assert.equal(call.file, "gh");
+    assert.ok(Array.isArray(call.args) && call.args.every((argument) => typeof argument === "string"));
+    assert.ok(!Object.hasOwn(call.options, "shell"));
+    assert.equal(call.options.timeout, 1234);
+    assert.equal(call.options.maxBuffer, 4321);
+    assert.equal(call.options.windowsHide, true);
+  }
+  // The connection check is not tied to a repository.
+  assert.equal(gh.calls[0].options.cwd, undefined);
+});
+
+test("no result carries stderr, a path, a login, or a URL", async () => {
+  const leaky = "gh: Not Found (HTTP 404) SECRET-STDERR C:\\Work\\SECRET-ROOT https://api.github.com/SECRET-URL SECRET-LOGIN";
+  const { reader: r } = reader((args) => (args[0] === "repo"
+    ? failure(leaky)
+    : args[1].includes("/issues/") ? failure(leaky) : { stdout: JSON.stringify([raw()]) }));
+  const results = [await r.connection(), await r.repositoryAccess(ROOT), await r.listOpenIssues(ROOT), await r.readIssue(ROOT, 7)];
+  const text = JSON.stringify(results);
+  for (const secret of ["SECRET", "C:\\\\Work", "https://", "api.github.com"]) assert.ok(!text.includes(secret), secret);
+  // The one issue read above held a login and a URL in the raw object; the normalized issue has neither.
+  assert.ok(!JSON.stringify(await r.listOpenIssues(ROOT)).includes("SECRET"));
+});

@@ -57,6 +57,7 @@ import { installRepositoryInventoryCaptureIpc } from "./repository-inventory-act
 import { createRepositoryPluginCli } from "./plugin-cli.mjs";
 import { createRepositoryPluginAction, installRepositoryPluginActionIpc } from "./repository-plugin-action.mjs";
 import { installTaskActionIpc } from "./task-action.mjs";
+import { installTaskIssuesIpc } from "./task-issues.mjs";
 import { installTaskStartIpc } from "./task-dispatch.mjs";
 import { TASK_WORKTREE_DIRECTORY } from "./task-worktree.mjs";
 import {
@@ -704,12 +705,10 @@ async function startDesktop() {
             runPlan: (plan) => repositoryPluginCli?.run(plan) || "unavailable",
           }),
         });
-        removeTaskActionIpc = installTaskActionIpc({
-          ipcMain,
-          isTrustedEvent: trustedDesktopEvent,
-          monitorOrigin: privateMonitorOrigin,
-          authorizationToken,
-        });
+        const taskBridge = { ipcMain, isTrustedEvent: trustedDesktopEvent, monitorOrigin: privateMonitorOrigin, authorizationToken };
+        const removeTaskIssues = installTaskIssuesIpc({ ...taskBridge, dialog, getWindow: () => mainWindow });
+        const removeTaskAction = installTaskActionIpc(taskBridge);
+        removeTaskActionIpc = () => { removeTaskAction(); removeTaskIssues(); };
         removeTaskStartIpc = installTaskStartIpc({
           ipcMain,
           isTrustedEvent: trustedDesktopEvent,

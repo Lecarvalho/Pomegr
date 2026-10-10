@@ -13,6 +13,7 @@ import {
   AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH, TASK_ACTION_PATH_PREFIX,
   serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
+import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -231,6 +232,10 @@ export function createRequestHandler({
     }
     response.setHeader("Cache-Control", "no-store");
     if (taskActionRequest) {
+      if (TASK_ISSUE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
+        await serveTaskIssueRoute({ request, response, requestUrl, taskStore, taskIssues: runtime.taskIssues });
+        return;
+      }
       await serveTaskActionRoute({
         request, response, requestUrl, taskStore, resolveSessionFacts, resolveGateFacts, resolveCheckFacts,
         resolveStart: (repositoryId, provider) => (typeof runtime.resolveTaskStart === "function" ? runtime.resolveTaskStart(repositoryId, provider) : null),

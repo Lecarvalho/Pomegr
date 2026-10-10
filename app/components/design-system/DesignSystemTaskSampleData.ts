@@ -18,7 +18,7 @@ const NO_RUN = { provider: null, model: null, effort: null } as const;
 export function sampleTask(id: string, text: string, overrides: Partial<Task> = {}): Task {
   return {
     id, text, columnId: "col-ready", position: 0, featureId: null, step: null, run: NO_RUN, doneWhen: { checks: [], own: null },
-    state: "not_queued", scheduledAt: null, session: null, report: null, createdAt: CREATED, updatedAt: CREATED, ...overrides,
+    state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: CREATED, updatedAt: CREATED, ...overrides,
   };
 }
 

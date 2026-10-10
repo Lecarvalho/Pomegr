@@ -16,6 +16,7 @@ import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
+import { taskSourceOf, withTaskSource } from "./task-source.mjs";
 import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
 export { TASK_DISPATCH_UNBOUND_TTL_MS };
@@ -37,6 +38,12 @@ export const TASK_PROMPT_OPENING = "You are working on one task from the Pomegr 
 
 const digestOf = (token) => crypto.createHash("sha256").update(token, "utf8").digest("hex");
 
+// A promoted task names its issue so the pull request closes it. Only the validated integer enters the line.
+function issueLine(task) {
+  const source = taskSourceOf(task.source?.kind === "github_issue" ? task.source.number : undefined);
+  return source === null ? [] : [`This task comes from GitHub issue #${source.number}. Write "Closes #${source.number}" in the pull request description.`];
+}
+
 /**
  * The fixed session prompt. It begins with a fixed non-dash sentence, so it can never parse as a CLI
  * flag, and holds the task text only as quoted data between fixed sentences.
@@ -50,6 +57,7 @@ export function buildTaskPrompt(task) {
     task.text,
     "Done when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
+    ...issueLine(task),
     "When the task is done, call the Pomegr MCP tool complete_task. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
   ].join("\n");
 }
@@ -61,7 +69,7 @@ function taskNumber(payload, keys) {
 }
 
 const loadRow = (database, repositoryId, number) =>
-  preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
+  withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number));
 
 // A task of a feature step that holds more than one task runs in a Git worktree of its own, because the tasks of one
 // step run in parallel. A task alone in its step, and a task without a feature, runs in the repository root.
