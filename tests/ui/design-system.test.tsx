@@ -126,11 +126,12 @@ describe("Design-system reference page", () => {
     await user.click(efforts[0]);
     expect(efforts[0]).toHaveAttribute("aria-pressed", "false");
     expect(efforts[0].parentElement).toHaveClass("commandSegmented");
-    expect(within(section).getAllByRole("checkbox", { name: "Pull request open" })[0]).toBeChecked();
-    expect(within(section).getByText("Not passed")).toBeInTheDocument();
-    expect(within(section).getByText("Passed")).toBeInTheDocument();
+    expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
+    // Done when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
+    expect(within(section).getAllByText("Not passed")).toHaveLength(2);
+    expect(within(section).getAllByText("Passed")).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("renders the Events rail from static data: every kind, the expander, and the empty and unavailable states", async () => {
     const user = userEvent.setup();
@@ -501,7 +502,7 @@ describe("Design-system reference page", () => {
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);
-    expect(within(fields).getAllByRole("combobox", { name: "Step in feature" })).toHaveLength(3);
+    expect(within(fields).getAllByRole("combobox", { name: "Step" })).toHaveLength(3);
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })[0]).toHaveTextContent("Upload reliability");
     const created = sample(fields, "New feature");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry");
@@ -509,7 +510,7 @@ describe("Design-system reference page", () => {
     expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature4 tasks · 1 done");
     expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(4);
     expect(placed.querySelector(".taskFeatureItem.hasStep")).toBeNull();
-    const inPanel = sample(fields, "Feature and Step, in the Task panel");
+    const inPanel = sample(fields, "Feature and Step, in the Task modal");
     expect(inPanel.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     expect(inPanel.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
     await user.type(within(created).getByRole("textbox", { name: "Feature name" }), "!");

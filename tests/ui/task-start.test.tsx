@@ -30,9 +30,9 @@ function setBoard(t: Task) {
   useTasks.mockReturnValue({ board, refresh });
 }
 function setBridge(bridge: unknown) { (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge; }
-async function openPanel(user: ReturnType<typeof userEvent.setup>) {
+async function openModal(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Write the thing" }));
-  return within(screen.getByRole("dialog", { name: "Task T-1" }));
+  return within(screen.getByRole("dialog", { name: "Task" }));
 }
 
 beforeEach(() => { taskStart.mockResolvedValue({ status: "started" }); setBridge({ taskAction, taskStart }); setBoard(task()); });
@@ -48,7 +48,7 @@ describe("Start session", () => {
   it("is present with the desktop bridge", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    expect((await openPanel(user)).getByRole("button", { name: "Start session" })).toHaveClass("commandPrimaryAction");
+    expect((await openModal(user)).getByRole("button", { name: "Start session" })).toHaveClass("commandSecondaryAction");
   });
 
   it("sends exactly the two IDs once, shows Starting... and ignores a double click", async () => {
@@ -56,7 +56,7 @@ describe("Start session", () => {
     taskStart.mockReturnValue(new Promise((r) => { resolve = r; }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.dblClick(dialog.getByRole("button", { name: "Start session" }));
     expect(taskStart).toHaveBeenCalledTimes(1);
     expect(taskStart).toHaveBeenCalledWith(repositoryId, "T-1");
@@ -85,7 +85,7 @@ describe("Start session", () => {
     taskStart.mockResolvedValue({ status });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent(line));
     expect(dialog.getByRole("button", { name: "Start session" }).hasAttribute("disabled")).toBe(locked);
@@ -96,12 +96,12 @@ describe("Start session", () => {
     taskStart.mockResolvedValueOnce({ status: "busy" }).mockResolvedValueOnce({ status: "cancelled" });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Another session"));
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(taskStart).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(dialog.getByRole("status")).toBeEmptyDOMElement());
+    await waitFor(() => expect(dialog.queryByRole("status")).not.toBeInTheDocument());
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
   });
 
@@ -110,9 +110,12 @@ describe("Start session", () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Write the thing" }));
-    const dialog = within(screen.getByRole("dialog", { name: "Task T-1" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Task" }));
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
-    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Mark done and resume queue"]);
+    expect(dialog.getByRole("button", { name: "Mark done and resume queue" })).toBeInTheDocument();
+    expect(dialog.getByRole("button", { name: "Requeue task" })).toBeInTheDocument();
+    // Save is the one primary action of the modal, and it waits for a change.
+    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Save"]);
   });
 
   it.each([
@@ -123,19 +126,28 @@ describe("Start session", () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: cardName }));
-    const dialog = within(screen.getByRole("dialog", { name: "Task T-1" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Task" }));
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
     expect(dialog.getByRole("status")).toHaveTextContent(reason);
     expect(taskStart).not.toHaveBeenCalled();
   });
 
-  it("is disabled while the task text has unsaved edits", async () => {
+  it("is disabled while the draft has unsaved edits, and enabled again once they are undone", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
     await user.type(dialog.getByRole("textbox", { name: "Task" }), " more");
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
     expect(dialog.getByRole("status")).toHaveTextContent("Save your changes first.");
+    await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    await user.clear(dialog.getByRole("textbox", { name: "Task" }));
+    await user.type(dialog.getByRole("textbox", { name: "Task" }), "Write the thing");
+    await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
+    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+    expect(taskStart).not.toHaveBeenCalled();
+    expect(taskAction).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -146,7 +158,7 @@ describe("Start session", () => {
     arrange();
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("The session could not be started."));
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
@@ -164,7 +176,7 @@ describe("Open folder after a dirty worktree", () => {
   async function startDirty() {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));
     return { user, dialog };
@@ -173,7 +185,7 @@ describe("Open folder after a dirty worktree", () => {
   it("is hidden until a start answers worktree_dirty", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
     taskStart.mockResolvedValueOnce({ status: "gate_held" });
     await user.click(dialog.getByRole("button", { name: "Start session" }));
@@ -205,7 +217,7 @@ describe("Open folder after a dirty worktree", () => {
     await waitFor(() => expect(dialog.getAllByRole("status")).toHaveLength(2));
     expect(dialog.getAllByRole("status")[1]).toHaveTextContent(line);
     expect(dialog.getAllByRole("status")[0]).toHaveTextContent("This task's worktree has uncommitted changes.");
-    expect(screen.getByRole("dialog", { name: "Task T-1" })).not.toHaveTextContent("private-folder");
+    expect(screen.getByRole("dialog", { name: "Task" })).not.toHaveTextContent("private-folder");
   });
 
   it("shows the fixed line when the bridge throws", async () => {
@@ -214,7 +226,7 @@ describe("Open folder after a dirty worktree", () => {
     await user.click(dialog.getByRole("button", { name: "Open folder" }));
     await waitFor(() => expect(dialog.getAllByRole("status")).toHaveLength(2));
     expect(dialog.getAllByRole("status")[1]).toHaveTextContent("The folder could not be opened.");
-    expect(screen.getByRole("dialog", { name: "Task T-1" })).not.toHaveTextContent("private-folder");
+    expect(screen.getByRole("dialog", { name: "Task" })).not.toHaveTextContent("private-folder");
   });
 
   it("disables itself while the folder opens and ignores a second click", async () => {
@@ -243,7 +255,7 @@ describe("Open folder after a dirty worktree", () => {
     setBridge({ taskAction, taskStart });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openPanel(user);
+    const dialog = await openModal(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));
     expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();

@@ -74,10 +74,10 @@ async function showQueue() {
 }
 const scheduleCalls = () => taskAction.mock.calls.filter((call) => call[1] === "queue_settings").map((call) => call[2]);
 const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
-async function openPanel(title: string, id: string) {
+async function openModal(title: string) {
   render(<TaskBoardPane repositoryId={repositoryId} />);
   await userEvent.click(screen.getByRole("button", { name: title }));
-  return within(screen.getByRole("dialog", { name: `Task ${id}` }));
+  return within(screen.getByRole("dialog", { name: "Task" }));
 }
 
 describe("schedule time helpers", () => {
@@ -254,20 +254,23 @@ describe("a scheduled task", () => {
     expect(card("T-2").querySelector(".commandChip")).toHaveTextContent("Scheduled · Oct 9, 02:00");
   });
 
-  it("takes its start time from the Task panel as queue_add with the instant, when the field loses focus", async () => {
-    const dialog = await openPanel("Idea", "T-3");
+  it("takes its start time from the Task modal as queue_add with the instant, when the field loses focus", async () => {
+    const dialog = await openModal("Idea");
     const field = dialog.getByLabelText("Start at");
     expect(field).toHaveValue("");
     fireEvent.blur(field);
     expect(taskAction).not.toHaveBeenCalled();
     fireEvent.change(field, { target: { value: "2031-10-09T02:00" } });
+    expect(dialog.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.blur(field);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_add", { id: "T-3", at: FAR }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
+    // Start at saves by itself: it is not part of the draft, so it never needs Save and sends no update.
+    expect(taskAction.mock.calls.filter((call) => call[1] === "update")).toEqual([]);
   });
 
-  it("shows its stored time in the panel, and clearing it sends queue_add with no time", async () => {
-    const dialog = await openPanel("Nightly", "T-2");
+  it("shows its stored time in the modal, and clearing it sends queue_add with no time", async () => {
+    const dialog = await openModal("Nightly");
     const field = dialog.getByLabelText("Start at");
     expect(field).toHaveValue("2031-10-09T02:00");
     fireEvent.change(field, { target: { value: "" } });
@@ -278,7 +281,7 @@ describe("a scheduled task", () => {
   it("can be removed from the queue, and cannot be started by hand before its time", async () => {
     const taskStart = vi.fn(async () => ({ status: "started" }));
     setBridge({ taskAction, taskStart });
-    const dialog = await openPanel("Nightly", "T-2");
+    const dialog = await openModal("Nightly");
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
     expect(dialog.getByRole("status")).toHaveTextContent("This task starts Oct 9, 02:00. Clear its start time to start it now.");
     await userEvent.click(dialog.getByRole("button", { name: "Remove from queue" }));
@@ -288,7 +291,7 @@ describe("a scheduled task", () => {
 
   it("restores the field and says why when the monitor refuses the time", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "invalid" });
-    const dialog = await openPanel("Idea", "T-3");
+    const dialog = await openModal("Idea");
     const field = dialog.getByLabelText("Start at");
     fireEvent.change(field, { target: { value: "2020-10-09T02:00" } });
     fireEvent.blur(field);
@@ -300,9 +303,9 @@ describe("a scheduled task", () => {
     setBoard({}, [task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null } }), task(5, "Shipped", { state: "done" })]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: "Ran at night" }));
-    expect(within(screen.getByRole("dialog", { name: "Task T-4" })).queryByLabelText("Start at")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Task" })).queryByLabelText("Start at")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Shipped" }));
-    expect(within(screen.getByRole("dialog", { name: "Task T-5" })).queryByLabelText("Start at")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Task" })).queryByLabelText("Start at")).not.toBeInTheDocument();
   });
 });
 

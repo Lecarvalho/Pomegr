@@ -278,11 +278,11 @@ describe("the Queue banner", () => {
     expect(buttons[2]).toHaveClass("commandQuietAction");
   });
 
-  it("opens the Task panel of the named task", async () => {
+  it("opens the Task modal of the named task", async () => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
     await renderOn("board");
     await userEvent.click(within(banner()).getByRole("button", { name: "Open T-13" }));
-    expect(screen.getByRole("dialog", { name: "Task T-13" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 
   it("marks the task done and resumes with resolve_done for that task", async () => {
@@ -418,7 +418,7 @@ describe("the paused Queue banner", () => {
     await showQueue();
     expect(within(banner()).getAllByRole("button").map((button) => button.textContent)).toEqual(["Open T-15"]);
     await userEvent.click(within(banner()).getByRole("button", { name: "Open T-15" }));
-    expect(screen.getByRole("dialog", { name: "Task T-15" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
   });
 });
 

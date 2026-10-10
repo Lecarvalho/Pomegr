@@ -49,41 +49,44 @@ state.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
    field. A card shows this text until its session has a title, then the title.
 3. Set the optional fields below.
-4. Select **Create task**, or **Create and add another**.
+4. Select **Create task**. **Cancel** closes the window and writes nothing.
 
 The task lands in the first column and is not queued. Select a card to open its
-task panel, where a change saves when a field changes or loses focus. **Delete
-task** asks you to confirm; a task number is never reused.
+task window, where your changes stay a draft until you select **Save**. **Save**
+is available once something differs from the stored task, and **Close** or
+**Escape** discards the draft. While a draft is unsaved, **Start session**, **Add
+to queue**, **Remove from queue**, **Mark done**, and **Requeue task** are
+unavailable. **Delete task** asks you to confirm; a task number is never reused.
 
 | Field | What it sets |
 | --- | --- |
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
 | **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
 | **Done when** | The conditions an agent's report is checked against; see [Done when](#done-when). |
-| **Feature**, **Step in feature** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
+| **Feature**, **Step** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
 Claude Code lists the newest model of each family Pomegr has seen in your
 sessions. Codex lists the models in the client catalog Pomegr last read, which
 shows what the client offers, not what your account may use; with no catalog read
 yet, Codex offers only **Default model**. A card shows the planned model beside
-the model the session's main agent last recorded, and the task panel flags a
+the model the session's main agent last recorded, and the task window flags a
 difference with **Observed model differs**. The plan is your intent; the
 recorded model is the evidence.
 
 ### Done when
 
 Five conditions are checked by Pomegr after the agent reports; a new task starts
-with **Pull request open** and **Working tree clean** checked.
+with **PR open** and **Tree clean** checked.
 
 | Condition | Passes when |
 | --- | --- |
-| **Pull request open** | The pull request for the session's branch is open. |
-| **Working tree clean** | Pomegr's record of the session's repository lists no uncommitted file. |
-| **Commit on task branch** | The session's branch is not the main branch and has a commit of its own, merged since or not. |
-| **Pull request merged** | That pull request is merged. |
+| **PR open** | The pull request for the session's branch is open. |
+| **Tree clean** | Pomegr's record of the session's repository lists no uncommitted file. |
+| **Commit on branch** | The session's branch is not the main branch and has a commit of its own, merged since or not. |
+| **PR merged** | That pull request is merged. |
 | **CI passed** | Every check on the branch's pull request passed. Pending, failed, and missing checks do not pass. |
 
-The last row, **Your own condition**, is free text up to 500 characters. The
+The **Own condition** field under the five checks is free text up to 500 characters; an empty field means none. The
 agent judges it, and Pomegr does not evaluate it. A fact Pomegr has not observed
 is unknown, and unknown never passes.
 
@@ -91,7 +94,7 @@ A condition also passes only when Pomegr read its fact after the session's last
 related work. If a command ran after the last read, or Pomegr could not date the
 fact, the condition does not pass and the task lands in **Needs review**, even when
 it now holds. A command that is still running, such as a development server,
-keeps **Working tree clean** from passing until it ends.
+keeps **Tree clean** from passing until it ends.
 
 ### Move cards
 
@@ -154,7 +157,7 @@ cannot start before its own time.
    session** in that dialog.
 2. A visible terminal window opens in the repository, or in the task's worktree
    (see below), running Claude Code or Codex with the model and effort you chose.
-   The panel says "Session started in a new terminal window."
+   The task window says "Session started in a new terminal window."
 3. When the plugin in that session reports in, the task links to the session. The
    card then shows **Open session** and the session's state.
 
@@ -171,7 +174,7 @@ cannot start again, so you do not get two sessions.
 A feature is an ordered list of steps. Tasks in the same step run in parallel; the
 next step starts only when every task of the step before it is done. Select
 **New feature…** in a task's **Feature** field or **+ New feature** above the
-board, then choose **Step in feature**: **Last · new step N**, or an existing step,
+board, then choose **Step**: **Last · new step N**, or an existing step,
 such as "Step 2 · parallel with T-3". A feature is done when all its tasks are.
 Only unfinished features are offered for a new attachment. Select a feature chip
 in the filter row to show only its tasks.
@@ -190,7 +193,7 @@ owns under the desktop app's data folder.
 - A requeued task reuses its worktree only if Git still lists it on the task
   branch and it is clean. Otherwise the start fails and nothing is touched.
 - When a start is refused because the task's worktree has uncommitted changes, the
-  task panel says "This task's worktree has uncommitted changes. Pomegr never
+  task window says "This task's worktree has uncommitted changes. Pomegr never
   removes them. Open the folder to commit or discard them, then try again." and
   offers **Open folder**. Commit or discard the changes there, then start the
   session again. **Open folder** works in the desktop app on Windows. When the queue
@@ -201,7 +204,7 @@ owns under the desktop app's data folder.
 The queue starts tasks without you. It is **Off** for every repository until you
 select **On** in the **Queue** switch of the Tasks header (which is separate from
 the **Board** and **Queue** view buttons beside it). Add a task with **Add to
-queue** in its panel. With the queue off, queued tasks start only when you start
+queue** in its task window. With the queue off, queued tasks start only when you start
 them. Turning it off never touches a running session.
 
 The **Queue** view shows what runs when. Each unfinished feature lists its steps,
@@ -242,7 +245,7 @@ A task whose session never reports holds the queue too. Pomegr never marks it do
 or stalled by itself while it cannot tell that the session ended, for example
 after the computer or Pomegr restarted, and the queue never moves past it, because
 the task can matter to the whole feature. Open the task and choose **Mark done**
-or **Requeue task**; the panel says "The session has not reported. Mark done and
+or **Requeue task**; the task window says "The session has not reported. Mark done and
 Requeue do not stop it." Neither action stops the session. **Mark done** accepts
 the task, and a later report from that session changes nothing. **Requeue task**
 clears the session link, so a later report from the old session is not accepted.
@@ -285,7 +288,7 @@ Queue view."
 
 ## Schedule starts
 
-- **A task's own time.** In the task panel, **Start at** takes a date and time. It
+- **A task's own time.** In the task window, **Start at** takes a date and time. It
   makes the task **Scheduled**, adds it to the queue, and keeps the queue from
   starting it earlier. Clear the time to leave the task **Queued**. A scheduled
   task that is not yet due holds nothing behind it, but its feature's next step

@@ -6,19 +6,18 @@ import { useTasks } from "../../tasks-store";
 import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
 import { CommandPageHeader } from "../command-center/CommandPage";
 import { AddFeatureAction } from "./AddFeatureAction";
-import { NewTaskPanel } from "./NewTaskPanel";
 import { QueueControl } from "./QueueControl";
 import { TaskBoardView, type TaskView } from "./TaskBoardView";
-import { TaskPanel } from "./TaskPanel";
+import { TaskModal } from "./TaskModal";
 import { useTaskDesktopAvailability } from "./task-desktop";
 import { queueStatusLine } from "./task-queue-banner";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 
-/** One drawer at a time: the New task panel, or the Task panel of one card. */
-type OpenPanel = { kind: "new" } | { kind: "task"; id: string } | null;
+/** One modal at a time: the New task modal, or the Task modal of one card. */
+type OpenModal = { kind: "new" } | { kind: "task"; id: string } | null;
 
 /**
- * The Tasks page for one repository: its header, the stored board and the two drawers. `switcher` is the page's
+ * The Tasks page for one repository: its header, the stored board and the task modal. `switcher` is the page's
  * repository switcher, drawn first among the header actions. Tasks are created, edited and moved in the desktop app
  * only; any other client reads the board.
  */
@@ -31,30 +30,30 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
   const { snapshot } = useRepositoryInventory();
   // Decided on the first client render: `pending` is only the server pass, and draws no action.
   const desktop = useTaskDesktopAvailability();
-  const [panel, setPanel] = useState<OpenPanel>(null);
+  const [modal, setModal] = useState<OpenModal>(null);
   const [view, setView] = useState<TaskView>("board");
   // The + New task action of the first lane. The Queue view has no lanes, so it is absent there.
   const trigger = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const wasOpen = useRef(false);
   const repositoryName = snapshot.repositories.find((repository) => repository.id === repositoryId)?.displayName ?? null;
-  const openTask = panel?.kind === "task" ? board.tasks.find((task) => task.id === panel.id) : undefined;
-  const open = panel?.kind === "new" || openTask !== undefined;
+  const openTask = modal?.kind === "task" ? board.tasks.find((task) => task.id === modal.id) : undefined;
+  const open = modal?.kind === "new" || openTask !== undefined;
   useEffect(() => {
-    // Closing by any route (Escape, Close, a created or deleted task) returns focus to the control that opened the drawer.
+    // Closing by any route (Escape, Close, a created or deleted task) returns focus to the control that opened the modal.
     if (wasOpen.current && !open) {
       const target = opener.current?.isConnected ? opener.current : trigger.current;
       target?.focus({ preventScroll: true });
     }
     wasOpen.current = open;
   }, [open]);
-  const close = useCallback(() => setPanel(null), []);
+  const close = useCallback(() => setModal(null), []);
   const changed = useCallback(() => { void refresh(); }, [refresh]);
-  const deleted = useCallback(() => { opener.current = trigger.current; setPanel(null); }, []);
+  const deleted = useCallback(() => { opener.current = trigger.current; setModal(null); }, []);
   const ready = board.readiness === "ready";
   const queueLine = queueStatusLine(board.queue.status);
-  const openNew = useCallback(() => { opener.current = trigger.current; setPanel({ kind: "new" }); }, []);
-  const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setPanel({ kind: "task", id: task.id }); }, []);
+  const openNew = useCallback(() => { opener.current = trigger.current; setModal({ kind: "new" }); }, []);
+  const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
   return <section className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
     <CommandPageHeader className="tasksPageHeader" headingId={headingId} title="Tasks"
       meta={<div className="tasksPageMeta">
@@ -76,8 +75,8 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
     <div className="tasksPageBody">
       <TaskBoardView board={board} view={view} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined}
         newTask={desktop === "available" ? { triggerRef: trigger, onOpen: openNew } : undefined} />
-      {desktop === "available" && panel?.kind === "new" && <NewTaskPanel repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onClose={close} />}
-      {desktop === "available" && openTask && <TaskPanel key={openTask.id} repositoryId={repositoryId} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
+      {desktop === "available" && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onClose={close} />}
+      {desktop === "available" && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
     </div>
   </section>;
 }

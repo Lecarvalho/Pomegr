@@ -146,7 +146,7 @@ describe("the Tasks page", () => {
     expect(navigation.push).not.toHaveBeenCalled();
   });
 
-  it("shows another repository's board after the switch, with no panel carried over and focus kept on the switcher", async () => {
+  it("shows another repository's board after the switch, with no modal carried over and focus kept on the switcher", async () => {
     inventoryState.snapshot = twoRepositories;
     navigation.search = `repository=${repositoryId}`;
     setBridge({ taskAction: vi.fn() });
@@ -161,6 +161,20 @@ describe("the Tasks page", () => {
     expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument();
     expect(switcher()).toHaveTextContent("Another project");
     expect(switcher()).toHaveFocus();
+  });
+
+  it("opens the New task modal over the Tasks page and returns focus to the New task action when it closes", async () => {
+    setBridge({ taskAction: vi.fn() });
+    const user = userEvent.setup();
+    render(<TasksPage />);
+    const opener = screen.getByRole("button", { name: "New task" });
+    await user.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "New task" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
   });
 
   it.each([

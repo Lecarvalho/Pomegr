@@ -3,7 +3,7 @@ import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
-// Pure helpers behind the Run on, Effort and Done when fields shared by the New task and Task panels.
+// Pure helpers behind the Run on, Effort and Done when fields shared by the New task and Task modal forms.
 
 export const PROVIDER_LABELS: Record<TaskProvider, ProviderSource> = { claude: "Claude Code", codex: "Codex" };
 export const EFFORT_LABELS: Record<TaskEffort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Xhigh" };
@@ -12,6 +12,14 @@ export const CHECK_LABELS: Record<TaskCheck, string> = {
   tree_clean: "Working tree clean",
   commit_on_branch: "Commit on task branch",
   pr_merged: "Pull request merged",
+  ci_passed: "CI passed",
+};
+/** The short check copy of the task modal's Done when row (design contract G148-G149). Cards and the session view keep CHECK_LABELS. */
+export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
+  pr_open: "PR open",
+  tree_clean: "Tree clean",
+  commit_on_branch: "Commit on branch",
+  pr_merged: "PR merged",
   ci_passed: "CI passed",
 };
 
@@ -117,21 +125,21 @@ export function isEffort(value: string): value is TaskEffort {
   return (TASK_EFFORTS as readonly string[]).includes(value);
 }
 
-/** Editable form of `doneWhen`: the own condition keeps its text while its checkbox is off. */
-export type DoneWhenDraft = { checks: readonly TaskCheck[]; ownEnabled: boolean; ownText: string };
+/** Editable form of `doneWhen`: a non-blank own-condition text is the own condition, a blank one is none. */
+export type DoneWhenDraft = { checks: readonly TaskCheck[]; ownText: string };
 export type DoneWhenValue = { checks: TaskCheck[]; own: string | null };
 
 /** A new task starts with Pull request open and Working tree clean checked. */
-export const DEFAULT_DONE_WHEN: DoneWhenDraft = { checks: ["pr_open", "tree_clean"], ownEnabled: false, ownText: "" };
+export const DEFAULT_DONE_WHEN: DoneWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "" };
 
 export function doneWhenFromTask(doneWhen: Task["doneWhen"]): DoneWhenDraft {
-  return { checks: [...doneWhen.checks], ownEnabled: doneWhen.own !== null, ownText: doneWhen.own ?? "" };
+  return { checks: [...doneWhen.checks], ownText: doneWhen.own ?? "" };
 }
 
-/** Checks in catalog order; the own condition is sent only while its checkbox is on and its text is not blank. */
+/** Checks in catalog order; the own condition is the trimmed text, or null while it is blank. */
 export function toDoneWhen(draft: DoneWhenDraft): DoneWhenValue {
   const own = draft.ownText.trim().slice(0, TASK_BOUNDS.ownConditionLength);
-  return { checks: TASK_CHECKS.filter((check) => draft.checks.includes(check)), own: draft.ownEnabled && own ? own : null };
+  return { checks: TASK_CHECKS.filter((check) => draft.checks.includes(check)), own: own || null };
 }
 
 export function withCheck(draft: DoneWhenDraft, check: TaskCheck, on: boolean): DoneWhenDraft {

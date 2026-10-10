@@ -401,7 +401,7 @@ describe("without the desktop bridge", () => {
   });
 });
 
-describe("Queued · next on the board and in the Task panel", () => {
+describe("Queued · next on the board and in the Task modal", () => {
   it("reads Queued · next on one board card and Queued on the others", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(chipText("T-2")).toBe("Queued · next");
@@ -410,10 +410,10 @@ describe("Queued · next on the board and in the Task panel", () => {
     expect(chipText("T-9")).toBe("Queued");
   });
 
-  it("reads it in the feature task list inside the Task panel", async () => {
+  it("reads it in the feature task list inside the Task modal", async () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: "Gates" }));
-    const dialog = screen.getByRole("dialog", { name: "Task T-5" });
+    const dialog = screen.getByRole("dialog", { name: "Task" });
     const list = within(dialog).getByText("In this feature").closest("details") as HTMLElement;
     const row = (id: string) => list.querySelector(`li[data-task-id="${id}"] .commandChip`)?.textContent;
     expect(row("T-2")).toBe("Queued · next");
@@ -422,17 +422,17 @@ describe("Queued · next on the board and in the Task panel", () => {
 });
 
 describe("Add to queue and Remove from queue", () => {
-  async function openPanel(title: string, id: string) {
+  async function openModal(title: string) {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: title }));
-    return within(screen.getByRole("dialog", { name: `Task ${id}` }));
+    return within(screen.getByRole("dialog", { name: "Task" }));
   }
 
-  it("adds a Not queued task, before the Delete action", async () => {
-    const dialog = await openPanel("Idea", "T-11");
+  it("adds a Not queued task, after the Delete action", async () => {
+    const dialog = await openModal("Idea");
     const add = dialog.getByRole("button", { name: "Add to queue" });
     expect(add).toHaveClass("commandSecondaryAction");
-    expect(add.compareDocumentPosition(dialog.getByRole("button", { name: "Delete task" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(dialog.getByRole("button", { name: "Delete task" }).compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(dialog.queryByRole("button", { name: "Remove from queue" })).not.toBeInTheDocument();
     await userEvent.click(add);
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_add", { id: "T-11" }));
@@ -440,7 +440,7 @@ describe("Add to queue and Remove from queue", () => {
   });
 
   it("removes a queued task", async () => {
-    const dialog = await openPanel("Loose end", "T-9");
+    const dialog = await openModal("Loose end");
     expect(dialog.queryByRole("button", { name: "Add to queue" })).not.toBeInTheDocument();
     await userEvent.click(dialog.getByRole("button", { name: "Remove from queue" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_remove", { id: "T-9" }));
@@ -448,13 +448,13 @@ describe("Add to queue and Remove from queue", () => {
 
   it("shows one line when the monitor refuses", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
-    const dialog = await openPanel("Idea", "T-11");
+    const dialog = await openModal("Idea");
     await userEvent.click(dialog.getByRole("button", { name: "Add to queue" }));
     expect(await dialog.findByRole("alert")).toHaveTextContent("The task could not be added to the queue.");
   });
 
   it("offers neither action on a finished task", async () => {
-    const dialog = await openPanel("Shipped", "T-12");
+    const dialog = await openModal("Shipped");
     expect(dialog.queryByRole("button", { name: "Add to queue" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Remove from queue" })).not.toBeInTheDocument();
   });

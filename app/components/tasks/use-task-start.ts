@@ -10,7 +10,7 @@ import { scheduleLabel, waitsForOwnTime } from "./task-schedule";
 // Start session for one task. The desktop shows the native confirmation; this only mirrors the committed board
 // (pre-disabled reasons) and one fixed line per result. It never shows a running state: the card borrows the
 // session state once the monitor links the session. After a `worktree_dirty` answer it also offers Open folder (the same
-// fixed channel and result lines as the queue banner); the folder path stays in the desktop and never reaches the panel.
+// fixed channel and result lines as the queue banner); the folder path stays in the desktop and never reaches the modal.
 
 const LINES: Record<TaskStartStatus, string | null> = {
   started: "Session started in a new terminal window.",
@@ -28,7 +28,7 @@ const LINES: Record<TaskStartStatus, string | null> = {
   gate_held: "A start gate holds this task. See Start gates in the Queue view.",
   worktree_dirty: "This task's worktree has uncommitted changes. Pomegr never removes them. Open the folder to commit or discard them, then try again.",
 };
-/** A retry cannot succeed after these, or after `started`, for as long as the panel stays open. */
+/** A retry cannot succeed after these, or after `started`, for as long as the modal stays open. */
 const FINAL = new Set<TaskStartStatus>(["started", "unsupported_platform", "cli_missing", "plugin_missing", "unsupported_provider"]);
 
 function boardReason(task: Task, unsaved: boolean, now: number): string | null {

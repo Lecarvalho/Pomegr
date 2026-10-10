@@ -455,7 +455,7 @@ describe("New task in the first lane", () => {
     expect(within(column("Backlog")).getByRole("button", { name: "New task" })).toBe(add());
   });
 
-  it("opens the New task panel, and focus returns to it when the panel closes", async () => {
+  it("opens the New task modal, and focus returns to it when the modal closes", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(add());

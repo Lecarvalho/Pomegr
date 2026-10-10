@@ -8,7 +8,7 @@ import type { Task, TaskBoard } from "../../shared/task-contract";
 import { chooseCommandOption } from "./command-select-helpers";
 
 // The tasks store is replaced by a small external store so a committed board change re-renders the tab, which is
-// how a feature created through the bridge reaches the panel that asked for it.
+// how a feature created through the bridge reaches the modal that asked for it.
 const mock = vi.hoisted(() => ({ board: undefined as unknown, pending: undefined as unknown, listeners: new Set<() => void>() }));
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("../../app/tasks-store", async () => {
@@ -105,11 +105,14 @@ async function openNew(user: ReturnType<typeof userEvent.setup>) {
 }
 async function openTask(user: ReturnType<typeof userEvent.setup>, title: string, id: string) {
   await user.click(within(document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement).getByRole("button", { name: title }));
-  return within(screen.getByRole("dialog", { name: `Task ${id}` }));
+  expect(document.querySelector(".taskModalId")).toHaveTextContent(id);
+  return within(screen.getByRole("dialog", { name: "Task" }));
 }
+const save = () => screen.getByRole("button", { name: "Save" });
+const closeModal = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Close" }));
 const lastCall = (action: string) => taskAction.mock.calls.filter((call) => call[1] === action).at(-1)?.[2];
 
-describe("New task: Feature and Step in feature", () => {
+describe("New task modal: Feature and Step", () => {
   it("offers only unfinished features, then No feature and New feature…, defaulting to No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -117,9 +120,9 @@ describe("New task: Feature and Step in feature", () => {
     const feature = dialog.getByRole("combobox", { name: "Feature" });
     expect(feature).toHaveTextContent("No feature");
     expect(optionLabels(feature)).toEqual(["Task board v1", "Docs", "No feature", "New feature…"]);
-    const step = dialog.getByRole("combobox", { name: "Step in feature" });
+    const step = dialog.getByRole("combobox", { name: "Step" });
     expect(step).toBeDisabled();
-    expect(step).toHaveTextContent("No feature");
+    expect(step).toHaveTextContent("None");
     expect(dialog.queryByText("In this feature")).not.toBeInTheDocument();
   });
 
@@ -128,7 +131,7 @@ describe("New task: Feature and Step in feature", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
-    const step = dialog.getByRole("combobox", { name: "Step in feature" });
+    const step = dialog.getByRole("combobox", { name: "Step" });
     expect(step).toBeEnabled();
     expect(step).toHaveTextContent("Last · new step 5");
     expect(optionLabels(step)).toEqual([
@@ -136,30 +139,34 @@ describe("New task: Feature and Step in feature", () => {
     ]);
     // A feature without tasks offers only its first step.
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
-    expect(optionLabels(dialog.getByRole("combobox", { name: "Step in feature" }))).toEqual(["Last · new step 1"]);
+    expect(optionLabels(dialog.getByRole("combobox", { name: "Step" }))).toEqual(["Last · new step 1"]);
   });
 
   it("creates a task in a feature at the last step, at a chosen step, and with no feature keys for No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openNew(user);
+    let dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
-    await user.click(dialog.getByRole("button", { name: "Create and add another" }));
+    await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
     expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN, featureId: "f1" });
     expect(lastCall("create")).not.toHaveProperty("step");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
 
-    await user.type(screen.getByRole("textbox", { name: "Task" }), "Second");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step in feature" }), "step:3");
-    await user.click(dialog.getByRole("button", { name: "Create and add another" }));
+    dialog = await openNew(user);
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
+    await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("create")).toEqual({ text: "Second", doneWhen: DEFAULT_DONE_WHEN, featureId: "f1", step: 3 });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN, featureId: "f1", step: 3 });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
 
-    await user.type(screen.getByRole("textbox", { name: "Task" }), "Third");
+    dialog = await openNew(user);
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    expect(lastCall("create")).toEqual({ text: "Third", doneWhen: DEFAULT_DONE_WHEN });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN });
     expect(lastCall("create")).not.toHaveProperty("featureId");
   });
 
@@ -171,7 +178,7 @@ describe("New task: Feature and Step in feature", () => {
     const name = dialog.getByRole("textbox", { name: "Feature name" });
     expect(name).toHaveAttribute("maxlength", "80");
     expect(dialog.getByRole("button", { name: "Create task" })).toBeDisabled();
-    expect(dialog.getByRole("combobox", { name: "Step in feature" })).toHaveTextContent("Last · new step 1");
+    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Last · new step 1");
     // Nothing exists yet, so there is no list to show.
     expect(dialog.queryByText("In this feature")).not.toBeInTheDocument();
     await user.type(name, "  Brand new  ");
@@ -223,25 +230,28 @@ describe("New task: Feature and Step in feature", () => {
   });
 });
 
-describe("Task panel: Feature and Step in feature", () => {
+describe("Task modal: Feature and Step", () => {
   it("shows the stored feature and step without the task itself in the parallel list", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Task board v1");
-    expect(dialog.getByRole("combobox", { name: "Step in feature" })).toHaveTextContent("Step 2 · parallel with T-3");
-    expect(optionLabels(dialog.getByRole("combobox", { name: "Step in feature" }))[0]).toBe("Last · new step 5");
+    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Step 2 · parallel with T-3");
+    expect(optionLabels(dialog.getByRole("combobox", { name: "Step" }))[0]).toBe("Last · new step 5");
+    expect(save()).toBeDisabled();
+    await closeModal(user);
     const loose = await openTask(user, "Loose end", "T-6");
     expect(loose.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(loose.getByRole("combobox", { name: "Step in feature" })).toBeDisabled();
+    expect(loose.getByRole("combobox", { name: "Step" })).toBeDisabled();
   });
 
   it("lists a step with no other task as the step alone, and keeps a finished feature for its own task", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Queue", "T-4");
-    expect(dialog.getByRole("combobox", { name: "Step in feature" })).toHaveTextContent("Step 3");
-    expect(dialog.getByRole("combobox", { name: "Step in feature" })).not.toHaveTextContent("parallel");
+    expect(dialog.getByRole("combobox", { name: "Step" })).toHaveTextContent("Step 3");
+    expect(dialog.getByRole("combobox", { name: "Step" })).not.toHaveTextContent("parallel");
+    await closeModal(user);
     const old = await openTask(user, "Old work", "T-5");
     expect(old.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Finished work");
     expect(optionLabels(old.getByRole("combobox", { name: "Feature" }))).toEqual(["Task board v1", "Finished work", "Docs", "No feature", "New feature…"]);
@@ -262,92 +272,143 @@ describe("Task panel: Feature and Step in feature", () => {
     expect(rows[1]).not.toHaveClass("isDone");
   });
 
-  it("opens a sibling's own panel from its title in the list", async () => {
+  it("opens a sibling's own modal from its title in the list", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     fireEvent.click(dialog.getByRole("button", { name: "Columns" }));
-    expect(screen.queryByRole("dialog", { name: "Task T-2" })).not.toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Task T-3" })).toBeInTheDocument();
+    expect(screen.getAllByRole("dialog", { name: "Task" })).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "Task" }).querySelector(".taskModalId")).toHaveTextContent("T-3");
+    expect(screen.getByRole("dialog", { name: "Task" })).toHaveTextContent("Columns");
   });
 
-  it("saves a step, Last, another feature and No feature as the feature keys of an update", async () => {
+  it("sends nothing on a change, then one update with the feature keys on Save: a step, Last, another feature, No feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openTask(user, "Store", "T-2");
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step in feature" }), "step:3");
+    let dialog = await openTask(user, "Store", "T-2");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
+    expect(taskAction).not.toHaveBeenCalled();
+    expect(save()).toBeEnabled();
+    await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-2", featureId: "f1", step: 3 });
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Step in feature" }), "last");
+    expect(refresh).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+
+    dialog = await openTask(user, "Store", "T-2");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "last");
+    await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
     expect(lastCall("update")).toEqual({ id: "T-2", featureId: "f1" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+
+    dialog = await openTask(user, "Store", "T-2");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f3");
+    await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
     expect(lastCall("update")).toEqual({ id: "T-2", featureId: "f3" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+
+    dialog = await openTask(user, "Store", "T-2");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
+    expect(dialog.getByRole("combobox", { name: "Step" })).toBeDisabled();
+    await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(4));
     expect(lastCall("update")).toEqual({ id: "T-2", featureId: null });
-    expect(dialog.getByRole("combobox", { name: "Step in feature" })).toBeDisabled();
     expect(refresh).toHaveBeenCalledTimes(4);
   });
 
-  it("creates a new feature when its name is committed, then saves the task with the new id", async () => {
+  it("keeps Save disabled when the feature and step are chosen back to the stored values", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openTask(user, "Store", "T-2");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
+    expect(save()).toBeEnabled();
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:2");
+    expect(save()).toBeDisabled();
+    expect(taskAction).not.toHaveBeenCalled();
+  });
+
+  it("creates a new feature only on Save, then updates the task with the new id", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
-    expect(taskAction).not.toHaveBeenCalled();
+    expect(save()).toBeDisabled();
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Brand new{Enter}");
+    expect(taskAction).not.toHaveBeenCalled();
+    expect(save()).toBeEnabled();
+    await user.click(save());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
     expect(taskAction.mock.calls[0]).toEqual([repositoryId, "feature_create", { name: "Brand new" }]);
     expect(taskAction.mock.calls[1]).toEqual([repositoryId, "update", { id: "T-6", featureId: "f-new" }]);
-    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Brand new");
-    expect(dialog.queryByRole("textbox", { name: "Feature name" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
   });
 
-  it("commits a new feature name on blur once, and an empty name or Escape leaves the stored feature", async () => {
+  it("does not commit a new feature name on blur, and an empty name or Escape leaves the stored feature", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Blurred");
     await user.tab();
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("update")).toEqual({ id: "T-6", featureId: "f-new" });
+    expect(taskAction).not.toHaveBeenCalled();
+    expect(dialog.getByRole("textbox", { name: "Feature name" })).toHaveValue("Blurred");
 
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
-    await user.click(dialog.getByRole("textbox", { name: "Feature name" }));
-    await user.tab();
-    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Dropped{Escape}");
-    expect(screen.getByRole("dialog", { name: "Task T-6" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(taskAction).toHaveBeenCalledTimes(2);
+    expect(save()).toBeDisabled();
+    expect(taskAction).not.toHaveBeenCalled();
   });
 
-  it("shows the fixed message for a duplicate feature name and saves nothing", async () => {
+  it("shows the fixed message for a duplicate feature name on Save, stays open and keeps the name", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
-    await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Docs{Enter}");
+    await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Docs");
+    await user.click(save());
     expect(await dialog.findByText("A feature with this name already exists.")).toBeInTheDocument();
     expect(taskAction).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
     expect(dialog.getByRole("textbox", { name: "Feature name" })).toHaveValue("Docs");
   });
 
-  it("reverts the select and says so once when the monitor refuses a feature (a finished one)", async () => {
+  it("says so once when the monitor refuses the feature on Save (a finished one), stays open and keeps the draft", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
+    await user.click(save());
     expect(await dialog.findByRole("alert")).toHaveTextContent("The task could not join that feature. It may be finished.");
-    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
+    expect(dialog.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "Task" })).toBeInTheDocument();
+    expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Task board v1");
+    expect(save()).toBeEnabled();
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("attaches a retry to the feature it already created, never creating it twice", async () => {
+    taskAction.mockImplementation(async (_repository, action, payload) => {
+      if (action === "feature_create") mock.pending = boardOf({ features: [...features, { id: "f-new", name: (payload as { name: string }).name, done: false }] });
+      return action === "update" && taskAction.mock.calls.filter((call) => call[1] === "update").length === 1 ? { ok: false, error: "unavailable" } : { ok: true };
+    });
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dialog = await openTask(user, "Loose end", "T-6");
+    chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
+    await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Once");
+    await user.click(save());
+    expect(await dialog.findByRole("alert")).toHaveTextContent("The change could not be saved.");
+    await user.click(save());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+    expect(taskAction.mock.calls.map((call) => call[1])).toEqual(["feature_create", "update", "update"]);
+    expect(taskAction.mock.calls[2][2]).toEqual({ id: "T-6", featureId: "f-new" });
   });
 });
 

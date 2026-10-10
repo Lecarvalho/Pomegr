@@ -56,7 +56,7 @@ export function TaskBoardSection() {
       </Sample>)}
     </div>
     <div className="designSystemGrid">
-      <Sample label="Card, desktop app" note="The title opens the Task panel, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
+      <Sample label="Card, desktop app" note="The title opens the Task modal, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
         <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Column header" note="The name and a data-font count over a one-pixel rule, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
@@ -91,7 +91,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (queue on)" note="Cards open the Task panel and move by drag or keyboard, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
+      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} /></div></Frame>
       </Sample>
     </div>
@@ -106,6 +106,6 @@ export function TaskBoardSection() {
       <Sample label="Board, desktop only" note="Served to a client that is not on this computer, with no task content."><Frame><TaskBoardView board={createEmptyTaskBoard(SAMPLE_REPOSITORY_ID, "desktop_only")} /></Frame></Sample>
       <Sample label="Board, no tasks"><Frame><div className="tasksPageBody"><TaskBoardView board={{ ...BOARD_RUNNING, features: [], tasks: [] }} /></div></Frame></Sample>
     </div>
-    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task panels (fixed drawers that save through the desktop), the Start at field of the Task panel, and the Tasks page header, whose repository switcher is the shared CommandSelect and whose other controls are shown above and in the Task queue section.</p>
+    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task modals (native dialogs that save through the desktop), the Start at field of the Task modal, and the Tasks page header, whose repository switcher is the shared CommandSelect and whose other controls are shown above and in the Task queue section.</p>
   </Section>;
 }

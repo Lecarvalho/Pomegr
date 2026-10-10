@@ -401,7 +401,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     whose session has not reported (a session link, state Not queued, Queued, or
     Scheduled, and no report). Pomegr never marks such a task Done or Stalled by itself,
     and the queue never advances past it by itself, because the task can matter to the
-    whole feature; the user decides in the Pomegr UI, where the task panel offers **Mark
+    whole feature; the user decides in the Pomegr UI, where the task modal offers **Mark
     done** and **Requeue task** with a line that neither stops the session. Neither
     action stops, attaches to, or writes to the session. Requeue clears the link, so a
     later report from the old session is `not_found`; Mark done leaves an outcome, so a
@@ -815,7 +815,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
 - Starting never changes the task's state, column, or queue position. The card moves
   only when the started session links.
-- After a manual start answers `worktree_dirty`, the task panel shows **Open folder**. It
+- After a manual start answers `worktree_dirty`, the task modal shows **Open folder**. It
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
   only and shows one line per fixed result (`opened`, `not_found`, `invalid`,
   `unavailable`); the **Queue paused** banner offers the same button when the pause reason
@@ -836,7 +836,7 @@ like any other.
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
-| `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task panel's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
+| `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
@@ -1042,11 +1042,11 @@ three more, one of which (a start with a plugin too old for tasks) is fixed. Fou
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
    decides.
-3. **The task panel keeps its start line after the task changes.** After a start the panel
+3. **The task modal keeps its start line after the task changes.** After a start the modal
    shows "Session started in a new terminal window." and keeps Start session disabled for
    as long as it stays open, also after Requeue or after the task is done. Closing and
-   opening the panel clears it.
-4. **A held manual start does not say which gate holds.** The panel reads "A start gate
+   opening the modal clears it.
+4. **A held manual start does not say which gate holds.** The modal reads "A start gate
    holds this task. See Start gates in the Queue view." although the fixed hold reasons
    are already served on `GET /api/tasks`.
 

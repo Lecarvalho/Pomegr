@@ -178,7 +178,7 @@ export function requeueDesktopTask(repositoryId: string, id: string): Promise<Ta
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
 
-/** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
+/** One short fixed message per failure; the monitor's own wording and any text never reach the modal. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
     ? `The board is full: it holds ${TASK_BOUNDS.tasksPerRepository} tasks.`
@@ -200,7 +200,7 @@ export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done."
 export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 
-/** One fixed message per feature failure; the monitor's own wording never reaches the panel. */
+/** One fixed message per feature failure; the monitor's own wording never reaches the modal. */
 export function featureFailureMessage(error: TaskActionError | "unavailable"): string {
   if (error === "conflict") return "A feature with this name already exists.";
   if (error === "limit") return `The board holds ${TASK_BOUNDS.featuresPerRepository} features, the most it allows.`;

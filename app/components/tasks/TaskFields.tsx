@@ -1,17 +1,48 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, type ReactNode, type Ref } from "react";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  CHECK_LABELS, EFFORT_LABELS, runFromSelectValue, runSelectOptions, runSelectValue, withCheck,
+  CHECK_SHORT_LABELS, EFFORT_LABELS, runFromSelectValue, runSelectOptions, runSelectValue, withCheck,
   type DoneWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
-// Run on, Effort and Done when, shared by the New task and Task panels (design contract D195-D216 and D252-D272).
-// Controls only report changes; each panel decides when a change is saved.
+// The Task field, Run on, Effort and Done when, shared by the New task and Task modal forms (design contract G124-G128
+// and G138-G152). Controls only report changes; each form decides when a change is saved.
 
-/** Run on (one select naming provider and model) and the optional four-way Effort. Both are optional. */
+const COUNT_FORMAT = new Intl.NumberFormat("en-US");
+
+/**
+ * The Task textarea with its `{n} / 4,000` counter under it, right-aligned. `helper` and `error` are optional lines
+ * under the counter (the error is an alert); the textarea is described by the counter and by whichever of them show.
+ */
+export function TaskTextField({ value, onChange, onBlur, readOnly, helper, error, ref }: {
+  value: string;
+  onChange(value: string): void;
+  onBlur?(): void;
+  readOnly?: boolean;
+  helper?: ReactNode;
+  error?: string | null;
+  ref?: Ref<HTMLTextAreaElement>;
+}) {
+  const fieldId = useId();
+  const counterId = useId();
+  const helperId = useId();
+  const errorId = useId();
+  const describedBy = [helper ? helperId : null, error ? errorId : null, counterId].filter(Boolean).join(" ");
+  return <div className="newTaskField">
+    <label htmlFor={fieldId}>Task</label>
+    <textarea ref={ref} id={fieldId} rows={6} maxLength={TASK_BOUNDS.textLength} value={value} readOnly={readOnly}
+      placeholder="What should the session do?" aria-describedby={describedBy}
+      onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur} />
+    <span id={counterId} className="taskTextCounter">{`${COUNT_FORMAT.format(value.length)} / ${COUNT_FORMAT.format(TASK_BOUNDS.textLength)}`}</span>
+    {helper && <p id={helperId} className="newTaskHelper">{helper}</p>}
+    {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
+  </div>;
+}
+
+/** Run on (one select naming provider and model) and the optional four-way Effort, in one two-column row. Both are optional. */
 export function RunFields({ run, models, onChange }: { run: TaskRun; models: TaskModelOptions; onChange(run: TaskRun): void }) {
   const selectId = useId();
   const effortId = useId();
@@ -33,12 +64,12 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
 }
 
 /**
- * The five checks and a last row for the agent-judged own condition. `onDraftChange` fires on every edit;
- * `onCommit` fires when a checkbox changes and when the own-condition input loses focus.
+ * The five checks in a wrapping row, then one input for the agent-judged own condition: a non-blank input is the own
+ * condition, a blank one is none. `onDraftChange` fires on every edit; `onCommit` fires when a checkbox changes and
+ * when the own-condition input loses focus.
  */
-export function DoneWhenField({ draft, layout = "grid", results, ownNote, footnote, onDraftChange, onCommit }: {
+export function DoneWhenField({ draft, results, ownNote, footnote, onDraftChange, onCommit }: {
   draft: DoneWhenDraft;
-  layout?: "grid" | "list";
   /** Per-check outcome from the agent's report; a check without an entry shows no result. */
   results?: ReadonlyMap<TaskCheck, boolean>;
   ownNote?: string | null;
@@ -50,23 +81,21 @@ export function DoneWhenField({ draft, layout = "grid", results, ownNote, footno
   const change = (next: DoneWhenDraft) => { onDraftChange(next); onCommit?.(next); };
   return <fieldset className="taskDoneWhen">
     <legend>Done when</legend>
-    <div className={`taskChecks${layout === "list" ? " isList" : ""}`}>
+    <div className="taskChecks">
       {TASK_CHECKS.map((check) => {
         const id = `${prefix}-${check}`;
         const result = draft.checks.includes(check) ? results?.get(check) : undefined;
         return <div className="taskCheckRow" key={check}>
           <input id={id} type="checkbox" checked={draft.checks.includes(check)} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
-          <label htmlFor={id}>{CHECK_LABELS[check]}</label>
+          <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
           {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : "Not passed"}</span>}
         </div>;
       })}
-      <div className="taskCheckRow">
-        <input type="checkbox" aria-label="Use your own condition" checked={draft.ownEnabled} onChange={(event) => change({ ...draft, ownEnabled: event.currentTarget.checked })} />
-        <label className="commandVisuallyHidden" htmlFor={`${prefix}-own`}>Your own condition, judged by the agent</label>
-        <input id={`${prefix}-own`} type="text" className="taskOwnInput" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Your own condition"
-          value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
-        {ownNote && <span className="taskCheckResult">{ownNote}</span>}
-      </div>
+    </div>
+    <div className="taskOwnRow">
+      <input type="text" className="taskOwnInput" aria-label="Own condition" maxLength={TASK_BOUNDS.ownConditionLength} placeholder="Own condition, judged by the agent (optional)"
+        value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
+      {ownNote && <span className="taskCheckResult">{ownNote}</span>}
     </div>
     {footnote ?? <span className="newTaskHelper taskDoneWhenNote">Pomegr verifies the listed conditions. Your own condition is judged by the agent.</span>}
   </fieldset>;

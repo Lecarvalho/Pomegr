@@ -389,6 +389,81 @@ describe("Pomegr visual contract", () => {
     expect(designSystemStyles).toMatch(/\.designSystemRevealAdd \.taskColumnAdd \{ opacity: 1; \}/);
   });
 
+  it("draws the task modal frame as a modal dialog scrim with tokens only and documents its fields", () => {
+    const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    const frame = readFileSync(join(tasksComponents, "TaskModalFrame.tsx"), "utf8");
+    const fields = readFileSync(join(tasksComponents, "TaskFields.tsx"), "utf8");
+    const featureFields = readFileSync(join(tasksComponents, "FeatureFields.tsx"), "utf8");
+    // G115-G123: the scrim mixes the text token (no literal color), the panel is at most 640px with the panel radius and overlay shadow, and nothing moves.
+    expect(tasksStyles).toMatch(/\.taskModalScrim \{[^}]*background: color-mix\(in srgb, var\(--color-text\) 40%, transparent\)/);
+    expect(tasksStyles).toMatch(/\.taskModal \{[^}]*max-width: 640px[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel\)[^}]*box-shadow: var\(--command-overlay-shadow\)/);
+    expect(tasksStyles).toMatch(/\.taskModalHeader \{[^}]*padding: var\(--space-2\) var\(--space-3\) var\(--space-2\) var\(--space-6\)[^}]*border-bottom: 1px solid var\(--command-line\)/);
+    expect(tasksStyles).toMatch(/\.taskModalBody \{[^}]*gap: var\(--space-4\)[^}]*padding: var\(--space-6\)/);
+    expect(tasksStyles).toMatch(/\.taskModalFooter \{[^}]*padding: var\(--space-3\) var\(--space-6\)[^}]*border-top: 1px solid var\(--command-line\)/);
+    expect(tasksStyles).not.toMatch(/\.taskModal[A-Za-z]*[^{]*\{[^}]*(?:transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
+    // G153-G158: footer actions keep their roles and are 36px with a fine pointer at 761px and wider, 44px otherwise.
+    expect(tasksStyles).toMatch(/\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: 44px; width: auto/);
+    expect(tasksStyles).toMatch(/@media \(min-width: 761px\) and \(pointer: fine\) \{\s*\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: var\(--control-height\); \}/);
+    // G138-G152: Run on and Effort sit in a two-column row, the checks wrap, and the own condition is a 36px input.
+    expect(tasksStyles).toMatch(/\.taskRunRow \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(tasksStyles).toMatch(/\.taskChecks \{[^}]*flex-wrap: wrap[^}]*gap: var\(--space-1\) var\(--space-4\)/);
+    expect(tasksStyles).toMatch(/\.taskDoneWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
+    expect(tasksStyles).toMatch(/\.taskTextCounter \{[^}]*align-self: flex-end[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)/);
+    // D2: a native modal dialog with its name, no scrim-click close, and Escape unless a control inside handled the key.
+    expect(frame).toMatch(/<dialog[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby=\{titleId\}/);
+    expect(frame).toMatch(/showModal\(\)/);
+    expect(frame).toMatch(/event\.key !== "Escape" \|\| event\.defaultPrevented/);
+    expect(frame).toMatch(/className="commandIconAction" aria-label="Close"/);
+    expect(frame).not.toMatch(/onClick=\{\(event\) => \{ if \(event\.target === dialog/);
+    // D3: the copy of the fields, and Feature and Run on stay CommandSelect.
+    expect(fields).toMatch(/placeholder="What should the session do\?"/);
+    expect(fields).toMatch(/aria-label="Own condition"[^>]*placeholder="Own condition, judged by the agent \(optional\)"/);
+    expect(fields).not.toMatch(/Use your own condition/);
+    expect(featureFields).toMatch(/<label htmlFor=\{stepId\}>Step<\/label>/);
+    expect(fields + featureFields).not.toMatch(/<select/);
+    // DESIGN.md and the design-system sample document the frame and the fields.
+    expect(designContract).toMatch(/\*\*Task modal frame\.\*\* `TaskModalFrame`[^]*native modal `<dialog>`[^]*`--color-text` mixed to 40%/);
+    expect(designContract).toMatch(/a click on the scrim does nothing/);
+    expect(designContract).toMatch(/\*\*Task fields\.\*\*[^]*“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, and “CI passed”/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
+    expect(sample).toMatch(/Task modal, new/);
+    expect(sample).toMatch(/TaskModalChrome/);
+    expect(sample).not.toMatch(/<TaskModalFrame/);
+    expect(designSystemStyles).toMatch(/\.designSystemTaskModalStage \{[^}]*background: color-mix\(in srgb, var\(--color-text\) 40%, transparent\)/);
+  });
+
+  it("builds the New task and Task modals as two modes of one component with a primary Create and Save, and no drawers", () => {
+    const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    const dir = join(process.cwd(), "app", "components", "tasks");
+    const modalNew = readFileSync(join(dir, "TaskModalNew.tsx"), "utf8");
+    const modalEdit = readFileSync(join(dir, "TaskModalEdit.tsx"), "utf8");
+    const modal = readFileSync(join(dir, "TaskModal.tsx"), "utf8");
+    // D1: one modal with a mode switch over one form per mode, both inside the shared frame; the two panels are gone.
+    expect(modal).toMatch(/mode: "new"[^]*mode: "edit"/);
+    expect(modalNew + modalEdit).toMatch(/<TaskModalFrame/);
+    expect(existsSync(join(dir, "NewTaskPanel.tsx"))).toBe(false);
+    expect(existsSync(join(dir, "TaskPanel.tsx"))).toBe(false);
+    expect(tasksStyles).not.toMatch(/\.(?:newTaskPanel|taskPanel)[A-Za-z]*/);
+    // D4: mode new ends with a Quiet Cancel and the one primary Create task; no "create and add another".
+    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*>Create task<\/button>/);
+    expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
+    // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
+    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
+    expect(modalEdit).toMatch(/className="commandPrimaryAction"[^\n]*>Save<\/button>/);
+    expect(modalEdit).toMatch(/className="commandQuietAction"[^\n]*>Delete task<\/button>/);
+    expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*>Mark done and resume queue<\/button>/);
+    expect(modalEdit).toMatch(/className="taskModalResolve"/);
+    expect(tasksStyles).toMatch(/\.taskModalResolve \{[^}]*flex: 1 0 100%/);
+    // DESIGN.md and the design-system sample document both modes.
+    expect(designContract).toMatch(/\*\*New task modal\.\*\*[^]*\*\*Cancel\*\*[^]*\*\*Create task\*\*/);
+    expect(designContract).toMatch(/\*\*Task modal, mode edit\.\*\*[^]*nothing is sent until \*\*Save\*\*[^]*Save your changes first\./);
+    expect(designContract).not.toMatch(/\*\*(?:New task|Task) panel\.\*\*/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
+    expect(sample).toMatch(/Task modal, edit"/);
+    expect(sample).toMatch(/Task modal, edit, needs review/);
+  });
+
   it("documents the promoted roster, inspector, command table, and settings rail samples with tokens only", () => {
     expect(designContract).toMatch(/shipped `AgentActivityPanel` from static agents/);
     expect(designContract).toMatch(/standalone inline `AgentInspector`/);

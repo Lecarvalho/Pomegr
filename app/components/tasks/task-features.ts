@@ -1,7 +1,7 @@
 import type { CommandSelectOption } from "../command-center/CommandSelect";
 import type { Task, TaskBoard, TaskFeature } from "../../../shared/task-contract";
 
-// Pure feature rules shared by both panels and the board: the Feature and Step in feature options, the payload keys,
+// Pure feature rules shared by both modal forms and the board: the Feature and Step in feature options, the payload keys,
 // the sibling list and the card line. A feature is an ordered list of steps; tasks in one step run in parallel.
 
 type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks">;
@@ -77,11 +77,11 @@ function idList(ids: readonly string[]) {
 
 /**
  * "Last · new step N", then one option per existing step from the highest down, naming the other tasks in it.
- * Disabled and reading "No feature" while no feature is chosen; a feature still to be created has only Last.
+ * Disabled and reading "None" while no feature is chosen; a feature still to be created has only Last.
  */
 export function stepSelectOptions(tasks: readonly Task[], draft: FeatureDraft, selfId?: string): { options: CommandSelectOption[]; disabled: boolean } {
   if (draft.creating) return { options: [{ value: LAST, label: "Last · new step 1" }], disabled: true };
-  if (draft.featureId === null) return { options: [{ value: NONE, label: "No feature" }], disabled: true };
+  if (draft.featureId === null) return { options: [{ value: NONE, label: "None" }], disabled: true };
   const steps = stepsOf(tasks, draft.featureId);
   const highest = Math.max(0, ...steps.keys());
   const options: CommandSelectOption[] = [{ value: LAST, label: `Last · new step ${highest + 1}` }];
