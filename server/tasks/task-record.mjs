@@ -494,11 +494,11 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   for (const task of projectedTasks) {
     if (task.featureId !== null) doneByFeature.set(task.featureId, (doneByFeature.get(task.featureId) ?? true) && task.state === "done");
   }
-  // The queue order carries task IDs only. The private queue position of a stored row feeds the rule
-  // and goes no further; the projected task has no field for it.
+  // The queue order carries task IDs only. A single task's place is the place of its card: the store keeps every
+  // waiting card in Ready (`settleReadyColumn`), so the card position orders them.
   const { order } = orderQueue(
     projectedTasks.map((task, index) => ({
-      id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: tasks[index].queue_position ?? null,
+      id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: task.position,
       due: task.state === "scheduled" && at !== undefined && taskIsDue(tasks[index].scheduled_at ?? null, at),
       inFlight: rowInFlight(tasks[index], at),
     })),

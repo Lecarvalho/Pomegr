@@ -38,7 +38,8 @@ Select **Tasks** in the sidebar and choose a repository in the **Repository**
 menu. A repository's own **Tasks** tab links to the same board. A board has five
 columns: **Backlog**, **Ready**, **In progress**, **Review**, and **Done**. You
 cannot add, rename, reorder, or delete a column. Moving a card never changes its
-state.
+state. **Ready** is the queue's column: a queued or scheduled task's card stays
+there until its session starts.
 
 ### Create a task
 
@@ -116,10 +117,25 @@ Pomegr moves a card to another column when its task changes state:
 | The task becomes **Needs review** | **Review** |
 | The task becomes **Done**, also through **Mark done** | **Done** |
 
-- **Blocked by agent**, **Stalled**, and **Requeue task** do not move a card.
+- **Blocked by agent** and **Stalled** do not move a card.
 - **You can still move a card by hand.** It stays where you put it until its
   task's next state change in the table, which moves it again.
 - The card lands last in its new column.
+
+### Queued cards stay in Ready
+
+- **Add to queue**, a start time, and **Requeue task** put the card in **Ready**,
+  last. A card already in **Ready** keeps its place.
+- A **Queued** or **Scheduled** card cannot be moved to another column until you
+  choose **Remove from queue** or its session starts. **Remove from queue** leaves
+  the card in **Ready**.
+- The queued cards in **Ready** read top to bottom in the order the queue starts
+  them, the same order the **Queue** view shows. Cards that are not queued keep
+  their place between them.
+- **Reorder single tasks by moving their cards.** Drag a queued card with no
+  feature above or below another in **Ready**, or use its move up and move
+  down buttons. Feature tasks follow their steps, so a card dropped out of that order
+  lands back in it.
 
 A board holds up to 500 tasks and 50 features. A feature name is up to 80
 characters.
@@ -167,7 +183,7 @@ The session is told one fixed message: your task text, the **Done when** list, a
 the instruction to call `complete_task` when the work is done or `block_task` with
 a short reason if it cannot proceed. With nothing checked, the message says the
 agent's report alone completes the task. Starting never changes the task's state
-or queue position. The card moves once the session links (see
+or its place in the queue. The card moves once the session links (see
 [Cards Pomegr moves](#cards-pomegr-moves)). Until the session links, or ten minutes pass, the task
 cannot start again, so you do not get two sessions.
 
@@ -215,7 +231,9 @@ marked **Parallel** or **One task**. Drag a queued task to another step, or to
 are all done accepts none. Tasks with no feature appear under **Single tasks**.
 
 - **Order.** Features come first, in the order the board lists them, then each
-  feature's steps in order, then single tasks in the order you queued them.
+  feature's steps in order, then single tasks in the order of their cards in the
+  board's **Ready** column (see
+  [Queued cards stay in Ready](#queued-cards-stay-in-ready)).
 - **One step at a time.** The queue starts every queued task of the current step
   in the same check, one after another. It starts nothing in a later step, or a
   later single task, until earlier work has reported and is done.
@@ -235,7 +253,8 @@ choose one of two actions.
 
 - **Mark done and resume queue** accepts the task as done and keeps its report and
   session link.
-- **Requeue task** puts it back at the end of the queue as **Queued**, clears its
+- **Requeue task** puts it back in the queue as **Queued** with its card last in
+  **Ready**, clears its
   report and session link, and lets a new session report once more.
 
 > **Note:** Pomegr checks a report against what it has already observed. A pull

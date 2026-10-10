@@ -106,7 +106,7 @@ test("a stalled task stays in its column", async (context) => {
   assert.deepEqual(cardsIn(env, "In progress"), [id]);
 });
 
-test("Mark done moves the card to Done; Requeue leaves it until the new session links", async (context) => {
+test("Mark done moves the card to Done; Requeue puts it back in Ready until the new session links", async (context) => {
   const env = await setup(context);
   const accepted = create(env);
   const requeued = create(env, { doneWhen: { checks: ["tree_clean"], own: null } });
@@ -118,9 +118,10 @@ test("Mark done moves the card to Done; Requeue leaves it until the new session 
   assert.deepEqual(cardsIn(env, "Done"), [accepted]);
   assert.equal(apply(env, "resolve_requeue", { id: requeued }).ok, true);
   assert.equal(taskOf(env, requeued).state, "queued");
-  assert.deepEqual(cardsIn(env, "Review"), [requeued]);
-  link(env, requeued, "claude:second-session");
   assert.deepEqual(cardsIn(env, "Review"), []);
+  assert.deepEqual(cardsIn(env, "Ready"), [requeued]);
+  link(env, requeued, "claude:second-session");
+  assert.deepEqual(cardsIn(env, "Ready"), []);
   assert.deepEqual(cardsIn(env, "In progress"), [requeued]);
 });
 

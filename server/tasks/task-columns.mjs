@@ -10,12 +10,17 @@
 // to the five in one transaction, moving tasks and never deleting one.
 //
 // A card moves only inside the write that persists the state it follows: the session link (`in_progress`), a
-// report verified as Needs review (`review`) or Done (`done`), and the user's Mark done (`done`). Blocked, Stalled, and
-// Requeue move nothing. The card lands last in the role's column wherever it was, also after a move by hand; with no
+// report verified as Needs review (`review`) or Done (`done`), and the user's Mark done (`done`). Blocked and Stalled
+// move nothing. The card lands last in the role's column wherever it was, also after a move by hand; with no
 // column holding the role, or the card already there, nothing moves. No observation moves a card, so no move is
 // ever taken back.
+//
+// Ready is the queue's column. A task that waits in the queue (state `queued` or `scheduled`, no linked session) has
+// its card there, and the waiting cards read top to bottom in the order the queue starts them. `settleReadyColumn`
+// keeps both true inside the store write that could have changed either, so the board and the queue never disagree.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { orderQueue } from "./task-queue.mjs";
 import { COLUMN_ID, DEFAULT_TASK_COLUMNS, DEFAULT_TASK_COLUMN_ROLES, STORED_COLUMN_READ_BOUNDS, TASK_COLUMN_ROLES, normalizeStoredColumn } from "./task-record.mjs";
 
 const roleKey = (repositoryId, role) => `column_role:${repositoryId}:${role}`;
@@ -79,6 +84,55 @@ export function hasFixedColumns(database, repositoryId) {
   if (columns.length !== DEFAULT_TASK_COLUMNS.length) return false;
   if (!columns.every((column, index) => column.position === index && column.name === DEFAULT_TASK_COLUMNS[index])) return false;
   return DEFAULT_TASK_COLUMN_ROLES.every((role, index) => role === null || storedRoleColumn(database, repositoryId, role) === columns[index].id);
+}
+
+const READY_COLUMN_INDEX = DEFAULT_TASK_COLUMNS.indexOf("Ready");
+
+/** The Ready column's ID: the second of the fixed five. Null while the board is not the fixed five. */
+export function readyColumnId(database, repositoryId) {
+  return hasFixedColumns(database, repositoryId) ? storedColumns(database, repositoryId)[READY_COLUMN_INDEX].id : null;
+}
+
+/**
+ * Puts every waiting queue card in Ready and its waiting cards in start order. The caller owns the transaction. A
+ * waiting card in another column moves to the end of Ready (several by task number). The places the waiting cards hold
+ * in Ready are then filled again in the order `orderQueue` gives them: features in board order, each feature's steps
+ * ascending, a step's tasks by number, then the single tasks in the order their cards already had. Every other card of
+ * Ready keeps its place, and a board already in order is not written. The order is the standing one: a scheduled task
+ * counts before its time and a dispatched one before it links, so the clock never changes it. A board that is not the
+ * fixed five is left alone.
+ *
+ * An older build ordered single tasks by a stored `queue_position` instead. While a waiting row still holds one, the
+ * single tasks keep that order once (a row without one last), and every stored position is then cleared, so the queue
+ * the user had does not change with the upgrade and the card order rules from then on.
+ */
+export function settleReadyColumn(database, repositoryId) {
+  const readyId = readyColumnId(database, repositoryId);
+  if (readyId === null) return;
+  const waiting = preparedStatement(database, `SELECT number, column_id, feature_id, step, queue_position FROM tasks
+    WHERE repository_id = ? AND state IN ('queued', 'scheduled') AND session_id IS NULL ORDER BY queue_position IS NULL, queue_position, number`).all(repositoryId);
+  if (waiting.length === 0) return;
+  const cards = taskNumbersInOrder(database, repositoryId, readyId);
+  const left = new Set();
+  const arrive = preparedStatement(database, "UPDATE tasks SET column_id = ? WHERE repository_id = ? AND number = ?");
+  for (const row of waiting) {
+    if (row.column_id === readyId) continue;
+    arrive.run(readyId, repositoryId, Number(row.number));
+    cards.push(Number(row.number));
+    left.add(row.column_id);
+  }
+  const legacy = waiting.some((row) => (row.queue_position ?? null) !== null);
+  const place = new Map((legacy ? waiting.map((row) => Number(row.number)) : cards).map((number, index) => [number, index]));
+  const features = preparedStatement(database, "SELECT id FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId);
+  const { order } = orderQueue(waiting.map((row) => ({
+    id: `T-${Number(row.number)}`, featureId: row.feature_id ?? null, step: row.step ?? null, state: "queued", queuePosition: place.get(Number(row.number)),
+  })), features);
+  const inOrder = order.map((id) => Number(id.slice(2)));
+  const waits = new Set(inOrder);
+  let next = 0;
+  writeTaskOrder(database, repositoryId, cards.map((number) => (waits.has(number) ? inOrder[next++] : number)));
+  for (const columnId of left) writeTaskOrder(database, repositoryId, taskNumbersInOrder(database, repositoryId, columnId));
+  if (legacy) preparedStatement(database, "UPDATE tasks SET queue_position = NULL WHERE repository_id = ? AND queue_position IS NOT NULL").run(repositoryId);
 }
 
 /**

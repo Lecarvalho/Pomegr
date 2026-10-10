@@ -18,7 +18,7 @@ const schedule = (store, startAt, stopAfter) => store.apply(REPOSITORY, "queue_s
 const scheduleTask = (store, id, at) => store.apply(REPOSITORY, "queue_add", { id, at });
 const taskOf = (board, id) => board.tasks.find((task) => task.id === id);
 const storedTasks = (directory) => withDatabase(directory, (database) =>
-  database.prepare("SELECT number, state, scheduled_at, queue_position, session_id, dispatch_token, updated_at FROM tasks ORDER BY number").all().map((row) => ({ ...row })));
+  database.prepare("SELECT number, state, position, scheduled_at, queue_position, session_id, dispatch_token, updated_at FROM tasks ORDER BY number").all().map((row) => ({ ...row })));
 
 test("a scheduled task is due from its own time on, and one with no time has nothing to wait for", () => {
   assert.equal(taskIsDue(1000, 999), false);
@@ -120,7 +120,7 @@ test("queue_add with a time schedules a task in the place it had or at the end, 
   // A task that was not queued joins at the end; a scheduled one can be given another time.
   assert.equal(scheduleTask(store, "T-3", iso(at)).ok, true);
   assert.equal(scheduleTask(store, "T-3", iso(at + HOUR)).ok, true);
-  assert.deepEqual(storedTasks(directory).map((row) => [row.state, row.scheduled_at, row.queue_position]), [["scheduled", at, 0], ["queued", null, 1], ["scheduled", at + HOUR, 2]]);
+  assert.deepEqual(storedTasks(directory).map((row) => [row.state, row.scheduled_at, row.position]), [["scheduled", at, 0], ["queued", null, 1], ["scheduled", at + HOUR, 2]]);
 
   // Without a time a scheduled task is queued again where it was.
   const cleared = store.apply(REPOSITORY, "queue_add", { id: "T-1" });

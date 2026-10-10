@@ -4,7 +4,7 @@
 //
 // A task in a feature runs by feature order, then step, then task number, because a step starts
 // only when the step before it is done and the tasks of one step run in parallel. A task without a
-// feature has no such structure, so it runs in the order it was queued. Only tasks that wait to
+// feature has no such structure, so it runs in the order of its card in the Ready column. Only tasks that wait to
 // start now are in the order: those in state `queued`, and those in state `scheduled` whose own
 // time has come (`due`). Every task of a feature takes part in its steps.
 //
@@ -43,7 +43,7 @@ export function queueWindowHold(schedule, at) {
 
 /**
  * `tasks` are `{ id, featureId, step, state, queuePosition, due, inFlight }` and `features` are `{ id }` in board
- * order. `inFlight` is optional: a task already started (its session linked with no outcome, or a live dispatch) is not in `order`, but stays in its step, so the step is not done. `queuePosition` is the monitor-private integer a task received when it was queued, or null.
+ * order. `inFlight` is optional: a task already started (its session linked with no outcome, or a live dispatch) is not in `order`, but stays in its step, so the step is not done. `queuePosition` is the place of the task's card in its column (the store keeps every waiting card in Ready), or null.
  * `due` is true for a `scheduled` task whose own time has come; the caller, which holds the clock, supplies it.
  *
  * Returns `{ order, steps }`:

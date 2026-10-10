@@ -19,7 +19,7 @@ import path from "node:path";
 import { installSqliteExperimentalWarningFilter } from "../persistence/monitor-store.mjs";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
-import { hasFixedColumns, readColumnRoles, reconcileFixedColumns, seedColumnRoles, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
+import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
@@ -331,12 +331,15 @@ const columnExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM columns WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
 // A move changes only the task's column, position, and update time. The tasks that shift to make room
-// or close a gap change position alone, as they do when a task is deleted.
+// or close a gap change position alone, as they do when a task is deleted. A card that waits in the queue stays in
+// Ready: a move to another column is refused, and a move inside Ready is how the user orders the single queued tasks.
 function moveTask({ database, repositoryId }, payload) {
   const input = normalizeMovePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT column_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT column_id, state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task || !columnExists(database, repositoryId, input.columnId)) return { ok: false, error: "not_found" };
+  const waits = (task.state === "queued" || task.state === "scheduled") && (task.session_id ?? null) === null;
+  if (waits && input.columnId !== (readyColumnId(database, repositoryId) ?? input.columnId)) return { ok: false, error: "conflict" };
   const sourceColumnId = task.column_id;
   const before = taskNumbersInOrder(database, repositoryId, input.columnId);
   const order = before.filter((number) => number !== input.number);
@@ -367,11 +370,10 @@ function createFeature({ database, repositoryId }, payload) {
 // The queue is the set of tasks in state `queued` or `scheduled`, ordered by the pure `orderQueue` rule when the
 // board is projected. A scheduled task is a queued task with a start time of its own: it keeps its place and is not
 // started before that time. These actions change a task's state, time, and step only; they start no session and
-// leave the queue status as stored. A task that leaves the queue here gets a null `queue_position` and no time.
-const queuePositionAfterHighest = (database, repositoryId) => {
-  const highest = preparedStatement(database, "SELECT MAX(queue_position) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest;
-  return highest === null || highest === undefined || !Number.isSafeInteger(Number(highest)) ? 0 : Number(highest) + 1;
-};
+// leave the queue status as stored. The card of a task that joins the queue goes to Ready, and the place of a single
+// task among the others is its card's place there (`settleReadyColumn`, run by `apply` after every action). The
+// `queue_position` column is what an older build ordered single tasks by: it is no longer written, and is read only
+// to bring that build's queued cards into Ready in the order they had.
 
 function stepCounts(database, repositoryId, featureId, step) {
   const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
@@ -387,18 +389,16 @@ function stepIsDone(database, repositoryId, featureId, step) {
 
 // `{ id }` queues a task that is not queued, and takes the start time off a scheduled one, which stays in its place.
 // `{ id, at }` gives a task that is not queued, queued, or scheduled its own start time: it is Scheduled from then
-// on, in the place it had or at the end. A task with a session already started and is not scheduled again.
+// on, in the place its card has in Ready or at the end of it. A task with a session already started and is not scheduled again.
 function addToQueue({ database, repositoryId, now }, payload) {
   const input = normalizeQueueAddPayload(payload, now());
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state, session_id, queue_position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
   if (input.at === null ? task.state !== "not_queued" && task.state !== "scheduled" : !waiting || (task.session_id ?? null) !== null) return { ok: false, error: "conflict" };
-  // A task joins at the end: a position above every position the repository ever handed out.
-  const position = task.state === "not_queued" || (task.queue_position ?? null) === null ? queuePositionAfterHighest(database, repositoryId) : task.queue_position;
-  preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(input.at === null ? "queued" : "scheduled", input.at, position, Date.now(), repositoryId, input.number);
+  preparedStatement(database, "UPDATE tasks SET state = ?, scheduled_at = ?, queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
+    .run(input.at === null ? "queued" : "scheduled", input.at, Date.now(), repositoryId, input.number);
   return { ok: true };
 }
 
@@ -414,7 +414,7 @@ function removeFromQueue({ database, repositoryId }, payload) {
 }
 
 // Moves a queued task to another step of its own feature. A task without a feature has no step: it runs in
-// the order it was queued. A step from 1 to the feature's highest + 1 (a new last step), measured before the
+// the order of its card in Ready. A step from 1 to the feature's highest + 1 (a new last step), measured before the
 // move, is valid, and a step that is already done refuses a task. The steps then close up around the move.
 function reorderQueuedTask({ database, repositoryId }, payload) {
   const input = normalizeQueueReorderPayload(payload);
@@ -481,6 +481,13 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     });
   }
 
+  function settleReady(repositoryId) {
+    runTransaction(database, () => {
+      settleReadyColumn(database, repositoryId);
+      if (!projectBoard(repositoryId, loadRows(repositoryId), { at: now() })) throw new ActionRejected("conflict");
+    });
+  }
+
   function storedSchedule(repositoryId) {
     const { startAt, stopAfter } = readQueueSchedule(database, repositoryId);
     return { start_at: startAt, stop_after: stopAfter };
@@ -513,6 +520,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     try {
       for (const { repository_id: repositoryId } of preparedStatement(database, "SELECT repository_id FROM repositories").all()) {
         try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
+        // A store an older build wrote may hold queued cards outside Ready, or in another order there.
+        try { settleReady(repositoryId); } catch { /* settled by the next action instead */ }
       }
     } catch { /* the store is read again on the first board read */ }
   }
@@ -545,6 +554,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
         const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
+        // Whatever the action changed, the waiting queue cards are in Ready and in start order when it commits.
+        settleReadyColumn(database, repositoryId);
         // Only `create` and `promote_issue` answer the task they made.
         taskId = action === "promote_issue" || action === "create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
