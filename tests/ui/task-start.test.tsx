@@ -150,6 +150,54 @@ describe("Start session", () => {
     expect(taskAction).not.toHaveBeenCalled();
   });
 
+  describe("after a start", () => {
+    const linked = { session: { id: "s", title: "Write the thing", state: "idle" as const, observedModel: null } };
+    async function startThen(...changes: Partial<Task>[]) {
+      const user = userEvent.setup();
+      const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+      const dialog = await openModal(user);
+      await user.click(dialog.getByRole("button", { name: "Start session" }));
+      await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window."));
+      for (const change of changes) {
+        setBoard(task(change));
+        view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
+      }
+      return { user, dialog };
+    }
+
+    it("follows the board once the session links", async () => {
+      const { dialog } = await startThen(linked);
+      expect(dialog.getByRole("status")).toHaveTextContent("A session is already linked to this task.");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+      expect(dialog.queryByText("Session started in a new terminal window.")).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ["from the state it was started in", {}],
+      ["into the queue", { state: "queued" as const }],
+    ])("is startable again after Requeue clears the link, %s", async (_name, requeued) => {
+      const { user, dialog } = await startThen(linked, requeued);
+      expect(dialog.queryByRole("status")).not.toBeInTheDocument();
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+      await user.click(dialog.getByRole("button", { name: "Start session" }));
+      await waitFor(() => expect(taskStart).toHaveBeenCalledTimes(2));
+    });
+
+    it("reads done once the task is done", async () => {
+      const { dialog } = await startThen({ ...linked, state: "done" });
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is done.");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+    });
+
+    it("stays locked while the board shows the task unchanged", async () => {
+      const { user, dialog } = await startThen({}, { updatedAt: "2026-10-08T10:05:00.000Z" });
+      expect(dialog.getByRole("status")).toHaveTextContent("Session started in a new terminal window.");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
+      await user.click(dialog.getByRole("button", { name: "Start session" }));
+      expect(taskStart).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it.each([
     ["a rejected promise", () => taskStart.mockRejectedValue(new Error("boom"))],
     ["a malformed answer", () => taskStart.mockResolvedValue("nope")],

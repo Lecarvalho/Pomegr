@@ -1187,7 +1187,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. Three items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. Two items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
 [Completion](#completion).
 
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
@@ -1197,11 +1197,7 @@ three more, one of which (a start with a plugin too old for tasks) is fixed. A f
    keeps this behavior. A fixed reason such as `task_running` would widen the
    [AGENTS.md](../../../AGENTS.md) rule, so it is not added until the product owner
    decides.
-2. **The task modal keeps its start line after the task changes.** After a start the modal
-   shows "Session started in a new terminal window." and keeps Start session disabled for
-   as long as it stays open, also after Requeue or after the task is done. Closing and
-   opening the modal clears it.
-3. **A held manual start does not say which gate holds.** The modal reads "A start gate
+2. **A held manual start does not say which gate holds.** The modal reads "A start gate
    holds this task. See Start gates in the Queue view." although the fixed hold reasons
    are already served on `GET /api/tasks`.
 
