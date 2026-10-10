@@ -275,13 +275,18 @@ test("Codex server binds every task tool to the calling thread from the call met
   assert.equal(calls.length, 4);
 });
 
-test("complete_task takes no input and block_task one bounded line", () => {
+test("complete_task takes only an optional attention line and block_task one bounded line", () => {
   const { tools } = setup();
   for (const name of ["complete_task", "block_task"]) {
     assert.deepEqual(tools[name].config.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
     assert.equal(tools[name].config._meta, undefined);
   }
   assert.equal(parse(tools.complete_task, {}).success, true);
+  assert.equal(parse(tools.complete_task, { attention: "The retry limit is a guess; confirm it" }).success, true);
+  assert.equal(parse(tools.complete_task, { attention: "x".repeat(200) }).success, true);
+  for (const attention of ["", "   ", "x".repeat(201), "two\nlines", "tab\there", 7, null]) {
+    assert.equal(parse(tools.complete_task, { attention }).success, false, JSON.stringify(attention));
+  }
   for (const extra of [{ id: "T-1" }, { task: "T-1" }, { repositoryId: "r" }, { reason: "x" }, { session_ref: "claude:a" }, { sessionRef: "claude:a" }]) {
     assert.equal(parse(tools.complete_task, extra).success, false, JSON.stringify(extra));
   }
@@ -293,6 +298,7 @@ test("complete_task takes no input and block_task one bounded line", () => {
   }
   const hook = setup({ hookBound: true }).tools;
   assert.equal(parse(hook.complete_task, { session_ref: "claude:a" }).success, true);
+  assert.equal(parse(hook.complete_task, { attention: "x", session_ref: "claude:a" }).success, true);
   assert.equal(parse(hook.block_task, { reason: "x", session_ref: "claude:a" }).success, true);
 });
 
@@ -308,6 +314,14 @@ test("complete_task reports the state and names only the conditions Pomegr could
   ] } });
   assert.equal((await review.tools.complete_task.handler({})).content[0].text,
     "Task reported complete, but Pomegr could not confirm: Pull request open, CI passed. The task now needs the user's review; do not report again.");
+
+  // The attention line is the only thing the tool adds to the body, and Review is then what the agent asked for.
+  const noted = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: true }] } });
+  assert.equal((await noted.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text,
+    "Task reported complete. Pomegr put it in Review for the user's attention; do not report again.");
+  assert.deepEqual(noted.calls, [{ pathname: TASK_COMPLETE_PATH, body: { sessionRef: "claude:x", attention: "Confirm the retry limit" } }]);
+  const both = setup({ answer: { ok: true, state: "needs_review", results: [{ check: "pr_open", passed: false }] } });
+  assert.match((await both.tools.complete_task.handler({ attention: "Confirm the retry limit" })).content[0].text, /could not confirm: Pull request open/u);
 });
 
 test("the report tools map every refusal to fixed text and never echo the monitor's answer", async () => {
@@ -466,6 +480,8 @@ test("Claude hook binds complete_task and block_task, signed per tool, and denie
       { hookEventName: "PreToolUse", updatedInput: { session_ref: REF, session_proof: proofFor("complete_task") } });
     assert.deepEqual((await bindClaudeQueryWrite(block, options)).hookSpecificOutput.updatedInput,
       { reason: "stuck", session_ref: REF, session_proof: proofFor("block_task") });
+    assert.deepEqual((await bindClaudeQueryWrite({ ...complete, tool_input: { attention: "look" } }, options)).hookSpecificOutput.updatedInput,
+      { attention: "look", session_ref: REF, session_proof: proofFor("complete_task") });
     for (const bad of [
       { ...complete, tool_input: { session_ref: "claude:other" } },
       { ...complete, tool_input: { session_proof: proofFor("complete_task") } },

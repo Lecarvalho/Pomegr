@@ -117,7 +117,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Done when shows each checked condition's outcome from the agent's report.">
+    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Done when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr · in Review" onClose={noop}
           titleExtra={<>
@@ -126,7 +126,7 @@ function TaskModalEditSamples() {
           </>}
           footer={<>
             <div className="taskModalResolve">
-              <button type="button" className="commandSecondaryAction" onClick={noop}>Mark done and resume queue</button>
+              <button type="button" className="commandSecondaryAction" onClick={noop}>Mark done</button>
               <button type="button" className="commandSecondaryAction" onClick={noop}>Requeue task</button>
             </div>
             <button type="button" className="commandQuietAction" onClick={noop}>Delete task</button>
@@ -139,7 +139,7 @@ function TaskModalEditSamples() {
           </div>
           <TaskTextField value={STORED_TEXT} onChange={noop} />
           <DoneWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
-            footnote={<span className="newTaskHelper taskDoneWhenNote">Agent reported complete.</span>} />
+            footnote={<span className="newTaskHelper taskDoneWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
         </TaskModalChrome>
       </div>
     </Sample>

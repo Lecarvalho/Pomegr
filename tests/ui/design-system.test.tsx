@@ -394,10 +394,10 @@ describe("Design-system reference page", () => {
     expect(within(sample(queue, "Queue switch, busy")).getByRole("button", { name: "On" })).toBeDisabled();
 
     const boardBanner = within(sample(queue, "Banner, blocked (Board)")).getByRole("region", { name: "Queue status" });
-    expect(boardBanner).toHaveTextContent("T-2 reported complete, but one check did not pass.");
+    expect(boardBanner).toHaveTextContent("T-2's agent reported it cannot continue.");
     expect(within(boardBanner).getByRole("button", { name: "Open T-2" })).toHaveClass("commandSecondaryAction");
     const resolvable = within(sample(queue, "Banner, blocked (Queue)")).getByRole("region", { name: "Queue status" });
-    expect(resolvable).toHaveTextContent('the check "CI passed" did not pass');
+    expect(resolvable).toHaveTextContent("Nothing new starts until you resolve T-2.");
     expect(within(resolvable).getByRole("button", { name: "Mark done and resume" })).toHaveClass("commandSecondaryAction");
     expect(within(resolvable).getByRole("button", { name: "Requeue T-2" })).toHaveClass("commandQuietAction");
     const paused = within(sample(queue, "Banner, paused")).getByRole("region", { name: "Queue status" });
@@ -428,7 +428,8 @@ describe("Design-system reference page", () => {
     expect(within(singles).getByText("T-6").closest("li")?.querySelector(".taskCardChip")).toHaveTextContent("In progress");
     expect(within(sample(queue, "Single tasks, none queued")).getByText("No single task is queued.")).toBeInTheDocument();
     const rules = within(sample(queue, "When the queue blocks")).getByRole("list");
-    expect(within(rules).getByText("Needs review")).toHaveClass("taskBlockState", "isReview");
+    expect(within(sample(queue, "When the queue blocks")).getByText("Needs review")).toHaveClass("taskBlockState", "isReview");
+    expect(within(rules).queryByText("Needs review")).toBeNull();
     expect(within(rules).getByText("Stalled")).toHaveClass("isError");
     expect(within(rules).getByText("Blocked by agent")).toHaveClass("isError");
 

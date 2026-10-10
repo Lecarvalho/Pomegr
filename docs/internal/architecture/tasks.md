@@ -57,7 +57,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   never rebuilt, and one stored row outside the contract makes the whole board
   `unavailable` instead of partly served.
 - Bounds per repository: 500 tasks and 50 features. Task text is at most 4000
-  characters, an own condition 500, a feature name 80, and a block reason 200. A board
+  characters, an own condition 500, a feature name 80, a block reason 200, and an
+  attention line 200. A board
   always has five columns (see [Columns and card moves](#columns-and-card-moves)).
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
   `apply(repositoryId, action, payload)`, and `close()`. `apply` returns the new board
@@ -91,7 +92,8 @@ type Task = {
   scheduledAt: string | null;
   session: { id: string; title: string | null; state: string; observedModel: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
-  report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null } | null;
+  report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null;
+    attention: string | null } | null;                 // what the agent asked the owner to look at
   source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
   createdAt: string; updatedAt: string;
 };
@@ -178,10 +180,10 @@ task state.
 | Not queued | On the board, not in the queue | Creation, or removal from the queue |
 | Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue, or requeues a task that needs review, is blocked, or stalled |
 | Scheduled | In the queue, waiting for its own start time, then for its turn and the start gates | The user sets a start time on the task |
-| Needs review | The agent reported complete but a checked condition failed | Verification of a `complete_task` report |
+| Needs review | The agent reported complete, and a checked condition failed or the agent asked for the owner's attention | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
-| Done | The agent reported complete and every checked condition passed, or none was checked | Verification of a `complete_task` report |
+| Done | The agent reported complete with no attention line, and every checked condition passed or none was checked | Verification of a `complete_task` report |
 
 **No transient states.** Never show a state and then retract it. The state is decided
 at first observation of its evidence: Stalled is assigned only once the end of the
@@ -236,6 +238,8 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 - **A card already in the role's column keeps its place.** The state still changes.
 - **Blocked by agent and Stalled move nothing.** The card stays where it is, normally
   the In progress column, and its chip and the Queue banner say that it needs the user.
+  These two are the outcomes that hold the queue. A card in Review holds nothing (see
+  [Stop on trouble](#queue)).
 - **A move by hand does not opt a card out.** The user may drag a card anywhere at any
   time, except a card that waits in the queue (see
   [Queued cards stay in Ready](#queued-cards-stay-in-ready)); it stays there until the
@@ -387,7 +391,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
 
 - **On and off.** The stored status is per repository and starts as `idle`, which is the
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
-  `blocked` with the lowest-numbered task that needs review, is stalled, or is blocked in
+  `blocked` with the lowest-numbered task that is stalled or blocked in
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
   off never touches a running session.
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
@@ -398,8 +402,11 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   every queued task of that step, so the task shown as next is always among them. While
   tasks are in flight, only the queued rest of their own step may start; tasks in flight
   outside one feature step hold the queue. A step waits while an earlier step of its
-  feature is not done, and a step is done only when every one of its tasks is done; the
-  queue never skips ahead to a later task.
+  feature is not settled, and a step is settled only when every one of its tasks is done
+  or needs review (`settled` beside `done` in `orderQueue`'s steps); the queue never
+  skips ahead to a later task. A task in review is finished work that waits for the
+  owner, so the step after it starts. A step is still done, for the feature and for a
+  move into it, only when every one of its tasks is done.
 - **Gates.** Each start of a step is judged on its own. One that a start gate holds is
   not answered as a next start and changes nothing: the queue stays `running`, the task
   stays `queued`, and the next poll judges the gates again while the rest of its step
@@ -428,20 +435,32 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   the retry. A task that moved or a manual start in flight pauses nothing; the next poll
   asks again. The reason is kept in the store's `meta` table under
   `queue_pause_reason:<repositoryId>`, so the schema version stays 1.
-- **Stop on trouble.** Any failed check (Needs review), stalled task, or agent block
+- **Stop on trouble.** A stalled task or an agent block
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
   starts until the user resolves it, by **Mark done and resume** (`resolve_done`) or
   **Requeue** (`resolve_requeue`). Sessions already running continue.
-  - A report changes the stored status only of a queue that is `running`: it becomes
+  - **Review does not stop the queue.** Decided for GitHub issue #135 (2026-10-10); it
+    replaces the earlier rule that a failed check blocks the queue. A task that needs
+    review is finished work: its card waits in the Review column, the queue stays
+    `running`, the next task starts, and a later step of its feature starts too. The
+    owner resolves it with the same two actions, at any time. When the work that
+    follows must not start, the agent's path is `block_task`, whose card stays in In
+    progress and holds the queue.
+  - A store written before this rule may hold a queue that is `blocked` at a task that
+    needs review. When the monitor opens the store, each such queue names the
+    lowest-numbered stalled or blocked task instead, or runs again when there is none
+    (`releaseQueue`, the rule a resolution uses).
+  - A block or a stall changes the stored status only of a queue that is `running`: it becomes
     `blocked`, and a queue that is already blocked keeps its first blocker. An `idle` or
     `paused` queue keeps its status; turning the queue on then computes `blocked` when any
-    task needs review, is blocked, or is stalled.
+    task is blocked or stalled.
   - `resolve_done` sets such a task to Done and keeps its report and session link.
     `resolve_requeue` puts it back in the queue as Queued, its card last in Ready, and clears its
     report, session link, and any dispatch, so a new session can be started for it and
     report once more. Either one, on a blocked queue, names the lowest-numbered task
-    that still needs the user in `blockedBy`, or sets the queue back to `running` when
-    none is left. Both answer `conflict` for a task in any other state.
+    that still holds it in `blockedBy`, or sets the queue back to `running` when
+    none is left. Both also accept a task that needs review, and both answer `conflict`
+    for a task in any other state.
   - **A linked task with no report.** Mark done and Requeue also accept a linked task
     whose session has not reported (a session link, state Not queued, Queued, or
     Scheduled, and no report). Pomegr never marks such a task Done or Stalled by itself,
@@ -494,8 +513,9 @@ Before every start, manual or queued, the pure `evaluateGates(task, facts, setti
 `task-gates.mjs` judges committed facts and returns the fixed reasons a start cannot
 proceed. A start needs all of the following.
 
-1. The previous step of the task's feature is done (`previous_step`). The board names
-   the lowest-numbered task that is not done in the earliest unfinished step before it.
+1. The previous step of the task's feature is settled: each of its tasks is done or
+   needs review (`previous_step` otherwise). The board names the lowest-numbered task
+   that is neither, in the earliest step before it that is not settled.
 2. The task's provider has usage capacity: its five-hour window, as a whole percentage,
    is below the threshold (`usage_over` otherwise). The threshold is 70, 85, or 95
    percent per repository, 85 by default, set with `queue_settings` `{ threshold }` and
@@ -566,12 +586,24 @@ the conditions the user checked and sets the state.
 | Own condition | Not verified; the agent judges it in its report |
 
 - Pass: Done. Fail: Needs review. The agent can call `block_task` with a bounded
-  reason; the state becomes Blocked by agent. A session that ends without a report is
+  reason; the state becomes Blocked by agent.
+- **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
+  input, `attention`: one line of at most 200 characters that names what in the finished
+  work needs the owner's attention, such as a choice the agent made for them. A report
+  that carries one is Needs review even when every checked condition passed, so the
+  card goes to Review; a report without one is Done when every check passed. The
+  checks are verified and stored either way. The line is agent-authored text, bounded
+  and validated like the block reason. The store keeps it in its `meta` table under
+  `task_attention:<repositoryId>:<taskId>` (`server/tasks/task-attention.mjs`), so the
+  schema version stays 1; it is written with the report, removed by Requeue and with
+  the task, and kept by Mark done. It is served only as `report.attention` on
+  `GET /api/tasks`, shown in the Task modal as the agent's words, and never part of
+  the report's answer. A session that ends without a report is
   Stalled once its end is established (see [States](#states)).
 - With no condition checked, the agent's `complete_task` report alone completes the
   task.
-- The report keeps only `{ check, passed }` results, the time, and the bounded block
-  reason. Command output, diffs, and provider payloads are never kept or exposed.
+- The report keeps only `{ check, passed }` results, the time, the bounded block
+  reason, and the bounded attention line. Command output, diffs, and provider payloads are never kept or exposed.
 - **A report is verified on a read made when it arrives** (product-owner decision,
   2026-10-10). An agent reports right after its last command, so the facts the monitor
   already holds are older than that command and cannot be judged. When `complete_task`
@@ -707,7 +739,8 @@ the conditions the user checked and sets the state.
   report on a task that already has an outcome, change nothing.
 - The monitor serves the reports as `POST /api/agent/v1/tasks/complete` and
   `/block`, under the gate of `add`. The body is `{ sessionRef }`, plus a one-line
-  `reason` of at most 200 characters for a block; any other key is `invalid`. The
+  `reason` of at most 200 characters for a block, or an optional one-line `attention`
+  of at most 200 characters for a completion; any other key is `invalid`. The
   session is the only input that names a task. The answer is
   `{ schemaVersion: 1, ok: true, state, results }` (`state` is `done`, `needs_review`, or
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`

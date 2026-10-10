@@ -44,10 +44,10 @@ export function TaskQueueSection() {
       <Sample label="Queue switch, busy" note="Disabled while the monitor answers."><QueueControl status="running" busy onSet={noop} /></Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Banner, blocked (Board)" note="Error-soft fill and error line, title in the error color, body in ink. The Board names how many checks failed.">
+      <Sample label="Banner, blocked (Board)" note="Error-soft fill and error line, title in the error color, body in ink. It names the task that holds the queue and why.">
         <Frame><QueueBanner board={BOARD_BLOCKED} view="board" onOpenTask={noop} /></Frame>
       </Sample>
-      <Sample label="Banner, blocked (Queue)" note="Names the failed check, adds the desktop-only Mark done and resume (Secondary) and Requeue (Quiet, ink).">
+      <Sample label="Banner, blocked (Queue)" note="The same words, plus the desktop-only Mark done and resume (Secondary) and Requeue (Quiet, ink).">
         <Frame><QueueBanner board={BOARD_BLOCKED} view="queue" onOpenTask={noop} edits={EDITS_BLOCKED} /></Frame>
       </Sample>
       <Sample label="Banner, paused" note="Words one fixed pause reason; turning the queue on again is the retry.">
@@ -73,7 +73,7 @@ export function TaskQueueSection() {
     <div className="designSystemGrid">
       <Sample label="Single tasks"><Frame><QueueSingleTasks tasks={singleQueueTasks(BOARD_RUNNING)} nextId="T-2" queue={BOARD_RUNNING.queue} /></Frame></Sample>
       <Sample label="Single tasks, none queued"><Frame><QueueSingleTasks tasks={[]} nextId={null} queue={BOARD_RUNNING.queue} /></Frame></Sample>
-      <Sample label="When the queue blocks" note="Fixed copy; each rule ends in its state, in that state's tone."><Frame><QueueBlockRules /></Frame></Sample>
+      <Sample label="When the queue blocks" note="Fixed copy; each rule ends in its state, in that state's tone. The closing line names the state that does not block."><Frame><QueueBlockRules /></Frame></Sample>
     </div>
     <Wide label="Queue view, browser (blocked queue)" note="Feature panels, single tasks and rules in the left column; Start gates and Schedule wrap under it when narrow.">
       <TaskBoardView board={BOARD_BLOCKED} view="queue" />

@@ -497,7 +497,7 @@ describe("Pomegr visual contract", () => {
     expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
     expect(modalEdit).toMatch(/className="commandPrimaryAction"[^\n]*>Save<\/button>/);
     expect(modalEdit).toMatch(/className="commandQuietAction"[^\n]*>Delete task<\/button>/);
-    expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*>Mark done and resume queue<\/button>/);
+    expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*Mark done and resume queue[^\n]*<\/button>/);
     expect(modalEdit).toMatch(/className="taskModalResolve"/);
     expect(tasksStyles).toMatch(/\.taskModalResolve \{[^}]*flex: 1 0 100%/);
     // DESIGN.md and the design-system sample document both modes.

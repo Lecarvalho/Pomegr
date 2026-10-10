@@ -558,7 +558,8 @@ function reportResults(results) {
 /**
  * `POST /api/agent/v1/tasks/complete` and `/block`: the bound session reports on the task it was started for.
  * The request handler has already applied the agent-query gate. The body is `{ sessionRef }`, plus a one-line
- * `reason` for a block; the session is the only input that names a task, so a session with no linked task is
+ * `reason` for a block, or an optional one-line `attention` for a complete report (what the owner should look at;
+ * the same 200-character bound); the session is the only input that names a task, so a session with no linked task is
  * `not_found`, and a task takes one report per dispatch (`already_reported`). On `complete` the store verifies
  * the checked conditions. For a task that can still be reported on and has a checked condition, the route first
  * awaits `readCheckFacts(sessionRef)`, one read of the bound session's repository and pull requests made now
@@ -575,10 +576,12 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
     return;
   }
   const { body } = read;
-  const keys = blocking ? ["sessionRef", "reason"] : ["sessionRef"];
+  const noted = !blocking && isPlainObject(body) && Object.hasOwn(body, "attention");
+  const keys = blocking ? ["sessionRef", "reason"] : noted ? ["sessionRef", "attention"] : ["sessionRef"];
+  const boundedLine = (value) => typeof value === "string" && value.trim().length > 0 && value.length <= AGENT_BLOCK_REASON_LIMIT;
   const valid = isPlainObject(body) && Object.keys(body).length === keys.length && keys.every((key) => Object.hasOwn(body, key))
     && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
-    && (!blocking || (typeof body.reason === "string" && body.reason.trim().length > 0 && body.reason.length <= AGENT_BLOCK_REASON_LIMIT));
+    && (!blocking || boundedLine(body.reason)) && (!noted || boundedLine(body.attention));
   if (!valid) {
     writeAgentReportResult(response, "invalid");
     return;
@@ -596,7 +599,7 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
     }
     const result = blocking
       ? call({ sessionId: body.sessionRef, reason: body.reason })
-      : call({ sessionId: body.sessionRef }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
+      : call({ sessionId: body.sessionRef, ...(noted ? { attention: body.attention } : {}) }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
     if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
     else if (result?.ok === true && (result.state === "done" || result.state === "needs_review")) {
       writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results) });

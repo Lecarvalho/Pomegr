@@ -21,7 +21,7 @@ export function QueueBanner({ board, view, onOpenTask, edits }: {
 }) {
   const desktop = useTaskDesktopAvailability();
   const [folder, setFolder] = useState<{ taskId: string; status: TaskWorktreeOpenStatus | "opening" } | null>(null);
-  const banner = queueBanner(board, view);
+  const banner = queueBanner(board);
   if (!banner) return null;
   const { task } = banner;
   const { repositoryId } = board;

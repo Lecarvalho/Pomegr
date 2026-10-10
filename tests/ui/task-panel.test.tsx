@@ -538,7 +538,9 @@ describe("Task modal resolutions", () => {
 
   it("leads the footer of a task in review with Mark done and Requeue, before Delete", async () => {
     const { user, dialog } = await open("Task store and privacy rules");
-    const done = dialog.getByRole("button", { name: "Mark done and resume queue" });
+    // A task in review holds no queue, so the action does not speak of resuming one.
+    const done = dialog.getByRole("button", { name: "Mark done" });
+    expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
     const requeue = dialog.getByRole("button", { name: "Requeue task" });
     const remove = dialog.getByRole("button", { name: "Delete task" });
     // Save is the one primary action of the modal; the resolutions are secondary and sit above the footer row.
@@ -625,7 +627,7 @@ describe("Task modal resolutions", () => {
   it("shows one fixed line when the monitor refuses a resolution", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const { user, dialog } = await open("Task store and privacy rules");
-    await user.click(dialog.getByRole("button", { name: "Mark done and resume queue" }));
+    await user.click(dialog.getByRole("button", { name: "Mark done" }));
     expect(await dialog.findByRole("alert")).toHaveTextContent("The task could not be marked done.");
     await user.click(dialog.getByRole("button", { name: "Requeue task" }));
     await waitFor(() => expect(dialog.getByRole("alert")).toHaveTextContent("The task could not be requeued."));
@@ -634,8 +636,20 @@ describe("Task modal resolutions", () => {
   it("hides the resolutions while the delete confirmation is open", async () => {
     const { user, dialog } = await open("Task store and privacy rules");
     await user.click(dialog.getByRole("button", { name: "Delete task" }));
-    expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
+    expect(dialog.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     expect(dialog.queryByRole("button", { name: "Requeue task" })).not.toBeInTheDocument();
+  });
+
+  it("shows the agent's attention line as the agent's own words, for a task every check of which passed", async () => {
+    setBoard([task(19, { text: "Finished with a note", state: "needs_review", doneWhen: { checks: ["pr_open"], own: null },
+      session: { id: "claude:abc129", title: null, state: "closed", observedModel: null },
+      report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "The retry limit is a guess; confirm it." } })]);
+    const { dialog } = await open("Finished with a note");
+    expect(dialog.getByText("Needs review")).toHaveClass("commandChip", "warning");
+    expect(dialog.getByText("Passed")).toHaveClass("isPassed");
+    const line = dialog.getByText(/Agent reported complete/u);
+    expect(line.textContent).toMatch(/^Agent reported complete \(.+\) and asks for your attention: The retry limit is a guess; confirm it\.$/u);
+    expect(dialog.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
   });
 
   it("shows a CI condition's result like any other check", async () => {

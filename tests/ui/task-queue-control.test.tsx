@@ -171,7 +171,7 @@ describe("the queue switch", () => {
 describe("the queue status line", () => {
   it.each<[TaskQueueStatus, string]>([
     ["idle", "The queue is off. Queued tasks start only when you start them."],
-    ["running", "The queue is on. The next queued task starts when the one before it is done."],
+    ["running", "The queue is on. The next queued task starts when the one before it is done or in review."],
   ])("reads the %s queue in every client", (status, line) => {
     setBoard({ status });
     for (const bridge of [{ taskAction }, undefined]) {
@@ -206,16 +206,15 @@ describe("the Queue banner", () => {
     expect(screen.queryByText("Queue paused")).not.toBeInTheDocument();
   });
 
-  describe.each<[string, string, string]>([
-    ["board", "T-12", "T-12 reported complete, but one check did not pass. Running sessions continue. Nothing new starts until you resolve T-12."],
-    ["queue", "T-12", 'T-12 reported complete, but the check "Pull request open" did not pass. Running sessions continue. Nothing new starts until you resolve T-12.'],
-  ])("for a task that needs review, on the %s view", (view, id, body) => {
-    it("reads the blocked copy, naming the failed check only on the Queue", async () => {
-      setBoard({ status: "blocked", blockedBy: id });
-      await renderOn(view as "board" | "queue");
-      expect(within(banner()).getByText("Queue blocked")).toBeInTheDocument();
-      expect(within(banner()).getByText(body)).toBeInTheDocument();
-    });
+  // A task in review never holds the queue, so the monitor never names one. A queue that names one anyway is worded
+  // without a cause and offers no resolution.
+  it.each(["board", "queue"] as const)("gives a task in review no blocked copy of its own on the %s view", async (view) => {
+    setBoard({ status: "blocked", blockedBy: "T-12" });
+    await renderOn(view);
+    expect(within(banner()).getByText("A task needs you. Running sessions continue. Nothing new starts until it is resolved.")).toBeInTheDocument();
+    expect(banner()).not.toHaveTextContent("did not pass");
+    expect(within(banner()).queryByRole("button", { name: "Mark done and resume" })).not.toBeInTheDocument();
+    expect(within(banner()).queryByRole("button", { name: "Requeue T-12" })).not.toBeInTheDocument();
   });
 
   it.each(["board", "queue"] as const)("reads the stalled and blocked copy on the %s view without printing the block reason", async (view) => {
@@ -228,23 +227,6 @@ describe("the Queue banner", () => {
     await renderOn(view);
     expect(within(banner()).getByText("T-14's agent reported it cannot continue. Running sessions continue. Nothing new starts until you resolve T-14.")).toBeInTheDocument();
     expect(banner()).not.toHaveTextContent("secrets");
-  });
-
-  it("counts failed checks on the Board and names each of them on the Queue", async () => {
-    const several = task(12, "Store", { state: "needs_review", report: report([["pr_open", false], ["tree_clean", false], ["ci_passed", true]]) });
-    setBoard({ status: "blocked", blockedBy: "T-12" }, { tasks: [several, task(15, "Advance", { state: "queued" })] });
-    await renderOn("board");
-    expect(banner()).toHaveTextContent("T-12 reported complete, but 2 checks did not pass.");
-    await showQueue();
-    expect(banner()).toHaveTextContent('T-12 reported complete, but the checks "Pull request open", "Working tree clean" did not pass.');
-  });
-
-  it("says a check did not pass when the report names none", async () => {
-    setBoard({ status: "blocked", blockedBy: "T-12" }, { tasks: [task(12, "Store", { state: "needs_review", report: null })] });
-    await renderOn("board");
-    expect(banner()).toHaveTextContent("T-12 reported complete, but a check did not pass. Running sessions continue.");
-    await showQueue();
-    expect(banner()).toHaveTextContent("T-12 reported complete, but a check did not pass. Running sessions continue.");
   });
 
   it("does not name a blocker the board does not hold, and offers no action for it", async () => {
@@ -269,10 +251,10 @@ describe("the Queue banner", () => {
   });
 
   it("offers Open, Mark done and resume, and Requeue on the Queue, each in its role", async () => {
-    setBoard({ status: "blocked", blockedBy: "T-12" });
+    setBoard({ status: "blocked", blockedBy: "T-14" });
     await renderOn("queue");
     const buttons = within(banner()).getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual(["Open T-12", "Mark done and resume", "Requeue T-12"]);
+    expect(buttons.map((button) => button.textContent)).toEqual(["Open T-14", "Mark done and resume", "Requeue T-14"]);
     expect(buttons[0]).toHaveClass("commandSecondaryAction");
     expect(buttons[1]).toHaveClass("commandSecondaryAction");
     expect(buttons[2]).toHaveClass("commandQuietAction");
@@ -286,10 +268,10 @@ describe("the Queue banner", () => {
   });
 
   it("marks the task done and resumes with resolve_done for that task", async () => {
-    setBoard({ status: "blocked", blockedBy: "T-12" });
+    setBoard({ status: "blocked", blockedBy: "T-13" });
     await renderOn("queue");
     await userEvent.click(within(banner()).getByRole("button", { name: "Mark done and resume" }));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-12" }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "resolve_done", { id: "T-13" }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
   });
 
@@ -302,22 +284,22 @@ describe("the Queue banner", () => {
 
   it("shows one fixed line when the monitor refuses a resolution", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
-    setBoard({ status: "blocked", blockedBy: "T-12" });
+    setBoard({ status: "blocked", blockedBy: "T-14" });
     await renderOn("queue");
     await userEvent.click(within(banner()).getByRole("button", { name: "Mark done and resume" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The task could not be marked done.");
-    await userEvent.click(within(banner()).getByRole("button", { name: "Requeue T-12" }));
+    await userEvent.click(within(banner()).getByRole("button", { name: "Requeue T-14" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("The task could not be requeued."));
   });
 
   it("is read-only without the desktop bridge: the words, no action", async () => {
     setBridge(undefined);
-    setBoard({ status: "blocked", blockedBy: "T-12" });
+    setBoard({ status: "blocked", blockedBy: "T-14" });
     await renderOn("board");
     expect(within(banner()).getByText("Queue blocked")).toBeInTheDocument();
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
     await showQueue();
-    expect(within(banner()).getByText(/^T-12 reported complete, but the check "Pull request open" did not pass\./)).toBeInTheDocument();
+    expect(within(banner()).getByText(/^T-14's agent reported it cannot continue\./)).toBeInTheDocument();
     expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
   });
 });
@@ -433,19 +415,20 @@ describe("Queued · next while the queue is held", () => {
 });
 
 describe("the When the queue blocks panel", () => {
-  it("lists the three outcomes with the exact copy, each state in its tone", async () => {
+  it("lists the two outcomes that block with the exact copy, each state in its tone, and says that Needs review does not", async () => {
     await renderOn("queue");
     const panel = screen.getByRole("region", { name: "When the queue blocks" });
     expect(within(panel).getByRole("heading", { name: "When the queue blocks" })).toBeInTheDocument();
     const items = within(panel).getAllByRole("listitem");
     expect(items.map((item) => item.textContent)).toEqual([
-      "A check does not pass after the agent reports complete: Needs review",
       "The session ends with no report: Stalled",
       "The agent reports it cannot continue: Blocked by agent",
     ]);
-    expect(within(items[0]).getByText("Needs review")).toHaveClass("isReview");
-    expect(within(items[1]).getByText("Stalled")).toHaveClass("isError");
-    expect(within(items[2]).getByText("Blocked by agent")).toHaveClass("isError");
+    expect(within(items[0]).getByText("Stalled")).toHaveClass("isError");
+    expect(within(items[1]).getByText("Blocked by agent")).toHaveClass("isError");
+    const note = within(panel).getByText(/does not block the queue/u);
+    expect(note).toHaveTextContent("Needs review does not block the queue: the task waits in the Review column.");
+    expect(within(note).getByText("Needs review")).toHaveClass("taskBlockState", "isReview");
   });
 
   it("follows the feature panels and the single tasks", async () => {

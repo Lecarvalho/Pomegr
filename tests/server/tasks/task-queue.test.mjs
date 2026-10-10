@@ -74,11 +74,19 @@ test("steps lists every step of every feature, ascending, with its tasks of any 
     queued(6),
   ];
   assert.deepEqual(orderQueue(tasks, FEATURES).steps, [
-    { featureId: A, step: 1, taskIds: ["T-2", "T-3"], done: true },
-    { featureId: A, step: 2, taskIds: ["T-5"], done: false },
-    { featureId: A, step: 3, taskIds: ["T-4", "T-10"], done: false },
-    { featureId: B, step: 1, taskIds: ["T-7"], done: true },
+    { featureId: A, step: 1, taskIds: ["T-2", "T-3"], done: true, settled: true },
+    { featureId: A, step: 2, taskIds: ["T-5"], done: false, settled: false },
+    { featureId: A, step: 3, taskIds: ["T-4", "T-10"], done: false, settled: false },
+    { featureId: B, step: 1, taskIds: ["T-7"], done: true, settled: true },
   ]);
+});
+
+test("a step whose tasks are all done or in review is settled, though not done", () => {
+  const steps = (states) => orderQueue(states.map((state, index) => task(index + 1, { state, featureId: A, step: 1 })), FEATURES).steps
+    .map((entry) => [entry.done, entry.settled]);
+  assert.deepEqual(steps(["done", "needs_review"]), [[false, true]]);
+  assert.deepEqual(steps(["needs_review"]), [[false, true]]);
+  for (const state of ["not_queued", "queued", "scheduled", "stalled", "blocked"]) assert.deepEqual(steps(["needs_review", state]), [[false, false]], state);
 });
 
 test("a step is done only when it has tasks and every one of them is done", () => {
@@ -103,7 +111,7 @@ test("a task naming an unknown feature, or a step that is not an integer of at l
   ];
   const result = orderQueue(tasks, FEATURES);
   assert.deepEqual(result.order, ["T-7", "T-2", "T-1", "T-3", "T-4", "T-5", "T-6"]);
-  assert.deepEqual(result.steps, [{ featureId: A, step: 1, taskIds: ["T-7"], done: false }]);
+  assert.deepEqual(result.steps, [{ featureId: A, step: 1, taskIds: ["T-7"], done: false, settled: false }]);
 });
 
 test("odd input never throws and is skipped", () => {
@@ -136,7 +144,7 @@ test("the rule changes nothing it is given and holds only IDs and fixed fields",
   const result = orderQueue(tasks, features);
   assert.equal(JSON.stringify([tasks, features]), snapshot);
   assert.deepEqual(Object.keys(result).sort(), ["order", "steps"]);
-  assert.deepEqual(Object.keys(result.steps[0]).sort(), ["done", "featureId", "step", "taskIds"]);
+  assert.deepEqual(Object.keys(result.steps[0]).sort(), ["done", "featureId", "settled", "step", "taskIds"]);
   assert.equal(JSON.stringify(result).includes("never copied"), false);
 });
 
@@ -145,8 +153,8 @@ test("a task in flight is not in the order but stays in its step, so the step is
   const { order, steps } = orderQueue(tasks, FEATURES);
   assert.deepEqual(order, ["T-2", "T-3", "T-5"]);
   assert.deepEqual(steps, [
-    { featureId: A, step: 1, taskIds: ["T-1", "T-2"], done: false },
-    { featureId: A, step: 2, taskIds: ["T-3"], done: false },
+    { featureId: A, step: 1, taskIds: ["T-1", "T-2"], done: false, settled: false },
+    { featureId: A, step: 2, taskIds: ["T-3"], done: false, settled: false },
   ]);
   assert.deepEqual(orderQueue([task(1, { state: "scheduled", due: true, inFlight: true })], []).order, []);
 });

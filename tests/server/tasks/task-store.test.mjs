@@ -144,13 +144,13 @@ test("stored tasks, features, and queue state survive close and reopen", async (
     });
     insertTask(database, REPOSITORY, done.id, { number: 2, text: "Archive the old exports", feature_id: FEATURE, step: 2, state: "done" });
     insertTask(database, REPOSITORY, backlog.id, { number: 3, text: "Unrelated chore", position: 1 });
-    database.prepare("UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = 'T-1' WHERE repository_id = ?").run(REPOSITORY);
+    database.prepare("UPDATE repositories SET queue_status = 'paused', queue_blocked_by = 'T-1' WHERE repository_id = ?").run(REPOSITORY);
   });
 
   const second = openStore(temp);
   const board = second.readBoard(REPOSITORY);
   assert.equal(board.readiness, "ready");
-  assert.deepEqual(board.queue, { status: "blocked", blockedBy: "T-1", pauseReason: null, order: [] });
+  assert.deepEqual(board.queue, { status: "paused", blockedBy: "T-1", pauseReason: null, order: [] });
   assert.deepEqual(board.features, [{ id: FEATURE, name: "Billing rewrite", done: false }]);
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
@@ -165,6 +165,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
       at: "2023-11-14T22:13:23.000Z",
       results: [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }],
       blockReason: null,
+      attention: null,
     },
     createdAt: "2023-11-14T22:13:20.000Z", updatedAt: "2023-11-14T22:13:21.000Z",
   });
@@ -202,7 +203,7 @@ test("the served board holds only the contract keys and never private store fiel
   assert.deepEqual(keysOf(task.run), ["effort", "model", "provider"]);
   assert.deepEqual(keysOf(task.doneWhen), ["checks", "own"]);
   assert.deepEqual(keysOf(task.session), ["id", "observedModel", "state", "title"]);
-  assert.deepEqual(keysOf(task.report), ["at", "blockReason", "results"]);
+  assert.deepEqual(keysOf(task.report), ["at", "attention", "blockReason", "results"]);
   assert.equal(JSON.stringify(wire).includes("secret-dispatch-token"), false);
   assert.equal(JSON.stringify(wire).includes("queue_position"), false);
 

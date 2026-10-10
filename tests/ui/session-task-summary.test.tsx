@@ -64,6 +64,8 @@ describe("session task model", () => {
     expect(summaryDoneWhen(task(1, { state: "done", doneWhen: { checks: ["pr_open"], own: null } }))).toBe("1 check + agent report · Done");
     const review = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open", "tree_clean"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null } });
     expect(summaryDoneWhen(review)).toBe("2 checks + agent report · Needs review, 1 check did not pass");
+    const noted = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "Confirm the retry limit." } });
+    expect(summaryDoneWhen(noted)).toBe("1 check + agent report · Needs review, the agent asks for your attention");
     expect(summaryDoneWhen(task(1, { state: "blocked" }))).toBe("agent report · Blocked by agent");
   });
 

@@ -14,6 +14,8 @@
 // start happens then, and only if the stop time has not come.
 
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+/** A task in one of these states is finished work: a later step of its feature may start. */
+const SETTLED_STATES = new Set(["done", "needs_review"]);
 
 const isRecord = (value) => value !== null && typeof value === "object";
 
@@ -51,7 +53,9 @@ export function queueWindowHold(schedule, at) {
  *   order, each feature's steps ascending, the tasks of one step by task number; then the queued
  *   tasks without a feature by `queuePosition` ascending (null last), ties by task number.
  * - `steps`: every step of every feature, features in the given order and steps ascending, with the
- *   IDs of its tasks of any state by task number and `done` true when every one of them is done.
+ *   IDs of its tasks of any state by task number, `done` true when every one of them is done, and `settled` true
+ *   when every one of them is done or needs review. The queue goes on past a settled step: a task in the Review
+ *   column is finished work that waits for the owner, and it holds nothing.
  *
  * A task whose `featureId` names no listed feature, or whose step is not an integer of at least 1,
  * is a task without a feature. A record without a valid task ID is ignored, and so is a repeated ID.
@@ -79,6 +83,7 @@ export function orderQueue(tasks, features) {
       step: placed ? task.step : null,
       queued: task.inFlight !== true && (task.state === "queued" || (task.state === "scheduled" && task.due === true)),
       done: task.state === "done",
+      settled: SETTLED_STATES.has(task.state),
       queuePosition: Number.isSafeInteger(task.queuePosition) ? task.queuePosition : null,
     });
   }
@@ -103,7 +108,7 @@ export function orderQueue(tasks, features) {
     const stepsOfFeature = byFeature.get(featureId);
     for (const step of [...stepsOfFeature.keys()].sort((a, b) => a - b)) {
       const inStep = stepsOfFeature.get(step);
-      steps.push({ featureId, step, taskIds: inStep.map((entry) => entry.id), done: inStep.every((entry) => entry.done) });
+      steps.push({ featureId, step, taskIds: inStep.map((entry) => entry.id), done: inStep.every((entry) => entry.done), settled: inStep.every((entry) => entry.settled) });
       for (const entry of inStep) if (entry.queued) order.push(entry.id);
     }
   }
@@ -114,12 +119,12 @@ export function orderQueue(tasks, features) {
   return { order, steps };
 }
 
-/** Outcomes that need the user and hold a running queue. */
-const UNRESOLVED_STATES = new Set(["needs_review", "stalled", "blocked"]);
+/** Outcomes that hold a running queue until the user resolves them. Needs review is not one: the queue goes on past it. */
+const UNRESOLVED_STATES = new Set(["stalled", "blocked"]);
 
 /**
- * The status a queue takes when the user turns it on. `tasks` are `{ id, state }`. A queue that finds a task needing
- * the user (Needs review, Stalled, or Blocked by agent) starts blocked and names the lowest-numbered one; otherwise
+ * The status a queue takes when the user turns it on. `tasks` are `{ id, state }`. A queue that finds a task that
+ * holds it (Stalled or Blocked by agent) starts blocked and names the lowest-numbered one; otherwise
  * it runs. A record without a valid task ID is ignored. Returns `{ status, blockedBy }`.
  */
 export function queueWhenTurnedOn(tasks) {
@@ -136,16 +141,16 @@ export function queueWhenTurnedOn(tasks) {
 }
 
 /**
- * The task a feature task waits on: the lowest-numbered task that is not done in the earliest step before its own
- * that is not done, or null when every earlier step is done. `tasks` are `{ id, featureId, step, state }` and
+ * The task a feature task waits on: the lowest-numbered task that is neither done nor in review in the earliest step
+ * before its own that is not settled, or null when every earlier step is settled. `tasks` are `{ id, featureId, step, state }` and
  * `features` are `{ id }`. A task without a feature, or one the rule cannot place, waits on nothing.
  */
 export function previousStepBlocker(taskId, tasks, features) {
   const records = (Array.isArray(tasks) ? tasks : []).filter(isRecord);
   const task = records.find((record) => record.id === taskId);
   if (!task || !isStep(task.step)) return null;
-  const earlier = orderQueue(records, features).steps.find((entry) => entry.featureId === task.featureId && entry.step < task.step && !entry.done);
-  return earlier?.taskIds.find((id) => records.find((record) => record.id === id)?.state !== "done") ?? null;
+  const earlier = orderQueue(records, features).steps.find((entry) => entry.featureId === task.featureId && entry.step < task.step && !entry.settled);
+  return earlier?.taskIds.find((id) => !SETTLED_STATES.has(records.find((record) => record.id === id)?.state)) ?? null;
 }
 
 /**
@@ -159,7 +164,7 @@ export function previousStepBlocker(taskId, tasks, features) {
  * next is always among the starts, and the starts are every queued task of that step: the tasks of one step run in
  * parallel. A task without a feature is a step of its own. While tasks are in flight, only the queued rest of their own
  * step may join them; tasks in flight outside one feature step hold the queue. A step whose earlier feature steps are
- * not all done waits: the queue never skips ahead to a later task. A scheduled task that is not due is not in the order,
+ * not all settled (every task done or in review) waits: the queue never skips ahead to a later task. A scheduled task that is not due is not in the order,
  * so the tasks behind it start, and the step it is in stays not done until it ran. The queue's own start and stop
  * times are the caller's to judge (`queueWindowHold`).
  */
@@ -181,6 +186,6 @@ export function nextQueueStart(input) {
   if (candidates.length === 0) return null;
   const unlinked = candidates.find((id) => byId.get(id).unlinked === true);
   if (unlinked !== undefined) return { pause: unlinked };
-  if (current !== null && steps.some((entry) => entry.featureId === current.featureId && entry.step < current.step && !entry.done)) return null;
+  if (current !== null && steps.some((entry) => entry.featureId === current.featureId && entry.step < current.step && !entry.settled)) return null;
   return { starts: candidates };
 }

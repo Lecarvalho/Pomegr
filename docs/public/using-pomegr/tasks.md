@@ -114,10 +114,12 @@ Pomegr moves a card to another column when its task changes state:
 | When | The card moves to |
 | --- | --- |
 | The task's session starts and links to it | **In progress** |
-| The task becomes **Needs review** | **Review** |
+| The task becomes **Needs review**: a checked condition did not pass, or the agent asks for your attention | **Review** |
 | The task becomes **Done**, also through **Mark done** | **Done** |
 
-- **Blocked by agent** and **Stalled** do not move a card.
+- **Blocked by agent** and **Stalled** do not move a card. It stays where it is,
+  normally **In progress**, and holds the queue. A card in **Review** does not hold
+  the queue.
 - **You can still move a card by hand.** It stays where you put it until its
   task's next state change in the table, which moves it again.
 - The card lands last in its new column.
@@ -153,10 +155,10 @@ keeps its cards.
 | **Not queued** | On the board, not in the queue. | Creating the task, or **Remove from queue**. |
 | **Queued** | Waiting for its turn and the start gates. The next one reads **Queued · next**. | **Add to queue**, or **Requeue task**. |
 | **Scheduled** | Queued with its own start time. | Setting **Start at** on the task. |
-| **Needs review** | The agent reported complete, but a checked condition did not pass. | Pomegr, when it verifies the report. |
+| **Needs review** | The agent reported complete, but a checked condition did not pass, or the agent asked for your attention. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. |
 | **Blocked by agent** | The agent reported it cannot continue and gave a reason. | The agent. |
-| **Done** | The agent reported complete and every checked condition passed, or none was checked. | Pomegr, when it verifies the report. |
+| **Done** | The agent reported complete with nothing for you to look at, and every checked condition passed or none was checked. | Pomegr, when it verifies the report. |
 
 A task has no **Running** state. Once a session is linked to a task that has no
 outcome yet, its card shows that session's observed state, such as **In progress**
@@ -246,7 +248,7 @@ are all done accepts none. Tasks with no feature appear under **Single tasks**.
 
 ### When the queue stops
 
-A task that needs review, stalled, or was blocked by its agent stops the whole
+A task that stalled or was blocked by its agent stops the whole
 queue. A banner reads **Queue blocked** and names the task. Nothing new starts
 until you resolve that task; sessions already running continue. Open the task and
 choose one of two actions.
@@ -261,7 +263,13 @@ choose one of two actions.
 > as it reads them when the report arrives. A condition that comes true later, such
 > as CI that finishes after the agent reported, leaves the task in **Needs review**
 > though the condition now holds. Choose **Mark
-> done and resume queue**; Pomegr does not repeat the check.
+> done**; Pomegr does not repeat the check.
+
+A task that needs review does not stop the queue. Its work is finished: the card
+waits in **Review**, the next queued task starts, and a later step of the same
+feature starts too. Open the task when you have time and choose **Mark done** or
+**Requeue task**. If the agent asked for your attention, the task window shows its
+line under **Done when**, in the agent's own words.
 
 A task whose session never reports holds the queue too. Pomegr never marks it done
 or stalled by itself while it cannot tell that the session ended, for example
@@ -335,7 +343,7 @@ the coding tool, not by anything the model supplies.
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Done when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
-| `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. |
+| `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The agent may add one line of up to 200 characters that names what needs your attention; the task then goes to **Review** instead of **Done**. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 
 `complete_task` and `block_task` act only on the task linked to the calling
@@ -347,7 +355,8 @@ agent can try again. Choose to always allow the three tools so a session you are
 watching does not wait for you. In Claude Code's auto mode no prompt appears: Claude
 Code decides by itself and can, rarely, refuse one of these calls. If that happens,
 add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
-nothing. If every checked condition passes, the task is **Done**; if one fails, it
+nothing. If every checked condition passes and the agent asked for nothing, the task
+is **Done**; if a condition fails or the agent asks for your attention, it
 is **Needs review**. When no condition is checked, the agent's report alone
 completes the task, which is the agent's word, not a check. A session that ends
 without a report leaves the task **Stalled**, but only once Pomegr has established
@@ -357,7 +366,8 @@ it may still be able to report, so **Stopped** alone does not stall a Codex task
 stalls only once Pomegr sees that Codex no longer holds the session (Windows). An
 **Idle** or **Open** session never stalls a task. A stalled task leaves that state
 only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
-each condition's pass or fail and the block reason, never command output or diffs.
+each condition's pass or fail, the block reason, and the attention line, never command
+output or diffs.
 
 ## See a task from Sessions
 

@@ -12,7 +12,7 @@ const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_se
 const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|complete_task|block_task)$/u;
 const WRITE_FIELDS = {
   add_task: ["text", "provider", "model", "effort", "done_when", "own_condition", "feature"],
-  complete_task: [],
+  complete_task: ["attention"],
   block_task: ["reason"],
 };
 const WRITE_DENIED = {

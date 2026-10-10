@@ -184,11 +184,11 @@ describe("Task modal dialog, mode edit", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     dialog = await openReviewPanel(user);
     await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
-    expect(dialog.getByRole("button", { name: "Mark done and resume queue" })).toBeDisabled();
+    expect(dialog.getByRole("button", { name: "Mark done" })).toBeDisabled();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toBeDisabled();
     expect(dialog.getByText("Save your changes first.")).toBeInTheDocument();
     await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
-    expect(dialog.getByRole("button", { name: "Mark done and resume queue" })).toBeEnabled();
+    expect(dialog.getByRole("button", { name: "Mark done" })).toBeEnabled();
     expect(taskAction).not.toHaveBeenCalled();
   });
 

@@ -25,6 +25,7 @@ import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseRe
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
+import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, normalizeCreatePayload, normalizeDeletePayload,
@@ -314,6 +315,7 @@ function deleteTask({ database, repositoryId }, payload) {
   const reserved = nextTaskNumber(database, repositoryId);
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
   deleteTaskSource(database, repositoryId, input.number);
+  deleteTaskAttention(database, repositoryId, input.number);
   // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -499,6 +501,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const roles = readColumnRoles(database, repositoryId);
     // A promoted task's issue number is kept in `meta` like the roles (task-source.mjs).
     const sources = readTaskSources(database, repositoryId);
+    // What an agent asked the owner to look at is kept there too (task-attention.mjs).
+    const attentions = readTaskAttentions(database, repositoryId);
     return {
       // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
@@ -506,7 +510,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null })),
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null })),
     };
   }
 
@@ -522,6 +526,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
         // A store an older build wrote may hold queued cards outside Ready, or in another order there.
         try { settleReady(repositoryId); } catch { /* settled by the next action instead */ }
+        // A store an older build wrote may hold a queue blocked at a task that needs review, which no longer holds it.
+        try { runTransaction(database, () => releaseQueue(database, repositoryId)); } catch { /* released by the next resolution instead */ }
       }
     } catch { /* the store is read again on the first board read */ }
   }

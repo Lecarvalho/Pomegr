@@ -112,7 +112,8 @@ describe("Start session", () => {
     await user.click(screen.getByRole("button", { name: "Write the thing" }));
     const dialog = within(screen.getByRole("dialog", { name: "Task" }));
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
-    expect(dialog.getByRole("button", { name: "Mark done and resume queue" })).toBeInTheDocument();
+    // A task in review holds no queue, so its first resolution does not speak of one.
+    expect(dialog.getByRole("button", { name: state === "needs_review" ? "Mark done" : "Mark done and resume queue" })).toBeInTheDocument();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toBeInTheDocument();
     // Save is the one primary action of the modal, and it waits for a change.
     expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Save"]);
