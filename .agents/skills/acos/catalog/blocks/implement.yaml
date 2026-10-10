@@ -26,6 +26,14 @@ prompt: |
     the file or nobody does, since two agents may reach for the same
     unowned file at once: give the exact change in your final message.
     Working alone, the whole tree is yours.
+  - Your prompt says whether the user is away (`afk`). If so, never
+    stop on a doubt. Judge each one: mostly take your best assumption,
+    keep what depends on it in one place, and go on; leave undone what
+    would cost too much if you guessed wrong (hard to undo, much built
+    on it, reaching beyond this tree). Finish with `Assumed:` lines
+    (what, the file and line where changing it lands, and whether the
+    user should confirm it) and `Left for the user:` lines; none when
+    there are none.
   - Run the verify command before you finish. If it fails, fix and rerun.
   - Do not commit.
   - Finish with: files changed, what changed in each, verify output

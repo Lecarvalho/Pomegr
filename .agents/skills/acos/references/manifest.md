@@ -42,6 +42,8 @@
   on a stage or an escalation entry;
 - a lane over its limit (re-cut per `sizing.md`);
 - parallel stages without `owns`, or a path in two of them;
+- a part in a plan without `part.attendance`; in an `afk` part,
+  `on_fail: ask`, a stage `gate` or `gates.per_stage`;
 - a part in a plan without `part.mode`; in `parallel`, a part without
   `part.worktree`, a path owned by two parts of one wave, or a full
   verify on a part that shares its worktree with a running one;
@@ -64,6 +66,13 @@ strategy first. Read `config.yaml`, `calibration.md`, the manifest,
 - `part.assumes`: check the tree matches, say so in one line; a mismatch
   is a question, not a blocker.
 - A part in `part.after` not `done`: say so.
+- `part.attendance: afk`: nobody is asked from here on, the `assumes`
+  mismatch included; assume or defer by judgement, record it in
+  `plan.yaml` `pending`, go on. When `plan.yaml` says `present` and the
+  manifest `afk`, an earlier part changed it: `present` wins.
+  `present`: settle the `pending` entries addressed to this part before
+  the strategy (`execute.md`, Attendance). No `attendance` on an older
+  manifest: `present`.
 - Settle the strategy (`execute.md`, Strategy). The manifest on disk is
   the planner's suggestion; this is where it becomes yours, with the
   discoveries and measured actuals of the parts before it.
@@ -79,7 +88,7 @@ strategy first. Read `config.yaml`, `calibration.md`, the manifest,
 Write `manifest.yaml`, then print:
 
 ```
-run: <slug>                              (part <i> of <n> — <slug>, <mode> in a plan; no plan id)
+run: <slug>                              (part <i> of <n> — <slug>, <mode>, <afk | present> in a plan; no plan id)
 intent: <one line>
 orchestrator: ~<reserved> / <limit>   (<startup> startup + <work> work + <coordination> coordination)
 workers: <stage> ~<reserved> / <limit>; ...
