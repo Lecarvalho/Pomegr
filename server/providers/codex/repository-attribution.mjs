@@ -67,7 +67,8 @@ export function createCodexRepositoryAttributionTracker() {
     });
     set(localSessionId, identity.state === "single"
       ? {
-        state: "single", repositoryId: identity.repositoryId, root: identity.root,
+        // `root` is the session's own checkout (a linked worktree's top level); `project` names its main repository.
+        state: "single", repositoryId: identity.repositoryId, root: identity.root, project: identity.project,
         fingerprint: createHash("sha256").update(identity.root).digest("hex").slice(0, 32),
         recordedBranch: identity.recordedBranch || null,
       }
@@ -90,7 +91,7 @@ export function createCodexRepositoryAttributionTracker() {
    */
   async function headerIdentity(localSessionId, { launchCwd, resolveRepository } = {}) {
     const known = attributions.get(localSessionId);
-    if (known?.state === "single") return { state: "single", repositoryId: known.repositoryId, project: path.basename(known.root) || "Repository" };
+    if (known?.state === "single") return { state: "single", repositoryId: known.repositoryId, project: known.project || path.basename(known.root) || "Repository" };
     if (known?.state === "multiple") return { state: "multiple", repositoryId: null, project: "Multiple repositories" };
     if (typeof resolveRepository !== "function") headerResolverSource = headerResolver = null;
     else if (resolveRepository !== headerResolverSource) {

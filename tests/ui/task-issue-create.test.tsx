@@ -1,10 +1,17 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useCallback, useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
 import { createEmptyTaskBoard, type Task, type TaskBoard } from "../../shared/task-contract";
 
+const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
+vi.mock("../../app/tasks-store", () => ({ useTasks }));
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
+const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
+vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { TaskModal } from "../../app/components/tasks/TaskModal";
 import { createDesktopTask } from "../../app/components/tasks/task-desktop";
 import { createTaskIssue, issueCreateFailure, issueCreateFailureMessage, rememberIssueCreateFailure } from "../../app/components/tasks/task-issues-desktop";
@@ -23,6 +30,7 @@ const refresh = vi.fn(async () => {});
 const onCreated = vi.fn();
 const onChanged = vi.fn();
 const onClose = vi.fn();
+const onIssueFailed = vi.fn();
 
 const board: TaskBoard = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
 
@@ -51,7 +59,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const newModal = () => <TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onClose={onClose} />;
+const newModal = () => <TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onIssueFailed={onIssueFailed} onClose={onClose} />;
 const editModal = (overrides: Partial<Task> = {}) => <TaskModal mode="edit" repositoryId={repositoryId} repositoryName="Example project" task={task(overrides)} board={board}
   refresh={refresh} onChanged={onChanged} onDeleted={vi.fn()} onClose={onClose} />;
 const checkbox = () => screen.queryByRole("checkbox", { name: "Also create a GitHub issue" }) as HTMLInputElement | null;
@@ -150,7 +158,7 @@ describe("New task, the checkbox", () => {
     expect(createCalls()).toHaveLength(0);
   });
 
-  it("shows Creating… while busy, and a failed issue closes the modal with the task created and the reason remembered", async () => {
+  it("shows Creating… while busy, and a failed issue hands the new task to onIssueFailed instead of closing, with the reason remembered", async () => {
     taskAction.mockResolvedValue({ ok: true, taskId: "T-61" });
     let finish: (value: GitHubAnswer) => void = () => {};
     taskIssues.mockImplementation((_repository, operation) => operation === "create" ? new Promise<GitHubAnswer>((resolve) => { finish = resolve; }) : Promise.resolve(CREATE_ISSUES));
@@ -162,9 +170,23 @@ describe("New task, the checkbox", () => {
     expect(createTaskButton()).toBeDisabled();
     expect(onClose).not.toHaveBeenCalled();
     finish({ ok: false, error: "not_signed_in" });
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-61"));
+    expect(onIssueFailed).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
     expect(onCreated).toHaveBeenCalledTimes(1);
+    expect(onCreated.mock.invocationCallOrder[0]).toBeLessThan(onIssueFailed.mock.invocationCallOrder[0]);
     expect(issueCreateFailure(repositoryId, "T-61")).toBe("not_signed_in");
+  });
+
+  it("closes as before when a failed issue has no onIssueFailed to hand the task to", async () => {
+    taskAction.mockResolvedValue({ ok: true, taskId: "T-63" });
+    taskIssues.mockImplementation(async (_repository, operation) => operation === "create" ? { ok: false, error: "failed" } : CREATE_ISSUES);
+    const user = userEvent.setup();
+    render(<TaskModal mode="new" repositoryId={repositoryId} repositoryName="Example project" board={board} refresh={refresh} onCreated={onCreated} onClose={onClose} />);
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    await fillAndCreate(user);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onIssueFailed).not.toHaveBeenCalled();
   });
 
   it("opens the task's edit modal with the reason and offers the action again after a failed create", async () => {
@@ -174,11 +196,51 @@ describe("New task, the checkbox", () => {
     const first = render(newModal());
     await waitFor(() => expect(checkbox()).toBeChecked());
     await fillAndCreate(user);
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    await waitFor(() => expect(onIssueFailed).toHaveBeenCalledWith("T-62"));
     first.unmount();
     render(editModal({ id: "T-62" }));
     expect(screen.getByText("GitHub did not accept the issue. Try again.")).toHaveAttribute("role", "status");
     expect(issueButton()).toBeEnabled();
+  });
+});
+
+// The Tasks page: a failed issue create does not close New task silently. The task stays as created and its own modal opens
+// once the board holds it, with the fixed reason. The board is the committed one: the fake store gains the task on refresh.
+const stored: Task[] = [];
+function useStoredBoard() {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const read = useCallback(async () => { setTasks([...stored]); }, []);
+  return useMemo(() => ({ board: { ...board, tasks }, refresh: read }), [tasks, read]);
+}
+
+describe("New task on the Tasks page, a failed issue", () => {
+  beforeEach(() => {
+    stored.length = 0;
+    useTasks.mockImplementation(useStoredBoard);
+    taskAction.mockImplementation(async (_repository, action) => {
+      if (action !== "create") return { ok: true };
+      stored.push(task({ id: "T-50", text: "Fix the thing" }));
+      return { ok: true, taskId: "T-50" };
+    });
+    taskIssues.mockImplementation(async (_repository, operation) => operation === "create" ? { ok: false, error: "not_signed_in" } : CREATE_ISSUES);
+  });
+
+  it("opens the new task's modal with the fixed reason, creating the task once and the issue once", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const trigger = screen.getByRole("button", { name: "New task" });
+    await user.click(trigger);
+    await waitFor(() => expect(checkbox()).toBeChecked());
+    await fillAndCreate(user, "Fix the thing");
+    const dialog = await screen.findByRole("dialog", { name: "Task" });
+    expect(screen.queryByRole("dialog", { name: "New task" })).toBeNull();
+    expect(within(dialog).getByRole("textbox", { name: "Task" })).toHaveValue("Fix the thing");
+    expect(within(dialog).getByText(issueCreateFailureMessage("not_signed_in"))).toHaveAttribute("role", "status");
+    expect(taskAction.mock.calls.filter((call) => call[1] === "create")).toHaveLength(1);
+    expect(createCalls()).toEqual([[repositoryId, "create", { taskId: "T-50" }]]);
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(trigger).toHaveFocus();
   });
 });
 

@@ -332,9 +332,13 @@ export function createFileChangeIndexContributor({ resolveRepository, checkpoint
       if (typeof cwd !== "string" || !cwd) continue;
       let resolved;
       try { resolved = await resolveRepository(cwd); } catch { resolved = null; }
+      // Rename continuity is repository-scoped and keeps one head per repository ID, so it reads the
+      // main root: a linked worktree shares the ID but sits on another branch, and reading whichever
+      // checkout came first would diff one branch's head against the other's.
+      const root = typeof resolved?.mainRoot === "string" && resolved.mainRoot ? resolved.mainRoot : resolved?.root;
       if (resolved && typeof resolved.repositoryId === "string" && resolved.repositoryId
-        && typeof resolved.root === "string" && resolved.root && !found.has(resolved.repositoryId)) {
-        found.set(resolved.repositoryId, resolved.root);
+        && typeof root === "string" && root && !found.has(resolved.repositoryId)) {
+        found.set(resolved.repositoryId, root);
       }
     }
     return found;

@@ -1,7 +1,9 @@
 // The GitHub issue reader. It runs only on an explicit desktop action (never from a GET and never from the queue),
 // through the installed GitHub CLI with argument arrays, as the signed-in user. Pomegr reads, stores, and forwards
 // no token. Issue titles and bodies are text written by other people: this module bounds and normalizes them and
-// returns fixed enums for every failure. No path, command, stderr, token, login, or URL leaves it.
+// returns fixed enums for every failure. No path, command, stderr, token, login, or URL leaves it. Every call that
+// reads or writes issues names the repository the CLI resolved in that same call (`resolveRepository`); the owner and
+// name are validated, used only to build the request path, and never returned, logged, or put in an error.
 
 import crypto from "node:crypto";
 import { execFile as nodeExecFile } from "node:child_process";
@@ -19,6 +21,10 @@ const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
 // Creating an issue is one write, so it gets a longer deadline than a read.
 const CREATE_TIMEOUT_MS = 20_000;
+// The one command that names and describes the repository. Every other call is addressed to the `owner/name` it answers.
+const REPOSITORY_FIELDS = "nameWithOwner,visibility,hasIssuesEnabled,viewerPermission";
+// One part of a GitHub `owner/name`: the characters GitHub allows in a login or a repository name, bounded.
+const REPOSITORY_PART = /^[A-Za-z0-9._-]{1,100}$/u;
 // Free text may span lines and tabs; every other control character is dropped from a promoted task's text.
 const TEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/gu;
 const TITLE_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\s]+/gu;
@@ -139,13 +145,29 @@ function parseJson(text) {
   try { return JSON.parse(text); } catch { return undefined; }
 }
 
-// Classifies a failed `gh api` read from the CLI's own message. The message stays in this function.
+/**
+ * The `owner/name` of a `nameWithOwner` answer, or null. Exactly two parts, each in the GitHub alphabet and at most 100
+ * characters, neither `.` nor containing `..`, so the value can only ever be one path segment pair. It is used to build
+ * the `repos/<owner>/<name>/...` path and never leaves this module.
+ */
+function repositoryPathOf(value) {
+  if (typeof value !== "string") return null;
+  const parts = value.split("/");
+  if (parts.length !== 2) return null;
+  for (const part of parts) {
+    if (!REPOSITORY_PART.test(part) || part === "." || part.includes("..")) return null;
+  }
+  return `${parts[0]}/${parts[1]}`;
+}
+
+// Classifies a failed `gh` read from the CLI's own message. The message stays in this function. A GraphQL "could not
+// resolve to a Repository" (what `gh repo view` says for a repository the user cannot see) is the same answer as a 404.
 function failureStatus(failure, { single }) {
   if (failure.error?.code === "ENOENT") return "cli_missing";
   const text = `${failure.stderr}\n${failure.error?.message ?? ""}`;
   if (/HTTP 401|gh auth login/iu.test(text)) return "not_signed_in";
   if (/HTTP 410/u.test(text)) return "issues_disabled";
-  if (/HTTP 404/u.test(text)) return single ? "not_found" : "no_access";
+  if (/HTTP 404|Could not resolve to a Repository/u.test(text)) return single ? "not_found" : "no_access";
   if (/HTTP 403/u.test(text)) return "no_access";
   return "unavailable";
 }
@@ -191,23 +213,41 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
     return result.error?.code === "ENOENT" ? "cli_missing" : "not_signed_in";
   }
 
+  // Names the repository once per exported call, with the same command that describes it (`gh repo view`), so every
+  // later `gh api` call is addressed to exactly the repository whose visibility and capabilities were read. The CLI is
+  // never left to fill `{owner}/{repo}` itself: it may resolve that placeholder by a different rule than `repo view` (in
+  // a fork clone with an `upstream` remote the two can differ), and a write must not go to another repository's tracker.
+  // `{ ok: true, path, view }` carries the validated `owner/name` and the parsed answer; both stay inside this module.
+  // `{ ok: false, status }` is one fixed status, classified like the `gh api` read that would have followed. A failed
+  // resolve is never a "not found" of an issue, so `single` is always false.
+  async function resolveRepository(root) {
+    const result = await runGh(root, ["repo", "view", "--json", REPOSITORY_FIELDS]);
+    if (!result.ok) return { ok: false, status: failureStatus(result, { single: false }) };
+    const view = parseJson(result.stdout);
+    if (view === null || typeof view !== "object" || Array.isArray(view)) return { ok: false, status: "unavailable" };
+    const path = repositoryPathOf(view.nameWithOwner);
+    return path === null ? { ok: false, status: "unavailable" } : { ok: true, path, view };
+  }
+
   async function repositoryAccess(root) {
     const closed = { visibility: "unknown", capabilities: ["no_access"] };
     if (!validRoot(root)) return closed;
-    const result = await runGh(root, ["repo", "view", "--json", "visibility,hasIssuesEnabled,viewerPermission"]);
-    const value = result.ok ? parseJson(result.stdout) : undefined;
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return closed;
-    const visibility = visibilityOf(value.visibility);
-    if (value.hasIssuesEnabled === false) return { visibility, capabilities: ["issues_disabled"] };
+    const repository = await resolveRepository(root);
+    if (!repository.ok) return closed;
+    const { view } = repository;
+    const visibility = visibilityOf(view.visibility);
+    if (view.hasIssuesEnabled === false) return { visibility, capabilities: ["issues_disabled"] };
     const capabilities = ["read_issues"];
-    if (visibility === "public" || CREATING_PERMISSIONS.has(String(value.viewerPermission ?? "").toUpperCase())) capabilities.push("create_issues");
+    if (visibility === "public" || CREATING_PERMISSIONS.has(String(view.viewerPermission ?? "").toUpperCase())) capabilities.push("create_issues");
     return { visibility, capabilities };
   }
 
   async function listOpenIssues(root) {
     const empty = (status) => ({ status, issues: [], truncated: false });
     if (!validRoot(root)) return empty("unavailable");
-    const result = await runGh(root, ["api", `repos/{owner}/{repo}/issues?state=open&per_page=${ISSUE_LIST_LIMIT}`]);
+    const repository = await resolveRepository(root);
+    if (!repository.ok) return empty(repository.status);
+    const result = await runGh(root, ["api", `repos/${repository.path}/issues?state=open&per_page=${ISSUE_LIST_LIMIT}`]);
     if (!result.ok) return empty(failureStatus(result, { single: false }));
     const raw = parseJson(result.stdout);
     if (!Array.isArray(raw)) return empty("unavailable");
@@ -219,7 +259,9 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
     const none = (status) => ({ status, issue: null });
     if (!isIssueNumber(number)) return none("not_found");
     if (!validRoot(root)) return none("unavailable");
-    const result = await runGh(root, ["api", `repos/{owner}/{repo}/issues/${number}`]);
+    const repository = await resolveRepository(root);
+    if (!repository.ok) return none(repository.status);
+    const result = await runGh(root, ["api", `repos/${repository.path}/issues/${number}`]);
     if (!result.ok) return none(failureStatus(result, { single: true }));
     const raw = parseJson(result.stdout);
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return none("unavailable");
@@ -229,19 +271,20 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
   }
 
   /**
-   * Creates one issue with `gh api --method POST`. The JSON `{ title, body }` goes to the child's standard input; no
-   * part of it is an argument. Answers `{ status: "ok", number }` only for a valid issue number, else one fixed failure.
+   * Creates one issue with `gh api --method POST`, in the repository `gh repo view` names in the same call (an
+   * unresolvable repository sends nothing). The JSON `{ title, body }` goes to the child's standard input; no part of
+   * it is an argument. Answers `{ status: "ok", number }` only for a valid issue number, else one fixed failure.
    */
   async function createIssue(root, { title, body }) {
     const none = (status) => ({ status, number: null });
+    const failed = (status) => none(status === "unavailable" || status === "not_found" ? "failed" : status);
     if (!validRoot(root)) return none("failed");
     if (typeof title !== "string" || title === "" || typeof body !== "string") return none("failed");
+    const repository = await resolveRepository(root);
+    if (!repository.ok) return failed(repository.status);
     const input = JSON.stringify({ title: wellFormed(title), body: wellFormed(body) });
-    const result = await runGh(root, ["api", "--method", "POST", "repos/{owner}/{repo}/issues", "--input", "-"], { input, deadlineMs: CREATE_TIMEOUT_MS });
-    if (!result.ok) {
-      const status = failureStatus(result, { single: false });
-      return none(status === "unavailable" || status === "not_found" ? "failed" : status);
-    }
+    const result = await runGh(root, ["api", "--method", "POST", `repos/${repository.path}/issues`, "--input", "-"], { input, deadlineMs: CREATE_TIMEOUT_MS });
+    if (!result.ok) return failed(failureStatus(result, { single: false }));
     const raw = parseJson(result.stdout);
     if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !isIssueNumber(raw.number)) return none("failed");
     return { status: "ok", number: raw.number };

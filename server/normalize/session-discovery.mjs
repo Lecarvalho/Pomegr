@@ -41,11 +41,37 @@ export function liveSessionFiles(files, registrySessionIds, {
   }).map(({ file }) => file));
 }
 
+const MAX_GIT_POINTER_BYTES = 4096;
+
+/**
+ * The main repository folder of a linked worktree, read from the worktree's own `.git` pointer file
+ * (`gitdir: <main>/.git/worktrees/<name>`). One bounded local read of that one small file; the path
+ * stays here and only its last segment names the project. Null for anything else: a `.git` directory,
+ * a submodule or separate-Git-directory pointer, an oversized or unreadable file.
+ */
+function linkedWorktreeMainRoot(directory, gitEntry) {
+  try {
+    const stat = fs.statSync(gitEntry);
+    if (!stat.isFile() || stat.size <= 0 || stat.size > MAX_GIT_POINTER_BYTES) return null;
+    const match = /^gitdir:[ \t]*(.+?)\s*$/u.exec(fs.readFileSync(gitEntry, "utf8").split(/\r?\n/u, 1)[0]);
+    if (!match || /[\u0000-\u001f\u007f]/u.test(match[1])) return null;
+    const worktreesDirectory = path.dirname(path.resolve(directory, match[1]));
+    const commonDirectory = path.dirname(worktreesDirectory);
+    if (path.basename(worktreesDirectory) !== "worktrees" || path.basename(commonDirectory) !== ".git") return null;
+    return path.dirname(commonDirectory);
+  } catch { return null; }
+}
+
+/**
+ * The name of the nearest enclosing repository, from the filesystem alone. A linked worktree names its
+ * main repository (product-owner decision, 2026-10-10), the same name the shared identity rule gives it.
+ */
 export function repositoryProjectName(cwd) {
   if (!cwd) return "";
   let current = path.resolve(cwd);
   while (true) {
-    if (fs.existsSync(path.join(current, ".git"))) return path.basename(current);
+    const gitEntry = path.join(current, ".git");
+    if (fs.existsSync(gitEntry)) return path.basename(linkedWorktreeMainRoot(current, gitEntry) || current) || path.basename(current);
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;

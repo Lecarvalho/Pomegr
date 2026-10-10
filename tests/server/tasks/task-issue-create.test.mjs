@@ -305,15 +305,19 @@ test("the real reader sends the saved text on standard input and never as an arg
   const execFile = (file, args, options, callback) => {
     const call = { file, args, stdin: null };
     seen.push(call);
-    setImmediate(() => callback(null, JSON.stringify({ number: 12 }), ""));
+    const answer = args[0] === "repo" ? { nameWithOwner: "acme/widgets", visibility: "PUBLIC", hasIssuesEnabled: true, viewerPermission: "ADMIN" } : { number: 12 };
+    setImmediate(() => callback(null, JSON.stringify(answer), ""));
     return { stdin: { on() {}, end(text) { call.stdin = text; } } };
   };
   const { store, port } = await setup(context, { reader: createIssueReader({ execFile }) });
   const id = addTask(store);
   assert.deepEqual((await create(port, { taskId: id })).json, { ok: true, number: 12 });
-  assert.equal(seen.length, 1);
-  assert.deepEqual(seen[0].args, ["api", "--method", "POST", "repos/{owner}/{repo}/issues", "--input", "-"]);
-  assert.ok(!JSON.stringify(seen[0].args).includes("SECRET"));
-  assert.deepEqual(JSON.parse(seen[0].stdin), { title: "SECRET-FIRST-LINE", body: SECRET_TEXT });
+  // The repository is resolved first, and the write names exactly that repository.
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0].args[0], "repo");
+  assert.equal(seen[0].stdin, null);
+  assert.deepEqual(seen[1].args, ["api", "--method", "POST", "repos/acme/widgets/issues", "--input", "-"]);
+  assert.ok(!JSON.stringify(seen.map((call) => call.args)).includes("SECRET"));
+  assert.deepEqual(JSON.parse(seen[1].stdin), { title: "SECRET-FIRST-LINE", body: SECRET_TEXT });
   assert.deepEqual(store.readBoard(REPOSITORY).tasks[0].source, { kind: "github_issue", number: 12 });
 });

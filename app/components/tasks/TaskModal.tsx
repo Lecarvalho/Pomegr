@@ -21,7 +21,7 @@ type Shared = {
 };
 
 export type TaskModalProps = Shared & (
-  | { mode: "new"; onCreated(): void }
+  | { mode: "new"; onCreated(): void; onIssueFailed?: (taskId: string) => void }
   | { mode: "issue"; issue: TaskIssue; onReload(): Promise<void>; onPromoted(taskId: string): void }
   | { mode: "edit"; task: Task; onOpenTask?: (task: Task, opener: HTMLElement) => void; onChanged(): void; onDeleted(): void }
 );
@@ -29,8 +29,8 @@ export type TaskModalProps = Shared & (
 export function TaskModal(props: TaskModalProps) {
   switch (props.mode) {
     case "new": {
-      const { repositoryId, repositoryName, board, refresh, onCreated, onClose } = props;
-      return <TaskModalNew repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={onCreated} onClose={onClose} />;
+      const { repositoryId, repositoryName, board, refresh, onCreated, onIssueFailed, onClose } = props;
+      return <TaskModalNew repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={onCreated} onIssueFailed={onIssueFailed} onClose={onClose} />;
     }
     case "issue": {
       const { repositoryId, repositoryName, issue, board, refresh, onReload, onPromoted, onClose } = props;

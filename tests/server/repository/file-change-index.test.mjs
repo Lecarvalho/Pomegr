@@ -533,3 +533,24 @@ test("legacy launch-bound evidence resolves unbound changes from its launch cwd;
   assert.deepEqual(listRepositoryFiles(store, repoId("proven")), [], "no root from another repository rebases a proven session's unbound path");
   assert.deepEqual(calls, [false, false], "both use the inventory cached pre-rule lookup, never a Git-only subprocess");
 });
+
+// Product-owner decision, 2026-10-10: a linked worktree shares its main repository's ID.
+test("a worktree session's unbound paths rebase on its own root, and rename continuity reads the main root", async (t) => {
+  const store = await openTestStore(t);
+  const mainRoot = await temporaryPlainDirectory(t);
+  const worktreeRoot = await temporaryPlainDirectory(t);
+  const repositoryId = repoId("worktree");
+  const renameRoots = [];
+  const contributor = createFileChangeIndexContributor({
+    resolveRepository: async (cwd) => ({ repositoryId, root: cwd.startsWith(worktreeRoot) ? worktreeRoot : mainRoot, mainRoot }),
+    checkpointStore: null,
+    readRenames: async (root) => { renameRoots.push(root); return { head: "a".repeat(40), renames: [] }; },
+  });
+  const timestamp = "2026-10-10T09:00:00.000Z";
+  await contributor.onCheckpoint(store, { now: Date.parse(timestamp), snapshots: [snapshot({
+    cwd: path.join(worktreeRoot, "src"), repositoryId,
+    toolCalls: [toolCall({ timestamp, fileChanges: [{ path: "a.txt", kind: "created" }] })],
+  })] });
+  assert.deepEqual(listRepositoryFiles(store, repositoryId).map((row) => row.path), ["src/a.txt"]);
+  assert.deepEqual(renameRoots, [mainRoot]);
+});

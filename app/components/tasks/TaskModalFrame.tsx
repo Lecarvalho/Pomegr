@@ -42,16 +42,21 @@ export function TaskModalChrome({ titleId, title, titleExtra, subtitle, closeRef
  * A modal dialog over the page. The native modal `<dialog>` makes the page behind inert and keeps Tab inside, and a
  * select list opened inside it renders inside it too (`CommandSelect`). Focus moves in on open (the Close action, or
  * `initialFocus`); Escape and Close ask `onClose`, unless a control inside already handled the key. A click on the
- * scrim does nothing, so text typed into the form is never lost to a stray click. There is no entrance or exit motion.
+ * scrim asks `onClose` only with `closeOnScrim`, which a form gives while it holds nothing to save, so text typed into
+ * the form is never lost to a stray click. There is no entrance or exit motion.
  * Whoever opened the dialog returns focus to its opener once it is gone.
  */
-export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, onClose, footer, children }: Omit<ChromeProps, "titleId" | "closeRef"> & {
+export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, closeOnScrim = false, onClose, footer, children }: Omit<ChromeProps, "titleId" | "closeRef"> & {
   /** The control that takes focus on open; defaults to Close. */
   initialFocus?: RefObject<HTMLElement | null>;
+  /** True while the form holds nothing to save: a click on the scrim then closes the dialog. */
+  closeOnScrim?: boolean;
 }) {
   const titleId = useId();
   const dialog = useRef<HTMLDialogElement | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // A press that began inside the panel (a text selection dragged out) is not a click on the scrim.
+  const pressedScrim = useRef(false);
   const showDialog = useCallback((node: HTMLDialogElement | null) => {
     dialog.current = node;
     if (!node || node.open) return;
@@ -77,7 +82,8 @@ export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, onCl
   };
 
   return <dialog ref={showDialog} className="taskModalScrim" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-    onKeyDown={keyDown} onCancel={(event) => { event.preventDefault(); onClose(); }}>
+    onKeyDown={keyDown} onMouseDown={(event) => { pressedScrim.current = event.target === event.currentTarget; }}
+    onClick={(event) => { if (closeOnScrim && pressedScrim.current && event.target === event.currentTarget) onClose(); }} onCancel={(event) => { event.preventDefault(); onClose(); }}>
     <TaskModalChrome titleId={titleId} title={title} titleExtra={titleExtra} subtitle={subtitle} closeRef={closeRef} onClose={onClose} footer={footer}>{children}</TaskModalChrome>
   </dialog>;
 }

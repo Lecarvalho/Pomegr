@@ -33,6 +33,15 @@ const reader = (answer, options = {}) => {
   return { gh, reader: createIssueReader({ execFile: gh.execFile, ...options }) };
 };
 
+// What `gh repo view --json nameWithOwner,...` answers: the one command that names the repository.
+const REPO_VIEW_ARGS = ["repo", "view", "--json", "nameWithOwner,visibility,hasIssuesEnabled,viewerPermission"];
+const VIEW = { nameWithOwner: "acme/widgets", visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "WRITE" };
+const viewAnswer = (view = VIEW) => ({ stdout: JSON.stringify(view) });
+// A fake `gh` that answers `repo view` with `options.view` (a value, or a ready failure) and every other call with `answer`.
+const repoReader = (answer, { view = VIEW, viewFailure, ...options } = {}) => reader(
+  (args, callOptions) => (args[0] === "repo" ? (viewFailure ?? viewAnswer(view)) : answer(args, callOptions)), options,
+);
+
 test("a pull request, a non-object, and an out-of-range number are not issues", () => {
   assert.equal(normalizeIssue(raw({ pull_request: { url: "x" } })), null);
   for (const value of [null, undefined, "issue", [], 5]) assert.equal(normalizeIssue(value), null);
@@ -180,10 +189,11 @@ test("connection: connected, not signed in, and CLI missing, with no stderr leav
 });
 
 test("repositoryAccess maps visibility and capabilities", async () => {
-  const view = (value) => reader(() => ({ stdout: JSON.stringify(value) }));
+  const view = (value) => reader(() => viewAnswer({ nameWithOwner: "acme/widgets", ...value }));
   const privateWrite = view({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "WRITE" });
   assert.deepEqual(await privateWrite.reader.repositoryAccess(ROOT), { visibility: "private", capabilities: ["read_issues", "create_issues"] });
-  assert.deepEqual(privateWrite.gh.calls[0].args, ["repo", "view", "--json", "visibility,hasIssuesEnabled,viewerPermission"]);
+  assert.deepEqual(privateWrite.gh.calls[0].args, REPO_VIEW_ARGS);
+  assert.equal(privateWrite.gh.calls.length, 1);
   assert.equal(privateWrite.gh.calls[0].options.cwd, ROOT);
 
   assert.deepEqual(await view({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "READ" }).reader.repositoryAccess(ROOT),
@@ -208,38 +218,42 @@ test("repositoryAccess answers no access for every failed read", async () => {
   assert.deepEqual(await reader(() => missing()).reader.repositoryAccess(ROOT), closed);
   assert.deepEqual(await reader(() => ({ stdout: "not json" })).reader.repositoryAccess(ROOT), closed);
   assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.repositoryAccess(ROOT), closed);
-  assert.deepEqual(await reader(() => ({ stdout: "{}" })).reader.repositoryAccess(""), closed);
+  assert.deepEqual(await reader(() => ({ stdout: "{}" })).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => viewAnswer({ visibility: "PUBLIC", hasIssuesEnabled: true, viewerPermission: "ADMIN" })).reader.repositoryAccess(ROOT), closed);
+  assert.deepEqual(await reader(() => viewAnswer()).reader.repositoryAccess(""), closed);
 });
 
 test("listOpenIssues reads the REST list, drops pull requests, and keeps at most 100", async () => {
   const list = [raw({ number: 1 }), raw({ number: 2, pull_request: {} }), raw({ number: 3, author_association: "NONE" })];
-  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(list) }));
+  const { reader: r, gh } = repoReader(() => ({ stdout: JSON.stringify(list) }));
   const result = await r.listOpenIssues(ROOT);
   assert.equal(result.status, "ok");
   assert.deepEqual(result.issues.map((issue) => issue.number), [1, 3]);
   assert.equal(result.truncated, false);
-  assert.deepEqual(gh.calls[0].args, ["api", "repos/{owner}/{repo}/issues?state=open&per_page=100"]);
-  assert.equal(gh.calls[0].options.cwd, ROOT);
-  assert.equal(gh.calls[0].options.windowsHide, true);
-  assert.equal(gh.calls[0].options.timeout, 8000);
-  assert.equal(gh.calls[0].options.maxBuffer, 8 * 1024 * 1024);
+  assert.equal(gh.calls.length, 2);
+  assert.deepEqual(gh.calls[0].args, REPO_VIEW_ARGS);
+  assert.deepEqual(gh.calls[1].args, ["api", "repos/acme/widgets/issues?state=open&per_page=100"]);
+  assert.equal(gh.calls[1].options.cwd, ROOT);
+  assert.equal(gh.calls[1].options.windowsHide, true);
+  assert.equal(gh.calls[1].options.timeout, 8000);
+  assert.equal(gh.calls[1].options.maxBuffer, 8 * 1024 * 1024);
 
   const full = Array.from({ length: ISSUE_LIST_LIMIT }, (_, index) => raw({ number: index + 1 }));
-  const truncated = await reader(() => ({ stdout: JSON.stringify(full) })).reader.listOpenIssues(ROOT);
+  const truncated = await repoReader(() => ({ stdout: JSON.stringify(full) })).reader.listOpenIssues(ROOT);
   assert.equal(truncated.issues.length, 100);
   assert.equal(truncated.truncated, true);
-  const surplus = await reader(() => ({ stdout: JSON.stringify([...full, raw({ number: 101 })]) })).reader.listOpenIssues(ROOT);
+  const surplus = await repoReader(() => ({ stdout: JSON.stringify([...full, raw({ number: 101 })]) })).reader.listOpenIssues(ROOT);
   assert.equal(surplus.issues.length, 100);
   assert.equal(surplus.truncated, true);
   // A full page of pull requests is still a truncated read of the raw list.
-  const prs = await reader(() => ({ stdout: JSON.stringify(full.map((item) => ({ ...item, pull_request: {} }))) })).reader.listOpenIssues(ROOT);
+  const prs = await repoReader(() => ({ stdout: JSON.stringify(full.map((item) => ({ ...item, pull_request: {} }))) })).reader.listOpenIssues(ROOT);
   assert.deepEqual(prs, { status: "ok", issues: [], truncated: true });
-  assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.listOpenIssues(ROOT), { status: "ok", issues: [], truncated: false });
+  assert.deepEqual(await repoReader(() => ({ stdout: "[]" })).reader.listOpenIssues(ROOT), { status: "ok", issues: [], truncated: false });
 });
 
 test("a private repository lists and reads issues like any other", async () => {
   const gh = fakeGh((args) => (args[0] === "repo"
-    ? { stdout: JSON.stringify({ visibility: "PRIVATE", hasIssuesEnabled: true, viewerPermission: "WRITE" }) }
+    ? viewAnswer()
     : { stdout: JSON.stringify(args[1].endsWith("/issues/7") ? raw() : [raw()]) }));
   const r = createIssueReader({ execFile: gh.execFile });
   assert.equal((await r.repositoryAccess(ROOT)).visibility, "private");
@@ -248,7 +262,7 @@ test("a private repository lists and reads issues like any other", async () => {
 });
 
 test("every fixed list failure", async () => {
-  const status = async (answer) => (await reader(answer).reader.listOpenIssues(ROOT));
+  const status = async (answer) => (await repoReader(answer).reader.listOpenIssues(ROOT));
   const empty = (value) => ({ status: value, issues: [], truncated: false });
   assert.deepEqual(await status(() => missing()), empty("cli_missing"));
   assert.deepEqual(await status(() => failure("gh: Bad credentials (HTTP 401)")), empty("not_signed_in"));
@@ -261,21 +275,27 @@ test("every fixed list failure", async () => {
   assert.deepEqual(await status(() => ({ error: Object.assign(new Error("maxBuffer"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" }), stderr: "" })), empty("unavailable"));
   assert.deepEqual(await status(() => ({ stdout: "{ not json" })), empty("unavailable"));
   assert.deepEqual(await status(() => ({ stdout: "{}" })), empty("unavailable"));
-  assert.deepEqual(await reader(() => ({ stdout: "[]" }), { maxBytes: 1 }).reader.listOpenIssues(ROOT), empty("unavailable"));
-  assert.deepEqual(await reader(() => ({ stdout: "[]" })).reader.listOpenIssues(""), empty("unavailable"));
+  // The cap is on each call's output: the repository answer fits, the list does not.
+  const big = JSON.stringify([raw(), raw()]);
+  assert.ok(JSON.stringify(VIEW).length < 300 && big.length > 300);
+  assert.deepEqual(await repoReader(() => ({ stdout: "[]" }), { maxBytes: 300 }).reader.listOpenIssues(ROOT), { status: "ok", issues: [], truncated: false });
+  assert.deepEqual(await repoReader(() => ({ stdout: big }), { maxBytes: 300 }).reader.listOpenIssues(ROOT), empty("unavailable"));
+  assert.deepEqual(await repoReader(() => ({ stdout: "[]" })).reader.listOpenIssues(""), empty("unavailable"));
 });
 
 test("readIssue reads one issue by number", async () => {
-  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw()) }));
+  const { reader: r, gh } = repoReader(() => ({ stdout: JSON.stringify(raw()) }));
   const result = await r.readIssue(ROOT, 7);
   assert.equal(result.status, "ok");
   assert.equal(result.issue.number, 7);
-  assert.deepEqual(gh.calls[0].args, ["api", "repos/{owner}/{repo}/issues/7"]);
-  assert.ok(gh.calls[0].args.every((argument) => typeof argument === "string"));
+  assert.equal(gh.calls.length, 2);
+  assert.deepEqual(gh.calls[0].args, REPO_VIEW_ARGS);
+  assert.deepEqual(gh.calls[1].args, ["api", "repos/acme/widgets/issues/7"]);
+  assert.ok(gh.calls.every((call) => call.args.every((argument) => typeof argument === "string")));
 });
 
 test("readIssue answers not found for a closed issue, a pull request, and a mismatched number", async () => {
-  const one = (value, number = 7) => reader(() => ({ stdout: JSON.stringify(value) })).reader.readIssue(ROOT, number);
+  const one = (value, number = 7) => repoReader(() => ({ stdout: JSON.stringify(value) })).reader.readIssue(ROOT, number);
   assert.deepEqual(await one(raw({ state: "closed" })), { status: "not_found", issue: null });
   assert.deepEqual(await one(raw({ pull_request: {} })), { status: "not_found", issue: null });
   assert.deepEqual(await one(raw({ number: 8 })), { status: "unavailable", issue: null });
@@ -283,7 +303,7 @@ test("readIssue answers not found for a closed issue, a pull request, and a mism
 });
 
 test("every fixed single-read failure", async () => {
-  const status = async (answer) => (await reader(answer).reader.readIssue(ROOT, 7));
+  const status = async (answer) => (await repoReader(answer).reader.readIssue(ROOT, 7));
   const none = (value) => ({ status: value, issue: null });
   assert.deepEqual(await status(() => missing()), none("cli_missing"));
   assert.deepEqual(await status(() => failure("gh: Bad credentials (HTTP 401)")), none("not_signed_in"));
@@ -292,27 +312,28 @@ test("every fixed single-read failure", async () => {
   assert.deepEqual(await status(() => failure("gh: Gone (HTTP 410)")), none("issues_disabled"));
   assert.deepEqual(await status(() => failure("something else")), none("unavailable"));
   assert.deepEqual(await status(() => ({ stdout: "nope" })), none("unavailable"));
-  assert.deepEqual(await reader(() => ({ stdout: "{}" })).reader.readIssue("", 7), none("unavailable"));
+  assert.deepEqual(await repoReader(() => ({ stdout: "{}" })).reader.readIssue("", 7), none("unavailable"));
 });
 
 test("the issue number is validated and never reaches a command unvalidated", async () => {
   for (const number of [0, -3, 1.5, "7", "7; rm -rf /", 1_000_000_000, null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) {
-    const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw()) }));
+    const { reader: r, gh } = repoReader(() => ({ stdout: JSON.stringify(raw()) }));
     assert.deepEqual(await r.readIssue(ROOT, number), { status: "not_found", issue: null }, String(number));
     assert.equal(gh.calls.length, 0, `${String(number)} must not start gh`);
   }
-  const { reader: r, gh } = reader(() => ({ stdout: JSON.stringify(raw({ number: 999_999_999 })) }));
+  const { reader: r, gh } = repoReader(() => ({ stdout: JSON.stringify(raw({ number: 999_999_999 })) }));
   assert.equal((await r.readIssue(ROOT, 999_999_999)).status, "ok");
-  assert.equal(gh.calls[0].args[1], "repos/{owner}/{repo}/issues/999999999");
+  assert.equal(gh.calls[1].args[1], "repos/acme/widgets/issues/999999999");
 });
 
 test("every call uses an argument array and no shell, and the deadline and cap are configurable", async () => {
-  const { reader: r, gh } = reader(() => ({ stdout: "[]" }), { timeoutMs: 1234, maxBytes: 4321 });
+  const { reader: r, gh } = repoReader(() => ({ stdout: "[]" }), { timeoutMs: 1234, maxBytes: 4321 });
   await r.connection();
   await r.repositoryAccess(ROOT);
   await r.listOpenIssues(ROOT);
   await r.readIssue(ROOT, 3);
-  assert.equal(gh.calls.length, 4);
+  // connection (1), access (1 repo view), list (repo view + api), read (repo view + api).
+  assert.equal(gh.calls.length, 6);
   for (const call of gh.calls) {
     assert.equal(call.file, "gh");
     assert.ok(Array.isArray(call.args) && call.args.every((argument) => typeof argument === "string"));
@@ -327,24 +348,30 @@ test("every call uses an argument array and no shell, and the deadline and cap a
 
 test("no result carries stderr, a path, a login, or a URL", async () => {
   const leaky = "gh: Not Found (HTTP 404) SECRET-STDERR C:\\Work\\SECRET-ROOT https://api.github.com/SECRET-URL SECRET-LOGIN";
+  // The repository view fails, so list and read fail at the resolve step.
   const { reader: r } = reader((args) => (args[0] === "repo"
     ? failure(leaky)
     : args[1].includes("/issues/") ? failure(leaky) : { stdout: JSON.stringify([raw()]) }));
   const results = [await r.connection(), await r.repositoryAccess(ROOT), await r.listOpenIssues(ROOT), await r.readIssue(ROOT, 7)];
   const text = JSON.stringify(results);
   for (const secret of ["SECRET", "C:\\\\Work", "https://", "api.github.com"]) assert.ok(!text.includes(secret), secret);
-  // The one issue read above held a login and a URL in the raw object; the normalized issue has neither.
-  assert.ok(!JSON.stringify(await r.listOpenIssues(ROOT)).includes("SECRET"));
+  // The repository view works, the issue read fails, and the one list read holds a login and a URL in the raw object.
+  const named = repoReader((args) => (args[1].includes("/issues/") ? failure(leaky) : { stdout: JSON.stringify([raw()]) })).reader;
+  assert.equal((await named.listOpenIssues(ROOT)).issues.length, 1);
+  const served = [await named.listOpenIssues(ROOT), await named.readIssue(ROOT, 7)];
+  assert.deepEqual(served[1], { status: "not_found", issue: null });
+  for (const secret of ["SECRET", "C:\\\\Work", "https://", "api.github.com"]) assert.ok(!JSON.stringify(served).includes(secret), secret);
 });
 
-// A fake `gh` whose child has a standard input, so the text a create sends can be read back.
-function fakeCreateGh(answer) {
+// A fake `gh` whose child has a standard input, so the text a create sends can be read back. `repo view` is answered
+// with `viewResult` (the repository the create is addressed to); every other call goes to `answer`.
+function fakeCreateGh(answer, viewResult = viewAnswer()) {
   const calls = [];
   const execFile = (file, args, options, callback) => {
     const call = { file, args, options, stdin: null };
     calls.push(call);
     const child = { stdin: { on() {}, end(text) { call.stdin = text; } } };
-    const result = answer(args, options);
+    const result = args[0] === "repo" ? viewResult : answer(args, options);
     setImmediate(() => (result.error ? callback(result.error, "", result.stderr ?? "") : callback(null, result.stdout, "")));
     return child;
   };
@@ -373,10 +400,13 @@ test("createIssue posts through gh api with the JSON on standard input and no ta
   const title = "Title SECRET-TITLE";
   const body = "Body SECRET-BODY\nwith `shell` $(whoami) \"quotes\"";
   assert.deepEqual(await issues.createIssue(ROOT, { title, body }), { status: "ok", number: 91 });
-  assert.equal(gh.calls.length, 1);
-  const [call] = gh.calls;
+  // The repository is named first, with the same command the access read uses; the POST goes only to that repository.
+  assert.equal(gh.calls.length, 2);
+  assert.deepEqual(gh.calls[0].args, REPO_VIEW_ARGS);
+  assert.equal(gh.calls[0].stdin, null);
+  const call = gh.calls[1];
   assert.equal(call.file, "gh");
-  assert.deepEqual(call.args, ["api", "--method", "POST", "repos/{owner}/{repo}/issues", "--input", "-"]);
+  assert.deepEqual(call.args, ["api", "--method", "POST", "repos/acme/widgets/issues", "--input", "-"]);
   assert.ok(!JSON.stringify(call.args).includes("SECRET"));
   assert.deepEqual(JSON.parse(call.stdin), { title, body });
   assert.equal(call.options.cwd, ROOT);
@@ -424,8 +454,131 @@ test("createIssue refuses a missing root, title, or body before any process star
 });
 
 test("a child without a standard input, or a throwing execFile, still ends in a fixed answer", async () => {
-  const noStdin = createIssueReader({ execFile: (file, args, options, callback) => { setImmediate(() => callback(null, '{"number":3}', "")); } });
+  const noStdin = createIssueReader({
+    execFile: (file, args, options, callback) => { setImmediate(() => callback(null, args[0] === "repo" ? JSON.stringify(VIEW) : '{"number":3}', "")); },
+  });
   assert.deepEqual(await noStdin.createIssue(ROOT, { title: "t", body: "b" }), { status: "ok", number: 3 });
   const throwing = createIssueReader({ execFile: () => { throw Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }); } });
   assert.deepEqual(await throwing.createIssue(ROOT, { title: "t", body: "b" }), { status: "cli_missing", number: null });
+});
+
+// The repository every call is addressed to: `gh repo view` names it once per call, and no call lets `gh api` fill
+// `{owner}/{repo}` itself, because the CLI may resolve that placeholder by another rule than `repo view` (in a fork
+// clone with an `upstream` remote the two can differ) and a create must go only to the repository whose access was read.
+
+const okIssue = JSON.stringify(raw());
+// Valid answers for every `api` call of the three chains.
+const apiOk = (args) => (args.includes("POST") ? { stdout: '{"number":5}' } : { stdout: args[1].endsWith("/issues/7") ? okIssue : `[${okIssue}]` });
+const chains = {
+  list: (issues) => issues.listOpenIssues(ROOT),
+  read: (issues) => issues.readIssue(ROOT, 7),
+  create: (issues) => issues.createIssue(ROOT, { title: "t", body: "b" }),
+};
+const placeholderFree = (call) => !call.args.some((argument) => argument.includes("{owner}") || argument.includes("{repo}"));
+
+test("list, read, and create each run repo view first and then address the api path to the repository it named", async () => {
+  const expected = {
+    list: "repos/acme/widgets/issues?state=open&per_page=100", read: "repos/acme/widgets/issues/7", create: "repos/acme/widgets/issues",
+  };
+  for (const [name, run] of Object.entries(chains)) {
+    const gh = fakeCreateGh(apiOk);
+    const result = await run(createIssueReader({ execFile: gh.execFile }));
+    assert.equal(result.status, "ok", name);
+    assert.equal(gh.calls.length, 2, name);
+    assert.deepEqual(gh.calls[0].args, REPO_VIEW_ARGS, name);
+    assert.equal(gh.calls[0].options.cwd, ROOT, name);
+    assert.equal(gh.calls[1].args[0], "api", name);
+    assert.ok(gh.calls[1].args.includes(expected[name]), name);
+    assert.equal(gh.calls[1].options.cwd, ROOT, name);
+    assert.ok(gh.calls.every(placeholderFree), name);
+  }
+});
+
+test("the api path is built from what repo view answered, for any valid owner and name", async () => {
+  const names = ["Some-Org/my.repo_x-y", "acme/.github", "a/b", "A.B_c-9/d.e", `${"a".repeat(100)}/${"b".repeat(100)}`];
+  for (const nameWithOwner of names) {
+    for (const [name, run] of Object.entries(chains)) {
+      const gh = fakeCreateGh(apiOk, viewAnswer({ ...VIEW, nameWithOwner }));
+      assert.equal((await run(createIssueReader({ execFile: gh.execFile }))).status, "ok", `${nameWithOwner} ${name}`);
+      assert.equal(gh.calls.length, 2, `${nameWithOwner} ${name}`);
+      assert.ok(gh.calls[1].args.some((argument) => argument.startsWith(`repos/${nameWithOwner}/issues`)), `${nameWithOwner} ${name}`);
+    }
+  }
+});
+
+test("an invalid or missing nameWithOwner is one fixed failure and no api call, so no create is ever sent", async () => {
+  const invalid = [
+    "acme/widgets/../x", "acme", "acme/", "/widgets", "", "acme/wid gets", "ac me/widgets", "acme/widgets\n", "acme\n/widgets",
+    "\nacme/widgets", " acme/widgets", "acme/widgets ", "acme/widgets\r", "../widgets", "acme/..", "acme/.", "./widgets", "a..b/widgets",
+    "acme/wid..gets", "a/b/c", "acme//widgets", "acme\\widgets", "acme/widgets?x=1", "acme/widgets#x", "acme/widgets;rm", "acme/$(whoami)",
+    "acme/wid`x`gets", "{owner}/{repo}", "acme/wïdgets", "acme/wid\u0000gets", "acme/wid​gets", "acme/%2e%2e",
+    `${"a".repeat(101)}/widgets`, `acme/${"b".repeat(101)}`, "https://github.com/acme/widgets", "github.com/acme/widgets/x",
+    null, 7, undefined, ["acme", "widgets"], { owner: "acme", name: "widgets" },
+  ];
+  for (const nameWithOwner of invalid) {
+    const label = JSON.stringify(nameWithOwner) ?? "undefined";
+    const gh = fakeCreateGh(apiOk, viewAnswer({ ...VIEW, nameWithOwner }));
+    const issues = createIssueReader({ execFile: gh.execFile });
+    assert.deepEqual(await issues.listOpenIssues(ROOT), { status: "unavailable", issues: [], truncated: false }, label);
+    assert.deepEqual(await issues.readIssue(ROOT, 7), { status: "unavailable", issue: null }, label);
+    assert.deepEqual(await issues.createIssue(ROOT, { title: "t", body: "b" }), { status: "failed", number: null }, label);
+    assert.deepEqual(await issues.repositoryAccess(ROOT), { visibility: "unknown", capabilities: ["no_access"] }, label);
+    assert.equal(gh.calls.length, 4, label);
+    assert.ok(gh.calls.every((call) => call.args[0] === "repo" && call.stdin === null), label);
+  }
+});
+
+test("a failed repository read answers the status the following call would have and sends nothing", async () => {
+  const cases = [
+    [missing(), "cli_missing"],
+    [failure("gh: HTTP 401: Bad credentials"), "not_signed_in"],
+    [failure("To get started with GitHub CLI, please run:  gh auth login"), "not_signed_in"],
+    [failure("gh: Issues are disabled for this repo (HTTP 410)"), "issues_disabled"],
+    [failure("GraphQL: Could not resolve to a Repository with the name 'SECRET-OWNER/SECRET-NAME'. (repository)"), "no_access"],
+    [failure("gh: Not Found (HTTP 404)"), "no_access"],
+    [failure("gh: Resource not accessible (HTTP 403)"), "no_access"],
+    [failure("none of the git remotes configured for this repository point to a known GitHub host"), "unavailable"],
+    [failure("gh: Server Error (HTTP 502)"), "unavailable"],
+    [{ error: Object.assign(new Error("timed out"), { killed: true, signal: "SIGTERM" }), stderr: "" }, "unavailable"],
+    [{ stdout: "not json" }, "unavailable"],
+    [{ stdout: "[]" }, "unavailable"],
+    [{ stdout: "null" }, "unavailable"],
+  ];
+  for (const [answer, status] of cases) {
+    const gh = fakeCreateGh(apiOk, answer);
+    const issues = createIssueReader({ execFile: gh.execFile });
+    assert.deepEqual(await issues.listOpenIssues(ROOT), { status, issues: [], truncated: false }, status);
+    // A repository that cannot be read is never "this issue was not found".
+    assert.deepEqual(await issues.readIssue(ROOT, 7), { status, issue: null }, status);
+    assert.deepEqual(await issues.createIssue(ROOT, { title: "t", body: "b" }), { status: status === "unavailable" ? "failed" : status, number: null }, status);
+    assert.equal(gh.calls.length, 3, status);
+    assert.ok(gh.calls.every((call) => call.args[0] === "repo" && call.stdin === null), status);
+    assert.ok(!JSON.stringify(await issues.repositoryAccess(ROOT)).includes("SECRET"), status);
+  }
+});
+
+test("no result carries the owner or the name of the repository", async () => {
+  const named = { ...VIEW, nameWithOwner: "SECRET-OWNER/SECRET-NAME" };
+  const leaky = "gh: Not Found (HTTP 404) repos/SECRET-OWNER/SECRET-NAME/issues SECRET-STDERR";
+  const keys = (value) => Object.keys(value).toSorted();
+  for (const answer of [apiOk, () => failure(leaky)]) {
+    const gh = fakeCreateGh(answer, viewAnswer(named));
+    const issues = createIssueReader({ execFile: gh.execFile });
+    const results = {
+      access: await issues.repositoryAccess(ROOT),
+      list: await issues.listOpenIssues(ROOT),
+      read: await issues.readIssue(ROOT, 7),
+      create: await issues.createIssue(ROOT, { title: "t", body: "b" }),
+    };
+    assert.deepEqual(keys(results.access), ["capabilities", "visibility"]);
+    assert.deepEqual(keys(results.list), ["issues", "status", "truncated"]);
+    assert.deepEqual(keys(results.read), ["issue", "status"]);
+    assert.deepEqual(keys(results.create), ["number", "status"]);
+    const text = JSON.stringify(results);
+    for (const secret of ["SECRET", "OWNER", "NAME", "repos/"]) assert.ok(!text.includes(secret), secret);
+    // The name was used to address the calls, and only there.
+    const addressed = gh.calls.filter((call) => call.args[0] === "api");
+    assert.equal(addressed.length, 3);
+    assert.ok(addressed.every((call) => call.args.some((argument) => argument.startsWith("repos/SECRET-OWNER/SECRET-NAME/issues"))));
+  }
 });

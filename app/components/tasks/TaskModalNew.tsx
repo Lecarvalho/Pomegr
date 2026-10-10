@@ -22,14 +22,17 @@ import { useFeatureCreation } from "./use-feature-creation";
 /**
  * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
  * feature, which comes first). Success calls `onCreated` so the board is re-read; the monitor's committed
- * answer is what the board then shows.
+ * answer is what the board then shows. When the ticked issue create fails, the task stays as created and the modal does
+ * not close silently: after `onCreated` it calls `onIssueFailed` with the new task's ID so the page can open that task,
+ * where the fixed reason is shown (without the prop it closes as on success).
  */
-export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onCreated, onClose }: {
+export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onCreated, onIssueFailed, onClose }: {
   repositoryId: string;
   repositoryName: string | null;
   board: TaskModalBoard;
   refresh(): Promise<void>;
   onCreated(): void;
+  onIssueFailed?: (taskId: string) => void;
   onClose(): void;
 }) {
   const field = useRef<HTMLTextAreaElement>(null);
@@ -76,9 +79,10 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     }
     const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, doneWhen, featureCreateInput(draft, null)));
     // The task exists once the monitor says so, even if the modal was closed in the meantime. The issue comes second and
-    // its failure is only remembered for the task's own modal: it never undoes or blocks the task.
+    // its failure is remembered for the task's own modal, which opens in place of this one: it never undoes or blocks the task.
+    let issueFailedFor: string | null = null;
     if (result.ok) {
-      if (issueChecked && result.taskId !== null) await createTaskIssue(repositoryId, result.taskId);
+      if (issueChecked && result.taskId !== null && !(await createTaskIssue(repositoryId, result.taskId)).ok) issueFailedFor = result.taskId;
       onCreated();
     }
     inFlight.current = false;
@@ -89,10 +93,11 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
       field.current?.focus({ preventScroll: true });
       return;
     }
-    onClose();
+    if (issueFailedFor !== null && onIssueFailed) onIssueFailed(issueFailedFor);
+    else onClose();
   };
 
-  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} onClose={onClose}
+  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} closeOnScrim={trimmed.length === 0 && !busy} onClose={onClose}
     footer={<>
       <span className="taskModalSpacer" aria-hidden="true" />
       <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>

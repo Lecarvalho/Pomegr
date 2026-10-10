@@ -424,7 +424,7 @@ describe("Pomegr visual contract", () => {
     expect(fields + featureFields).not.toMatch(/<select/);
     // DESIGN.md and the design-system sample document the frame and the fields.
     expect(designContract).toMatch(/\*\*Task modal frame\.\*\* `TaskModalFrame`[^]*native modal `<dialog>`[^]*`--color-text` mixed to 40%/);
-    expect(designContract).toMatch(/a click on the scrim does nothing/);
+    expect(designContract).toMatch(/a click on the scrim closes it only while the form holds nothing to save/);
     expect(designContract).toMatch(/\*\*Task fields\.\*\*[^]*“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, and “CI passed”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, new/);

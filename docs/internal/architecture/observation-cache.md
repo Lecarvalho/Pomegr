@@ -3290,7 +3290,8 @@ state through the checkout. All resolution and Git work remains outside S Servin
 Concurrent live Git inspections of the same working tree (for example two live sessions in
 one repository) share one in-flight set of Git processes, and each caller receives its own
 copy of that answer. A finished inspection is never reused, so each session's check keeps
-its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`) run once
+its own time and cadence. Repository-root lookups (`git rev-parse --show-toplevel`, with the
+directory read that recognizes a linked worktree) run once
 per directory: concurrent callers share the lookup, and its answer is reused for the same
 300-second freshness the providers' memoized repository resolver already applies.
 The committed public state of a live session may carry monitor-private `readAt` stamps on
@@ -3351,7 +3352,9 @@ launch directory is one Git repository, and `launch` otherwise (not Git, a remov
 worktree, Git unavailable, or the 5 s bound), so those sessions keep their pre-rule
 sidecar, branch, file history, and context-inventory association. Claude catalog rows name
 the project from the nearest enclosing `.git` of the launch directory without a Git
-subprocess, the same name the rule gives a proven repository. A Claude live repository
+subprocess, the same name the rule gives a proven repository. When that `.git` is a
+linked worktree's pointer file, one bounded read of it (at most 4096 bytes) finds the main
+repository folder, whose name is used; the path goes no further. A Claude live repository
 check records the proven repository ID on its sidecar, so a `single` session's sidecar
 satisfies the identity gate. Sidecars that such a provider recorded before the rule carry no
 repository ID; they came from the launch directory, so a `single` session of a provider that
@@ -3687,10 +3690,49 @@ touch SQLite.
 
 Repository context inventory is a separate repository/provider-scoped committed domain.
 Repository identity is an installation-salted opaque ID derived monitor-side from the
-canonical Git worktree root, or normalized session working directory for a non-Git
+main repository root, or normalized session working directory for a non-Git
 project. Paths remain in memory only and never enter checkpoints, public summaries,
-revision documents, browser responses, logs, or renderer IPC. Worktrees are independent
-repositories; duplicate display names receive only an opaque short disambiguator.
+revision documents, browser responses, logs, or renderer IPC. Duplicate display names
+receive only an opaque short disambiguator.
+
+A linked Git worktree belongs to its main repository (product-owner decision,
+2026-10-10, superseding the 2026-09-27 rule that worktrees are independent repositories).
+`identify` in `server/repository/repository-inventory-runtime.mjs` is the one place identity
+is derived. Its lookup (`server/repository/git-checkout.mjs`) reads the checkout's top level
+and, with `git rev-parse --path-format=absolute --git-dir --git-common-dir`, the common Git
+directory of a linked worktree. When that directory is named `.git` and its parent is
+another folder than the top level, the parent is the main root: the ID hashes it, the
+display name is its basename, and the monitor-private root of that ID
+(`repositoryRoot`, used by task start, GitHub issues, plugin setup, context capture, and
+the working-tree gate) is always the main root, whichever checkout was seen last. A main
+checkout keeps the ID it had. A worktree of a bare repository, a separate Git directory, a
+submodule, a non-Git folder, and a failed lookup keep the top level or the working
+directory, as before.
+
+The session's own root stays its checkout. `resolveRepository` answers `root` (the
+worktree's top level) and `mainRoot`; a session's live Git check, its recorded branch,
+and the base of its repository-relative file paths use `root`, so a worktree session's
+working tree, branch, and pull request are never read from the main checkout. A recorded
+launch branch is kept only for the launch checkout itself, because one repository ID can
+now hold several checkouts on different branches. Git rename continuity keeps one head for
+each repository ID and reads it in the main root.
+
+Records stored under a former worktree ID are not migrated or remapped: repository
+sidecars, context-inventory bindings, and file-history rows keyed by that ID stop matching
+and are served as unavailable. A session whose worktree folder still exists is listed
+under its main repository once it is associated again, which happens when the monitor
+next starts.
+
+A removed worktree gets no Git answer. For that case only, the inventory reads the path
+shape of a Pomegr-made task worktree: a working directory that is, or is inside,
+`.../task-worktrees/<repository ID>/<task ID>` belongs to that repository ID, when the ID
+has the inventory's exact format, the task ID has the task store's format, and the ID is
+one the inventory already knows in this run. The path never creates an identity, a Git
+answer always wins, and the missing folder never becomes the root of the repository ID.
+Until the main repository is identified in a run, such a session keeps the folder-named
+fallback; its association is derived again as soon as the ID is known, and no context
+binding is stored for the provisional identity. A removed worktree anywhere else still
+lists on its own, under the folder-named identity of a non-Git working directory.
 
 Repository rows are derived asynchronously from committed session catalog and session
 evidence. Rows are ordered alphabetically by display name, with opaque repository ID as
