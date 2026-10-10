@@ -17,7 +17,7 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample",
   "DesignSystemTaskBoardSample", "DesignSystemTaskQueueSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample",

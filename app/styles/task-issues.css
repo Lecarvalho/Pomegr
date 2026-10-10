@@ -1,0 +1,87 @@
+/* Promote issues page and the issue preview shared with the task modal (design contract G60-G107). Tokens only; no
+   motion. Issue text is third-party: it is only ever drawn as text, wrapped, and never styled by its content. */
+
+/* Notice box (G90-G93): a soft fill, a one-pixel line in the tone, one block of text; never a side stripe. */
+.taskNotice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--command-line); border-radius: var(--control-radius); font: 400 var(--text-xs)/1.5 var(--font-ui); overflow-wrap: anywhere; }
+.taskNotice.warning { border-color: var(--command-amber); background: var(--color-amber-soft); color: var(--command-amber); }
+.taskNotice.negative { border-color: var(--command-error); background: var(--color-error-soft); color: var(--command-error); }
+.taskNotice.positive { border-color: var(--command-green); background: var(--color-green-soft); color: var(--command-green); }
+
+/* Raw body (G97-G101): the label row, then a read-only box in the data font. A hidden HTML comment is struck through. */
+.taskIssueBody { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.taskIssueBodyHead { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: var(--space-1) var(--space-3); }
+.taskIssueBodyLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskIssueBodyCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskIssueBodyBox { box-sizing: border-box; flex: 1 1 auto; min-height: 240px; max-height: 560px; padding: var(--space-3); overflow: auto; border: 1px solid var(--command-line); border-radius: var(--control-radius); background: var(--command-ground); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-data); white-space: pre-wrap; overflow-wrap: anywhere; }
+.taskIssueBodyBox:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskIssueBodyEmpty { color: var(--command-muted); font-family: var(--font-ui); }
+.taskIssueHidden { background: var(--color-amber-soft); color: var(--command-amber); text-decoration: line-through; }
+.taskIssueBodyCut { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Character count (G103, G104): the task text a promote would store against the limit; error tone over it. */
+.taskIssueCount { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskIssueCount.over { color: var(--command-error); }
+
+/* Page (G60-G70): the shared page header, then one bordered panel holding the caption and the split body. The artboard
+   draws its own top bar on a panel-filled page; DESIGN.md pages sit on the canvas under the shared header, so the back
+   link is its breadcrumb and Refresh its action. */
+.promoteIssuesPage { display: grid; gap: var(--space-4); }
+.promoteIssuesCount { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* The breadcrumb restyles every link as brand text; the back link is the Quiet role and keeps its own colors. */
+.commandPageBreadcrumb .promoteIssuesBack { color: var(--command-muted); text-decoration: none; }
+.commandPageBreadcrumb .promoteIssuesBack:hover { text-decoration: none; }
+.promoteIssuesPanel { display: flex; flex-direction: column; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.promoteIssuesCaption { margin: 0; padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--command-line); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.promoteIssuesError { margin: 0; padding: var(--space-2) var(--space-6); border-bottom: 1px solid var(--command-line); }
+.promoteIssuesState { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-6); }
+.promoteIssuesStateTitle { margin: 0; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
+.promoteIssuesStateDetail { margin: 0; color: var(--command-muted); font: 400 var(--text-sm)/1.5 var(--font-ui); }
+.promoteIssuesState .commandTextLink { font-size: inherit; }
+
+/* Split body (G71-G72, G85): the list on the left, the chosen issue on the right; it wraps under 340px + 480px. */
+.promoteIssuesSplit { display: flex; flex-wrap: wrap; align-items: stretch; flex: 1 1 auto; }
+.promoteIssuesListPane { flex: 1 1 340px; max-width: 420px; min-width: 0; border-right: 1px solid var(--command-line); }
+.promoteIssuesList { margin: 0; padding: 0; list-style: none; }
+.promoteIssuesTruncated { margin: 0; padding: var(--space-3) var(--space-4); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Row (G73-G84): a button, so the list is a column of full-width choices. Hover tints at the Quiet role's 6% (the
+   artboard's 4% has no token); the chosen row takes the raised fill. The focus ring is inset because rows touch. */
+.promoteIssueRow { box-sizing: border-box; width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-3) var(--space-4); border: 0; border-bottom: 1px solid var(--command-line); border-radius: 0; background: transparent; color: var(--command-ink); font: inherit; text-align: left; cursor: pointer; }
+.promoteIssueRow:hover { background: color-mix(in srgb, var(--command-ink) 6%, transparent); }
+.promoteIssueRow[aria-pressed="true"] { background: var(--command-panel-2); }
+.promoteIssueRow:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.promoteIssueRowHead { max-width: 100%; display: flex; align-items: baseline; gap: var(--space-2); }
+.promoteIssueRowTitle { min-width: 0; overflow-wrap: anywhere; font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.promoteIssueNumber { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.promoteIssueMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.promoteIssueDate { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+
+/* Detail (G85-G89, G102, G105-G107): a column of head block, notices, raw body and footer. */
+.promoteIssueDetail { flex: 999 1 480px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-6); }
+.promoteIssueHead { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.promoteIssueHead h2 { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.promoteIssueFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+
+/* Task modal, mode issue and the Source block of mode edit (G175-G204, G253-G257): the issue content is a column of the
+   Source group, its notices and the read-only raw body. The body box is the 150px field of the contract in the modal. */
+.taskIssueContent { min-width: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.taskIssueSource { display: flex; flex-direction: column; gap: var(--space-2); }
+.taskSourceRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskSourceLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskSourceCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskIssueTitle { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-base)/1.4 var(--font-ui); }
+.taskIssuePreview { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+.taskIssuePreview .taskIssueCount { align-self: flex-end; }
+.taskModalBody .taskIssueBodyBox { min-height: 0; height: 150px; max-height: none; }
+/* The closes line leads the footer and takes the width the actions leave (G227); the reference is in the data font. */
+.taskModalCloses { flex: 1 1 auto; min-width: 0; }
+.taskModalCloseRef { font-family: var(--font-data); }
+
+/* Promote issues action in the Tasks header (G20-G22): the Secondary role with a 14px circle-dot glyph. */
+.promoteIssuesAction > svg { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 760px) {
+  .promoteIssuesListPane { flex-basis: 100%; max-width: none; border-right: 0; border-bottom: 1px solid var(--command-line); }
+  .promoteIssueDetail { padding: var(--space-4); }
+  .promoteIssuesCaption, .promoteIssuesError { padding-inline: var(--space-4); }
+}

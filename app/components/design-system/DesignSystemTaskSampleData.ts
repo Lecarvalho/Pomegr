@@ -48,6 +48,8 @@ export const T6_WORKING = sampleTask("T-6", "Check the cache headers", {
 });
 export const T7_SCHEDULED = sampleTask("T-7", "Rotate the sample logs nightly", { state: "scheduled", scheduledAt: SAMPLE_FUTURE, run: { provider: "codex", model: null, effort: null } });
 export const T8_IDLE = sampleTask("T-8", "Rename the config key", { columnId: "col-backlog" });
+/** A task promoted from GitHub issue 142: its card carries the #N chip after the task ID. */
+export const T9_ISSUE = sampleTask("T-10", "Retry a failed upload from the queue", { columnId: "col-backlog", source: { kind: "github_issue", number: 142 } });
 
 export const GATES_HELD: TaskGates = {
   threshold: 85, usage: { claude: { status: "over", fiveHourPercent: 91, sevenDayPercent: 37 }, codex: { status: "ok", fiveHourPercent: 38, sevenDayPercent: 12 } },

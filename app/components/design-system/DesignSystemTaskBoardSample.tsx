@@ -12,7 +12,7 @@ import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/ta
 import { taskColumns } from "../tasks/task-presentation";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -37,6 +37,7 @@ const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[]
   { label: "Stalled", note: "The session ended with no report.", task: T2_STALLED },
   { label: "Blocked by agent", note: "The agent reported it cannot continue.", task: T2_BLOCKED },
   { label: "Done", note: "Muted title and Open session.", task: T1_DONE },
+  { label: "From a GitHub issue", note: "A task promoted from an issue carries its #N chip right after the task ID: the outline chip in the data font with a circle-dot glyph. It is a label, not a link.", task: T9_ISSUE },
 ];
 
 function Frame({ children }: { children: ReactNode }) {

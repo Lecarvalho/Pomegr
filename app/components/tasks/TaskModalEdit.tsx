@@ -5,6 +5,7 @@ import type { Task, TaskCheck } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { FeatureFields } from "./FeatureFields";
 import { TaskModalFrame } from "./TaskModalFrame";
+import { TaskModalSource } from "./TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { TaskStartTimeField } from "./TaskStartTimeField";
@@ -17,13 +18,14 @@ import { observedModelDiffers } from "./task-fields";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
 import { modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
-import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskChip, taskSessionHref, taskSessionTitle } from "./task-presentation";
+import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskChip, taskIssueNumber, taskSessionHref, taskSessionTitle } from "./task-presentation";
 import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft";
 import { useFeatureCreation } from "./use-feature-creation";
 import { useTaskStart } from "./use-task-start";
 
-// Task modal, mode edit (design contract G241-G298), opened from a card. Text, Run on, Effort, Done when, Feature and
-// Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
+// Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
+// body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Done when,
+// Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
 // keeps saving by itself. A task that needs review, is blocked or stalled leads the footer with Mark done and resume
 // queue and Requeue task. A task whose linked session has not reported offers Mark done and Requeue task too, with a
 // line that neither stops the session; nothing marks such a task done or stalled by itself. While the draft is unsaved
@@ -80,6 +82,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // A linked task with no report never resolves by itself, so the user can mark it done or requeue it.
   const awaitingReport = taskAwaitsReport(task);
   const sessionTitle = taskSessionTitle(task);
+  const issueNumber = taskIssueNumber(task);
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
@@ -197,6 +200,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         <button type="button" className="commandPrimaryAction" disabled={!canSave || saving} onClick={() => void save()}>Save</button>
       </>}
     </>}>
+    {issueNumber !== null && <TaskModalSource number={issueNumber} caption="GitHub issue" />}
     {(sessionTitle !== null || hasSessionLink) && <div className="taskModalSession">
       {sessionTitle !== null && <p className="taskModalSessionTitle">{sessionTitle}</p>}
       <span className="newTaskHelper">

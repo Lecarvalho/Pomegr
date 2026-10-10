@@ -3,9 +3,11 @@
 import { useId, useState } from "react";
 import { FeatureFields } from "../tasks/FeatureFields";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
+import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, NO_MODELS, type DoneWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
+import type { TaskIssue } from "../tasks/task-issues-desktop";
 import type { TaskRun } from "../../../shared/task-contract";
 import { Sample, Section } from "./DesignSystemKit";
 import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
@@ -26,7 +28,7 @@ export function TaskFieldsSection() {
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
   const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
   const [reported, setReported] = useState<DoneWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Done when and Feature, shared by the New task and Task modal forms (the modal has two modes, new and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Done when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Done when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Done when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
@@ -71,6 +73,7 @@ export function TaskFieldsSection() {
           </TaskModalChrome>
         </div>
       </Sample>
+      <TaskModalPromoteSamples />
       <TaskModalEditSamples />
     </div>
   </Section>;
@@ -88,7 +91,7 @@ function TaskModalEditSamples() {
   const dirty = text.trim() !== STORED_TEXT;
   const reviewed: DoneWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." };
   return <>
-    <Sample label="Task modal, edit" note="The header holds the title, the task ID, the state chip and the subtitle. Save is the one primary and stays disabled until the draft differs from the stored task; while it does, Add to queue and Start session are disabled and one quiet line says to save first. Change the text to see it.">
+    <Sample label="Task modal, edit" note="The header holds the title, the task ID, the state chip and the subtitle. Save is the one primary and stays disabled until the draft differs from the stored task; while it does, Add to queue and Start session are disabled and one quiet line says to save first. Change the text to see it. A task promoted from a GitHub issue starts the body with its Source block: the label, the issue chip and a caption; the text stays editable.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={draftId} title="Task" subtitle="pomegr · in Backlog" onClose={noop}
           titleExtra={<>
@@ -103,6 +106,7 @@ function TaskModalEditSamples() {
             <button type="button" className="commandSecondaryAction" disabled={dirty} onClick={noop}>Start session</button>
             <button type="button" className="commandPrimaryAction" disabled={!dirty} onClick={noop}>Save</button>
           </>}>
+          <TaskModalSource number={142} caption="GitHub issue" />
           <TaskTextField value={text} onChange={setText} />
           <RunFields run={run} models={MODELS} onChange={setRun} />
           <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
@@ -132,6 +136,72 @@ function TaskModalEditSamples() {
           <TaskTextField value={STORED_TEXT} onChange={noop} />
           <DoneWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
             footnote={<span className="newTaskHelper taskDoneWhenNote">Agent reported complete.</span>} />
+        </TaskModalChrome>
+      </div>
+    </Sample>
+  </>;
+}
+
+function sampleIssue(overrides: Partial<TaskIssue>): TaskIssue {
+  const body = "The queue pauses when the data folder is on D: and the repository is on C:.\n\nThe manual start of the same task works.";
+  return {
+    number: 139, title: "Queue pauses when the worktree is on another drive", body, bodyTruncated: false, hiddenComments: { count: 0, ranges: [] }, characters: 142, tooLong: false,
+    authorAssociation: "collaborator", updatedAt: "2026-10-08T12:00:00.000Z", digest: "0".repeat(64), taskId: null, ...overrides,
+  };
+}
+
+const HIDDEN_BODY = "The queue pauses when the data folder is on D: and the repository is on C:.\n\n<!-- internal note: reproduction steps are in the wiki -->\n\nThe manual start of the same task works.";
+const HIDDEN_START = HIDDEN_BODY.indexOf("<!--");
+const HIDDEN_END = HIDDEN_BODY.indexOf("-->") + 3;
+const CHANGED = sampleIssue({ authorAssociation: "outsider", body: HIDDEN_BODY, hiddenComments: { count: 1, ranges: [{ start: HIDDEN_START, end: HIDDEN_END }] }, characters: 151, digest: "1".repeat(64) });
+
+/** Mode issue as static chrome: the same pieces as the real form, with nothing sent. The fields keep local state. */
+function TaskModalPromoteSamples() {
+  const normalId = useId();
+  const changedId = useId();
+  const unsavedId = useId();
+  const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
+  const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [changedRun, setChangedRun] = useState<TaskRun>(EMPTY_RUN);
+  const [changedDoneWhen, setChangedDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const closes = (number: number) => <span className="taskModalNote taskModalCloses">The pull request will say Closes <span className="taskModalCloseRef">#{number}</span>.</span>;
+  return <>
+    <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature and Step, Run on and Effort, and Done when are the New task form's (Feature and Step are drawn in their own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
+      <div className="designSystemTaskFrame designSystemTaskModalStage">
+        <TaskModalChrome titleId={normalId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
+          footer={<>
+            {closes(139)}
+            <button type="button" className="commandQuietAction" onClick={noop}>Cancel</button>
+            <button type="button" className="commandPrimaryAction" onClick={noop}>Promote issue</button>
+          </>}>
+          <PromoteIssueSummary issue={sampleIssue({})} />
+          <RunFields run={run} models={MODELS} onChange={setRun} />
+          <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+        </TaskModalChrome>
+      </div>
+    </Sample>
+    <Sample label="Task modal, promote issue, outside contributor and changed" note="An outside contributor and a hidden comment each get a notice, in that order, over the raw body with the comment struck through. After a promote answers conflict, the warning notice offers Show new version, which reads the issues once more; Promote issue stays disabled until the new version arrives, and the chosen fields are kept.">
+      <div className="designSystemTaskFrame designSystemTaskModalStage">
+        <TaskModalChrome titleId={changedId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
+          footer={<>
+            {closes(139)}
+            <button type="button" className="commandQuietAction" onClick={noop}>Cancel</button>
+            <button type="button" className="commandPrimaryAction" disabled onClick={noop}>Promote issue</button>
+          </>}>
+          <PromoteIssueSummary issue={CHANGED} notices={<PromoteOutcomeNotice outcome={{ kind: "conflict", digest: CHANGED.digest }} onShowNewVersion={noop} />} />
+          <RunFields run={changedRun} models={MODELS} onChange={setChangedRun} />
+          <DoneWhenField draft={changedDoneWhen} onDraftChange={setChangedDoneWhen} />
+        </TaskModalChrome>
+      </div>
+    </Sample>
+    <Sample label="Task modal, promote issue, run settings not saved" note="The task exists once the monitor says so. When the follow-up update fails, the modal says so in a fixed notice, drops the fields that no longer apply and offers only Close, so an issue is never promoted twice.">
+      <div className="designSystemTaskFrame designSystemTaskModalStage">
+        <TaskModalChrome titleId={unsavedId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
+          footer={<>
+            <span className="taskModalSpacer" aria-hidden="true" />
+            <button type="button" className="commandSecondaryAction" onClick={noop}>Close</button>
+          </>}>
+          <PromoteIssueSummary issue={sampleIssue({ taskId: "T-40" })} notices={<PromoteOutcomeNotice outcome={{ kind: "unsaved", taskId: "T-40" }} />} />
         </TaskModalChrome>
       </div>
     </Sample>

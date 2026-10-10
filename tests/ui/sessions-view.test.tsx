@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -341,6 +341,41 @@ describe("Sessions view", () => {
       expect(cell("Session 0")).toHaveTextContent(/^—$/);
       expect(screen.getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY}`);
       expect(screen.getByText(/A dash means you started the session yourself\./)).toBeInTheDocument();
+    });
+
+    it("prints a promoted task's issue number as plain muted text after the task ID: no chip, icon or link", async () => {
+      const promoted = [
+        { ...session(5), task: { ...task("T-14", null), issue: 128 } },
+        { ...session(4), task: { ...task("T-12", "needs_review"), issue: 128 } },
+        { ...session(3), task: { ...task("T-13", "done"), issue: null } },
+        // A reference from a monitor that does not send the field, and one with a number outside the documented range, print none.
+        { ...session(2), task: task("T-9", null, null) },
+        { ...session(1), task: { ...task("T-8", null, null), issue: 0 } },
+        { ...session(0), task: { ...task("T-7", null, null), issue: 1_000_000_000 } },
+      ];
+      stubDirectory(() => directorySnapshot(promoted, { matchedCount: 6, taskReadiness: "ready" }));
+      render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
+
+      await waitFor(() => expect(screen.getByText("Session 5")).toBeInTheDocument());
+      const cell = (title: string) => rowOf(title).querySelector("td.commandSessionCellTask") as HTMLElement;
+      const number = within(cell("Session 5")).getByText("#128");
+      const wrapper = number.closest(".commandSessionTaskIssue") as HTMLElement;
+      // Plain text: no chip, no glyph, no link or button, and no extra border of its own.
+      expect(wrapper).toHaveAttribute("title", "GitHub issue 128");
+      expect(wrapper).not.toHaveClass("commandChip");
+      expect(cell("Session 5").querySelector(".commandChip, svg, button")).toBeNull();
+      expect(cell("Session 5").querySelectorAll("a")).toHaveLength(1);
+      // Assistive technology reads the number with its meaning; the visible glyphs stay quiet.
+      expect(number).toHaveAttribute("aria-hidden", "true");
+      expect(within(cell("Session 5")).getByText("GitHub issue #128")).toHaveClass("commandVisuallyHidden");
+      // The task ID stays first and the outcome chip follows the number.
+      expect(cell("Session 4").textContent).toMatch(/^T-12#128GitHub issue #128Needs reviewTask board v1 · step 2$/);
+      const id = within(cell("Session 4")).getByRole("link", { name: "Open task T-12 on its board" });
+      const chip = cell("Session 4").querySelector(".commandChip.warning") as HTMLElement;
+      const issue = cell("Session 4").querySelector(".commandSessionTaskIssue") as HTMLElement;
+      expect(id.compareDocumentPosition(issue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(issue.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      for (const title of ["Session 3", "Session 2", "Session 1", "Session 0"]) expect(cell(title).querySelector(".commandSessionTaskIssue"), title).toBeNull();
     });
 
     it("has no Task column and no footnote for a client that gets no task reference", async () => {
