@@ -17,7 +17,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
-import { isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
+import { TASK_IMAGE_MARKER, isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
 export { TASK_DISPATCH_UNBOUND_TTL_MS };
 
@@ -45,27 +45,36 @@ function issueLine(task) {
 }
 
 // A task's images are files in the private task store. The session is told where they are; each path is built by the
-// store from validated identifiers, never from task text.
-function imageLines(imagePaths) {
-  if (imagePaths.length === 0) return [];
+// store from validated identifiers, never from task text. `images` is `{ id, file }[]`: an image is named by its
+// number, the same number its marker in the task text is shown as.
+function imageLines(images) {
+  if (images.length === 0) return [];
   return [
-    imagePaths.length === 1 ? "The task has 1 attached image. Read it before you start:" : `The task has ${imagePaths.length} attached images. Read each one before you start:`,
-    ...imagePaths.map((file) => `- ${file}`),
+    images.length === 1
+      ? "The task has 1 attached image. The task text shows where it belongs as [Image #1]. Read it before you start:"
+      : `The task has ${images.length} attached images. The task text shows where each belongs as [Image #n]. Read each one before you start:`,
+    ...images.map((image, index) => `- [Image #${index + 1}] ${image.file}`),
   ];
+}
+
+// The task text as the session reads it: a marker of a listed image becomes its number, any other the plain word.
+function promptText(text, images) {
+  const numbers = new Map(images.map((image, index) => [image.id, index + 1]));
+  return text.replace(TASK_IMAGE_MARKER, (_marker, id) => (numbers.has(id) ? `[Image #${numbers.get(id)}]` : "[image]"));
 }
 
 /**
  * The fixed session prompt. It begins with a fixed non-dash sentence, so it can never parse as a CLI
  * flag, and holds the task text only as quoted data between fixed sentences.
  */
-export function buildTaskPrompt(task, imagePaths = []) {
+export function buildTaskPrompt(task, images = []) {
   const conditions = task.doneWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
   if (task.doneWhen.own) conditions.push(`- ${task.doneWhen.own}`);
   return [
     TASK_PROMPT_OPENING,
     `Task ${task.id}:`,
-    task.text,
-    ...imageLines(imagePaths),
+    promptText(task.text, images),
+    ...imageLines(images),
     "Done when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     ...issueLine(task),
@@ -132,12 +141,12 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   if (!minted) return { ok: false, error: "not_startable" };
   // The images the task holds now are the ones the session gets; one attached later is not sent to it.
   let images = [];
-  try { images = typeof imagePaths === "function" ? imagePaths(task.id) : []; } catch { images = []; }
+  try { images = (typeof imagePaths === "function" ? imagePaths(task.id) : []).filter((image) => typeof image?.id === "string" && typeof image.file === "string"); } catch { images = []; }
   return {
     ok: true,
     plan: {
       taskId: task.id, provider, model: task.run.model, effort: task.run.effort,
-      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images), images, token,
+      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images), images: images.map((image) => image.file), token,
     },
   };
 }

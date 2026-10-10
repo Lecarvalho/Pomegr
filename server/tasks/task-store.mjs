@@ -31,7 +31,7 @@ import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } fr
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
-  projectBoard, taskIdFromNumber,
+  plainTaskText, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -604,7 +604,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       const number = Number(taskId.slice(2));
       const row = preparedStatement(database, "SELECT text FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
       if (!row || typeof row.text !== "string") return null;
-      return { text: row.text, hasSource: readTaskSource(database, repositoryId, number) !== null };
+      // GitHub gets the text only: where an image sits reads as the plain word, never an image or its ID.
+      return { text: plainTaskText(row.text), hasSource: readTaskSource(database, repositoryId, number) !== null };
     } catch { return null; }
   }
 

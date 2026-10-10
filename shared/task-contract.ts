@@ -171,6 +171,37 @@ export const TASK_BOUNDS = {
 
 export const TASK_IMAGE_TYPES: readonly TaskImageType[] = ["png", "jpeg", "gif", "webp"];
 
+/**
+ * Where an image sits in a task's text: `[image:<image ID>]`, ordinary task text that names one of `Task.images`.
+ * The Task field draws the image in its place; every other surface shows the plain word (`plainTaskText`).
+ */
+export const TASK_IMAGE_ID_PATTERN = /^img-[0-9a-f]{12}$/u;
+const TASK_IMAGE_MARKER = /\[image:(img-[0-9a-f]{12})\]/gu;
+export const taskImageMarker = (imageId: string) => `[image:${imageId}]`;
+
+/** The image IDs a task text names, once each, in the order they first appear. */
+export function taskImageIds(text: string): string[] {
+  return [...new Set([...text.matchAll(TASK_IMAGE_MARKER)].map((match) => match[1]))];
+}
+
+/** Task text split into its plain runs and its image markers, in order. */
+export function taskTextParts(text: string): ({ text: string } | { imageId: string })[] {
+  const parts: ({ text: string } | { imageId: string })[] = [];
+  let at = 0;
+  for (const match of text.matchAll(TASK_IMAGE_MARKER)) {
+    if (match.index > at) parts.push({ text: text.slice(at, match.index) });
+    parts.push({ imageId: match[1] });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at) });
+  return parts;
+}
+
+/** Task text for a surface that draws no image (a card, the search, a session's Task tab): a marker reads `[image]`. */
+export function plainTaskText(text: string): string {
+  return text.replace(TASK_IMAGE_MARKER, "[image]");
+}
+
 export const TASK_CHECKS: readonly TaskCheck[] = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
 export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];
 export const TASK_PROVIDERS: readonly TaskProvider[] = ["claude", "codex"];

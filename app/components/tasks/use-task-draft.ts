@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Task, TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type Task, type TaskRun } from "../../../shared/task-contract";
 import type { TaskFieldsInput } from "./task-desktop";
 import { doneWhenFromTask, toDoneWhen, type DoneWhenDraft } from "./task-fields";
 import { featureDraftFromTask, featureUpdateInput, type FeatureDraft } from "./task-features";
@@ -39,7 +39,7 @@ export function taskDraftPatch(task: Task, draft: TaskDraft, createdFeatureId: s
 
 /** Save is offered once something differs, the text is not empty and a new feature has a name. */
 export function taskDraftCanSave(task: Task, draft: TaskDraft): boolean {
-  if (draft.text.trim() === "") return false;
+  if (draft.text.trim() === "" || draft.text.trim().length > TASK_BOUNDS.textLength) return false;
   if (draft.feature.creating && draft.feature.name.trim() === "") return false;
   return taskDraftPatch(task, draft) !== null;
 }

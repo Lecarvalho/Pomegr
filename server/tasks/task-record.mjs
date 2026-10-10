@@ -21,6 +21,17 @@ export const TASK_BOUNDS = Object.freeze({
   imagesPerTask: 4,
   imageBytes: 5 * 1024 * 1024,
 });
+/**
+ * Where an image sits in a task's text: `[image:<image ID>]`. The marker is ordinary task text that names one of the
+ * task's images; a marker that names none reads as the plain word.
+ */
+export const TASK_IMAGE_MARKER = /\[image:(img-[0-9a-f]{12})\]/gu;
+
+/** Task text for a reader that gets no image (a GitHub issue): every marker becomes the plain word `[image]`. */
+export function plainTaskText(text) {
+  return typeof text === "string" ? text.replace(TASK_IMAGE_MARKER, "[image]") : text;
+}
+
 /** The image formats a task may hold; the store decides the type from the bytes (task-images.mjs). */
 export const TASK_IMAGE_TYPES = Object.freeze(["png", "jpeg", "gif", "webp"]);
 // What an older store may hold in columns, read before the board is brought to the fixed five (task-columns.mjs).

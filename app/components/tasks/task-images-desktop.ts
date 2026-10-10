@@ -12,7 +12,6 @@ export type TaskImageResult<Value> = ({ ok: true } & Value) | { ok: false; error
 type Operation = "add" | "remove" | "read";
 type Bridge = { taskImage(repositoryId: string, operation: Operation, payload: Record<string, unknown>): Promise<unknown> };
 
-const IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const ERRORS = new Set<string>(["invalid", "not_found", "limit", "conflict", "unavailable"]);
 const MEDIA_TYPES: Record<TaskImageType, string> = { png: "image/png", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
 /** The file types the Attach image picker offers; the monitor still decides the type from the bytes. */
@@ -48,9 +47,17 @@ async function call<Value>(repositoryId: string, operation: Operation, payload: 
   return { ok: false, error: "unavailable" };
 }
 
-/** Attaches one image to an existing task. The monitor refuses anything that is not one of the four formats. */
-export function addDesktopTaskImage(repositoryId: string, taskId: string, bytes: Uint8Array): Promise<TaskImageResult<{ imageId: string }>> {
-  return call(repositoryId, "add", { taskId, bytes }, (answer) => (typeof answer.imageId === "string" && IMAGE_ID.test(answer.imageId) ? { imageId: answer.imageId } : null));
+/** A new image ID, made here so the task text can name the image before it is stored. */
+export function newTaskImageId(): string {
+  return `img-${[...crypto.getRandomValues(new Uint8Array(6))].map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * Stores one image on an existing task under `imageId`, the ID its marker in the task text carries. The monitor
+ * refuses anything that is not one of the four formats, and answers `conflict` for an ID the task already holds.
+ */
+export function addDesktopTaskImage(repositoryId: string, taskId: string, imageId: string, bytes: Uint8Array): Promise<TaskImageResult<{ imageId: string }>> {
+  return call(repositoryId, "add", { taskId, imageId, bytes }, (answer) => (answer.imageId === imageId ? { imageId } : null));
 }
 
 export function removeDesktopTaskImage(repositoryId: string, taskId: string, imageId: string): Promise<TaskImageResult<object>> {
@@ -68,13 +75,13 @@ export function readDesktopTaskImage(repositoryId: string, taskId: string, image
 }
 
 const MEGABYTES = TASK_BOUNDS.imageBytes / (1024 * 1024);
-export const TASK_IMAGE_HELPER = `Paste or drop an image into the task, or attach one. PNG, JPEG, GIF or WebP; up to ${TASK_BOUNDS.imagesPerTask} images of ${MEGABYTES} MB each. A session gets the images the task holds when it starts.`;
+export const TASK_IMAGE_HELPER = `Paste or drop an image into the text, or attach one: it shows where you put it, and Backspace removes it. PNG, JPEG, GIF or WebP; up to ${TASK_BOUNDS.imagesPerTask} images of ${MEGABYTES} MB each.`;
 export const TASK_IMAGE_TYPE_MESSAGE = "Only PNG, JPEG, GIF and WebP images can be attached.";
 export const TASK_IMAGE_SIZE_MESSAGE = `An image can be at most ${MEGABYTES} MB.`;
 export const TASK_IMAGE_LIMIT_MESSAGE = `A task holds at most ${TASK_BOUNDS.imagesPerTask} images.`;
 export const TASK_IMAGE_ADD_FAILURE_MESSAGE = "The image could not be attached.";
 export const TASK_IMAGE_REMOVE_FAILURE_MESSAGE = "The image could not be removed.";
-export const TASK_IMAGE_CREATE_FAILURE_MESSAGE = "The task was created, but an image could not be attached. Attach it again here.";
+export const TASK_IMAGE_CREATE_FAILURE_MESSAGE = "The task was created, but an image could not be stored. Put it in again here.";
 
 /** One short fixed message per failed attach; the monitor's own wording never reaches the modal. */
 export function imageAddFailureMessage(error: TaskImageError): string {

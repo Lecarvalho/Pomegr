@@ -9,7 +9,7 @@ import { createRequestHandler } from "../../../server/serving/request-handler.mj
 import { TASK_IMAGE_ACTIONS, TASK_IMAGE_LIMIT_BYTES, TASK_IMAGE_MEDIA_TYPES } from "../../../server/serving/task-image-routes.mjs";
 import { buildTaskPrompt } from "../../../server/tasks/task-dispatch.mjs";
 import { sniffImageType } from "../../../server/tasks/task-images.mjs";
-import { TASK_ACTIONS, TASK_BOUNDS, TASK_IMAGE_TYPES, normalizeStoredImages } from "../../../server/tasks/task-record.mjs";
+import { TASK_ACTIONS, TASK_BOUNDS, TASK_IMAGE_TYPES, normalizeStoredImages, plainTaskText } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { GATE_FACTS, removeDirectory } from "./queue-test-support.mjs";
 
@@ -63,8 +63,8 @@ function send(port, { method = "POST", path: requestPath, headers, body } = {}) 
   });
 }
 
-const add = (env, bytes, { taskId = env.taskId, repositoryId = REPOSITORY, headers = OCTETS } = {}) =>
-  send(env.port, { path: `/internal/tasks/image-add?repositoryId=${repositoryId}&taskId=${taskId}`, headers, body: bytes });
+const add = (env, bytes, { taskId = env.taskId, repositoryId = REPOSITORY, headers = OCTETS, imageId = null } = {}) =>
+  send(env.port, { path: `/internal/tasks/image-add?repositoryId=${repositoryId}&taskId=${taskId}${imageId === null ? "" : `&imageId=${imageId}`}`, headers, body: bytes });
 const withImage = (env, name, payload, repositoryId = REPOSITORY) =>
   send(env.port, { path: `/internal/tasks/image-${name}`, headers: JSON_BODY, body: JSON.stringify({ repositoryId, payload }) });
 const imagesOf = (env) => env.store.readBoard(REPOSITORY).tasks.find((task) => task.id === env.taskId).images;
@@ -213,9 +213,9 @@ test("the start plan names the task's image files and the prompt lists them betw
     assert.deepEqual(readFileSync(file).subarray(0, 4), file.endsWith(".png") ? PNG.subarray(0, 4) : WEBP.subarray(0, 4));
   }
   const lines = plan.prompt.split("\n");
-  const at = lines.indexOf("The task has 2 attached images. Read each one before you start:");
+  const at = lines.indexOf("The task has 2 attached images. The task text shows where each belongs as [Image #n]. Read each one before you start:");
   assert.ok(at > 0);
-  assert.deepEqual(lines.slice(at + 1, at + 3), plan.images.map((file) => `- ${file}`));
+  assert.deepEqual(lines.slice(at + 1, at + 3), plan.images.map((file, index) => `- [Image #${index + 1}] ${file}`));
   assert.equal(lines[at + 3], "Done when:");
 });
 
@@ -226,7 +226,38 @@ test("a task without images has no image lines and an empty list in its plan", a
   assert.equal(planned.json.plan.prompt.includes("attached image"), false);
   const task = { id: "T-1", text: "x", doneWhen: { checks: [], own: null }, source: null };
   assert.equal(buildTaskPrompt(task), buildTaskPrompt(task, []));
-  assert.ok(buildTaskPrompt(task, ["C:\\data\\img-000000000001.png"]).includes("The task has 1 attached image. Read it before you start:\n- C:\\data\\img-000000000001.png"));
+  assert.ok(buildTaskPrompt(task, [{ id: "img-000000000001", file: "C:\\data\\img-000000000001.png" }])
+    .includes("The task has 1 attached image. The task text shows where it belongs as [Image #1]. Read it before you start:\n- [Image #1] C:\\data\\img-000000000001.png"));
+});
+
+test("a marker in the task text reads as its image's number in the prompt, and as the plain word everywhere else", async (context) => {
+  const env = await setup(context);
+  const first = "img-00000000000a";
+  const second = "img-00000000000b";
+  const gone = "img-00000000000c";
+  const text = `Make the header look like [image:${second}]\nnot like [image:${first}] or [image:${gone}].`;
+  assert.equal(env.store.apply(REPOSITORY, "update", { id: env.taskId, text }).ok, true);
+  // The renderer names the image before it is stored, so the text and the image agree on the ID.
+  assert.deepEqual((await add(env, PNG, { imageId: first })).json, { ok: true, imageId: first });
+  assert.deepEqual((await add(env, JPEG, { imageId: second })).json, { ok: true, imageId: second });
+  assert.deepEqual(imagesOf(env).map((image) => image.id), [first, second]);
+  const again = await add(env, PNG, { imageId: first });
+  assert.equal(again.status, 409);
+  assert.deepEqual(again.json, { ok: false, error: "conflict" });
+  assert.equal((await add(env, PNG, { imageId: "../x" })).status, 400);
+  assert.equal(filesOf(env).length, 2);
+
+  const planned = await send(env.port, { path: "/internal/tasks/start-plan", headers: JSON_BODY, body: JSON.stringify({ repositoryId: REPOSITORY, payload: { id: env.taskId } }) });
+  const { prompt, images } = planned.json.plan;
+  assert.ok(prompt.includes("Make the header look like [Image #2]\nnot like [Image #1] or [image]."));
+  assert.ok(prompt.includes(`- [Image #1] ${images[0]}`));
+  assert.ok(prompt.includes(`- [Image #2] ${images[1]}`));
+  assert.equal(prompt.includes("[image:"), false);
+
+  // The board keeps the text as stored; GitHub would get the plain word, never an ID.
+  assert.equal(env.store.readBoard(REPOSITORY).tasks.find((task) => task.id === env.taskId).text, text);
+  assert.equal(env.store.issueDraft(REPOSITORY, env.taskId).text, "Make the header look like [image]\nnot like [image] or [image].");
+  assert.equal(plainTaskText("no marker [image:nope] here"), "no marker [image:nope] here");
 });
 
 test("a store that cannot be used refuses an image write", async () => {

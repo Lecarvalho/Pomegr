@@ -1,143 +1,139 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Task } from "../../../shared/task-contract";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { taskImageIds, taskImageMarker, taskTextParts, type Task } from "../../../shared/task-contract";
 import {
-  TASK_IMAGE_CREATE_FAILURE_MESSAGE, TASK_IMAGE_REMOVE_FAILURE_MESSAGE, acceptImageFiles, addDesktopTaskImage, imageAddFailureMessage,
+  TASK_IMAGE_CREATE_FAILURE_MESSAGE, TASK_IMAGE_REMOVE_FAILURE_MESSAGE, acceptImageFiles, addDesktopTaskImage, imageAddFailureMessage, newTaskImageId,
   readDesktopTaskImage, removeDesktopTaskImage, takeImageCreateFailure,
 } from "./task-images-desktop";
 
-/** One image as the field draws it. `url` is an object URL of this page, or null while the image is being read. */
-export type TaskImageItem = { key: string; url: string | null; label: string };
+// The images behind the Task field of each form. The task text says which images a task has: each is a marker at its
+// place in the text. These hooks hold the pictures: the files the user just put in, which are not stored yet, and the
+// object URLs the field draws. An image is stored when the text that names it is saved, and never before.
 
-export type TaskImagesState = {
-  items: TaskImageItem[];
-  busy: boolean;
+type Pending = { file: File; url: string };
+
+export type TaskImagesDraft = {
+  /** The object URL of each image by ID; null while a stored image is being read. */
+  urls: ReadonlyMap<string, string | null>;
   error: string | null;
-  /** Takes the image files of one paste or pick; a file that cannot be attached is named by `error`. */
-  add(files: readonly File[]): void;
-  remove(key: string): void;
+  /** Takes the image files of one paste, drop or pick, `held` being how many images the text holds, and answers their new IDs. */
+  attach(files: File[], held: number): string[];
+  /**
+   * Stores the images `text` names that are not stored yet, on `taskId`. Answers null, or the one fixed line of the
+   * first that failed; an image that failed stays pending, so a retry stores it.
+   */
+  store(taskId: string, text: string): Promise<string | null>;
 };
 
-const labelOf = (index: number) => `Image ${index + 1}`;
-
-type DraftImage = { key: string; file: File; url: string };
-
-/**
- * The images of a task that does not exist yet (the New task form). They stay in this component's memory until the
- * task is created; `files` is then what the form attaches, in order. Every object URL is revoked when its image
- * leaves or the form closes.
- */
-export function useDraftImages(): TaskImagesState & { files: File[] } {
-  const [drafts, setDrafts] = useState<DraftImage[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const held = useRef<DraftImage[]>([]);
-  const serial = useRef(0);
-  useEffect(() => () => { for (const draft of held.current) URL.revokeObjectURL(draft.url); }, []);
-  const add = useCallback((files: readonly File[]) => {
-    const { accepted, message } = acceptImageFiles(files, held.current.length);
+/** The files the user put in and their object URLs, revoked when the form closes. */
+function usePendingImages(repositoryId: string, firstError: () => string | null = () => null) {
+  const pending = useRef(new Map<string, Pending>());
+  // The pending images that are stored by now: their pictures stay for the field to draw, but they are not sent again.
+  const stored = useRef(new Set<string>());
+  const [added, setAdded] = useState<ReadonlyMap<string, string>>(new Map());
+  const [error, setError] = useState<string | null>(firstError);
+  useEffect(() => {
+    const held = pending.current;
+    return () => { for (const image of held.values()) URL.revokeObjectURL(image.url); };
+  }, []);
+  const attach = useCallback((files: File[], held: number) => {
+    const { accepted, message } = acceptImageFiles(files, held);
     setError(message);
-    if (accepted.length === 0) return;
-    const added = accepted.map((file) => ({ key: `draft-${serial.current += 1}`, file, url: URL.createObjectURL(file) }));
-    held.current = [...held.current, ...added];
-    setDrafts(held.current);
+    const ids = accepted.map((file) => {
+      const id = newTaskImageId();
+      pending.current.set(id, { file, url: URL.createObjectURL(file) });
+      return id;
+    });
+    if (ids.length > 0) setAdded(new Map([...pending.current].map(([id, image]) => [id, image.url])));
+    return ids;
   }, []);
-  const remove = useCallback((key: string) => {
-    const gone = held.current.find((draft) => draft.key === key);
-    if (!gone) return;
-    URL.revokeObjectURL(gone.url);
-    held.current = held.current.filter((draft) => draft.key !== key);
-    setDrafts(held.current);
-    setError(null);
-  }, []);
-  return {
-    items: drafts.map((draft, index) => ({ key: draft.key, url: draft.url, label: labelOf(index) })),
-    files: drafts.map((draft) => draft.file), busy: false, error, add, remove,
-  };
+  const store = useCallback(async (taskId: string, text: string) => {
+    for (const id of taskImageIds(text)) {
+      const image = pending.current.get(id);
+      if (!image || stored.current.has(id)) continue;
+      const result = await addDesktopTaskImage(repositoryId, taskId, id, new Uint8Array(await image.file.arrayBuffer()));
+      // `conflict` is this image stored by an earlier try whose answer was lost.
+      if (!result.ok && result.error !== "conflict") return imageAddFailureMessage(result.error);
+      stored.current.add(id);
+    }
+    return null;
+  }, [repositoryId]);
+  return { added, error, attach, store };
+}
+
+/** The images of a task that does not exist yet (the New task form): they wait here until the task is created. */
+export function useDraftImages(repositoryId: string): TaskImagesDraft {
+  const { added, error, attach, store } = usePendingImages(repositoryId);
+  return { urls: added, error, attach, store };
 }
 
 /**
- * The images of a stored task (the Task modal). Attach and remove act at once through the desktop bridge, like Start
- * at, and are not part of the Save draft; `onChanged` then has the board read again, which is what lists the images.
- * Each listed image is read once into an object URL that is revoked when the image leaves or the modal closes.
+ * The task text as the Task form shows it: a marker that names no image of the task is dropped, and an image of the
+ * task the text does not name is put at its end, so every image the task holds can be seen and removed.
  */
-export function useStoredImages(repositoryId: string, task: Pick<Task, "id" | "images">, onChanged: () => void): TaskImagesState {
-  const images = task.images ?? [];
-  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(new Map());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(() => (takeImageCreateFailure(repositoryId, task.id) ? TASK_IMAGE_CREATE_FAILURE_MESSAGE : null));
+export function shownTaskText(text: string, images: Task["images"]): string {
+  const ids = new Set((images ?? []).map((image) => image.id));
+  const kept = taskTextParts(text).map((part) => ("imageId" in part ? (ids.has(part.imageId) ? taskImageMarker(part.imageId) : "") : part.text)).join("");
+  const named = new Set(taskImageIds(kept));
+  const unnamed = [...ids].filter((id) => !named.has(id)).map(taskImageMarker);
+  return unnamed.length === 0 ? kept : `${kept}${kept === "" ? "" : "\n"}${unnamed.join(" ")}`;
+}
+
+/**
+ * The images of a stored task (the Task form). Each stored image is read once into an object URL. Images are part of
+ * the draft like the text that names them: `store` sends the new ones before the text is saved, and `prune` removes
+ * the stored ones the saved text no longer names. Close discards both.
+ */
+export function useStoredImages(repositoryId: string, task: Pick<Task, "id" | "images">): TaskImagesDraft & { prune(text: string): Promise<string | null> } {
+  const { added, error, attach, store } = usePendingImages(repositoryId, () => (takeImageCreateFailure(repositoryId, task.id) ? TASK_IMAGE_CREATE_FAILURE_MESSAGE : null));
+  const [read, setRead] = useState<ReadonlyMap<string, string>>(new Map());
   const loaded = useRef(new Map<string, string>());
   const requested = useRef(new Set<string>());
   const mounted = useRef(true);
-  const working = useRef(false);
-  const ids = images.map((image) => image.id).join(" ");
+  const ids = (task.images ?? []).map((image) => image.id).join(" ");
 
   useEffect(() => {
     mounted.current = true;
-    const urlsHeld = loaded.current;
+    const held = loaded.current;
     return () => {
       mounted.current = false;
-      for (const url of urlsHeld.values()) URL.revokeObjectURL(url);
-      urlsHeld.clear();
+      for (const url of held.values()) URL.revokeObjectURL(url);
+      held.clear();
     };
   }, []);
 
   useEffect(() => {
-    const listed = new Set(ids === "" ? [] : ids.split(" "));
-    let dropped = false;
-    for (const [id, url] of loaded.current) {
-      if (listed.has(id)) continue;
-      URL.revokeObjectURL(url);
-      loaded.current.delete(id);
-      dropped = true;
-    }
-    if (dropped) setUrls(new Map(loaded.current));
-    for (const id of listed) {
+    for (const id of ids === "" ? [] : ids.split(" ")) {
       if (requested.current.has(id)) continue;
       requested.current.add(id);
       void readDesktopTaskImage(repositoryId, task.id, id).then((result) => {
         if (!result.ok || !mounted.current) return;
         loaded.current.set(id, URL.createObjectURL(result.blob));
-        setUrls(new Map(loaded.current));
+        setRead(new Map(loaded.current));
       });
     }
   }, [ids, repositoryId, task.id]);
 
-  const add = useCallback((files: readonly File[]) => {
-    if (working.current) return;
-    const { accepted, message } = acceptImageFiles(files, images.length);
-    setError(message);
-    if (accepted.length === 0) return;
-    working.current = true;
-    setBusy(true);
-    void (async () => {
-      let failure: string | null = message;
-      for (const file of accepted) {
-        const result = await addDesktopTaskImage(repositoryId, task.id, new Uint8Array(await file.arrayBuffer()));
-        if (!result.ok) { failure = imageAddFailureMessage(result.error); break; }
-      }
-      working.current = false;
-      onChanged();
-      if (!mounted.current) return;
-      setBusy(false);
-      setError(failure);
-    })();
-  }, [images.length, onChanged, repositoryId, task.id]);
+  const urls = useMemo(() => {
+    const all = new Map<string, string | null>();
+    for (const id of ids === "" ? [] : ids.split(" ")) all.set(id, read.get(id) ?? null);
+    // A picture the user just put in is drawn from its own file, also once it is stored.
+    for (const [id, url] of added) all.set(id, url);
+    return all;
+  }, [added, ids, read]);
 
-  const remove = useCallback((key: string) => {
-    if (working.current) return;
-    working.current = true;
-    setBusy(true);
-    setError(null);
-    void removeDesktopTaskImage(repositoryId, task.id, key).then((result) => {
-      working.current = false;
-      onChanged();
-      if (!mounted.current) return;
-      setBusy(false);
-      // An image that is already gone needs no message: the board read drops it.
-      if (!result.ok && result.error !== "not_found") setError(TASK_IMAGE_REMOVE_FAILURE_MESSAGE);
-    });
-  }, [onChanged, repositoryId, task.id]);
+  const prune = useCallback(async (text: string) => {
+    const named = new Set(taskImageIds(text));
+    let failure: string | null = null;
+    for (const id of ids === "" ? [] : ids.split(" ")) {
+      if (named.has(id)) continue;
+      const result = await removeDesktopTaskImage(repositoryId, task.id, id);
+      // An image that is already gone needs no message.
+      if (!result.ok && result.error !== "not_found") failure = TASK_IMAGE_REMOVE_FAILURE_MESSAGE;
+    }
+    return failure;
+  }, [ids, repositoryId, task.id]);
 
-  return { items: images.map((image, index) => ({ key: image.id, url: urls.get(image.id) ?? null, label: labelOf(index) })), busy, error, add, remove };
+  return { urls, error, attach, store, prune };
 }

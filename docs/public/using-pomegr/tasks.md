@@ -49,7 +49,7 @@ there until its session starts.
    **New task**.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
    field. A card shows this text until its session has a title, then the title.
-3. To show the agent a screenshot or a mock-up, paste an image into **Task** or
+3. To show the agent a screenshot or a mock-up, paste an image into the text or
    select **Attach image**; see [Attach images](#attach-images).
 4. Set the optional fields below.
 5. Select **Create task**. **Cancel** closes the window and writes nothing.
@@ -187,20 +187,25 @@ end with no report, not that the work failed.
 
 In the desktop app a task can hold up to four images: PNG, JPEG, GIF, or WebP, each
 at most 5 MB. Paste or drop an image into the **Task** field, or select **Attach
-image** at the foot of the field and choose files. Each image shows inside the
-field, under the text, as a small preview with its own **Remove**.
+image** at the foot of the field and choose files. The image shows in the text,
+where your cursor was, so you can write around it: "make the header look like
+this", then the image. To remove an image, delete it like a character, with
+**Backspace** or **Delete**.
 
-- In **New task** the images wait in the window and are stored when you select
-  **Create task**. If one cannot be stored, the task is still created and its task
-  window opens to say so.
-- In a task window, attaching and removing take effect at once. They are not part
-  of the draft, so **Save** and **Close** do not change them.
-- A session gets the images the task holds when it starts. An image you attach
-  after that reaches the next session, for example after **Requeue task**.
+- An image counts as 24 characters of the 4,000.
+- In **New task** the images are stored when you select **Create task**. If one
+  cannot be stored, the task is still created and its task window opens to say so.
+- In a task window an image is part of the draft, like the text. **Save** stores
+  it, and **Close** or **Escape** discards it.
+- A session gets the images the task holds when it starts, and is told which image
+  the text means at each place. An image you add after that reaches the next
+  session, for example after **Requeue task**.
 - Deleting a task deletes its images.
+- A card, the Search bar, and a session's Task tab show `[image]` where the text
+  holds an image.
 
 Images stay on this computer, in the same private store as the task text. Creating
-a GitHub issue from a task sends the text only, never an image.
+a GitHub issue from a task sends the text only, with `[image]` in place of each image.
 
 ## Start a session
 

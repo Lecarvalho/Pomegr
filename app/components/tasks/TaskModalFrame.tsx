@@ -48,7 +48,7 @@ export function TaskModalChrome({ titleId, title, titleExtra, subtitle, closeRef
  */
 export function TaskModalFrame({ title, titleExtra, subtitle, initialFocus, closeOnScrim = false, onClose, footer, children }: Omit<ChromeProps, "titleId" | "closeRef"> & {
   /** The control that takes focus on open; defaults to Close. */
-  initialFocus?: RefObject<HTMLElement | null>;
+  initialFocus?: RefObject<{ focus(options?: FocusOptions): void } | null>;
   /** True while the form holds nothing to save: a click on the scrim then closes the dialog. */
   closeOnScrim?: boolean;
 }) {

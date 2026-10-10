@@ -45,9 +45,9 @@ test("the channel, operations and errors are fixed", () => {
 
 test("add posts the bytes as the body and answers only the new image's ID", async () => {
   const h = harness(json({ ok: true, imageId, board: { tasks: ["SECRET"] }, path: "C:\\secret" }));
-  assert.deepEqual(await h.action.run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG }), { ok: true, imageId });
+  assert.deepEqual(await h.action.run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), { ok: true, imageId });
   const [{ url, options }] = h.calls;
-  assert.equal(url, `${origin}/internal/tasks/image-add?repositoryId=${repositoryId}&taskId=T-7`);
+  assert.equal(url, `${origin}/internal/tasks/image-add?repositoryId=${repositoryId}&taskId=T-7&imageId=${imageId}`);
   assert.equal(options.method, "POST");
   assert.equal(options.redirect, "error");
   assert.equal(options.headers["content-type"], "application/octet-stream");
@@ -82,15 +82,17 @@ test("a read that is not one of the four media types, or is empty, is unavailabl
 test("refusals happen before any request", async () => {
   const h = harness(json({ ok: true, imageId }));
   const run = (...args) => h.action.run(...args);
-  assert.deepEqual(await run({ trusted: false }, repositoryId, "add", { taskId: "T-7", bytes: PNG }), invalid);
-  assert.deepEqual(await run(trusted, "repo-short", "add", { taskId: "T-7", bytes: PNG }), invalid);
+  assert.deepEqual(await run({ trusted: false }, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), invalid);
+  assert.deepEqual(await run(trusted, "repo-short", "add", { taskId: "T-7", imageId, bytes: PNG }), invalid);
   assert.deepEqual(await run(trusted, repositoryId, "list", { taskId: "T-7", imageId }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-0", bytes: PNG }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: [...PNG] }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: "iVBORw0KGgo=" }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: new Uint8Array(0) }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: new Uint8Array(TASK_IMAGE_MAX_BYTES + 1) }), invalid);
-  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG, path: "C:\\x.png" }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-0", imageId, bytes: PNG }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId: "x&taskId=T-1", bytes: PNG }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: [...PNG] }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: "iVBORw0KGgo=" }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: new Uint8Array(0) }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: new Uint8Array(TASK_IMAGE_MAX_BYTES + 1) }), invalid);
+  assert.deepEqual(await run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG, path: "C:\\x.png" }), invalid);
   assert.deepEqual(await run(trusted, repositoryId, "read", { taskId: "T-7", imageId: "..\\x" }), invalid);
   assert.deepEqual(await run(trusted, repositoryId, "remove", { taskId: "T-7" }), invalid);
   assert.equal(h.calls.length, 0);
@@ -99,10 +101,11 @@ test("refusals happen before any request", async () => {
 test("monitor refusals keep only their fixed code; anything else is unavailable", async () => {
   for (const error of ["invalid", "not_found", "limit", "conflict", "unavailable"]) {
     const h = harness(json({ ok: false, error, detail: "C:\\secret" }, 409));
-    assert.deepEqual(await h.action.run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG }), { ok: false, error });
+    assert.deepEqual(await h.action.run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), { ok: false, error });
   }
-  assert.deepEqual(await harness(json({ ok: false, error: "ENOENT C:\\secret" }, 500)).action.run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG }), unavailable);
-  assert.deepEqual(await harness(json({ ok: true, imageId: "../x" })).action.run(trusted, repositoryId, "add", { taskId: "T-7", bytes: PNG }), unavailable);
+  assert.deepEqual(await harness(json({ ok: false, error: "ENOENT C:\\secret" }, 500)).action.run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), unavailable);
+  // The answer must name the image that was asked for.
+  assert.deepEqual(await harness(json({ ok: true, imageId: "img-ffffffffffff" })).action.run(trusted, repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), unavailable);
   assert.deepEqual(await harness(new Response("nope", { status: 200 })).action.run(trusted, repositoryId, "remove", { taskId: "T-7", imageId }), unavailable);
   assert.deepEqual(await harness(() => { throw new Error("C:\\secret"); }).action.run(trusted, repositoryId, "remove", { taskId: "T-7", imageId }), unavailable);
   assert.deepEqual(await harness(json({ ok: true }), { monitorOrigin: "http://example.com" }).action.run(trusted, repositoryId, "remove", { taskId: "T-7", imageId }), unavailable);
@@ -162,14 +165,15 @@ test("preload refuses a bad image call locally", async () => {
     if (previousWindow === undefined) delete globalThis.window; else globalThis.window = previousWindow;
   }
   for (const [operation, payload] of [
-    ["add", { taskId: "T-7", bytes: "text" }], ["add", { taskId: "T-7", bytes: new Uint8Array(0) }], ["add", { taskId: "T-7", bytes: PNG, name: "x.png" }],
+    ["add", { taskId: "T-7", imageId, bytes: "text" }], ["add", { taskId: "T-7", imageId, bytes: new Uint8Array(0) }], ["add", { taskId: "T-7", imageId, bytes: PNG, name: "x.png" }],
+    ["add", { taskId: "T-7", bytes: PNG }], ["add", { taskId: "T-7", imageId: "x", bytes: PNG }],
     ["read", { taskId: "T-7", imageId: "x" }], ["remove", { taskId: "T-0", imageId }], ["open", { taskId: "T-7", imageId }],
   ]) {
     assert.deepEqual(await exposed.taskImage(repositoryId, operation, payload), invalid);
   }
   assert.deepEqual(await exposed.taskImage("repo-short", "read", { taskId: "T-7", imageId }), invalid);
   assert.equal(invokes.length, 0);
-  assert.deepEqual(await exposed.taskImage(repositoryId, "add", { taskId: "T-7", bytes: PNG }), { ok: true });
+  assert.deepEqual(await exposed.taskImage(repositoryId, "add", { taskId: "T-7", imageId, bytes: PNG }), { ok: true });
   assert.deepEqual(await exposed.taskImage(repositoryId, "read", { taskId: "T-7", imageId }), { ok: true });
   assert.deepEqual(invokes.map((call) => call.slice(0, 3)), [["pomegr:task-image", repositoryId, "add"], ["pomegr:task-image", repositoryId, "read"]]);
 });

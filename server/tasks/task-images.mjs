@@ -89,19 +89,25 @@ function shaped(payload, keys) {
 }
 
 /**
- * Attaches one image to an existing task. `payload` is exactly `{ taskId, bytes }`. The file is written first and
+ * Attaches one image to an existing task. `payload` is `{ taskId, bytes }` and, optionally, `imageId`: the ID the
+ * caller already put in the task's text as a marker. It must have the ID shape, and one the task already holds is
+ * `conflict`; without it the store makes the ID. The file is written first and
  * the list in one transaction after it; a refused or failed list write removes the file again. Answers
  * `{ ok: true, imageId }` or a fixed error: `invalid` (not one of the four types, empty, or over the size bound),
  * `not_found`, or `limit` (the task already holds the most it may).
  */
 export function addTaskImage({ database, transaction, directory, repositoryId, payload }) {
-  if (!isRepositoryId(repositoryId) || !shaped(payload, ["taskId", "bytes"]) || !isTaskId(payload.taskId)) return { ok: false, error: "invalid" };
+  const named = payload !== null && typeof payload === "object" && Object.hasOwn(payload, "imageId");
+  if (!isRepositoryId(repositoryId) || !shaped(payload, named ? ["taskId", "bytes", "imageId"] : ["taskId", "bytes"]) || !isTaskId(payload.taskId)
+    || (named && (typeof payload.imageId !== "string" || !IMAGE_ID.test(payload.imageId)))) return { ok: false, error: "invalid" };
   const { taskId, bytes } = payload;
   const type = sniffImageType(bytes);
   if (type === null || bytes.length > TASK_BOUNDS.imageBytes) return { ok: false, error: "invalid" };
   if (!taskExists(database, repositoryId, taskId)) return { ok: false, error: "not_found" };
-  if (readList(database, repositoryId, taskId).length >= TASK_BOUNDS.imagesPerTask) return { ok: false, error: "limit" };
-  const image = { id: `img-${crypto.randomBytes(6).toString("hex")}`, type, bytes: bytes.length };
+  const held = readList(database, repositoryId, taskId);
+  if (named && held.some((entry) => entry.id === payload.imageId)) return { ok: false, error: "conflict" };
+  if (held.length >= TASK_BOUNDS.imagesPerTask) return { ok: false, error: "limit" };
+  const image = { id: named ? payload.imageId : `img-${crypto.randomBytes(6).toString("hex")}`, type, bytes: bytes.length };
   const file = imageFile(directory, repositoryId, taskId, image);
   mkdirSync(path.dirname(file), { recursive: true });
   const partial = `${file}.part`;
@@ -112,6 +118,7 @@ export function addTaskImage({ database, transaction, directory, repositoryId, p
       // The task may have gone, or filled up, since the read above.
       if (!taskExists(database, repositoryId, taskId)) return { ok: false, error: "not_found" };
       const list = readList(database, repositoryId, taskId);
+      if (list.some((entry) => entry.id === image.id)) return { ok: false, error: "conflict" };
       if (list.length >= TASK_BOUNDS.imagesPerTask) return { ok: false, error: "limit" };
       writeList(database, repositoryId, taskId, [...list, image]);
       touchTask(database, repositoryId, taskId);
@@ -157,13 +164,13 @@ export function readTaskImage({ database, directory, repositoryId, payload }) {
   return bytes.length === image.bytes && sniffImageType(bytes) === image.type ? { ok: true, type: image.type, bytes } : { ok: false, error: "not_found" };
 }
 
-/** The absolute files of a task's listed images that exist with their listed size, in list order, for a session start. */
+/** A task's listed images whose file exists with its listed size, as `{ id, file }` with the absolute file, in list order, for a session start. */
 export function taskImagePaths({ database, directory, repositoryId, taskId }) {
   if (typeof directory !== "string" || !isRepositoryId(repositoryId) || !isTaskId(taskId)) return [];
   const paths = [];
   for (const image of readList(database, repositoryId, taskId)) {
     const file = path.resolve(imageFile(directory, repositoryId, taskId, image));
-    try { if (statSync(file).size === image.bytes) paths.push(file); } catch { /* a missing file is not handed to a session */ }
+    try { if (statSync(file).size === image.bytes) paths.push({ id: image.id, file }); } catch { /* a missing file is not handed to a session */ }
   }
   return paths;
 }

@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { TaskRun } from "../../../shared/task-contract";
+import { TASK_BOUNDS, type TaskRun } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
-import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
+import { DoneWhenField, RunFields, TaskTextField, type TaskTextHandle } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, createPayload, type DoneWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, featureCreateInput, type FeatureDraft } from "./task-features";
-import { addDesktopTaskImage, rememberImageCreateFailure, taskImagesAvailable } from "./task-images-desktop";
+import { rememberImageCreateFailure, taskImagesAvailable } from "./task-images-desktop";
 import { createTaskIssue } from "./task-issues-desktop";
 import { firstColumnName, modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
@@ -20,7 +20,7 @@ import { useDraftImages } from "./use-task-images";
 // preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
 // always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
 // a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
-// Images pasted, dropped or attached into the Task field show inside it, wait in the form, and are stored once the task exists.
+// An image pasted, dropped or attached into the Task field shows inline in the text, waits in the form, and is stored once the task exists.
 
 /**
  * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
@@ -39,7 +39,7 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   onIssueFailed?: (taskId: string) => void;
   onClose(): void;
 }) {
-  const field = useRef<HTMLTextAreaElement>(null);
+  const field = useRef<TaskTextHandle>(null);
   const mounted = useRef(false);
   const inFlight = useRef(false);
   const models = useTaskModelOptions(board.runModels);
@@ -53,12 +53,12 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const [failure, setFailure] = useState<string | null>(null);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
   const issueOption = useIssueCreateOption(repositoryId);
-  const images = useDraftImages();
+  const images = useDraftImages(repositoryId);
   const imagesOffered = taskImagesAvailable();
   const issueChecked = issueOption.kind === "can" && wantIssue;
   const trimmed = text.trim();
   const featureName = feature.name.trim();
-  const canSubmit = trimmed.length > 0 && !busy && (!feature.creating || featureName.length > 0);
+  const canSubmit = trimmed.length > 0 && trimmed.length <= TASK_BOUNDS.textLength && !busy && (!feature.creating || featureName.length > 0);
 
   useEffect(() => {
     mounted.current = true;
@@ -88,15 +88,11 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     // its failure is remembered for the task's own modal, which opens in place of this one: it never undoes or blocks the task.
     let issueFailedFor: string | null = null;
     if (result.ok) {
-      if (result.taskId !== null) {
-        // The images come first, so an issue failure never leaves them behind. One that fails is not retried here.
-        for (const file of images.files) {
-          const added = await addDesktopTaskImage(repositoryId, result.taskId, new Uint8Array(await file.arrayBuffer()));
-          if (added.ok) continue;
-          rememberImageCreateFailure(repositoryId, result.taskId);
-          issueFailedFor = result.taskId;
-          break;
-        }
+      // The images the text names come first, so an issue failure never leaves them behind. One that fails is not
+      // retried here: the task's own modal drops its marker and says so.
+      if (result.taskId !== null && await images.store(result.taskId, trimmed) !== null) {
+        rememberImageCreateFailure(repositoryId, result.taskId);
+        issueFailedFor = result.taskId;
       }
       if (issueChecked && result.taskId !== null && !(await createTaskIssue(repositoryId, result.taskId)).ok) issueFailedFor = result.taskId;
       onCreated();
@@ -113,14 +109,14 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     else onClose();
   };
 
-  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} closeOnScrim={trimmed.length === 0 && images.items.length === 0 && !busy} onClose={onClose}
+  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} closeOnScrim={trimmed.length === 0 && !busy} onClose={onClose}
     footer={<>
       <span className="taskModalSpacer" aria-hidden="true" />
       <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>
       <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>{busy ? "Creating…" : "Create task"}</button>
     </>}>
     <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure}
-      images={imagesOffered ? { items: images.items, disabled: busy, error: images.error, onAttach: images.add, onRemove: images.remove } : undefined} />
+      images={imagesOffered ? { urls: images.urls, disabled: busy, error: images.error, onAttach: images.attach } : undefined} />
     <IssueCreateCheckbox option={issueOption} checked={issueChecked} disabled={busy} onChange={setWantIssue} />
     <FeatureFields draft={feature} board={board} error={featureError}
       onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />

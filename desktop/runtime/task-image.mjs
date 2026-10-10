@@ -30,15 +30,15 @@ function isPlainObject(value) {
   return prototype === Object.prototype || prototype === null;
 }
 
-/** The validated payload of one operation, or null: a task ID and, for `add`, the image bytes, else an image ID. */
+/** The validated payload of one operation, or null: a task ID, an image ID and, for `add` only, the image bytes. */
 function validPayload(operation, payload) {
-  if (!isPlainObject(payload) || Object.keys(payload).length !== 2 || typeof payload.taskId !== "string" || !TASK_ID.test(payload.taskId)) return null;
-  if (operation === "add") {
-    const { bytes } = payload;
-    if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > TASK_IMAGE_MAX_BYTES) return null;
-    return { taskId: payload.taskId, bytes };
-  }
-  return typeof payload.imageId === "string" && IMAGE_ID.test(payload.imageId) ? { taskId: payload.taskId, imageId: payload.imageId } : null;
+  const adding = operation === "add";
+  if (!isPlainObject(payload) || Object.keys(payload).length !== (adding ? 3 : 2) || typeof payload.taskId !== "string" || !TASK_ID.test(payload.taskId)
+    || typeof payload.imageId !== "string" || !IMAGE_ID.test(payload.imageId)) return null;
+  if (!adding) return { taskId: payload.taskId, imageId: payload.imageId };
+  const { bytes } = payload;
+  if (!(bytes instanceof Uint8Array) || bytes.byteLength === 0 || bytes.byteLength > TASK_IMAGE_MAX_BYTES) return null;
+  return { taskId: payload.taskId, imageId: payload.imageId, bytes };
 }
 
 function refusal(body) {
@@ -69,12 +69,12 @@ export function createTaskImage(options = {}) {
     if (!monitorOrigin || !authorizationToken || disposed) return UNAVAILABLE;
     try {
       const adding = operation === "add";
-      const query = adding ? `?repositoryId=${repositoryId}&taskId=${input.taskId}` : "";
+      const query = adding ? `?repositoryId=${repositoryId}&taskId=${input.taskId}&imageId=${input.imageId}` : "";
       const response = await fetchImpl(`${monitorOrigin}/internal/tasks/${ROUTES[operation]}${query}`, {
         method: "POST",
         cache: "no-store",
         headers: { [DESKTOP_AUTH_HEADER]: authorizationToken, "content-type": adding ? "application/octet-stream" : "application/json" },
-        body: adding ? Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength) : JSON.stringify({ repositoryId, payload: input }),
+        body: adding ? Buffer.from(input.bytes.buffer, input.bytes.byteOffset, input.bytes.byteLength) : JSON.stringify({ repositoryId, payload: { taskId: input.taskId, imageId: input.imageId } }),
         signal: AbortSignal.timeout(timeoutMs),
         redirect: "error",
       });
@@ -89,8 +89,8 @@ export function createTaskImage(options = {}) {
       if (!isPlainObject(parsed) || parsed.ok !== true) return refusal(parsed);
       if (!response.ok || operation === "read") return UNAVAILABLE;
       if (!adding) return Object.freeze({ ok: true });
-      // Only the new image's ID crosses: anything else the monitor said is dropped.
-      return typeof parsed.imageId === "string" && IMAGE_ID.test(parsed.imageId) ? Object.freeze({ ok: true, imageId: parsed.imageId }) : UNAVAILABLE;
+      // Only the image's ID crosses, and only the one that was asked for: anything else the monitor said is dropped.
+      return parsed.imageId === input.imageId ? Object.freeze({ ok: true, imageId: input.imageId }) : UNAVAILABLE;
     } catch {
       return UNAVAILABLE;
     }

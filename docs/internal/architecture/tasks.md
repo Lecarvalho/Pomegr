@@ -1098,7 +1098,7 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   included) is `invalid` before a byte is written.
 - The bytes are files beside the database:
   `tasks-v1/images/<repositoryId>/<taskId>/<imageId>.<png|jpg|gif|webp>`. The image ID
-  is `img-<12 hex>`, made by the monitor. No part of a file name comes from the user.
+  is `img-<12 hex>`, validated by the monitor. No part of a file name comes from text the user typed.
 - The task's list, `[{ id, type, bytes }]`, is kept in the `meta` table under
   `task_images:<repositoryId>:<taskId>`, so the schema version does not change. The
   list is the authority: a file no list names is never served, and a listed image
@@ -1120,22 +1120,44 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   (`desktop/runtime/task-image.mjs`), which posts to
   `POST /internal/tasks/image-add | image-remove | image-read`
   (`server/serving/task-image-routes.mjs`). `image-add` takes the bytes as the whole
-  `application/octet-stream` body with the repository ID and the task ID as its only
-  two query keys; the other two take the usual `{ repositoryId, payload }` envelope
+  `application/octet-stream` body with the repository ID, the task ID, and optionally
+  the image ID as its only query keys; the other two take the usual `{ repositoryId, payload }` envelope
   with exactly `{ taskId, imageId }`. `image-read` answers the bytes with one of the
   four fixed media types and `X-Content-Type-Options: nosniff`.
-- In the New task form the images wait in renderer memory until the task exists; the
-  form then adds them one by one. When one fails, the task stays and its own modal
-  opens with one fixed line. In the Task form, attach and remove act at once and are
-  not part of the Save draft. The images show inside the Task field's own frame,
-  under the text. The renderer draws an image from an object URL of its
-  own page and revokes it when the image leaves or the modal closes; the desktop
-  content security policy allows `blob:` for `img-src` only, for this.
+- The task text says where each image belongs. An image is the marker
+  `[image:<imageId>]` at its place in the text: ordinary task text, counted in the
+  4,000 characters, that names one of `Task.images`. The Task field of the desktop
+  forms is rich text (`TaskRichText` in `app/components/tasks/TaskImages.tsx`): a
+  `contenteditable="plaintext-only"` region whose value is still that one string. It
+  draws each marker as the image, inline, and serializes an image back to its marker.
+  Every other surface shows the plain word `[image]` (`plainTaskText`): cards, the
+  Search bar, the session's Task tab, and the text sent to GitHub.
+- The renderer makes the image ID (`newTaskImageId`, `img-<12 random hex>`) when an
+  image is pasted, dropped, or attached, so the text can name the image before it is
+  stored. `image-add` takes that ID as its optional third query key; the monitor
+  validates its shape and answers `conflict` for one the task already holds. The file
+  name is still built only from validated identifiers.
+- An image is saved with the text that names it. In the New task form the images wait
+  in renderer memory; once the task exists the form stores the ones its text names.
+  When one fails, the task stays and its own modal opens with one fixed line. In the
+  Task form an image is part of the Save draft: Save stores the new images the text
+  names, then sends the text, then removes the stored images the saved text no longer
+  names. An image that cannot be stored leaves the text unsaved. Close discards the
+  draft and stores nothing. The Task form shows the text with every image the task
+  holds: a marker that names no image of the task is not drawn, and an image the text
+  does not name is shown at its end (`shownTaskText`), so no image is held unseen.
+- The renderer draws an image from an object URL of its own page and revokes it when
+  the modal closes; the desktop content security policy allows `blob:` for `img-src`
+  only, for this.
 - A session gets the images the task holds when it starts; see
-  [Starting a session](#starting-a-session). An image attached later is not sent to
+  [Starting a session](#starting-a-session). In the prompt a marker reads as its
+  image's number, `[Image #n]`, and the list of files names each image by the same
+  number, so the agent knows which image the text means where. A marker that names no
+  listed image reads `[image]`. An image attached later is not sent to
   that session. A requeued task starts its next session with the images it holds
   then.
-- Creating a GitHub issue from a task sends its text only. A promote makes a task
+- Creating a GitHub issue from a task sends its text only, with `[image]` where the
+  text holds a marker; no image and no image ID is sent. A promote makes a task
   with no image.
 - Not built: images on a card, an image from an agent (`add_task` is text only), and
   a per-repository total. The store's worst case is 500 tasks of four 5 MiB images.
@@ -1154,8 +1176,8 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
-| `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB), for `remove` and `read` only an image ID. Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
-| `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the two IDs in the query; answers the new image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
+| `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
+| `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 

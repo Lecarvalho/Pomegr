@@ -18,13 +18,16 @@ const rejected = (error) => ({ ok: false, error });
 const refuse = (response, error, status = STATUS[error], options) => writeActionResult(response, status, rejected(error), options);
 const fixedError = (result) => (Object.hasOwn(STATUS, result?.error) ? result.error : "unavailable");
 
-// `image-add` carries the bytes as the whole body, so the two identifiers travel in the query: exactly one of each.
+// `image-add` carries the bytes as the whole body, so the identifiers travel in the query: exactly one repository ID
+// and task ID, and optionally the image ID the caller already wrote into the task text.
 async function addImage({ request, response, requestUrl, taskStore }) {
   const keys = [...requestUrl.searchParams.keys()];
   const repositoryId = requestUrl.searchParams.get("repositoryId") || "";
   const taskId = requestUrl.searchParams.get("taskId") || "";
+  const imageId = requestUrl.searchParams.get("imageId");
   const mediaType = String(request.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
-  if (keys.length !== 2 || !REPOSITORY_ID_PATTERN.test(repositoryId) || !TASK_ID_PATTERN.test(taskId)
+  if (keys.length !== (imageId === null ? 2 : 3) || new Set(keys).size !== keys.length || !REPOSITORY_ID_PATTERN.test(repositoryId) || !TASK_ID_PATTERN.test(taskId)
+    || (imageId !== null && !IMAGE_ID_PATTERN.test(imageId))
     || mediaType !== "application/octet-stream" || request.headers["transfer-encoding"] !== undefined) {
     refuse(response, "invalid", 400, { close: true });
     return;
@@ -38,7 +41,7 @@ async function addImage({ request, response, requestUrl, taskStore }) {
     return;
   }
   if (bytes === null) { refuse(response, "invalid", 413, { close: true }); return; }
-  const result = taskStore.addImage(repositoryId, { taskId, bytes });
+  const result = taskStore.addImage(repositoryId, imageId === null ? { taskId, bytes } : { taskId, bytes, imageId });
   if (result?.ok === true && typeof result.imageId === "string" && IMAGE_ID_PATTERN.test(result.imageId)) {
     writeActionResult(response, 200, { ok: true, imageId: result.imageId });
     return;

@@ -141,11 +141,10 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     const plain = payload && typeof payload === "object" && !Array.isArray(payload)
       && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
     let valid = typeof repositoryId === "string" && REPOSITORY_ID.test(repositoryId) && TASK_IMAGE_OPERATIONS.has(operation) && plain
-      && Object.keys(payload).length === 2 && typeof payload.taskId === "string" && TASK_ID.test(payload.taskId);
-    if (valid) {
-      valid = operation === "add"
-        ? payload.bytes instanceof Uint8Array && payload.bytes.byteLength > 0 && payload.bytes.byteLength <= TASK_IMAGE_MAX_BYTES
-        : typeof payload.imageId === "string" && TASK_IMAGE_ID.test(payload.imageId);
+      && Object.keys(payload).length === (operation === "add" ? 3 : 2) && typeof payload.taskId === "string" && TASK_ID.test(payload.taskId)
+      && typeof payload.imageId === "string" && TASK_IMAGE_ID.test(payload.imageId);
+    if (valid && operation === "add") {
+      valid = payload.bytes instanceof Uint8Array && payload.bytes.byteLength > 0 && payload.bytes.byteLength <= TASK_IMAGE_MAX_BYTES;
     }
     if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-image", repositoryId, operation, payload);
