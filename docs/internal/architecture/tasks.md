@@ -834,9 +834,9 @@ like any other.
 ## GitHub issues
 
 Decided by the product owner on 2026-10-09. Pomegr's own task store stays the source of
-truth for execution: GitHub is a source of task text, never a source of task state. This
-part is the monitor and desktop side only. The Promote issues page is not built yet, and
-Pomegr writes nothing to GitHub.
+truth for execution: GitHub is a source of task text, never a source of task state. The
+monitor, the desktop channel, and the interface that lists issues and promotes one are
+built. Pomegr writes nothing to GitHub.
 
 - **Connection.** Pomegr never reads, stores, refreshes, or forwards a GitHub token. Every
   read runs as the owner through the installed GitHub CLI, so a private repository works
@@ -876,6 +876,46 @@ Pomegr writes nothing to GitHub.
 - **Accepted risk.** The prompt's issue number lets the started agent read the whole issue
   thread with its own `gh`, including comments Pomegr never copied. The product owner
   accepted this on 2026-10-09.
+
+### Interface
+
+The interface exists only in the desktop app. A browser has no `pomegr:task-issues` bridge,
+so it reads nothing and says that issues are read in the desktop app.
+
+- **Promote issues page.** `/tasks/issues?repository=<repository ID>` lists the open issues
+  of one repository on the left and shows the selected issue's raw body, with its notices,
+  on the right. Title and body are drawn as React text nodes, never as Markdown or HTML,
+  and nothing links to an issue. It reads GitHub only on an explicit action: when it opens,
+  when Refresh is pressed, when the Task modal's Show new version asks for the list again,
+  and once after a promote finishes, so the row reads Promoted. It never reads on a timer,
+  on focus, or from a GET. Promote opens the Task modal for that one issue.
+- **Promote mode of the Task modal.** The modal handles one issue and never lists issues.
+  Promote sends only the issue number and the digest of what the page showed. `conflict`
+  (the issue changed since it was shown, or it is already promoted) creates no task and
+  offers Show new version, which shows the issue as it is now. `limit` (the task text
+  would pass 4000 characters) names the limit and creates no task; the text is never cut.
+  After the task exists the modal sends one update holding only what differs from the
+  task the monitor made (feature and step, run, done-when), and none when nothing differs.
+  If that update fails the task still exists: the modal says so and offers only Close, so
+  an issue is never promoted twice.
+- **The `#N` chip.** A task with a source shows a `#N` chip right after its ID on a board
+  card and on a queue step card (`TaskIssueChip`: the shared outline chip with a circle-dot
+  glyph and the number in the data font). The session view's Task tab and Overview task
+  panel show one Source line: `Source`, the chip, then `GitHub issue`. They read
+  `Task.source` from a ready board only, and show no promote time because none is stored.
+  The chip is a label: Pomegr builds no link to an issue.
+- **Sessions list.** The Task cell prints the number as plain muted text after the task ID,
+  with no chip, border, icon, or link, so the ID stays the one prominent identifier. The
+  number is the nullable `issue` field of the row's task reference. The monitor joins it at
+  serving time from the task store's `task_source` row through `readTaskSource`, under the
+  same gate as the rest of `task`: a same-computer client gets it, and any other client
+  gets no `task` key at all. It is not written to the session catalog, a checkpoint, or the
+  shell feed, and it is never an issue title or body.
+- **Settings → GitHub.** The pane shows the fixed connection (`connected`, `not_signed_in`,
+  `cli_missing`) and the repository's fixed visibility and capabilities, never a username,
+  path, or error text. **Check again** asks for the status once. **Sign in with GitHub CLI**
+  runs the native confirmation and the `sign_in` operation described above. Its reads
+  follow the rule above: an explicit desktop action, never a timer, focus, or GET.
 
 ## Boundaries
 
@@ -981,7 +1021,9 @@ class. Column names are five fixed values.
   trusted renderer. They never enter `GET /api/tasks`, `/api/state`, a session domain, a
   catalog, a checkpoint, a report, a log, a notification, or diagnostics, and browser and
   LAN clients never receive them. Once promoted, the copied text is ordinary task text
-  and follows the rules below. `GET /api/tasks` gains only `Task.source`.
+  and follows the rules below. `GET /api/tasks` gains only `Task.source`. The Sessions
+  list's task reference carries the same issue number as one nullable field (below); those
+  two places serve the number, and neither serves issue text.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
@@ -991,16 +1033,20 @@ class. Column names are five fixed values.
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
 - The Sessions list and session view receive only the task ID, task state, feature name,
-  and step. That is a deliberate widening of exposure: the part that builds it updates
-  the AGENTS.md rule in the same pull request, and it must not carry task text, the own
-  condition, or a column name.
+  step, and the number of the GitHub issue the task was promoted from. That is a
+  deliberate widening of exposure (the issue number was added on 2026-10-09): the part
+  that builds it updates the AGENTS.md rule in the same pull request, and it must not
+  carry task text, the own condition, a column name, or an issue title or body.
 - The Sessions list part has shipped. `server/tasks/task-session-link.mjs` reads the
   reference, and `server/serving/session-directory-tasks.mjs` joins it onto a directory
   page when the page is served. It adds the ID of the repository whose board holds the
   task, so the task ID can link to that board (a task worktree gives the session another
   repository ID), and the opaque feature ID, which the Feature filter passes back. The
   state is served only as `needs_review`, `stalled`, `blocked`, `done`, or null; the list
-  draws a chip for Needs review, Stalled, and Done, and none for Blocked by agent.
+  draws a chip for Needs review, Stalled, and Done, and none for Blocked by agent. It also
+  carries the nullable issue number (1 to 999999999) that `readTaskSource` in
+  `server/tasks/task-source.mjs` reads from the task store's `meta` row; a missing,
+  malformed, or out-of-range row is served as null.
 - The session view part has shipped with no new projection. The session view asks the same
   directory read for its own row (`session=<normalized session ID>`), so it gets the same
   reference, the same gate, and nothing on `/api/state` or a session domain. The scope is a
@@ -1009,7 +1055,8 @@ class. Column names are five fixed values.
   then read the task itself from `GET /api/tasks` for the reference's repository
   (`app/session-task-store.ts`, `app/components/dashboard/SessionTaskSummary.tsx`,
   `SessionTaskTab.tsx`). While that board is not ready they show only the reference's ID,
-  state, feature, and step. The Task tab is listed only once the reference is known, so it
+  state, feature, and step; the Source line comes from `Task.source` on a ready board, not
+  from the reference. The Task tab is listed only once the reference is known, so it
   is never shown and then removed; it mutates nothing.
 - A session's task reference is found by the session link, never by repository ID. The
   session catalog stores none of it: the catalog index only takes a bounded set of
@@ -1078,10 +1125,9 @@ Each item is owned by the product owner; none is implemented until they answer.
 4. **Board deep links.** The board has no address for the Queue view or one task, so
    feature links and Open on board in the session view open the board only, and a task
    ID on the Sessions list opens the board instead of the session's Task tab.
-5. **Promote issues page and creating an issue.** The page that lists issues and the task
-   modal's issue mode are not built; the routes and the channel above have no user
-   interface yet. Creating a GitHub issue from a task, Pomegr's first write to an
-   external service, is not built either.
+5. **Creating an issue.** Creating a GitHub issue from a task, Pomegr's first write to an
+   external service, is not built. The Promote issues page and the modal's promote mode
+   are described under [Interface](#interface).
 6. **Session start outside Windows.** Other platforms answer the fixed
    `unsupported_platform` result until a launcher is validated for them.
 

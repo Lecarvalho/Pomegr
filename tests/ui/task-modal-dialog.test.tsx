@@ -12,6 +12,8 @@ const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready"
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
+import { TaskModal } from "../../app/components/tasks/TaskModal";
+import type { TaskIssue } from "../../app/components/tasks/task-issues-desktop";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -192,5 +194,67 @@ describe("Task modal dialog, mode edit", () => {
     expect(dialog.getByRole("button", { name: "Mark done" })).toBeDisabled();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toBeDisabled();
     expect(dialog.getByRole("button", { name: "Remove from queue" })).toBeDisabled();
+  });
+});
+
+describe("Task modal dialog, mode issue", () => {
+  const issue: TaskIssue = {
+    number: 139, title: "Queue pauses on another drive", body: "The queue pauses.", bodyTruncated: false, hiddenComments: { count: 0, ranges: [] },
+    characters: 40, tooLong: false, authorAssociation: "owner", updatedAt: null, digest: "a".repeat(64), taskId: null,
+  };
+  const onClose = vi.fn();
+  const issueModal = () => <TaskModal mode="issue" repositoryId={repositoryId} repositoryName="Example project" issue={issue} board={setBoard([])} refresh={refresh}
+    onReload={async () => {}} onPromoted={vi.fn()} onClose={onClose} />;
+
+  it("is a modal dialog named by its heading, opened with showModal, with focus moved inside", () => {
+    const prototype = HTMLDialogElement.prototype as { showModal?: () => void };
+    const original = Object.getOwnPropertyDescriptor(prototype, "showModal");
+    const showModal = vi.fn(function (this: HTMLDialogElement) { this.setAttribute("open", ""); });
+    Object.defineProperty(prototype, "showModal", { configurable: true, writable: true, value: showModal });
+    try {
+      render(issueModal());
+      const dialog = screen.getByRole("dialog", { name: "New task" });
+      expect(showModal).toHaveBeenCalledTimes(1);
+      expect(dialog).toHaveAttribute("open");
+      expect(dialog).toHaveAttribute("aria-modal", "true");
+      expect(dialog.getAttribute("aria-labelledby")).toBe(within(dialog).getByRole("heading", { level: 2 }).id);
+      expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    } finally {
+      if (original) Object.defineProperty(prototype, "showModal", original); else delete prototype.showModal;
+    }
+  });
+
+  it("keeps Tab inside the dialog, ignores a click on the scrim, and closes on Escape or Close", async () => {
+    const user = userEvent.setup();
+    render(issueModal());
+    const dialog = screen.getByRole("dialog", { name: "New task" });
+    const queryAll = dialog.querySelectorAll.bind(dialog);
+    (dialog as { querySelectorAll: unknown }).querySelectorAll = (selector: string) =>
+      Array.from(queryAll(selector)).sort((left, right) => (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    const enabled = Array.from(dialog.querySelectorAll<HTMLElement>("button, input, textarea, a[href], [tabindex]")).filter((element) => !element.hasAttribute("disabled") && element.tabIndex >= 0);
+    enabled[enabled.length - 1].focus();
+    await user.tab();
+    expect(document.activeElement).toBe(enabled[0]);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(enabled[enabled.length - 1]);
+
+    await user.click(dialog);
+    fireEvent.click(dialog);
+    expect(onClose).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("lets an open Run on list take the first Escape", async () => {
+    const user = userEvent.setup();
+    render(issueModal());
+    const trigger = within(screen.getByRole("dialog", { name: "New task" })).getByRole("combobox", { name: "Run on" });
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

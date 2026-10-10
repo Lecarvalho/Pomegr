@@ -26,7 +26,8 @@ export type SessionDirectoryQuery = {
 
 /**
  * The task a session was started for, joined from the task store when a directory page is served to a
- * same-computer client. Never task text, a condition, a column, or a report; never stored in the session catalog.
+ * same-computer client. Never task text, a condition, a column, a report, or an issue title or body; never stored in the
+ * session catalog.
  */
 export type SessionTaskReference = {
   /** "T-<n>", unique inside `repositoryId`. */
@@ -39,6 +40,11 @@ export type SessionTaskReference = {
   /** The feature's name. */
   feature: string | null;
   step: number | null;
+  /**
+   * The number (1 to 999999999) of the GitHub issue the task was promoted from, or null. The monitor always sends it;
+   * it is optional here because the session view's own reader keeps only the fields it uses.
+   */
+  issue?: number | null;
 };
 
 /**

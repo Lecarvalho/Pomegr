@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionTaskReference } from "../../shared/session-catalog-contract";
 import type { Task, TaskBoard } from "../../shared/task-contract";
@@ -115,6 +115,27 @@ describe("SessionTaskSummary", () => {
     expect(panel).not.toHaveTextContent("Secret task text");
     expect(panel.textContent).not.toMatch(/Running/);
     expect(panel.textContent).not.toContain("—");
+  });
+
+  it("adds a Source cell with the #N chip and GitHub issue for a task promoted from an issue", () => {
+    setBoard(board({ tasks: [{ ...mine, source: { kind: "github_issue", number: 142 } }] }));
+    render(<SessionTaskSummary task={reference} taskHref={taskHref} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const cell = [...panel.querySelectorAll(".sessionTaskCell")].find((entry) => entry.querySelector(".sessionTaskEyebrow")?.textContent === "Source") as HTMLElement;
+    expect(cell).toBeDefined();
+    expect(cell).toHaveTextContent("Source#142GitHub issue");
+    expect(within(cell).getByRole("img", { name: "GitHub issue #142" })).toHaveClass("commandChip", "taskIssueChip");
+    expect(cell.querySelector("a, button")).toBeNull();
+    expect(panel.querySelectorAll(".taskIssueChip")).toHaveLength(1);
+  });
+
+  it("has no Source cell without a source, and none in the reduced form", () => {
+    render(<SessionTaskSummary task={reference} taskHref={taskHref} />);
+    expect(screen.getByRole("region", { name: "Task T-14" })).not.toHaveTextContent("Source");
+    cleanup();
+    setBoard(board({ readiness: "loading", tasks: [] }));
+    render(<SessionTaskSummary task={reference} taskHref={taskHref} />);
+    expect(document.querySelector(".taskIssueChip")).toBeNull();
   });
 
   it("says default and not recorded rather than inventing a model", () => {

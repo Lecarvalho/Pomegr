@@ -1,10 +1,12 @@
 // What the Sessions list may know about the task a session was started for: the task ID, its
-// repository, an outcome state, and the feature and step. Read from the task store when a directory
-// page is served; nothing here is written to the session catalog or a checkpoint, and task text, the
-// own condition, column names and reports are never selected.
+// repository, an outcome state, the feature and step, and the number of the GitHub issue the task was
+// promoted from. Read from the task store when a directory page is served; nothing here is written to
+// the session catalog or a checkpoint, and task text, the own condition, column names, reports and issue
+// titles or bodies are never selected.
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { FEATURE_ID, normalizeFeatureName, taskIdFromNumber } from "./task-record.mjs";
+import { readTaskSource } from "./task-source.mjs";
 
 /** The newest-linked sessions one grouped directory answer may place in features. */
 export const FEATURE_LINK_MAX = 2000;
@@ -18,7 +20,7 @@ const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t
 
 const safeName = (value) => (typeof value === "string" ? normalizeFeatureName(value) ?? null : null);
 
-function reference(row) {
+function reference(database, row) {
   const id = taskIdFromNumber(row.number);
   if (id === undefined) return null;
   const feature = row.featureId === null ? null : safeName(row.featureName);
@@ -31,6 +33,8 @@ function reference(row) {
     featureId: attached ? row.featureId : null,
     feature: attached ? feature : null,
     step: attached ? row.step : null,
+    // The issue number alone, from the task store's `meta` row; null for a task that was not promoted from an issue.
+    issue: readTaskSource(database, row.repositoryId, row.number),
   };
 }
 
@@ -41,7 +45,7 @@ export function sessionTaskReferences({ database, sessionIds }) {
   for (const sessionId of sessionIds) {
     if (typeof sessionId !== "string" || references.has(sessionId)) continue;
     const row = statement.get(sessionId);
-    const task = row ? reference(row) : null;
+    const task = row ? reference(database, row) : null;
     if (task) references.set(sessionId, task);
   }
   return references;

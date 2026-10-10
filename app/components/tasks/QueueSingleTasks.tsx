@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
+import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { waitingLine } from "./task-gates-model";
 import { taskCardTitle, taskChip } from "./task-presentation";
@@ -33,7 +34,7 @@ export function QueueSingleTasks({ tasks, nextId, queue, onOpenTask }: { tasks: 
           const title = taskCardTitle(task);
           const waiting = waitingLine(queue, task.id);
           return <li key={task.id} className="taskQueueSingle" data-task-id={task.id} data-task-state={task.state}>
-            <span className="taskCardId">{task.id}</span>
+            <TaskCardIds task={task} />
             {onOpenTask
               ? <button type="button" className="commandQuietAction taskCardOpen taskQueueSingleTitle" aria-haspopup="dialog" title={title} onClick={(event) => onOpenTask(task, event.currentTarget)}><span className="taskCardTitle">{title}</span></button>
               : <p className="taskCardTitle taskQueueSingleTitle" title={title}>{title}</p>}

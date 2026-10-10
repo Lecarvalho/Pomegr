@@ -9,9 +9,11 @@ import { AddFeatureAction } from "./AddFeatureAction";
 import { QueueControl } from "./QueueControl";
 import { TaskBoardView, type TaskView } from "./TaskBoardView";
 import { TaskModal } from "./TaskModal";
+import { PromoteIssuesAction } from "./promote-issues-action";
 import { useTaskDesktopAvailability } from "./task-desktop";
 import { queueStatusLine } from "./task-queue-banner";
 import { useTaskBoardEdits } from "./use-task-board-edits";
+import { useTaskIssuesAvailability } from "./use-promote-issues";
 
 /** One modal at a time: the New task modal, or the Task modal of one card. */
 type OpenModal = { kind: "new" } | { kind: "task"; id: string } | null;
@@ -30,6 +32,8 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
   const { snapshot } = useRepositoryInventory();
   // Decided on the first client render: `pending` is only the server pass, and draws no action.
   const desktop = useTaskDesktopAvailability();
+  // Same rule for the GitHub issues bridge: a desktop build from before it draws no Promote issues action.
+  const issuesBridge = useTaskIssuesAvailability();
   const [modal, setModal] = useState<OpenModal>(null);
   const [view, setView] = useState<TaskView>("board");
   // The + New task action of the first lane. The Queue view has no lanes, so it is absent there.
@@ -62,7 +66,7 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
         {/* A blocked or paused queue is worded by its banner instead. */}
         {ready && queueLine && <p className="taskBoardNote">{queueLine}</p>}
       </div>}
-      actions={(switcher || ready) && <div className="taskHeadActions">
+      actions={(switcher || ready || issuesBridge === "available") && <div className="taskHeadActions">
         {switcher}
         {ready && <div className="commandSegmented" role="group" aria-label="Tasks view">
           <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
@@ -71,6 +75,8 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
         {desktop === "available" && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
         {/* The Board's filter row carries this action once a feature exists; without one the row is not drawn. */}
         {desktop === "available" && ready && (view === "queue" || board.features.length === 0) && <AddFeatureAction edits={edits} full={board.features.length >= TASK_BOUNDS.featuresPerRepository} />}
+        {/* Opens the Promote issues page. The header has no primary action: a new task is made in the first lane. */}
+        {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
       <TaskBoardView board={board} view={view} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined}

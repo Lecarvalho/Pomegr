@@ -9,7 +9,8 @@ import {
   checkRows, definitionStatus, modelSummary, plannedParts, queueBlockedNote, referenceChip, startedLine, stepLabel,
   type SessionTaskFull, type TextPart,
 } from "../tasks/session-task-model";
-import { taskCardTitle, taskChip, taskSessionHref } from "../tasks/task-presentation";
+import { TaskIssueChip } from "../tasks/TaskIssueChip";
+import { taskCardTitle, taskChip, taskIssueNumber, taskSessionHref } from "../tasks/task-presentation";
 import { useSessionTask } from "../tasks/use-session-task";
 
 function Parts({ parts, empty }: { parts: TextPart[]; empty: string }) {
@@ -67,6 +68,7 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
   const rows = checkRows(full);
   const planned = plannedParts(full.run);
   const chip = taskChip(full);
+  const issue = taskIssueNumber(full);
   return <section className="panel sessionTaskPanel" aria-labelledby={headingId}>
     <div className="sessionTaskPanelHead">
       <h2 id={headingId} className="panelHeading sessionTaskPanelHeading">Task <code>{task.id}</code></h2>
@@ -75,6 +77,11 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
       <span className="sessionTaskSpacer" />
       <BoardAction href={boardHref} />
     </div>
+    {issue !== null && <div className="sessionTaskSource">
+      <span className="sessionTaskLabel">Source</span>
+      <TaskIssueChip number={issue} />
+      <span className="sessionTaskStatus">GitHub issue</span>
+    </div>}
     <div className="sessionTaskBlock">
       <span className="sessionTaskLabel">Task</span>
       <p className="sessionTaskText">{full.text}</p>
@@ -107,7 +114,8 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
 }
 
 /**
- * The read-only Task tab of a session started for a task: the task as the board holds it, and its feature. There is no
+ * The read-only Task tab of a session started for a task: the task as the board holds it (with its source line for a task
+ * promoted from a GitHub issue), and its feature. There is no
  * mutation here; changing a task happens on the board in the desktop app. Without a ready board, or without the task on it,
  * only the reference's own fields are drawn.
  */

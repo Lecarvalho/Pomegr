@@ -14,7 +14,7 @@ const RETRY_DELAY_MS = 5_000;
 const READY_DELAY_MS = 10_000;
 
 // Documented per-repository bounds (AGENTS.md "Task board and dispatch"). A body past them is malformed.
-const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64 };
+const LIMITS = { tasks: 500, columns: 12, features: 50, text: 4_000, own: 500, columnName: 40, featureName: 80, blockReason: 200, model: 120, label: 200, runModels: 64, runModelLabel: 64, issueNumber: 999_999_999 };
 const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
 
@@ -52,6 +52,13 @@ function listOf<T>(value: unknown, max: number, valid: (entry: unknown) => entry
   return Array.isArray(value) && value.length <= max && value.every(valid) ? value : null;
 }
 
+/** Where a task came from: nothing, or the number of the GitHub issue it was promoted from. An older monitor sends no key, which reads as null. */
+function validSource(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  const source = record(value);
+  return Boolean(source) && source!.kind === "github_issue" && typeof source!.number === "number" && Number.isInteger(source!.number) && source!.number >= 1 && source!.number <= LIMITS.issueNumber;
+}
+
 function validTask(value: unknown): value is Task {
   const task = record(value);
   if (!task) return false;
@@ -75,7 +82,7 @@ function validTask(value: unknown): value is Task {
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
     && checks !== null && nullableText(doneWhen.own, LIMITS.own)
-    && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt))
+    && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
@@ -147,7 +154,9 @@ export function parseTaskBoard(value: unknown, repositoryId: string): TaskBoard 
   if (readiness !== "ready") return contentFreeBoard(repositoryId, readiness);
   const columns = listOf(body.columns, LIMITS.columns, validColumn);
   const features = listOf(body.features, LIMITS.features, validFeature);
-  const tasks = listOf(body.tasks, LIMITS.tasks, validTask);
+  const validated = listOf(body.tasks, LIMITS.tasks, validTask);
+  // A task from an older monitor has no `source` key; it reads as no source.
+  const tasks = validated && validated.map((task) => (task.source === undefined ? { ...task, source: null } : task));
   const queue = record(body.queue);
   if (!columns || !features || !tasks || !queue || !QUEUE_STATUSES.has(queue.status as string) || !nullableText(queue.blockedBy, LIMITS.label)) return null;
   // The start order is IDs only: at most one entry per task, each a task ID.

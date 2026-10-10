@@ -69,6 +69,19 @@ export function taskChip(task: Task, nextQueued = false): TaskChip {
   return { label, tone, ink: task.state === "queued", border: attention ? "attention" : "none" };
 }
 
+/** The highest GitHub issue number the monitor accepts as a task source (`shared/task-contract.ts`, `server/tasks/task-source.mjs`). */
+const ISSUE_NUMBER_MAX = 999_999_999;
+
+/** A GitHub issue number the product may print: an integer from 1 to 999999999. Anything else is no source. */
+export function validIssueNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= ISSUE_NUMBER_MAX ? value : null;
+}
+
+/** The number of the GitHub issue a task was promoted from (`Task.source`), or null. */
+export function taskIssueNumber(task: Pick<Task, "source">): number | null {
+  return task.source?.kind === "github_issue" ? validIssueNumber(task.source.number) : null;
+}
+
 /** The linked session's catalog title when it is a non-empty string, else null. */
 export function taskSessionTitle(task: Task): string | null {
   const title = task.session?.title;

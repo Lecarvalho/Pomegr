@@ -3,6 +3,7 @@
 import type { HTMLAttributes } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
+import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { taskCardTitle, taskChip } from "./task-presentation";
@@ -33,7 +34,7 @@ export function QueueTaskCard({ task, nextQueued, waiting, onOpen, move }: {
   const className = ["taskCard", "taskQueueCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone"].filter(Boolean).join(" ");
   return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
     <div className="taskCardTop">
-      <span className="taskCardId">{task.id}</span>
+      <TaskCardIds task={task} />
       <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
     </div>
     {onOpen

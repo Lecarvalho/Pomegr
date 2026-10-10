@@ -5,6 +5,8 @@ import { useId, type ReactNode } from "react";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import { sessionTaskHref } from "../tasks/SessionTaskCell";
 import { modelSummary, nextIds, queueBlockedLine, referenceChip, stepLabel, summaryDoneWhen, type TextPart } from "../tasks/session-task-model";
+import { TaskIssueChip } from "../tasks/TaskIssueChip";
+import { taskIssueNumber } from "../tasks/task-presentation";
 import { useSessionTask } from "../tasks/use-session-task";
 
 /** "Task" and the task ID in the session header's meta row; the ID is plain text on the Task tab itself (`taskHref` null). */
@@ -34,8 +36,8 @@ function Cell({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /**
- * The compact task panel at the top of the Overview tab. Its heading opens the Task tab. Task content comes only from the
- * committed board; until it is ready (or when it is not available here) the panel carries the reference's own fields
+ * The compact task panel at the top of the Overview tab. Its heading opens the Task tab. Task content, including the
+ * source line of a task promoted from a GitHub issue, comes only from the committed board; until it is ready (or when it is not available here) the panel carries the reference's own fields
  * and one quiet sentence.
  */
 export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskReference; taskHref: string }) {
@@ -43,6 +45,7 @@ export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskRefere
   const headingId = useId();
   const chip = referenceChip(task.state);
   const models = model.kind === "full" ? modelSummary(model.task) : null;
+  const issue = model.kind === "full" ? taskIssueNumber(model.task) : null;
   const featureCell = task.feature !== null && <Cell label="Feature">
     {task.feature}{task.step !== null && <> · <code>{stepLabel(task.step, model.stepTotal)}</code></>}
   </Cell>;
@@ -58,6 +61,7 @@ export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskRefere
       {featureCell}
       {model.note && <p className="sessionTaskNote">{model.note}</p>}
     </> : models && <>
+      {issue !== null && <Cell label="Source"><span className="sessionTaskSourceValue"><TaskIssueChip number={issue} />GitHub issue</span></Cell>}
       {featureCell}
       <Cell label="Done when">{summaryDoneWhen(model.task)}</Cell>
       <Cell label="Model">Planned <Part part={models.planned} /> · observed <Part part={models.observed} /></Cell>
