@@ -97,21 +97,21 @@ function withDatabase(directory, work) {
 const setQueue = (env, status, blockedBy = null) => withDatabase(env.directory, (database) =>
   database.prepare("UPDATE repositories SET queue_status = ?, queue_blocked_by = ? WHERE repository_id = ?").run(status, blockedBy, REPOSITORY_ID));
 
-test("complete with no checked condition is done on the report alone", async (context) => {
+test("complete with no checked condition needs review on the report alone: a report never sets Done", async (context) => {
   const env = await setup(context, { facts: null });
   startedTask(env, { own: "Tests pass." });
   env.clock.now = 2_000_000;
   const response = await complete(env);
   assert.equal(response.status, 200);
   assert.equal(response.headers["cache-control"], "no-store");
-  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [] });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [] });
   const task = taskOf(env);
-  assert.equal(task.state, "done");
+  assert.equal(task.state, "needs_review");
   assert.deepEqual(task.report, { at: new Date(2_000_000).toISOString(), results: [], blockReason: null, attention: null });
   assert.equal(task.session.id, SESSION);
 });
 
-test("complete with an attention note needs review even when every check passed, and keeps the bounded note", async (context) => {
+test("complete with an attention note needs review like any report, and keeps the bounded note", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["tree_clean"] });
   env.clock.now = 2_000_000;
@@ -187,14 +187,19 @@ test("a store whose queue an older build blocked at a task in review runs again 
   assert.deepEqual({ ...held.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: undefined });
 });
 
-test("complete verifies the checked conditions from the bound session's facts: all pass is done", async (context) => {
+test("complete verifies the checked conditions from the bound session's facts: all pass still needs review, and the card goes to Review", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["pr_open", "tree_clean", "commit_on_branch"] });
   const response = await complete(env);
   const results = [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: true }, { check: "commit_on_branch", passed: true }];
-  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results });
   assert.deepEqual(env.factCalls, [SESSION]);
   assert.deepEqual(taskOf(env).report.results, results);
+  assert.equal(taskOf(env).state, "needs_review");
+  const board = env.store.readBoard(REPOSITORY_ID);
+  assert.equal(board.columns.find((column) => column.id === taskOf(env).columnId).role, "review");
+  // Only the owner sets Done.
+  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
   assert.equal(taskOf(env).state, "done");
 });
 
@@ -246,7 +251,7 @@ test("block stores the bounded reason and sets blocked", async (context) => {
 test("a task takes one report per dispatch", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["tree_clean"] });
-  assert.equal((await complete(env)).json.state, "done");
+  assert.equal((await complete(env)).json.state, "needs_review");
   const before = taskOf(env);
   refused(await complete(env), 409, "already_reported");
   refused(await block(env), 409, "already_reported");
@@ -345,7 +350,7 @@ test("resolve_requeue clears the report and the link, queues the task last, and 
   const planned = env.store.planStart(REPOSITORY_ID, { id: "T-2" }, () => START_FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: OTHER_SESSION }), { ok: true });
-  assert.equal((await complete(env, OTHER_SESSION)).json.state, "done");
+  assert.equal((await complete(env, OTHER_SESSION)).json.state, "needs_review");
 });
 
 test("the resolutions refuse a task that was never started, an unknown task, and a malformed payload", async (context) => {
@@ -400,7 +405,7 @@ test("resolve_requeue accepts a linked task that has no report, clears the link 
   const planned = env.store.planStart(REPOSITORY_ID, { id: "T-2" }, () => START_FACTS, passingGates);
   assert.equal(planned.ok, true);
   assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: OTHER_SESSION }), { ok: true });
-  assert.equal((await complete(env, OTHER_SESSION)).json.state, "done");
+  assert.equal((await complete(env, OTHER_SESSION)).json.state, "needs_review");
 });
 
 test("nothing resolves a linked task with no report by itself: the queue waits on it until the user acts", async (context) => {
@@ -495,16 +500,16 @@ test("a report is verified on a read made when it arrives, not on the older comm
   const env = await setup(context, { facts: STALE, read: () => READ_NOW });
   startedTask(env, { checks: ["pr_open", "ci_passed"] });
   const response = await complete(env);
-  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: true }] });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: true }] });
   assert.deepEqual(env.readCalls, [SESSION]);
   assert.deepEqual(env.factCalls, [], "the committed facts are not judged when the read answered");
-  assert.equal(taskOf(env).state, "done");
+  assert.equal(taskOf(env).state, "needs_review");
 });
 
-test("without the read the same report is judged on the stale committed facts and needs review", async (context) => {
+test("without the read the same report is judged on the stale committed facts, and neither condition passes", async (context) => {
   const env = await setup(context, { facts: STALE });
   startedTask(env, { checks: ["pr_open", "ci_passed"] });
-  assert.equal((await complete(env)).json.state, "needs_review");
+  assert.deepEqual((await complete(env)).json.results, [{ check: "pr_open", passed: false }, { check: "ci_passed", passed: false }]);
 });
 
 test("a condition the report's read finds false gives needs review", async (context) => {
@@ -520,11 +525,11 @@ test("a read that fails falls back to the committed facts and never fails the re
   const env = await setup(context, { read: () => { throw new Error("SECRET-ERROR"); } });
   startedTask(env, { checks: ["tree_clean"] });
   const response = await complete(env);
-  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [{ check: "tree_clean", passed: true }] });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: true }] });
   assert.deepEqual(env.factCalls, [SESSION]);
   const empty = await setup(context, { read: () => null });
   startedTask(empty, { checks: ["tree_clean"] });
-  assert.equal((await complete(empty)).json.state, "done");
+  assert.equal((await complete(empty)).json.state, "needs_review");
   assert.deepEqual(empty.factCalls, [SESSION]);
 });
 
@@ -532,9 +537,9 @@ test("only a report that will be verified reads the repository", async (context)
   const env = await setup(context, { read: () => READ_NOW });
   // No task is linked to the session.
   refused(await complete(env), 404, "not_found");
-  // A task with no checked condition completes on the report alone.
+  // A task with no checked condition has nothing to verify.
   startedTask(env, { own: "Tests pass." });
-  assert.equal((await complete(env)).json.state, "done");
+  assert.equal((await complete(env)).json.state, "needs_review");
   // A second report changes nothing.
   refused(await complete(env), 409, "already_reported");
   // A block never reads.

@@ -67,7 +67,7 @@ unavailable. **Delete task** asks you to confirm; a task number is never reused.
 | --- | --- |
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
 | **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
-| **Done when** | The conditions an agent's report is checked against; see [Done when](#done-when). |
+| **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
 | **Feature**, **Step** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
 Claude Code lists the newest model of each family Pomegr has seen in your
@@ -78,7 +78,7 @@ the model the session's main agent last recorded, and the task window flags a
 difference with **Observed model differs**. The plan is your intent; the
 recorded model is the evidence.
 
-### Done when
+### Complete when
 
 Five conditions are checked by Pomegr after the agent reports; a new task starts
 with **PR open** and **Tree clean** checked.
@@ -130,8 +130,8 @@ Pomegr moves a card to another column when its task changes state:
 | When | The card moves to |
 | --- | --- |
 | The task's session starts and links to it | **In progress** |
-| The task becomes **Needs review**: a checked condition did not pass, or the agent asks for your attention | **Review** |
-| The task becomes **Done**, also through **Mark done** | **Done** |
+| The task becomes **Needs review**: the agent reported it complete | **Review** |
+| The task becomes **Done**: you chose **Mark done** | **Done** |
 
 - **Blocked by agent** and **Stalled** do not move a card. It stays where it is,
   normally **In progress**, and holds the queue. A card in **Review** does not hold
@@ -171,10 +171,10 @@ keeps its cards.
 | **Not queued** | On the board, not in the queue. | Creating the task, or **Remove from queue**. |
 | **Queued** | Waiting for its turn and the start gates. The next one reads **Queued · next**. | **Add to queue**, or **Requeue task**. |
 | **Scheduled** | Queued with its own start time. | Setting **Start at** on the task. |
-| **Needs review** | The agent reported complete, but a checked condition did not pass, or the agent asked for your attention. | Pomegr, when it verifies the report. |
+| **Needs review** | The agent reported complete. The task window shows each checked condition's result and the agent's attention line, if it gave one. | Pomegr, when it verifies the report. |
 | **Stalled** | The session ended without a report. | Pomegr, once the session's end is established. |
 | **Blocked by agent** | The agent reported it cannot continue and gave a reason. | The agent. |
-| **Done** | The agent reported complete with nothing for you to look at, and every checked condition passed or none was checked. | Pomegr, when it verifies the report. |
+| **Done** | You accepted the task. An agent's report never sets it. | You, with **Mark done**. |
 
 A task has no **Running** state. Once a session is linked to a task that has no
 outcome yet, its card shows that session's observed state, such as **In progress**
@@ -222,10 +222,10 @@ cannot start before its own time.
    card then shows **Open session** and the session's state.
 
 The session is told one fixed message: your task text, where the task's images
-are, the **Done when** list, and
-the instruction to call `complete_task` when the work is done or `block_task` with
+are, the **Complete when** list, and
+the instruction to call `complete_task` when the work is complete or `block_task` with
 a short reason if it cannot proceed. With nothing checked, the message says the
-agent's report alone completes the task. A Claude Code session may read the folder
+agent's report alone completes the task, which still goes to **Review**. A Claude Code session may read the folder
 that holds the task's images, and a Codex session gets them attached to the
 message. Starting never changes the task's state
 or its place in the queue. The card moves once the session links (see
@@ -304,15 +304,16 @@ choose one of two actions.
 
 > **Note:** Pomegr checks a report once, against the repository and its pull requests
 > as it reads them when the report arrives. A condition that comes true later, such
-> as CI that finishes after the agent reported, leaves the task in **Needs review**
-> though the condition now holds. Choose **Mark
+> as CI that finishes after the agent reported, still reads **Not passed** in the
+> task window though the condition now holds. Choose **Mark
 > done**; Pomegr does not repeat the check.
 
-A task that needs review does not stop the queue. Its work is finished: the card
+Every task an agent reports complete needs review, whether its conditions passed
+or not: only you mark a task done. A task that needs review does not stop the queue. Its work is finished: the card
 waits in **Review**, the next queued task starts, and a later step of the same
 feature starts too. Open the task when you have time and choose **Mark done** or
 **Requeue task**. If the agent asked for your attention, the task window shows its
-line under **Done when**, in the agent's own words.
+line under **Complete when**, in the agent's own words.
 
 A task whose session never reports holds the queue too. Pomegr never marks it done
 or stalled by itself while it cannot tell that the session ended, for example
@@ -385,8 +386,8 @@ the coding tool, not by anything the model supplies.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Done when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
-| `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The agent may add one line of up to 200 characters that names what needs your attention; the task then goes to **Review** instead of **Done**. |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
+| `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 
 `complete_task` and `block_task` act only on the task linked to the calling
@@ -398,10 +399,9 @@ agent can try again. Choose to always allow the three tools so a session you are
 watching does not wait for you. In Claude Code's auto mode no prompt appears: Claude
 Code decides by itself and can, rarely, refuse one of these calls. If that happens,
 add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
-nothing. If every checked condition passes and the agent asked for nothing, the task
-is **Done**; if a condition fails or the agent asks for your attention, it
-is **Needs review**. When no condition is checked, the agent's report alone
-completes the task, which is the agent's word, not a check. A session that ends
+nothing. A report always leaves the task in **Needs review**, with each checked
+condition's pass or fail; you choose **Mark done**. When no condition is checked, the
+report rests on the agent's word, not a check. A session that ends
 without a report leaves the task **Stalled**, but only once Pomegr has established
 the session's end, for example a **Closed** session or a **Stopped** Claude Code
 session. A Codex session reads **Stopped** after a failed or interrupted turn while

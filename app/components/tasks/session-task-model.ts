@@ -95,7 +95,7 @@ function failedCount(task: Task) {
 }
 
 /**
- * Where the task stands against its Done when, in words. A task has no Running state: until it has a report or an outcome
+ * Where the task stands against its Complete when, in words. A task has no Running state: until it has a report or an outcome
  * it is simply not yet reported.
  */
 export function reportOutcome(task: Task): string {
@@ -104,7 +104,8 @@ export function reportOutcome(task: Task): string {
   if (task.state === "needs_review") {
     const failed = failedCount(task);
     if (failed > 0) return `Needs review, ${failed} ${failed === 1 ? "check" : "checks"} did not pass`;
-    return task.report?.attention ? "Needs review, the agent asks for your attention" : "Needs review";
+    if (task.report?.attention) return "Needs review, the agent asks for your attention";
+    return (task.report?.results ?? []).length > 0 ? "Needs review, every check passed" : "Needs review";
   }
   if (task.state === "stalled") return "Stalled, the session ended with no report";
   return "not yet reported";

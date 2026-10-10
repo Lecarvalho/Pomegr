@@ -309,6 +309,11 @@ test("complete_task reports the state and names only the conditions Pomegr could
   assert.equal(out.content[0].text, "Task reported complete. Pomegr marked it done.");
   assert.deepEqual(done.calls, [{ pathname: TASK_COMPLETE_PATH, body: { sessionRef: "claude:x" } }]);
 
+  // Every report goes to Review: with nothing failed and no note, the text says who marks it done.
+  const passed = await setup({ answer: { ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: true }] } }).tools.complete_task.handler({});
+  assert.equal(passed.isError, undefined);
+  assert.equal(passed.content[0].text, "Task reported complete. Pomegr put it in Review; the user marks it done. Do not report again.");
+
   const review = setup({ answer: { ok: true, state: "needs_review", results: [
     { check: "pr_open", passed: false }, { check: "tree_clean", passed: true }, { check: "ci_passed", passed: false }, { check: "made_up", passed: false },
   ] } });

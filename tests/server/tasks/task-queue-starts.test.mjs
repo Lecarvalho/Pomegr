@@ -158,7 +158,7 @@ test("the queue runs a task through its session to the next one", async (context
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "session working");
   clock.now += 2 * TASK_DISPATCH_UNBOUND_TTL_MS;
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "a bound session never expires");
-  assert.equal(store.completeTask({ sessionId: SESSION }, () => null).state, "done");
+  assert.equal(store.completeTask({ sessionId: SESSION }, () => null).state, "needs_review");
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
   assert.equal(queueRow(directory).queue_status, "running");
 });

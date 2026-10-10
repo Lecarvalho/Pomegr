@@ -57,7 +57,7 @@ describe("session task model", () => {
     expect(stepLabel(2, null)).toBe("step 2");
   });
 
-  it("words Done when without a Running state", () => {
+  it("words Complete when without a Running state", () => {
     expect(summaryDoneWhen(mine)).toBe("2 checks + own condition + agent report · not yet reported");
     expect(summaryDoneWhen(task(1, { doneWhen: { checks: ["pr_open", "tree_clean"], own: null } }))).toBe("2 checks + agent report · not yet reported");
     expect(summaryDoneWhen(task(1))).toBe("agent report · not yet reported");
@@ -66,6 +66,10 @@ describe("session task model", () => {
     expect(summaryDoneWhen(review)).toBe("2 checks + agent report · Needs review, 1 check did not pass");
     const noted = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "Confirm the retry limit." } });
     expect(summaryDoneWhen(noted)).toBe("1 check + agent report · Needs review, the agent asks for your attention");
+    // A report always needs review: with every check passed and no note, the words say so.
+    const passed = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: null } });
+    expect(summaryDoneWhen(passed)).toBe("1 check + agent report · Needs review, every check passed");
+    expect(summaryDoneWhen(task(1, { state: "needs_review", report: { at: "2026-10-08T11:00:00.000Z", results: [], blockReason: null, attention: null } }))).toBe("agent report · Needs review");
     expect(summaryDoneWhen(task(1, { state: "blocked" }))).toBe("agent report · Blocked by agent");
   });
 
@@ -104,7 +108,7 @@ describe("SessionTaskMeta", () => {
 });
 
 describe("SessionTaskSummary", () => {
-  it("draws the heading link to the Task tab with the Feature, Done when, Model and Next cells", () => {
+  it("draws the heading link to the Task tab with the Feature, Complete when, Model and Next cells", () => {
     render(<SessionTaskSummary task={reference} taskHref={taskHref} />);
     const panel = screen.getByRole("region", { name: "Task T-14" });
     const heading = within(panel).getByRole("link", { name: "Task T-14" });
@@ -178,7 +182,7 @@ describe("SessionTaskSummary", () => {
     expect(panel).toHaveTextContent(sentence);
     expect(panel).toHaveTextContent("Stalled");
     expect(panel).toHaveTextContent("Task board v1 · step 2");
-    expect(panel).not.toHaveTextContent("Done when");
+    expect(panel).not.toHaveTextContent("Complete when");
     expect(panel).not.toHaveTextContent("Secret task text");
   });
 

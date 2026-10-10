@@ -81,7 +81,7 @@ test("a start alone moves nothing: the card moves only when the session links", 
   assert.deepEqual(cardsIn(env, "Backlog"), [id]);
 });
 
-test("a report moves the card to Done or Review, and a block leaves it where it is", async (context) => {
+test("a report moves the card to Review whether its checks passed or not, Mark done moves it to Done, and a block leaves it where it is", async (context) => {
   const env = await setup(context);
   const done = create(env);
   const review = create(env, { doneWhen: { checks: ["tree_clean"], own: null } });
@@ -89,9 +89,12 @@ test("a report moves the card to Done or Review, and a block leaves it where it 
   link(env, done, "claude:done-session");
   link(env, review, "claude:review-session");
   link(env, blocked, "claude:blocked-session");
-  assert.equal(env.store.completeTask({ sessionId: "claude:done-session" }, () => null).state, "done");
+  assert.equal(env.store.completeTask({ sessionId: "claude:done-session" }, () => null).state, "needs_review");
   assert.equal(env.store.completeTask({ sessionId: "claude:review-session" }, () => null).state, "needs_review");
   assert.equal(env.store.blockTask({ sessionId: "claude:blocked-session", reason: "Needs a decision" }).state, "blocked");
+  assert.deepEqual(cardsIn(env, "Done"), []);
+  assert.deepEqual(cardsIn(env, "Review"), [done, review]);
+  assert.equal(apply(env, "resolve_done", { id: done }).ok, true);
   assert.deepEqual(cardsIn(env, "Done"), [done]);
   assert.deepEqual(cardsIn(env, "Review"), [review]);
   assert.deepEqual(cardsIn(env, "In progress"), [blocked]);
@@ -132,9 +135,9 @@ test("a card moved by hand stays there until its next state change, which moves 
   assert.equal(apply(env, "move", { id, columnId: columnNamed(env, "Ready").id, position: 0 }).ok, true);
   assert.deepEqual(cardsIn(env, "Ready"), [id]);
   assert.equal(taskOf(env, id).state, "not_queued");
-  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "done");
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "needs_review");
   assert.deepEqual(cardsIn(env, "Ready"), []);
-  assert.deepEqual(cardsIn(env, "Done"), [id]);
+  assert.deepEqual(cardsIn(env, "Review"), [id]);
 });
 
 test("a card already in the role's column keeps its place", async (context) => {
@@ -155,8 +158,8 @@ test("every column action is refused, so the roles stay on In progress, Review, 
   }
   const id = create(env);
   link(env, id);
-  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "done");
-  assert.deepEqual(cardsIn(env, "Done"), [id]);
+  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "needs_review");
+  assert.deepEqual(cardsIn(env, "Review"), [id]);
   assert.deepEqual(board(env).columns.map((column) => column.role), [null, null, "in_progress", "review", "done"]);
   assert.deepEqual(metaKeys(env), ["done", "in_progress", "review"].map((role) => `column_role:${REPOSITORY}:${role}`));
 });

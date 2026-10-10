@@ -68,7 +68,7 @@ not on a timer. A browser or phone shows **Desktop managed** instead.
    | "Already on the board as T-3." | The issue was promoted. **Open task** goes to the board. |
 
 4. Select **Promote**. The task window opens with the issue and the usual
-   **Feature**, **Run on**, **Effort**, and **Done when** fields (see
+   **Feature**, **Run on**, **Effort**, and **Complete when** fields (see
    [Create and organize tasks](tasks.md#create-and-organize-tasks)). The footer
    says "The pull request will say Closes #N." Select **Promote issue**. The task
    lands in **Backlog**, not queued, and the row reads **Promoted · T-3**.

@@ -16,7 +16,7 @@ import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
 import { useDraftImages } from "./use-task-images";
 
-// Task modal, mode new (design contract G115-G158): Task, Feature and Step, Run on and Effort, Done when. Nothing is
+// Task modal, mode new (design contract G115-G158): Task, Feature and Step, Run on and Effort, Complete when. Nothing is
 // preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
 // always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
 // a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
