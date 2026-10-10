@@ -93,11 +93,11 @@ The **Own condition** field under the five checks is free text up to 500 charact
 agent judges it, and Pomegr does not evaluate it. A fact Pomegr has not observed
 is unknown, and unknown never passes.
 
-A condition also passes only when Pomegr read its fact after the session's last
-related work. If a command ran after the last read, or Pomegr could not date the
-fact, the condition does not pass and the task lands in **Needs review**, even when
-it now holds. A command that is still running, such as a development server,
-keeps **Tree clean** from passing until it ends.
+When the agent reports, Pomegr reads the repository and its pull requests at that
+moment and checks the conditions against that read, so the report can take a few
+seconds. If Pomegr cannot read a fact, the condition does not pass and the task
+lands in **Needs review**. A command that is still running, such as a development
+server, keeps **Tree clean** from passing until it ends.
 
 ### Move cards
 
@@ -257,9 +257,10 @@ choose one of two actions.
   **Ready**, clears its
   report and session link, and lets a new session report once more.
 
-> **Note:** Pomegr checks a report against what it has already observed. A pull
-> request opened seconds before the agent reports may not be recorded yet, so the
-> task can show **Needs review** though the condition now holds. Choose **Mark
+> **Note:** Pomegr checks a report once, against the repository and its pull requests
+> as it reads them when the report arrives. A condition that comes true later, such
+> as CI that finishes after the agent reported, leaves the task in **Needs review**
+> though the condition now holds. Choose **Mark
 > done and resume queue**; Pomegr does not repeat the check.
 
 A task whose session never reports holds the queue too. Pomegr never marks it done

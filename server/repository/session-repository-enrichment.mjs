@@ -87,7 +87,9 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
   const entries = new Map();
   let onCheck = null;
 
-  async function refresh(entry, input) {
+  // Answers false when Git did not answer for the binding, true when the binding changed meanwhile, and otherwise
+  // the value it read. `fresh` is a read for a caller that must not judge an answer begun before its own call.
+  async function refresh(entry, input, { fresh = false } = {}) {
     if (!input.root) return false;
     let repository; let resolvedRoot;
     // The Git read is dated by the moment its call began: what it saw is no newer than that, and a change made
@@ -95,7 +97,10 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     // inspection began (`_readStartedAt`), which is earlier, and the earlier time wins.
     const readStartedAt = now();
     try {
-      const acquired = await gitReader(input.root, { forbiddenRoots: Object.values(providerFolders?.folders || {}).filter(Boolean) });
+      const forbiddenRoots = Object.values(providerFolders?.folders || {}).filter(Boolean);
+      let acquired = await gitReader(input.root, { forbiddenRoots });
+      // A shared inspection that began before this call is over now, so one more call reads Git anew.
+      if (fresh && Number.isFinite(acquired?._readStartedAt) && acquired._readStartedAt < readStartedAt) acquired = await gitReader(input.root, { forbiddenRoots });
       const { _repositoryRoot: root = null, _readStartedAt: inspectionStartedAt, _statusUnknown: statusUnknown = false, ...publicRepository } = acquired;
       if ((!input.exactRoot && (!root || !path.isAbsolute(root))) || (input.exactRoot && !sameRoot(root, input.root))
         || !publicRepository.available || publicRepository.branch !== input.branch) {
@@ -115,7 +120,7 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
       resolvedRoot = root;
     } catch { return false; }
     let pullRequests;
-    try { pullRequests = await pullRequestReader([], { cwd: input.root, branch: repository.branch, historical: false, sessionCreations: input.sessionCreations }); }
+    try { pullRequests = await pullRequestReader([], { cwd: input.root, branch: repository.branch, historical: false, sessionCreations: input.sessionCreations, ...(fresh ? { fresh: true } : {}) }); }
     catch { pullRequests = unavailablePullRequests(); }
     const refreshedAt = now();
     let commitsInSession = entry.commitsInSession ?? null; let sessionCommitPaths = null; let sessionCommitChanges = null; let commitTimes = null;
@@ -125,10 +130,13 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     }
     if (commitsInSession !== null) repository = { ...repository, commitsInSession };
     if (entry.generation !== input.generation) return true;
-    entry.value = { repository, pullRequests }; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
+    const value = { repository, pullRequests };
+    // A read that began before the one already held does not replace it.
+    if (entry.hasValue && entry.readStartedAt > readStartedAt) return value;
+    entry.value = value; entry.readStartedAt = readStartedAt; entry.repositoryRoot = resolvedRoot; entry.commitsInSession = commitsInSession;
     entry.refreshedAt = refreshedAt; entry.retryAfter = null; entry.hasValue = true; entry.checked = true; entry.everAvailable = true; entry.unavailableReason = null;
     onCheck?.(entry.sessionId, { repository, pullRequests, commitsInSession, sessionCommitPaths, sessionCommitChanges, commitTimes, checkedAt: new Date(refreshedAt).toISOString(), repositoryId: input.repositoryId });
-    return true;
+    return value;
   }
 
   function liveEnrichment(sessionId, evidence, attribution = null, schedule) {
@@ -136,12 +144,12 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     const fingerprint = JSON.stringify([binding?.fingerprint || null, binding?.branch || null, sessionCreations]);
     let entry = entries.get(sessionId);
     if (!entry) {
-      entry = { sessionId, fingerprint, generation: 1, sessionCreations, refreshedAt: null, retryAfter: null, refreshing: false, repositoryRoot: null, commitsInSession: null, hasValue: false, checked: false, everAvailable: false, unavailableReason: null,
+      entry = { sessionId, fingerprint, generation: 1, sessionCreations, refreshedAt: null, retryAfter: null, refreshing: false, repositoryRoot: null, commitsInSession: null, hasValue: false, readStartedAt: 0, readInput: null, checked: false, everAvailable: false, unavailableReason: null,
         value: { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() } };
       entries.set(sessionId, entry);
     } else if (entry.fingerprint !== fingerprint) {
       entry.fingerprint = fingerprint; entry.generation += 1; entry.sessionCreations = sessionCreations; entry.refreshedAt = null; entry.retryAfter = null;
-      entry.refreshing = false; entry.repositoryRoot = null; entry.commitsInSession = null; entry.hasValue = false; entry.checked = false; entry.unavailableReason = null;
+      entry.refreshing = false; entry.repositoryRoot = null; entry.commitsInSession = null; entry.hasValue = false; entry.readStartedAt = 0; entry.checked = false; entry.unavailableReason = null;
       entry.value = { repository: { ...unavailableGitState(), historical: false }, pullRequests: unavailablePullRequests() };
     }
     // Without a binding there is nothing to check, unless this session was
@@ -152,11 +160,14 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     const clock = entry.refreshedAt === null && entry.retryAfter === null ? null : now();
     const expired = (entry.refreshedAt === null || clock - entry.refreshedAt >= cacheMs) && (entry.retryAfter === null || clock >= entry.retryAfter);
     let enqueue = null;
+    const readInput = () => ({ generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
+      // Only commits made while one of this session's own Git commands ran list their paths.
+      gitCommandIntervals: sessionGitCommandIntervals(evidence.executionTasks) });
+    // The binding of the latest derive, for a read asked for outside a derive (`readNow`).
+    entry.readInput = readInput;
     if (expired && !entry.refreshing) {
       entry.refreshing = true;
-      const input = { generation: entry.generation, root: binding?.root || null, exactRoot: Boolean(binding?.exactRoot), repositoryId: binding?.repositoryId || null, branch: binding?.branch || null, sessionCreations: entry.sessionCreations, startedAt: evidence.session.startedAt,
-        // Only commits made while one of this session's own Git commands ran list their paths.
-        gitCommandIntervals: sessionGitCommandIntervals(evidence.executionTasks) };
+      const input = readInput();
       enqueue = () => {
         try { schedule(() => {
           const work = refresh(entry, input).then((committed) => {
@@ -170,10 +181,26 @@ export function createSessionRepositoryEnrichment({ gitReader, pullRequestReader
     return { value: entry.value, enqueue, check };
   }
 
+  /**
+   * One read of the session's bound repository and its pull requests, made now and awaited, for the task report
+   * (`readTaskCheckFacts`). It uses the binding of the session's latest derive and nothing from its caller, reuses
+   * no cached or in-flight answer, and replaces the live value like any refresh. Answers the `{ repository,
+   * pullRequests }` it read, or null when the session has no binding, Git did not answer for it, or the read failed.
+   */
+  async function readNow(sessionId) {
+    const entry = entries.get(sessionId);
+    if (!entry || typeof entry.readInput !== "function") return null;
+    try {
+      const value = await refresh(entry, entry.readInput(), { fresh: true });
+      return value && value !== true ? value : null;
+    } catch { return null; }
+  }
+
   return Object.freeze({
     liveEnrichment(sessionId, evidence, attribution, schedule) {
       return liveEnrichment(sessionId, evidence, attribution, schedule);
     },
+    readNow,
     setOnRepositoryCheck(listener) { onCheck = listener; },
     repositoryRootForSession: (sessionId) => entries.get(sessionId)?.repositoryRoot || null,
     /** Why the latest live check found no matching repository: a bounded enum or null. */

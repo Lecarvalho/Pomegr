@@ -60,9 +60,20 @@ function storeReport(database, row, { state, at, results, blockReason }) {
 }
 
 /**
+ * The checked conditions of the task linked to the session, when that task can still be reported on; otherwise null.
+ * The report route asks before it reads the repository, so only a report that will be verified costs a read.
+ */
+export function reportableChecks({ database, sessionId }) {
+  if (!isTaskSessionId(sessionId)) return null;
+  const row = linkedRow(database, sessionId);
+  const task = row && reportable(row) ? normalizeStoredTask(row) : null;
+  return task ? [...task.doneWhen.checks] : null;
+}
+
+/**
  * `complete`: the bound session reports its task complete. `resolveFacts()` returns the plain repository facts
- * `verifyChecks` judges, read by the entry point from committed observation, and is called only for a task that
- * can still be reported on. Answers `{ ok: true, state, results }` with `state` `done` or `needs_review`.
+ * `verifyChecks` judges, read by the entry point (for a report, from a read made when the report arrived), and is
+ * called only for a task that can still be reported on. Answers `{ ok: true, state, results }` with `state` `done` or `needs_review`.
  */
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
   if (!hasExactKeys(payload, ["sessionId"]) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };

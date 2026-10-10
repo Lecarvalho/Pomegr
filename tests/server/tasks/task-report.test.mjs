@@ -23,13 +23,15 @@ const START_FACTS = { root: "C:/Work/SECRET-ROOT/repo", pluginReady: true };
 const FRESH = { readAt: { tree: 2000, branch: 2000, pullRequests: 2000, ci: 2000 }, workAt: { tree: 1000, repository: 1000 } };
 const PASSING = { treeClean: true, branchCommits: true, pullRequestStates: ["open"], ciPassed: null, ...FRESH };
 
-async function setup(context, { facts = PASSING } = {}) {
+async function setup(context, { facts = PASSING, read = undefined } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-report-"));
   const clock = { now: 1_000_000 };
-  const env = { facts, factCalls: [], clock, directory };
+  const env = { facts, factCalls: [], read, readCalls: [], clock, directory };
   env.store = openTaskStore({ directory, now: () => clock.now });
   const server = http.createServer(createRequestHandler({
-    runtime: { resolveTaskCheckFacts: (ref) => { env.factCalls.push(ref); return env.facts; } },
+    runtime: { resolveTaskCheckFacts: (ref) => { env.factCalls.push(ref); return env.facts; },
+      // The report's own read, when the test gives one: a function of the session reference.
+      ...(read === undefined ? {} : { readTaskCheckFacts: async (ref) => { env.readCalls.push(ref); return env.read(ref); } }) },
     taskStore: env.store, authorizationToken: "d".repeat(40), agentAuthorizationToken: AGENT,
   }));
   await new Promise((done) => server.listen(0, "127.0.0.1", done));
@@ -400,3 +402,69 @@ test("a report that passes, and a queue that is not running, leave the queue sta
   }
 });
 
+
+// The committed facts were read before the agent's last Git command; the report's own read is later than it.
+const STALE = { ...PASSING, ciPassed: true, readAt: { tree: 500, branch: 500, pullRequests: 500, ci: 500 } };
+const READ_NOW = { ...PASSING, ciPassed: true };
+
+test("a report is verified on a read made when it arrives, not on the older committed facts", async (context) => {
+  const env = await setup(context, { facts: STALE, read: () => READ_NOW });
+  startedTask(env, { checks: ["pr_open", "ci_passed"] });
+  const response = await complete(env);
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: true }] });
+  assert.deepEqual(env.readCalls, [SESSION]);
+  assert.deepEqual(env.factCalls, [], "the committed facts are not judged when the read answered");
+  assert.equal(taskOf(env).state, "done");
+});
+
+test("without the read the same report is judged on the stale committed facts and needs review", async (context) => {
+  const env = await setup(context, { facts: STALE });
+  startedTask(env, { checks: ["pr_open", "ci_passed"] });
+  assert.equal((await complete(env)).json.state, "needs_review");
+});
+
+test("a condition the report's read finds false gives needs review", async (context) => {
+  const env = await setup(context, { read: () => ({ ...READ_NOW, pullRequestStates: [], ciPassed: false }) });
+  startedTask(env, { checks: ["pr_open", "commit_on_branch", "ci_passed"] });
+  const response = await complete(env);
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review",
+    results: [{ check: "pr_open", passed: false }, { check: "commit_on_branch", passed: true }, { check: "ci_passed", passed: false }] });
+  assert.equal(taskOf(env).state, "needs_review");
+});
+
+test("a read that fails falls back to the committed facts and never fails the request", async (context) => {
+  const env = await setup(context, { read: () => { throw new Error("SECRET-ERROR"); } });
+  startedTask(env, { checks: ["tree_clean"] });
+  const response = await complete(env);
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [{ check: "tree_clean", passed: true }] });
+  assert.deepEqual(env.factCalls, [SESSION]);
+  const empty = await setup(context, { read: () => null });
+  startedTask(empty, { checks: ["tree_clean"] });
+  assert.equal((await complete(empty)).json.state, "done");
+  assert.deepEqual(empty.factCalls, [SESSION]);
+});
+
+test("only a report that will be verified reads the repository", async (context) => {
+  const env = await setup(context, { read: () => READ_NOW });
+  // No task is linked to the session.
+  refused(await complete(env), 404, "not_found");
+  // A task with no checked condition completes on the report alone.
+  startedTask(env, { own: "Tests pass." });
+  assert.equal((await complete(env)).json.state, "done");
+  // A second report changes nothing.
+  refused(await complete(env), 409, "already_reported");
+  // A block never reads.
+  startedTask(env, { checks: ["pr_open"], session: OTHER_SESSION });
+  assert.equal((await block(env, REASON, OTHER_SESSION)).json.state, "blocked");
+  assert.deepEqual(env.readCalls, []);
+  assert.equal(env.store.reportChecks(SESSION), null);
+  assert.equal(env.store.reportChecks("not a session"), null);
+});
+
+test("reportChecks lists the checked conditions of a task that can still be reported on", async (context) => {
+  const env = await setup(context);
+  startedTask(env, { checks: ["pr_open", "ci_passed"] });
+  assert.deepEqual(env.store.reportChecks(SESSION), ["pr_open", "ci_passed"]);
+  await complete(env);
+  assert.equal(env.store.reportChecks(SESSION), null);
+});

@@ -130,6 +130,8 @@ export function createRequestHandler({
           request, response, requestUrl, taskStore,
           resolveSession: typeof runtime.resolveTaskSession === "function" ? (ref) => runtime.resolveTaskSession(ref) : null,
           resolveCheckFacts: typeof runtime.resolveTaskCheckFacts === "function" ? (ref) => runtime.resolveTaskCheckFacts(ref) : null,
+          // A report is verified on a read made when it arrives; a runtime without it judges the committed facts.
+          readCheckFacts: typeof runtime.readTaskCheckFacts === "function" ? (ref) => runtime.readTaskCheckFacts(ref) : null,
         });
         return;
       }

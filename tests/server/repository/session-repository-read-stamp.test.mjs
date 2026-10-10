@@ -104,3 +104,70 @@ test("the recorded repository sidecar is built from named fields and never carri
   assert.ok(snapshot, "the live check records a sidecar");
   assert.doesNotMatch(JSON.stringify(snapshot), /readAt|_readStartedAt/u);
 });
+
+// `readNow` is the task report's own read: awaited, bound to the session's latest derive, and never an older answer.
+function readNowFixture({ joinedAt = null } = {}) {
+  const gitCalls = []; const pullCalls = []; const checks = [];
+  const clock = { now: 5_000 };
+  const enrichment = createSessionRepositoryEnrichment({
+    gitReader: async (root) => {
+      gitCalls.push(clock.now);
+      // The first call may have joined an inspection that began earlier; a later call starts its own.
+      const startedAt = gitCalls.length === 1 && joinedAt !== null ? joinedAt : clock.now;
+      return { available: true, branch: "codex/live", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null }, _repositoryRoot: root, _readStartedAt: startedAt };
+    },
+    pullRequestReader: async (_creations, options) => { pullCalls.push(options); return { status: "ready", checkedAt: iso(clock.now), readAt: iso(clock.now), items: [] }; },
+    now: () => clock.now,
+    cacheMs: 2_500,
+    providerFolders: { folders: {} },
+    unavailableGitState: () => ({ available: false, branch: "Not a Git repository", files: [], isMain: false, comparison: null, commits: [], remote: { status: "unavailable", checkedAt: null } }),
+    unavailablePullRequests: () => ({ status: "unavailable", checkedAt: null, items: [] }),
+  });
+  enrichment.setOnRepositoryCheck((_sessionId, check) => checks.push(check));
+  const jobs = [];
+  const derive = (sessionId = "codex:stamped") => enrichment.liveEnrichment(sessionId, evidence, binding, (task) => jobs.push(task));
+  return { enrichment, derive, jobs, gitCalls, pullCalls, checks, clock };
+}
+
+test("readNow reads the bound repository at once, skips the pull-request cache, and replaces the live value", async () => {
+  const { enrichment, derive, jobs, pullCalls, checks, clock } = readNowFixture();
+  derive().enqueue?.();
+  while (jobs.length) await jobs.shift()();
+  assert.equal(pullCalls[0].fresh, undefined, "an ordinary refresh may use the cache");
+  clock.now = 9_000;
+  const read = await enrichment.readNow("codex:stamped");
+  assert.equal(read.repository.readAt, iso(9_000));
+  assert.equal(read.pullRequests.readAt, iso(9_000));
+  assert.equal(pullCalls[1].fresh, true);
+  assert.equal(pullCalls[1].cwd, ROOT);
+  assert.equal(pullCalls[1].branch, "codex/live");
+  assert.equal(checks.length, 2, "the read is recorded like any refresh");
+  assert.equal(derive().value.repository.readAt, iso(9_000), "the next derive carries the read");
+});
+
+test("readNow reads Git once more when its call joined an inspection begun before it", async () => {
+  const { enrichment, derive, gitCalls } = readNowFixture({ joinedAt: 4_200 });
+  derive();
+  const read = await enrichment.readNow("codex:stamped");
+  assert.equal(gitCalls.length, 2);
+  assert.equal(read.repository.readAt, iso(5_000));
+});
+
+test("readNow answers null for a session with no derive or no binding, and reads nothing", async () => {
+  const { enrichment, gitCalls } = readNowFixture();
+  assert.equal(await enrichment.readNow("codex:never-derived"), null);
+  enrichment.liveEnrichment("codex:unbound", { session: { startedAt: iso(0) }, pullRequestCreations: [], executionTasks: [] }, null, () => {});
+  assert.equal(await enrichment.readNow("codex:unbound"), null);
+  assert.deepEqual(gitCalls, []);
+});
+
+test("a read that began before the one already held does not replace it", async () => {
+  const { enrichment, derive, jobs, clock } = readNowFixture();
+  derive().enqueue?.();
+  clock.now = 9_000;
+  await enrichment.readNow("codex:stamped");
+  // The refresh queued at 5000 answers after the read made at 9000.
+  clock.now = 5_000;
+  while (jobs.length) await jobs.shift()();
+  assert.equal(derive().value.repository.readAt, iso(9_000));
+});

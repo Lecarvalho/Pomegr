@@ -1,5 +1,5 @@
 import { createTaskGateFacts, createTaskTreeObservation } from "./task-gate-facts.mjs";
-import { resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
+import { readTaskCheckFacts, resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
 import { createTaskIssues } from "./task-issues.mjs";
 import { comparePluginVersions } from "../../shared/repository-plugin-state.mjs";
 
@@ -14,7 +14,10 @@ export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
  * `resolveTaskSessionFacts(sessionRef)` returns `{ title, state, observedModel }` for a linked session from the
  * committed catalog row and public state, or null.
  * `resolveTaskCheckFacts(sessionRef)` returns the repository facts the done-when checks judge for a bound session,
- * from its committed public state, each null when unknown.
+ * from its committed public state, each null when unknown; the board's reading uses it.
+ * `readTaskCheckFacts(sessionRef)` resolves the same facts for a `complete_task` report, from one read of the bound
+ * session's repository and pull requests made at that moment (`readRepositoryNow`). It is the only lookup that waits
+ * for Git or GitHub, and only the agent's report calls it.
  * `resolveRunModels()` returns the last committed Codex client-catalog models `{ id, label }` for the task
  * panel's Run on list, from the catalog the release scheduler already committed in memory.
  * `resolveTaskGateFacts(repositoryId)` returns the start-gate facts `{ usage, providerStatus, treeClean }` from the
@@ -23,7 +26,7 @@ export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
  * request path (task-gate-facts.mjs). Without `gateSources` every fact but the tree is unknown.
  * No provider acquisition and no synchronous Git call happen here.
  */
-export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null, issueReader = undefined }) {
+export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null, issueReader = undefined, readRepositoryNow = null }) {
   const tree = createTaskTreeObservation({
     repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
     ...(gateSources?.gitReader ? { gitReader: gateSources.gitReader } : {}),
@@ -39,6 +42,7 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     resolveTaskSession: (sessionRef) => resolveTaskSession(sessionRef, { observationStore, catalogSessions }),
     resolveTaskSessionFacts: (sessionRef) => resolveTaskSessionFacts(sessionRef, { observationStore, catalogSessions }),
     resolveTaskCheckFacts: (sessionRef) => resolveTaskCheckFacts(sessionRef, { observationStore }),
+    readTaskCheckFacts: (sessionRef) => readTaskCheckFacts(sessionRef, { observationStore, readNow: readRepositoryNow }),
     resolveRunModels: () => runModels?.codex?.() ?? [],
     resolveTaskStart(repositoryId, provider = "claude") {
       const root = repositoryInventory.repositoryRoot?.(repositoryId) ?? null;

@@ -7,8 +7,8 @@ import test from "node:test";
 test("the monitor runtime forwards every task lookup the request handler reads", () => {
   const handler = readFileSync(new URL("../../../server/serving/request-handler.mjs", import.meta.url), "utf8");
   const monitor = readFileSync(new URL("../../../server/server.mjs", import.meta.url), "utf8");
-  const read = new Set([...handler.matchAll(/runtime\.(resolve(?:Task|Run)[A-Za-z]+)/gu)].map((match) => match[1]));
-  assert.deepEqual([...read].sort(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
+  const read = new Set([...handler.matchAll(/runtime\.((?:resolve|read)(?:Task|Run)[A-Za-z]+)/gu)].map((match) => match[1]));
+  assert.deepEqual([...read].sort(), ["readTaskCheckFacts", "resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart"]);
   for (const name of read) assert.match(monitor, new RegExp(`\\b${name}: observation\\.${name}\\b`, "u"), name);
 });
 

@@ -169,10 +169,11 @@ export function normalizePullRequest(value, association = "session", fallbackUrl
 
 // A read is dated by the moment its gh call began: whatever it saw is no newer than that, and a change made
 // while the call ran may be missing from it. The cache lifetime still counts from the moment the call ended.
-async function cached(cache, key, loader) {
+// A `fresh` read reuses neither a cached answer nor a read already under way: both began before the caller asked.
+async function cached(cache, key, loader, fresh = false) {
   const previous = cache.get(key);
-  if (previous?.value && Date.now() - previous.timestamp < CACHE_TTL_MS) return previous.value;
-  if (previous?.pending) return previous.pending;
+  if (!fresh && previous?.value && Date.now() - previous.timestamp < CACHE_TTL_MS) return previous.value;
+  if (!fresh && previous?.pending) return previous.pending;
   const startedAt = new Date().toISOString();
   const pending = loader().then((loaded) => {
     const value = { loaded, checkedAt: startedAt };
@@ -183,18 +184,18 @@ async function cached(cache, key, loader) {
   return pending;
 }
 
-async function metadataForUrl(cwd, url, ghRunner) {
+async function metadataForUrl(cwd, url, ghRunner, fresh) {
   const load = async () => {
     const output = await readGhJson(ghRunner, cwd, ["pr", "view", url, "--json"]);
     if (!output) return null;
     try { return JSON.parse(output); } catch { return null; }
   };
-  if (ghRunner === runGh) return cached(metadataCache, url, load);
+  if (ghRunner === runGh) return cached(metadataCache, url, load, fresh);
   const checkedAt = new Date().toISOString();
   return { loaded: await load(), checkedAt };
 }
 
-async function pullRequestsForBranch(cwd, branch, ghRunner) {
+async function pullRequestsForBranch(cwd, branch, ghRunner, fresh) {
   if (!cwd || !branch || branch.startsWith("detached@") || branch.length > 200 || !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(branch) || branch.includes("..")) return null;
   const load = async () => {
     const output = await readGhJson(ghRunner, cwd, ["pr", "list", "--state", "all", "--head", branch, "--limit", String(MAX_PULL_REQUESTS), "--json"]);
@@ -206,7 +207,7 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
       return null;
     }
   };
-  if (ghRunner === runGh) return cached(branchCache, `${cwd}\u0000${branch}`, load);
+  if (ghRunner === runGh) return cached(branchCache, `${cwd}\u0000${branch}`, load, fresh);
   const checkedAt = new Date().toISOString();
   return { loaded: await load(), checkedAt };
 }
@@ -217,17 +218,19 @@ async function pullRequestsForBranch(cwd, branch, ghRunner) {
  * normalized creation objects (never provider records).
  *
  * @param {unknown} sessionCreations
- * @param {{ sessionCreations?: unknown, sessionUrls?: unknown, cwd?: string, branch?: string, historical?: boolean, ghRunner?: typeof runGh }} [options]
+ * @param {{ sessionCreations?: unknown, sessionUrls?: unknown, cwd?: string, branch?: string, historical?: boolean, fresh?: boolean, ghRunner?: typeof runGh }} [options]
+ *   `fresh` skips the read cache, for a caller that must not judge an answer older than its own call.
  */
 export async function readPullRequests(sessionCreations = [], options = {}) {
   const ghRunner = options.ghRunner || runGh;
+  const fresh = options.fresh === true;
   const transcriptUrls = Array.isArray(options.sessionCreations)
     ? pullRequestUrls(options.sessionCreations)
     : Array.isArray(options.sessionUrls)
       ? pullRequestUrls(options.sessionUrls.map((url) => ({ url })))
       : pullRequestUrls(sessionCreations);
-  const metadata = await Promise.all(transcriptUrls.map(async (url) => ({ url, result: await metadataForUrl(options.cwd, url, ghRunner) })));
-  const branchResult = options.historical ? null : await pullRequestsForBranch(options.cwd, options.branch, ghRunner);
+  const metadata = await Promise.all(transcriptUrls.map(async (url) => ({ url, result: await metadataForUrl(options.cwd, url, ghRunner, fresh) })));
+  const branchResult = options.historical ? null : await pullRequestsForBranch(options.cwd, options.branch, ghRunner, fresh);
   const branchValues = branchResult?.loaded ?? null;
   const itemsByUrl = new Map();
   let queried = transcriptUrls.length > 0;

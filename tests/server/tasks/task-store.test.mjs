@@ -383,7 +383,7 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "sessionTasks", "stallEndedTasks"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "reportChecks", "sessionTasks", "stallEndedTasks"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {

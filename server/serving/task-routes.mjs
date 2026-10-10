@@ -560,11 +560,14 @@ function reportResults(results) {
  * The request handler has already applied the agent-query gate. The body is `{ sessionRef }`, plus a one-line
  * `reason` for a block; the session is the only input that names a task, so a session with no linked task is
  * `not_found`, and a task takes one report per dispatch (`already_reported`). On `complete` the store verifies
- * the checked conditions from `resolveCheckFacts(sessionRef)`, committed repository facts read from memory.
+ * the checked conditions. For a task that can still be reported on and has a checked condition, the route first
+ * awaits `readCheckFacts(sessionRef)`, one read of the bound session's repository and pull requests made now
+ * (bounded by its own deadline), so the facts are not older than the agent's last command. Without that lookup, or
+ * when it fails, the store judges `resolveCheckFacts(sessionRef)`, the committed facts in memory.
  * The answer carries the resulting state and, for `complete`, one `{ check, passed }` per checked condition;
  * never a task ID, task content, command output, or any repository fact.
  */
-export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null }) {
+export async function serveAgentTaskReportRoute({ request, response, requestUrl, taskStore, resolveCheckFacts = null, readCheckFacts = null }) {
   const blocking = requestUrl.pathname === AGENT_TASK_BLOCK_PATH;
   const read = await readAgentJson(request, requestUrl, AGENT_REPORT_BODY_LIMIT_BYTES);
   if (read.failed) {
@@ -586,9 +589,14 @@ export async function serveAgentTaskReportRoute({ request, response, requestUrl,
       writeAgentReportResult(response, "unavailable");
       return;
     }
+    let read = null;
+    if (!blocking && typeof readCheckFacts === "function" && typeof taskStore.reportChecks === "function"
+      && (taskStore.reportChecks(body.sessionRef) ?? []).length > 0) {
+      try { read = await readCheckFacts(body.sessionRef); } catch { read = null; }
+    }
     const result = blocking
       ? call({ sessionId: body.sessionRef, reason: body.reason })
-      : call({ sessionId: body.sessionRef }, () => (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
+      : call({ sessionId: body.sessionRef }, () => read ?? (typeof resolveCheckFacts === "function" ? resolveCheckFacts(body.sessionRef) : null));
     if (result?.ok === true && blocking) writeAgentReportResult(response, null, { state: "blocked" });
     else if (result?.ok === true && (result.state === "done" || result.state === "needs_review")) {
       writeAgentReportResult(response, null, { state: result.state, results: reportResults(result.results) });

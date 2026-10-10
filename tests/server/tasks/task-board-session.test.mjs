@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createTaskLookups } from "../../../server/runtime/task-start-lookup.mjs";
-import { resolveTaskCheckFacts, resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
+import { readTaskCheckFacts, resolveTaskCheckFacts, resolveTaskSessionFacts } from "../../../server/runtime/task-session-lookup.mjs";
 import { readPullRequests } from "../../../server/repository/pull-requests.mjs";
 import { createSessionRepositoryEnrichment, serializeServedSessionState } from "../../../server/repository/session-repository-enrichment.mjs";
 import { SessionObservationStore } from "../../../server/sessions/checkpoints/session-observation-store.mjs";
@@ -337,7 +337,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
     catalogSessions: () => { touched.push(["catalog"]); return [catalogRow()]; },
     repositoryInventory: new Proxy({}, { get(_target, key) { touched.push(["inventory", String(key)]); return undefined; } }),
   });
-  assert.deepEqual(Object.keys(lookups).toSorted(), ["resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart", "taskIssues"]);
+  assert.deepEqual(Object.keys(lookups).toSorted(), ["readTaskCheckFacts", "resolveRunModels", "resolveTaskCheckFacts", "resolveTaskGateFacts", "resolveTaskSession", "resolveTaskSessionFacts", "resolveTaskStart", "taskIssues"]);
   assert.deepEqual(lookups.resolveTaskSessionFacts(SESSION), { title: "Fix the flaky test", state: "working", observedModel: null, writerReleased: false });
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });
@@ -553,4 +553,64 @@ test("the stamped read times stay in the committed state and leave no served for
   const store = committedStore(state);
   assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt/u);
   assert.equal(store.get("claude", SESSION.slice("claude:".length)).publicState.session.repository.readAt, value.repository.readAt);
+});
+
+// A report's own read: the blocks it returned are judged, with the work times of the committed state.
+const gitDone = (finishedAt) => [task("pull_request", iso(finishedAt))];
+const passes = (facts) => Object.fromEntries(verifyChecks(["pr_open", "commit_on_branch", "ci_passed"], facts).map((result) => [result.check, result.passed]));
+
+test("a report is judged on the blocks its own read returned, which are later than the session's last Git command", async () => {
+  // Committed: no pull request yet, read at 6000; the agent's `gh pr create` ended at 8000.
+  const committed = checkState({ session: checkSession({ pullRequests: pullBlock([]) }), executionTasks: gitDone(8_000) });
+  const store = storeWith(committed);
+  assert.deepEqual(passes(resolveTaskCheckFacts(SESSION, { observationStore: store, checkRead: passedRead })), { pr_open: false, commit_on_branch: false, ci_passed: false });
+  const calls = [];
+  const readNow = async (ref) => {
+    calls.push(ref);
+    return { repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { checkedAt: iso(9_100), readAt: iso(9_100) }) };
+  };
+  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: (url) => (url === pullUrl(1) ? { status: "passed", readAt: 9_100 } : null) });
+  assert.deepEqual(calls, [SESSION]);
+  assert.deepEqual(facts.readAt, { tree: 9_000, branch: 9_000, pullRequests: 9_100, ci: 9_100 });
+  assert.deepEqual(facts.workAt, { tree: 8_000, repository: 8_000 });
+  assert.deepEqual(passes(facts), { pr_open: true, commit_on_branch: true, ci_passed: true });
+});
+
+test("a report's read still fails a condition that is false, and CI still running is not a pass", async () => {
+  const store = storeWith(checkState({ executionTasks: gitDone(8_000) }));
+  const readNow = async () => ({ repository: checkRepository({ readAt: iso(9_000), comparison: { branch: "origin/main", kind: "base", ahead: 0, behind: 0, integrated: false } }),
+    pullRequests: pullBlock([openPull()], { readAt: iso(9_100) }) });
+  const facts = await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: () => ({ status: "pending", readAt: 9_100 }) });
+  assert.deepEqual(passes(facts), { pr_open: true, commit_on_branch: false, ci_passed: false });
+});
+
+test("the work times are those committed once the read has answered", async () => {
+  let state = checkState({ executionTasks: [task("git_push", null, "running")] });
+  const store = { get: () => ({ publicState: state }) };
+  const readNow = async () => {
+    state = checkState({ executionTasks: gitDone(8_000) });
+    return { repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { readAt: iso(9_000) }) };
+  };
+  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: store, readNow, checkRead: passedRead })).pr_open, true);
+  // A command still running when the read answered leaves its facts unknown.
+  const running = { get: () => ({ publicState: checkState({ executionTasks: [task("git_push", null, "running")] }) }) };
+  assert.equal(passes(await readTaskCheckFacts(SESSION, { observationStore: running, readNow: async () => ({ repository: checkRepository({ readAt: iso(9_000) }), pullRequests: pullBlock([openPull()], { readAt: iso(9_000) }) }), checkRead: passedRead })).pr_open, false);
+});
+
+test("a read that answers nothing, throws, or passes its deadline is judged on the committed facts", async () => {
+  const store = storeWith(checkState());
+  const committed = resolveTaskCheckFacts(SESSION, { observationStore: store, checkRead: passedRead });
+  assert.deepEqual(await readTaskCheckFacts(SESSION, { observationStore: store, readNow: async () => null, checkRead: passedRead }), committed);
+  assert.deepEqual(await readTaskCheckFacts(SESSION, { observationStore: store, readNow: () => { throw new Error("SECRET"); }, checkRead: passedRead }), committed);
+  assert.deepEqual(await readTaskCheckFacts(SESSION, { observationStore: store, readNow: () => new Promise(() => {}), checkRead: passedRead, deadlineMs: 5 }), committed);
+  assert.deepEqual(await readTaskCheckFacts(SESSION, { observationStore: store, readNow: null, checkRead: passedRead }), committed);
+});
+
+test("a session the monitor does not hold reads nothing", async () => {
+  const calls = [];
+  const readNow = async (ref) => { calls.push(ref); return null; };
+  const unknown = resolveTaskCheckFacts("not a session", { observationStore: storeWith(checkState()) });
+  assert.deepEqual(await readTaskCheckFacts("not a session", { observationStore: storeWith(checkState()), readNow }), unknown);
+  assert.deepEqual(await readTaskCheckFacts("claude:other", { observationStore: storeWith(checkState()), readNow }), unknown);
+  assert.deepEqual(calls, []);
 });
