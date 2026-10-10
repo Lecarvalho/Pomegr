@@ -6,6 +6,7 @@ import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from 
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
+import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, NO_MODELS, type DoneWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
@@ -16,6 +17,12 @@ import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
 const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
 const noop = () => undefined;
+// Static samples: an image that is still being read has no URL, so no image file ships with the page.
+const SAMPLE_IMAGE_IDS = ["img-000000000001", "img-000000000002", "img-000000000003", "img-000000000004"];
+const SAMPLE_IMAGE_URLS = new Map<string, string | null>(SAMPLE_IMAGE_IDS.map((id) => [id, null]));
+const noImages = () => [];
+const TEXT_WITH_IMAGE = `Match the settings page to this mock-up:\n[image:${SAMPLE_IMAGE_IDS[0]}]\nKeep the header as it is.`;
+const TEXT_FULL = `Compare the four states: ${SAMPLE_IMAGE_IDS.map((id) => `[image:${id}]`).join(" ")}`;
 
 export function TaskFieldsSection() {
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: "model-large", effort: "high" });
@@ -26,6 +33,9 @@ export function TaskFieldsSection() {
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
+  const [imageText, setImageText] = useState("");
+  const [inlineText, setInlineText] = useState(TEXT_WITH_IMAGE);
+  const [fullText, setFullText] = useState(TEXT_FULL);
   const [issueChecked, setIssueChecked] = useState(true);
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
   const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
@@ -52,6 +62,15 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
         <FeatureFields draft={created} board={BOARD_RUNNING} onChange={setCreated} />
+      </Sample>
+      <Sample label="Task field as rich text, no image yet" note="In the desktop app the Task field is rich text in one frame. Text is typed as plain text. Attach image sits at the foot of the frame and opens the file picker; a paste or a drop that holds an image adds it too.">
+        <TaskTextField value={imageText} onChange={setImageText} images={{ urls: SAMPLE_IMAGE_URLS, onAttach: noImages }} />
+      </Sample>
+      <Sample label="Task field as rich text, image in the text" note="An image shows inline, where it was put, at most 180px tall. Backspace and Delete remove it like a character. It shows a 72px square on the ground fill until it is read; these samples stay there.">
+        <TaskTextField value={inlineText} onChange={setInlineText} images={{ urls: SAMPLE_IMAGE_URLS, onAttach: noImages }} />
+      </Sample>
+      <Sample label="Task field as rich text, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line under the frame.">
+        <TaskTextField value={fullText} onChange={setFullText} images={{ urls: SAMPLE_IMAGE_URLS, error: TASK_IMAGE_TYPE_MESSAGE, onAttach: noImages }} />
       </Sample>
       <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
         <div className="taskGateField">

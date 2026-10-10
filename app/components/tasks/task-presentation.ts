@@ -1,5 +1,5 @@
 import type { SessionActivityStatus } from "../../../shared/monitor-contract";
-import type { Task, TaskBoard, TaskColumnRole, TaskState } from "../../../shared/task-contract";
+import { plainTaskText, type Task, type TaskBoard, type TaskColumnRole, type TaskState } from "../../../shared/task-contract";
 import { encodeSessionRoute } from "../../../shared/session-route.mjs";
 import { sessionState } from "../../dashboard-utils";
 
@@ -90,7 +90,7 @@ export function taskSessionTitle(task: Task): string | null {
 
 /** The card shows the task text until its session has a title, then the session title. */
 export function taskCardTitle(task: Task) {
-  return taskSessionTitle(task) ?? task.text;
+  return taskSessionTitle(task) ?? plainTaskText(task.text);
 }
 
 /** The session view the Sessions list links its row to for this ID, or null for an ID the route cannot carry. */

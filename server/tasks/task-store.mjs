@@ -26,11 +26,12 @@ import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDon
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
+import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
-  projectBoard, taskIdFromNumber,
+  plainTaskText, projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -316,6 +317,7 @@ function deleteTask({ database, repositoryId }, payload) {
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
   deleteTaskSource(database, repositoryId, input.number);
   deleteTaskAttention(database, repositoryId, input.number);
+  deleteTaskImageList(database, repositoryId, input.number);
   // The deleted number stays retired even when it was newer than the stored counter.
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
@@ -503,6 +505,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     const sources = readTaskSources(database, repositoryId);
     // What an agent asked the owner to look at is kept there too (task-attention.mjs).
     const attentions = readTaskAttentions(database, repositoryId);
+    // A task's image list is kept there as well; the bytes are files beside the database (task-images.mjs).
+    const images = readTaskImages(database, repositoryId);
     return {
       // The pause reason and the queue's own times are kept in `meta` (task-queue-advance.mjs); the projection validates them.
       repository: repository ? { ...repository, pause_reason: readPauseReason(database, repositoryId), ...storedSchedule(repositoryId) } : repository,
@@ -510,7 +514,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         .map((column) => ({ ...column, role: roles.get(column.id) ?? null })),
       features: preparedStatement(database, "SELECT id, name FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId),
       tasks: preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? ORDER BY number").all(repositoryId)
-        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null })),
+        .map((row) => ({ ...row, source_issue: sources.get(Number(row.number)) ?? null, report_attention: attentions.get(Number(row.number)) ?? null, images: images.get(Number(row.number)) ?? [] })),
     };
   }
 
@@ -569,6 +573,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
+      // A deleted task's image files go once the delete has committed.
+      if (action === "delete") removeTaskImageFiles(directory, repositoryId, payload?.id);
       return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
     } catch (error) {
       return { ok: false, error: error instanceof ActionRejected ? error.code : "conflict" };
@@ -598,7 +604,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       const number = Number(taskId.slice(2));
       const row = preparedStatement(database, "SELECT text FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
       if (!row || typeof row.text !== "string") return null;
-      return { text: row.text, hasSource: readTaskSource(database, repositoryId, number) !== null };
+      // GitHub gets the text only: where an image sits reads as the plain word, never an image or its ID.
+      return { text: plainTaskText(row.text), hasSource: readTaskSource(database, repositoryId, number) !== null };
     } catch { return null; }
   }
 
@@ -621,6 +628,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // A start is held unless the gates pass on a board that still projects (task-queue-advance.mjs).
   const planStart = (repositoryId, payload, resolveFacts, resolveGateFacts = null) => dispatch(startPlan, {
     repositoryId, payload, resolveFacts, now,
+    imagePaths: (taskId) => taskImagePaths({ database, directory, repositoryId, taskId }),
     gatesHold: (taskId) => {
       const board = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
       return !board || !startGates({ database, repositoryId, board, taskId, resolveGateFacts, at: now() }).ok;
@@ -645,6 +653,19 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
   const reportChecks = (sessionId) => link(reportableChecks, { sessionId });
+  // A task's images (task-images.mjs): the bytes are files beside the database, the list is in `meta`. Each call
+  // answers a fixed error, and a store that cannot be used refuses the write like `apply` does.
+  const image = (operation, repositoryId, payload) => {
+    if (!database) return { ok: false, error: "conflict" };
+    try {
+      return operation({ database, transaction: (work) => runTransaction(database, work), directory, repositoryId, payload });
+    } catch {
+      return { ok: false, error: "conflict" };
+    }
+  };
+  const addImage = (repositoryId, payload) => image(addTaskImage, repositoryId, payload);
+  const removeImage = (repositoryId, payload) => image(removeTaskImage, repositoryId, payload);
+  const readImage = (repositoryId, payload) => image(readTaskImage, repositoryId, payload);
   return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
-    sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
+    addImage, removeImage, readImage, sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }

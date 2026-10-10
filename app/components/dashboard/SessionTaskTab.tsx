@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useId } from "react";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
-import type { Task } from "../../../shared/task-contract";
+import { plainTaskText, type Task } from "../../../shared/task-contract";
 import { sessionTaskHref } from "../tasks/SessionTaskCell";
 import {
   checkRows, definitionStatus, modelSummary, plannedParts, queueBlockedNote, referenceChip, startedLine, stepLabel,
@@ -84,7 +84,7 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
     </div>}
     <div className="sessionTaskBlock">
       <span className="sessionTaskLabel">Task</span>
-      <p className="sessionTaskText">{full.text}</p>
+      <p className="sessionTaskText">{plainTaskText(full.text)}</p>
     </div>
     <div className="sessionTaskRunFacts">
       <div className="sessionTaskCell"><span className="sessionTaskEyebrow">Planned</span><span className="sessionTaskValue"><Parts parts={planned} empty="Not set" /></span></div>

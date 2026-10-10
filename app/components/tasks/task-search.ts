@@ -1,4 +1,4 @@
-import type { TaskBoard } from "../../../shared/task-contract";
+import { plainTaskText, type TaskBoard } from "../../../shared/task-contract";
 import type { PaletteScopeItem } from "../command-center/palette-scope";
 import { taskCardTitle, taskChip, taskColumns, taskIssueNumber } from "./task-presentation";
 
@@ -24,7 +24,7 @@ export function taskSearchItems(board: Pick<TaskBoard, "columns" | "tasks" | "fe
       id: task.id,
       label: firstLine(taskCardTitle(task)) || task.id,
       detail: [task.id, issueLabel, column.name, chip, feature].filter(Boolean).join(" · "),
-      terms: [task.id, issueLabel, task.text, task.session?.title, column.name, chip, feature].filter(Boolean).join("\n").toLowerCase(),
+      terms: [task.id, issueLabel, plainTaskText(task.text), task.session?.title, column.name, chip, feature].filter(Boolean).join("\n").toLowerCase(),
     };
   }));
 }

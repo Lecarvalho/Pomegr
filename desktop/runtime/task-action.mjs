@@ -1,5 +1,8 @@
 import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 
+// A task's images travel on a channel of their own (task-image.mjs); the shell installs both from here.
+export { installTaskImageIpc } from "./task-image.mjs";
+
 export const TASK_ACTION_CHANNEL = "pomegr:task-action";
 export const TASK_ACTION_NAMES = Object.freeze([
   "create", "update", "delete", "move",

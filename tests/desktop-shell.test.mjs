@@ -81,6 +81,9 @@ test("secure BrowserWindow preferences deny renderer privileges", () => {
   });
   assert.match(DESKTOP_CSP, /default-src 'self'/);
   assert.match(DESKTOP_CSP, /object-src 'none'/);
+  // Task images are drawn from object URLs of the page; nothing else may load from one.
+  assert.match(DESKTOP_CSP, /img-src 'self' data: blob:(?:;|$)/);
+  assert.equal(DESKTOP_CSP.match(/blob:/gu).length, 1);
   assert.match(DESKTOP_CSP, /frame-ancestors 'none'/);
 });
 

@@ -58,7 +58,8 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   `unavailable` instead of partly served.
 - Bounds per repository: 500 tasks and 50 features. Task text is at most 4000
   characters, an own condition 500, a feature name 80, a block reason 200, and an
-  attention line 200. A board
+  attention line 200. A task holds at most four images of at most 5 MiB each (see
+  [Images](#images)). A board
   always has five columns (see [Columns and card moves](#columns-and-card-moves)).
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
   `apply(repositoryId, action, payload)`, and `close()`. `apply` returns the new board
@@ -95,6 +96,7 @@ type Task = {
   report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null;
     attention: string | null } | null;                 // what the agent asked the owner to look at
   source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
+  images?: { id: string; type: "png" | "jpeg" | "gif" | "webp"; bytes: number }[];   // at most four; never the bytes
   createdAt: string; updatedAt: string;
 };
 type TaskBoard = {
@@ -165,6 +167,10 @@ type TaskBoard = {
   and a model that is not a request model identifier is null. With no facts the
   session is `{ id, title: null, state: "unknown", observedModel: null }`: unknown,
   never guessed. The facts are borrowed per read and never stored.
+- `images` lists the task's images in the order they were attached: an opaque ID
+  (`img-<12 hex>`), the fixed type the monitor read from the bytes, and the size in
+  bytes. It never carries image bytes, a file name, or a path (see [Images](#images)).
+  It is absent from an older monitor, which means none.
 - `session.checks` is the monitor's reading of the checked conditions of a task that
   waits for its report (see [Completion](#completion)). It is absent from every other
   task.
@@ -865,7 +871,8 @@ Starting is desktop-only and explicit.
    worktree, that runs the provider CLI. It uses `spawn` with an argument array and
    `shell: false`. Task text is untrusted user content and is never interpolated into
    a command line or a path.
-3. The session prompt is a fixed template holding the task text, the done-when list, and
+3. The session prompt is a fixed template holding the task text, the files of the
+   task's images when it has any, the done-when list, and
    the instruction to call `complete_task` or `block_task`. For a task promoted from a
    GitHub issue it also holds one fixed line with the issue number, asking for
    `Closes #<number>` in the pull request. Only the integer from the task store enters
@@ -892,7 +899,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   answers `cli_missing`.
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
   model, effort, the repository root resolved monitor-side, whether the session must run
-  in a worktree of its own (`worktree`), the prompt, and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
+  in a worktree of its own (`worktree`), the prompt, the absolute files of the task's images (`images`, at most four, only files that exist with their listed size), and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
   session is linked, and no dispatch is live. A task with no provider starts Claude Code;
   a Codex task starts Codex, and any other provider value answers
   `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed
@@ -916,7 +923,14 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   and the directory travel only as environment variables, which PowerShell reads as
   values and never parses as script, and which are removed before the session starts.
   The argument string holds the model and effort flags only when set, followed by the
-  prompt as one argument, each quoted by the Windows command-line rules. Claude Code
+  prompt as one argument, each quoted by the Windows command-line rules. A task with
+  images adds one flag after the prompt, because both flags take a list of values and
+  would swallow a prompt that followed them: Claude Code gets `--add-dir` with the
+  folder of the images, so its read tools may open the files the prompt lists, and
+  Codex gets `--image` with the files, which attaches them to the prompt. Desktop main
+  uses the plan's images only when each is an absolute, normalized path with a
+  store-made file name (`img-<12 hex>` and one of four extensions), all in one folder,
+  an existing file, and named in the prompt; otherwise the plan is malformed. Claude Code
   takes `--model` and `--effort`; Codex takes `--model` and
   `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
   included. The environment is the user's own, as the desktop app inherited it at launch
@@ -1072,6 +1086,82 @@ so it reads nothing and says that issues are read in the desktop app.
   runs the native confirmation and the `sign_in` operation described above. Its reads
   follow the rule above: an explicit desktop action, never a timer, focus, or GET.
 
+## Images
+
+A task can hold images, so the owner can show the agent a screenshot or a mock-up
+(task T-25, 2026-10-10). They are user-authored content, the same data class as the
+task text, and they are a desktop feature: a browser neither sends nor receives one.
+
+- A task holds at most four images of at most 5 MiB each: PNG, JPEG, GIF, or WebP.
+  `sniffImageType` in `server/tasks/task-images.mjs` decides the type from the leading
+  bytes. A declared type or a file name is never trusted, and anything else (SVG
+  included) is `invalid` before a byte is written.
+- The bytes are files beside the database:
+  `tasks-v1/images/<repositoryId>/<taskId>/<imageId>.<png|jpg|gif|webp>`. The image ID
+  is `img-<12 hex>`, validated by the monitor. No part of a file name comes from text the user typed.
+- The task's list, `[{ id, type, bytes }]`, is kept in the `meta` table under
+  `task_images:<repositoryId>:<taskId>`, so the schema version does not change. The
+  list is the authority: a file no list names is never served, and a listed image
+  whose file is gone, or no longer has its listed size and type, reads as
+  `not_found`. An entry outside the contract is dropped from the projection instead
+  of making the board unavailable.
+- An add writes the file first (a `.part` file, then a rename) and the list in one
+  transaction after it; a refused or failed list write removes the file again. A
+  remove changes the list first and deletes the file after. Both set the task's
+  update time. `delete` drops the list in its own transaction and removes the task's
+  folder once it has committed. A task number is never reused, so a file left behind
+  by a failed removal is never served for another task.
+- `openTaskStore` returns `addImage(repositoryId, { taskId, bytes })`,
+  `removeImage(repositoryId, { taskId, imageId })`, and
+  `readImage(repositoryId, { taskId, imageId })`. Each answers a fixed error:
+  `invalid`, `not_found`, `limit` (a fifth image), or `conflict` (the store cannot be
+  used).
+- The renderer reaches them through the fixed IPC channel `pomegr:task-image`
+  (`desktop/runtime/task-image.mjs`), which posts to
+  `POST /internal/tasks/image-add | image-remove | image-read`
+  (`server/serving/task-image-routes.mjs`). `image-add` takes the bytes as the whole
+  `application/octet-stream` body with the repository ID, the task ID, and optionally
+  the image ID as its only query keys; the other two take the usual `{ repositoryId, payload }` envelope
+  with exactly `{ taskId, imageId }`. `image-read` answers the bytes with one of the
+  four fixed media types and `X-Content-Type-Options: nosniff`.
+- The task text says where each image belongs. An image is the marker
+  `[image:<imageId>]` at its place in the text: ordinary task text, counted in the
+  4,000 characters, that names one of `Task.images`. The Task field of the desktop
+  forms is rich text (`TaskRichText` in `app/components/tasks/TaskImages.tsx`): a
+  `contenteditable="plaintext-only"` region whose value is still that one string. It
+  draws each marker as the image, inline, and serializes an image back to its marker.
+  Every other surface shows the plain word `[image]` (`plainTaskText`): cards, the
+  Search bar, the session's Task tab, and the text sent to GitHub.
+- The renderer makes the image ID (`newTaskImageId`, `img-<12 random hex>`) when an
+  image is pasted, dropped, or attached, so the text can name the image before it is
+  stored. `image-add` takes that ID as its optional third query key; the monitor
+  validates its shape and answers `conflict` for one the task already holds. The file
+  name is still built only from validated identifiers.
+- An image is saved with the text that names it. In the New task form the images wait
+  in renderer memory; once the task exists the form stores the ones its text names.
+  When one fails, the task stays and its own modal opens with one fixed line. In the
+  Task form an image is part of the Save draft: Save stores the new images the text
+  names, then sends the text, then removes the stored images the saved text no longer
+  names. An image that cannot be stored leaves the text unsaved. Close discards the
+  draft and stores nothing. The Task form shows the text with every image the task
+  holds: a marker that names no image of the task is not drawn, and an image the text
+  does not name is shown at its end (`shownTaskText`), so no image is held unseen.
+- The renderer draws an image from an object URL of its own page and revokes it when
+  the modal closes; the desktop content security policy allows `blob:` for `img-src`
+  only, for this.
+- A session gets the images the task holds when it starts; see
+  [Starting a session](#starting-a-session). In the prompt a marker reads as its
+  image's number, `[Image #n]`, and the list of files names each image by the same
+  number, so the agent knows which image the text means where. A marker that names no
+  listed image reads `[image]`. An image attached later is not sent to
+  that session. A requeued task starts its next session with the images it holds
+  then.
+- Creating a GitHub issue from a task sends its text only, with `[image]` where the
+  text holds a marker; no image and no image ID is sent. A promote makes a task
+  with no image.
+- Not built: images on a card, an image from an agent (`add_task` is text only), and
+  a per-repository total. The store's worst case is 500 tasks of four 5 MiB images.
+
 ## Boundaries
 
 | Surface | Who | What it carries |
@@ -1082,10 +1172,12 @@ so it reads nothing and says that issues are read in the desktop app.
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
-| `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
+| `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
+| `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
+| `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
@@ -1188,6 +1280,14 @@ class. Column names are five fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
+- A task's images are the same data class. `GET /api/tasks` carries only each image's
+  opaque ID, fixed type, and size. The bytes cross only the `pomegr:task-image` channel
+  and its three desktop-token routes, to and from the trusted renderer; no GET serves
+  them and a browser or LAN client never holds one. The renderer keeps them in memory
+  only while a modal shows them, never in browser storage. A started session is given
+  the files of its task's images, so the images and the path of the private folder
+  that holds them reach the provider through that session, as the task text does.
+  Nothing else reads the files: no pipeline stage, report, log, or notification.
 - The Search bar (the Ctrl K palette) searches the tasks of the board in view. This is a
   presentation of the board the client already holds, not a new read or route:
   `TaskBoardPane` registers the ready board's tasks as the palette's scope
@@ -1329,9 +1429,12 @@ it links to its task; `complete_task` and `add_task` are accepted with the hook'
 Mark done and Requeue work on a linked task with no report and leave the session running,
 and the requeued session's later report is refused; a started task is not the queue's next
 task; a dirty task worktree refuses a manual start and pauses the queue with
-`worktree_dirty`, and Open folder opens it.
+`worktree_dirty`, and Open folder opens it. On 2026-10-10 the owner started a Claude Code
+session for a task with one image: the prompt named the image as `[Image #1]` with its
+file, and the session read the file through `--add-dir` with no permission prompt.
 
-Not yet proven on a device: that Codex sends the thread identity the binding reads, a
+Not yet proven on a device: that Codex takes `--image` after the prompt for a task with
+images, that Codex sends the thread identity the binding reads, a
 Codex session start, the Stalled state after a real session end, a checked done-when
 condition, and a tool call that waits at a permission prompt inside the proof window.
 

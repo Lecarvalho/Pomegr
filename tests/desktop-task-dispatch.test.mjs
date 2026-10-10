@@ -604,3 +604,47 @@ test("the open channel is installed and removed with the start channel", async (
   assert.equal(handlers.has(TASK_WORKTREE_OPEN_CHANNEL), false);
   assert.equal(handlers.has(TASK_START_CHANNEL), false);
 });
+
+const imageFolder = "C:\\Users\\tester\\AppData\\Roaming\\pomegr\\tasks-v1\\images\\repo-0123456789abcdef01234567\\T-3";
+const imageFiles = [`${imageFolder}\\img-0123456789ab.png`, `${imageFolder}\\img-ba9876543210.jpg`];
+const imagePlan = (change = {}) => ({ ...basePlan(), prompt: `Do the thing\n- ${imageFiles[0]}\n- ${imageFiles[1]}`, images: imageFiles, ...change });
+const withImageFiles = (extra = () => false) => ({ fileExists: (f) => f === exe || f === powershell || imageFiles.includes(f) || extra(f) });
+
+test("Claude Code is given the image folder as a readable directory, after the prompt", async () => {
+  const h = harness({ plan: imagePlan({ model: "claude-opus-4-1" }), overrides: withImageFiles() });
+  assert.deepEqual(await go(h), { status: "started" });
+  const argumentsLine = h.spawns[0][2].env.POMEGR_START_ARGUMENTS;
+  assert.equal(argumentsLine, `--model claude-opus-4-1 ${windowsArgument(imagePlan().prompt)} --add-dir ${imageFolder}`);
+  assert.equal(h.spawns[0][2].cwd, root);
+});
+
+test("Codex gets the images attached, after the prompt", async () => {
+  const h = harness({ plan: imagePlan({ provider: "codex" }), overrides: withImageFiles(codexFiles) });
+  assert.deepEqual(await go(h), { status: "started" });
+  assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, `${windowsArgument(imagePlan().prompt)} --image ${imageFiles[0]} ${imageFiles[1]}`);
+});
+
+test("a plan with no images, or from an older monitor, adds no image flag", async () => {
+  for (const plan of [{ ...basePlan(), images: [] }, basePlan()]) {
+    const h = harness({ plan });
+    assert.deepEqual(await go(h), { status: "started" });
+    assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '"Do the thing"');
+  }
+});
+
+test("image files that are not the store's own fail the start and abort", async () => {
+  const other = "C:\\Users\\tester\\Pictures\\img-0123456789ab.png";
+  const bad = [
+    { images: "x" }, { images: [imageFiles[0], imageFiles[0]] }, { images: [...imageFiles, ...imageFiles, imageFiles[0]] },
+    { images: ["img-0123456789ab.png"] }, { images: [`${imageFolder}\\..\\T-4\\img-0123456789ab.png`] }, { images: [`${imageFolder}\\notes.txt`] },
+    { images: [`${imageFolder}\\img-0123456789ab.svg`] }, { images: [imageFiles[0], other] }, { images: [`${imageFolder}\\img-ffffffffffff.png`] },
+    // A file the prompt does not name was not put there by the monitor's own plan.
+    { prompt: "Do the thing" },
+  ];
+  for (const change of bad) {
+    const h = harness({ plan: imagePlan(change), overrides: withImageFiles((f) => f === other) });
+    assert.deepEqual(await go(h), { status: "failed" }, JSON.stringify(change));
+    assert.equal(h.spawns.length, 0);
+    assert.ok(aborted(h)[0], JSON.stringify(change));
+  }
+});

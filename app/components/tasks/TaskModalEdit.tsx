@@ -16,6 +16,7 @@ import {
   resolveDesktopTaskDone, updateDesktopTask,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
+import { taskImagesAvailable } from "./task-images-desktop";
 import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
 import { modalSubtitle, type TaskModalBoard } from "./task-modal-types";
@@ -23,12 +24,13 @@ import { useTaskModelOptions } from "./task-panel-hooks";
 import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskChip, taskIssueNumber, taskSessionHref, taskSessionTitle } from "./task-presentation";
 import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft";
 import { useFeatureCreation } from "./use-feature-creation";
+import { shownTaskText, useStoredImages } from "./use-task-images";
 import { useTaskStart } from "./use-task-start";
 
 // Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
 // body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Done when,
 // Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
-// keeps saving by itself. A task that is blocked or stalled leads the footer with Mark done and resume
+// keeps saving by itself. An image in the text is part of the draft like the text: Save stores it, and removes one the text no longer names. A task that is blocked or stalled leads the footer with Mark done and resume
 // queue and Requeue task; one that needs review holds no queue, so its first action reads Mark done. A task whose linked session has not reported offers Mark done and Requeue task too, with a
 // line that neither stops the session; nothing marks such a task done or stalled by itself. While the draft is unsaved
 // Start session, Add to queue, Remove from queue, Mark done and Requeue task are disabled.
@@ -58,7 +60,9 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   onClose(): void;
 }) {
   const models = useTaskModelOptions(board.runModels);
-  const { draft, dirty, canSave, setText, setRun, setDoneWhen, setFeature } = useTaskDraft(task);
+  // The text is drawn with the task's images in it, so the draft is compared with that same text.
+  const shown = useMemo(() => ({ ...task, text: shownTaskText(task.text, task.images) }), [task]);
+  const { draft, dirty, canSave, setText, setRun, setDoneWhen, setFeature } = useTaskDraft(shown);
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -77,6 +81,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // A stalled task has no report: its session ended before the agent reported complete or blocked.
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
   const start = useTaskStart(repositoryId, task, dirty, refresh);
+  const images = useStoredImages(repositoryId, task);
+  const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.
   const showStart = start.available && !unresolved;
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
@@ -116,8 +122,19 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
       current = { ...draft, feature: { featureId: created.id, creating: false, name: "", step: null } };
       setFeature(current.feature);
     }
-    const patch = taskDraftPatch(task, current);
+    const patch = taskDraftPatch(shown, current);
+    // An image is saved with the text that names it: new ones are stored before the text, and the stored ones the
+    // saved text no longer names are removed after it. A removal that fails leaves an image the next open shows again.
+    const imageFailure = await images.store(task.id, current.text);
+    if (imageFailure !== null) {
+      saveInFlight.current = false;
+      setSaving(false);
+      setFailure(imageFailure);
+      onChanged();
+      return;
+    }
     const result = patch ? await updateDesktopTask(repositoryId, task.id, patch) : { ok: true as const };
+    if (result.ok) await images.prune(current.text);
     saveInFlight.current = false;
     setSaving(false);
     if (result.ok) { onChanged(); onClose(); return; }
@@ -214,7 +231,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {task.session && <TaskSessionLink sessionId={task.session.id} />}
       </span>
     </div>}
-    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure} />
+    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure}
+      images={imagesOffered ? { urls: images.urls, disabled: blocked, error: images.error, onAttach: images.attach } : undefined} />
     <FeatureFields draft={draft.feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
       onCancelName={cancelName} onOpenTask={onOpenTask} />
     <div className="taskRunGroup">

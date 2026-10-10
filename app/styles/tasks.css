@@ -147,6 +147,18 @@
 .newTaskHelper { color: var(--command-muted); }
 .newTaskError { color: var(--command-error); }
 
+/* The Task field with images: one frame holds the rich-text editor, where an image shows inline in the text, and
+   Attach image at its foot. The frame carries the border and the focus ring. */
+.taskComposer { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); }
+.taskRichTextLabel { align-self: flex-start; color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskRichText { box-sizing: border-box; min-height: 150px; max-height: 480px; overflow-y: auto; padding: var(--space-2) var(--space-3); color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); white-space: pre-wrap; overflow-wrap: anywhere; outline: none; cursor: text; }
+.taskRichText:empty::before { content: attr(data-placeholder); color: var(--command-muted); pointer-events: none; }
+.taskComposer:has(.taskRichText:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskInlineImage { display: inline-block; max-width: 100%; max-height: 180px; margin: var(--space-1) 0; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); vertical-align: bottom; }
+.taskInlineImage.isPending { width: 72px; height: 72px; }
+.taskTextCounter.isOver { color: var(--command-error); }
+.taskImagesHead { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-top: 1px solid var(--command-line); }
+
 /* Task modal frame (design contract G115-G123, G153, D2 of the part brief). A native modal dialog is the scrim: it fills
    the viewport, scrolls when the panel is taller, and the panel sits top-aligned in it, at most 640px wide. There is no
    token for a 40% ink scrim, so it mixes the text token. No entrance or exit motion. */

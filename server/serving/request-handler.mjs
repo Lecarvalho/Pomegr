@@ -14,6 +14,7 @@ import {
   serveAgentTaskAddRoute, serveAgentTaskBindRoute, serveAgentTaskReportRoute, serveTaskActionRoute, serveTaskRoute,
 } from "./task-routes.mjs";
 import { TASK_ISSUE_ACTIONS, serveTaskIssueRoute } from "./task-issue-routes.mjs";
+import { TASK_IMAGE_ACTIONS, serveTaskImageRoute } from "./task-image-routes.mjs";
 
 const SESSION_DOMAIN_SET = new Set(SESSION_DOMAIN_NAMES);
 const FILE_ID_PATTERN = /^f[1-9][0-9]{0,15}$/u;
@@ -236,6 +237,10 @@ export function createRequestHandler({
     if (taskActionRequest) {
       if (TASK_ISSUE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
         await serveTaskIssueRoute({ request, response, requestUrl, taskStore, taskIssues: runtime.taskIssues });
+        return;
+      }
+      if (TASK_IMAGE_ACTIONS.includes(requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length))) {
+        await serveTaskImageRoute({ request, response, requestUrl, taskStore });
         return;
       }
       await serveTaskActionRoute({
