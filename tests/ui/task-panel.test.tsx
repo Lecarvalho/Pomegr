@@ -15,7 +15,7 @@ const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready"
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -94,7 +94,7 @@ describe("task cards", () => {
 
   it("are plain text, not controls, without the desktop bridge", () => {
     setBridge(undefined);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "Task store and privacy rules" })).not.toBeInTheDocument();
     expect(screen.getByText("Task store and privacy rules")).toBeInTheDocument();
   });
@@ -103,7 +103,7 @@ describe("task cards", () => {
 describe("Task panel", () => {
   it("opens from a card and shows the stored values", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(panel()).not.toBeInTheDocument();
     const dialog = await openReviewPanel(user);
     expect(dialog.getByText("T-12")).toBeInTheDocument();
@@ -127,7 +127,7 @@ describe("Task panel", () => {
 
   it("shows per-check results, the report line and the observed-model notice only when they exist", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     expect(dialog.getByText("Not passed")).toHaveClass("isFailed");
     expect(dialog.getByText("Passed")).toHaveClass("isPassed");
@@ -143,7 +143,7 @@ describe("Task panel", () => {
   it("omits results, the report line and the notice for a task with no report and no differing model", async () => {
     setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: "model-a", effort: null }, doneWhen: { checks: ["pr_open"], own: null }, session: { id: "s", title: null, state: "working", observedModel: "model-a" } })]);
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain task"));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByRole("heading", { name: "Plain task" })).toBeInTheDocument();
@@ -155,7 +155,7 @@ describe("Task panel", () => {
 
   it("words the observed-model notice from the contract", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     const notice = dialog.getByText("Observed model differs").closest(".taskModelNotice");
     expect(notice).toHaveAttribute("role", "status");
@@ -172,7 +172,7 @@ describe("Task panel", () => {
   ])("shows no notice when the models match or cannot be compared: %s", async (_name, plannedModel, observedModel) => {
     setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: plannedModel, effort: null }, session: { id: "claude:s5", title: "Plain session", state: "working", observedModel } })]);
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain session"));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.queryByText("Observed model differs")).not.toBeInTheDocument();
@@ -185,7 +185,7 @@ describe("Task panel", () => {
       task(6, { text: "Own title", session: { id: "codex:s6", title: null, state: "idle", observedModel: null } }),
     ]);
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Session title"));
     let dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByRole("heading", { name: "Session title" })).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("Task panel", () => {
   it("offers no session link and no title source for a task without a session", async () => {
     setBoard([task(5, { text: "Unlinked" })]);
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Unlinked"));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.queryByRole("link")).not.toBeInTheDocument();
@@ -214,7 +214,7 @@ describe("Task panel", () => {
     const session = (state: string) => ({ id: "claude:s5", title: "Chip session", state, observedModel: null });
     const user = userEvent.setup();
     setBoard([task(5, { state: "queued", session: session("needs_input") })]);
-    const view = render(<TasksTab repositoryId={repositoryId} />);
+    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     let dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByText("Needs input")).toHaveClass("commandChip", "warning");
@@ -222,7 +222,7 @@ describe("Task panel", () => {
     view.unmount();
 
     setBoard([task(5, { state: "queued", session: session("unknown") })]);
-    const unknown = render(<TasksTab repositoryId={repositoryId} />);
+    const unknown = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByText("Queued")).toHaveClass("commandChip");
@@ -230,7 +230,7 @@ describe("Task panel", () => {
     unknown.unmount();
 
     setBoard([task(5, { state: "done", session: session("working") })]);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Chip session"));
     dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByText("Done")).toHaveClass("commandChip");
@@ -242,7 +242,7 @@ describe("Task panel", () => {
     setBridge({ taskAction, taskStart });
     setBoard([task(5, { state: "queued", run: { provider: "claude", model: null, effort: null }, session: { id: "claude:s5", title: "Linked session", state: "working", observedModel: null } })]);
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Linked session"));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-5" }));
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
@@ -253,7 +253,7 @@ describe("Task panel", () => {
 
   it("saves a run change and an effort change as the complete run, and clears effort", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Run on" }), "claude:model:model-b");
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
@@ -272,7 +272,7 @@ describe("Task panel", () => {
 
   it("saves a checkbox change as the complete doneWhen", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     await user.click(dialog.getByRole("checkbox", { name: "Commit on task branch" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
@@ -288,7 +288,7 @@ describe("Task panel", () => {
 
   it("saves the own condition and the task text on blur, and only when changed", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     const ownInput = dialog.getByRole("textbox", { name: "Your own condition, judged by the agent" });
     await user.click(ownInput);
@@ -314,7 +314,7 @@ describe("Task panel", () => {
 
   it("refuses to blank the task text and restores it", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     const text = dialog.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement;
     await user.clear(text);
@@ -327,7 +327,7 @@ describe("Task panel", () => {
   it("reverts the field and shows one fixed message when a save fails", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     await user.click(dialog.getByRole("button", { name: "Low" }));
     expect(await dialog.findByRole("alert")).toHaveTextContent("The change could not be saved.");
@@ -343,7 +343,7 @@ describe("Task panel", () => {
 
   it("deletes only after an inline confirmation, then closes", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     await user.click(dialog.getByRole("button", { name: "Delete task" }));
     expect(taskAction).not.toHaveBeenCalled();
@@ -365,7 +365,7 @@ describe("Task panel", () => {
   it("keeps the panel open with one fixed message when the delete fails", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "not_found" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     await user.click(dialog.getByRole("button", { name: "Delete task" }));
     await user.click(dialog.getByRole("button", { name: "Delete T-12" }));
@@ -377,7 +377,7 @@ describe("Task panel", () => {
 
   it("closes with Close task or Escape and returns focus to the card", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await openReviewPanel(user);
     await user.click(screen.getByRole("button", { name: "Close task" }));
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
@@ -391,7 +391,7 @@ describe("Task panel", () => {
 
   it("replaces the New task panel when a card is opened", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "New task" }));
     expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
     fireEvent.click(card("Task store and privacy rules"));
@@ -402,7 +402,7 @@ describe("Task panel", () => {
   it("offers a stored model that is no longer observed and only Default model when no list exists", async () => {
     agents.runs = [];
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);
     const trigger = dialog.getByRole("combobox", { name: "Run on" });
     expect(trigger).toHaveTextContent("Claude Code · model-a");
@@ -420,7 +420,7 @@ describe("Task panel resolutions", () => {
   });
   async function open(text: string, id: string) {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: text }));
     return { user, dialog: within(screen.getByRole("dialog", { name: `Task ${id}` })) };
   }

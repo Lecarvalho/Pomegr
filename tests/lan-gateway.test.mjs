@@ -203,6 +203,12 @@ test("LAN gateway pairs a same-subnet browser once and forwards only bounded rea
       assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);
       assert.equal(observed.at(-1).url, route);
     }
+    // The Tasks page is a nav item, so it loads for a paired browser; its board data stays desktop-only (`/api/tasks` is no LAN route).
+    for (const route of ["/tasks?repository=repo-0123456789abcdef01234567", "/tasks.rsc?repository=repo-0123456789abcdef01234567"]) {
+      assert.equal(await requestStatus(gateway.origin, { path: route, headers: { Cookie: cookie } }), 200);
+      assert.equal(observed.at(-1).url, route);
+    }
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/tasks?repositoryId=repo-0123456789abcdef01234567", headers: { Cookie: cookie } }), 404);
     const beforeDenied = observed.length;
     assert.equal(await requestStatus(gateway.origin, { path: "/repositories/../settings", headers: { Cookie: cookie } }), 400);
     assert.equal(await requestStatus(gateway.origin, { path: "/repositories/%2e%2e/settings", headers: { Cookie: cookie } }), 400);

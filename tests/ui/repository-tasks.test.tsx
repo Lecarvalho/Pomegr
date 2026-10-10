@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,18 +13,30 @@ vi.mock("next/navigation", () => ({
 }));
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
+vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
+// The repository list is committed inventory state; each test sets what the store would hand out.
+const inventoryState = vi.hoisted(() => ({ snapshot: null as unknown as RepositoryInventorySnapshot, loading: false, connected: true }));
+vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../app/repository-inventory-client")>();
+  return { ...actual, useRepositoryInventory: () => ({ snapshot: inventoryState.snapshot, loading: inventoryState.loading, connected: inventoryState.connected, refresh: vi.fn(async () => {}) }) };
+});
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import { repositoryTabs } from "../../app/components/repositories/repository-route";
 import { QueueTaskCard } from "../../app/components/tasks/QueueTaskCard";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
+import { TasksPage } from "../../app/components/tasks/TasksPage";
 import { sessionState } from "../../app/dashboard-utils";
+import { chooseCommandOption } from "./command-select-helpers";
 
 const repositoryId = "repo-0123456789abcdef01234567";
-const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [{
-  id: repositoryId, name: "Example project", displayName: "Example project", sessionCount: 1, liveCount: 0, historyCount: 1, providerCount: 1, updatedAt: null,
+const otherRepositoryId = "repo-89abcdef0123456789abcdef";
+const repositoryEntry = (id: string, displayName: string): RepositoryInventorySnapshot["repositories"][number] => ({
+  id, name: displayName, displayName, sessionCount: 1, liveCount: 0, historyCount: 1, providerCount: 1, updatedAt: null,
   providers: [{ provider: "claude", source: "Claude Code", sessionCount: 1, supported: false, status: "unavailable", failureKind: null, currentRevision: null, revisions: [] }],
-}] };
+});
+const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [repositoryEntry(repositoryId, "Example project")] };
+const twoRepositories: RepositoryInventorySnapshot = { revision: 2, readiness: "ready", repositories: [repositoryEntry(repositoryId, "Example project"), repositoryEntry(otherRepositoryId, "Another project")] };
 
 const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
 
@@ -42,26 +55,38 @@ function board(overrides: Partial<TaskBoard> = {}): TaskBoard {
 
 const column = (name: string) => screen.getByRole("region", { name });
 
+function setBridge(bridge: unknown) {
+  (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge;
+}
+
 beforeEach(() => {
   navigation.search = "tab=tasks";
+  inventoryState.snapshot = inventory;
+  inventoryState.loading = false;
+  inventoryState.connected = true;
   useTasks.mockReturnValue({ board: board(), refresh: vi.fn() });
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(inventory), { headers: { "Content-Type": "application/json" } }));
 });
 afterEach(() => {
+  setBridge(undefined);
   vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
 describe("repository Tasks tab", () => {
-  it("adds a Tasks tab between Git and Plugin and renders the board for this repository", async () => {
+  it("keeps a Tasks tab between Git and Plugin that links to the Tasks page for this repository", async () => {
     expect(repositoryTabs.map(([id]) => id)).toEqual(["overview", "files", "git", "tasks", "plugin", "inventory", "reporting"]);
     render(<RepositoryDetailView repositoryId={repositoryId} initialTab="tasks" />);
     const tab = await screen.findByRole("tab", { name: "Tasks" });
     expect(tab).toHaveAttribute("aria-selected", "true");
     expect(tab).toHaveAttribute("aria-controls", screen.getByRole("tabpanel").id);
-    expect(useTasks).toHaveBeenCalledWith(repositoryId);
-    expect(within(screen.getByRole("tabpanel")).getByRole("heading", { name: "Tasks" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+    const pane = within(screen.getByRole("tabpanel"));
+    expect(pane.getByRole("heading", { name: "Tasks" })).toBeInTheDocument();
+    const link = pane.getByRole("link", { name: "Open task board" });
+    expect(link).toHaveAttribute("href", `/tasks?repository=${repositoryId}`);
+    expect(link).toHaveClass("commandSecondaryAction");
+    // One board implementation: the tab draws no board and reads none.
+    expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
+    expect(useTasks).not.toHaveBeenCalled();
   });
 
   it("does not read the board while another tab is open", async () => {
@@ -70,6 +95,149 @@ describe("repository Tasks tab", () => {
     await screen.findByRole("tab", { name: "Tasks" });
     expect(screen.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "false");
     expect(useTasks).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Tasks page", () => {
+  const switcher = () => screen.getByRole("combobox", { name: "Repository" });
+
+  it("renders the board of the repository named in the URL under a Tasks heading, with the switcher beside it", () => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = `repository=${otherRepositoryId}`;
+    render(<TasksPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
+    expect(useTasks).toHaveBeenCalledWith(otherRepositoryId);
+    expect(useTasks).not.toHaveBeenCalledWith(repositoryId);
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+    expect(switcher()).toHaveTextContent("Another project");
+    expect(screen.getByText("Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.")).toBeInTheDocument();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("uses the repository the route validated when the URL does not carry one yet", () => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = "";
+    render(<TasksPage initialRepositoryId={otherRepositoryId} />);
+    expect(useTasks).toHaveBeenCalledWith(otherRepositoryId);
+    expect(switcher()).toHaveTextContent("Another project");
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("validates the route parameter on the server before the page sees it", async () => {
+    const { default: TasksRoute } = await import("../../app/tasks/page");
+    const initial = async (repository: string | string[] | undefined) => (await TasksRoute({ searchParams: Promise.resolve({ repository }) })).props.initialRepositoryId;
+    expect(await initial(otherRepositoryId)).toBe(otherRepositoryId);
+    expect(await initial("repo-ABCDEF0123456789abcdef01")).toBeUndefined();
+    expect(await initial("../../etc/passwd")).toBeUndefined();
+    expect(await initial([repositoryId, otherRepositoryId])).toBeUndefined();
+    expect(await initial(undefined)).toBeUndefined();
+  });
+
+  it("lists every repository in the switcher and replaces the URL when one is chosen", async () => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = `repository=${repositoryId}`;
+    render(<TasksPage />);
+    expect(switcher()).toHaveTextContent("Example project");
+    await userEvent.setup().click(switcher());
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Example project", "Another project"]);
+    chooseCommandOption(switcher(), otherRepositoryId);
+    expect(navigation.replace).toHaveBeenCalledTimes(1);
+    expect(navigation.replace).toHaveBeenCalledWith(`/tasks?repository=${otherRepositoryId}`, { scroll: false });
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("shows another repository's board after the switch, with no panel carried over and focus kept on the switcher", async () => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = `repository=${repositoryId}`;
+    setBridge({ taskAction: vi.fn() });
+    const user = userEvent.setup();
+    const view = render(<TasksPage />);
+    await user.click(screen.getByRole("button", { name: "New task" }));
+    expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
+    chooseCommandOption(switcher(), otherRepositoryId);
+    navigation.search = `repository=${otherRepositoryId}`;
+    view.rerender(<TasksPage />);
+    expect(useTasks).toHaveBeenLastCalledWith(otherRepositoryId);
+    expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument();
+    expect(switcher()).toHaveTextContent("Another project");
+    expect(switcher()).toHaveFocus();
+  });
+
+  it.each([
+    ["no repository", ""],
+    ["a repository the inventory does not list", "repository=repo-aaaaaaaaaaaaaaaaaaaaaaaa"],
+    ["a value that is not a repository ID", `repository=${encodeURIComponent("../../etc?x=1")}`],
+  ])("shows the first listed repository for %s and replaces the URL once with its canonical form", (_name, search) => {
+    inventoryState.snapshot = twoRepositories;
+    navigation.search = search;
+    const view = render(<TasksPage />);
+    expect(useTasks).toHaveBeenCalledWith(repositoryId);
+    expect(useTasks).not.toHaveBeenCalledWith(otherRepositoryId);
+    expect(switcher()).toHaveTextContent("Example project");
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+    // Re-rendering before the URL updates must not send the replace again.
+    view.rerender(<TasksPage />);
+    expect(navigation.replace).toHaveBeenCalledTimes(1);
+    expect(navigation.replace).toHaveBeenCalledWith(`/tasks?repository=${repositoryId}`, { scroll: false });
+  });
+
+  it("draws the placeholder, never a board, while the repository inventory loads", () => {
+    inventoryState.snapshot = { revision: null, readiness: "loading", repositories: [] };
+    inventoryState.loading = true;
+    const view = render(<TasksPage />);
+    expect(screen.getByLabelText("Loading tasks")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Repository" })).not.toBeInTheDocument();
+    expect(useTasks).not.toHaveBeenCalled();
+    inventoryState.snapshot = inventory;
+    inventoryState.loading = false;
+    view.rerender(<TasksPage />);
+    expect(screen.queryByLabelText("Loading tasks")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+    expect(navigation.replace).toHaveBeenCalledWith(`/tasks?repository=${repositoryId}`, { scroll: false });
+  });
+
+  it("says the inventory is unavailable, or that no repository is observed, without reading a board", () => {
+    inventoryState.snapshot = { revision: null, readiness: "unavailable", repositories: [] };
+    inventoryState.connected = false;
+    const view = render(<TasksPage />);
+    expect(screen.getByRole("heading", { name: "Repository inventory unavailable" })).toBeInTheDocument();
+    inventoryState.snapshot = { revision: 3, readiness: "ready", repositories: [] };
+    inventoryState.connected = true;
+    view.rerender(<TasksPage />);
+    expect(screen.getByRole("heading", { name: "No repositories observed" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Task board" })).not.toBeInTheDocument();
+    expect(useTasks).not.toHaveBeenCalled();
+    expect(navigation.replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last listed repositories while the monitor is unreachable", () => {
+    inventoryState.snapshot = twoRepositories;
+    inventoryState.connected = false;
+    navigation.search = `repository=${otherRepositoryId}`;
+    render(<TasksPage />);
+    expect(switcher()).toHaveTextContent("Another project");
+    expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
+  });
+
+  it("is read-only outside the desktop app: the board and a note, no New task and no editing control", () => {
+    navigation.search = `repository=${repositoryId}`;
+    useTasks.mockReturnValue({ board: board({ tasks: [task(1)] }), refresh: vi.fn() });
+    render(<TasksPage />);
+    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    expect(document.querySelector(".taskColumnAdd")).toBeNull();
+    expect(document.querySelector("[draggable]")).toBeNull();
+    expect(within(column("Backlog")).getByText("Task text 1")).toBeInTheDocument();
+  });
+
+  it("reduces a client that is not on this computer to the Desktop only notice under the same heading", () => {
+    navigation.search = `repository=${repositoryId}`;
+    useTasks.mockReturnValue({ board: board({ readiness: "desktop_only", columns: [], tasks: [] }), refresh: vi.fn() });
+    render(<TasksPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Tasks" })).toBeInTheDocument();
+    expect(screen.getByText("Desktop only")).toHaveClass("commandChip");
+    expect(screen.queryByRole("group", { name: "Tasks view" })).not.toBeInTheDocument();
   });
 });
 
@@ -185,10 +353,11 @@ describe("task board", () => {
 
   it("moves from the placeholder to the board without showing a state it then retracts", async () => {
     useTasks.mockReturnValue({ board: board({ readiness: "loading", columns: [], tasks: [] }), refresh: vi.fn() });
-    const view = render(<RepositoryDetailView repositoryId={repositoryId} initialTab="tasks" />);
+    navigation.search = `repository=${repositoryId}`;
+    const view = render(<TasksPage />);
     expect(await screen.findByLabelText("Loading tasks")).toBeInTheDocument();
     useTasks.mockReturnValue({ board: board({ tasks: [task(1)] }), refresh: vi.fn() });
-    view.rerender(<RepositoryDetailView repositoryId={repositoryId} initialTab="tasks" />);
+    view.rerender(<TasksPage />);
     await waitFor(() => expect(screen.queryByLabelText("Loading tasks")).not.toBeInTheDocument());
     expect(screen.queryByText(/unavailable/i)).not.toBeInTheDocument();
     expect(within(column("Backlog")).getByText("Task text 1")).toBeInTheDocument();

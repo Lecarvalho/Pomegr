@@ -12,7 +12,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { moveChoices, queueFeatures, reorderTarget, singleQueueTasks } from "../../app/components/tasks/task-queue-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
@@ -89,7 +89,7 @@ const chipText = (id: string) => card(id).querySelector(".commandChip")?.textCon
 const reorders = () => taskAction.mock.calls.filter((call) => call[1] === "queue_reorder");
 
 async function showQueue() {
-  render(<TasksTab repositoryId={repositoryId} />);
+  render(<TaskBoardPane repositoryId={repositoryId} />);
   await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
 }
 
@@ -125,7 +125,7 @@ describe("a task that already started", () => {
 
 describe("the Board | Queue switch", () => {
   it("shows the same data as a board or as a queue and keeps the board-only action off the queue", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Tasks view" });
     expect(group).toHaveClass("commandSegmented");
     expect(within(group).getByRole("button", { name: "Board" })).toHaveAttribute("aria-pressed", "true");
@@ -144,7 +144,7 @@ describe("the Board | Queue switch", () => {
 
   it("is not drawn before the board is ready", () => {
     setBoard({ readiness: "loading", features: [], tasks: [] });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("group", { name: "Tasks view" })).not.toBeInTheDocument();
   });
 });
@@ -235,7 +235,7 @@ describe("the Queue view", () => {
   });
 
   it("renders on the server without the desktop bridge", () => {
-    expect(() => renderToString(<TasksTab repositoryId={repositoryId} />)).not.toThrow();
+    expect(() => renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toThrow();
   });
 });
 
@@ -396,14 +396,14 @@ describe("without the desktop bridge", () => {
   });
 
   it("offers the switch to every client", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getByRole("group", { name: "Tasks view" })).toBeInTheDocument();
   });
 });
 
 describe("Queued · next on the board and in the Task panel", () => {
   it("reads Queued · next on one board card and Queued on the others", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(chipText("T-2")).toBe("Queued · next");
     expect(chipText("T-4")).toBe("Queued");
     expect(chipText("T-5")).toBe("Not queued");
@@ -411,7 +411,7 @@ describe("Queued · next on the board and in the Task panel", () => {
   });
 
   it("reads it in the feature task list inside the Task panel", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: "Gates" }));
     const dialog = screen.getByRole("dialog", { name: "Task T-5" });
     const list = within(dialog).getByText("In this feature").closest("details") as HTMLElement;
@@ -423,7 +423,7 @@ describe("Queued · next on the board and in the Task panel", () => {
 
 describe("Add to queue and Remove from queue", () => {
   async function openPanel(title: string, id: string) {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: title }));
     return within(screen.getByRole("dialog", { name: `Task ${id}` }));
   }

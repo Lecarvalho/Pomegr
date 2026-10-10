@@ -318,6 +318,27 @@ describe("Design-system reference page", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("renders lanes: the first with + New task forced visible, an empty one, and one under a dragged card", () => {
+    render(<DesignSystemView />);
+    const board = sectionOf("Task cards and board");
+
+    const revealed = sample(board, "Lane, + New task revealed");
+    const lane = revealed.querySelector(".designSystemRevealAdd .taskColumn");
+    expect(lane).not.toBeNull();
+    expect(within(lane as HTMLElement).getByRole("heading", { level: 3, name: "Backlog" })).toBeInTheDocument();
+    expect(within(lane as HTMLElement).getByRole("button", { name: "New task" })).toHaveClass("commandQuietAction", "taskColumnAdd");
+    expect(lane).not.toHaveClass("isDropTarget");
+
+    const empty = sample(board, "Lane, empty");
+    expect(empty.querySelectorAll(".taskCard")).toHaveLength(0);
+    expect(within(empty).getByRole("button", { name: "New task" })).toBeInTheDocument();
+
+    const dropTarget = sample(board, "Lane, drop target");
+    expect(dropTarget.querySelector(".taskColumn")).toHaveClass("isDropTarget");
+    expect(within(dropTarget).queryByRole("button", { name: "New task" })).toBeNull();
+    expect(within(dropTarget).getAllByRole("listitem").length).toBeGreaterThan(0);
+  });
+
   it("renders the whole task board read-only and with desktop controls, and each non-ready board state", () => {
     render(<DesignSystemView />);
     const board = sectionOf("Task cards and board");
@@ -329,10 +350,17 @@ describe("Design-system reference page", () => {
     expect(browser.querySelector(".taskCard[draggable]")).toBeNull();
     expect(browser.querySelector(".taskColumnEdit")).toBeNull();
     expect(browser.querySelector(".taskBoardFootnote")).toBeNull();
+    // A browser reads lanes only: the + New task action is desktop-app only.
+    expect(browser.querySelector(".taskColumnAdd")).toBeNull();
 
     const desktop = sample(board, "Board, desktop app (queue on)");
     expect(desktop.querySelectorAll(".taskCard[draggable='true']")).toHaveLength(8);
     expect(desktop.querySelectorAll(".taskColumnHeader button")).toHaveLength(0);
+    // + New task ends the first lane only; the header has no primary action.
+    const lanes = desktop.querySelectorAll<HTMLElement>(".taskColumn");
+    expect(desktop.querySelectorAll(".taskColumnAdd")).toHaveLength(1);
+    expect(within(lanes[0]).getByRole("button", { name: "New task" })).toHaveClass("commandQuietAction", "taskColumnAdd");
+    expect(desktop.querySelector(".commandPrimaryAction")).toBeNull();
     expect(desktop.querySelector(".taskBoardFootnote")).toHaveTextContent(/^Drag a card to another column/);
     expect(within(desktop).queryByRole("region", { name: "Queue status" })).toBeNull();
     expect(within(desktop).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
@@ -458,7 +486,7 @@ describe("Design-system reference page", () => {
     const cells = sectionOf("Sessions list Task cell");
 
     const working = sample(cells, "Working on the task");
-    expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/repositories/${REPOSITORY_ID}?tab=tasks`);
+    expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY_ID}`);
     expect(within(working).getByRole("link", { name: "Open task T-14 on its board" })).toHaveClass("commandTextLink", "commandSessionTaskId");
     expect(working.querySelector(".commandChip")).toBeNull();
     expect(working.querySelector(".commandSessionTaskFeature")).toHaveTextContent("Upload reliability · step 2");

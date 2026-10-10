@@ -16,7 +16,7 @@ export function sessionTaskChip(state: SessionTaskReference["state"]): { label: 
 
 /** The repository board that holds the task, or null for an ID the route cannot carry. */
 export function sessionTaskHref(task: SessionTaskReference): string | null {
-  return REPOSITORY_ID.test(task.repositoryId) ? `/repositories/${task.repositoryId}?tab=tasks` : null;
+  return REPOSITORY_ID.test(task.repositoryId) ? `/tasks?repository=${task.repositoryId}` : null;
 }
 
 /**

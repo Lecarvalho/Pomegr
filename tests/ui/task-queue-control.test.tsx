@@ -10,7 +10,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -72,13 +72,13 @@ async function showQueue() {
   await userEvent.click(viewSwitch().getByRole("button", { name: "Queue" }));
 }
 async function renderOn(view: "board" | "queue") {
-  render(<TasksTab repositoryId={repositoryId} />);
+  render(<TaskBoardPane repositoryId={repositoryId} />);
   if (view === "queue") await showQueue();
 }
 
 describe("the queue switch", () => {
   it("is a two-segment Off | On group in the desktop app, beside the view switch", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Queue" });
     expect(group).toHaveClass("commandSegmented");
     expect(within(group).getAllByRole("button").map((button) => button.textContent)).toEqual(["Off", "On"]);
@@ -87,7 +87,7 @@ describe("the queue switch", () => {
 
   it("is absent without the desktop bridge, with the board still readable", () => {
     setBridge(undefined);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("group", { name: "Queue" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Off" })).not.toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Tasks view" })).toBeInTheDocument();
@@ -95,7 +95,7 @@ describe("the queue switch", () => {
 
   it("is absent until the board is ready", () => {
     setBoard({}, { readiness: "loading", tasks: [] });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("group", { name: "Queue" })).not.toBeInTheDocument();
   });
 
@@ -106,7 +106,7 @@ describe("the queue switch", () => {
     ["paused", "On"],
   ])("presses %s as %s", (status, pressed) => {
     setBoard({ status, blockedBy: status === "idle" || status === "running" ? null : "T-12" });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     for (const side of ["Off", "On"]) expect(queueSwitch().getByRole("button", { name: side })).toHaveAttribute("aria-pressed", String(side === pressed));
   });
 
@@ -116,7 +116,7 @@ describe("the queue switch", () => {
   });
 
   it("sends queue_settings on, then refreshes", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "On" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_settings", { on: true }));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
@@ -124,20 +124,20 @@ describe("the queue switch", () => {
 
   it("sends queue_settings off from a running queue", async () => {
     setBoard({ status: "running" });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "Off" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_settings", { on: false }));
   });
 
   it("turns a held queue off, blocked or paused", async () => {
     setBoard({ status: "blocked", blockedBy: "T-12" });
-    const view = render(<TasksTab repositoryId={repositoryId} />);
+    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "Off" }));
     await waitFor(() => expect(queueSettings()).toEqual([[repositoryId, "queue_settings", { on: false }]]));
     view.unmount();
     taskAction.mockClear();
     setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "start_failed" });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "Off" }));
     await waitFor(() => expect(queueSettings()).toEqual([[repositoryId, "queue_settings", { on: false }]]));
   });
@@ -148,21 +148,21 @@ describe("the queue switch", () => {
     ["On on a blocked queue", "blocked", "On"],
   ])("sends nothing for %s, the side already shown", async (_name, status, side) => {
     setBoard({ status, blockedBy: status === "blocked" ? "T-12" : null });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: side }));
     expect(taskAction).not.toHaveBeenCalled();
   });
 
   it("sends on again for On while paused, which is the retry", async () => {
     setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "start_failed" });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "On" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_settings", { on: true }));
   });
 
   it("says so in one fixed line when the change fails", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "unavailable" });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(queueSwitch().getByRole("button", { name: "On" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("The queue setting could not be changed.");
   });
@@ -176,7 +176,7 @@ describe("the queue status line", () => {
     setBoard({ status });
     for (const bridge of [{ taskAction }, undefined]) {
       setBridge(bridge);
-      const view = render(<TasksTab repositoryId={repositoryId} />);
+      const view = render(<TaskBoardPane repositoryId={repositoryId} />);
       expect(screen.getByText(line)).toHaveClass("taskBoardNote");
       view.unmount();
     }
@@ -184,13 +184,13 @@ describe("the queue status line", () => {
 
   it.each<TaskQueueStatus>(["blocked", "paused"])("adds nothing for a %s queue, which the banner words", (status) => {
     setBoard({ status, blockedBy: "T-12", pauseReason: status === "paused" ? "start_failed" : null });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByText(/^The queue is (on|off)\./)).not.toBeInTheDocument();
   });
 
   it("is not drawn before the board is ready", () => {
     setBoard({}, { readiness: "loading", tasks: [] });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByText(/^The queue is (on|off)\./)).not.toBeInTheDocument();
   });
 });
@@ -220,7 +220,7 @@ describe("the Queue banner", () => {
 
   it.each(["board", "queue"] as const)("reads the stalled and blocked copy on the %s view without printing the block reason", async (view) => {
     setBoard({ status: "blocked", blockedBy: "T-13" });
-    const first = render(<TasksTab repositoryId={repositoryId} />);
+    const first = render(<TaskBoardPane repositoryId={repositoryId} />);
     if (view === "queue") await showQueue();
     expect(within(banner()).getByText("T-13's session ended with no report. Running sessions continue. Nothing new starts until you resolve T-13.")).toBeInTheDocument();
     first.unmount();

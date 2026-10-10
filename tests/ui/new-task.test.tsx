@@ -15,7 +15,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: ag
 const inventory = vi.hoisted(() => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] } as RepositoryInventorySnapshot }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory.snapshot, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -57,7 +57,7 @@ describe("without the desktop bridge", () => {
   it("draws no New task action and explains where tasks are created, on the first render", () => {
     setBridge(undefined);
     const fetchSpy = vi.spyOn(globalThis, "fetch");
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
@@ -66,27 +66,38 @@ describe("without the desktop bridge", () => {
 
   it("treats a bridge without taskAction as no bridge", () => {
     setBridge({ getDesktopState: vi.fn() });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
   });
 
   it("draws neither the action nor the note in the server pass, so nothing is shown and then removed", () => {
-    expect(renderToString(<TasksTab repositoryId={repositoryId} />)).not.toMatch(/New task|created and edited in the Pomegr desktop app/);
+    expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toMatch(/New task|created and edited in the Pomegr desktop app/);
   });
 });
 
 describe("with the desktop bridge", () => {
-  it("draws the New task primary action on the first render and no explanation", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
-    expect(newTaskButton()).toHaveClass("commandPrimaryAction");
+  it("draws the quiet New task action in the first lane on the first render, with no header action and no explanation", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(newTaskButton()).toHaveClass("commandQuietAction", "taskColumnAdd");
+    expect(newTaskButton()).not.toHaveClass("commandPrimaryAction");
+    expect(newTaskButton()).toHaveAttribute("aria-haspopup", "dialog");
+    expect(newTaskButton().closest(".taskColumn")).toHaveAttribute("data-column-id", "col-1");
+    expect(document.querySelector(".commandPageHeader .commandPrimaryAction")).toBeNull();
     expect(screen.queryByText(/created and edited in the Pomegr desktop app/)).not.toBeInTheDocument();
     expect(panel()).not.toBeInTheDocument();
   });
 
+  it("draws no New task action while the board is not ready, so there is nothing to open on a board that may not exist", () => {
+    useTasks.mockReturnValue({ board: createEmptyTaskBoard(repositoryId, "unavailable"), refresh });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Tasks are unavailable.");
+  });
+
   it("opens the panel with the Task field focused, its helper, and the Backlog note", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const textarea = await openPanel(user);
     const dialog = screen.getByRole("dialog", { name: "New task" });
     expect(dialog).toBeInTheDocument();
@@ -111,7 +122,7 @@ describe("with the desktop bridge", () => {
 
   it("disables both create buttons while the text is empty or only whitespace", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const textarea = await openPanel(user);
     expect(createButton()).toBeDisabled();
     expect(anotherButton()).toBeDisabled();
@@ -129,7 +140,7 @@ describe("with the desktop bridge", () => {
 
   it("creates the task once through the bridge, refreshes the board, closes, and returns focus to New task", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Write the guide");
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
@@ -141,7 +152,7 @@ describe("with the desktop bridge", () => {
 
   it("sends the text without leading or trailing whitespace", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "  Write the guide  ");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN }));
@@ -149,7 +160,7 @@ describe("with the desktop bridge", () => {
 
   it("keeps the panel open with an empty, focused field after Create and add another", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "First task");
     await user.click(anotherButton());
     await waitFor(() => expect(field().value).toBe(""));
@@ -172,7 +183,7 @@ describe("with the desktop bridge", () => {
   it("keeps the panel and the text when the board is full, with the fixed message", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "limit" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "One too many");
     await user.click(createButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("The board is full: it holds 500 tasks.");
@@ -188,7 +199,7 @@ describe("with the desktop bridge", () => {
   it.each(["unavailable", "invalid", "not_found", "conflict", "unsupported"])("keeps the panel and the text on %s, with one generic message", async (error) => {
     taskAction.mockResolvedValue({ ok: false, error });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Keep this text");
     await user.click(anotherButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("The task could not be saved.");
@@ -201,7 +212,7 @@ describe("with the desktop bridge", () => {
   it("treats a rejected or malformed bridge answer as unavailable and clears the message on the next attempt", async () => {
     taskAction.mockRejectedValueOnce(new Error("ipc failed")).mockResolvedValueOnce({ nonsense: true } as unknown as Result).mockResolvedValueOnce({ ok: true });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Retry me");
     await user.click(createButton());
     expect(await screen.findByRole("alert")).toHaveTextContent("The task could not be saved.");
@@ -218,7 +229,7 @@ describe("with the desktop bridge", () => {
     let resolve!: (result: Result) => void;
     taskAction.mockReturnValue(new Promise<Result>((done) => { resolve = done; }));
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Slow task");
     await user.click(createButton());
     expect(createButton()).toBeDisabled();
@@ -233,7 +244,7 @@ describe("with the desktop bridge", () => {
 
   it("closes on Escape and returns focus to New task without creating anything", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Unsent text");
     await user.keyboard("{Escape}");
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
@@ -246,7 +257,7 @@ describe("with the desktop bridge", () => {
 
   it("closes with the Close control and returns focus to New task", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
@@ -255,7 +266,7 @@ describe("with the desktop bridge", () => {
 
   it("leaves Escape to a control that already handled it", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const textarea = await openPanel(user);
     textarea.addEventListener("keydown", (event) => { if (event.key === "Escape") event.preventDefault(); });
     await user.keyboard("{Escape}");
@@ -265,12 +276,12 @@ describe("with the desktop bridge", () => {
   it("never posts from the browser: the bridge is the only mutation path", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Through the bridge");
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(fetchSpy).not.toHaveBeenCalled();
-    const source = ["NewTaskPanel.tsx", "TaskPanel.tsx", "TaskFields.tsx", "TaskCard.tsx", "TasksTab.tsx", "task-desktop.ts", "task-fields.ts", "task-panel-hooks.ts"].map((file) => readFileSync(join(process.cwd(), "app", "components", "tasks", file), "utf8")).join("\n");
+    const source = ["NewTaskPanel.tsx", "TaskPanel.tsx", "TaskFields.tsx", "TaskCard.tsx", "TaskBoardPane.tsx", "task-desktop.ts", "task-fields.ts", "task-panel-hooks.ts"].map((file) => readFileSync(join(process.cwd(), "app", "components", "tasks", file), "utf8")).join("\n");
     expect(source).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage/);
   });
 });
@@ -289,7 +300,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("starts with nothing in Run on and Effort and the two default checks", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     expect(runOn()).toHaveTextContent("Not set");
     for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", "false");
@@ -308,7 +319,7 @@ describe("Run on, Effort and Done when", () => {
     ];
     useTasks.mockReturnValue({ board: { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }], runModels: { codex: [{ id: "model-c", label: null }] } }, refresh });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     expect(optionLabels()).toEqual([
       "Not set", "model-a, Claude Code", "model-b, Claude Code", "Default model, Claude Code", "model-c, Codex", "Default model, Codex",
@@ -317,7 +328,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("offers only Default model when no model list is available", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await openPanel(user);
     expect(optionLabels()).toEqual(["Not set", "Default model, Claude Code", "Default model, Codex"]);
   });
@@ -325,7 +336,7 @@ describe("Run on, Effort and Done when", () => {
   it("sends the chosen run, effort, checks and own condition", async () => {
     useTasks.mockReturnValue({ board: { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }], runModels: { codex: [{ id: "model-c", label: null }] } }, refresh });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Ship it");
     chooseCommandOption(runOn(), "codex:model:model-c");
     expect(runOn()).toHaveTextContent("Codex · model-c");
@@ -347,7 +358,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("sends a provider with its default model as a null model", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Use the default");
     chooseCommandOption(runOn(), "claude:default");
     expect(runOn()).toHaveTextContent("Claude Code · Default model");
@@ -358,7 +369,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Optional fields");
     await user.click(effort("High"));
     expect(effort("High")).toHaveAttribute("aria-pressed", "true");
@@ -374,7 +385,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("keeps Effort alone as a valid run, without a provider or model", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Effort only");
     await user.click(effort("Low"));
     await user.click(createButton());
@@ -384,7 +395,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("omits doneWhen when nothing is checked", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "No conditions");
     await user.click(checkbox("Pull request open"));
     await user.click(checkbox("Working tree clean"));
@@ -395,7 +406,7 @@ describe("Run on, Effort and Done when", () => {
 
   it("sends the own condition only while its checkbox is checked and its text is not blank", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Text without the checkbox");
     await user.type(own(), "Looks right");
     await user.click(anotherButton());

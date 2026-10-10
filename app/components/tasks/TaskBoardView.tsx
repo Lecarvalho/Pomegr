@@ -6,6 +6,7 @@ import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
 import { FeatureFilter } from "./FeatureFilter";
 import { QueueBanner } from "./QueueBanner";
+import { NewTaskAction, type NewTaskEntry } from "./NewTaskAction";
 import { TaskCard, type TaskCardMove } from "./TaskCard";
 import { TaskQueueView } from "./TaskQueueView";
 import { TaskColumnHeader } from "./TaskColumnHeader";
@@ -23,7 +24,7 @@ const FOOTNOTE = "Drag a card to another column, or onto a card to place it befo
 const KINDS: readonly CardMoveKind[] = ["up", "down", "left", "right"];
 
 // Five default columns, so the placeholder holds the layout the first answer will fill.
-function TaskBoardSkeleton() {
+export function TaskBoardSkeleton() {
   return <div className="taskBoardSkeleton" aria-label="Loading tasks">
     {Array.from({ length: 5 }, (_, index) => <div className="taskBoardSkeletonColumn" key={index}><span /><span /></div>)}
   </div>;
@@ -32,7 +33,7 @@ function TaskBoardSkeleton() {
 /** A focus the board restores after a keyboard action re-draws the card control, until that action has settled. */
 type Restore = { find(): HTMLElement | null; settled: number };
 
-function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits }) {
+function ReadyBoard({ board, onOpenTask, edits, newTask }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry }) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
   // A filter hides cards, so positions drawn would not be positions on the monitor: nothing can move while one is on.
   const filter = effectiveFeatureFilter(board, chosenFilter);
@@ -84,8 +85,8 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
     {board.features.length > 0 && <FeatureFilter board={board} filter={filter} onFilter={setChosenFilter} edits={edits} />}
     {columns.length > 0 && <div ref={scroller} className="taskBoardScroller" role="region" aria-label="Task board" tabIndex={0} aria-busy={edits?.busy || undefined}>
       <div className="taskBoardGrid" style={{ "--task-columns": columns.length } as CSSProperties}>
-        {columns.map((column) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
-          dropTarget={drag.overColumn === column.id} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} />)}
+        {columns.map((column, index) => <TaskColumn key={column.id} column={column} onOpen={onOpenTask} lines={lines} nextId={board.queue.order[0] ?? null}
+          dropTarget={drag.overColumn === column.id} drop={edits && !filtered ? drag.columnHandlers(column.id) : undefined} cardMoveFor={cardMoveFor} newTask={index === 0 ? newTask : undefined} />)}
       </div>
     </div>}
     {edits && <p className="taskBoardFootnote">{FOOTNOTE}</p>}
@@ -93,7 +94,8 @@ function ReadyBoard({ board, onOpenTask, edits }: { board: TaskBoard; onOpenTask
   </>;
 }
 
-function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, cardMoveFor }: {
+/** One lane of the Board: header, cards, and for the first lane the + New task action. Exported for `/design-system`. */
+export function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, cardMoveFor, newTask }: {
   column: TaskColumnView;
   lines: ReadonlyMap<string, string>;
   /** The queued task the monitor lists first: its chip reads "Queued · next". */
@@ -102,22 +104,26 @@ function TaskColumn({ column, lines, nextId, onOpen, dropTarget, drop, cardMoveF
   dropTarget: boolean;
   drop?: ColumnDropHandlers;
   cardMoveFor(task: Task): TaskCardMove | undefined;
+  /** Given to the first column only: a new task always lands there. */
+  newTask?: NewTaskEntry;
 }) {
   const headingId = useId();
   return <section className={`taskColumn${dropTarget ? " isDropTarget" : ""}`} data-column-id={column.id} aria-labelledby={headingId} {...drop}>
     <TaskColumnHeader column={column} headingId={headingId} taskCount={column.tasks.length} />
     {column.tasks.length > 0 && <ul className="taskColumnList">{column.tasks.map((task) => <TaskCard key={task.id} task={task} featureLine={lines.get(task.id)} nextQueued={task.id === nextId} onOpen={onOpen} move={cardMoveFor(task)} />)}</ul>}
+    {newTask && <NewTaskAction {...newTask} />}
   </section>;
 }
 
 export type TaskView = "board" | "queue";
 
 /**
- * Columns with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
+ * Lanes with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
  * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task panel only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard;
- * without it the board is read-only: no draggable card, no control, no mutation.
+ * without it the board is read-only: no draggable card, no control, no mutation. `newTask` (the desktop app) adds the
+ * + New task action to the first lane of the Board; the Queue view has no lanes and so no such entry.
  */
-export function TaskBoardView({ board, onOpenTask, edits, view = "board" }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView }) {
+export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTask }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView; newTask?: NewTaskEntry }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -126,6 +132,6 @@ export function TaskBoardView({ board, onOpenTask, edits, view = "board" }: { bo
   </section>;
   return <>
     <QueueBanner board={board} view={view} onOpenTask={onOpenTask} edits={edits} />
-    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} />}
+    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} />}
   </>;
 }

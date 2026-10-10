@@ -10,7 +10,7 @@ import { SessionTaskTab } from "../../app/components/dashboard/SessionTaskTab";
 import { checkRows, queueBlockedNote } from "../../app/components/tasks/session-task-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
-const boardHref = `/repositories/${repositoryId}?tab=tasks`;
+const boardHref = `/tasks?repository=${repositoryId}`;
 const sessionId = "claude:this-session";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {

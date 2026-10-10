@@ -12,7 +12,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { waitingLine } from "../../app/components/tasks/task-gates-model";
 import { singleQueueTasks } from "../../app/components/tasks/task-queue-model";
 import { editedSchedule, instantOfLocalDateTime, localDateTime, nextOccurrence, scheduleLabel, startsLine, timeOfDay, waitsForOwnTime } from "../../app/components/tasks/task-schedule";
@@ -68,14 +68,14 @@ afterEach(() => {
 });
 
 async function showQueue() {
-  render(<TasksTab repositoryId={repositoryId} />);
+  render(<TaskBoardPane repositoryId={repositoryId} />);
   await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
   return within(screen.getByRole("region", { name: "Schedule" }));
 }
 const scheduleCalls = () => taskAction.mock.calls.filter((call) => call[1] === "queue_settings").map((call) => call[2]);
 const card = (id: string) => document.querySelector(`li[data-task-id="${id}"]`) as HTMLElement;
 async function openPanel(title: string, id: string) {
-  render(<TasksTab repositoryId={repositoryId} />);
+  render(<TaskBoardPane repositoryId={repositoryId} />);
   await userEvent.click(screen.getByRole("button", { name: title }));
   return within(screen.getByRole("dialog", { name: `Task ${id}` }));
 }
@@ -244,7 +244,7 @@ describe("the Schedule panel", () => {
 
 describe("a scheduled task", () => {
   it("shows Scheduled with its time in the Queue view and Starts with its time on the Board card (D63, D81, D155)", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(card("T-2").querySelector(".commandChip")).toHaveTextContent("Scheduled");
     expect(card("T-2").querySelector(".commandChip")).toHaveClass("info");
     expect(within(card("T-2")).getByText("Starts Oct 9, 02:00")).toHaveClass("taskCardDetail");
@@ -298,7 +298,7 @@ describe("a scheduled task", () => {
 
   it("has no start time field once a session works on it or it has an outcome", async () => {
     setBoard({}, [task(4, "Ran at night", { state: "scheduled", scheduledAt: PAST, session: { id: "claude:s4", title: null, state: "working", observedModel: null } }), task(5, "Shipped", { state: "done" })]);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await userEvent.click(screen.getByRole("button", { name: "Ran at night" }));
     expect(within(screen.getByRole("dialog", { name: "Task T-4" })).queryByLabelText("Start at")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Shipped" }));

@@ -12,7 +12,7 @@ const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready"
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -89,7 +89,7 @@ describe("without the desktop bridge", () => {
   beforeEach(() => setBridge(undefined));
 
   it("draws no draggable card, move action or footnote, and sends nothing", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(document.querySelector("[draggable]")).toBeNull();
     expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move / })).not.toBeInTheDocument();
@@ -104,19 +104,19 @@ describe("without the desktop bridge", () => {
     render(<TaskBoardView board={setBoard()} />);
     expect(document.querySelector("[draggable]")).toBeNull();
     expect(screen.queryAllByRole("button")).toEqual([]);
-    expect(renderToString(<TasksTab repositoryId={repositoryId} />)).not.toMatch(/draggable|Move T-/);
+    expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toMatch(/draggable|Move T-/);
   });
 
   it("treats a bridge without taskAction as no bridge", () => {
     setBridge({ getDesktopState: vi.fn() });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(document.querySelector("[draggable]")).toBeNull();
   });
 });
 
 describe("dragging a card", () => {
   it("makes every card draggable, with the task ID as a plain-text move payload and no change to the card", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     for (const id of ["T-1", "T-2", "T-3", "T-4", "T-5"]) expect(card(id)).toHaveAttribute("draggable", "true");
     const dataTransfer = transfer();
     const className = card("T-2").className;
@@ -128,7 +128,7 @@ describe("dragging a card", () => {
   });
 
   it("appends the card to the column it is dropped on", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Ready"));
     expect(taskAction).toHaveBeenCalledTimes(1);
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-1", columnId: "col-2", position: 1 });
@@ -141,7 +141,7 @@ describe("dragging a card", () => {
 
   it("appends to an empty column and within the same column when dropped on the column itself", async () => {
     setBoard({ tasks: [task(1), task(2)], columns });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Done"));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-1", columnId: "col-3", position: 0 });
     expect(order("Done")).toEqual(["T-1"]);
@@ -153,7 +153,7 @@ describe("dragging a card", () => {
   });
 
   it("inserts before the card it is dropped on, across columns", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-4", card("T-2"));
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-1", position: 1 });
     expect(order("Backlog")).toEqual(["T-1", "T-4", "T-2", "T-3"]);
@@ -161,7 +161,7 @@ describe("dragging a card", () => {
   });
 
   it("inserts before the card it is dropped on, inside one column, counting after the card is removed", async () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-3", card("T-1"));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-3", columnId: "col-1", position: 0 });
     expect(order("Backlog")).toEqual(["T-3", "T-1", "T-2"]);
@@ -173,7 +173,7 @@ describe("dragging a card", () => {
   });
 
   it("sends nothing for a drop that leaves the card where it is", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-2", card("T-2"));
     dragTo("T-1", card("T-2"));
     dragTo("T-3", column("Backlog"));
@@ -183,7 +183,7 @@ describe("dragging a card", () => {
   });
 
   it("ignores text dragged in from elsewhere: no column accepts it and nothing moves", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const foreign = transfer();
     foreign.setData("text/plain", "T-4");
     // A drop is possible only where dragover was cancelled; a drag the board did not start is not.
@@ -198,8 +198,8 @@ describe("dragging a card", () => {
     expect(fireEvent.dragOver(column("Done"), { dataTransfer: foreign })).toBe(false);
   });
 
-  it("fills the column under a dragged card, also over one of its cards, and clears it on leave, drop and drag end", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+  it("marks the lane under a dragged card, also over one of its cards, and clears it on leave, drop and drag end", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-1"), { dataTransfer });
     expect(column("Ready")).not.toHaveClass("isDropTarget");
@@ -229,7 +229,7 @@ describe("optimistic move", () => {
   it("shows the card in its new place at once, before the monitor answers", async () => {
     const answer = deferred<Result>();
     taskAction.mockReturnValueOnce(answer.promise);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Ready"));
     expect(order("Ready")).toEqual(["T-4", "T-1"]);
     expect(refresh).not.toHaveBeenCalled();
@@ -243,7 +243,7 @@ describe("optimistic move", () => {
   it("rolls the card back to where it was and shows one fixed message when the move fails", async () => {
     const answer = deferred<Result>();
     taskAction.mockReturnValueOnce(answer.promise);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-2", column("Ready"));
     expect(order("Ready")).toEqual(["T-4", "T-2"]);
     await act(async () => { answer.resolve({ ok: false, error: "not_found" }); });
@@ -258,7 +258,7 @@ describe("optimistic move", () => {
 
   it("rolls back when the desktop cannot be reached", async () => {
     taskAction.mockRejectedValueOnce(new Error("ipc"));
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-3", card("T-1"));
     await waitFor(() => expect(alertText()).toBe("The card could not be moved."));
     expect(order("Backlog")).toEqual(["T-1", "T-2", "T-3"]);
@@ -267,7 +267,7 @@ describe("optimistic move", () => {
   it("sends moves one at a time and takes back every move queued behind one that failed", async () => {
     const first = deferred<Result>();
     taskAction.mockReturnValueOnce(first.promise);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Ready"));
     dragTo("T-2", column("Ready"));
     expect(order("Ready")).toEqual(["T-4", "T-1", "T-2"]);
@@ -282,7 +282,7 @@ describe("optimistic move", () => {
   it("keeps an earlier acknowledged move when a later one fails", async () => {
     const second = deferred<Result>();
     taskAction.mockResolvedValueOnce({ ok: true }).mockReturnValueOnce(second.promise);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Ready"));
     dragTo("T-2", column("Ready"));
     await act(async () => { second.resolve({ ok: false, error: "invalid" }); });
@@ -292,22 +292,22 @@ describe("optimistic move", () => {
   });
 
   it("lets the committed board take over without a visible change once it shows the move", async () => {
-    const view = render(<TasksTab repositoryId={repositoryId} />);
+    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     dragTo("T-1", column("Ready"));
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     setBoard({ tasks: [task(1, { columnId: "col-2", position: 1 }), task(2, { position: 0 }), task(3, { position: 1 }), task(4, { columnId: "col-2", position: 0, state: "queued" }), task(5, { columnId: "col-3", position: 0, state: "done" })] });
-    view.rerender(<TasksTab repositoryId={repositoryId} />);
+    view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
     expect(order("Ready")).toEqual(["T-4", "T-1"]);
     expect(order("Backlog")).toEqual(["T-2", "T-3"]);
     // Later committed changes are shown as they are, not held back by the finished move.
     setBoard({ tasks: [task(1, { position: 0 }), task(2, { position: 1 }), task(3, { position: 2 }), task(4, { columnId: "col-2", position: 0, state: "queued" }), task(5, { columnId: "col-3", position: 0, state: "done" })] });
-    view.rerender(<TasksTab repositoryId={repositoryId} />);
+    view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
     expect(order("Backlog")).toEqual(["T-1", "T-2", "T-3"]);
   });
 
   it("never changes a card's chip, state or text when it moves", async () => {
     setBoard({ tasks: [task(1, { state: "done", text: "Ship the guide" }), task(2, { state: "needs_review", session: { id: "claude:abc", title: "Parser session", state: "working", observedModel: null } }), task(3, { state: "queued" })] });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const chips = () => ["T-1", "T-2", "T-3"].map((id) => card(id).querySelector(".commandChip")?.textContent);
     const before = chips();
     expect(before).toEqual(["Done", "Needs review", "Queued"]);
@@ -329,7 +329,7 @@ describe("keyboard moves", () => {
   const bar = (id: string) => within(screen.getByRole("toolbar", { name: `Move ${id}` }));
 
   it("gives each card a toolbar of four named actions, disabled where the card cannot go", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const t2 = bar("T-2");
     expect(t2.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
       "Move T-2 up", "Move T-2 down", "Move T-2 to the previous column", "Move T-2 to the next column",
@@ -346,7 +346,7 @@ describe("keyboard moves", () => {
 
   it("is reachable by keyboard from the card, with one tab stop and arrow keys inside", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const stops = within(screen.getByRole("toolbar", { name: "Move T-2" })).getAllByRole("button").filter((button) => button.tabIndex === 0);
     expect(stops.map((button) => button.getAttribute("aria-label"))).toEqual(["Move T-2 up"]);
     within(card("T-2")).getByRole("button", { name: "Task text 2" }).focus();
@@ -371,7 +371,7 @@ describe("keyboard moves", () => {
 
   it("moves a card up and down within its column", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Move T-2 up" }));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-2", columnId: "col-1", position: 0 });
     expect(order("Backlog")).toEqual(["T-2", "T-1", "T-3"]);
@@ -383,7 +383,7 @@ describe("keyboard moves", () => {
 
   it("moves a card to the previous or next column at the same row, or last when that column is shorter", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Move T-3 to the next column" }));
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-3", columnId: "col-2", position: 1 });
     expect(order("Ready")).toEqual(["T-4", "T-3"]);
@@ -396,7 +396,7 @@ describe("keyboard moves", () => {
 
   it("keeps focus on the control that was used when the card is re-drawn in another column", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Move T-2 to the next column" }));
     expect(order("Ready")).toEqual(["T-4", "T-2"]);
     expect(screen.getByRole("button", { name: "Move T-2 to the next column" })).toHaveFocus();
@@ -409,7 +409,7 @@ describe("keyboard moves", () => {
   it("puts focus back on the card's control after a failed move re-draws it", async () => {
     taskAction.mockResolvedValueOnce({ ok: false, error: "conflict" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Move T-2 to the next column" }));
     await waitFor(() => expect(alertText()).toBe("The card could not be moved."));
     expect(order("Backlog")).toEqual(["T-1", "T-2", "T-3"]);
@@ -419,7 +419,7 @@ describe("keyboard moves", () => {
 
 describe("fixed columns", () => {
   it("draws no Add column button and no Edit column control, only each column's name and count", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: /Add column|Edit column|Delete column/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /Edit column/ })).not.toBeInTheDocument();
     const headers = [...document.querySelectorAll(".taskColumn")].map((section) => {
@@ -427,5 +427,79 @@ describe("fixed columns", () => {
       return [header.querySelector("h3")?.textContent, header.querySelector(".taskColumnCount")?.firstChild?.textContent, header.querySelectorAll("button").length];
     });
     expect(headers).toEqual([["Backlog", "3", 0], ["Ready", "1", 0], ["Done", "1", 0]]);
+  });
+});
+
+describe("New task in the first lane", () => {
+  const add = () => screen.getByRole("button", { name: "New task" });
+
+  it("is a quiet action after the last card of the first lane only, and the header holds no primary action", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.getAllByRole("button", { name: "New task" })).toHaveLength(1);
+    const lane = column("Backlog");
+    expect(within(lane).getByRole("button", { name: "New task" })).toBe(add());
+    expect(add()).toHaveClass("commandQuietAction", "taskColumnAdd");
+    expect(add()).toHaveAttribute("aria-haspopup", "dialog");
+    expect(add().querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    // After the lane's last card, not before them.
+    expect(lane.lastElementChild).toBe(add());
+    for (const name of ["Ready", "Done"]) expect(within(column(name)).queryByRole("button", { name: "New task" })).toBeNull();
+    expect(document.querySelector(".commandPageHeader .commandPrimaryAction")).toBeNull();
+    expect(document.querySelector(".taskHeadActions .commandPrimaryAction")).toBeNull();
+  });
+
+  it("is also drawn when the first lane is empty", () => {
+    setBoard({ tasks: [task(4, { columnId: "col-2", position: 0, state: "queued" })] });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(within(column("Backlog")).queryAllByRole("listitem")).toHaveLength(0);
+    expect(within(column("Backlog")).getByRole("button", { name: "New task" })).toBe(add());
+  });
+
+  it("opens the New task panel, and focus returns to it when the panel closes", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.click(add());
+    expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
+    expect(add()).toHaveFocus();
+  });
+
+  it("opens from the keyboard and stays reachable while hidden: it is in the tab order and never removed from the tree", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    add().focus();
+    expect(add()).toHaveFocus();
+    expect(add().tabIndex).toBe(0);
+    expect(add()).not.toHaveAttribute("hidden");
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
+  });
+
+  it("stays while a feature filter is on, because creating a task is not a move", async () => {
+    const user = userEvent.setup();
+    setBoard({
+      features: [{ id: "feature-1", name: "Upload reliability", done: false }],
+      tasks: [task(1, { featureId: "feature-1", step: 1 }), task(2)],
+    });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.click(screen.getByRole("button", { name: /^Upload reliability/ }));
+    expect(screen.getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
+    expect(add()).toBeInTheDocument();
+  });
+
+  it("is on the Board only: the Queue view has no lanes, and the Board brings it back", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.click(screen.getByRole("button", { name: "Queue" }));
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Board" }));
+    expect(add()).toBeInTheDocument();
+  });
+
+  it("is not drawn in a board shown without edits or in the server pass", () => {
+    render(<TaskBoardView board={setBoard()} />);
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    expect(renderToString(<TaskBoardPane repositoryId={repositoryId} />)).not.toMatch(/New task/);
   });
 });

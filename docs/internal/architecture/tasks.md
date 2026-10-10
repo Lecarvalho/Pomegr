@@ -986,7 +986,7 @@ class. Column names are five fixed values.
 ## Invariants and failure behavior
 
 - Observation is unchanged and independent. If the task store, a route, or the dispatcher
-  fails, observation, serving, and notifications continue, and the Tasks tab reports
+  fails, observation, serving, and notifications continue, and the Tasks page reports
   `unavailable`. If observation is unavailable, the board still reads, but borrowed
   session state is unknown rather than guessed.
 - A mutation that fails validation changes nothing and returns a fixed error.

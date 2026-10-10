@@ -355,6 +355,40 @@ describe("Pomegr visual contract", () => {
     expect(screen.getByText("How to read this")).toBeInTheDocument();
   });
 
+  it("draws a task column as a lane, marks the drop target with the strong line, and keeps + New task to the first lane", () => {
+    // G26-G30: the raised fill with a one-pixel rule and the panel radius; the header carries its own rule; cards stay on the panel fill.
+    expect(styles).toMatch(/\.taskColumn \{[^}]*padding: var\(--space-2\)[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel-2\)/);
+    expect(styles).toMatch(/\.taskColumnHeader \{[^}]*padding: var\(--space-1\) var\(--space-1\) var\(--space-2\)[^}]*border-bottom: 1px solid var\(--command-line\)/);
+    expect(styles).toMatch(/\.taskCard \{[^}]*background: var\(--command-panel\)/);
+    // The raised fill is the lane itself, so the lane under a dragged card is marked by the strong line on its border instead.
+    expect(styles).toMatch(/\.taskColumn\.isDropTarget \{[^}]*border-color: var\(--command-line-strong\)/);
+    expect(styles).not.toMatch(/\.taskColumn\.isDropTarget \{[^}]*background/);
+    // The skeleton keeps the lane shape.
+    expect(styles).toMatch(/\.taskBoardSkeletonColumn \{[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel-2\)/);
+    // G53-G58: hidden with opacity (never display or visibility), revealed by lane hover and focus, always on a coarse pointer at 44px, no motion.
+    expect(styles).toMatch(/\.taskColumnAdd\.commandQuietAction \{[^}]*min-height: var\(--control-compact\)[^}]*opacity: 0/);
+    expect(styles).not.toMatch(/\.taskColumnAdd[^{]*\{[^}]*(?:display: none|visibility: hidden|transition|animation)/);
+    expect(styles).toMatch(/\.taskColumn:hover \.taskColumnAdd, \.taskColumn:focus-within \.taskColumnAdd \{ opacity: 1; \}/);
+    expect(styles).toMatch(/@media \(max-width: 760px\), \(pointer: coarse\) \{ \.taskColumnAdd\.commandQuietAction \{ min-height: 44px; \} \}/);
+    expect(styles).toMatch(/@media \(pointer: coarse\) \{ \.taskColumnAdd\.commandQuietAction \{ opacity: 1; \} \}/);
+    // The Tasks page header has no primary action, the add action is the Quiet role, and a lane header holds no control.
+    const pane = readFileSync(join(process.cwd(), "app", "components", "tasks", "TaskBoardPane.tsx"), "utf8");
+    expect(pane).not.toMatch(/commandPrimaryAction/);
+    expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "NewTaskAction.tsx"), "utf8")).toMatch(/className="commandQuietAction taskColumnAdd"/);
+    expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "TaskColumnHeader.tsx"), "utf8")).not.toMatch(/<button/);
+    // DESIGN.md and the design-system sample document the same rules.
+    expect(designContract).toMatch(/A column is a \*\*lane\*\* \(`\.taskColumn`\)[^.]*raised fill[^.]*one-pixel `--command-line` border/);
+    expect(designContract).toMatch(/The lane under a dragged card cannot take the raised fill, so it takes the strong line \(`--command-line-strong`\) on its border/);
+    expect(designContract).toMatch(/the \*\*first lane only\*\* ends with the Quiet \*\*\+ New task\*\*/);
+    expect(designContract).toMatch(/invisible \(opacity 0, never `display: none`/);
+    expect(designContract).toMatch(/The header has no primary action: \*\*New task\*\* lives in the first lane\./);
+    expect(designContract).toMatch(/Tasks is a root item of the primary rail, directly after Sessions/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskBoardSample.tsx"), "utf8");
+    expect(sample).toMatch(/Lane, \+ New task revealed/);
+    expect(sample).toMatch(/Lane, drop target/);
+    expect(designSystemStyles).toMatch(/\.designSystemRevealAdd \.taskColumnAdd \{ opacity: 1; \}/);
+  });
+
   it("documents the promoted roster, inspector, command table, and settings rail samples with tokens only", () => {
     expect(designContract).toMatch(/shipped `AgentActivityPanel` from static agents/);
     expect(designContract).toMatch(/standalone inline `AgentInspector`/);
