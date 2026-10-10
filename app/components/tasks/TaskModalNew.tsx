@@ -5,9 +5,9 @@ import { TASK_BOUNDS, type TaskRun } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
-import { DoneWhenField, RunFields, TaskTextField, type TaskTextHandle } from "./TaskFields";
+import { CompleteWhenField, RunFields, TaskTextField, type TaskTextHandle } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
-import { DEFAULT_DONE_WHEN, EMPTY_RUN, createPayload, type DoneWhenDraft } from "./task-fields";
+import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN, createPayload, type CompleteWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, featureCreateInput, type FeatureDraft } from "./task-features";
 import { rememberImageCreateFailure, taskImagesAvailable } from "./task-images-desktop";
 import { createTaskIssue } from "./task-issues-desktop";
@@ -45,7 +45,7 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const models = useTaskModelOptions(board.runModels);
   const [text, setText] = useState("");
   const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
-  const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [wantIssue, setWantIssue] = useState(true);
@@ -83,7 +83,7 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
       draft = { ...feature, creating: false, featureId: created.id, name: "" };
       if (mounted.current) setFeature(draft);
     }
-    const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, doneWhen, featureCreateInput(draft, null)));
+    const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, completeWhen, featureCreateInput(draft, null)));
     // The task exists once the monitor says so, even if the modal was closed in the meantime. The issue comes second and
     // its failure is remembered for the task's own modal, which opens in place of this one: it never undoes or blocks the task.
     let issueFailedFor: string | null = null;
@@ -121,6 +121,6 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     <FeatureFields draft={feature} board={board} error={featureError}
       onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
     <RunFields run={run} models={models} onChange={setRun} />
-    <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+    <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
   </TaskModalFrame>;
 }

@@ -7,10 +7,10 @@ import { FeatureFields } from "./FeatureFields";
 import { IssueBody, IssueCharacterCount, IssueNotices, IssueStatusChip } from "./IssuePreview";
 import { TaskIssueChip } from "./TaskIssueChip";
 import { TaskModalFrame } from "./TaskModalFrame";
-import { DoneWhenField, RunFields } from "./TaskFields";
+import { CompleteWhenField, RunFields } from "./TaskFields";
 import { canPromote, tasksHref } from "./promote-issues-model";
 import { updateDesktopTask } from "./task-desktop";
-import { DEFAULT_DONE_WHEN, EMPTY_RUN, type DoneWhenDraft } from "./task-fields";
+import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN, type CompleteWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "./task-features";
 import { promoteTaskIssue, type TaskIssue } from "./task-issues-desktop";
 import {
@@ -92,7 +92,7 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
   const inFlight = useRef(false);
   const models = useTaskModelOptions(board.runModels);
   const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
-  const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -135,7 +135,7 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
     }
     const { taskId } = promoted.value;
     // The task exists once the monitor says so, even if the modal was closed in the meantime: the settings still follow.
-    const patch = promotePatch(run, doneWhen, draft);
+    const patch = promotePatch(run, completeWhen, draft);
     const saved = patch ? await updateDesktopTask(repositoryId, taskId, patch) : { ok: true as const };
     inFlight.current = false;
     void refresh();
@@ -172,7 +172,7 @@ export function TaskModalPromote({ repositoryId, repositoryName, issue, board, r
       <FeatureFields draft={feature} board={board} error={featureError}
         onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
       <RunFields run={run} models={models} onChange={setRun} />
-      <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+      <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
     </>}
   </TaskModalFrame>;
 }

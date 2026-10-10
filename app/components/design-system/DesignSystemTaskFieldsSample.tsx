@@ -5,9 +5,9 @@ import { FeatureFields } from "../tasks/FeatureFields";
 import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
-import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
+import { CompleteWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
-import { DEFAULT_DONE_WHEN, EMPTY_RUN, NO_MODELS, type DoneWhenDraft } from "../tasks/task-fields";
+import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN, NO_MODELS, type CompleteWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
 import type { TaskRun } from "../../../shared/task-contract";
@@ -27,7 +27,7 @@ const TEXT_FULL = `Compare the four states: ${SAMPLE_IMAGE_IDS.map((id) => `[ima
 export function TaskFieldsSection() {
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: "model-large", effort: "high" });
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
-  const [fresh, setFresh] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [fresh, setFresh] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [startAt, setStartAt] = useState("02:00");
   const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "", step: 2 });
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
@@ -38,8 +38,8 @@ export function TaskFieldsSection() {
   const [fullText, setFullText] = useState(TEXT_FULL);
   const [issueChecked, setIssueChecked] = useState(true);
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
-  const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
-  const [reported, setReported] = useState<DoneWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
+  const [modalCompleteWhen, setModalCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
+  const [reported, setReported] = useState<CompleteWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
   return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
@@ -49,10 +49,10 @@ export function TaskFieldsSection() {
         <RunFields run={unset} models={NO_MODELS} onChange={setUnset} />
       </Sample>
       <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
-        <DoneWhenField draft={fresh} onDraftChange={setFresh} />
+        <CompleteWhenField draft={fresh} onDraftChange={setFresh} />
       </Sample>
       <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
-        <DoneWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
+        <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
       <Sample label="Feature and Step" note="Feature lists unfinished features, No feature and New feature…; Step offers Last or an existing step. The folded In this feature list counts the feature's tasks and opens on demand.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} />
@@ -91,7 +91,7 @@ export function TaskFieldsSection() {
             <TaskTextField value={modalText} onChange={setModalText} />
             <IssueCreateCheckbox option={{ kind: "can" }} checked={issueChecked} onChange={setIssueChecked} />
             <RunFields run={modalRun} models={MODELS} onChange={setModalRun} />
-            <DoneWhenField draft={modalDoneWhen} onDraftChange={setModalDoneWhen} />
+            <CompleteWhenField draft={modalCompleteWhen} onDraftChange={setModalCompleteWhen} />
           </TaskModalChrome>
         </div>
       </Sample>
@@ -110,9 +110,9 @@ function TaskModalEditSamples() {
   const reviewId = useId();
   const [text, setText] = useState(STORED_TEXT);
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: null, effort: null });
-  const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const dirty = text.trim() !== STORED_TEXT;
-  const reviewed: DoneWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." };
+  const reviewed: CompleteWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." };
   return <>
     <Sample label="Task modal, edit" note="The header holds the title, the task ID, the state chip and the subtitle. Save is the one primary and stays disabled until the draft differs from the stored task; while it does, Add to queue and Start session are disabled and one quiet line says to save first. Change the text to see it. A task promoted from a GitHub issue starts the body with its Source block: the label, the issue chip and a caption; the text stays editable.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
@@ -132,7 +132,7 @@ function TaskModalEditSamples() {
           <TaskModalSource number={142} caption="GitHub issue" />
           <TaskTextField value={text} onChange={setText} />
           <RunFields run={run} models={MODELS} onChange={setRun} />
-          <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+          <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
         </TaskModalChrome>
       </div>
     </Sample>
@@ -157,8 +157,8 @@ function TaskModalEditSamples() {
             <span className="newTaskHelper">Title from the session</span>
           </div>
           <TaskTextField value={STORED_TEXT} onChange={noop} />
-          <DoneWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
-            footnote={<span className="newTaskHelper taskDoneWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
+          <CompleteWhenField draft={reviewed} results={RESULTS} ownNote="Agent-reported" onDraftChange={noop}
+            footnote={<span className="newTaskHelper taskCompleteWhenNote">Agent reported complete and asks for your attention: The retry budget of five is a guess; confirm it.</span>} />
         </TaskModalChrome>
       </div>
     </Sample>
@@ -184,9 +184,9 @@ function TaskModalPromoteSamples() {
   const changedId = useId();
   const unsavedId = useId();
   const [run, setRun] = useState<TaskRun>(EMPTY_RUN);
-  const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [completeWhen, setCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [changedRun, setChangedRun] = useState<TaskRun>(EMPTY_RUN);
-  const [changedDoneWhen, setChangedDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
+  const [changedCompleteWhen, setChangedCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const closes = (number: number) => <span className="taskModalNote taskModalCloses">The pull request will say Closes <span className="taskModalCloseRef">#{number}</span>.</span>;
   return <>
     <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature and Step, Run on and Effort, and Complete when are the New task form's (Feature and Step are drawn in their own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
@@ -199,7 +199,7 @@ function TaskModalPromoteSamples() {
           </>}>
           <PromoteIssueSummary issue={sampleIssue({})} />
           <RunFields run={run} models={MODELS} onChange={setRun} />
-          <DoneWhenField draft={doneWhen} onDraftChange={setDoneWhen} />
+          <CompleteWhenField draft={completeWhen} onDraftChange={setCompleteWhen} />
         </TaskModalChrome>
       </div>
     </Sample>
@@ -213,7 +213,7 @@ function TaskModalPromoteSamples() {
           </>}>
           <PromoteIssueSummary issue={CHANGED} notices={<PromoteOutcomeNotice outcome={{ kind: "conflict", digest: CHANGED.digest }} onShowNewVersion={noop} />} />
           <RunFields run={changedRun} models={MODELS} onChange={setChangedRun} />
-          <DoneWhenField draft={changedDoneWhen} onDraftChange={setChangedDoneWhen} />
+          <CompleteWhenField draft={changedCompleteWhen} onDraftChange={setChangedCompleteWhen} />
         </TaskModalChrome>
       </div>
     </Sample>

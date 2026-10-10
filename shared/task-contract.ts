@@ -123,7 +123,7 @@ export type Task = {
   featureId: string | null;
   step: number | null; // step >= 1
   run: TaskRun;
-  doneWhen: { checks: TaskCheck[]; own: string | null };
+  completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   /** The task's own start time while its state is `scheduled`: it is not started before it, by the queue or by hand. */
   scheduledAt: string | null;

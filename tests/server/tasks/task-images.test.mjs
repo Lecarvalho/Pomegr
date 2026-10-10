@@ -224,7 +224,7 @@ test("a task without images has no image lines and an empty list in its plan", a
   const planned = await send(env.port, { path: "/internal/tasks/start-plan", headers: JSON_BODY, body: JSON.stringify({ repositoryId: REPOSITORY, payload: { id: env.taskId } }) });
   assert.deepEqual(planned.json.plan.images, []);
   assert.equal(planned.json.plan.prompt.includes("attached image"), false);
-  const task = { id: "T-1", text: "x", doneWhen: { checks: [], own: null }, source: null };
+  const task = { id: "T-1", text: "x", completeWhen: { checks: [], own: null }, source: null };
   assert.equal(buildTaskPrompt(task), buildTaskPrompt(task, []));
   assert.ok(buildTaskPrompt(task, [{ id: "img-000000000001", file: "C:\\data\\img-000000000001.png" }])
     .includes("The task has 1 attached image. The task text shows where it belongs as [Image #1]. Read it before you start:\n- [Image #1] C:\\data\\img-000000000001.png"));

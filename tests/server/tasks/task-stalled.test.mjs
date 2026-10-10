@@ -36,7 +36,7 @@ const board = (env) => env.store.readBoard(REPOSITORY_ID);
 const taskOf = (env, id = "T-1") => board(env).tasks.find((task) => task.id === id);
 
 function createTask(env) {
-  const created = apply(env, "create", { text: "Fix the flaky test", doneWhen: { checks: [], own: null } });
+  const created = apply(env, "create", { text: "Fix the flaky test", completeWhen: { checks: [], own: null } });
   assert.equal(created.ok, true);
   return created.board.tasks.reduce((best, task) => (Number(task.id.slice(2)) > Number(best.slice(2)) ? task.id : best), "T-0");
 }

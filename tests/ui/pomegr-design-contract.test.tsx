@@ -408,7 +408,7 @@ describe("Pomegr visual contract", () => {
     // G138-G152: Run on and Effort sit in a two-column row, the checks wrap, and the own condition is a 36px input.
     expect(tasksStyles).toMatch(/\.taskRunRow \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
     expect(tasksStyles).toMatch(/\.taskChecks \{[^}]*flex-wrap: wrap[^}]*gap: var\(--space-1\) var\(--space-4\)/);
-    expect(tasksStyles).toMatch(/\.taskDoneWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
+    expect(tasksStyles).toMatch(/\.taskCompleteWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
     expect(tasksStyles).toMatch(/\.taskTextCounter \{[^}]*align-self: flex-end[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)/);
     // D2: a native modal dialog with its name, no scrim-click close, and Escape unless a control inside handled the key.
     expect(frame).toMatch(/<dialog[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby=\{titleId\}/);

@@ -1,6 +1,6 @@
 import { TASK_BOUNDS, type TaskBoard, type TaskRun } from "../../../shared/task-contract";
 import type { TaskFieldsInput } from "./task-desktop";
-import { isRunSet, toDoneWhen, type DoneWhenDraft } from "./task-fields";
+import { isRunSet, toCompleteWhen, type CompleteWhenDraft } from "./task-fields";
 import { featureCreateInput, type FeatureDraft } from "./task-features";
 import type { TaskIssue, TaskIssueError } from "./task-issues-desktop";
 
@@ -57,13 +57,13 @@ export const promoteUnsavedMessage = (taskId: string) => `The issue was promoted
 
 /**
  * The one update after a promote, holding only what differs from the task the monitor made: no feature, nothing planned
- * to run, and no done-when condition. Null when nothing was chosen, which sends no update.
+ * to run, and no complete-when condition. Null when nothing was chosen, which sends no update.
  */
-export function promotePatch(run: TaskRun, doneWhen: DoneWhenDraft, feature: FeatureDraft): TaskFieldsInput | null {
+export function promotePatch(run: TaskRun, completeWhen: CompleteWhenDraft, feature: FeatureDraft): TaskFieldsInput | null {
   const patch: TaskFieldsInput = {};
   if (isRunSet(run)) patch.run = run;
-  const done = toDoneWhen(doneWhen);
-  if (done.checks.length > 0 || done.own !== null) patch.doneWhen = done;
+  const done = toCompleteWhen(completeWhen);
+  if (done.checks.length > 0 || done.own !== null) patch.completeWhen = done;
   Object.assign(patch, featureCreateInput(feature, null));
   return Object.keys(patch).length === 0 ? null : patch;
 }

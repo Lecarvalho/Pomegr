@@ -70,12 +70,12 @@ async function sendTaskAction(repositoryId: string, action: TaskActionName, payl
 }
 
 /**
- * A `run` or `doneWhen` key that is present replaces the whole stored field; an absent key leaves it unchanged.
+ * A `run` or `completeWhen` key that is present replaces the whole stored field; an absent key leaves it unchanged.
  * `featureId` with no `step` is a new last step, and `featureId: null` detaches the task.
  */
-export type TaskFieldsInput = { run?: TaskRun; doneWhen?: { checks: TaskCheck[]; own: string | null } } & FeatureInput;
+export type TaskFieldsInput = { run?: TaskRun; completeWhen?: { checks: TaskCheck[]; own: string | null } } & FeatureInput;
 
-/** Creates a task in the repository's first column. Omitted `run` or `doneWhen` means nothing set. */
+/** Creates a task in the repository's first column. Omitted `run` or `completeWhen` means nothing set. */
 export type CreateTaskResult = { ok: true; taskId: string | null } | { ok: false; error: TaskActionError | "unavailable" };
 
 /** `taskId` is the new task's ID when the monitor answered one, else null. */
@@ -84,7 +84,7 @@ export async function createDesktopTask(repositoryId: string, input: { text: str
   return result.ok ? { ok: true, taskId: result.taskId ?? null } : result;
 }
 
-/** Updates the given fields of one task; at least one of text, run and doneWhen is present. */
+/** Updates the given fields of one task; at least one of text, run and completeWhen is present. */
 export function updateDesktopTask(repositoryId: string, id: string, patch: { text?: string } & TaskFieldsInput): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "update", { id, ...patch });
 }

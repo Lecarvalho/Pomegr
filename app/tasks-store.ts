@@ -63,11 +63,11 @@ function validTask(value: unknown): value is Task {
   const task = record(value);
   if (!task) return false;
   const run = record(task.run);
-  const doneWhen = record(task.doneWhen);
+  const completeWhen = record(task.completeWhen);
   const session = task.session === null ? null : record(task.session);
   const report = task.report === null ? null : record(task.report);
   // A null session or report is valid; a present value that is not an object is not.
-  if (!run || !doneWhen || (task.session !== null && !session) || (task.report !== null && !report)) return false;
+  if (!run || !completeWhen || (task.session !== null && !session) || (task.report !== null && !report)) return false;
   const validResult = (entry: unknown): entry is Json => {
     const result = record(entry);
     return Boolean(result) && CHECKS.has(result!.check as TaskCheck) && typeof result!.passed === "boolean";
@@ -75,13 +75,13 @@ function validTask(value: unknown): value is Task {
   const results = report ? listOf(report.results, CHECKS.size, validResult) : [];
   // The reading of a waiting task's checks; an older monitor serves none.
   const reading = session && session.checks !== undefined ? listOf(session.checks, CHECKS.size, validResult) : [];
-  const checks = listOf(doneWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
+  const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.step === null || count(task.step, 1))
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
-    && checks !== null && nullableText(doneWhen.own, LIMITS.own)
+    && checks !== null && nullableText(completeWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
     && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)

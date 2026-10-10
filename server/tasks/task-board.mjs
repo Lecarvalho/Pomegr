@@ -33,7 +33,7 @@ function observedModel(value) {
 // resolver, a throwing one, no facts, or no checked condition gives no reading.
 function checksOf(task, resolveCheckFacts) {
   if (typeof resolveCheckFacts !== "function" || task.report || !IN_FLIGHT_STATES.includes(task.state)) return null;
-  const checks = task.doneWhen?.checks;
+  const checks = task.completeWhen?.checks;
   if (!Array.isArray(checks) || checks.length === 0) return null;
   try {
     const facts = resolveCheckFacts(task.session.id);

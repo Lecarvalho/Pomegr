@@ -17,7 +17,7 @@ const NO_RUN = { provider: null, model: null, effort: null } as const;
 
 export function sampleTask(id: string, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id, text, columnId: "col-ready", position: 0, featureId: null, step: null, run: NO_RUN, doneWhen: { checks: [], own: null },
+    id, text, columnId: "col-ready", position: 0, featureId: null, step: null, run: NO_RUN, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: CREATED, updatedAt: CREATED, ...overrides,
   };
 }
@@ -28,10 +28,10 @@ const passed = [{ check: "pr_open" as const, passed: true }, { check: "tree_clea
 // One task per card state. T-2 is the one that changes with the queue: its agent reported it cannot continue while the queue is blocked.
 export const T1_DONE = sampleTask("T-1", "Add retry to the upload client", {
   columnId: "col-done", featureId: SAMPLE_FEATURE_ID, step: 1, state: "done", run: { provider: "claude", model: "model-large", effort: "high" },
-  doneWhen: { checks: ["pr_open", "tree_clean"], own: null }, session: session("t1", "Upload retry", "closed"), report: { at: CREATED, results: passed, blockReason: null },
+  completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, session: session("t1", "Upload retry", "closed"), report: { at: CREATED, results: passed, blockReason: null },
 });
 const T2_QUEUED = sampleTask("T-2", "Back off between upload retries", {
-  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "claude", model: "model-large", effort: "medium" }, doneWhen: { checks: ["pr_open", "ci_passed"], own: "Retries stop after five attempts." },
+  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "claude", model: "model-large", effort: "medium" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Retries stop after five attempts." },
 });
 export const T2_REVIEW = { ...T2_QUEUED, columnId: "col-review", state: "needs_review", session: session("t2", "Retry back-off", "closed"),
   report: { at: CREATED, results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null } } satisfies Task;
@@ -40,12 +40,12 @@ export const T2_BLOCKED = { ...T2_REVIEW, state: "blocked", report: { at: CREATE
 /** A blocked card stays where its session put it: In progress. */
 const T2_BLOCKED_IN_PROGRESS = { ...T2_BLOCKED, columnId: "col-progress" } satisfies Task;
 export const T3_QUEUED = sampleTask("T-3", "Show the retry count in the upload log", {
-  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "codex", model: "model-code", effort: "medium" }, doneWhen: { checks: ["pr_open"], own: null },
+  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "codex", model: "model-code", effort: "medium" }, completeWhen: { checks: ["pr_open"], own: null },
 });
 export const T4_QUEUED = sampleTask("T-4", "Document the retry settings", { featureId: SAMPLE_FEATURE_ID, step: 3, state: "queued", run: { provider: "claude", model: null, effort: null } });
 export const T5_IDLE = sampleTask("T-5", "Remove the unused upload helper", { columnId: "col-backlog", featureId: "feature-cleanup", step: 1 });
 export const T6_WORKING = sampleTask("T-6", "Check the cache headers", {
-  columnId: "col-progress", state: "queued", run: { provider: "claude", model: "model-large", effort: "high" }, doneWhen: { checks: ["tree_clean"], own: null },
+  columnId: "col-progress", state: "queued", run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["tree_clean"], own: null },
   session: session("t6", "Cache header check", "working", "model-small"),
 });
 export const T7_SCHEDULED = sampleTask("T-7", "Rotate the sample logs nightly", { state: "scheduled", scheduledAt: SAMPLE_FUTURE, run: { provider: "codex", model: null, effort: null } });

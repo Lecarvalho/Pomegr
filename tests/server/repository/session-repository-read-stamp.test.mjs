@@ -80,7 +80,7 @@ test("the served form drops both private read times and changes nothing else", a
   }
 });
 
-test("the default observation store serves the stripped state and keeps the stamped one for the done-when rule", async () => {
+test("the default observation store serves the stripped state and keeps the stamped one for the complete-when rule", async () => {
   const { refresh } = fixture();
   const { repository, pullRequests } = await refresh();
   const store = new SessionObservationStore();

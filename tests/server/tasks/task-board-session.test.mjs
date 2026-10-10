@@ -242,7 +242,7 @@ test("the store fills sessions only when it is handed a resolver", async (contex
 });
 
 // The reading of a waiting task's checks: the report's own rule, on the facts the report would be judged on.
-const waiting = (overrides = {}) => ({ ...linked("T-1", SESSION), state: "queued", report: null, doneWhen: { checks: ["ci_passed", "pr_open"], own: null }, ...overrides });
+const waiting = (overrides = {}) => ({ ...linked("T-1", SESSION), state: "queued", report: null, completeWhen: { checks: ["ci_passed", "pr_open"], own: null }, ...overrides });
 const OPEN_PULL = { pullRequestStates: ["open"], ciPassed: false, readAt: { pullRequests: 20, ci: 20 }, workAt: { repository: 10 } };
 
 test("a waiting task carries the reading the report's rule gives for its checked conditions", () => {
@@ -259,7 +259,7 @@ test("a waiting task carries the reading the report's rule gives for its checked
 test("a task with a report, an outcome, or no checked condition carries no reading and reads no fact", () => {
   const report = { at: "2026-10-09T10:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null };
   const never = () => { throw new Error("check facts read"); };
-  for (const task of [waiting({ report, state: "needs_review" }), waiting({ state: "stalled" }), waiting({ state: "done" }), waiting({ doneWhen: { checks: [], own: null } })]) {
+  for (const task of [waiting({ report, state: "needs_review" }), waiting({ state: "stalled" }), waiting({ state: "done" }), waiting({ completeWhen: { checks: [], own: null } })]) {
     assert.deepEqual(fillTaskSessions({ tasks: [task] }, () => null, never).tasks[0].session, UNKNOWN(SESSION));
   }
 });
@@ -268,7 +268,7 @@ test("GET /api/tasks serves the reading from the lookup the report is verified w
   const calls = [];
   const runtime = { resolveTaskCheckFacts(id) { calls.push(id); return { ...OPEN_PULL, root: "C:/SECRET-ROOT", url: "https://SECRET-PULL" }; } };
   const { store, port } = await serving(context, runtime);
-  assert.equal(store.apply(REPOSITORY_ID, "create", { text: "with checks", doneWhen: { checks: ["pr_open", "ci_passed"], own: null } }).ok, true);
+  assert.equal(store.apply(REPOSITORY_ID, "create", { text: "with checks", completeWhen: { checks: ["pr_open", "ci_passed"], own: null } }).ok, true);
   const planned = store.planStart(REPOSITORY_ID, { id: "T-1" }, () => FACTS, passingGates);
   assert.deepEqual(store.bindSession({ token: planned.plan.token, sessionId: SESSION }), { ok: true });
   const response = await getBoard(port);
@@ -342,7 +342,7 @@ test("createTaskLookups exposes the facts lookup beside the others and reads onl
   assert.deepEqual(touched, [["catalog"], ["get", "claude", SESSION.slice("claude:".length)]]);
 });
 
-// The done-when check facts carry the time each was read and the time of the work that could have changed it.
+// The complete-when check facts carry the time each was read and the time of the work that could have changed it.
 const iso = (milliseconds) => new Date(milliseconds).toISOString();
 const checkRepository = (overrides = {}) => ({
   available: true, historical: false, branch: "tasks/12", isMain: false, files: [],
@@ -483,7 +483,7 @@ test("check facts are unknown, with no times, when the committed state does not 
   assert.deepEqual(checkFacts(checkState({ session: { repository: checkRepository({ available: false }) } })), unknown);
 });
 
-// A real enrichment refresh (not injected facts) stamps the blocks it commits; the done-when rule reads the stamps
+// A real enrichment refresh (not injected facts) stamps the blocks it commits; the complete-when rule reads the stamps
 // from the committed state in the observation store, and the served form of that state carries none of them.
 async function refreshedBlocks({ files = [], delayMs = 5 } = {}) {
   const jobs = [];
@@ -549,7 +549,7 @@ test("the stamped read times stay in the committed state and leave no served for
   assert.deepEqual(JSON.parse(served).session, { id: SESSION, repository: withoutReadAt(value.repository), pullRequests: withoutReadAt(value.pullRequests) });
   assert.equal(typeof state.session.repository.readAt, "string", "serving does not change the committed state");
 
-  // The store serves the stripped form and keeps the stamped one for the done-when rule.
+  // The store serves the stripped form and keeps the stamped one for the complete-when rule.
   const store = committedStore(state);
   assert.doesNotMatch(store.getSerialized("claude", SESSION.slice("claude:".length)), /readAt/u);
   assert.equal(store.get("claude", SESSION.slice("claude:".length)).publicState.session.repository.readAt, value.repository.readAt);

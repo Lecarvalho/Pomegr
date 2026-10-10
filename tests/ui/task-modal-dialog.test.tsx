@@ -24,7 +24,7 @@ const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name,
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -33,7 +33,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 const reviewTask = task(12, {
   text: "Add a private task store.",
   run: { provider: "claude", model: "model-a", effort: "high" },
-  doneWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
+  completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   state: "needs_review",
   session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b" },
   report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null },

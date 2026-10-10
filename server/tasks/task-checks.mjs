@@ -1,4 +1,4 @@
-// The done-when rule: which checked conditions pass, judged from plain repository facts the entry
+// The complete-when rule: which checked conditions pass, judged from plain repository facts the entry
 // point read from committed observation. This module is pure. It reads no store, route, runtime, Git,
 // or provider data, and it keeps nothing: its only output is one `{ check, passed }` per check.
 //

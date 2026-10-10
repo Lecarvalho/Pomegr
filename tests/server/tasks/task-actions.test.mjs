@@ -81,7 +81,7 @@ test("create lands as the last card of the first column with the next ID and eve
   assert.equal(task.state, "not_queued");
   assert.deepEqual([task.featureId, task.step, task.scheduledAt, task.session, task.report], [null, null, null, null, null]);
   assert.deepEqual(task.run, { provider: null, model: null, effort: null });
-  assert.deepEqual(task.doneWhen, { checks: [], own: null });
+  assert.deepEqual(task.completeWhen, { checks: [], own: null });
   assert.equal(task.createdAt, task.updatedAt);
 
   const second = store.apply(REPOSITORY, "create", { text: "Second\nline two" });
@@ -137,9 +137,9 @@ test("create rejects invalid text and payload shapes, and a rejection writes not
     { text: "ok", id: "T-1" }, { text: "ok", state: "done" }, { text: "ok", run: "claude" }, { text: "ok", run: { provider: "gemini" } },
     { text: "ok", run: { provider: "claude", effort: "max" } }, { text: "ok", run: { provider: "claude", model: "C:\models\opus" } },
     { text: "ok", run: { provider: "claude", model: "x".repeat(TASK_BOUNDS.modelIdentifierLength + 1) } }, { text: "ok", run: { model: "opus" } },
-    { text: "ok", run: { provider: "claude", command: "x" } }, { text: "ok", doneWhen: ["pr_open"] }, { text: "ok", doneWhen: { checks: ["tests_pass"] } },
-    { text: "ok", doneWhen: { checks: ["pr_open", "pr_open"] } }, { text: "ok", doneWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
-    { text: "ok", doneWhen: { checks: [], command: "x" } }, { text: "ok", __proto__: { x: 1 }, constructor: 1 },
+    { text: "ok", run: { provider: "claude", command: "x" } }, { text: "ok", completeWhen: ["pr_open"] }, { text: "ok", completeWhen: { checks: ["tests_pass"] } },
+    { text: "ok", completeWhen: { checks: ["pr_open", "pr_open"] } }, { text: "ok", completeWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
+    { text: "ok", completeWhen: { checks: [], command: "x" } }, { text: "ok", __proto__: { x: 1 }, constructor: 1 },
   ];
   for (const payload of invalid) {
     assert.deepEqual(store.apply(REPOSITORY, "create", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
@@ -210,28 +210,28 @@ test("a deleted task number stays retired even when it was inserted outside the 
   assert.equal(store.apply(REPOSITORY, "create", { text: "after the raw one" }).board.tasks[0].id, "T-8");
 });
 
-test("create stores the planned run and the done-when conditions, and keeps absent parts null", async (t) => {
+test("create stores the planned run and the complete-when conditions, and keeps absent parts null", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
   const created = store.apply(REPOSITORY, "create", {
     text: "Planned",
     run: { provider: "claude", model: "opus", effort: "high" },
-    doneWhen: { checks: ["tree_clean", "pr_open"], own: "  The store rejects a malformed record.  " },
+    completeWhen: { checks: ["tree_clean", "pr_open"], own: "  The store rejects a malformed record.  " },
   });
   assert.equal(created.ok, true);
   assert.deepEqual(created.board.tasks[0].run, { provider: "claude", model: "opus", effort: "high" });
   // Checks come back in the contract order, and the own condition trimmed.
-  assert.deepEqual(created.board.tasks[0].doneWhen, { checks: ["pr_open", "tree_clean"], own: "The store rejects a malformed record." });
+  assert.deepEqual(created.board.tasks[0].completeWhen, { checks: ["pr_open", "tree_clean"], own: "The store rejects a malformed record." });
 
-  const partial = store.apply(REPOSITORY, "create", { text: "Default model", run: { provider: "codex" }, doneWhen: { own: "   " } }).board.tasks[1];
+  const partial = store.apply(REPOSITORY, "create", { text: "Default model", run: { provider: "codex" }, completeWhen: { own: "   " } }).board.tasks[1];
   assert.deepEqual(partial.run, { provider: "codex", model: null, effort: null });
-  assert.deepEqual(partial.doneWhen, { checks: [], own: null });
-  const effortOnly = store.apply(REPOSITORY, "create", { text: "Effort only", run: { effort: "xhigh" }, doneWhen: null }).board.tasks[2];
+  assert.deepEqual(partial.completeWhen, { checks: [], own: null });
+  const effortOnly = store.apply(REPOSITORY, "create", { text: "Effort only", run: { effort: "xhigh" }, completeWhen: null }).board.tasks[2];
   assert.deepEqual(effortOnly.run, { provider: null, model: null, effort: "xhigh" });
-  assert.deepEqual(effortOnly.doneWhen, { checks: [], own: null });
+  assert.deepEqual(effortOnly.completeWhen, { checks: [], own: null });
   // The bounds themselves are valid, and the stored values survive a restart.
   const bound = store.apply(REPOSITORY, "create", {
-    text: "Bounds", run: { provider: "claude", model: "m".repeat(TASK_BOUNDS.modelIdentifierLength) }, doneWhen: { checks: [...TASK_CHECKS], own: "x".repeat(TASK_BOUNDS.ownConditionLength) },
+    text: "Bounds", run: { provider: "claude", model: "m".repeat(TASK_BOUNDS.modelIdentifierLength) }, completeWhen: { checks: [...TASK_CHECKS], own: "x".repeat(TASK_BOUNDS.ownConditionLength) },
   });
   assert.equal(bound.ok, true);
   store.close();
@@ -241,23 +241,23 @@ test("create stores the planned run and the done-when conditions, and keeps abse
 test("update replaces only the fields it carries and keeps the others, nulls included", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
-  store.apply(REPOSITORY, "create", { text: "Original", run: { provider: "claude", model: "opus", effort: "high" }, doneWhen: { checks: ["pr_open"], own: "Tests pass." } });
-  const fields = (board) => { const { text, run, doneWhen } = board.tasks[0]; return { text, run, doneWhen }; };
+  store.apply(REPOSITORY, "create", { text: "Original", run: { provider: "claude", model: "opus", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  const fields = (board) => { const { text, run, completeWhen } = board.tasks[0]; return { text, run, completeWhen }; };
 
   const run = store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", effort: "low" } });
-  assert.deepEqual(fields(run.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["pr_open"], own: "Tests pass." } });
-  const doneWhen = store.apply(REPOSITORY, "update", { id: "T-1", doneWhen: { checks: ["ci_passed", "tree_clean"] } });
-  assert.deepEqual(fields(doneWhen.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  assert.deepEqual(fields(run.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  const completeWhen = store.apply(REPOSITORY, "update", { id: "T-1", completeWhen: { checks: ["ci_passed", "tree_clean"] } });
+  assert.deepEqual(fields(completeWhen.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
   const text = store.apply(REPOSITORY, "update", { id: "T-1", text: "Edited" });
-  assert.deepEqual(fields(text.board), { text: "Edited", run: { provider: "codex", model: null, effort: "low" }, doneWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  assert.deepEqual(fields(text.board), { text: "Edited", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
   // A null field clears it; the text is untouched.
-  const cleared = store.apply(REPOSITORY, "update", { id: "T-1", run: null, doneWhen: null });
-  assert.deepEqual(fields(cleared.board), { text: "Edited", run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null } });
-  const all = store.apply(REPOSITORY, "update", { id: "T-1", text: "All", run: { provider: "claude", model: "sonnet" }, doneWhen: { checks: [], own: "Judged" } });
-  assert.deepEqual(fields(all.board), { text: "All", run: { provider: "claude", model: "sonnet", effort: null }, doneWhen: { checks: [], own: "Judged" } });
+  const cleared = store.apply(REPOSITORY, "update", { id: "T-1", run: null, completeWhen: null });
+  assert.deepEqual(fields(cleared.board), { text: "Edited", run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null } });
+  const all = store.apply(REPOSITORY, "update", { id: "T-1", text: "All", run: { provider: "claude", model: "sonnet" }, completeWhen: { checks: [], own: "Judged" } });
+  assert.deepEqual(fields(all.board), { text: "All", run: { provider: "claude", model: "sonnet", effort: null }, completeWhen: { checks: [], own: "Judged" } });
 
   const bad = [{ id: "T-1", run: { provider: "gemini" } }, { id: "T-1", run: { model: "opus" } }, { id: "T-1", run: { provider: "claude", model: "../opus" } },
-    { id: "T-1", run: { effort: "max" } }, { id: "T-1", doneWhen: { checks: ["tests_pass"] } }, { id: "T-1", doneWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
+    { id: "T-1", run: { effort: "max" } }, { id: "T-1", completeWhen: { checks: ["tests_pass"] } }, { id: "T-1", completeWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
     { id: "T-1", text: null, run: { provider: "claude" } }, { id: "T-1", text: "Fine", run: { provider: "nope" } }];
   for (const payload of bad) assert.deepEqual(store.apply(REPOSITORY, "update", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-9", run: { provider: "claude" } }), { ok: false, error: "not_found" });

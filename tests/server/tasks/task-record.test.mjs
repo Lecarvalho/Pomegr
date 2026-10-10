@@ -29,7 +29,7 @@ import {
   normalizeChecks,
   STORED_COLUMN_READ_BOUNDS,
   normalizeColumnName,
-  normalizeDoneWhen,
+  normalizeCompleteWhen,
   normalizeFeatureName,
   normalizeModelIdentifier,
   normalizeOwnCondition,
@@ -169,21 +169,21 @@ test("a planned model needs its provider", () => {
   assert.deepEqual(normalizeRun({ effort: "low" }), { provider: null, model: null, effort: "low" });
 });
 
-test("done-when checks are known, unique, and kept in contract order", () => {
+test("complete-when checks are known, unique, and kept in contract order", () => {
   assert.deepEqual(normalizeChecks(undefined), []);
   assert.deepEqual(normalizeChecks(["ci_passed", "pr_open"]), ["pr_open", "ci_passed"]);
   assert.deepEqual(normalizeChecks([...TASK_CHECKS].reverse()), [...TASK_CHECKS]);
   for (const value of [["pr_open", "pr_open"], ["merged"], [1], "pr_open", [...TASK_CHECKS, "pr_open"]]) {
     assert.equal(normalizeChecks(value), undefined, JSON.stringify(value));
   }
-  assert.deepEqual(normalizeDoneWhen(undefined), { checks: [], own: null });
-  assert.deepEqual(normalizeDoneWhen({ checks: ["tree_clean"], own: " all tests green " }), { checks: ["tree_clean"], own: "all tests green" });
-  assert.equal(normalizeDoneWhen({ checks: ["tree_clean"], own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) }), undefined);
-  assert.equal(normalizeDoneWhen({ checks: [], own: null, command: "rm -rf" }), undefined);
+  assert.deepEqual(normalizeCompleteWhen(undefined), { checks: [], own: null });
+  assert.deepEqual(normalizeCompleteWhen({ checks: ["tree_clean"], own: " all tests green " }), { checks: ["tree_clean"], own: "all tests green" });
+  assert.equal(normalizeCompleteWhen({ checks: ["tree_clean"], own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) }), undefined);
+  assert.equal(normalizeCompleteWhen({ checks: [], own: null, command: "rm -rf" }), undefined);
 });
 
-test("a task input accepts only text, run, and done-when", () => {
-  assert.deepEqual(normalizeTaskInput({ text: " Ship it " }), { text: "Ship it", run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null } });
+test("a task input accepts only text, run, and complete-when", () => {
+  assert.deepEqual(normalizeTaskInput({ text: " Ship it " }), { text: "Ship it", run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null } });
   assert.equal(normalizeTaskInput({ text: "" }), undefined);
   assert.equal(normalizeTaskInput({ text: "ok", state: "done" }), undefined);
   assert.equal(normalizeTaskInput({ text: "ok", columnId: COLUMN }), undefined);
@@ -214,7 +214,7 @@ test("a stored task projects to exactly the contract keys", () => {
   assert.deepEqual(task, {
     id: "T-1", text: "Write the release notes", columnId: COLUMN, position: 0, featureId: FEATURE, step: 2,
     run: { provider: "claude", model: "claude-sonnet-4-5", effort: "high" },
-    doneWhen: { checks: ["pr_open", "tree_clean"], own: "docs updated" },
+    completeWhen: { checks: ["pr_open", "tree_clean"], own: "docs updated" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
     session: { id: "6f1c-session", title: null, state: "unknown", observedModel: null },
@@ -228,7 +228,7 @@ test("a stored task projects to exactly the contract keys", () => {
     },
     createdAt: "2023-11-14T22:13:20.000Z", updatedAt: "2023-11-14T22:13:21.000Z",
   });
-  assert.deepEqual(Object.keys(task).toSorted(), ["columnId", "createdAt", "doneWhen", "featureId", "id", "images", "position", "report", "run",
+  assert.deepEqual(Object.keys(task).toSorted(), ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run",
     "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"]);
   assert.equal(JSON.stringify(task).includes("must-never-appear"), false);
 });
