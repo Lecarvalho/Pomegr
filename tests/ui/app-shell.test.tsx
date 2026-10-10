@@ -205,6 +205,37 @@ describe("Command Center app shell", () => {
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
   });
 
+  it("lists Tasks directly after Sessions and marks it current on /tasks and below it", async () => {
+    navigation.pathname = "/tasks";
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions: [] }));
+    const view = render(<AppShell><main>Tasks content</main></AppShell>);
+    const rail = await screen.findByRole("complementary", { name: "Primary navigation" });
+    const links = within(rail).getAllByRole("link");
+    expect(links.slice(0, 5).map((link) => link.getAttribute("href"))).toEqual(["/", "/sessions", "/tasks", "/repositories", "/agents"]);
+    const tasks = within(rail).getByRole("link", { name: "Tasks" });
+    expect(tasks).toHaveAttribute("aria-current", "page");
+    expect(tasks).toHaveClass("commandNavItem", "active");
+    expect(within(rail).getByRole("link", { name: /^Sessions/ })).not.toHaveAttribute("aria-current");
+    navigation.pathname = "/tasks/anything";
+    view.rerender(<AppShell><main>Tasks content</main></AppShell>);
+    expect(within(rail).getByRole("link", { name: "Tasks" })).toHaveAttribute("aria-current", "page");
+    navigation.pathname = "/tasksets";
+    view.rerender(<AppShell><main>Other content</main></AppShell>);
+    expect(within(rail).getByRole("link", { name: "Tasks" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("offers Tasks in the palette after Sessions and routes a task query to it", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
+    render(<AppShell><main>Home content</main></AppShell>);
+    await user.click(await screen.findByRole("button", { name: "Search Pomegr" }));
+    const names = screen.getAllByRole("option").slice(0, 4).map((option) => option.querySelector("strong")?.textContent);
+    expect(names).toEqual(["Home", "Sessions", "Tasks", "Repositories"]);
+    expect(screen.getByRole("option", { name: /Tasks.*Repository task boards/ })).toBeInTheDocument();
+    await user.type(screen.getByRole("combobox", { name: "Search Pomegr" }), "task board{enter}");
+    expect(navigation.push).toHaveBeenCalledWith("/tasks");
+  });
+
   it("opens and dismisses the foldable primary menu", async () => {
     const user = userEvent.setup();
     vi.spyOn(globalThis, "fetch").mockImplementation(() => response({ sessions }));
@@ -268,12 +299,12 @@ describe("Command Center app shell", () => {
     const search = screen.getByRole("combobox", { name: "Search Pomegr" });
     expect(search).toHaveFocus();
 
-    // Arrow down to the 5th destination (index 4, "Usage limits") while the query is empty.
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
+    // Arrow down to the 6th destination (index 5, "Usage limits") while the query is empty.
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}");
     expect(screen.getByRole("option", { name: /Usage limits/ })).toHaveAttribute("aria-selected", "true");
 
     // Narrowing to "usage" leaves two matches in this order: "Usage limits" (first) and
-    // "Usage audit" (second). The stale numeric index (4) would clamp onto the second match;
+    // "Usage audit" (second). The stale numeric index (5) would clamp onto the second match;
     // the highlight must reset back to the first one instead.
     await user.type(search, "usage");
     const options = screen.getAllByRole("option");

@@ -5,11 +5,13 @@ description: "Plan work on a repository's task board, queue it, and have the Pom
 
 # Tasks
 
-A repository's **Tasks** tab holds a board of work you want coding agents to do.
-You can start a session for a task yourself, or turn on a queue and let the
-desktop app start tasks one step at a time. After a start, Pomegr only observes
-the session: it never stops, attaches to, answers, or approves anything in a
-running session. Observing sessions works the same whether or not you use tasks.
+**Tasks** in the sidebar opens a board of work you want coding agents to do, one
+repository at a time; the **Repository** menu beside the heading switches
+repository. You can start a session for a task yourself, or turn on a queue and
+let the desktop app start tasks one step at a time. After a start, Pomegr only
+observes the session: it never stops, attaches to, answers, or approves anything
+in a running session. Observing sessions works the same whether or not you use
+tasks.
 
 ## Before you start
 
@@ -32,14 +34,18 @@ running session. Observing sessions works the same whether or not you use tasks.
 
 ## Create and organize tasks
 
-Open a repository (see [Repositories](repositories.md#open-a-repository)) and
-select **Tasks**. A board has five columns: **Backlog**, **Ready**,
-**In progress**, **Review**, and **Done**. You cannot add, rename, reorder, or
-delete a column. Moving a card never changes its state.
+Select **Tasks** in the sidebar and choose a repository in the **Repository**
+menu. A repository's own **Tasks** tab links to the same board. A board has five
+columns: **Backlog**, **Ready**, **In progress**, **Review**, and **Done**. You
+cannot add, rename, reorder, or delete a column. Moving a card never changes its
+state.
 
 ### Create a task
 
-1. Select **New task**.
+1. On the **Board** view, hover the **Backlog** column, or move keyboard focus
+   into it, and select **New task** under its last card. On a touch screen the
+   action is always shown. The **Queue** view has no columns, so it has no
+   **New task**.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
    field. A card shows this text until its session has a title, then the title.
 3. Set the optional fields below.

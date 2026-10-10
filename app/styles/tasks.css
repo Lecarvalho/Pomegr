@@ -1,14 +1,32 @@
-/* Repository Tasks tab: the task board (design contract D45-D67, D86, D87). Tokens only. State chips
+/* Tasks page: the board of one repository (design contract D45-D67, D86, D87, G1-G59). Tokens only. State chips
    are the shared .commandChip outline label; a tone recolors its text and never fills it, except Queued (D61), which
-   takes the raised fill. */
-.repositoryTasksTab { display: grid; gap: var(--space-4); }
+   takes the raised fill. The header is the shared page header with the repository switcher among its actions; it wraps
+   instead of squeezing the title block. */
+.tasksPageHeader { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-4) var(--space-6); }
+.tasksPageHeader .commandPageTitleBlock { flex: 1 1 320px; }
+.tasksPageHeader .commandPageActions { flex: 0 1 auto; margin-inline-start: auto; padding-bottom: 0; }
+.tasksPageMeta p { margin: 0; }
+.tasksPageMeta .taskBoardNote { margin-top: var(--space-1); font-size: var(--text-xs); }
+.tasksPageBody { display: grid; gap: var(--space-4); }
+.tasksPageHeader + .tasksPageBody { margin-top: var(--space-4); }
+.tasksRepositorySwitcher { max-width: 240px; }
+.tasksRepositorySwitcher .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+@media (max-width: 760px), (pointer: coarse) {
+  .tasksRepositorySwitcher .commandSelectTrigger { min-height: 44px; }
+}
+@media (max-width: 760px) {
+  .tasksPageHeader .commandPageActions, .tasksRepositorySwitcher { flex: 1 1 100%; max-width: none; margin-inline-start: 0; }
+  .tasksPageHeader .taskHeadActions { width: 100%; justify-content: flex-start; }
+}
 
-/* Board: columns scroll sideways instead of shrinking below 220px. */
+/* Board: lanes scroll sideways instead of shrinking below 220px. */
 .taskBoardScroller { overflow-x: auto; }
 .taskBoardScroller:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskBoardGrid { display: grid; grid-template-columns: repeat(var(--task-columns, 5), minmax(220px, 1fr)); gap: var(--space-3); align-items: stretch; }
-.taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); border-radius: var(--panel-radius); }
-.taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-1) 0; }
+/* A column is a lane (G26-G30): the raised fill with a rule, cards stay on the panel fill. The contract draws it 680px
+   tall for its frame; that has no token, so the lane keeps its 240px minimum and the grid stretches all five to the tallest. */
+.taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }
+.taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-2); border-bottom: 1px solid var(--command-line); }
 .taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .taskColumnList { margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); list-style: none; }
@@ -36,9 +54,10 @@
 /* Open session (D75): the Text link role, last on the card and not stretched across it. */
 .taskCardLink { align-self: flex-start; }
 
-/* Moving cards: dragging is the desktop app only. The column under a dragged card takes the raised fill (D48) and
-   a movable card shows the grab cursor (D53); the dragged card itself does not change (D86). */
-.taskColumn.isDropTarget { background: var(--command-panel-2); }
+/* Moving cards: dragging is the desktop app only. The raised fill is the lane itself, so the lane under a dragged card
+   takes the strong line on its border instead (D48), two pixels wide; a movable card shows the grab cursor (D53); the
+   dragged card itself does not change (D86). */
+.taskColumn.isDropTarget { border-color: var(--command-line-strong); box-shadow: inset 0 0 0 1px var(--command-line-strong); }
 .taskCard.isMovable { cursor: grab; }
 .taskBoardError { margin: 0; }
 .taskBoardFootnote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
@@ -54,7 +73,15 @@
 .taskMove[data-move="down"] > svg { transform: rotate(90deg); }
 .taskMove[data-move="left"] > svg { transform: rotate(180deg); }
 
-/* Head actions beside New task (D28, D29); .taskAddColumn is the Add feature form. */
+/* + New task (G53-G59): the Quiet role under the last card of the first lane only. It is invisible, not removed, until
+   the lane is hovered or holds focus, so it stays reachable from the keyboard; a coarse pointer always sees it at 44px.
+   No transition, so there is no motion to reduce. */
+.taskColumnAdd.commandQuietAction { align-self: flex-start; justify-content: flex-start; min-height: var(--control-compact); padding: 0 var(--space-2); opacity: 0; }
+.taskColumn:hover .taskColumnAdd, .taskColumn:focus-within .taskColumnAdd { opacity: 1; }
+@media (max-width: 760px), (pointer: coarse) { .taskColumnAdd.commandQuietAction { min-height: 44px; } }
+@media (pointer: coarse) { .taskColumnAdd.commandQuietAction { opacity: 1; } }
+
+/* Head actions: the repository switcher, the view switch and the queue controls (D28, D29); .taskAddColumn is the Add feature form. */
 .taskHeadActions { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-3); }
 .taskAddColumn { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskAddColumn .taskOwnInput { flex: 0 1 200px; }
@@ -67,14 +94,11 @@
 
 /* Loading, unavailable, desktop-only and empty states. */
 .taskBoardSkeleton { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: var(--space-3); overflow-x: auto; }
-.taskBoardSkeletonColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-1); }
-.taskBoardSkeletonColumn span { width: 40%; height: 16px; border-radius: var(--control-radius); background: var(--command-panel-2); }
-.taskBoardSkeletonColumn span:last-child { width: 100%; height: 64px; border-radius: var(--panel-radius); }
+.taskBoardSkeletonColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }
+.taskBoardSkeletonColumn span { width: 40%; height: 16px; border-radius: var(--control-radius); background: var(--command-line); }
+.taskBoardSkeletonColumn span:last-child { width: 100%; height: 64px; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
 .taskBoardNotice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); }
 .taskBoardNotice p, .taskBoardEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
-
-/* Tasks tab head: the New task action sits at the far right, the desktop-app note is one quiet line (D29). */
-.taskNewAction { flex: 0 0 auto; }
 
 /* New task and Task side panels (design contract D184-D194, D234-D238, D239-D249, D295-D299). Fixed to the right
    edge below the header, like the Agents evidence drawer; no entrance motion (the contract declares none). The Task

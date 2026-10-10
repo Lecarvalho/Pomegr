@@ -22,7 +22,7 @@ const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready"
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -112,7 +112,7 @@ const lastCall = (action: string) => taskAction.mock.calls.filter((call) => call
 describe("New task: Feature and Step in feature", () => {
   it("offers only unfinished features, then No feature and New feature…, defaulting to No feature", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     const feature = dialog.getByRole("combobox", { name: "Feature" });
     expect(feature).toHaveTextContent("No feature");
@@ -125,7 +125,7 @@ describe("New task: Feature and Step in feature", () => {
 
   it("defaults Step to Last and lists each step from the highest with the other tasks in it", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     const step = dialog.getByRole("combobox", { name: "Step in feature" });
@@ -141,7 +141,7 @@ describe("New task: Feature and Step in feature", () => {
 
   it("creates a task in a feature at the last step, at a chosen step, and with no feature keys for No feature", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     await user.click(dialog.getByRole("button", { name: "Create and add another" }));
@@ -165,7 +165,7 @@ describe("New task: Feature and Step in feature", () => {
 
   it("creates a new feature first, then the task in it, once the committed board lists it", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     const name = dialog.getByRole("textbox", { name: "Feature name" });
@@ -191,7 +191,7 @@ describe("New task: Feature and Step in feature", () => {
   ])("keeps the panel and creates no task when the feature fails with %s", async (error, message) => {
     taskAction.mockResolvedValue({ ok: false, error });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Docs");
@@ -204,7 +204,7 @@ describe("New task: Feature and Step in feature", () => {
 
   it("folds the feature's tasks away by default and lists id, title and state when opened", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openNew(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     const details = dialog.getByText("In this feature").closest("details") as HTMLDetailsElement;
@@ -226,7 +226,7 @@ describe("New task: Feature and Step in feature", () => {
 describe("Task panel: Feature and Step in feature", () => {
   it("shows the stored feature and step without the task itself in the parallel list", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("Task board v1");
     expect(dialog.getByRole("combobox", { name: "Step in feature" })).toHaveTextContent("Step 2 · parallel with T-3");
@@ -238,7 +238,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("lists a step with no other task as the step alone, and keeps a finished feature for its own task", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Queue", "T-4");
     expect(dialog.getByRole("combobox", { name: "Step in feature" })).toHaveTextContent("Step 3");
     expect(dialog.getByRole("combobox", { name: "Step in feature" })).not.toHaveTextContent("parallel");
@@ -249,7 +249,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("folds the other tasks, ordered by step then board order, with this task counted but not listed", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     const details = dialog.getByText("In this feature").closest("details") as HTMLDetailsElement;
     expect(details.open).toBe(false);
@@ -264,7 +264,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("opens a sibling's own panel from its title in the list", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     fireEvent.click(dialog.getByRole("button", { name: "Columns" }));
     expect(screen.queryByRole("dialog", { name: "Task T-2" })).not.toBeInTheDocument();
@@ -273,7 +273,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("saves a step, Last, another feature and No feature as the feature keys of an update", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Store", "T-2");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Step in feature" }), "step:3");
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
@@ -293,7 +293,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("creates a new feature when its name is committed, then saves the task with the new id", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     expect(taskAction).not.toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe("Task panel: Feature and Step in feature", () => {
 
   it("commits a new feature name on blur once, and an empty name or Escape leaves the stored feature", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Blurred");
@@ -330,7 +330,7 @@ describe("Task panel: Feature and Step in feature", () => {
   it("shows the fixed message for a duplicate feature name and saves nothing", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "new");
     await user.type(dialog.getByRole("textbox", { name: "Feature name" }), "Docs{Enter}");
@@ -342,7 +342,7 @@ describe("Task panel: Feature and Step in feature", () => {
   it("reverts the select and says so once when the monitor refuses a feature (a finished one)", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openTask(user, "Loose end", "T-6");
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     expect(await dialog.findByRole("alert")).toHaveTextContent("The task could not join that feature. It may be finished.");
@@ -354,7 +354,7 @@ describe("Task panel: Feature and Step in feature", () => {
 describe("Feature filter and card feature line", () => {
   it("draws no filter row when the board has no feature", () => {
     mock.board = boardOf({ features: [], tasks: [task(1, "Loose")] });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("group", { name: "Filter by feature" })).not.toBeInTheDocument();
     expect(card("T-1")).not.toHaveTextContent("step");
   });
@@ -362,20 +362,20 @@ describe("Feature filter and card feature line", () => {
   it("offers New feature in the Board header while the board has no feature, and once in the filter row after", async () => {
     const user = userEvent.setup();
     mock.board = boardOf({ features: [], tasks: [task(1, "Loose")] });
-    const view = render(<TasksTab repositoryId={repositoryId} />);
+    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
     await user.type(screen.getByRole("textbox", { name: "Feature name" }), "First");
     await user.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "feature_create", { name: "First" }));
     mock.board = boardOf();
-    view.rerender(<TasksTab repositoryId={repositoryId} />);
+    view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.getAllByRole("button", { name: "+ New feature" })).toHaveLength(1);
     expect(within(screen.getByRole("group", { name: "Filter by feature" })).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
   });
 
   it("counts tasks per chip, presses All first, and hides non-matching cards in every column", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Filter by feature" });
     expect(within(group).getByText("Feature")).toBeInTheDocument();
     expect(within(group).getAllByRole("button").map((button) => button.textContent?.replace(/\s+/g, " ").trim())).toEqual([
@@ -399,7 +399,7 @@ describe("Feature filter and card feature line", () => {
 
   it("turns card dragging and the move toolbar off while a feature filter is on", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(card("T-2")).toHaveAttribute("draggable", "true");
     expect(card("T-2").querySelector(".taskCardMoves")).not.toBeNull();
     await user.click(screen.getByRole("button", { name: "Task board v1 8" }));
@@ -413,7 +413,7 @@ describe("Feature filter and card feature line", () => {
 
   it("adds a feature from the filter row through the bridge", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
     await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Fresh");
     await user.click(screen.getByRole("button", { name: "Add" }));
@@ -425,7 +425,7 @@ describe("Feature filter and card feature line", () => {
   it("shows the fixed message when a feature name is already used", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "+ New feature" }));
     await user.type(screen.getByRole("textbox", { name: "Feature name" }), "Docs");
     await user.click(screen.getByRole("button", { name: "Add" }));
@@ -433,7 +433,7 @@ describe("Feature filter and card feature line", () => {
   });
 
   it("shows '<feature> · step K of N' on a card, with ' · parallel' only when another task shares the step", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(within(card("T-1")).getByText("Task board v1 · step 1 of 4")).toHaveClass("taskCardDetail");
     expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
     expect(within(card("T-4")).getByText("Task board v1 · step 3 of 4")).toBeInTheDocument();
@@ -450,7 +450,7 @@ describe("without the desktop bridge", () => {
 
   it("reads: the filter row and card lines show, and no mutation control is drawn", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Filter by feature" });
     expect(within(group).queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();

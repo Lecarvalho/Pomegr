@@ -8,7 +8,7 @@ vi.mock("../../app/tasks-store", () => ({ useTasks }));
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: [] }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] }, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 import { openDesktopTaskWorktree, startDesktopTask } from "../../app/components/tasks/task-desktop";
 
 const repositoryId = "repo-0123456789abcdef01234567";
@@ -41,13 +41,13 @@ afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
 describe("Start session", () => {
   it("is absent without the desktop bridge", () => {
     setBridge(undefined);
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
   });
 
   it("is present with the desktop bridge", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect((await openPanel(user)).getByRole("button", { name: "Start session" })).toHaveClass("commandPrimaryAction");
   });
 
@@ -55,7 +55,7 @@ describe("Start session", () => {
     let resolve!: (value: unknown) => void;
     taskStart.mockReturnValue(new Promise((r) => { resolve = r; }));
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.dblClick(dialog.getByRole("button", { name: "Start session" }));
     expect(taskStart).toHaveBeenCalledTimes(1);
@@ -84,7 +84,7 @@ describe("Start session", () => {
   ])("shows the fixed line for %s", async (status, line, locked) => {
     taskStart.mockResolvedValue({ status });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent(line));
@@ -95,7 +95,7 @@ describe("Start session", () => {
   it("shows no line for a cancelled start and clears an earlier one", async () => {
     taskStart.mockResolvedValueOnce({ status: "busy" }).mockResolvedValueOnce({ status: "cancelled" });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("Another session"));
@@ -108,7 +108,7 @@ describe("Start session", () => {
   it.each(["needs_review", "blocked", "stalled"] as const)("is not offered for a %s task, which shows its resolutions instead", async (state) => {
     setBoard(task({ state }));
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: "Write the thing" }));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-1" }));
     expect(dialog.queryByRole("button", { name: "Start session" })).not.toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("Start session", () => {
   ])("is disabled with its reason for %s", async (_name, overrides, reason, cardName) => {
     setBoard(task(overrides));
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(screen.getByRole("button", { name: cardName }));
     const dialog = within(screen.getByRole("dialog", { name: "Task T-1" }));
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
@@ -131,7 +131,7 @@ describe("Start session", () => {
 
   it("is disabled while the task text has unsaved edits", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.type(dialog.getByRole("textbox", { name: "Task" }), " more");
     expect(dialog.getByRole("button", { name: "Start session" })).toBeDisabled();
@@ -145,7 +145,7 @@ describe("Start session", () => {
   ])("answers the fixed failure line for %s", async (_name, arrange) => {
     arrange();
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("The session could not be started."));
@@ -163,7 +163,7 @@ describe("Open folder after a dirty worktree", () => {
   });
   async function startDirty() {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));
@@ -172,7 +172,7 @@ describe("Open folder after a dirty worktree", () => {
 
   it("is hidden until a start answers worktree_dirty", async () => {
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     expect(dialog.queryByRole("button", { name: "Open folder" })).not.toBeInTheDocument();
     taskStart.mockResolvedValueOnce({ status: "gate_held" });
@@ -242,7 +242,7 @@ describe("Open folder after a dirty worktree", () => {
   it("is absent on a desktop build that cannot open a folder", async () => {
     setBridge({ taskAction, taskStart });
     const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openPanel(user);
     await user.click(dialog.getByRole("button", { name: "Start session" }));
     await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent("uncommitted changes"));

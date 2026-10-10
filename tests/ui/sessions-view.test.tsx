@@ -339,7 +339,7 @@ describe("Sessions view", () => {
       expect(cell("Session 2")).toHaveTextContent(/^T-9Stalled$/);
       expect(cell("Session 1").querySelector(".commandChip")).toBeNull();
       expect(cell("Session 0")).toHaveTextContent(/^—$/);
-      expect(screen.getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/repositories/${REPOSITORY}?tab=tasks`);
+      expect(screen.getByRole("link", { name: "Open task T-14 on its board" })).toHaveAttribute("href", `/tasks?repository=${REPOSITORY}`);
       expect(screen.getByText(/A dash means you started the session yourself\./)).toBeInTheDocument();
     });
 

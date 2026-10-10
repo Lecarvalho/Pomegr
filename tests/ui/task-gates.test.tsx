@@ -11,7 +11,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
-import { TasksTab } from "../../app/components/tasks/TasksTab";
+import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<{ ok: true }>>();
@@ -50,7 +50,7 @@ beforeEach(() => { taskAction.mockResolvedValue({ ok: true }); setBridge({ taskA
 afterEach(() => { setBridge(undefined); vi.clearAllMocks(); });
 
 async function showQueue() {
-  render(<TasksTab repositoryId={repositoryId} />);
+  render(<TaskBoardPane repositoryId={repositoryId} />);
   await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
 }
 const panel = () => screen.getByRole("region", { name: "Start gates" });
@@ -114,7 +114,7 @@ describe("the Start gates panel", () => {
 
 describe("the capacity strip", () => {
   it("sits on the Board view with both readings and the rule", () => {
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     const strip = screen.getByRole("region", { name: "Provider capacity" });
     expect(strip.textContent).toContain("Start gates");
     expect(strip.textContent).toContain("Claude Code 5h 62% · 7d 31%");
@@ -124,7 +124,7 @@ describe("the capacity strip", () => {
 
   it("is omitted without gates", () => {
     setBoard({ gates: undefined });
-    render(<TasksTab repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("region", { name: "Provider capacity" })).toBeNull();
   });
 });

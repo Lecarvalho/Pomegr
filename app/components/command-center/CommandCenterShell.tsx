@@ -48,6 +48,7 @@ type NavigationItem = {
 const primaryNavigation: NavigationItem[] = [
   { href: "/", label: "Home", icon: "home", match: (pathname) => pathname === "/" },
   { href: "/sessions", label: "Sessions", icon: "session", match: (pathname) => pathname === "/sessions" || pathname.startsWith("/sessions/") },
+  { href: "/tasks", label: "Tasks", icon: "grid", match: (pathname) => pathname === "/tasks" || pathname.startsWith("/tasks/") },
   { href: "/repositories", label: "Repositories", icon: "git", match: (pathname) => pathname === "/repositories" || pathname.startsWith("/repositories/") },
   { href: "/agents", label: "Models & delegation", icon: "agents" },
 ];
@@ -59,6 +60,7 @@ const systemNavigation: NavigationItem[] = [
 
 const destinationTerms: Array<[RegExp, string]> = [
   [/session|history/i, "/sessions"],
+  [/task|board|queue/i, "/tasks"],
   [/agent|topology|model|delegat/i, "/agents"],
   [/usage|limit|quota/i, "/usage-limits"],
   [/repo|git|branch/i, "/repositories"],
@@ -189,6 +191,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     const destinations: PaletteResult[] = [
       { id: "home", href: "/", label: "Home", detail: "Your pinned workspace", icon: "home" },
       { id: "sessions", href: "/sessions", label: "Sessions", detail: "Live and recorded work", icon: "sessions" },
+      { id: "tasks", href: "/tasks", label: "Tasks", detail: "Repository task boards", icon: "grid" },
       { id: "repositories", href: "/repositories", label: "Repositories", detail: "Observed projects", icon: "repositories" },
       { id: "agents", href: "/agents", label: "Models & delegation", detail: "Model, role, and work analysis", icon: "agents" },
       { id: "usage-limits", href: "/usage-limits", label: "Usage limits", detail: "Provider account windows", icon: "chart" },

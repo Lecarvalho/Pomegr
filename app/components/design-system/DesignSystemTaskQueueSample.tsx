@@ -37,7 +37,7 @@ function DesktopFeaturePanel() {
 }
 
 export function TaskQueueSection() {
-  return <Section id="task-queue" title="Task queue" lede="The Queue view of the Tasks tab: a switch in the pane head, a status banner while the queue is blocked or paused, one panel per unfinished feature with its steps, the single tasks, the fixed rules for when the queue blocks, and the Start gates and Schedule panels beside them. The monitor owns the start order; these components only draw it.">
+  return <Section id="task-queue" title="Task queue" lede="The Queue view of the Tasks page: a switch in the page header, a status banner while the queue is blocked or paused, one panel per unfinished feature with its steps, the single tasks, the fixed rules for when the queue blocks, and the Start gates and Schedule panels beside them. The monitor owns the start order; these components only draw it.">
     <div className="designSystemGrid">
       <Sample label="Queue switch, off" note="Segmented role with a muted Queue eyebrow. Desktop app only; every client reads one muted line saying whether the queue is on."><QueueControl status="idle" busy={false} onSet={noop} /></Sample>
       <Sample label="Queue switch, on" note="On stays pressed while the queue is running, blocked, or paused; pressing On while paused is the retry."><QueueControl status="running" busy={false} onSet={noop} /></Sample>

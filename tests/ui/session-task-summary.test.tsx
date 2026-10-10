@@ -80,7 +80,7 @@ describe("SessionTaskMeta", () => {
     render(<SessionTaskMeta task={reference} taskHref={taskHref} />);
     expect(useTasks).toHaveBeenCalledWith(repositoryId);
     expect(screen.getByRole("link", { name: "T-14" })).toHaveAttribute("href", taskHref);
-    expect(screen.getByRole("link", { name: "Task board v1" })).toHaveAttribute("href", `/repositories/${repositoryId}?tab=tasks`);
+    expect(screen.getByRole("link", { name: "Task board v1" })).toHaveAttribute("href", `/tasks?repository=${repositoryId}`);
     expect(screen.getByText("step 2 of 4")).toBeInTheDocument();
   });
 
