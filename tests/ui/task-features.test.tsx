@@ -411,15 +411,6 @@ describe("Feature filter and card feature line", () => {
     expect(screen.queryByText("Moving cards is off while a feature filter is on.")).not.toBeInTheDocument();
   });
 
-  it("keeps a column with hidden cards from looking deletable", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: "Docs 0" }));
-    expect(within(column("Backlog")).queryAllByRole("listitem")).toHaveLength(0);
-    await user.click(within(column("Backlog")).getByRole("button", { name: "Edit column Backlog" }));
-    expect(within(column("Backlog")).getByRole("button", { name: "Delete column Backlog" })).toBeDisabled();
-  });
-
   it("adds a feature from the filter row through the bridge", async () => {
     const user = userEvent.setup();
     render(<TasksTab repositoryId={repositoryId} />);

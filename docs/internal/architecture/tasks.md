@@ -56,16 +56,18 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
   write; the board then reports `unavailable`. Unlike the monitor store, a bad file is
   never rebuilt, and one stored row outside the contract makes the whole board
   `unavailable` instead of partly served.
-- Bounds per repository: 500 tasks, 12 columns, and 50 features. Task text is at most
-  4000 characters, an own condition 500, a column name 40, a feature name 80, and a
-  block reason 200.
+- Bounds per repository: 500 tasks and 50 features. Task text is at most 4000
+  characters, an own condition 500, a feature name 80, and a block reason 200. A board
+  always has five columns (see [Columns and card moves](#columns-and-card-moves)).
 - `openTaskStore({ directory })` returns `readBoard(repositoryId)`,
   `apply(repositoryId, action, payload)`, and `close()`. `apply` returns the new board
   or a fixed error: `invalid`, `not_found`, `limit`, `conflict`, or `unsupported`. A new
   capability adds an action, not a method.
-- The first read of a repository seeds the default columns: Backlog, Ready, In
-  progress, Review, and Done. The last three are seeded with the column roles
-  `in_progress`, `review`, and `done` (see [Columns and card moves](#columns-and-card-moves)).
+- The first read of a repository seeds the five columns: Backlog, Ready, In progress,
+  Review, and Done. The last three carry the column roles `in_progress`, `review`, and
+  `done` (see [Columns and card moves](#columns-and-card-moves)).
+- A store made before the columns were fixed is brought to the five in one store
+  write (see [Boards made before the fixed columns](#boards-made-before-the-fixed-columns)).
 - A column's role is kept in the store's `meta` table under
   `column_role:<repositoryId>:<role>` with the column ID as the value, like the pause
   reason, so the schema version does not change.
@@ -212,9 +214,10 @@ it (see [Stop on trouble](#queue)).
 Decided by the product owner on 2026-10-09. It replaces the earlier rule that a card
 stays in its column whatever happens to its task.
 
-Columns are the user's: up to 12, renamed, reordered, and deleted at will. Pomegr
-therefore never recognizes a column by its name or its place. A column may hold one
-fixed role, and at most one column of a board holds each role:
+A board has exactly five columns in v1: Backlog, Ready, In progress, Review, and Done,
+in that order (product-owner decision, 2026-10-09; it replaces the columns the user
+could add, rename, reorder, delete, and give a role). No action changes a column.
+Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 
 | Role | A card moves there when | The write that moves it |
 | --- | --- | --- |
@@ -222,18 +225,14 @@ fixed role, and at most one column of a board holds each role:
 | `review` | Its state becomes Needs review | Verification of a `complete_task` report |
 | `done` | Its state becomes Done | Verification of a `complete_task` report, or the user's Mark done (`resolve_done`) |
 
-- **Roles are set by the user.** The desktop action `column_role` takes `{ id, role }`,
-  with `role` one of the three values or null for none. Giving a column a role takes
-  that role from the column that held it and replaces the column's own earlier role.
-  Setting a role moves no card. Deleting a column removes its role. A new board has the
-  roles on its default In progress, Review, and Done columns; a board made before this
-  rule has none until the user sets them.
+- **Roles are fixed.** In progress holds `in_progress`, Review holds `review`, and Done
+  holds `done`, on every board. The `column_role` action is removed and is refused like
+  any unknown action name.
 - **The move is part of the state write.** The card's column changes in the same
   transaction that persists the link, the report outcome, or the resolution
   (`server/tasks/task-columns.mjs`, `moveTaskToRole`). The card lands last in the role's
   column, and the column it left closes the gap.
-- **No column holds the role: the card stays.** The state still changes. A card already
-  in the role's column keeps its place.
+- **A card already in the role's column keeps its place.** The state still changes.
 - **Blocked by agent and Stalled move nothing.** The card stays where it is, normally
   the In progress column, and its chip and the Queue banner say that it needs the user.
 - **Requeue moves nothing.** A requeued card stays where it is and moves to the
@@ -245,6 +244,35 @@ fixed role, and at most one column of a board holds each role:
   observation does: not a borrowed session state, not the queue, not a start, and not a
   start gate. So Pomegr never moves a card and later moves it back because an
   observation changed.
+
+### Boards made before the fixed columns
+
+A store written before 2026-10-09 may hold other columns: added, renamed, reordered,
+or without a role. Such a board is brought to the five columns once
+(`server/tasks/task-columns.mjs`):
+
+- **When.** When the monitor opens the store, for every stored repository, so a session
+  link or a report that never reads the board already finds the role columns. A board
+  read and the start of an action write check again. A board that already holds exactly the five
+  columns, in order and with their roles, is not written.
+- **One store write.** The whole change is one transaction, and it stands only if the
+  board then projects. Otherwise it rolls back and the board reads as it did before.
+- **Which column a stored column becomes.** The column of its stored role when it
+  holds one; otherwise the column whose fixed name equals its name, ignoring case
+  and outer spaces; otherwise Backlog.
+- **Kept and merged columns.** The first stored column that matches a fixed column by
+  role or name stays as that column, with its ID, and gets the fixed name and place.
+  The cards of every other stored column go to the column it becomes, after the cards
+  already there, in stored column order and then in their own order. A column with no
+  match so empties into Backlog. A board from before column roles has no stored role,
+  so its columns match by name only, and a renamed column counts as one with no match. A fixed column that no stored column matches is
+  created empty.
+- **Never a lost task.** No task row is deleted, and a task's text, state, session
+  link, queue place, feature, and update time do not change.
+- **Never an unusable store.** A malformed or newer store is not opened for writing,
+  so it is not migrated and stays `unavailable`. A board with more than the 12 columns
+  an older build allowed, or with a column row outside the stored contract, is not
+  repaired either: it stays `unavailable` and unwritten.
 
 ## Features and steps
 
@@ -814,23 +842,19 @@ like any other.
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
-- The fixed IPC actions are `create`, `update`, `delete`, `move`, `column_create`,
-  `column_rename`, `column_reorder`, `column_delete`, `column_role`, `feature_create`, `queue_add`,
+- The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
-  `resolve_requeue`. An action whose part has not landed answers a fixed `unsupported`
-  result. Built so far: `create` with `{ text, run?, doneWhen? }`, `update` with
+  `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
+  main, and the route, and `unsupported` from the store itself. That includes the removed
+  `column_create`, `column_rename`, `column_reorder`, `column_delete`, and `column_role`. Built so far: `create` with `{ text, run?, doneWhen? }`, `update` with
   `{ id, text?, run?, doneWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
   that is present replaces the stored one whole (a null `run` or `doneWhen` clears it),
   and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
   `position` is the zero-based index in the destination column counted after the task
-  leaves its place, and a value past the end appends. `column_create` takes `{ name }`
-  and appends the column, `column_rename` takes `{ id, name }`, `column_reorder` takes
-  `{ id, position }` with the same clamping, and `column_delete` takes `{ id }`. A
-  thirteenth column answers `limit`. Deleting a column that holds tasks, or the last
-  column, answers `conflict`. Task and column positions stay dense after every action.
-  `column_role` takes exactly `{ id, role }`, `role` being `in_progress`, `review`,
-  `done`, or null; an unknown column answers `not_found`.
+  leaves its place, and a value past the end appends. A
+  `columnId` that is not one of the board's five columns answers `not_found`. Task
+  positions stay dense after every action.
   `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
   duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
   feature with no task is listed with `done: false`. `create` and `update` take two
@@ -897,13 +921,13 @@ like any other.
 
 ## Privacy
 
-Task text, the own condition, and column and feature names are user-authored content, a
-new data class.
+Task text, the own condition, and feature names are user-authored content, a new data
+class. Column names are five fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
 - A column's role is not user-authored text: it is one of three fixed values or null,
-  served on `GET /api/tasks` beside the column name and nowhere else.
+  served on `GET /api/tasks` beside the fixed column name and nowhere else.
 - They never enter `/api/state`, session catalogs, reports, logs, notifications,
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.

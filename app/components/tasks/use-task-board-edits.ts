@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { TaskBoard, TaskColumnRole, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
+import type { TaskBoard, TaskGateThreshold, TaskQueueSchedule } from "../../../shared/task-contract";
 import { applyMove, placementOf, samePlacement } from "./task-board-model";
 import {
-  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE, columnFailureMessage,
-  createDesktopColumn, createDesktopFeature, deleteDesktopColumn, featureFailureMessage, moveDesktopTask, renameDesktopColumn, reorderDesktopColumn,
-  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopColumnRole, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type ColumnAction, type TaskActionResult, type TaskMove,
+  GATE_THRESHOLD_FAILURE_MESSAGE, MOVE_FAILURE_MESSAGE, QUEUE_REORDER_FAILURE_MESSAGE, QUEUE_SCHEDULE_FAILURE_MESSAGE, QUEUE_SETTINGS_FAILURE_MESSAGE, REQUEUE_FAILURE_MESSAGE, RESOLVE_DONE_FAILURE_MESSAGE,
+  createDesktopFeature, featureFailureMessage, moveDesktopTask,
+  reorderDesktopQueueTask, requeueDesktopTask, resolveDesktopTaskDone, setDesktopGateThreshold, setDesktopQueue, setDesktopQueueSchedule, type TaskActionResult, type TaskMove,
 } from "./task-desktop";
 
 // Board edits made in the desktop app. A card move is optimistic: it is drawn in its new place at once and rolled
-// back, with one fixed message, only if the monitor refuses it. Column and feature actions are not optimistic; they
+// back, with one fixed message, only if the monitor refuses it. Feature, queue and resolve actions are not optimistic; they
 // wait for the committed board before the control returns. Actions run one at a time, in the order they were made.
 
 /** An acknowledged move that the committed board has not shown yet is dropped after this long, the polling interval. */
@@ -24,17 +24,11 @@ export type TaskBoardEdits = {
   board: TaskBoard;
   /** A fixed message for the last failed action, until the next action starts. */
   failure: string | null;
-  /** A column action is waiting for the monitor. */
+  /** A waited action is waiting for the monitor. */
   busy: boolean;
   /** Counts finished actions, so a view can restore focus once an action settled or was rolled back. */
   settled: number;
   moveTask(move: TaskMove): Promise<boolean>;
-  addColumn(name: string): Promise<boolean>;
-  renameColumn(id: string, name: string): Promise<boolean>;
-  moveColumn(id: string, position: number): Promise<boolean>;
-  deleteColumn(id: string): Promise<boolean>;
-  /** Sets which state change moves cards to a column, or none; waits for the committed board. */
-  setColumnRole(id: string, role: TaskColumnRole | null): Promise<boolean>;
   /** Creates a feature from the board's filter row; the committed board then lists it. */
   addFeature(name: string): Promise<boolean>;
   /** Moves a queued task of a feature to a step (the Queue view); waits for the committed board. */
@@ -47,8 +41,6 @@ export type TaskBoardEdits = {
   setQueueSchedule(schedule: TaskQueueSchedule): Promise<boolean>;
   /** Resolves the task holding the queue: accept it as done, or send it back to the queue; waits for the committed board. */
   resolveTask(id: string, done: boolean): Promise<boolean>;
-  /** Shows a fixed message for an input the board refused before sending anything. */
-  reject(message: string): void;
 };
 
 function withMoves(board: TaskBoard, pending: PendingMove[]) {
@@ -136,7 +128,6 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
       return result.ok;
     });
   }, [enqueue, refresh]);
-  const columnAction = useCallback((action: ColumnAction, send: () => Promise<TaskActionResult>) => waitedAction(send, (error) => columnFailureMessage(action, error)), [waitedAction]);
 
   return {
     board: display,
@@ -144,11 +135,6 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     busy: running > 0,
     settled,
     moveTask,
-    addColumn: useCallback((name: string) => columnAction("create", () => createDesktopColumn(repositoryId, name)), [columnAction, repositoryId]),
-    renameColumn: useCallback((id: string, name: string) => columnAction("rename", () => renameDesktopColumn(repositoryId, id, name)), [columnAction, repositoryId]),
-    moveColumn: useCallback((id: string, position: number) => columnAction("reorder", () => reorderDesktopColumn(repositoryId, id, position)), [columnAction, repositoryId]),
-    deleteColumn: useCallback((id: string) => columnAction("delete", () => deleteDesktopColumn(repositoryId, id)), [columnAction, repositoryId]),
-    setColumnRole: useCallback((id: string, role: TaskColumnRole | null) => columnAction("role", () => setDesktopColumnRole(repositoryId, id, role)), [columnAction, repositoryId]),
     addFeature: useCallback((name: string) => waitedAction(() => createDesktopFeature(repositoryId, name), featureFailureMessage), [waitedAction, repositoryId]),
     reorderQueueTask: useCallback((id: string, step: number) => waitedAction(() => reorderDesktopQueueTask(repositoryId, id, step), () => QUEUE_REORDER_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     setQueue: useCallback((on: boolean) => waitedAction(() => setDesktopQueue(repositoryId, on), () => QUEUE_SETTINGS_FAILURE_MESSAGE), [waitedAction, repositoryId]),
@@ -156,6 +142,5 @@ export function useTaskBoardEdits(repositoryId: string, board: TaskBoard, refres
     setQueueSchedule: useCallback((schedule: TaskQueueSchedule) => waitedAction(() => setDesktopQueueSchedule(repositoryId, schedule), () => QUEUE_SCHEDULE_FAILURE_MESSAGE), [waitedAction, repositoryId]),
     resolveTask: useCallback((id: string, done: boolean) => waitedAction(() => done ? resolveDesktopTaskDone(repositoryId, id) : requeueDesktopTask(repositoryId, id),
       () => done ? RESOLVE_DONE_FAILURE_MESSAGE : REQUEUE_FAILURE_MESSAGE), [waitedAction, repositoryId]),
-    reject: useCallback((message: string) => setFailure(message), []),
   };
 }

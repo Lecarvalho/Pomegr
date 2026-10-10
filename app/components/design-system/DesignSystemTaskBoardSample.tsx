@@ -2,7 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { createEmptyTaskBoard, type Task } from "../../../shared/task-contract";
-import { AddColumnAction } from "../tasks/AddColumnAction";
 import { CapacityStrip } from "../tasks/CapacityStrip";
 import { FeatureFilter } from "../tasks/FeatureFilter";
 import { TaskBoardView } from "../tasks/TaskBoardView";
@@ -53,14 +52,8 @@ export function TaskBoardSection() {
       <Sample label="Card, desktop app" note="The title opens the Task panel, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
         <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
-      <Sample label="Column header" note="The name and a data-font count. Read-only in a browser.">
-        <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-readonly" index={2} columnCount={5} taskCount={1} onMove={noop} onDeleted={noop} /></Frame>
-      </Sample>
-      <Sample label="Column header, desktop app" note="One Icon-role action opens the inline editor: rename, move left or right, the state change that moves cards here, and Delete column, unavailable with its reason while the column holds tasks.">
-        <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress", role: "in_progress" }} headingId="design-system-column-desktop" index={2} columnCount={5} taskCount={1} edits={EDITS} onMove={noop} onDeleted={noop} /></Frame>
-      </Sample>
-      <Sample label="Add column" note="Secondary role in the pane head, beside the queue switch and New task. It swaps in a one-line form.">
-        <Frame><AddColumnAction edits={EDITS} full={false} /></Frame>
+      <Sample label="Column header" note="The name and a data-font count, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
+        <Frame><TaskColumnHeader column={{ id: "col-progress", name: "In progress" }} headingId="design-system-column-header" taskCount={1} /></Frame>
       </Sample>
     </div>
     <div className="designSystemGrid">
@@ -80,7 +73,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (queue on)" note="Cards open the Task panel and move by drag or keyboard, columns have their editor, and the footnote explains dragging.">
+      <Sample label="Board, desktop app (queue on)" note="Cards open the Task panel and move by drag or keyboard, and the footnote explains dragging.">
         <Frame><div className="repositoryTasksTab"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} /></div></Frame>
       </Sample>
     </div>

@@ -27,6 +27,7 @@ import {
   isTaskId,
   normalizeBlockReason,
   normalizeChecks,
+  STORED_COLUMN_READ_BOUNDS,
   normalizeColumnName,
   normalizeDoneWhen,
   normalizeFeatureName,
@@ -82,8 +83,8 @@ test("the monitor's mirrored constants match shared/task-contract.ts", () => {
 
 test("the contract's bounds are the product owner's bounds", () => {
   assert.deepEqual({ ...CONTRACT_BOUNDS }, {
-    tasksPerRepository: 500, columnsPerRepository: 12, featuresPerRepository: 50, textLength: 4000,
-    ownConditionLength: 500, columnNameLength: 40, featureNameLength: 80, blockReasonLength: 200, modelIdentifierLength: 120,
+    tasksPerRepository: 500, featuresPerRepository: 50, textLength: 4000,
+    ownConditionLength: 500, featureNameLength: 80, blockReasonLength: 200, modelIdentifierLength: 120,
   });
   assert.deepEqual([...CONTRACT_DEFAULT_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
 });
@@ -124,8 +125,8 @@ test("the own condition, block reason, and names enforce their own bounds", () =
   assert.equal(normalizeBlockReason("two\nlines"), undefined);
 
   assert.equal(normalizeColumnName(" Review "), "Review");
-  assert.equal(normalizeColumnName("x".repeat(TASK_BOUNDS.columnNameLength)).length, TASK_BOUNDS.columnNameLength);
-  for (const value of ["", "  ", "x".repeat(TASK_BOUNDS.columnNameLength + 1), "a\nb", "a\u0007b", null, 3]) {
+  assert.equal(normalizeColumnName("x".repeat(STORED_COLUMN_READ_BOUNDS.nameLength)).length, STORED_COLUMN_READ_BOUNDS.nameLength);
+  for (const value of ["", "  ", "x".repeat(STORED_COLUMN_READ_BOUNDS.nameLength + 1), "a\nb", "a\u0007b", null, 3]) {
     assert.equal(normalizeColumnName(value), undefined, JSON.stringify(value));
   }
 
@@ -287,8 +288,8 @@ test("a board with inconsistent or out-of-bound rows is not projected", () => {
   assert.equal(projectBoard(REPOSITORY, { ...base, tasks: [storedTask({ text: "" })] }), undefined);
 
   const columns = (count) => Array.from({ length: count }, (_, index) => ({ id: `col-${index.toString(16).padStart(12, "0")}`, name: `C${index}`, position: index }));
-  assert.equal(projectBoard(REPOSITORY, { ...base, columns: columns(TASK_BOUNDS.columnsPerRepository) }).columns.length, 12);
-  assert.equal(projectBoard(REPOSITORY, { ...base, columns: columns(TASK_BOUNDS.columnsPerRepository + 1) }), undefined);
+  assert.equal(projectBoard(REPOSITORY, { ...base, columns: columns(STORED_COLUMN_READ_BOUNDS.columns) }).columns.length, 12);
+  assert.equal(projectBoard(REPOSITORY, { ...base, columns: columns(STORED_COLUMN_READ_BOUNDS.columns + 1) }), undefined);
   const features = (count) => Array.from({ length: count }, (_, index) => ({ id: `feat-${index.toString(16).padStart(12, "0")}`, name: `F${index}` }));
   assert.equal(projectBoard(REPOSITORY, { ...base, features: features(TASK_BOUNDS.featuresPerRepository) }).features.length, 50);
   assert.equal(projectBoard(REPOSITORY, { ...base, features: features(TASK_BOUNDS.featuresPerRepository + 1) }), undefined);

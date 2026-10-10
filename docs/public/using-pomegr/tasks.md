@@ -33,9 +33,9 @@ running session. Observing sessions works the same whether or not you use tasks.
 ## Create and organize tasks
 
 Open a repository (see [Repositories](repositories.md#open-a-repository)) and
-select **Tasks**. A new board has five columns: **Backlog**, **Ready**,
-**In progress**, **Review**, and **Done**. They are only places to arrange cards.
-Moving a card never changes its state.
+select **Tasks**. A board has five columns: **Backlog**, **Ready**,
+**In progress**, **Review**, and **Done**. You cannot add, rename, reorder, or
+delete a column. Moving a card never changes its state.
 
 ### Create a task
 
@@ -87,40 +87,37 @@ fact, the condition does not pass and the task lands in **Needs review**, even w
 it now holds. A command that is still running, such as a development server,
 keeps **Working tree clean** from passing until it ends.
 
-### Move cards and manage columns
+### Move cards
 
 - **Move a card.** Drag it to another column, or onto a card to place it before
   that card. Dragging is off while a feature filter is on.
 - **Move a card from the keyboard.** Focus the card to reveal four buttons, such
   as **Move T-3 up** and **Move T-3 to the next column** (T-3 is an example).
   Arrow keys move between the buttons.
-- **Manage columns.** **Add column** appends one. A column's **Edit column**
-  button renames it, moves it left or right, or offers **Delete column**, which
-  works only on an empty column and never on the last one.
 
 ### Cards Pomegr moves
 
 Pomegr moves a card to another column when its task changes state:
 
-| When | The card moves to the column set to |
+| When | The card moves to |
 | --- | --- |
-| The task's session starts and links to it | **When its session starts** |
-| The task becomes **Needs review** | **When it needs review** |
-| The task becomes **Done**, also through **Mark done** | **When it is done** |
+| The task's session starts and links to it | **In progress** |
+| The task becomes **Needs review** | **Review** |
+| The task becomes **Done**, also through **Mark done** | **Done** |
 
-- **Choose the columns.** Open a column's **Edit column** button and set **Pomegr
-  moves a card here**. One column holds each choice; choosing it for another column
-  takes it from the first. **Never** turns it off for that column. A new board
-  starts with **In progress**, **Review**, and **Done** set. A board you already
-  had starts with none, so set them once.
-- **No column is set.** The card stays where it is. Its chip still changes.
 - **Blocked by agent**, **Stalled**, and **Requeue task** do not move a card.
 - **You can still move a card by hand.** It stays where you put it until its
   task's next state change in the table, which moves it again.
 - The card lands last in its new column.
 
-A board holds up to 500 tasks, 12 columns, and 50 features. A column name is up
-to 40 characters and a feature name up to 80.
+A board holds up to 500 tasks and 50 features. A feature name is up to 80
+characters.
+
+A board you made before the columns were fixed keeps every task. A column you
+moved goes back to its place. A column you added or renamed is removed, and its
+cards move to the end of **Backlog** in the order they had. A renamed column
+that Pomegr moved cards to is the exception: it gets its fixed name back and
+keeps its cards.
 
 ## Read a task's state
 

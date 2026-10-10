@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RepositoryInventorySnapshot } from "../../shared/monitor-contract";
-import { TASK_BOUNDS, type Task, type TaskBoard } from "../../shared/task-contract";
+import type { Task, TaskBoard } from "../../shared/task-contract";
 
 const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
@@ -20,7 +20,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done, to the column set for that in the column's menu. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -88,11 +88,11 @@ function dragTo(from: string, target: HTMLElement, dataTransfer: Transfer = tran
 describe("without the desktop bridge", () => {
   beforeEach(() => setBridge(undefined));
 
-  it("draws no draggable card, move action, column control or footnote, and sends nothing", () => {
+  it("draws no draggable card, move action or footnote, and sends nothing", () => {
     render(<TasksTab repositoryId={repositoryId} />);
     expect(document.querySelector("[draggable]")).toBeNull();
     expect(screen.queryByRole("toolbar")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Add column|Edit column|Move / })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Move / })).not.toBeInTheDocument();
     expect(screen.queryByText(FOOTNOTE)).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     dragTo("T-1", column("Ready"));
@@ -104,14 +104,13 @@ describe("without the desktop bridge", () => {
     render(<TaskBoardView board={setBoard()} />);
     expect(document.querySelector("[draggable]")).toBeNull();
     expect(screen.queryAllByRole("button")).toEqual([]);
-    expect(renderToString(<TasksTab repositoryId={repositoryId} />)).not.toMatch(/draggable|Add column|Edit column|Move T-/);
+    expect(renderToString(<TasksTab repositoryId={repositoryId} />)).not.toMatch(/draggable|Move T-/);
   });
 
   it("treats a bridge without taskAction as no bridge", () => {
     setBridge({ getDesktopState: vi.fn() });
     render(<TasksTab repositoryId={repositoryId} />);
     expect(document.querySelector("[draggable]")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Add column" })).not.toBeInTheDocument();
   });
 });
 
@@ -418,241 +417,15 @@ describe("keyboard moves", () => {
   });
 });
 
-describe("managing columns", () => {
-  const edit = (name: string) => screen.getByRole("button", { name: `Edit column ${name}` });
-  async function openEditor(user: ReturnType<typeof userEvent.setup>, name: string) {
-    await user.click(edit(name));
-    return within(screen.getByRole("group", { name: `Edit column ${name}` }));
-  }
-
-  it("draws Add column as a Secondary action and Edit column controls only in the desktop app", () => {
+describe("fixed columns", () => {
+  it("draws no Add column button and no Edit column control, only each column's name and count", () => {
     render(<TasksTab repositoryId={repositoryId} />);
-    expect(screen.getByRole("button", { name: "Add column" })).toHaveClass("commandSecondaryAction");
-    expect(screen.getByRole("button", { name: "New task" })).toHaveClass("commandPrimaryAction");
-    for (const { name } of columns) expect(edit(name)).toHaveClass("commandIconAction");
-    expect(edit("Backlog")).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("adds a column by name, appended last", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: "Add column" }));
-    const input = screen.getByRole("textbox", { name: "Column name" });
-    expect(input).toHaveFocus();
-    expect(input).toHaveAttribute("maxlength", String(TASK_BOUNDS.columnNameLength));
-    expect(screen.getByRole("button", { name: "Add" })).toBeDisabled();
-    await user.type(input, "  Blocked  ");
-    await user.click(screen.getByRole("button", { name: "Add" }));
-    expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "column_create", { name: "Blocked" });
-    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Column name" })).not.toBeInTheDocument());
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Add column" })).toHaveFocus();
-    expect(alertText()).toBeNull();
-  });
-
-  it("submits with Enter, cancels with Escape or Cancel, and keeps the form when the add fails", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: "Add column" }));
-    await user.type(screen.getByRole("textbox", { name: "Column name" }), "Later{Escape}");
-    expect(screen.queryByRole("textbox", { name: "Column name" })).not.toBeInTheDocument();
-    expect(taskAction).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "Add column" }));
-    expect((screen.getByRole("textbox", { name: "Column name" }) as HTMLInputElement).value).toBe("");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("textbox", { name: "Column name" })).not.toBeInTheDocument();
-    taskAction.mockResolvedValueOnce({ ok: false, error: "invalid" });
-    await user.click(screen.getByRole("button", { name: "Add column" }));
-    await user.type(screen.getByRole("textbox", { name: "Column name" }), "Later{Enter}");
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "column_create", { name: "Later" });
-    await waitFor(() => expect(alertText()).toBe("The column could not be added."));
-    expect((screen.getByRole("textbox", { name: "Column name" }) as HTMLInputElement).value).toBe("Later");
-    expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it("makes Add column unavailable at twelve columns and says why", () => {
-    const many = Array.from({ length: TASK_BOUNDS.columnsPerRepository }, (_, position) => ({ id: `col-${position + 1}`, name: `Column ${position + 1}`, position }));
-    setBoard({ columns: many, tasks: [] });
-    render(<TasksTab repositoryId={repositoryId} />);
-    const add = screen.getByRole("button", { name: "Add column" });
-    expect(add).toBeDisabled();
-    expect(add).toHaveAccessibleDescription("The board holds 12 columns, the most it allows.");
-  });
-
-  it("says the board is full when the monitor answers limit", async () => {
-    taskAction.mockResolvedValueOnce({ ok: false, error: "limit" });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: "Add column" }));
-    await user.type(screen.getByRole("textbox", { name: "Column name" }), "One more{Enter}");
-    await waitFor(() => expect(alertText()).toBe("The board is full: it holds 12 columns."));
-  });
-
-  it("renames a column on Enter and on blur, once", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    let editor = await openEditor(user, "Ready");
-    const input = editor.getByRole("textbox", { name: "Column name" });
-    expect(input).toHaveFocus();
-    expect((input as HTMLInputElement).value).toBe("Ready");
-    expect(input).toHaveAttribute("maxlength", "40");
-    await user.clear(input);
-    await user.type(input, " Up next {Enter}");
-    expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "column_rename", { id: "col-2", name: "Up next" });
-    await user.click(screen.getByRole("heading", { name: "Backlog" }));
-    expect(taskAction).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    editor = within(screen.getByRole("group", { name: "Edit column Ready" }));
-    await user.clear(editor.getByRole("textbox", { name: "Column name" }));
-    await user.type(editor.getByRole("textbox", { name: "Column name" }), "Next");
-    await user.click(screen.getByRole("heading", { name: "Backlog" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_rename", { id: "col-2", name: "Next" });
-  });
-
-  it("refuses an empty name and discards a draft on Escape, sending nothing", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const editor = await openEditor(user, "Ready");
-    const input = editor.getByRole("textbox", { name: "Column name" }) as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, "   {Enter}");
-    expect(alertText()).toBe("The column needs a name.");
-    expect(input.value).toBe("Ready");
-    await user.type(input, " later{Escape}");
-    expect(screen.queryByRole("group", { name: "Edit column Ready" })).not.toBeInTheDocument();
-    expect(edit("Ready")).toHaveFocus();
-    expect(taskAction).not.toHaveBeenCalled();
-    await user.click(edit("Ready"));
-    expect((screen.getByRole("textbox", { name: "Column name" }) as HTMLInputElement).value).toBe("Ready");
-  });
-
-  it("restores the name and shows one fixed message when a rename fails", async () => {
-    taskAction.mockResolvedValueOnce({ ok: false, error: "invalid" });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const editor = await openEditor(user, "Ready");
-    const input = editor.getByRole("textbox", { name: "Column name" }) as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, "Taken{Enter}");
-    await waitFor(() => expect(alertText()).toBe("The column could not be renamed."));
-    expect(input.value).toBe("Ready");
-    expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
-  });
-
-  it("moves a column left or right and disables the moves at either end", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const backlog = await openEditor(user, "Backlog");
-    expect(backlog.getByRole("button", { name: "Move Backlog left" })).toBeDisabled();
-    await user.click(backlog.getByRole("button", { name: "Move Backlog right" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_reorder", { id: "col-1", position: 1 });
-    const ready = await openEditor(user, "Ready");
-    await user.click(ready.getByRole("button", { name: "Move Ready left" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_reorder", { id: "col-2", position: 0 });
-    const done = await openEditor(user, "Done");
-    expect(done.getByRole("button", { name: "Move Done right" })).toBeDisabled();
-    await user.click(done.getByRole("button", { name: "Move Done left" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_reorder", { id: "col-3", position: 1 });
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(3));
-    expect(alertText()).toBeNull();
-  });
-
-  it("shows which state change moves cards to a column and sends column_role when it changes", async () => {
-    setBoard({ columns: columns.map((entry) => ({ ...entry, role: entry.name === "Done" ? "done" as const : null })) });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const done = await openEditor(user, "Done");
-    expect(done.getByRole("combobox", { name: "Pomegr moves a card here: Done" })).toHaveTextContent("When it is done");
-    const ready = await openEditor(user, "Ready");
-    const select = ready.getByRole("combobox", { name: "Pomegr moves a card here: Ready" });
-    // A board from an older monitor serves no role, which reads as Never.
-    expect(select).toHaveTextContent("Never");
-    await user.click(select);
-    await user.click(screen.getByRole("option", { name: "When it needs review" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_role", { id: "col-2", role: "review" });
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    await user.click(done.getByRole("combobox", { name: "Pomegr moves a card here: Done" }));
-    await user.click(screen.getByRole("option", { name: "Never" }));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "column_role", { id: "col-3", role: null });
-    expect(alertText()).toBeNull();
-  });
-
-  it("shows one fixed message when the monitor refuses a role change", async () => {
-    taskAction.mockResolvedValueOnce({ ok: false, error: "not_found" });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const ready = await openEditor(user, "Ready");
-    await user.click(ready.getByRole("combobox", { name: "Pomegr moves a card here: Ready" }));
-    await user.click(screen.getByRole("option", { name: "When its session starts" }));
-    await waitFor(() => expect(alertText()).toBe("The column's automatic move could not be changed."));
-    expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it("offers delete but keeps it unavailable while the column holds tasks, with the reason", async () => {
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const backlog = await openEditor(user, "Backlog");
-    const remove = backlog.getByRole("button", { name: "Delete column Backlog" });
-    expect(remove).toBeDisabled();
-    expect(remove).toHaveAccessibleDescription("A column must be empty to be deleted.");
-    await user.click(remove);
-    expect(taskAction).not.toHaveBeenCalled();
-  });
-
-  it("deletes an empty column, and an emptied column once its last card has moved out", async () => {
-    setBoard({ tasks: [task(1)] });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const ready = await openEditor(user, "Ready");
-    await user.click(ready.getByRole("button", { name: "Delete column Ready" }));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "column_delete", { id: "col-2" });
-    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("region", { name: "Task board" })).toHaveFocus();
-    // Backlog holds T-1 until it is moved out; the optimistic board then offers the delete.
-    await user.click(screen.getByRole("button", { name: "Move T-1 to the next column" }));
-    const backlog = await openEditor(user, "Backlog");
-    expect(backlog.getByRole("button", { name: "Delete column Backlog" })).toBeEnabled();
-  });
-
-  it("shows one fixed message when the monitor refuses a delete", async () => {
-    setBoard({ tasks: [] });
-    taskAction.mockResolvedValueOnce({ ok: false, error: "conflict" });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const done = await openEditor(user, "Done");
-    await user.click(done.getByRole("button", { name: "Delete column Done" }));
-    await waitFor(() => expect(alertText()).toBe("The column could not be deleted. It must be empty, and a board keeps one column."));
-    expect(refresh).not.toHaveBeenCalled();
-    expect(screen.getByRole("heading", { name: "Done" })).toBeInTheDocument();
-  });
-
-  it("never offers to delete the last column", async () => {
-    setBoard({ columns: [columns[0]], tasks: [] });
-    const user = userEvent.setup();
-    render(<TasksTab repositoryId={repositoryId} />);
-    const only = await openEditor(user, "Backlog");
-    const remove = only.getByRole("button", { name: "Delete column Backlog" });
-    expect(remove).toBeDisabled();
-    expect(remove).toHaveAccessibleDescription("A board keeps at least one column.");
-    expect(only.getByRole("button", { name: "Move Backlog left" })).toBeDisabled();
-    expect(only.getByRole("button", { name: "Move Backlog right" })).toBeDisabled();
-  });
-
-  it("keeps focus on the used move control when the column is re-drawn in its new place", async () => {
-    const user = userEvent.setup();
-    const view = render(<TasksTab repositoryId={repositoryId} />);
-    // The monitor's committed board lists Ready first by the time the refresh resolves.
-    refresh.mockImplementationOnce(async () => {
-      setBoard({ columns: [{ id: "col-2", name: "Ready", position: 0 }, { id: "col-1", name: "Backlog", position: 1 }, columns[2]] });
-      view.rerender(<TasksTab repositoryId={repositoryId} />);
+    expect(screen.queryByRole("button", { name: /Add column|Edit column|Delete column/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /Edit column/ })).not.toBeInTheDocument();
+    const headers = [...document.querySelectorAll(".taskColumn")].map((section) => {
+      const header = section.querySelector("header")!;
+      return [header.querySelector("h3")?.textContent, header.querySelector(".taskColumnCount")?.firstChild?.textContent, header.querySelectorAll("button").length];
     });
-    const ready = await openEditor(user, "Ready");
-    await user.click(ready.getByRole("button", { name: "Move Ready left" }));
-    await waitFor(() => expect([...document.querySelectorAll(".taskColumn h3")].map((heading) => heading.textContent)).toEqual(["Ready", "Backlog", "Done"]));
-    // Left is now unavailable for Ready, so focus falls to the control that still works.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Move Ready right" })).toHaveFocus());
-    expect(screen.getByRole("group", { name: "Edit column Ready" })).toBeInTheDocument();
+    expect(headers).toEqual([["Backlog", "3", 0], ["Ready", "1", 0], ["Done", "1", 0]]);
   });
 });

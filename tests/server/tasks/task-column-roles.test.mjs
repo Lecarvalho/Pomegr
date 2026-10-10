@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { DEFAULT_TASK_COLUMN_ROLES as CONTRACT_DEFAULT_ROLES, TASK_COLUMN_ROLES as CONTRACT_ROLES } from "../../../shared/task-contract.ts";
-import { DEFAULT_TASK_COLUMN_ROLES, TASK_COLUMN_ROLES, normalizeColumnRolePayload, normalizeStoredColumn } from "../../../server/tasks/task-record.mjs";
+import { DEFAULT_TASK_COLUMN_ROLES, TASK_COLUMN_ROLES, normalizeStoredColumn } from "../../../server/tasks/task-record.mjs";
 import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 import { FACTS, REPOSITORY, passingGates, removeDirectory } from "./queue-test-support.mjs";
 
@@ -55,10 +55,6 @@ test("the role constants match the contract and a stored column carries a fixed 
   assert.equal(normalizeStoredColumn({ ...row, role: "review" }).role, "review");
   assert.equal(normalizeStoredColumn(row).role, null);
   assert.equal(normalizeStoredColumn({ ...row, role: "Review" }), undefined);
-  assert.deepEqual(normalizeColumnRolePayload({ id: row.id, role: null }), { id: row.id, role: null });
-  for (const payload of [{ id: row.id }, { id: row.id, role: "ready" }, { id: "col-1", role: "done" }, { id: row.id, role: "done", name: "x" }, null]) {
-    assert.equal(normalizeColumnRolePayload(payload), undefined, JSON.stringify(payload));
-  }
 });
 
 test("a new board has the roles on its In progress, Review, and Done columns", async (context) => {
@@ -150,45 +146,16 @@ test("a card already in the role's column keeps its place", async (context) => {
   assert.deepEqual(cardsIn(env, "In progress"), [first, second]);
 });
 
-test("column_role gives a role to one column, takes it from the other, and moves no card", async (context) => {
-  const env = await setup(context);
-  const id = create(env);
-  const ready = columnNamed(env, "Ready").id;
-  assert.equal(apply(env, "column_role", { id: ready, role: "in_progress" }).ok, true);
-  assert.deepEqual(board(env).columns.map((column) => column.role), [null, "in_progress", null, "review", "done"]);
-  // A column holds one role: its earlier one goes.
-  assert.equal(apply(env, "column_role", { id: ready, role: "done" }).ok, true);
-  assert.deepEqual(board(env).columns.map((column) => column.role), [null, "done", null, "review", null]);
-  assert.deepEqual(cardsIn(env, "Backlog"), [id]);
-  assert.equal(apply(env, "column_role", { id: ready, role: null }).ok, true);
-  assert.deepEqual(board(env).columns.map((column) => column.role), [null, null, null, "review", null]);
-  assert.deepEqual(apply(env, "column_role", { id: "col-ffffffffffff", role: "done" }), { ok: false, error: "not_found" });
-  for (const payload of [{ id: ready }, { id: ready, role: "ready" }, { role: "done" }, { id: ready, role: "done", extra: 1 }]) {
-    assert.deepEqual(apply(env, "column_role", payload), { ok: false, error: "invalid" }, JSON.stringify(payload));
-  }
-});
-
-test("with no column holding the role the state changes and the card stays", async (context) => {
-  const env = await setup(context);
-  for (const name of ["In progress", "Done"]) assert.equal(apply(env, "column_role", { id: columnNamed(env, name).id, role: null }).ok, true);
-  const id = create(env);
-  link(env, id);
-  assert.deepEqual(cardsIn(env, "Backlog"), [id]);
-  assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "done");
-  assert.equal(taskOf(env, id).state, "done");
-  assert.deepEqual(cardsIn(env, "Backlog"), [id]);
-});
-
-test("a renamed and reordered column keeps its role, and a deleted column's role is removed", async (context) => {
+test("every column action is refused, so the roles stay on In progress, Review, and Done", async (context) => {
   const env = await setup(context);
   const done = columnNamed(env, "Done").id;
-  assert.equal(apply(env, "column_rename", { id: done, name: "Shipped" }).ok, true);
-  assert.equal(apply(env, "column_reorder", { id: done, position: 0 }).ok, true);
+  for (const [action, payload] of [["column_role", { id: done, role: null }], ["column_rename", { id: done, name: "Shipped" }], ["column_reorder", { id: done, position: 0 }], ["column_delete", { id: done }]]) {
+    assert.deepEqual(apply(env, action, payload), { ok: false, error: "unsupported" }, action);
+  }
   const id = create(env);
   link(env, id);
   assert.equal(env.store.completeTask({ sessionId: SESSION }, () => null).state, "done");
-  assert.deepEqual(cardsIn(env, "Shipped"), [id]);
-  assert.equal(apply(env, "column_delete", { id: columnNamed(env, "Review").id }).ok, true);
-  assert.deepEqual(metaKeys(env), ["done", "in_progress"].map((role) => `column_role:${REPOSITORY}:${role}`));
-  assert.deepEqual(board(env).columns.map((column) => column.role), ["done", null, null, "in_progress"]);
+  assert.deepEqual(cardsIn(env, "Done"), [id]);
+  assert.deepEqual(board(env).columns.map((column) => column.role), [null, null, "in_progress", "review", "done"]);
+  assert.deepEqual(metaKeys(env), ["done", "in_progress", "review"].map((role) => `column_role:${REPOSITORY}:${role}`));
 });
