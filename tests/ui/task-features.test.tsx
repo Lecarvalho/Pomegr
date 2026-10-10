@@ -434,40 +434,43 @@ describe("Feature filter and card feature line", () => {
     expect(within(screen.getByRole("group", { name: "Filter by feature" })).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
   });
 
-  it("counts tasks per chip, presses All first, and hides non-matching cards in every column", async () => {
-    const user = userEvent.setup();
+  it("counts tasks per option, selects All first, and hides non-matching cards in every column", async () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Filter by feature" });
     expect(within(group).getByText("Feature")).toBeInTheDocument();
-    expect(within(group).getAllByRole("button").map((button) => button.textContent?.replace(/\s+/g, " ").trim())).toEqual([
-      "All 10", "Task board v1 8", "Finished work 1", "Docs 0", "No feature 1", "+ New feature",
-    ]);
-    expect(within(group).getByRole("button", { name: "All 10" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "Task board v1 8" })).toHaveAttribute("aria-pressed", "false");
+    const select = within(group).getByRole("combobox", { name: "Feature" });
+    expect(select).toHaveTextContent("All (10)");
+    expect(optionLabels(select)).toEqual(["All (10)", "Task board v1 (8)", "Finished work (1)", "Docs (0)", "No feature (1)"]);
+    expect(within(group).getByRole("button", { name: "+ New feature" })).toBeInTheDocument();
 
-    await user.click(within(group).getByRole("button", { name: "Task board v1 8" }));
-    expect(within(group).getByRole("button", { name: "Task board v1 8" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(group).getByRole("button", { name: "All 10" })).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(select);
+    expect(screen.getByRole("option", { name: "All (10)" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: "Task board v1 (8)" })).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(select);
+
+    chooseCommandOption(select, "Task board v1 (8)");
+    expect(select).toHaveTextContent("Task board v1 (8)");
     expect(cardIds()).toEqual(["T-1", "T-2", "T-3", "T-4", "T-7", "T-8", "T-9", "T-10"]);
     expect(within(column("Backlog")).getAllByRole("listitem")).toHaveLength(3);
     expect(within(column("Ready")).getAllByRole("listitem")).toHaveLength(5);
 
-    await user.click(within(group).getByRole("button", { name: "No feature 1" }));
+    chooseCommandOption(select, "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
-    await user.click(within(group).getByRole("button", { name: "All 10" }));
+    chooseCommandOption(select, "All (10)");
+    expect(select).toHaveTextContent("All (10)");
     expect(cardIds()).toHaveLength(10);
   });
 
-  it("turns card dragging and the move toolbar off while a feature filter is on", async () => {
-    const user = userEvent.setup();
+  it("turns card dragging and the move toolbar off while a feature filter is on", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
+    const select = within(screen.getByRole("group", { name: "Filter by feature" })).getByRole("combobox", { name: "Feature" });
     expect(card("T-2")).toHaveAttribute("draggable", "true");
     expect(card("T-2").querySelector(".taskCardMoves")).not.toBeNull();
-    await user.click(screen.getByRole("button", { name: "Task board v1 8" }));
+    chooseCommandOption(select, "Task board v1 (8)");
     expect(card("T-2")).not.toHaveAttribute("draggable");
     expect(card("T-2").querySelector(".taskCardMoves")).toBeNull();
     expect(screen.getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "All 10" }));
+    chooseCommandOption(select, "All (10)");
     expect(card("T-2")).toHaveAttribute("draggable", "true");
     expect(screen.queryByText("Moving cards is off while a feature filter is on.")).not.toBeInTheDocument();
   });
@@ -509,15 +512,15 @@ describe("Feature filter and card feature line", () => {
 describe("without the desktop bridge", () => {
   beforeEach(() => setBridge(undefined));
 
-  it("reads: the filter row and card lines show, and no mutation control is drawn", async () => {
-    const user = userEvent.setup();
+  it("reads: the filter row and card lines show, and no mutation control is drawn", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const group = screen.getByRole("group", { name: "Filter by feature" });
     expect(within(group).queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Feature" })).not.toBeInTheDocument();
+    // The filter is the only Feature select: no Task modal field is drawn outside it.
+    expect(screen.getAllByRole("combobox", { name: "Feature" })).toEqual([within(group).getByRole("combobox", { name: "Feature" })]);
     expect(within(card("T-2")).getByText("Task board v1 · step 2 of 4 · parallel")).toBeInTheDocument();
-    await user.click(within(group).getByRole("button", { name: "No feature 1" }));
+    chooseCommandOption(within(group).getByRole("combobox", { name: "Feature" }), "No feature (1)");
     expect(cardIds()).toEqual(["T-6"]);
     expect(card("T-6")).not.toHaveAttribute("draggable");
     expect(screen.queryByText(/Moving cards is off/)).not.toBeInTheDocument();

@@ -7,6 +7,12 @@
  * `repositoryId` are meant to reach the browser. Callers must never forward `root`
  * outside monitor-private bookkeeping.
  *
+ * Decided by the product owner on 2026-10-10: a linked Git worktree belongs to its main
+ * repository. The resolver answers the main repository's ID for a directory inside a
+ * worktree, with `root` the worktree's own top level and `mainRoot` the main repository's
+ * folder. The project label is the main repository's name; `root` stays the checkout the
+ * session works in, so its Git state is read there and never from the main checkout.
+ *
  * Resolution order:
  *   1. Two or more distinct proven mutation repositories -> "multiple". Permanent
  *      ambiguity: no single-repository project or Git branch summary.
@@ -25,8 +31,9 @@
  *
  * `recordedBranch` is kept only when it validates against the resolved root: the
  * resolver's own (non-`requireGit`) identity for `launchCwd` must match the
- * resolved repository. A branch recorded for a different launch directory than the
- * one that was actually mutated is never attributed to the mutated repository.
+ * resolved repository and, when both name a root, the same checkout. A branch recorded
+ * for a different launch directory than the one that was actually mutated (another
+ * repository, or another checkout of the same one) is never attributed to it.
  */
 
 import os from "node:os";
@@ -51,6 +58,16 @@ function normalizeProvenRepositories(value) {
     }
   }
   return result;
+}
+
+/** The folder that names a resolved repository: its main root when the resolver gave one. */
+function namingRoot(entry) {
+  return typeof entry?.mainRoot === "string" && entry.mainRoot ? entry.mainRoot : entry.root;
+}
+
+function sameCheckout(left, right) {
+  const a = path.resolve(left); const b = path.resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 }
 
 function basenameOf(directory) {
@@ -102,8 +119,8 @@ function boundedResolve(resolveRepository, cwd, options, timeoutMs) {
  * @param {{
  *   launchCwd?: string|null,
  *   recordedBranch?: string|null,
- *   provenRepositories?: Map<string, { repositoryId: string, root: string }> | Iterable<{ repositoryId: string, root: string }> | null,
- *   resolveRepository?: (cwd: string, options?: { requireGit?: boolean }) => Promise<{ repositoryId: string, root: string } | null> | { repositoryId: string, root: string } | null,
+ *   provenRepositories?: Map<string, { repositoryId: string, root: string, mainRoot?: string }> | Iterable<{ repositoryId: string, root: string, mainRoot?: string }> | null,
+ *   resolveRepository?: (cwd: string, options?: { requireGit?: boolean }) => Promise<{ repositoryId: string, root: string, mainRoot?: string } | null> | { repositoryId: string, root: string, mainRoot?: string } | null,
  *   resolverTimeoutMs?: number,
  * }} [input]
  * @returns {Promise<{ state: "single"|"multiple"|"unknown", repositoryId: string|null, project: string, recordedBranch: string|null, root: string|null }>}
@@ -136,9 +153,9 @@ export async function resolveSessionIdentity({
   ]);
 
   const resolved = provenMatch
-    ? { repositoryId: provenMatch.repositoryId, root: provenMatch.root }
+    ? { repositoryId: provenMatch.repositoryId, root: provenMatch.root, namingRoot: namingRoot(provenMatch) }
     : (launchRepository && launchRepository !== UNANSWERED && typeof launchRepository.repositoryId === "string" && typeof launchRepository.root === "string"
-      ? { repositoryId: launchRepository.repositoryId, root: launchRepository.root }
+      ? { repositoryId: launchRepository.repositoryId, root: launchRepository.root, namingRoot: namingRoot(launchRepository) }
       : null);
 
   if (!resolved) {
@@ -149,13 +166,16 @@ export async function resolveSessionIdentity({
     return { state: "unknown", repositoryId: null, project: (answeredNotGit && launchDirectoryName(launchCwd)) || UNKNOWN_PROJECT, recordedBranch: null, root: null };
   }
 
+  // One repository ID can hold several checkouts (a main checkout and its linked worktrees),
+  // each on its own branch: the launch branch describes the launch checkout only.
   const validatedBranch = hasBranchCandidate && launchIdentity !== UNANSWERED
-    && launchIdentity?.repositoryId === resolved.repositoryId ? recordedBranch : null;
+    && launchIdentity?.repositoryId === resolved.repositoryId
+    && (typeof launchIdentity.root !== "string" || sameCheckout(launchIdentity.root, resolved.root)) ? recordedBranch : null;
 
   return {
     state: "single",
     repositoryId: resolved.repositoryId,
-    project: basenameOf(resolved.root) || FALLBACK_PROJECT,
+    project: basenameOf(resolved.namingRoot) || FALLBACK_PROJECT,
     recordedBranch: validatedBranch,
     root: resolved.root,
   };

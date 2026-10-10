@@ -26,6 +26,36 @@
 /* A column is a lane (G26-G30): the raised fill with a rule, cards stay on the panel fill. The contract draws it 680px
    tall for its frame; that has no token, so the lane keeps its 240px minimum and the grid stretches all five to the tallest. */
 .taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }
+/* On the Tasks page the board takes exactly the height the window leaves (product owner, 2026-10-10): the page is a
+   column as tall as the shell's main area, the board region takes what the header, gates and footnote leave, and each
+   lane scrolls its own cards, so its header and + New task stay in view and the page itself does not scroll. The
+   main area's bottom padding is the gap under the lanes. Phones keep growing lanes and the page scroll. */
+.tasksPage .taskBoardSkeletonColumn { min-height: max(240px, calc(100dvh - 18rem)); }
+@media (min-width: 761px) {
+  /* The shell is only at least as tall as the window, so its main area has no height to fill; with the board on
+     the page it is exactly the window, which gives the main area, and the page inside it, a height. */
+  .commandShell:has(.tasksPage .taskBoardScroller) { height: 100dvh; }
+  .tasksPage:has(.taskBoardScroller) { height: 100%; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskBoardScroller) .tasksPageBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* Only the board region gives way: the header and the lines above the board keep their height. */
+  .tasksPage:has(.taskBoardScroller) > :not(.tasksPageBody), .tasksPage:has(.taskBoardScroller) .tasksPageBody > :not(.taskBoardScroller) { flex: 0 0 auto; }
+  .tasksPage .taskBoardScroller { flex: 1 1 0; min-height: 240px; }
+  .tasksPage .taskBoardGrid { height: 100%; grid-template-rows: minmax(0, 1fr); }
+  .tasksPage .taskColumn { min-height: 0; }
+}
+/* The Queue view fits the window the same way once its two columns sit side by side: the queue and the settings
+   each scroll on their own. Narrower, the settings wrap under the queue and the page scrolls. */
+@media (min-width: 1100px) {
+  .commandShell:has(.tasksPage .taskQueueRow) { height: 100dvh; }
+  .tasksPage:has(.taskQueueRow) { height: 100%; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskQueueRow) .tasksPageBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskQueueRow) > :not(.tasksPageBody), .tasksPage:has(.taskQueueRow) .tasksPageBody > :not(.taskQueueRow) { flex: 0 0 auto; }
+  .tasksPage .taskQueueRow { flex: 1 1 0; min-height: 240px; flex-wrap: nowrap; align-items: stretch; }
+  .tasksPage .taskQueueRow > :is(.taskQueueView, .taskQueueAside) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--space-1); scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+  .tasksPage .taskQueueRow > .taskQueueView { align-content: start; }
+  .tasksPage .taskQueueAside > * { flex: 0 0 auto; }
+}
+.tasksPage .taskColumnList { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px var(--space-1) 2px 2px; margin: -2px calc(-1 * var(--space-1)) -2px -2px; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 .taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-2); border-bottom: 1px solid var(--command-line); }
 .taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -123,6 +153,8 @@
 .taskModalScrim { box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: var(--space-8) var(--space-4) var(--space-6); border: 0; background: color-mix(in srgb, var(--color-text) 40%, transparent); color: var(--command-ink); overflow-y: auto; }
 .taskModalScrim[open] { display: flex; align-items: flex-start; justify-content: center; }
 .taskModalScrim:focus { outline: none; }
+/* Centred in the window; the auto margins keep the top of a panel taller than the window reachable by scrolling. */
+.taskModalScrim > .taskModal { margin-block: auto; }
 .taskModal { box-sizing: border-box; flex: 0 1 640px; width: 100%; max-width: 640px; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
 .taskModalHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6); border-bottom: 1px solid var(--command-line); }
 .taskModalTitleGroup { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
@@ -216,8 +248,10 @@
 
 /* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
 .taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskFeatureSelect { max-width: 320px; }
+.taskFeatureSelect .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+@media (max-width: 760px), (pointer: coarse) { .taskFeatureSelect .commandSelectTrigger { min-height: 44px; } }
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
-.taskFilterCount { color: var(--command-muted); font: 400 var(--text-xs)/1 var(--font-data); }
 .taskCardFeature { overflow-wrap: anywhere; }
 
 /* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is

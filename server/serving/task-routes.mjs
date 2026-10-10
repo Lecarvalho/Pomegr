@@ -433,9 +433,10 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, "unavailable");
       return;
     }
-    // A session started for a task adds to the board that holds that task, even when it runs in a task
-    // worktree whose committed repository identity is another one. The task store's link wins; it is
-    // read from the store alone, and a store that cannot answer leaves the committed identity in charge.
+    // A session started for a task adds to the board that holds that task, even when its committed
+    // repository identity is missing or another one (a task worktree whose folder is gone, for example).
+    // The task store's link wins; it is read from the store alone, and a store that cannot answer leaves
+    // the committed identity in charge.
     const linkedRepositoryId = linkedBoardRepositoryId(taskStore, body.sessionRef);
     let session = null;
     try {

@@ -13,7 +13,7 @@ const TOKEN = "a".repeat(40);
 const SECRET_TEXT = "AGENT-TASK-TEXT-do-not-leak";
 const SESSIONS = {
   "claude:known": REPOSITORY_ID, "claude:norepo": null,
-  // Committed under the worktree's own identity (or none), but started for a task of REPOSITORY.
+  // Committed under another identity (a task worktree whose folder is gone, for example) or none, but started for a task of REPOSITORY.
   "claude:worktree": "repo-ffffffffffffffffffffffff", "claude:worktree-norepo": null,
 };
 const headers = { "x-pomegr-agent-authorization": TOKEN, "content-type": "application/json" };
@@ -235,7 +235,7 @@ const addTo = (port, sessionRef, extra = {}) => send(port, { body: JSON.stringif
 test("a session linked to a task adds to the linked task's board, whatever repository it committed under", async (context) => {
   const { store } = await linkedStore(context, "claude:worktree", "claude:worktree-norepo", "claude:uncommitted");
   const { port } = await start(context, store);
-  // The committed identity of a task worktree differs from the repository whose board holds the task.
+  // A committed identity that differs from the repository whose board holds the task does not redirect the add.
   assert.deepEqual((await addTo(port, "claude:worktree")).json, { schemaVersion: 1, ok: true, taskId: "T-4" });
   // A committed session with no repository identity, and a linked session the monitor has not committed yet, still add.
   assert.deepEqual((await addTo(port, "claude:worktree-norepo")).json, { schemaVersion: 1, ok: true, taskId: "T-5" });
@@ -272,7 +272,7 @@ test("a store that cannot read the link leaves the committed identity in charge"
   const { store } = await linkedStore(context, "claude:worktree");
   const throwing = await start(context, { ...store, sessionTasks() { throw new Error("SECRET-LINK-FAILURE"); } });
   assert.equal((await addTo(throwing.port, "claude:known")).json.ok, true);
-  // Without the link the worktree's own committed identity is used, as before the link existed.
+  // Without the link the session's own committed identity is used, as before the link existed.
   assert.equal((await addTo(throwing.port, "claude:worktree")).json.ok, true);
   assert.equal(store.readBoard("repo-ffffffffffffffffffffffff").tasks.length, 1);
   const missing = await start(context, { apply: store.apply, readBoard: store.readBoard });

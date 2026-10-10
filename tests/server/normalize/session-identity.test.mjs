@@ -20,7 +20,7 @@ function makeResolver(roots, { onCall } = {}) {
     onCall?.(cwd, options);
     for (const [prefix, target] of Object.entries(roots)) {
       if (cwd === prefix || cwd.startsWith(`${prefix}/`) || cwd.startsWith(`${prefix}\\`)) {
-        return { repositoryId: target.repositoryId, root: target.root, ...(options.requireGit ? { recognized: true } : {}) };
+        return { repositoryId: target.repositoryId, root: target.root, ...(target.mainRoot ? { mainRoot: target.mainRoot } : {}), ...(options.requireGit ? { recognized: true } : {}) };
       }
     }
     if (options.requireGit) return null;
@@ -40,15 +40,43 @@ test("launch cwd inside a recognized Git repository names the project, including
   });
 });
 
-test("a worktree resolves to its own root independently of the main repository", async () => {
-  const resolveRepository = makeResolver({
-    "/repo/main": { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: "/repo/main" },
-    "/repo/worktrees/feature": { repositoryId: "repo-bbbbbbbbbbbbbbbbbbbbbbbb", root: "/repo/worktrees/feature" },
+// Product-owner decision, 2026-10-10: a linked worktree belongs to its main repository.
+const WORKTREE_ROOTS = {
+  "/repo/main": { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: "/repo/main", mainRoot: "/repo/main" },
+  "/data/task-worktrees/T-20": { repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: "/data/task-worktrees/T-20", mainRoot: "/repo/main" },
+};
+
+test("a linked worktree takes its main repository's identity and name and keeps its own root", async () => {
+  const resolveRepository = makeResolver(WORKTREE_ROOTS);
+  const identity = await resolveSessionIdentity({ launchCwd: "/data/task-worktrees/T-20/src", recordedBranch: "tasks/T-20", resolveRepository });
+  assert.deepEqual(identity, {
+    state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main", recordedBranch: "tasks/T-20", root: "/data/task-worktrees/T-20",
   });
-  const identity = await resolveSessionIdentity({ launchCwd: "/repo/worktrees/feature", resolveRepository });
-  assert.equal(identity.state, "single");
-  assert.equal(identity.repositoryId, "repo-bbbbbbbbbbbbbbbbbbbbbbbb");
-  assert.equal(identity.project, "feature");
+  const main = await resolveSessionIdentity({ launchCwd: "/repo/main", recordedBranch: "main", resolveRepository });
+  assert.deepEqual(main, { state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main", recordedBranch: "main", root: "/repo/main" });
+});
+
+test("a mutation proven in a worktree of the launch repository stays one repository, on the worktree's root and without the launch branch", async () => {
+  const resolveRepository = makeResolver(WORKTREE_ROOTS);
+  const identity = await resolveSessionIdentity({
+    launchCwd: "/repo/main", recordedBranch: "main", resolveRepository,
+    provenRepositories: [{ repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", root: "/data/task-worktrees/T-20", mainRoot: "/repo/main" }],
+  });
+  assert.deepEqual(identity, {
+    state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main", recordedBranch: null, root: "/data/task-worktrees/T-20",
+  });
+});
+
+test("the Codex attribution of a worktree session keeps the worktree root and names the main repository in its header", async () => {
+  const tracker = createCodexRepositoryAttributionTracker();
+  const resolveRepository = makeResolver(WORKTREE_ROOTS);
+  await tracker.resolveIdentity("thread-1", { launchCwd: "/data/task-worktrees/T-20", recordedBranch: "tasks/T-20", resolveRepository });
+  const attribution = tracker.get("thread-1");
+  assert.equal(attribution.root, "/data/task-worktrees/T-20");
+  assert.equal(attribution.repositoryId, "repo-aaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(attribution.recordedBranch, "tasks/T-20");
+  assert.deepEqual(await tracker.headerIdentity("thread-1", { launchCwd: "/data/task-worktrees/T-20", resolveRepository }),
+    { state: "single", repositoryId: "repo-aaaaaaaaaaaaaaaaaaaaaaaa", project: "main" });
 });
 
 test("a proven mutation inside the launch repository leaves the identity unchanged, including the branch", async () => {

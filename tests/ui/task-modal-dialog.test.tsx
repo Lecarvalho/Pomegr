@@ -113,7 +113,16 @@ describe("Task modal dialog, mode edit", () => {
     }
   });
 
-  it("does not close on a click on the scrim", async () => {
+  it("closes on a click on the scrim while the task has nothing to save", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await openReviewPanel(user);
+    await user.click(screen.getByRole("dialog", { name: "Task" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Task" })).not.toBeInTheDocument());
+    expect(taskAction).not.toHaveBeenCalled();
+  });
+
+  it("does not close on a click on the scrim with an unsaved draft", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const dialog = await openReviewPanel(user);

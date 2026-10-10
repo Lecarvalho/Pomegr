@@ -305,12 +305,20 @@ describe("Design-system reference page", () => {
     expect(within(readOnlyHeader).queryByRole("button")).toBeNull();
 
     const filter = sample(board, "Feature filter");
-    expect(within(filter).getByRole("button", { name: /^All/, pressed: true })).toHaveClass("commandSecondaryAction");
-    expect(within(filter).getByRole("button", { name: /^No feature/ })).toBeInTheDocument();
+    const filterSelect = within(filter).getByRole("combobox", { name: "Feature" });
+    expect(filterSelect).toHaveTextContent(/^All \(\d+\)$/);
+    expect(filterSelect.closest(".commandSelect")).toHaveClass("taskFeatureSelect");
+    await user.click(filterSelect);
+    const filterOptions = screen.getAllByRole("option").map((option) => option.textContent ?? "");
+    expect(filterOptions[0]).toMatch(/^All \(\d+\)$/);
+    expect(filterOptions.at(-1)).toMatch(/^No feature \(\d+\)$/);
+    await user.click(filterSelect);
     expect(within(filter).queryByRole("button", { name: "+ New feature" })).toBeNull();
     const desktopFilter = sample(board, "Feature filter, desktop app");
     expect(within(desktopFilter).getByRole("button", { name: "+ New feature" })).toHaveClass("commandQuietAction");
-    await user.click(within(desktopFilter).getByRole("button", { name: /^Upload reliability/ }));
+    await user.click(within(desktopFilter).getByRole("combobox", { name: "Feature" }));
+    await user.click(screen.getByRole("option", { name: /^Upload reliability \(\d+\)$/ }));
+    expect(within(desktopFilter).getByRole("combobox", { name: "Feature" })).toHaveTextContent(/^Upload reliability \(\d+\)$/);
     expect(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
 
     const strip = within(sample(board, "Capacity strip")).getByRole("region", { name: "Provider capacity" });

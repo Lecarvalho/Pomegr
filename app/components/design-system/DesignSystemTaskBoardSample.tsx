@@ -76,7 +76,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Feature filter" note="Toggle chips with a data-font count: All first, No feature last. Filtering is client state only.">
+      <Sample label="Feature filter" note="One select whose options carry a task count: All first, No feature last. Filtering is client state only.">
         <FilterSample desktop={false} />
       </Sample>
       <Sample label="Feature filter, desktop app" note="Adds the Quiet + New feature action. Choose a feature to see the line that says moving cards is off.">

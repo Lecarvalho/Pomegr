@@ -27,6 +27,7 @@ captured on 2026-09-30.*
 | **Desktop** | Chooses what happens **When closing the window**: **Ask**, **Keep in tray**, or **Quit**. | Desktop app only |
 | **Phone access** | Shares the dashboard, read-only, with a paired phone on your private network. See [Phone access](phone-access.md). | Desktop app only |
 | **Providers** | Chooses the Claude Code and Codex folders Pomegr observes. | Change in the desktop app; view in a browser |
+| **GitHub** | Shows whether the GitHub CLI is installed and signed in, and what your account can do in each repository. See [GitHub issues](github-issues.md#connect-github). | Desktop app only; a browser reads **Desktop managed** |
 | **Storage** | Limits how long and how large Pomegr's resource history grows. | Change in the desktop app; view in a browser |
 | **Data display** | Shows or hides the **API list-rate estimate**. | Desktop app and browser |
 | **About** | Shows the version, updates, privacy notes, and license. | Desktop app and browser; update controls only in the desktop app |

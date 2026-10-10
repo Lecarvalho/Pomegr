@@ -32,7 +32,7 @@ export type SessionDirectoryQuery = {
 export type SessionTaskReference = {
   /** "T-<n>", unique inside `repositoryId`. */
   id: string;
-  /** The repository whose board holds the task. A task worktree gives the session itself another repository ID. */
+  /** The repository whose board holds the task. A task worktree session has the same ID; a session's own ID can still be missing or differ. */
   repositoryId: string;
   /** An outcome the session's own state cannot show, else null. */
   state: "needs_review" | "stalled" | "blocked" | "done" | null;

@@ -54,6 +54,9 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
   const close = useCallback(() => setModal(null), []);
   const changed = useCallback(() => { void refresh(); }, [refresh]);
   const deleted = useCallback(() => { opener.current = trigger.current; setModal(null); }, []);
+  // A new task whose ticked GitHub issue failed: its own modal takes the place of New task so the reason is read. The
+  // board is already being read again; the modal draws once it holds the task, and closing still returns focus to the New task action.
+  const openCreated = useCallback((id: string) => { opener.current = trigger.current; setModal({ kind: "task", id }); }, []);
   const ready = board.readiness === "ready";
   const queueLine = queueStatusLine(board.queue.status);
   const openNew = useCallback(() => { opener.current = trigger.current; setModal({ kind: "new" }); }, []);
@@ -81,7 +84,7 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
     <div className="tasksPageBody">
       <TaskBoardView board={board} view={view} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined}
         newTask={desktop === "available" ? { triggerRef: trigger, onOpen: openNew } : undefined} />
-      {desktop === "available" && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onClose={close} />}
+      {desktop === "available" && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onIssueFailed={openCreated} onClose={close} />}
       {desktop === "available" && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}
     </div>
   </section>;

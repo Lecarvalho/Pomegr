@@ -51,7 +51,9 @@ state.
 3. Set the optional fields below.
 4. Select **Create task**. **Cancel** closes the window and writes nothing.
 
-The task lands in the first column and is not queued. Select a card to open its
+The task lands in the first column and is not queued. To start from an open GitHub
+issue, or to create an issue from a task, see [GitHub issues](github-issues.md).
+Select a card to open its
 task window, where your changes stay a draft until you select **Save**. **Save**
 is available once something differs from the stored task, and **Close** or
 **Escape** discards the draft. While a draft is unsaved, **Start session**, **Add
@@ -342,7 +344,8 @@ each condition's pass or fail and the block reason, never command output or diff
 On a same-computer browser or the desktop app, tasks show up beside the sessions
 started for them. Other devices see none of it.
 
-- **Sessions list.** The **Task** column shows the task number, its feature and
+- **Sessions list.** The **Task** column shows the task number, the number of its
+  [GitHub issue](github-issues.md) if it has one, its feature and
   step, and a chip only for **Needs review**, **Stalled**, or **Done**. **Group
   by** **Feature** and the **Feature** chip filter are described in
   [Sessions and agents](sessions-and-agents.md#find-a-session). A dash means you
@@ -365,7 +368,7 @@ started for them. Other devices see none of it.
 - Task text and your other task content stay in a private store on this computer,
   apart from session history, so pruning history never deletes a task. They are
   never in reports, notifications, or the session list, which carries only a task's
-  number, outcome, feature name, and step.
+  number, outcome, feature name, step, and GitHub issue number.
 
 For what the session list and states mean, see
 [Sessions and agents](sessions-and-agents.md); for which values are agent

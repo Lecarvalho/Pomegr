@@ -165,7 +165,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   };
 
   const resolveDisabled = resolving || dirty;
-  return <TaskModalFrame title="Task" subtitle={modalSubtitle(repositoryName, columnName)} onClose={onClose}
+  return <TaskModalFrame title="Task" subtitle={modalSubtitle(repositoryName, columnName)} closeOnScrim={!dirty} onClose={onClose}
     titleExtra={<>
       <span className="taskModalId">{task.id}</span>
       <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>

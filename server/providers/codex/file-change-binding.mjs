@@ -38,7 +38,9 @@ async function bindMutationTarget(target, cwd, resolver, forbiddenRoots) {
     || (resolved.recognized !== true && resolved.isGit !== true)) return null;
   const relative = path.relative(resolved.root, canonicalTarget);
   const safePath = repositoryRelativePath(relative, resolved.root, { forbiddenRoots });
-  return safePath ? { repositoryId: resolved.repositoryId, path: safePath, root: resolved.root } : null;
+  // `root` is the checkout the target is in (a linked worktree's own top level); `mainRoot` only names the repository.
+  const mainRoot = typeof resolved.mainRoot === "string" && path.isAbsolute(resolved.mainRoot) ? resolved.mainRoot : resolved.root;
+  return safePath ? { repositoryId: resolved.repositoryId, path: safePath, root: resolved.root, mainRoot } : null;
 }
 
 async function mapBounded(items, maximum, mapper) {
@@ -92,7 +94,7 @@ export async function bindCodexFileChanges(calls, options = {}) {
       if (seen.has(key)) continue;
       seen.add(key);
       if (typeof onRepositoryBinding === "function") {
-        try { onRepositoryBinding({ repositoryId: target.repositoryId, root: target.root, recognized: true }); } catch { /* isolated private consumer */ }
+        try { onRepositoryBinding({ repositoryId: target.repositoryId, root: target.root, mainRoot: target.mainRoot, recognized: true }); } catch { /* isolated private consumer */ }
       }
       changes.push({ repositoryId: target.repositoryId, path: target.path, kind: candidate.kind, previousPath });
     }
