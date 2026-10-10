@@ -160,7 +160,7 @@ export function normalizeChecks(value) {
   return TASK_CHECKS.filter((check) => value.includes(check));
 }
 
-export function normalizeDoneWhen(value) {
+export function normalizeCompleteWhen(value) {
   if (value === undefined || value === null) return { checks: [], own: null };
   if (!isPlainObject(value) || !hasOnlyKeys(value, ["checks", "own"])) return undefined;
   const checks = normalizeChecks(value.checks);
@@ -170,11 +170,11 @@ export function normalizeDoneWhen(value) {
 
 /** The user-authored fields of a new or edited task; nothing else is accepted. */
 export function normalizeTaskInput(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["text", "run", "doneWhen"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["text", "run", "completeWhen"])) return undefined;
   const text = normalizeTaskText(value.text);
   const run = normalizeRun(value.run);
-  const doneWhen = normalizeDoneWhen(value.doneWhen);
-  return text === undefined || run === undefined || doneWhen === undefined ? undefined : { text, run, doneWhen };
+  const completeWhen = normalizeCompleteWhen(value.completeWhen);
+  return text === undefined || run === undefined || completeWhen === undefined ? undefined : { text, run, completeWhen };
 }
 
 const PROMOTE_TITLE_LENGTH = 200;
@@ -231,8 +231,8 @@ function placementFields(value) {
 }
 
 /**
- * `create` carries the task text and, optionally, the planned run, the done-when conditions, and a
- * feature with a step. Returns `{ text, run, doneWhen, featureId, step }` with every absent part at its
+ * `create` carries the task text and, optionally, the planned run, the complete-when conditions, and a
+ * feature with a step. Returns `{ text, run, completeWhen, featureId, step }` with every absent part at its
  * empty value (a null `step` in a feature means the new last step), or undefined when invalid.
  */
 export function normalizeCreatePayload(value) {
@@ -249,19 +249,19 @@ export function normalizeCreatePayload(value) {
 }
 
 /**
- * `update` edits one task. `text`, `run`, `doneWhen`, `featureId`, and `step` are each optional, at
+ * `update` edits one task. `text`, `run`, `completeWhen`, `featureId`, and `step` are each optional, at
  * least one is required, and a field that is present replaces the stored one whole: a null `run` or
- * `doneWhen` clears it, a null `featureId` detaches the task, and an absent field is left as stored.
+ * `completeWhen` clears it, a null `featureId` detaches the task, and an absent field is left as stored.
  * Returns `{ number }` plus only the fields that were present, or undefined when invalid.
  */
 export function normalizeUpdatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "doneWhen", "featureId", "step"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "completeWhen", "featureId", "step"])) return undefined;
   const number = taskNumberFromId(value.id);
   if (number === undefined) return undefined;
   const update = { number };
   if (value.text !== undefined) update.text = normalizeTaskText(value.text);
   if (value.run !== undefined) update.run = normalizeRun(value.run);
-  if (value.doneWhen !== undefined) update.doneWhen = normalizeDoneWhen(value.doneWhen);
+  if (value.completeWhen !== undefined) update.completeWhen = normalizeCompleteWhen(value.completeWhen);
   const placement = placementFields(value);
   if (placement === null) return undefined;
   // A detach carries no step; whether a lone step fits the stored task is the store's to judge.
@@ -452,7 +452,7 @@ export function normalizeStoredTask(row) {
   if (sessionId !== null && (typeof sessionId !== "string" || !SESSION_ID.test(sessionId))) return undefined;
   return {
     id, text, columnId: row.column_id, position, featureId, step, run,
-    doneWhen: { checks, own },
+    completeWhen: { checks, own },
     state: row.state,
     scheduledAt,
     // A linked session's title, state, and model are borrowed from committed observation by

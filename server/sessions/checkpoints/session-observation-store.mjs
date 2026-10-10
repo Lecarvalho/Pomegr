@@ -69,7 +69,7 @@ export class SessionObservationStore {
   constructor({
     validateCandidate = () => true,
     // The served form drops the repository and pull-request blocks' monitor-private read times; the committed
-    // public state keeps them for the task done-when rule.
+    // public state keeps them for the task complete-when rule.
     serialize = serializeServedSessionState,
     maxEntries = DEFAULT_MAX_ENTRIES,
     maxBytes = DEFAULT_MAX_BYTES,

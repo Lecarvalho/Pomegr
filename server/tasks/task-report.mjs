@@ -74,7 +74,7 @@ export function reportableChecks({ database, sessionId }) {
   if (!isTaskSessionId(sessionId)) return null;
   const row = linkedRow(database, sessionId);
   const task = row && reportable(row) ? normalizeStoredTask(row) : null;
-  return task ? [...task.doneWhen.checks] : null;
+  return task ? [...task.completeWhen.checks] : null;
 }
 
 /**
@@ -96,7 +96,7 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   if (!reportable(row)) return { ok: false, error: "already_reported" };
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
-  const results = verifyChecks(task.doneWhen.checks, facts);
+  const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
   const stored = transaction(() => {
     // The task may have been reported, resolved, or deleted since the read above.

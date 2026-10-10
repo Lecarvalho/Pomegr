@@ -11,7 +11,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(get_session_report|list_session_agents|get_agent_context|get_recent_failures)$/u;
 const WRITE_TOOL = /^mcp__(?:plugin_pomegr_pomegr|pomegr)__(add_task|remove_task|complete_task|block_task)$/u;
 const WRITE_FIELDS = {
-  add_task: ["text", "provider", "model", "effort", "done_when", "own_condition", "feature"],
+  add_task: ["text", "provider", "model", "effort", "complete_when", "own_condition", "feature"],
   remove_task: ["task_id"],
   complete_task: ["attention"],
   block_task: ["reason"],

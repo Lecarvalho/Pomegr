@@ -100,7 +100,7 @@ function workTimes(state) {
 }
 
 /**
- * The repository facts the done-when checks judge for the bound session: `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`. The task branch
+ * The repository facts the complete-when checks judge for the bound session: `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`. The task branch
  * is the branch recorded for the session. Every fact that the committed state does not establish is null (unknown),
  * which the rule never passes: an unavailable or historical repository block, a branch with no base comparison, and a
  * pull-request block that is not ready. `ciPassed` joins those pull requests with the check status the monitor

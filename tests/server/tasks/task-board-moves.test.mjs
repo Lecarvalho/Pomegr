@@ -102,7 +102,7 @@ test("move across columns inserts at the position, clamps, and closes the gap in
 
 test("move leaves state and every other field untouched except column, position, and update time", async (t) => {
   const { store, databasePath } = await temporaryStore(t);
-  store.apply(REPOSITORY, "create", { text: "Moves", run: { provider: "claude", model: "opus", effort: "high" }, doneWhen: { checks: ["pr_open"], own: "Judged" } });
+  store.apply(REPOSITORY, "create", { text: "Moves", run: { provider: "claude", model: "opus", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "Judged" } });
   store.apply(REPOSITORY, "create", { text: "Neighbour" });
   const before = store.readBoard(REPOSITORY);
   const [, , , review] = before.columns;

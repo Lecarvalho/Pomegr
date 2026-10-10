@@ -19,7 +19,7 @@ import { PromoteIssuesView } from "../../app/components/tasks/PromoteIssuesView"
 import { TaskModal } from "../../app/components/tasks/TaskModal";
 import type { TaskIssue } from "../../app/components/tasks/task-issues-desktop";
 import { promotePatch } from "../../app/components/tasks/task-modal-types";
-import { DEFAULT_DONE_WHEN, EMPTY_RUN } from "../../app/components/tasks/task-fields";
+import { DEFAULT_COMPLETE_WHEN, EMPTY_RUN } from "../../app/components/tasks/task-fields";
 import { NO_FEATURE_DRAFT } from "../../app/components/tasks/task-features";
 
 const repositoryId = "repo-0123456789abcdef01234567";
@@ -56,7 +56,7 @@ const board: TaskBoard = {
 function task(overrides: Partial<Task> = {}): Task {
   return {
     id: "T-12", text: "Make the queue wait for the worktree.", columnId: "col-1", position: 1, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
     session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
@@ -157,7 +157,7 @@ describe("mode issue", () => {
     // Nothing the issue says goes back through the bridge.
     expect(JSON.stringify([...taskIssues.mock.calls, ...taskAction.mock.calls])).not.toMatch(/worktree|manual start|D:/);
     // The monitor makes the task with no checks, so the checked defaults differ and are sent; nothing else is.
-    expect(taskAction.mock.calls).toEqual([[repositoryId, "update", { id: "T-40", doneWhen: { checks: ["pr_open", "tree_clean"], own: null } }]]);
+    expect(taskAction.mock.calls).toEqual([[repositoryId, "update", { id: "T-40", completeWhen: { checks: ["pr_open", "tree_clean"], own: null } }]]);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(onPromoted).toHaveBeenCalledWith("T-40");
     expect(onPromoted).toHaveBeenCalledTimes(1);
@@ -184,7 +184,7 @@ describe("mode issue", () => {
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(updateCalls()).toEqual([[repositoryId, "update", {
-      id: "T-40", run: { provider: null, model: null, effort: "high" }, doneWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-1",
+      id: "T-40", run: { provider: null, model: null, effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-1",
     }]]);
     unmount();
 
@@ -196,12 +196,12 @@ describe("mode issue", () => {
     await user.type(screen.getByRole("textbox", { name: "Own condition" }), "The store rejects a malformed record.");
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(updateCalls()).toEqual([[repositoryId, "update", { id: "T-40", doneWhen: { checks: [], own: "The store rejects a malformed record." } }]]);
+    expect(updateCalls()).toEqual([[repositoryId, "update", { id: "T-40", completeWhen: { checks: [], own: "The store rejects a malformed record." } }]]);
   });
 
   it("builds the patch from the draft alone", () => {
     expect(promotePatch(EMPTY_RUN, { checks: [], ownText: "  " }, NO_FEATURE_DRAFT)).toBeNull();
-    expect(promotePatch(EMPTY_RUN, DEFAULT_DONE_WHEN, NO_FEATURE_DRAFT)).toEqual({ doneWhen: { checks: ["pr_open", "tree_clean"], own: null } });
+    expect(promotePatch(EMPTY_RUN, DEFAULT_COMPLETE_WHEN, NO_FEATURE_DRAFT)).toEqual({ completeWhen: { checks: ["pr_open", "tree_clean"], own: null } });
     expect(promotePatch({ provider: "codex", model: null, effort: null }, { checks: [], ownText: "" }, { featureId: "feat-1", creating: false, name: "", step: 2 }))
       .toEqual({ run: { provider: "codex", model: null, effort: null }, featureId: "feat-1", step: 2 });
   });
@@ -327,7 +327,7 @@ describe("mode issue", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(taskAction.mock.calls.map((call) => call[1])).toEqual(["feature_create", "update"]);
     expect(taskAction.mock.calls[0][2]).toEqual({ name: "Retry telemetry" });
-    expect(taskAction.mock.calls[1][2]).toEqual({ id: "T-40", doneWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-9" });
+    expect(taskAction.mock.calls[1][2]).toEqual({ id: "T-40", completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-9" });
     expect(promoteCalls()).toHaveLength(1);
   });
 

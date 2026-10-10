@@ -58,7 +58,7 @@ export function createRequestHandler({
   // The start-gate facts of a repository, from committed memory only; read lazily like the session facts.
   // A runtime without the lookup serves a board with no gates, and holds every start.
   const resolveGateFacts = typeof runtime.resolveTaskGateFacts === "function" ? (repositoryId) => runtime.resolveTaskGateFacts(repositoryId) : null;
-  // The facts the done-when checks judge, for the board's reading of a waiting task: the lookup the report is verified
+  // The facts the complete-when checks judge, for the board's reading of a waiting task: the lookup the report is verified
   // with, read lazily from committed memory only. Absent, the board carries no reading.
   const resolveCheckFacts = (ref) => runtime.resolveTaskCheckFacts?.(ref);
   return async (request, response) => {

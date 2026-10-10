@@ -28,12 +28,12 @@ const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<Result>>();
 const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const DEFAULT_DONE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
+const DEFAULT_COMPLETE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -149,7 +149,7 @@ describe("New task modal: Feature and Step", () => {
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "feature:f1");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN, featureId: "f1" });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f1" });
     expect(lastCall("create")).not.toHaveProperty("step");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
 
@@ -158,7 +158,7 @@ describe("New task modal: Feature and Step", () => {
     chooseCommandOption(dialog.getByRole("combobox", { name: "Step" }), "step:3");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN, featureId: "f1", step: 3 });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f1", step: 3 });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
 
     dialog = await openNew(user);
@@ -166,7 +166,7 @@ describe("New task modal: Feature and Step", () => {
     chooseCommandOption(dialog.getByRole("combobox", { name: "Feature" }), "none");
     await user.click(dialog.getByRole("button", { name: "Create task" }));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    expect(lastCall("create")).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN });
+    expect(lastCall("create")).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN });
     expect(lastCall("create")).not.toHaveProperty("featureId");
   });
 
@@ -186,7 +186,7 @@ describe("New task modal: Feature and Step", () => {
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
     expect(taskAction.mock.calls.map((call) => call[1])).toEqual(["feature_create", "create"]);
     expect(taskAction.mock.calls[0]).toEqual([repositoryId, "feature_create", { name: "Brand new" }]);
-    expect(taskAction.mock.calls[1][2]).toEqual({ text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN, featureId: "f-new" });
+    expect(taskAction.mock.calls[1][2]).toEqual({ text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN, featureId: "f-new" });
     expect(refresh).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "New task" })).not.toBeInTheDocument());
   });

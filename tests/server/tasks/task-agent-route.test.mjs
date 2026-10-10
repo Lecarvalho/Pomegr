@@ -77,11 +77,11 @@ const reason = (response, status, expected) => {
   assert.deepEqual(response.json, { schemaVersion: 1, ok: false, reason: expected });
 };
 
-test("success lands in the first column not queued with run and doneWhen stored, echoing only the ID", async (context) => {
+test("success lands in the first column not queued with run and completeWhen stored, echoing only the ID", async (context) => {
   const store = await realStore(context);
   const { port, lookups } = await start(context, store);
   const response = await add(port, {
-    text: SECRET_TEXT, run: { provider: "codex", model: "gpt-5", effort: "high" }, doneWhen: { checks: ["pr_open"], own: "tests green" },
+    text: SECRET_TEXT, run: { provider: "codex", model: "gpt-5", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "tests green" },
   });
   assert.equal(response.status, 200);
   assert.equal(response.headers["cache-control"], "no-store");
@@ -94,7 +94,7 @@ test("success lands in the first column not queued with run and doneWhen stored,
   assert.equal(task.state, "not_queued");
   assert.equal(task.columnId, board.columns[0].id);
   assert.equal(task.run.provider, "codex");
-  assert.deepEqual(task.doneWhen, { checks: ["pr_open"], own: "tests green" });
+  assert.deepEqual(task.completeWhen, { checks: ["pr_open"], own: "tests green" });
   assert.equal((await add(port, { text: "again" })).json.taskId, "T-2");
 });
 
@@ -163,13 +163,18 @@ test("bounds follow the store validation", async (context) => {
   assert.equal((await add(port, { text: "x".repeat(4000) })).status, 200);
   reason(await add(port, { text: "x".repeat(4001) }), 400, "invalid");
   reason(await add(port, { text: "   " }), 400, "invalid");
-  assert.equal((await add(port, { text: "o", doneWhen: { checks: [], own: "y".repeat(500) } })).status, 200);
-  reason(await add(port, { text: "o", doneWhen: { checks: [], own: "y".repeat(501) } }), 400, "invalid");
+  assert.equal((await add(port, { text: "o", completeWhen: { checks: [], own: "y".repeat(500) } })).status, 200);
+  reason(await add(port, { text: "o", completeWhen: { checks: [], own: "y".repeat(501) } }), 400, "invalid");
+  // A plugin from before the rename still sends `doneWhen`; both names together are refused.
+  assert.equal((await add(port, { text: "o", doneWhen: { checks: ["pr_open"], own: null } })).status, 200);
+  reason(await add(port, { text: "o", doneWhen: { checks: [], own: null }, completeWhen: { checks: [], own: null } }), 400, "invalid");
   reason(await add(port, { text: "m", run: { provider: "claude", model: "bad model\n", effort: null } }), 400, "invalid");
   reason(await add(port, { text: "m", run: { provider: "other", model: null, effort: null } }), 400, "invalid");
   reason(await add(port, { text: "f", feature: "f".repeat(81) }), 400, "invalid");
   reason(await add(port, JSON.stringify({ sessionRef: "claude:known", text: "z".repeat(17 * 1024) })), 400, "invalid");
-  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 2);
+  const added = store.readBoard(REPOSITORY_ID).tasks;
+  assert.equal(added.length, 3);
+  assert.deepEqual(added.at(-1).completeWhen, { checks: ["pr_open"], own: null }, "the older name lands in completeWhen");
 });
 
 test("feature attach by exact name at a new last step; an unknown feature creates nothing", async (context) => {

@@ -80,7 +80,7 @@ const taskOf = (env, id = "T-1") => env.store.readBoard(REPOSITORY_ID).tasks.fin
 
 /** Creates a task and links `session` to it the way a started session does. */
 function startedTask(env, { checks = [], own = null, session = SESSION } = {}) {
-  const created = apply(env, "create", { text: TEXT, doneWhen: { checks, own } });
+  const created = apply(env, "create", { text: TEXT, completeWhen: { checks, own } });
   assert.equal(created.ok, true);
   const id = created.board.tasks.reduce((best, task) => (Number(task.id.slice(2)) > Number(best.slice(2)) ? task.id : best), "T-0");
   const planned = env.store.planStart(REPOSITORY_ID, { id }, () => START_FACTS, passingGates);

@@ -94,9 +94,9 @@ function TaskPanel({ task, model, boardHref, headingId }: { task: SessionTaskRef
         </span>
       </div>
     </div>
-    {full.doneWhen.own !== null && <div className="sessionTaskBlock isRuled">
+    {full.completeWhen.own !== null && <div className="sessionTaskBlock isRuled">
       <span className="sessionTaskLabel">Definition of done</span>
-      <p className="sessionTaskText">{full.doneWhen.own}</p>
+      <p className="sessionTaskText">{full.completeWhen.own}</p>
       <span className="sessionTaskStatus">{definitionStatus(full)}</span>
     </div>}
     {rows.length > 0 && <div className="sessionTaskChecks isRuled">

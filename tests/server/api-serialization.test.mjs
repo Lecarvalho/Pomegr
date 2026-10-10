@@ -629,7 +629,7 @@ test("task content added through the store stays out of the observation API", as
   const { claude, codex } = await syntheticProviders(context);
   const origin = await startSyntheticMonitor(context, { providerRegistry: createProviderRegistry([claude, codex]), taskStore });
   assert.equal(taskStore.apply("repo-0123456789abcdef01234567", "create", {
-    text: "AGENT_TASK_TEXT_MUST_NOT_LEAK", doneWhen: { checks: [], own: "AGENT_TASK_OWN_MUST_NOT_LEAK" },
+    text: "AGENT_TASK_TEXT_MUST_NOT_LEAK", completeWhen: { checks: [], own: "AGENT_TASK_OWN_MUST_NOT_LEAK" },
   }).ok, true);
   const bodies = await Promise.all(["/api/sessions", "/api/state?sessionId=claude%3Aclaude-fixture-parent", "/api/home", "/api/notifications"]
     .map(async (route) => (await fetch(`${origin}${route}`)).text()));

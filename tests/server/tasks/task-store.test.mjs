@@ -66,7 +66,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
-const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
 
 function keysOf(value) {
   return Object.keys(value).toSorted();
@@ -156,7 +156,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   assert.deepEqual(board.tasks[0], {
     id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE, step: 1,
     run: { provider: "codex", model: "gpt-5.2-codex", effort: "xhigh" },
-    doneWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
+    completeWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
     session: { id: "session-abc", title: null, state: "unknown", observedModel: null },
@@ -201,7 +201,7 @@ test("the served board holds only the contract keys and never private store fiel
   const [task] = wire.tasks;
   assert.deepEqual(keysOf(task), TASK_KEYS);
   assert.deepEqual(keysOf(task.run), ["effort", "model", "provider"]);
-  assert.deepEqual(keysOf(task.doneWhen), ["checks", "own"]);
+  assert.deepEqual(keysOf(task.completeWhen), ["checks", "own"]);
   assert.deepEqual(keysOf(task.session), ["id", "observedModel", "state", "title"]);
   assert.deepEqual(keysOf(task.report), ["at", "attention", "blockReason", "results"]);
   assert.equal(JSON.stringify(wire).includes("secret-dispatch-token"), false);

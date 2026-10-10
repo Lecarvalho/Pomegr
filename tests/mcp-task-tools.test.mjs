@@ -72,9 +72,9 @@ test("add_task schema is strict and bounded with no repository or path input", (
     assert.equal(parse(tool, { text: "x", model }).success, false, model);
   }
   assert.equal(parse(tool, { text: "x", model: "gpt-5.5" }).success, true);
-  assert.equal(parse(tool, { text: "x", done_when: ["pr_open", "pr_open"] }).success, false);
-  assert.equal(parse(tool, { text: "x", done_when: ["nope"] }).success, false);
-  assert.equal(parse(tool, { text: "x", done_when: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"] }).success, true);
+  assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "pr_open"] }).success, false);
+  assert.equal(parse(tool, { text: "x", complete_when: ["nope"] }).success, false);
+  assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"] }).success, true);
   assert.equal(parse(tool, { text: "x", own_condition: "a".repeat(501) }).success, false);
   assert.equal(parse(tool, { text: "x", feature: "a".repeat(81) }).success, false);
   assert.equal(parse(tool, { text: "x", feature: "" }).success, false);
@@ -127,13 +127,13 @@ test("body mapping omits or null-fills optional groups", async () => {
   assert.deepEqual(full.calls[0].body, {
     sessionRef: "codex:t1", text: "t",
     run: { provider: null, model: null, effort: "high" },
-    doneWhen: { checks: [], own: "looks right" },
+    completeWhen: { checks: [], own: "looks right" },
     feature: "Billing",
   });
   const checks = setup({ ref: "codex:t1" });
-  await checks.tool.handler({ text: "t", provider: "claude", model: "m-1", done_when: ["pr_open"] });
+  await checks.tool.handler({ text: "t", provider: "claude", model: "m-1", complete_when: ["pr_open"] });
   assert.deepEqual(checks.calls[0].body.run, { provider: "claude", model: "m-1", effort: null });
-  assert.deepEqual(checks.calls[0].body.doneWhen, { checks: ["pr_open"], own: null });
+  assert.deepEqual(checks.calls[0].body.completeWhen, { checks: ["pr_open"], own: null });
 });
 
 test("results map to fixed sentences and never echo task or monitor text", async () => {

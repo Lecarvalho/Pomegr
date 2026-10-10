@@ -93,7 +93,7 @@ type Task = {
   columnId: string; position: number;
   featureId: string | null; step: number | null;      // step >= 1
   run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null };
-  doneWhen: { checks: TaskCheck[]; own: string | null };
+  completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   scheduledAt: string | null;
   session: { id: string; title: string | null; state: string; observedModel: string | null;
@@ -142,7 +142,7 @@ type TaskBoard = {
   account entitlement, and with no committed catalog Codex offers only its Default model.
   A model belongs to one provider, so a model
   without a provider is invalid; an effort alone is valid.
-- `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
+- `completeWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - `queue.order` holds task IDs only: the queued tasks that have not started, in the order
   they would start (see [Queue](#queue)). It adds no task content. The waiting cards of
@@ -585,8 +585,10 @@ runtime without the lookup serves no `gates` and holds every start.
 ## Completion
 
 The agent reports through the Pomegr MCP tool `complete_task`. Pomegr then verifies
-the conditions the user checked (the task's **Complete when**; the stored and served
-field keeps the name `doneWhen`) and puts the task in Review.
+the conditions the user checked (the task's **Complete when**, `completeWhen`) and puts
+the task in Review. Complete names the agent's report; Done names only the owner's
+Mark done. `POST /api/agent/v1/tasks/add` still accepts `doneWhen` as the name an
+installed plugin from before the rename sends; a body with both names is `invalid`.
 
 | Condition | Verified by Pomegr |
 | --- | --- |
@@ -819,7 +821,7 @@ supplies.
   GETs and under the same gate: loopback host, no `Origin` header, and the agent token
   when one is configured. The body is a JSON object of at most 16 KiB with
   `Content-Type: application/json` and only these keys: `sessionRef` (`claude:<id>` or
-  `codex:<id>`), `text`, and optionally `run`, `doneWhen`, and `feature` (a feature name).
+  `codex:<id>`), `text`, and optionally `run`, `completeWhen`, and `feature` (a feature name).
   Any other key, including a repository ID or path, is `invalid`. The record rules are
   the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
   a session without one, from the session's committed repository identity, never reading
@@ -1260,10 +1262,10 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
-  `column_create`, `column_rename`, `column_reorder`, `column_delete`, and `column_role`. Built so far: `create` with `{ text, run?, doneWhen? }`, `update` with
-  `{ id, text?, run?, doneWhen? }`, and `delete` with `{ id }`; a payload with any other
+  `column_create`, `column_rename`, `column_reorder`, `column_delete`, and `column_role`. Built so far: `create` with `{ text, run?, completeWhen? }`, `update` with
+  `{ id, text?, run?, completeWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
-  that is present replaces the stored one whole (a null `run` or `doneWhen` clears it),
+  that is present replaces the stored one whole (a null `run` or `completeWhen` clears it),
   and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
   `position` is the zero-based index in the destination column counted after the task
   leaves its place, and a value past the end appends. A

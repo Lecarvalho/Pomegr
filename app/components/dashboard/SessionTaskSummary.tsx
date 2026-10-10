@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useId, type ReactNode } from "react";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import { sessionTaskHref } from "../tasks/SessionTaskCell";
-import { modelSummary, nextIds, queueBlockedLine, referenceChip, stepLabel, summaryDoneWhen, type TextPart } from "../tasks/session-task-model";
+import { modelSummary, nextIds, queueBlockedLine, referenceChip, stepLabel, summaryCompleteWhen, type TextPart } from "../tasks/session-task-model";
 import { TaskIssueChip } from "../tasks/TaskIssueChip";
 import { taskIssueNumber } from "../tasks/task-presentation";
 import { useSessionTask } from "../tasks/use-session-task";
@@ -63,7 +63,7 @@ export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskRefere
     </> : models && <>
       {issue !== null && <Cell label="Source"><span className="sessionTaskSourceValue"><TaskIssueChip number={issue} />GitHub issue</span></Cell>}
       {featureCell}
-      <Cell label="Complete when">{summaryDoneWhen(model.task)}</Cell>
+      <Cell label="Complete when">{summaryCompleteWhen(model.task)}</Cell>
       <Cell label="Model">Planned <Part part={models.planned} /> · observed <Part part={models.observed} /></Cell>
       <Cell label="Next">
         {model.queue.blocked ? <span className="sessionTaskBlocked">{queueBlockedLine(model.queue.by)}</span> : model.nextStep.length > 0 ? <code>{nextIds(model.nextStep)}</code> : "—"}

@@ -7,7 +7,7 @@ const { useTasks } = vi.hoisted(() => ({ useTasks: vi.fn() }));
 vi.mock("../../app/tasks-store", () => ({ useTasks }));
 
 import { SessionTaskMeta, SessionTaskSummary } from "../../app/components/dashboard/SessionTaskSummary";
-import { sessionTaskModel, stepLabel, stepTotal, summaryDoneWhen } from "../../app/components/tasks/session-task-model";
+import { sessionTaskModel, stepLabel, stepTotal, summaryCompleteWhen } from "../../app/components/tasks/session-task-model";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const taskHref = "/sessions/claude%3Aabc?tab=task";
@@ -15,7 +15,7 @@ const taskHref = "/sessions/claude%3Aabc?tab=task";
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Secret task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -26,7 +26,7 @@ const reference: SessionTaskReference = { id: "T-14", repositoryId, state: null,
 const mine = task(14, {
   featureId: "feat-1", step: 2, state: "queued",
   run: { provider: "claude", model: "opus", effort: "high" },
-  doneWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
+  completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   session: { id: "claude:abc", title: "Wire the tools", state: "working", observedModel: "opus" },
 });
 
@@ -58,19 +58,19 @@ describe("session task model", () => {
   });
 
   it("words Complete when without a Running state", () => {
-    expect(summaryDoneWhen(mine)).toBe("2 checks + own condition + agent report · not yet reported");
-    expect(summaryDoneWhen(task(1, { doneWhen: { checks: ["pr_open", "tree_clean"], own: null } }))).toBe("2 checks + agent report · not yet reported");
-    expect(summaryDoneWhen(task(1))).toBe("agent report · not yet reported");
-    expect(summaryDoneWhen(task(1, { state: "done", doneWhen: { checks: ["pr_open"], own: null } }))).toBe("1 check + agent report · Done");
-    const review = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open", "tree_clean"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null } });
-    expect(summaryDoneWhen(review)).toBe("2 checks + agent report · Needs review, 1 check did not pass");
-    const noted = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "Confirm the retry limit." } });
-    expect(summaryDoneWhen(noted)).toBe("1 check + agent report · Needs review, the agent asks for your attention");
+    expect(summaryCompleteWhen(mine)).toBe("2 checks + own condition + agent report · not yet reported");
+    expect(summaryCompleteWhen(task(1, { completeWhen: { checks: ["pr_open", "tree_clean"], own: null } }))).toBe("2 checks + agent report · not yet reported");
+    expect(summaryCompleteWhen(task(1))).toBe("agent report · not yet reported");
+    expect(summaryCompleteWhen(task(1, { state: "done", completeWhen: { checks: ["pr_open"], own: null } }))).toBe("1 check + agent report · Done");
+    const review = task(1, { state: "needs_review", completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null } });
+    expect(summaryCompleteWhen(review)).toBe("2 checks + agent report · Needs review, 1 check did not pass");
+    const noted = task(1, { state: "needs_review", completeWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "Confirm the retry limit." } });
+    expect(summaryCompleteWhen(noted)).toBe("1 check + agent report · Needs review, the agent asks for your attention");
     // A report always needs review: with every check passed and no note, the words say so.
-    const passed = task(1, { state: "needs_review", doneWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: null } });
-    expect(summaryDoneWhen(passed)).toBe("1 check + agent report · Needs review, every check passed");
-    expect(summaryDoneWhen(task(1, { state: "needs_review", report: { at: "2026-10-08T11:00:00.000Z", results: [], blockReason: null, attention: null } }))).toBe("agent report · Needs review");
-    expect(summaryDoneWhen(task(1, { state: "blocked" }))).toBe("agent report · Blocked by agent");
+    const passed = task(1, { state: "needs_review", completeWhen: { checks: ["pr_open"], own: null }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: null } });
+    expect(summaryCompleteWhen(passed)).toBe("1 check + agent report · Needs review, every check passed");
+    expect(summaryCompleteWhen(task(1, { state: "needs_review", report: { at: "2026-10-08T11:00:00.000Z", results: [], blockReason: null, attention: null } }))).toBe("agent report · Needs review");
+    expect(summaryCompleteWhen(task(1, { state: "blocked" }))).toBe("agent report · Blocked by agent");
   });
 
   it("reduces to the reference when the board is not ready or lacks the task", () => {
@@ -165,7 +165,7 @@ describe("SessionTaskSummary", () => {
   });
 
   it("shows the outcome once the task has one", () => {
-    setBoard(board({ tasks: [{ ...mine, state: "done", doneWhen: { checks: ["pr_open"], own: null } }] }));
+    setBoard(board({ tasks: [{ ...mine, state: "done", completeWhen: { checks: ["pr_open"], own: null } }] }));
     render(<SessionTaskSummary task={{ ...reference, state: "done" }} taskHref={taskHref} />);
     const panel = screen.getByRole("region", { name: "Task T-14" });
     expect(panel).toHaveTextContent("1 check + agent report · Done");

@@ -7,7 +7,7 @@ import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
-import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
+import { CompleteWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { TaskStartTimeField } from "./TaskStartTimeField";
 import {
@@ -62,7 +62,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const models = useTaskModelOptions(board.runModels);
   // The text is drawn with the task's images in it, so the draft is compared with that same text.
   const shown = useMemo(() => ({ ...task, text: shownTaskText(task.text, task.images) }), [task]);
-  const { draft, dirty, canSave, setText, setRun, setDoneWhen, setFeature } = useTaskDraft(shown);
+  const { draft, dirty, canSave, setText, setRun, setCompleteWhen, setFeature } = useTaskDraft(shown);
   const [featureError, setFeatureError] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -242,10 +242,10 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         <span>Planned <code>{draft.run.model}</code>, latest recorded request used <code>{task.session?.observedModel}</code>.</span>
       </div>}
     </div>
-    <DoneWhenField draft={draft.doneWhen} results={task.report ? results : undefined}
-      ownNote={task.report && draft.doneWhen.ownText.trim() !== "" && task.doneWhen.own !== null ? "Agent-reported" : null}
-      footnote={outcomeNote ? <span className="newTaskHelper taskDoneWhenNote">{outcomeNote}</span> : undefined}
-      onDraftChange={setDoneWhen} />
+    <CompleteWhenField draft={draft.completeWhen} results={task.report ? results : undefined}
+      ownNote={task.report && draft.completeWhen.ownText.trim() !== "" && task.completeWhen.own !== null ? "Agent-reported" : null}
+      footnote={outcomeNote ? <span className="newTaskHelper taskCompleteWhenNote">{outcomeNote}</span> : undefined}
+      onDraftChange={setCompleteWhen} />
     {schedulable && <TaskStartTimeField repositoryId={repositoryId} task={task} onChanged={onChanged} />}
   </TaskModalFrame>;
 }

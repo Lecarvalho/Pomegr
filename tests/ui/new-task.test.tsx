@@ -21,7 +21,7 @@ const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
 const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown) => Promise<Result>>();
 const refresh = vi.fn(async () => {});
-const DEFAULT_DONE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
+const DEFAULT_COMPLETE_WHEN = { checks: ["pr_open", "tree_clean"], own: null };
 
 function setBridge(bridge: unknown) {
   (window as Window & { pomegrDesktop?: unknown }).pomegrDesktop = bridge;
@@ -155,7 +155,7 @@ describe("with the desktop bridge", () => {
     await user.click(createButton());
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
     expect(taskAction).toHaveBeenCalledTimes(1);
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN });
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(newTaskButton()).toHaveFocus();
   });
@@ -165,7 +165,7 @@ describe("with the desktop bridge", () => {
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "  Write the guide  ");
     await user.click(createButton());
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", doneWhen: DEFAULT_DONE_WHEN }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Write the guide", completeWhen: DEFAULT_COMPLETE_WHEN }));
   });
 
   it("keeps the panel and the text when the board is full, with the fixed message", async () => {
@@ -339,7 +339,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
       text: "Ship it",
       run: { provider: "codex", model: "model-c", effort: "xhigh" },
-      doneWhen: { checks: ["pr_open", "pr_merged", "ci_passed"], own: "The migration is reversible" },
+      completeWhen: { checks: ["pr_open", "pr_merged", "ci_passed"], own: "The migration is reversible" },
     });
   });
 
@@ -351,7 +351,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(runOn()).toHaveTextContent("Claude Code · Default model");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: null }, doneWhen: DEFAULT_DONE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Use the default", run: { provider: "claude", model: null, effort: null }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
   it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
@@ -367,7 +367,7 @@ describe("Run on, Effort and Complete when", () => {
     expect(runOn()).toHaveTextContent("Not set");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Optional fields", doneWhen: DEFAULT_DONE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Optional fields", completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
   it("keeps Effort alone as a valid run, without a provider or model", async () => {
@@ -377,10 +377,10 @@ describe("Run on, Effort and Complete when", () => {
     await user.click(effort("Low"));
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Effort only", run: { provider: null, model: null, effort: "low" }, doneWhen: DEFAULT_DONE_WHEN });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Effort only", run: { provider: null, model: null, effort: "low" }, completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
-  it("omits doneWhen when nothing is checked", async () => {
+  it("omits completeWhen when nothing is checked", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "No conditions");
@@ -398,7 +398,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.type(own(), "   ");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Blank own condition", doneWhen: DEFAULT_DONE_WHEN });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "create", { text: "Blank own condition", completeWhen: DEFAULT_COMPLETE_WHEN });
   });
 
   it("sends the own condition alone when no check is ticked", async () => {
@@ -410,7 +410,7 @@ describe("Run on, Effort and Complete when", () => {
     await user.type(own(), "Reads well");
     await user.click(createButton());
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Own only", doneWhen: { checks: [], own: "Reads well" } });
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", { text: "Own only", completeWhen: { checks: [], own: "Reads well" } });
   });
 });
 

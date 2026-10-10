@@ -7,7 +7,7 @@ import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, t
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
   CHECK_SHORT_LABELS, EFFORT_LABELS, runFromSelectValue, runSelectOptions, runSelectValue, withCheck,
-  type DoneWhenDraft, type TaskModelOptions,
+  type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
 // The Task field, Run on, Effort and Complete when, shared by the New task and Task modal forms (design contract G124-G128
@@ -97,18 +97,18 @@ export function RunFields({ run, models, onChange }: { run: TaskRun; models: Tas
  * condition, a blank one is none. `onDraftChange` fires on every edit; `onCommit` fires when a checkbox changes and
  * when the own-condition input loses focus.
  */
-export function DoneWhenField({ draft, results, ownNote, footnote, onDraftChange, onCommit }: {
-  draft: DoneWhenDraft;
+export function CompleteWhenField({ draft, results, ownNote, footnote, onDraftChange, onCommit }: {
+  draft: CompleteWhenDraft;
   /** Per-check outcome from the agent's report; a check without an entry shows no result. */
   results?: ReadonlyMap<TaskCheck, boolean>;
   ownNote?: string | null;
   footnote?: ReactNode;
-  onDraftChange(next: DoneWhenDraft): void;
-  onCommit?(next: DoneWhenDraft): void;
+  onDraftChange(next: CompleteWhenDraft): void;
+  onCommit?(next: CompleteWhenDraft): void;
 }) {
   const prefix = useId();
-  const change = (next: DoneWhenDraft) => { onDraftChange(next); onCommit?.(next); };
-  return <fieldset className="taskDoneWhen">
+  const change = (next: CompleteWhenDraft) => { onDraftChange(next); onCommit?.(next); };
+  return <fieldset className="taskCompleteWhen">
     <legend>Complete when</legend>
     <div className="taskChecks">
       {TASK_CHECKS.map((check) => {
@@ -126,6 +126,6 @@ export function DoneWhenField({ draft, results, ownNote, footnote, onDraftChange
         value={draft.ownText} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
       {ownNote && <span className="taskCheckResult">{ownNote}</span>}
     </div>
-    {footnote ?? <span className="newTaskHelper taskDoneWhenNote">Pomegr verifies the listed conditions. Your own condition is judged by the agent.</span>}
+    {footnote ?? <span className="newTaskHelper taskCompleteWhenNote">Pomegr verifies the listed conditions. Your own condition is judged by the agent.</span>}
   </fieldset>;
 }

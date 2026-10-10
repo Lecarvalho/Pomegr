@@ -241,13 +241,13 @@ function createTask({ database, repositoryId }, payload) {
   preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at, feature_id, step)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
-      JSON.stringify(input.doneWhen.checks), input.doneWhen.own, now, now, input.featureId, step);
+      JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, step);
   reserveTaskNumber(database, repositoryId, number + 1);
   return { ok: true, number };
 }
 
 // Promotes one GitHub issue: a snapshot of its title and stripped body becomes an ordinary task in the first column
-// with the default run and done-when values, and the issue number is kept beside it (task-source.mjs). It is a store
+// with the default run and complete-when values, and the issue number is kept beside it (task-source.mjs). It is a store
 // action only: no route or desktop channel carries it, so no caller can supply issue text. An issue that already has a
 // task is `conflict`; text over the task bound is `limit`.
 function promoteIssue({ database, repositoryId }, payload) {
@@ -284,12 +284,12 @@ function updateTask({ database, repositoryId }, payload) {
   if (!stored) return { ok: false, error: "not_found" };
   // A field the payload left out keeps its stored value; one it carried is replaced whole.
   const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort };
-  const doneWhen = input.doneWhen ? { checks: JSON.stringify(input.doneWhen.checks), own: input.doneWhen.own } : { checks: stored.checks, own: stored.own_condition };
+  const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
   const placement = updatedPlacement(database, repositoryId, stored, input);
   if (placement.error) return { ok: false, error: placement.error };
   preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, feature_id = ?, step = ?, updated_at = ?
     WHERE repository_id = ? AND number = ?`)
-    .run(input.text ?? stored.text, run.provider, run.model, run.effort, doneWhen.checks, doneWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
+    .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
   // The feature the task left and the one it joined each close any gap in their steps.
   for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
@@ -556,7 +556,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   // `resolveSessionFacts(sessionId)` is supplied by the entry point from committed facts (see task-board.mjs).
   // Without it a linked session keeps the stored unknown defaults. `resolveGateFacts(repositoryId)` supplies the
   // committed start-gate facts the same way; without it every gate reads unknown. `resolveCheckFacts(sessionId)`
-  // supplies the facts the done-when checks judge; without it a waiting task carries no reading of its checks.
+  // supplies the facts the complete-when checks judge; without it a waiting task carries no reading of its checks.
   // Every stored board is brought to the five when the store opens, so a write that never reads the board (a session
   // link, a report) already finds the role columns. A board that cannot be brought there is left as it is.
   if (database) {

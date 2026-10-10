@@ -13,7 +13,7 @@ export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
  * An unknown or loading observation, or an unknown or unreadable version, is never proof.
  * `resolveTaskSessionFacts(sessionRef)` returns `{ title, state, observedModel }` for a linked session from the
  * committed catalog row and public state, or null.
- * `resolveTaskCheckFacts(sessionRef)` returns the repository facts the done-when checks judge for a bound session,
+ * `resolveTaskCheckFacts(sessionRef)` returns the repository facts the complete-when checks judge for a bound session,
  * from its committed public state, each null when unknown; the board's reading uses it.
  * `readTaskCheckFacts(sessionRef)` resolves the same facts for a `complete_task` report, from one read of the bound
  * session's repository and pull requests made at that moment (`readRepositoryNow`). It is the only lookup that waits

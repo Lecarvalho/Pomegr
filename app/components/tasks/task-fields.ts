@@ -125,38 +125,38 @@ export function isEffort(value: string): value is TaskEffort {
   return (TASK_EFFORTS as readonly string[]).includes(value);
 }
 
-/** Editable form of `doneWhen`: a non-blank own-condition text is the own condition, a blank one is none. */
-export type DoneWhenDraft = { checks: readonly TaskCheck[]; ownText: string };
-export type DoneWhenValue = { checks: TaskCheck[]; own: string | null };
+/** Editable form of `completeWhen`: a non-blank own-condition text is the own condition, a blank one is none. */
+export type CompleteWhenDraft = { checks: readonly TaskCheck[]; ownText: string };
+export type CompleteWhenValue = { checks: TaskCheck[]; own: string | null };
 
 /** A new task starts with Pull request open and Working tree clean checked. */
-export const DEFAULT_DONE_WHEN: DoneWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "" };
+export const DEFAULT_COMPLETE_WHEN: CompleteWhenDraft = { checks: ["pr_open", "tree_clean"], ownText: "" };
 
-export function doneWhenFromTask(doneWhen: Task["doneWhen"]): DoneWhenDraft {
-  return { checks: [...doneWhen.checks], ownText: doneWhen.own ?? "" };
+export function completeWhenFromTask(completeWhen: Task["completeWhen"]): CompleteWhenDraft {
+  return { checks: [...completeWhen.checks], ownText: completeWhen.own ?? "" };
 }
 
 /** Checks in catalog order; the own condition is the trimmed text, or null while it is blank. */
-export function toDoneWhen(draft: DoneWhenDraft): DoneWhenValue {
+export function toCompleteWhen(draft: CompleteWhenDraft): CompleteWhenValue {
   const own = draft.ownText.trim().slice(0, TASK_BOUNDS.ownConditionLength);
   return { checks: TASK_CHECKS.filter((check) => draft.checks.includes(check)), own: own || null };
 }
 
-export function withCheck(draft: DoneWhenDraft, check: TaskCheck, on: boolean): DoneWhenDraft {
+export function withCheck(draft: CompleteWhenDraft, check: TaskCheck, on: boolean): CompleteWhenDraft {
   return { ...draft, checks: on ? [...draft.checks.filter((existing) => existing !== check), check] : draft.checks.filter((existing) => existing !== check) };
 }
 
-/** Create payload: `run`, `doneWhen` and the feature keys are omitted when nothing is set. */
-export function createPayload(text: string, run: TaskRun, draft: DoneWhenDraft, feature?: FeatureInput) {
-  const doneWhen = toDoneWhen(draft);
-  return { text, ...(isRunSet(run) && { run }), ...((doneWhen.checks.length > 0 || doneWhen.own) && { doneWhen }), ...feature };
+/** Create payload: `run`, `completeWhen` and the feature keys are omitted when nothing is set. */
+export function createPayload(text: string, run: TaskRun, draft: CompleteWhenDraft, feature?: FeatureInput) {
+  const completeWhen = toCompleteWhen(draft);
+  return { text, ...(isRunSet(run) && { run }), ...((completeWhen.checks.length > 0 || completeWhen.own) && { completeWhen }), ...feature };
 }
 
 /** Card line: what is checked, ending with the agent's report. Null when no condition is set. */
-export function doneWhenSummary(doneWhen: Task["doneWhen"]): string | null {
+export function completeWhenSummary(completeWhen: Task["completeWhen"]): string | null {
   const parts = [
-    doneWhen.checks.length > 0 && `${doneWhen.checks.length} ${doneWhen.checks.length === 1 ? "check" : "checks"}`,
-    doneWhen.own !== null && "own condition",
+    completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
+    completeWhen.own !== null && "own condition",
   ].filter(Boolean);
   return parts.length === 0 ? null : `Complete when: ${[...parts, "agent report"].join(" + ")}`;
 }
