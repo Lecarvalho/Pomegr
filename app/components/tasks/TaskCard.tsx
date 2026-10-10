@@ -5,7 +5,7 @@ import type { CardMoveKind } from "./task-board-model";
 import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
-import { doneWhenSummary } from "./task-fields";
+import { completeWhenSummary } from "./task-fields";
 import { taskCardTitle, taskChip } from "./task-presentation";
 import { startsLine } from "./task-schedule";
 
@@ -27,7 +27,7 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move }
   const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);
   const starts = startsLine(task);
-  const summary = doneWhenSummary(task.doneWhen);
+  const summary = completeWhenSummary(task.completeWhen);
   const className = ["taskCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone"].filter(Boolean).join(" ");
   return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
     <div className="taskCardTop">

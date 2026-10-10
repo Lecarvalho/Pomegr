@@ -62,7 +62,7 @@ const calls = (operation: string) => taskImage.mock.calls.filter((call) => call[
 function storedTask(text: string, images: Task["images"]): Task {
   return {
     id: "T-9", text, columnId: "col-000000000001", position: 0, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
     session: null, source: null, images, report: null, createdAt: "2026-10-10T10:00:00.000Z", updatedAt: "2026-10-10T10:00:00.000Z",
   };
 }

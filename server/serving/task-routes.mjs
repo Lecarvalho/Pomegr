@@ -140,7 +140,7 @@ function projectBoard(repositoryId, board, runModels) {
  * reads a linked session's title, state, and model from committed facts in memory (task-board.mjs validates them).
  * `resolveGateFacts(repositoryId)` reads the start-gate facts the same way (task-gates.mjs validates them); it may
  * queue an asynchronous refresh of the working-tree observation, never a synchronous read.
- * `resolveCheckFacts(sessionId)` reads the facts the done-when checks judge, from committed memory only, for the
+ * `resolveCheckFacts(sessionId)` reads the facts the complete-when checks judge, from committed memory only, for the
  * reading a waiting task carries (task-board.mjs).
  * The route never acquires provider evidence and has no write path.
  */
@@ -364,7 +364,8 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
 
 export const AGENT_TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 const AGENT_SESSION_REF_PATTERN = /^(?:claude|codex):[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
-const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "doneWhen", "feature"]);
+// `doneWhen` is the name an installed plugin from before the rename still sends for `completeWhen`.
+const AGENT_TASK_KEYS = new Set(["sessionRef", "text", "run", "completeWhen", "doneWhen", "feature"]);
 const AGENT_FEATURE_NAME_LIMIT = 80;
 const AGENT_ADD_STATUS = Object.freeze({
   invalid: 400, session_not_found: 404, repository_unavailable: 409, feature_not_found: 404, limit: 409, unavailable: 503,
@@ -455,7 +456,12 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
     }
     const payload = { text: body.text };
     if (body.run !== undefined) payload.run = body.run;
-    if (body.doneWhen !== undefined) payload.doneWhen = body.doneWhen;
+    if (body.completeWhen !== undefined && body.doneWhen !== undefined) {
+      writeAgentAddResult(response, "invalid");
+      return;
+    }
+    const completeWhen = body.completeWhen ?? body.doneWhen;
+    if (completeWhen !== undefined) payload.completeWhen = completeWhen;
     if (feature !== undefined) {
       // Exact name of an unfinished feature; agents never create features.
       const match = projectBoard(repositoryId, taskStore.readBoard(repositoryId)).features

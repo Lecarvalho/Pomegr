@@ -18,7 +18,7 @@ function secretBoard(repositoryId = REPOSITORY_ID) {
     features: [{ id: "f1", name: "SECRET-FEATURE", done: false }],
     tasks: [{
       id: "T-1", text: SECRET_TEXT, columnId: "c1", position: 0, featureId: "f1", step: 1,
-      run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: "SECRET-OWN" },
+      run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: "SECRET-OWN" },
       state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
       createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z",
     }],

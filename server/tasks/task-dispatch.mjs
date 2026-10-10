@@ -68,8 +68,8 @@ function promptText(text, images) {
  * flag, and holds the task text only as quoted data between fixed sentences.
  */
 export function buildTaskPrompt(task, images = []) {
-  const conditions = task.doneWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
-  if (task.doneWhen.own) conditions.push(`- ${task.doneWhen.own}`);
+  const conditions = task.completeWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
+  if (task.completeWhen.own) conditions.push(`- ${task.completeWhen.own}`);
   return [
     TASK_PROMPT_OPENING,
     `Task ${task.id}:`,

@@ -26,7 +26,7 @@ const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name,
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -35,7 +35,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 const reviewTask = task(12, {
   text: "Add a private task store.",
   run: { provider: "claude", model: "model-a", effort: "high" },
-  doneWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
+  completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass." },
   state: "needs_review",
   session: { id: "claude:abc123", title: "Task store and privacy rules", state: "idle", observedModel: "model-b" },
   report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: false }, { check: "tree_clean", passed: true }], blockReason: null },
@@ -75,8 +75,8 @@ const updateCalls = () => taskAction.mock.calls.filter((call) => call[1] === "up
 describe("task cards", () => {
   it("show the provider chip, model, effort and Complete when summary only when set", () => {
     setBoard([
-      task(1, { run: { provider: "claude", model: "model-a", effort: "high" }, doneWhen: { checks: ["pr_open", "ci_passed"], own: null } }),
-      task(2, { run: { provider: "codex", model: null, effort: null }, doneWhen: { checks: ["tree_clean"], own: "Looks right" } }),
+      task(1, { run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: null } }),
+      task(2, { run: { provider: "codex", model: null, effort: null }, completeWhen: { checks: ["tree_clean"], own: "Looks right" } }),
       task(3, { run: { provider: null, model: null, effort: "low" } }),
       task(4),
     ]);
@@ -149,7 +149,7 @@ describe("Task modal, mode edit", () => {
   });
 
   it("omits results, the report line and the notice for a task with no report and no differing model", async () => {
-    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: "model-a", effort: null }, doneWhen: { checks: ["pr_open"], own: null }, session: { id: "s", title: null, state: "working", observedModel: "model-a" } })]);
+    setBoard([task(5, { text: "Plain task", run: { provider: "claude", model: "model-a", effort: null }, completeWhen: { checks: ["pr_open"], own: null }, session: { id: "s", title: null, state: "working", observedModel: "model-a" } })]);
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Plain task"));
@@ -316,7 +316,7 @@ describe("Task modal, mode edit", () => {
     expect(refresh).toHaveBeenCalledTimes(3);
   });
 
-  it("saves a checkbox change as the complete doneWhen", async () => {
+  it("saves a checkbox change as the complete completeWhen", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     let dialog = await openReviewPanel(user);
@@ -324,7 +324,7 @@ describe("Task modal, mode edit", () => {
     expect(taskAction).not.toHaveBeenCalled();
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", doneWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch"], own: "Tests pass." } });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", completeWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch"], own: "Tests pass." } });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     // An emptied own condition is no own condition: there is no separate checkbox for it any more.
@@ -332,7 +332,7 @@ describe("Task modal, mode edit", () => {
     await user.clear(dialog.getByRole("textbox", { name: "Own condition" }));
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", doneWhen: { checks: ["pr_open", "tree_clean"], own: null } });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", completeWhen: { checks: ["pr_open", "tree_clean"], own: null } });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     // A blank one counts as none too.
@@ -341,7 +341,7 @@ describe("Task modal, mode edit", () => {
     await user.type(dialog.getByRole("textbox", { name: "Own condition" }), "   ");
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", doneWhen: { checks: ["pr_open", "tree_clean"], own: null } });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", completeWhen: { checks: ["pr_open", "tree_clean"], own: null } });
   });
 
   it("saves the own condition and the task text on Save, in one patch holding only what changed", async () => {
@@ -359,7 +359,7 @@ describe("Task modal, mode edit", () => {
     expect(taskAction).not.toHaveBeenCalled();
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", doneWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass. And lint is clean." } });
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass. And lint is clean." } });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     dialog = await openReviewPanel(user);
@@ -390,7 +390,7 @@ describe("Task modal, mode edit", () => {
     await user.type(text, "New words");
     expect(save(dialog)).toBeEnabled();
     await user.click(save(dialog));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "update", { id: "T-12", text: "New words", doneWhen: { checks: ["pr_open", "tree_clean", "ci_passed"], own: "Tests pass." } }));
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "update", { id: "T-12", text: "New words", completeWhen: { checks: ["pr_open", "tree_clean", "ci_passed"], own: "Tests pass." } }));
   });
 
   it("stays open, keeps the draft and shows one fixed message when Save fails, then saves the same patch on retry", async () => {
@@ -523,7 +523,7 @@ describe("Task modal resolutions", () => {
   }
 
   it("says a stalled task's session ended with no report and offers both resolutions", async () => {
-    setBoard([task(15, { text: "Stalled work", state: "stalled", doneWhen: { checks: ["pr_open"], own: null },
+    setBoard([task(15, { text: "Stalled work", state: "stalled", completeWhen: { checks: ["pr_open"], own: null },
       session: { id: "claude:abc125", title: null, state: "closed", observedModel: null } })]);
     const { user, dialog } = await open("Stalled work");
     expect(dialog.getByText("Stalled")).toHaveClass("commandChip", "warning");
@@ -641,7 +641,7 @@ describe("Task modal resolutions", () => {
   });
 
   it("shows the agent's attention line as the agent's own words, for a task every check of which passed", async () => {
-    setBoard([task(19, { text: "Finished with a note", state: "needs_review", doneWhen: { checks: ["pr_open"], own: null },
+    setBoard([task(19, { text: "Finished with a note", state: "needs_review", completeWhen: { checks: ["pr_open"], own: null },
       session: { id: "claude:abc129", title: null, state: "closed", observedModel: null },
       report: { at: "2026-10-08T12:00:00.000Z", results: [{ check: "pr_open", passed: true }], blockReason: null, attention: "The retry limit is a guess; confirm it." } })]);
     const { dialog } = await open("Finished with a note");
@@ -654,7 +654,7 @@ describe("Task modal resolutions", () => {
 
   it("shows a CI condition's result like any other check", async () => {
     setBoard([task(19, {
-      state: "needs_review", doneWhen: { checks: ["pr_open", "ci_passed"], own: null },
+      state: "needs_review", completeWhen: { checks: ["pr_open", "ci_passed"], own: null },
       report: { at: "2026-10-08T11:42:00.000Z", results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null },
     })]);
     const { dialog } = await open("Task text 19");
@@ -681,7 +681,7 @@ describe("task field styles", () => {
     expect(rule(".taskCheckRow")).toMatch(/display: inline-flex;[^}]*gap: var\(--space-2\);[^}]*min-height: 28px/);
     expect(rule('.taskCheckRow input[type="checkbox"]')).toMatch(/width: 16px; height: 16px;[^}]*accent-color: var\(--command-brand\)/);
     expect(rule(".taskOwnInput")).toMatch(/min-height: var\(--control-compact\);[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)/);
-    expect(rule(".taskDoneWhen .taskOwnInput")).toMatch(/min-height: var\(--control-height\)/);
+    expect(rule(".taskCompleteWhen .taskOwnInput")).toMatch(/min-height: var\(--control-height\)/);
     expect(rule(".taskCheckResult.isPassed")).toMatch(/var\(--command-green\)/);
     expect(rule(".taskCheckResult.isFailed")).toMatch(/var\(--command-error\)/);
     expect(rule(".taskTextCounter")).toMatch(/align-self: flex-end;[^}]*var\(--font-data\)/);

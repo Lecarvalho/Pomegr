@@ -127,7 +127,7 @@ function recordCheckStatus(url, value, checkedAt) {
 /**
  * The aggregate check status last read for a normalized pull-request URL together with the time (epoch
  * milliseconds) the read that established it began, or `null` when the latest read did not establish one.
- * A memory lookup: it never runs gh. For the task done-when rule only.
+ * A memory lookup: it never runs gh. For the task complete-when rule only.
  *
  * @param {unknown} url
  * @returns {{ status: "passed" | "failed" | "pending" | "none", readAt: number } | null}
@@ -263,7 +263,7 @@ export async function readPullRequests(sessionCreations = [], options = {}) {
   return {
     status: !queried || available ? "ready" : "unavailable",
     checkedAt: reads.at(-1) || null,
-    // Monitor-private: the done-when rule judges the block by this time. The session state serializer
+    // Monitor-private: the complete-when rule judges the block by this time. The session state serializer
     // removes it before the block is served, and the repository snapshot never copies it.
     readAt: reads[0] || null,
     items: [...itemsByUrl.values()].slice(0, MAX_PULL_REQUESTS),

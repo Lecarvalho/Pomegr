@@ -18,7 +18,7 @@ const sessionId = "claude:this-session";
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -30,7 +30,7 @@ const mine = task(14, {
   text: "Add the complete_task and block_task tools.\nBind each call to the session.",
   featureId: "feat-1", step: 2, state: "queued",
   run: { provider: "claude", model: "opus", effort: "high" },
-  doneWhen: { checks: ["pr_open", "tree_clean"], own: "Both tools validate their input." },
+  completeWhen: { checks: ["pr_open", "tree_clean"], own: "Both tools validate their input." },
   session: { id: sessionId, title: "Wire the tools", state: "working", observedModel: "opus" },
 });
 
@@ -122,7 +122,7 @@ describe("SessionTaskTab", () => {
   });
 
   it("omits the Definition of done when there is no own condition, and the checks when none are set", () => {
-    setBoard(board({ tasks: [{ ...mine, doneWhen: { checks: [], own: null } }, ...siblings] }));
+    setBoard(board({ tasks: [{ ...mine, completeWhen: { checks: [], own: null } }, ...siblings] }));
     render(<SessionTaskTab task={reference} sessionId={sessionId} />);
     const panel = screen.getByRole("region", { name: "Task T-14" });
     expect(panel).not.toHaveTextContent("Definition of done");

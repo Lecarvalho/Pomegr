@@ -10,7 +10,7 @@ const repositoryId = "repo-0123456789abcdef01234567";
 function task(overrides: Partial<Task> = {}): Task {
   return {
     id: "T-1", text: "Write the changelog", columnId: "col-1", position: 0, featureId: null, step: null,
-    run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
+    run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
@@ -80,7 +80,7 @@ describe("useTasks", () => {
     ["a task with an unknown state", () => json(board({ tasks: [task({ state: "running" as never })] }))],
     ["a task with a bad id", () => json(board({ tasks: [task({ id: "task-1" })] }))],
     ["a task with a session that is not an object", () => json(board({ tasks: [task({ session: "claude:1" as never })] }))],
-    ["a task with an unknown check", () => json(board({ tasks: [task({ doneWhen: { checks: ["deploy" as never], own: null } })] }))],
+    ["a task with an unknown check", () => json(board({ tasks: [task({ completeWhen: { checks: ["deploy" as never], own: null } })] }))],
     ["more tasks than the documented bound", () => json(board({ tasks: Array.from({ length: 501 }, (_, index) => task({ id: `T-${index + 1}` })) }))],
   ])("becomes unavailable with no content for %s", async (_name, response) => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => response());

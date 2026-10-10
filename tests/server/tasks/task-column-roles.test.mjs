@@ -84,7 +84,7 @@ test("a start alone moves nothing: the card moves only when the session links", 
 test("a report moves the card to Review whether its checks passed or not, Mark done moves it to Done, and a block leaves it where it is", async (context) => {
   const env = await setup(context);
   const done = create(env);
-  const review = create(env, { doneWhen: { checks: ["tree_clean"], own: null } });
+  const review = create(env, { completeWhen: { checks: ["tree_clean"], own: null } });
   const blocked = create(env);
   link(env, done, "claude:done-session");
   link(env, review, "claude:review-session");
@@ -112,7 +112,7 @@ test("a stalled task stays in its column", async (context) => {
 test("Mark done moves the card to Done; Requeue puts it back in Ready until the new session links", async (context) => {
   const env = await setup(context);
   const accepted = create(env);
-  const requeued = create(env, { doneWhen: { checks: ["tree_clean"], own: null } });
+  const requeued = create(env, { completeWhen: { checks: ["tree_clean"], own: null } });
   link(env, accepted, "claude:accepted-session");
   link(env, requeued, "claude:requeued-session");
   assert.deepEqual(env.store.stallEndedTasks((sessionId) => (sessionId === "claude:accepted-session" ? CLOSED : null)), { ok: true, stalled: 1 });

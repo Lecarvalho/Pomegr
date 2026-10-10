@@ -46,7 +46,7 @@ test("promote creates a task in the first column with the composed text and its 
   assert.equal(task.text, "Fix the parser\n\nIt crashes on empty input.");
   assert.deepEqual(task.source, { kind: "github_issue", number: 12 });
   assert.deepEqual(task.run, { provider: null, model: null, effort: null });
-  assert.deepEqual(task.doneWhen, { checks: [], own: null });
+  assert.deepEqual(task.completeWhen, { checks: [], own: null });
   assert.equal(task.state, "not_queued");
   assert.equal(task.featureId, null);
   assert.deepEqual(board(env).tasks[0].source, { kind: "github_issue", number: 12 });
@@ -195,7 +195,7 @@ test("a malformed stored source reads as no source and never breaks the board", 
 });
 
 test("the prompt names the issue only when the task has a source, and the longest prompt fits the desktop limit", () => {
-  const base = { id: "T-3", text: "Fix the parser", doneWhen: { checks: [], own: null } };
+  const base = { id: "T-3", text: "Fix the parser", completeWhen: { checks: [], own: null } };
   const plain = buildTaskPrompt({ ...base, source: null });
   assert.ok(!plain.includes("GitHub issue"));
   assert.equal(buildTaskPrompt(base), plain);
@@ -213,7 +213,7 @@ test("the prompt names the issue only when the task has a source, and the longes
   }
   const longest = buildTaskPrompt({
     id: "T-999999999", text: "x".repeat(TASK_BOUNDS.textLength),
-    doneWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"], own: "y".repeat(TASK_BOUNDS.ownConditionLength) },
+    completeWhen: { checks: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"], own: "y".repeat(TASK_BOUNDS.ownConditionLength) },
     source: { kind: "github_issue", number: 999_999_999 },
   });
   assert.ok(longest.length < 8000, `the longest prompt is ${longest.length} characters`);

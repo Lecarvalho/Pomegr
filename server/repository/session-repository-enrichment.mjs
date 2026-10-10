@@ -35,7 +35,7 @@ function sameRoot(left, right) {
 
 // Monitor-private read time. A live repository block carries `readAt` (the start of the Git read its working
 // tree and branch comparison come from) and a pull-request block carries `readAt` (the start of the oldest
-// read its items rest on), both ISO timestamps. The task done-when rule judges a committed fact by them
+// read its items rest on), both ISO timestamps. The task complete-when rule judges a committed fact by them
 // (`resolveTaskCheckFacts`). They live in the committed public state, so the one serializer that serves it
 // removes them; no served surface, response, checkpoint, sidecar, report, or log carries one.
 const PRIVATE_READ_KEY = "readAt";

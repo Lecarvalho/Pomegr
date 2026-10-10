@@ -79,10 +79,10 @@ export function referenceChip(state: SessionTaskReference["state"]): { label: st
 }
 
 /** "2 checks + agent report"; the agent's report always counts. */
-export function doneWhenParts(doneWhen: Task["doneWhen"]): string {
+export function completeWhenParts(completeWhen: Task["completeWhen"]): string {
   const parts = [
-    doneWhen.checks.length > 0 && `${doneWhen.checks.length} ${doneWhen.checks.length === 1 ? "check" : "checks"}`,
-    doneWhen.own !== null && "own condition",
+    completeWhen.checks.length > 0 && `${completeWhen.checks.length} ${completeWhen.checks.length === 1 ? "check" : "checks"}`,
+    completeWhen.own !== null && "own condition",
     "agent report",
   ].filter(Boolean);
   return parts.join(" + ");
@@ -112,8 +112,8 @@ export function reportOutcome(task: Task): string {
 }
 
 /** The Overview cell: "2 checks + agent report · not yet reported". */
-export function summaryDoneWhen(task: Task): string {
-  return `${doneWhenParts(task.doneWhen)} · ${reportOutcome(task)}`;
+export function summaryCompleteWhen(task: Task): string {
+  return `${completeWhenParts(task.completeWhen)} · ${reportOutcome(task)}`;
 }
 
 /** The line under the Definition of done: the condition is the agent's to judge, and the report is what settles it. */
@@ -131,7 +131,7 @@ export type CheckRow = { check: TaskCheck; label: string; result: string; tone: 
  * as of now, never as a result, because the report's verification decides.
  */
 export function checkRows(task: Task): CheckRow[] {
-  return task.doneWhen.checks.map((check) => {
+  return task.completeWhen.checks.map((check) => {
     const label = CHECK_LABELS[check];
     if (!task.report) {
       if (OUTCOME_STATES.has(task.state)) return { check, label, result: "No report", tone: "waiting" };
