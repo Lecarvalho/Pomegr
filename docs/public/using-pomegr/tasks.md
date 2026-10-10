@@ -107,6 +107,20 @@ server, keeps **Tree clean** from passing until it ends.
   as **Move T-3 up** and **Move T-3 to the next column** (T-3 is an example).
   Arrow keys move between the buttons.
 
+### Find a task
+
+Press **Ctrl K** (**⌘ K** on a Mac), or select **Search tasks** in the top bar, while
+the board is open. The search looks at the board of the repository you are on, and
+lists its tasks before the usual destinations.
+
+- **What it matches.** The task ID, the task text, the session title, the feature,
+  the column, the chip, and `#` with an issue number, such as `#133`. Every word you
+  type must match.
+- **Choosing a task.** The desktop app opens the task. A same-computer browser shows
+  the card on the **Board** and clears a feature filter that would hide it.
+- The search reads nothing new: it uses the board already on screen, and what you
+  type is not stored.
+
 ### Cards Pomegr moves
 
 Pomegr moves a card to another column when its task changes state:

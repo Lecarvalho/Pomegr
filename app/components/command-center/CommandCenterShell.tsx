@@ -15,6 +15,7 @@ import type { DesktopState } from "../DesktopControls";
 import { PomegrBrand, type PomegrMarkVariant } from "../PomegrBrand";
 import { ThemeToggle } from "../ThemeToggle";
 import { CommandIcon, type CommandIconName } from "./CommandIcon";
+import { matchPaletteScopeItems, usePaletteScope } from "./palette-scope";
 import { useRepositoryInventory } from "../../repository-inventory-client";
 import { useUsageLimits } from "../../usage-limits-client";
 
@@ -68,9 +69,13 @@ const destinationTerms: Array<[RegExp, string]> = [
   [/home/i, "/"],
 ];
 
-type PaletteResult = { id: string; href: string; label: string; detail: string; icon: CommandIconName };
+/** A destination carries an `href`; an item of the page in view carries its `scopeId` instead. */
+type PaletteResult = { id: string; href?: string; scopeId?: string; label: string; detail: string; icon: CommandIconName };
 
-function Palette({ open, onClose, query, onQueryChange, results, onSelect, inputRef }: {
+/** How many items of the page in view the palette lists at once. */
+const SCOPE_RESULT_LIMIT = 20;
+
+function Palette({ open, onClose, query, onQueryChange, results, onSelect, inputRef, placeholder, emptyLine }: {
   open: boolean;
   onClose: () => void;
   query: string;
@@ -78,6 +83,8 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
   results: PaletteResult[];
   onSelect: (result: PaletteResult) => void;
   inputRef: RefObject<HTMLInputElement | null>;
+  placeholder: string;
+  emptyLine: string;
 }) {
   // The highlight tracks the query it was computed for. When the query changes (typing
   // narrows or widens the results) we adjust the highlight back to the top result during
@@ -103,10 +110,10 @@ function Palette({ open, onClose, query, onQueryChange, results, onSelect, input
   if (!open) return null;
   return <div className="commandPaletteBackdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="commandPalette" role="dialog" aria-modal="true" aria-labelledby="command-palette-title">
-      <header><CommandIcon name="search" /><label id="command-palette-title" className="commandVisuallyHidden" htmlFor="command-palette-input">Search Pomegr</label><input ref={inputRef} id="command-palette-input" role="combobox" aria-expanded="true" aria-controls="command-palette-results" aria-activedescendant={results[selectedIndex] ? `command-palette-${results[selectedIndex].id}` : undefined} value={query} onChange={(event) => onQueryChange(event.currentTarget.value)} placeholder="Search destinations, sessions, and repositories" autoComplete="off" /><kbd>Esc</kbd></header>
+      <header><CommandIcon name="search" /><label id="command-palette-title" className="commandVisuallyHidden" htmlFor="command-palette-input">Search Pomegr</label><input ref={inputRef} id="command-palette-input" role="combobox" aria-expanded="true" aria-controls="command-palette-results" aria-activedescendant={results[selectedIndex] ? `command-palette-${results[selectedIndex].id}` : undefined} value={query} onChange={(event) => onQueryChange(event.currentTarget.value)} placeholder={placeholder} autoComplete="off" /><kbd>Esc</kbd></header>
       <div className="commandPaletteResults" id="command-palette-results" role="listbox" aria-label="Search results">
         {results.map((result, index) => <button type="button" id={`command-palette-${result.id}`} key={result.id} role="option" tabIndex={-1} aria-selected={index === selectedIndex} className={`commandQuietAction commandPaletteOption${index === selectedIndex ? " active" : ""}`} onMouseEnter={() => setHighlight((current) => ({ query: current.query, index }))} onMouseDown={(event) => { event.preventDefault(); onSelect(result); }}><CommandIcon name={result.icon} /><span><strong>{result.label}</strong><small>{result.detail}</small></span><CommandIcon name="arrow" size="small" /></button>)}
-        {!results.length && <p>No destinations match that search.</p>}
+        {!results.length && <p>{emptyLine}</p>}
       </div>
       <footer><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span></footer>
     </section>
@@ -185,6 +192,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
   const { snapshot: repositorySnapshot } = useRepositoryInventory();
   const notifications = useNotifications(connected, loading);
   const hasAttention = notifications.hasUnreadAttention;
+  const scope = usePaletteScope();
 
   const paletteResults = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -201,9 +209,16 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     const recentRepositories = repositorySnapshot.repositories.slice(0, 5).map((repository) => ({ id: `repository-${repository.id}`, href: `/repositories/${repository.id}`, label: repository.displayName, detail: "Repository", icon: "repositories" as const }));
     const routedDestination = destinationTerms.find(([pattern]) => pattern.test(normalized))?.[1];
     const routed = routedDestination ? destinations.filter((result) => result.href === routedDestination) : [];
-    const candidates = [...routed, ...destinations.filter((result) => result.href !== routedDestination), ...recentSessions, ...recentRepositories];
-    return normalized ? candidates.filter((result) => `${result.label} ${result.detail}`.toLowerCase().includes(normalized)) : candidates;
-  }, [query, repositorySnapshot.repositories, sessions]);
+    const ordered = [...routed, ...destinations.filter((result) => result.href !== routedDestination)];
+    // The search leads with the module in view: its sessions or repositories go before the destinations.
+    const candidates = pathname === "/sessions" || pathname.startsWith("/sessions/") ? [...recentSessions, ...ordered, ...recentRepositories]
+      : pathname === "/repositories" || pathname.startsWith("/repositories/") ? [...recentRepositories, ...ordered, ...recentSessions]
+        : [...ordered, ...recentSessions, ...recentRepositories];
+    const matched = normalized ? candidates.filter((result) => `${result.label} ${result.detail}`.toLowerCase().includes(normalized)) : candidates;
+    // A page that registered a scope (the task board) has its own items searched first.
+    const scoped: PaletteResult[] = scope ? matchPaletteScopeItems(scope.items, normalized, SCOPE_RESULT_LIMIT).map((item) => ({ id: `scope-${item.id}`, scopeId: item.id, label: item.label, detail: item.detail, icon: "grid" })) : [];
+    return [...scoped, ...matched];
+  }, [pathname, query, repositorySnapshot.repositories, scope, sessions]);
 
   const sidebarLimits = useMemo(() => sidebarLimitsForCatalog(sessions, usageLimits.providers, sidebarReferenceTime), [sessions, sidebarReferenceTime, usageLimits.providers]);
 
@@ -257,9 +272,11 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
     return () => document.removeEventListener("keydown", focusSearch);
   }, [closePalette, openPalette, paletteOpen]);
   const selectPaletteResult = useCallback((result: PaletteResult) => {
-    router.push(result.href);
+    // Close first: an item of the page in view takes focus itself (a card, or the modal it opens).
     closePalette(false);
-  }, [closePalette, router]);
+    if (result.scopeId !== undefined) scope?.onSelect(result.scopeId);
+    else if (result.href !== undefined) router.push(result.href);
+  }, [closePalette, router, scope]);
 
   return (
     <div className="commandShell">
@@ -271,7 +288,7 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
           setMobileNavigationOpen((open) => !open);
         }}><CommandIcon name={mobileNavigationOpen ? "close" : "menu"} /></button>
         <PomegrBrand href="/" label="Pomegr home" markVariant={markVariant} />
-        <button ref={paletteButtonRef} className="commandQuietAction commandPaletteTrigger" type="button" aria-label="Search Pomegr" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><CommandIcon name="search" /><span>Search</span><kbd>{shortcutHint}</kbd></button>
+        <button ref={paletteButtonRef} className="commandQuietAction commandPaletteTrigger" type="button" aria-label="Search Pomegr" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><CommandIcon name="search" /><span>{scope?.label ?? "Search"}</span><kbd>{shortcutHint}</kbd></button>
         <span className={`commandEnvironment ${loading ? "loading" : connected ? "online" : "offline"}`}><i />{loading ? "Connecting" : connected ? "Local monitor" : "Monitor offline"}</span>
         <div className="commandHeaderTools">
           <div className="commandNotificationWrap" ref={notificationWrapRef}>
@@ -297,7 +314,8 @@ export function CommandCenterShell({ children, pathname, sessions, connected, lo
         </div>
       </header>
 
-      <Palette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={closePalette} query={query} onQueryChange={setQuery} results={paletteResults} onSelect={selectPaletteResult} inputRef={searchRef} />
+      <Palette key={paletteOpen ? "open" : "closed"} open={paletteOpen} onClose={closePalette} query={query} onQueryChange={setQuery} results={paletteResults} onSelect={selectPaletteResult} inputRef={searchRef}
+        placeholder={scope?.placeholder ?? "Search destinations, sessions, and repositories"} emptyLine={scope?.emptyLine ?? "No destinations match that search."} />
 
       {mobileNavigationOpen && <button className="commandNavScrim" type="button" aria-label="Close primary menu" onClick={() => closeMobileNavigation()} />}
       <aside ref={mobileNavigationRef} className={`commandSidebar${mobileNavigationOpen ? " isOpen" : ""}`} id="command-primary-navigation" aria-label="Primary navigation">

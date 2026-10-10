@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRepositoryInventory } from "../../repository-inventory-client";
 import { useTasks } from "../../tasks-store";
 import { TASK_BOUNDS, type Task } from "../../../shared/task-contract";
 import { CommandPageHeader } from "../command-center/CommandPage";
+import { setPaletteScope } from "../command-center/palette-scope";
 import { AddFeatureAction } from "./AddFeatureAction";
 import { QueueControl } from "./QueueControl";
-import { TaskBoardView, type TaskView } from "./TaskBoardView";
+import { TaskBoardView, type TaskReveal, type TaskView } from "./TaskBoardView";
 import { TaskModal } from "./TaskModal";
 import { PromoteIssuesAction } from "./promote-issues-action";
 import { useTaskDesktopAvailability } from "./task-desktop";
 import { queueStatusLine } from "./task-queue-banner";
+import { taskSearchItems } from "./task-search";
 import { useTaskBoardEdits } from "./use-task-board-edits";
 import { useTaskIssuesAvailability } from "./use-promote-issues";
 
@@ -36,6 +38,8 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
   const issuesBridge = useTaskIssuesAvailability();
   const [modal, setModal] = useState<OpenModal>(null);
   const [view, setView] = useState<TaskView>("board");
+  const [reveal, setReveal] = useState<TaskReveal | null>(null);
+  const section = useRef<HTMLElement>(null);
   // The + New task action of the first lane. The Queue view has no lanes, so it is absent there.
   const trigger = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -61,7 +65,22 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
   const queueLine = queueStatusLine(board.queue.status);
   const openNew = useCallback(() => { opener.current = trigger.current; setModal({ kind: "new" }); }, []);
   const openCard = useCallback((task: Task, element: HTMLElement) => { opener.current = element; setModal({ kind: "task", id: task.id }); }, []);
-  return <section className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
+  // Choosing a view lets go of the card the Search bar last showed, so coming back to the Board does not take focus again.
+  const chooseView = useCallback((next: TaskView) => { setReveal(null); setView(next); }, []);
+  // A task chosen in the Search bar: the desktop app opens its modal, any other client is shown its card on the Board.
+  const openFound = useCallback((id: string) => {
+    if (desktop !== "available") { setView("board"); setReveal((last) => ({ id, turn: (last?.turn ?? 0) + 1 })); return; }
+    const card = [...(section.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
+    opener.current = card?.querySelector<HTMLElement>(".taskCardOpen") ?? trigger.current;
+    setModal({ kind: "task", id });
+  }, [desktop]);
+  // While a ready board is in view the Search bar searches its tasks, from the board already in memory.
+  const searchItems = useMemo(() => (ready ? taskSearchItems(board) : null), [board, ready]);
+  useEffect(() => {
+    if (!searchItems) return;
+    return setPaletteScope({ label: "Search tasks", placeholder: "Search tasks and destinations", emptyLine: "No tasks or destinations match that search.", items: searchItems, onSelect: openFound });
+  }, [openFound, searchItems]);
+  return <section ref={section} className="commandView tasksPage" aria-labelledby={headingId} aria-busy={board.readiness === "loading"}>
     <CommandPageHeader className="tasksPageHeader" headingId={headingId} title="Tasks"
       meta={<div className="tasksPageMeta">
         <p>Stored tasks for this repository, grouped by column. A card shows its task text until its session has a title.</p>
@@ -72,8 +91,8 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
       actions={(switcher || ready || issuesBridge === "available") && <div className="taskHeadActions">
         {switcher}
         {ready && <div className="commandSegmented" role="group" aria-label="Tasks view">
-          <button type="button" aria-pressed={view === "board"} onClick={() => setView("board")}>Board</button>
-          <button type="button" aria-pressed={view === "queue"} onClick={() => setView("queue")}>Queue</button>
+          <button type="button" aria-pressed={view === "board"} onClick={() => chooseView("board")}>Board</button>
+          <button type="button" aria-pressed={view === "queue"} onClick={() => chooseView("queue")}>Queue</button>
         </div>}
         {desktop === "available" && ready && <QueueControl status={board.queue.status} busy={edits.busy} onSet={(on) => { void edits.setQueue(on); }} />}
         {/* The Board's filter row carries this action once a feature exists; without one the row is not drawn. */}
@@ -82,7 +101,7 @@ export function TaskBoardPane({ repositoryId, switcher }: { repositoryId: string
         {issuesBridge === "available" && <PromoteIssuesAction repositoryId={repositoryId} />}
       </div>} />
     <div className="tasksPageBody">
-      <TaskBoardView board={board} view={view} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined}
+      <TaskBoardView board={board} view={view} reveal={reveal} onOpenTask={desktop === "available" ? openCard : undefined} edits={desktop === "available" ? edits : undefined}
         newTask={desktop === "available" ? { triggerRef: trigger, onOpen: openNew } : undefined} />
       {desktop === "available" && modal?.kind === "new" && <TaskModal mode="new" repositoryId={repositoryId} repositoryName={repositoryName} board={board} refresh={refresh} onCreated={changed} onIssueFailed={openCreated} onClose={close} />}
       {desktop === "available" && openTask && <TaskModal key={openTask.id} mode="edit" repositoryId={repositoryId} repositoryName={repositoryName} task={openTask} board={board} refresh={refresh} onOpenTask={openCard} onChanged={changed} onDeleted={deleted} onClose={close} />}

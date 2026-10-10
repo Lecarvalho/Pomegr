@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Task, TaskBoard } from "../../../shared/task-contract";
 import { CapacityStrip } from "./CapacityStrip";
@@ -33,8 +33,14 @@ export function TaskBoardSkeleton() {
 /** A focus the board restores after a keyboard action re-draws the card control, until that action has settled. */
 type Restore = { find(): HTMLElement | null; settled: number };
 
-function ReadyBoard({ board, onOpenTask, edits, newTask }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry }) {
+/** A card to bring into view: the task chosen in the Search bar. `turn` grows with each choice, so the same task can be chosen again. */
+export type TaskReveal = { id: string; turn: number };
+
+function ReadyBoard({ board, onOpenTask, edits, newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
   const [chosenFilter, setChosenFilter] = useState<FeatureFilterValue>(ALL_FEATURES);
+  // A feature filter could hide the card to show, so a new reveal clears it, adjusted during render.
+  const [revealed, setRevealed] = useState(reveal ?? null);
+  if ((reveal ?? null) !== revealed) { setRevealed(reveal ?? null); setChosenFilter(ALL_FEATURES); }
   // A filter hides cards, so positions drawn would not be positions on the monitor: nothing can move while one is on.
   const filter = effectiveFeatureFilter(board, chosenFilter);
   const filtered = filter !== ALL_FEATURES;
@@ -58,6 +64,17 @@ function ReadyBoard({ board, onOpenTask, edits, newTask }: { board: TaskBoard; o
     if (target && target !== active) target.focus();
     if (request.settled !== settled) restore.current = null;
   }, [signature, settled]);
+
+  // Scroll the revealed card into view and put focus on it: on its open control, or on the card itself where it is read-only.
+  useEffect(() => {
+    if (!reveal) return;
+    const card = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === reveal.id);
+    if (!card) return;
+    card.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    const control = card.querySelector<HTMLElement>(".taskCardOpen");
+    if (!control) card.tabIndex = -1;
+    (control ?? card).focus({ preventScroll: true });
+  }, [reveal]);
 
   const cardControl = (id: string, kind: CardMoveKind) => () => {
     const card = [...(scroller.current?.querySelectorAll<HTMLElement>("[data-task-id]") ?? [])].find((element) => element.getAttribute("data-task-id") === id);
@@ -121,9 +138,10 @@ export type TaskView = "board" | "queue";
  * Lanes with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
  * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task modal only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard;
  * without it the board is read-only: no draggable card, no control, no mutation. `newTask` (the desktop app) adds the
- * + New task action to the first lane of the Board; the Queue view has no lanes and so no such entry.
+ * + New task action to the first lane of the Board; the Queue view has no lanes and so no such entry. `reveal` names
+ * a card the Board scrolls to and focuses, for a client that cannot open the Task modal.
  */
-export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTask }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView; newTask?: NewTaskEntry }) {
+export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTask, reveal }: { board: TaskBoard; onOpenTask?: OpenTask; edits?: TaskBoardEdits; view?: TaskView; newTask?: NewTaskEntry; reveal?: TaskReveal | null }) {
   if (board.readiness === "loading") return <TaskBoardSkeleton />;
   if (board.readiness === "unavailable") return <section className="panel taskBoardNotice" role="status"><p>Tasks are unavailable. Pomegr will retry the local monitor automatically.</p></section>;
   if (board.readiness === "desktop_only") return <section className="panel taskBoardNotice" aria-label="Tasks">
@@ -132,6 +150,6 @@ export function TaskBoardView({ board, onOpenTask, edits, view = "board", newTas
   </section>;
   return <>
     <QueueBanner board={board} view={view} onOpenTask={onOpenTask} edits={edits} />
-    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} />}
+    {view === "queue" ? <TaskQueueView board={board} onOpenTask={onOpenTask} edits={edits} /> : <ReadyBoard board={board} onOpenTask={onOpenTask} edits={edits} newTask={newTask} reveal={reveal} />}
   </>;
 }

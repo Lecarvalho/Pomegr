@@ -287,7 +287,7 @@ Evidence panels use the theme panel token, a one-pixel line, 6px radius, and 16p
 
 ### Navigation
 
-Tasks is a root item of the primary rail, directly after Sessions (the `grid` glyph, current on `/tasks` and below it), and a palette destination with the detail “Repository task boards”.
+Tasks is a root item of the primary rail, directly after Sessions (the `grid` glyph, current on `/tasks` and below it), and a palette destination with the detail “Repository task boards”. The palette leads with the module in view: on Sessions the recent sessions come first, on Repositories the repositories, and while a ready task board is in view the trigger reads “Search tasks” and the board's tasks (at most 20 matches, each a result row with the `grid` glyph, the first line of the card title, and an ID, column, chip, and feature detail line) come before the destinations. Choosing a task opens its Task modal in the desktop app and focuses its card on the Board anywhere else.
 
 The painted divided pomegranate is also the favicon, landing header/footer mark, Windows application icon, tray icon, and notification icon. `npm run build:brand` exports transparent Pomegr-red assets from the application luminance mask in `public/pomegr-mark-painted.png`; the app build runs this export automatically.
 
