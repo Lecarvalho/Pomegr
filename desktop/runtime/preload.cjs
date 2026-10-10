@@ -12,6 +12,9 @@ const TASK_ACTIONS = new Set([
   "resolve_done", "resolve_requeue",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
+const TASK_IMAGE_OPERATIONS = new Set(["add", "remove", "read"]);
+const TASK_IMAGE_ID = /^img-[0-9a-f]{12}$/u;
+const TASK_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 const ISSUE_DIGEST = /^[a-f0-9]{64}$/u;
 const ISSUE_TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const HOME_UPDATE_ID =/^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -133,6 +136,18 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
     }
     if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
     return ipcRenderer.invoke("pomegr:task-issues", repositoryId, operation, payload);
+  },
+  taskImage(repositoryId, operation, payload) {
+    const plain = payload && typeof payload === "object" && !Array.isArray(payload)
+      && (Object.getPrototypeOf(payload) === Object.prototype || Object.getPrototypeOf(payload) === null);
+    let valid = typeof repositoryId === "string" && REPOSITORY_ID.test(repositoryId) && TASK_IMAGE_OPERATIONS.has(operation) && plain
+      && Object.keys(payload).length === (operation === "add" ? 3 : 2) && typeof payload.taskId === "string" && TASK_ID.test(payload.taskId)
+      && typeof payload.imageId === "string" && TASK_IMAGE_ID.test(payload.imageId);
+    if (valid && operation === "add") {
+      valid = payload.bytes instanceof Uint8Array && payload.bytes.byteLength > 0 && payload.bytes.byteLength <= TASK_IMAGE_MAX_BYTES;
+    }
+    if (!valid) return Promise.resolve({ ok: false, error: "invalid" });
+    return ipcRenderer.invoke("pomegr:task-image", repositoryId, operation, payload);
   },
   taskStart(repositoryId, taskId) {
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId)

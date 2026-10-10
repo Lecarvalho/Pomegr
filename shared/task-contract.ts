@@ -4,7 +4,8 @@
  * Privacy: task text, the own condition, and feature names are user-authored
  * content (a separate data class from observation). They reach the browser only through
  * `GET /api/tasks` and trusted desktop IPC, never through `/api/state`, session catalogs,
- * reports, logs, notifications, diagnostics, or checkpoints. Provider and model names,
+ * reports, logs, notifications, diagnostics, or checkpoints. A task's images are the same data class: the board
+ * carries only each one's ID, fixed type, and size, and the bytes reach only the desktop app. Provider and model names,
  * effort, check results, and times are normalized enums or identifiers. The board never
  * carries commands, command output, diffs, provider payloads, paths, or the private
  * dispatch token. See AGENTS.md ("Task board and dispatch") and
@@ -51,6 +52,13 @@ export type TaskSource = { kind: "github_issue"; number: number };
  * characters, agent-authored like `blockReason`. A report that carries one puts the task in Review even when every
  * check passed. Null when the agent named nothing, and absent from an older monitor, which means the same.
  */
+/** The image formats a task may hold. The monitor decides the type from the bytes, never from a name. */
+export type TaskImageType = "png" | "jpeg" | "gif" | "webp";
+/**
+ * One image attached to a task: an opaque ID, its fixed type, and its size in bytes. The board carries only this; the
+ * bytes are user-authored content like the task text and reach only the desktop app, through trusted IPC.
+ */
+export type TaskImage = { id: string; type: TaskImageType; bytes: number };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null; attention?: string | null };
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
@@ -121,6 +129,8 @@ export type Task = {
   scheduledAt: string | null;
   session: TaskSession | null; // borrowed from observation; never transcript content
   source: TaskSource | null;
+  /** The task's images, at most four, in the order they were attached. Absent from an older monitor, which means none. */
+  images?: TaskImage[];
   report: TaskReport | null;
   createdAt: string;
   updatedAt: string;
@@ -155,7 +165,42 @@ export const TASK_BOUNDS = {
   featureNameLength: 80,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
+  imagesPerTask: 4,
+  imageBytes: 5 * 1024 * 1024,
 } as const;
+
+export const TASK_IMAGE_TYPES: readonly TaskImageType[] = ["png", "jpeg", "gif", "webp"];
+
+/**
+ * Where an image sits in a task's text: `[image:<image ID>]`, ordinary task text that names one of `Task.images`.
+ * The Task field draws the image in its place; every other surface shows the plain word (`plainTaskText`).
+ */
+export const TASK_IMAGE_ID_PATTERN = /^img-[0-9a-f]{12}$/u;
+const TASK_IMAGE_MARKER = /\[image:(img-[0-9a-f]{12})\]/gu;
+export const taskImageMarker = (imageId: string) => `[image:${imageId}]`;
+
+/** The image IDs a task text names, once each, in the order they first appear. */
+export function taskImageIds(text: string): string[] {
+  return [...new Set([...text.matchAll(TASK_IMAGE_MARKER)].map((match) => match[1]))];
+}
+
+/** Task text split into its plain runs and its image markers, in order. */
+export function taskTextParts(text: string): ({ text: string } | { imageId: string })[] {
+  const parts: ({ text: string } | { imageId: string })[] = [];
+  let at = 0;
+  for (const match of text.matchAll(TASK_IMAGE_MARKER)) {
+    if (match.index > at) parts.push({ text: text.slice(at, match.index) });
+    parts.push({ imageId: match[1] });
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) parts.push({ text: text.slice(at) });
+  return parts;
+}
+
+/** Task text for a surface that draws no image (a card, the search, a session's Task tab): a marker reads `[image]`. */
+export function plainTaskText(text: string): string {
+  return text.replace(TASK_IMAGE_MARKER, "[image]");
+}
 
 export const TASK_CHECKS: readonly TaskCheck[] = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
 export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];
