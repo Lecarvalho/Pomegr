@@ -112,18 +112,21 @@ test("a removed task worktree identified before its repository resolves once the
     registry: { repositoryAttributionForSession: () => null }, inventory: runtime, previousReference: () => null,
     previousAssociation: () => null, onChange: (id) => changed.push(id),
   });
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-  associations.get(candidate);
-  await settle();
-  assert.equal(associations.get(candidate).repositoryId, fallback.repositoryId);
+  // The association settles off the lookup, after store writes whose time is not bounded: wait for the value.
+  const settled = async (repositoryId) => {
+    for (let attempt = 0; attempt < 500 && associations.get(candidate)?.repositoryId !== repositoryId; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return associations.get(candidate)?.repositoryId;
+  };
+  assert.equal(await settled(fallback.repositoryId), fallback.repositoryId);
 
   await runtime.identify(MAIN);
   assert.equal(runtime.taskWorktreeOwner(removed), "known");
   changed.length = 0;
   // Any later lookup notices; the settled value is served until the new one settles, never null.
   assert.equal(associations.get(candidate).repositoryId, fallback.repositoryId);
-  await settle();
-  assert.equal(associations.get(candidate).repositoryId, mainId);
+  assert.equal(await settled(mainId), mainId);
   assert.ok(changed.includes("claude:s-1"));
   assert.equal(runtime.repositoryRoot(mainId), MAIN);
   assert.equal(runtime.repositoryRoot(fallback.repositoryId), removed, "the earlier fallback target is left as it was");
