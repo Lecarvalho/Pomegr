@@ -185,7 +185,7 @@ export async function readTaskCheckFacts(sessionRef, { observationStore, readNow
     try {
       blocks = await Promise.race([
         Promise.resolve().then(() => readNow(sessionRef)),
-        new Promise((resolve) => { timer = setTimeout(resolve, deadlineMs, null); timer.unref?.(); }),
+        new Promise((resolve) => { timer = setTimeout(resolve, deadlineMs, null); }),
       ]);
     } catch { blocks = null; } finally { clearTimeout(timer); }
   }
