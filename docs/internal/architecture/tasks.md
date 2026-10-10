@@ -572,12 +572,37 @@ the conditions the user checked and sets the state.
   task.
 - The report keeps only `{ check, passed }` results, the time, and the bounded block
   reason. Command output, diffs, and provider payloads are never kept or exposed.
-- Verification uses committed facts and never blocks on acquisition. A fact that is
-  unknown is not a pass.
-- The facts are the bound session's committed public state in memory
-  (`resolveTaskCheckFacts` in `server/runtime/task-session-lookup.mjs`), handed to the pure
-  rule `verifyChecks(checks, facts)` as `{ treeClean, branchCommits, pullRequestStates,
-  ciPassed, readAt, workAt }`. The task branch is the branch recorded for that session.
+- **A report is verified on a read made when it arrives** (product-owner decision,
+  2026-10-10). An agent reports right after its last command, so the facts the monitor
+  already holds are older than that command and cannot be judged. When `complete_task`
+  arrives for a task that can still be reported on and has a checked condition, the
+  monitor reads the bound session's repository and its pull requests once, at that
+  moment, and judges the report on that read (`readTaskCheckFacts` in
+  `server/runtime/task-session-lookup.mjs`).
+  - It is the session's own live repository read (`readNow` in
+    `server/repository/session-repository-enrichment.mjs`): the root and branch the
+    monitor already bound to the session, the same Git reader and pull-request reader,
+    `execFile` with argument arrays, and their own deadlines. Nothing in the request
+    names a path, a branch, or a repository.
+  - The read does not reuse an older answer. The pull-request reader skips its 60-second
+    cache (`fresh`), and a Git read that joined an inspection begun before the report is
+    made once more.
+  - The request waits for the read, for at most 20 seconds. This is the one place a task
+    request waits for Git or GitHub: it is the agent's POST, bound to its session. No
+    GET reads anything, and a task with no checked condition reads nothing.
+  - The answer of the read replaces the session's live repository value like any
+    refresh, so the next derive commits it. Nothing new is stored or served.
+  - A read that cannot be made (no bound repository, a failed Git read, the deadline)
+    falls back to the committed facts below, which the age rule then judges. A fact that
+    is unknown is not a pass.
+  - CI still running when the report arrives is a known `pending`, so the task needs
+    review. The agent waits for CI before it reports.
+- The board's reading of a waiting task (below) uses committed facts only and never
+  blocks on acquisition (`resolveTaskCheckFacts`).
+- Both hand the pure rule `verifyChecks(checks, facts)` the same shape,
+  `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`, built by
+  one function from a repository block, a pull-request block, and the session's
+  committed public state. The task branch is the branch recorded for that session.
   - Working tree clean: the live repository block lists no uncommitted file.
   - Commit on task branch: the branch is not the main branch and its base comparison
     shows a commit of its own, merged since or not.
@@ -590,9 +615,9 @@ the conditions the user checked and sets the state.
     A missing or unrecognized list is unknown. The condition judges the task branch's
     open pull requests, or its merged ones when none is open, and passes only when each
     is `passed`. Pending, failed, no check, and no such pull request are not passed; a
-    pull request whose status the monitor has not read is unknown. Verification reads
-    the status and the time of the read that established it from memory
-    (`pullRequestCheckRead`) and never runs gh.
+    pull request whose status the monitor has not read is unknown. The status and the
+    time of the read that established it are taken from memory (`pullRequestCheckRead`);
+    a report's own pull-request read is what puts them there.
   - An unavailable or historical repository block, a missing base comparison, and a
     pull-request block that is not ready are unknown.
 - **A fact is judged only on a read made after the work it judges.** A condition never
@@ -612,7 +637,8 @@ the conditions the user checked and sets the state.
     served `checkedAt` is the newest and is not used); it dates `pr_open` and `pr_merged`.
     CI uses the oldest judged check-status read, bounded by the pull-request block's
     `readAt`. Every read is dated by the moment it began, because what it saw is no
-    newer than that. Concurrent Git reads of one working tree share one inspection, and
+    newer than that. A report's own read is dated the same way, and it begins after the
+    report arrived. Concurrent Git reads of one working tree share one inspection, and
     each caller is dated by the start of that inspection (`_readStartedAt`, a private key
     of the Git reader's answer), never by its own later call. A Git read whose
     `git status` failed or timed out (`_statusUnknown`) commits no stamp, because its empty
@@ -628,6 +654,8 @@ the conditions the user checked and sets the state.
     still running or finished at no known time, and a file write with no recorded
     result, make the matching facts unknown. A
     truncated activity feed with no file write bounds the newest write by its oldest item.
+    For a report, the work times are taken from the committed state after the report's
+    read has answered.
   - **Nothing new is persisted or served.** The times live in the lookup's result and the
     monitor's memory. The `readAt` stamps travel in the committed public state of a live
     session and are removed by `serializeServedSessionState`
@@ -639,8 +667,7 @@ the conditions the user checked and sets the state.
   a checked condition, every board that leaves the monitor carries `session.checks`: one
   `{ check, passed }` per checked condition, from `verifyChecks` on the facts
   `resolveTaskCheckFacts` returns at that read. `fillTaskSessions` computes it with the
-  rule and the lookup that verify the report, so the board cannot say something else
-  than the report would. A runtime without the lookup, a lookup that throws, and a
+  rule that verifies the report, on the committed facts instead of a new read. A runtime without the lookup, a lookup that throws, and a
   lookup with no facts give no reading.
   - It is a reading as of that board, not a result and not a task state. It is never
     stored, it moves no card, and it changes no state. The session's Task tab words it
@@ -650,20 +677,25 @@ the conditions the user checked and sets the state.
     report's verification is final.
   - Once a report or an outcome is recorded the board carries no reading, and the Task
     tab shows the report's own results ("Passed", "Did not pass") or "No report".
-  - The age rule applies to the reading too, so a pull request the Repository tab
+  - The age rule applies to the reading, so a pull request the Repository tab
     already lists reads "Not yet" until the pull-request read is later than the session's
-    latest Git, push, or pull-request command. That is what a report made at that moment
-    would be judged on.
+    latest Git, push, or pull-request command. A report made at that moment is judged
+    on its own read, so it can pass a condition the reading still shows as "Not yet".
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
     item, or path.
-- Committed facts can trail the agent: a pull request opened seconds before the report
-  may not be committed yet, and the task then needs review although the condition
-  holds. The user resolves it with Mark done; the verification is not repeated.
-- **Limits of the age rule, stated plainly.**
-  - A report made before the next repository refresh judges an older fact, so it lands in
-    Needs review even when the condition now holds.
-  - A refresh enters the committed state only at the next evidence-driven derive, and an
-    identical derive keeps the older stamp, so a stamp can be older than the latest read.
+- A report is verified once. A task that needs review although its condition holds
+  later (CI that finished after the report, for example) is resolved by the user with
+  Mark done; the verification is not repeated.
+- **Limits, stated plainly.**
+  - The work times come from committed state, which can trail the agent by a moment. A
+    command that ended just before the report and is still committed as running leaves
+    its facts unknown, and the task needs review although the condition holds. The
+    report's read takes long enough that this is rare.
+  - The board's reading judges committed facts. A refresh enters the committed state only
+    at the next evidence-driven derive, and the store's unchanged-detection ignores the
+    stamps, so a derive whose served state is identical keeps the older stamp. The
+    reading can therefore say "Not yet" for a condition a report would pass. Read-only
+    commands (`gh pr checks`, `git status`) count as work for the reading too.
   - A running execution task of any kind (a dev server, for example) keeps `tree_clean`
     unknown while it runs, and a running Git, push, or pull-request task does the same for
     the four other conditions.
@@ -681,7 +713,8 @@ the conditions the user checked and sets the state.
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, no task is linked to the session),
   `already_reported` (409), or `unavailable` (503). It never carries a task ID, task
-  content, or a repository fact.
+  content, or a repository fact. A completion with a checked condition answers after
+  its read, within the read's deadline.
 
 ## Session binding
 

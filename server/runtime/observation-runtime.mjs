@@ -780,7 +780,7 @@ export function createObservationRuntime(options = {}) {
       repositoryStartup.record(sessionId, live);
     },
     serveAgentQuery: (name, args, revision) => agentQueryProjection.read(name, args, revision),
-    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory, runModels: options.runModels, issueReader: options.issueReader, gateSources: { usageLimits: () => usageResponseCache.current()?.value || null, providerStatus: () => providerStatus.read()?.snapshot?.value || null, forbiddenRoots: () => Object.values(registry.providerFolders?.folders || {}).filter(Boolean), gitReader: options.taskTreeReader } }),
+    ...createTaskLookups({ observationStore, catalogSessions: () => observationCoordinator.catalog()?.snapshot?.value?.sessions, repositoryInventory, runModels: options.runModels, issueReader: options.issueReader, readRepositoryNow: options.readRepositoryNow, gateSources: { usageLimits: () => usageResponseCache.current()?.value || null, providerStatus: () => providerStatus.read()?.snapshot?.value || null, forbiddenRoots: () => Object.values(registry.providerFolders?.folders || {}).filter(Boolean), gitReader: options.taskTreeReader } }),
     subscribeRevisionEvents,
     diagnostics: () => Object.freeze({
       coordinator: observationCoordinator.diagnostics(),

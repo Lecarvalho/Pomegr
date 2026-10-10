@@ -100,12 +100,15 @@ function workTimes(state) {
 }
 
 /**
- * The repository facts the done-when checks judge for the bound session, from the session's committed public
- * state in memory only: `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`. The task branch
+ * The repository facts the done-when checks judge for the bound session: `{ treeClean, branchCommits, pullRequestStates, ciPassed, readAt, workAt }`. The task branch
  * is the branch recorded for the session. Every fact that the committed state does not establish is null (unknown),
  * which the rule never passes: an unavailable or historical repository block, a branch with no base comparison, and a
  * pull-request block that is not ready. `ciPassed` joins those pull requests with the check status the monitor
- * last read for each (`pullRequestCheckRead`, monitor-private memory). No Git, GitHub, or provider read.
+ * last read for each (`pullRequestCheckRead`, monitor-private memory).
+ *
+ * `state` is the session's committed public state. `blocks` holds the repository and pull-request blocks to judge:
+ * the committed ones for the board's reading, the ones a report's own read returned for a report. The work times
+ * always come from `state`.
  *
  * Each fact carries the time it was read (`readAt`, epoch milliseconds or null) and the latest work that could have
  * changed it (`workAt`, see `workTimes`), so the rule can refuse a fact older than the work it judges. The repository and
@@ -121,19 +124,15 @@ function workTimes(state) {
  *   `readAt`: the judged set comes from the committed block, so a check status read after the block does not date it.
  * A block without its stamp (a restored or historical one) leaves its facts unknown. Nothing here reads the request clock.
  */
-export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead = pullRequestCheckRead }) {
+function checkFacts(state, blocks, checkRead) {
   const unknown = { treeClean: null, branchCommits: null, pullRequestStates: null, ciPassed: null,
     readAt: { tree: null, branch: null, pullRequests: null, ci: null }, workAt: { tree: null, repository: null } };
-  const parsed = parseProviderSessionId(sessionRef);
-  if (!parsed) return unknown;
-  const state = observationStore.get(parsed.providerId, parsed.localSessionId)?.publicState;
-  const session = state?.session;
-  const repository = session?.repository;
+  const repository = blocks?.repository;
   if (!repository || repository.available !== true || repository.historical === true || typeof repository.branch !== "string" || repository.branch === "") return unknown;
   const comparison = repository.comparison;
   const branchCommits = repository.isMain === true ? false
     : comparison?.kind === "base" && Number.isSafeInteger(comparison.ahead) ? comparison.ahead > 0 || comparison.integrated === true : null;
-  const pulls = session.pullRequests;
+  const pulls = blocks.pullRequests;
   const branchPulls = pulls?.status === "ready" && Array.isArray(pulls.items)
     ? pulls.items.filter((item) => item?.headBranch === repository.branch && PULL_REQUEST_STATES.includes(item.state))
     : null;
@@ -154,4 +153,42 @@ export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead 
     },
     workAt: workTimes(state),
   };
+}
+
+const committedState = (sessionRef, observationStore) => {
+  const parsed = parseProviderSessionId(sessionRef);
+  return parsed ? observationStore.get(parsed.providerId, parsed.localSessionId)?.publicState ?? null : null;
+};
+
+/**
+ * The facts for the board's reading of a waiting task, from the session's committed public state in memory only.
+ * No Git, GitHub, or provider read.
+ */
+export function resolveTaskCheckFacts(sessionRef, { observationStore, checkRead = pullRequestCheckRead }) {
+  const state = committedState(sessionRef, observationStore);
+  return checkFacts(state, state?.session, checkRead);
+}
+
+/** The longest a report waits for its own read before it is judged on committed facts. */
+export const TASK_REPORT_READ_DEADLINE_MS = 20_000;
+
+/**
+ * The facts a `complete_task` report is verified on: one read of the bound session's repository and pull requests
+ * made now (`readNow`, the session's live repository read), so the facts are not older than the work the agent just
+ * finished. The work times are taken from the committed state after the read answered. A session the monitor does
+ * not hold reads nothing, and a read that fails or passes the deadline falls back to the committed facts.
+ */
+export async function readTaskCheckFacts(sessionRef, { observationStore, readNow, checkRead = pullRequestCheckRead, deadlineMs = TASK_REPORT_READ_DEADLINE_MS }) {
+  let blocks = null;
+  if (committedState(sessionRef, observationStore) && typeof readNow === "function") {
+    let timer = null;
+    try {
+      blocks = await Promise.race([
+        Promise.resolve().then(() => readNow(sessionRef)),
+        new Promise((resolve) => { timer = setTimeout(resolve, deadlineMs, null); timer.unref?.(); }),
+      ]);
+    } catch { blocks = null; } finally { clearTimeout(timer); }
+  }
+  const state = committedState(sessionRef, observationStore);
+  return checkFacts(state, blocks ?? state?.session, checkRead);
 }

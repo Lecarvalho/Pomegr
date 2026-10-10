@@ -3298,7 +3298,10 @@ The committed public state of a live session may carry monitor-private `readAt` 
 `session.repository` (the start of the Git read its working-tree files and branch comparison
 come from) and `session.pullRequests` (the start of the oldest read its items rest on).
 The task board's done-when rule dates a fact by them and refuses a fact read before the
-session's latest relevant work (see [Tasks](tasks.md#completion)). The store's served
+session's latest relevant work (see [Tasks](tasks.md#completion)). A `complete_task`
+report makes one such live read itself, outside the derive cadence and the pull-request
+read cache, and its answer replaces the session's live repository value like any refresh;
+it is the agent's POST, never a GET. The store's served
 serialization omits them, so revision and unchanged-detection ignore them, and no
 response, domain, snapshot, sidecar, checkpoint, report, or log carries one. Restored and
 historical states carry none. The Git reader's answer carries two private keys that the

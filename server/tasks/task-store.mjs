@@ -22,7 +22,7 @@ import { fillTaskSessions } from "./task-board.mjs";
 import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
 import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
-import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
+import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
@@ -622,7 +622,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   });
   const abortStart = (repositoryId, payload) => dispatch(startAbort, { repositoryId, payload });
   const bindSession = (payload) => dispatch(bindDispatch, { payload, now });
-  // The agent's report (task-report.mjs): `resolveFacts()` supplies committed repository facts for the checks.
+  // The agent's report (task-report.mjs): `resolveFacts()` supplies the repository facts for the checks.
   const completeTask = (payload, resolveFacts) => dispatch(reportComplete, { payload, resolveFacts, now });
   const blockTask = (payload) => dispatch(reportBlock, { payload, now });
   // A session that ended without a report (task-stall.mjs): `resolveFacts(sessionId)` supplies committed session facts.
@@ -638,6 +638,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const sessionTasks = (sessionIds) => link(sessionTaskReferences, { sessionIds });
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
-  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
+  const reportChecks = (sessionId) => link(reportableChecks, { sessionId });
+  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, reportChecks, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
     sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
