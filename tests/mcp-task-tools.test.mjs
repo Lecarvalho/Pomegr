@@ -9,7 +9,7 @@ import test from "node:test";
 import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
-  buildAddTaskBody, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
+  buildAddTaskBody, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
   TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
 import {
@@ -179,8 +179,8 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.equal(requests[0].init.headers[AGENT_QUERY_AUTH_HEADER], "t".repeat(43));
   assert.equal(requests[0].init.body, JSON.stringify({ text: "x" }));
 
-  // Add, bind, complete, and block are the only write paths; nothing else is reachable.
-  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH]);
+  // Add, bind, complete, block, and remove are the only write paths; nothing else is reachable.
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, TASK_REMOVE_PATH]);
   assert.equal(AGENT_TASK_COMPLETE_PATH, TASK_COMPLETE_PATH);
   assert.equal(AGENT_TASK_BLOCK_PATH, TASK_BLOCK_PATH);
   const bind = createAgentTaskWriter({ ...base, fetchFn: respond(200, { schemaVersion: 1, ok: true }) });
@@ -253,9 +253,10 @@ test("Codex server binds every task tool to the calling thread from the call met
   const tools = server._registeredTools;
   assert.match(server.server._instructions, /complete_task/u);
   assert.match(server.server._instructions, /block_task/u);
-  for (const name of ["add_task", "complete_task", "block_task"]) {
+  for (const name of ["add_task", "remove_task", "complete_task", "block_task"]) {
     assert.equal(parse(tools[name], { text: "x", reason: "r", session_ref: "codex:other" }).success, false, name);
   }
+  assert.equal(parse(tools.remove_task, { task_id: "T-2", session_ref: "codex:other" }).success, false);
   assert.equal((await tools.add_task.handler({ text: "x" }, codexMeta())).content[0].text, "Task T-2 added to the board, not queued.");
   assert.equal((await tools.complete_task.handler({}, codexMeta())).content[0].text, "Task reported complete. Pomegr marked it done.");
   assert.equal((await tools.block_task.handler({ reason: "stuck" }, codexMeta())).content[0].text, "Task reported as blocked. The user will resolve it.");
@@ -273,6 +274,13 @@ test("Codex server binds every task tool to the calling thread from the call met
     assert.equal((await tools.block_task.handler({ reason: "stuck" }, extra)).isError, true);
   }
   assert.equal(calls.length, 4);
+  assert.match(server.server._instructions, /remove_task/u);
+  assert.equal((await tools.remove_task.handler({ task_id: "T-2" }, codexMeta())).content[0].text, "Task T-2 removed from the board.");
+  assert.deepEqual(calls[4], { pathname: TASK_REMOVE_PATH, body: { sessionRef: `codex:${THREAD}`, taskId: "T-2" } });
+  for (const extra of [undefined, {}, codexMeta({ threadId: "../x" })]) {
+    assert.equal((await tools.remove_task.handler({ task_id: "T-2" }, extra)).content[0].text, TASK_REMOVE_UNBOUND_TEXT);
+  }
+  assert.equal(calls.length, 5);
 });
 
 test("complete_task takes only an optional attention line and block_task one bounded line", () => {
@@ -361,7 +369,8 @@ function claudeServer({ token = TOKEN, answer } = {}) {
   const taskPost = async (pathname, body) => {
     calls.push({ pathname, body });
     return answer ?? (pathname === TASK_BLOCK_PATH ? { ok: true, state: "blocked" }
-      : pathname === TASK_COMPLETE_PATH ? { ok: true, state: "done", results: [] } : { ok: true, taskId: "T-3" });
+      : pathname === TASK_COMPLETE_PATH ? { ok: true, state: "done", results: [] }
+        : pathname === TASK_REMOVE_PATH ? { ok: true } : { ok: true, taskId: "T-3" });
   };
   const readBindingToken = typeof token === "function" ? token : async () => token;
   const server = buildClaudeServer({
@@ -373,6 +382,7 @@ function claudeServer({ token = TOKEN, answer } = {}) {
 const proofFor = (tool, overrides = {}) => createTaskBindingProof({ token: TOKEN, tool, sessionRef: REF, now: NOW, ...overrides });
 const CLAUDE_CALLS = {
   add_task: { input: { text: "x" }, unbound: TASK_UNBOUND_TEXT, ok: "Task T-3 added to the board, not queued." },
+  remove_task: { input: { task_id: "T-3" }, unbound: TASK_REMOVE_UNBOUND_TEXT, ok: "Task T-3 removed from the board." },
   complete_task: { input: {}, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported complete. Pomegr marked it done." },
   block_task: { input: { reason: "stuck" }, unbound: TASK_REPORT_UNBOUND_TEXT, ok: "Task reported as blocked. The user will resolve it." },
 };
@@ -571,4 +581,77 @@ test("the proof comparison is constant-time over equal-length buffers", () => {
   assert.match(source, /timingSafeEqual\(given, expected\)/u);
   assert.match(source, /given\.length === expected\.length/u);
   assert.doesNotMatch(source, /(?:given|expected)\s*===\s*(?:given|expected)/u);
+});
+
+test("remove_task takes one task ID, is marked destructive, and has no repository, path, or text input", () => {
+  const { tools } = setup();
+  const tool = tools.remove_task;
+  assert.deepEqual(tool.config.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false });
+  assert.equal(parse(tool, { task_id: "T-12" }).success, true);
+  for (const input of [{}, { task_id: "12" }, { task_id: "T-0" }, { task_id: "T-01" }, { task_id: "t-1" }, { task_id: " T-1" }, { task_id: "T-1234567890" }, { task_id: 1 },
+    { task_id: "T-1", repository_id: "repo-0123456789abcdef01234567" }, { task_id: "T-1", path: "C:\\x" }, { task_id: "T-1", text: "x" }, { task_id: "T-1", session_ref: "claude:x" }, { id: "T-1" }]) {
+    assert.equal(parse(tool, input).success, false, JSON.stringify(input));
+  }
+  // Only a hook-bound harness has the binding fields.
+  const bound = setup({ hookBound: true }).tools.remove_task;
+  assert.equal(parse(bound, { task_id: "T-1", session_ref: "claude:x", session_proof: "p" }).success, true);
+});
+
+test("remove_task posts the bound session and the task ID, and maps every answer to fixed text", async () => {
+  const done = setup({ ref: "claude:x", answer: { ok: true, taskId: "T-9", text: SENTINEL } });
+  const out = await done.tools.remove_task.handler({ task_id: "T-4" });
+  assert.equal(out.isError, undefined);
+  assert.equal(out.content[0].text, "Task T-4 removed from the board.");
+  assert.deepEqual(done.calls, [{ pathname: TASK_REMOVE_PATH, body: { sessionRef: "claude:x", taskId: "T-4" } }]);
+  const texts = {
+    invalid: "Pomegr rejected the request as invalid, so no task was removed.",
+    not_found: "No task was removed. This session can remove only a task it added itself that has not started.",
+    unavailable: "Pomegr is unavailable, so no task was removed.",
+  };
+  for (const [code, text] of Object.entries(texts)) {
+    const refused = await setup({ answer: { ok: false, reason: code, detail: SENTINEL } }).tools.remove_task.handler({ task_id: "T-4" });
+    assert.equal(refused.isError, true);
+    assert.equal(refused.content[0].text, text);
+  }
+  for (const answer of [{ ok: false, reason: SENTINEL }, { ok: false }, null, SENTINEL, { ok: "true" }, new Error(SENTINEL)]) {
+    const failed = await setup({ answer }).tools.remove_task.handler({ task_id: "T-4" });
+    assert.equal(failed.isError, true);
+    assert.equal(failed.content[0].text, texts.unavailable);
+    assert.doesNotMatch(JSON.stringify(failed), new RegExp(SENTINEL, "u"));
+  }
+  // A call the host did not bind posts nothing.
+  for (const ref of [null, "", 7]) {
+    const unbound = setup({ ref });
+    const refused = await unbound.tools.remove_task.handler({ task_id: "T-4" });
+    assert.equal(refused.isError, true);
+    assert.equal(refused.content[0].text, TASK_REMOVE_UNBOUND_TEXT);
+    assert.equal(unbound.calls.length, 0);
+  }
+});
+
+test("Claude hook binds remove_task from the host transcript, signed for that tool, and denies any other input", async () => {
+  const transcript_path = path.resolve("private", `${SESSION_ID}.jsonl`);
+  const options = { readToken: async () => TOKEN, now: () => NOW };
+  for (const prefix of ["mcp__pomegr__", "mcp__plugin_pomegr_pomegr__"]) {
+    const call = { hook_event_name: "PreToolUse", tool_name: `${prefix}remove_task`, tool_input: { task_id: "T-7" }, transcript_path };
+    assert.deepEqual((await bindClaudeQueryWrite(call, options)).hookSpecificOutput,
+      { hookEventName: "PreToolUse", updatedInput: { task_id: "T-7", session_ref: REF, session_proof: proofFor("remove_task") } });
+    assert.notEqual(proofFor("remove_task"), proofFor("add_task"));
+    for (const bad of [
+      { ...call, tool_input: { task_id: "T-7", session_ref: "claude:other" } },
+      { ...call, tool_input: { task_id: "T-7", session_proof: proofFor("remove_task") } },
+      { ...call, tool_input: { task_id: "T-7", repository_id: "repo-0123456789abcdef01234567" } },
+      { ...call, tool_input: { task_id: "T-7", text: "x" } },
+      { ...call, transcript_path: "private-path-sentinel" },
+    ]) {
+      const denied = (await bindClaudeQueryWrite(bad, options)).hookSpecificOutput;
+      assert.equal(denied.permissionDecision, "deny");
+      assert.equal(denied.updatedInput, undefined);
+      assert.match(denied.permissionDecisionReason, /no task was removed/u);
+      assert.doesNotMatch(JSON.stringify(denied), /private-path-sentinel|claude:other/u);
+    }
+    assert.equal((await bindClaudeQueryWrite(call, { readToken: async () => null, now: () => NOW })).hookSpecificOutput.permissionDecision, "deny");
+  }
+  const hooks = JSON.parse(readFileSync(new URL("../plugin-src/claude-hooks.json", import.meta.url), "utf8"));
+  assert.ok(hooks.hooks.PreToolUse.some((entry) => new RegExp(entry.matcher, "u").test("mcp__plugin_pomegr_pomegr__remove_task")));
 });

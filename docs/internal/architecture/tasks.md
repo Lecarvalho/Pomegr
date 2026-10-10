@@ -73,6 +73,11 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - A column's role is kept in the store's `meta` table under
   `column_role:<repositoryId>:<role>` with the column ID as the value, like the pause
   reason, so the schema version does not change.
+- The session that added a task through `add_task` is kept there too, under
+  `task_added_by:<repositoryId>:<taskId>` with the normalized session ID as the value
+  (`server/tasks/task-adder.mjs`). It is written in the write that creates the task and
+  removed in the one that deletes it, and it is never projected onto a board (see
+  [Agent task removal](#agent-task-removal)).
 
 ## Record
 
@@ -762,7 +767,7 @@ supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
   supplies the session on every call. The hook hands `session_ref` to `add_task`,
-  `complete_task`, and `block_task` through `updatedInput`, together with `session_proof`:
+  `remove_task`, `complete_task`, and `block_task` through `updatedInput`, together with `session_proof`:
   `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
   issue time, keyed by the local agent-query capability token
   (`plugin-src/task-binding-proof.mjs`, shared by hook and server). The hook code is
@@ -783,7 +788,7 @@ supplies.
     permission prompt and the server verifies it after the user approves. This reliance on
     the hook running before the prompt has not been exercised on a device.
   - The hook makes no permission decision for a write, so Claude Code decides as it does
-    for any MCP tool: in its default mode the user approves each of the three tools, and
+    for any MCP tool: in its default mode the user approves each of the four tools, and
     in auto mode Claude Code's own classifier decides. Observed on a device on 2026-10-09
     (plugin 0.9.0): the classifier let ordinary task text through and refused a few calls,
     with reasons that followed the conversation and the free text (`text`, `reason`), not
@@ -860,6 +865,72 @@ repository's identity (product-owner decision, 2026-10-10; see
 identity comes from a Git read of the worktree folder. Once the folder is removed, the
 path shape of a Pomegr-made task worktree names the repository, for a repository ID the
 inventory already knows.
+
+## Agent task removal
+
+`remove_task` lets an agent delete a task it added itself, such as a duplicate. On
+2026-10-09 an agent added the same task twice (T-12 and T-13) and only the owner could
+delete one, in the desktop app. It is the fourth agent write. Deleting cannot be undone,
+so the product owner settled the rules below on 2026-10-10 (task T-15).
+
+- **Which tasks.** Only a task the calling session added itself through `add_task`, and
+  only while it waits: Not queued, Queued, or Scheduled, with no linked session, no start
+  in flight (a dispatch minted less than ten minutes ago), and no report. The first
+  proposal stopped at Not queued. The product owner widened it: the owner may ask the
+  session that added a task to remove it after having edited it, moved its card, or
+  queued it, so none of those ends the session's right.
+- **Never.** A task the owner made in the desktop app, a task promoted from a GitHub
+  issue, a task another session added, and a task that started, was reported on, or has
+  an outcome (Needs review, Stalled, Blocked by agent, Done). A linked session may be
+  working, so a started task is left to the owner. The task a session was started for is
+  not one it added, so a session cannot remove its own task.
+- **How "added by this session" is known.** The task store records the session:
+  `task_added_by:<repositoryId>:<taskId>` in the `meta` table, with the normalized
+  session ID as the value, written by the store action `agent_create` in the same
+  transaction that creates the task. The alternative was to remember it in monitor
+  memory only. That was rejected: the monitor restarts with the desktop app and with
+  every update, a session often outlives it, and the duplicate would then stay until the
+  owner deleted it, which is the defect this tool is for. The record is one bounded
+  value per agent-added task, lives where the task's session link already lives, goes
+  when the task is deleted, and is never served. A task added before the record existed
+  has none, so no session can remove it.
+- **Input.** One task ID (`T-` and a number from 1 to 999999999) and nothing else: no
+  repository ID, path, or text. The calling session is bound as for `add_task`
+  (see [Session binding](#session-binding)), and the board is the one `add_task` writes
+  to for that session.
+- **Answer.** Removed, or one fixed refusal. Every refusal after a well-formed request
+  is the same `not_found`: the task does not exist, the owner or another session added
+  it, it started, or the session has no board. The answer therefore tells nothing about
+  a task the session did not add. It never carries a task ID, task text, a state, or who
+  added a task.
+- **Confirmation.** None from Pomegr for a task inside these limits. Claude Code still
+  asks the user to approve the call as it does for any MCP write, and the tool is
+  annotated as destructive. Anything wider (a task the session did not add, a started
+  task) would need a desktop confirmation and is not built.
+
+How it is built:
+
+- The store actions `agent_create` and `agent_remove` (`server/tasks/task-store.mjs`)
+  are store only, like `promote_issue`: they are absent from the fixed action list, so
+  the desktop route and the IPC channel never accept them. `agent_remove` checks the
+  rule inside the store's transaction and then runs the desktop `delete`: the task
+  number stays retired, the cards after it and the steps of its feature close up, the
+  task's source, attention line, image list, and added-by record go in the same write,
+  its image files go after the commit, the waiting queue cards are settled in Ready, and
+  a queue blocked at the task is released, so the queue banner no longer names a task
+  that is gone.
+- The monitor serves it as `POST /api/agent/v1/tasks/remove`, under the gate of `add`
+  and with the same content-type check. The body is a JSON object of at most 1 KiB with
+  exactly `sessionRef` and `taskId`; any other key, a query string, or an ID outside the
+  pattern is `invalid`. The answer is `{ schemaVersion: 1, ok: true }` or
+  `{ schemaVersion: 1, ok: false, reason }` with `invalid` (400), `not_found` (404), or
+  `unavailable` (503).
+- The MCP tool is `remove_task` in `mcp/task-tools.mjs`, with the one input `task_id`.
+  The Claude Code hook binds and signs it as its own tool name
+  (`plugin-src/claude-query-session.mjs`), so a proof made for `add_task` does not
+  remove anything; Codex binds it from the call's thread identity. The tool is in the
+  plugins from version 0.9.1. An older plugin has no such tool, and starting a task
+  still needs only 0.9.0.
 
 ## Starting a session
 
@@ -1179,6 +1250,7 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 | `pomegr:task-image` IPC | The renderer, through a trusted main frame only | One of the fixed operations `add`, `remove`, `read`, a repository ID, a task ID, an image ID, and for `add` only the image bytes (a `Uint8Array` of at most 5 MiB). Answers `{ ok: true, imageId }`, `{ ok: true }`, `{ ok: true, type, bytes }`, or one fixed error |
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
+| `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
@@ -1257,7 +1329,7 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
   the `/internal/tasks/<action>` answers carry the same filled board.
 - Browser and LAN clients never mutate tasks or start sessions.
 - The seven MCP observation tools stay read-only, as in [MCP observation queries](mcp-queries.md).
-  The task tools are a separate registration with the three write paths above.
+  The task tools are a separate registration with the four write paths above.
 
 ## Privacy
 
@@ -1280,6 +1352,11 @@ class. Column names are five fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
+- Which session added a task is monitor-private. The task store keeps the normalized
+  session ID of an `add_task` call beside the task, and only the rule of
+  [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,
+  log, report, or checkpoint, and `remove_task` answers the same `not_found` for a task
+  the session did not add as for one that does not exist.
 - A task's images are the same data class. `GET /api/tasks` carries only each image's
   opaque ID, fixed type, and size. The bytes cross only the `pomegr:task-image` channel
   and its three desktop-token routes, to and from the trusted renderer; no GET serves

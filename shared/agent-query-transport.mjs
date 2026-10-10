@@ -222,8 +222,10 @@ export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 /** The bound session reports on the task it was started for (MCP tools `complete_task` and `block_task`). */
 export const AGENT_TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const AGENT_TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
+/** The bound session deletes a task it added itself (MCP tool `remove_task`). */
+export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 /** The only monitor paths the agent write transport may POST to. */
-export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH]);
+export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH]);
 export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
 
 /**

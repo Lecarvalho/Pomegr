@@ -380,22 +380,24 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents three tools. Each call is tied to the calling session by
+The plugin gives agents four tools. Each call is tied to the calling session by
 the coding tool, not by anything the model supplies.
 
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Done when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
+| `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The agent may add one line of up to 200 characters that names what needs your attention; the task then goes to **Review** instead of **Done**. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
 
 `complete_task` and `block_task` act only on the task linked to the calling
 session. In Claude Code, the coding tool ties each call to its session; if Claude
-Code hooks are off or the hook times out, an agent's add, complete, or block call is
-refused and nothing is added or reported. When Claude Code asks you to approve such
+Code hooks are off or the hook times out, an agent's add, remove, complete, or block call is
+refused and nothing is added, removed, or reported. When Claude Code asks you to approve such
 a call, you have up to ten minutes to do so; after that the call is refused and the
-agent can try again. Choose to always allow the three tools so a session you are not
-watching does not wait for you. In Claude Code's auto mode no prompt appears: Claude
+agent can try again. Choose to always allow the tools a session should use without you so
+a session you are not watching does not wait for you. Leave `remove_task` on ask if you
+want to approve each deletion. In Claude Code's auto mode no prompt appears: Claude
 Code decides by itself and can, rarely, refuse one of these calls. If that happens,
 add a permission rule for the tool in your Claude Code settings. A task takes one report per start; a second report changes
 nothing. If every checked condition passes and the agent asked for nothing, the task
@@ -411,6 +413,26 @@ stalls only once Pomegr sees that Codex no longer holds the session (Windows). A
 only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
 each condition's pass or fail, the block reason, and the attention line, never command
 output or diffs.
+
+### Tasks an agent can remove
+
+An agent can delete a task only when all of these are true:
+
+- The same session added the task with `add_task`.
+- The task has not started: it is **Not queued**, **Queued**, or **Scheduled**, and
+  no session is linked to it.
+- No start is in progress for it, and it has no report.
+
+Your own edits do not change this. If you edit, move, or queue a task an agent added,
+you can still ask that session to remove it.
+
+An agent can never remove a task you made, a task promoted from a GitHub issue, a task
+another session added, or a task that started or finished. It gets the same answer
+for each of these as for a task that does not exist, so it learns nothing about
+tasks it did not add. To delete one of them, use **Delete task** in the desktop app.
+
+A removal cannot be undone, and the task number is not used again. The task's images
+are deleted with it. If the queue was blocked at that task, the queue resumes.
 
 ## See a task from Sessions
 

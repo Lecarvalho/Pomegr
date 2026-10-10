@@ -299,8 +299,8 @@ test("the generated bundle holds no token and has no output path", async () => {
   assert.equal(await readFile(path.join(pluginRoot, "README.md"), "utf8").then((text) => /POMEGR_TASK_TOKEN=/u.test(text)), false);
 });
 
-test("the agent write transport carries exactly the add, bind, complete, and block paths", () => {
-  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/block"]);
+test("the agent write transport carries exactly the add, bind, complete, block, and remove paths", () => {
+  assert.deepEqual([...AGENT_TASK_WRITE_PATHS], [AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/complete", "/api/agent/v1/tasks/block", "/api/agent/v1/tasks/remove"]);
   assert.equal(Object.isFrozen(AGENT_TASK_WRITE_PATHS), true);
   assert.equal(AGENT_TASK_BIND_PATH, "/api/agent/v1/tasks/bind");
 });

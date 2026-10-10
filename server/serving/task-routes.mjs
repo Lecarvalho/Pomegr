@@ -406,6 +406,24 @@ function linkedBoardRepositoryId(taskStore, sessionRef) {
   }
 }
 
+// The board an agent write of this session acts on, as `{ repositoryId }`, or the fixed `{ reason }` that names why
+// there is none. A session started for a task acts on the board that holds that task, even when its committed
+// repository identity is missing or another one (a task worktree whose folder is gone, for example). The task
+// store's link wins; it is read from the store alone, and a store that cannot answer leaves the committed identity
+// in charge.
+function agentBoardRepository(taskStore, resolveSession, sessionRef) {
+  const linkedRepositoryId = linkedBoardRepositoryId(taskStore, sessionRef);
+  let session = null;
+  try {
+    session = resolveSession(sessionRef);
+  } catch (error) {
+    if (linkedRepositoryId === null) throw error;
+  }
+  if (linkedRepositoryId === null && (!session || session.found !== true)) return { reason: "session_not_found" };
+  const repositoryId = linkedRepositoryId ?? session.repositoryId;
+  return typeof repositoryId === "string" && REPOSITORY_ID_PATTERN.test(repositoryId) ? { repositoryId } : { reason: "repository_unavailable" };
+}
+
 /**
  * `POST /api/agent/v1/tasks/add`, the first agent write. The request handler has already applied the
  * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
@@ -433,24 +451,9 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, "unavailable");
       return;
     }
-    // A session started for a task adds to the board that holds that task, even when its committed
-    // repository identity is missing or another one (a task worktree whose folder is gone, for example).
-    // The task store's link wins; it is read from the store alone, and a store that cannot answer leaves
-    // the committed identity in charge.
-    const linkedRepositoryId = linkedBoardRepositoryId(taskStore, body.sessionRef);
-    let session = null;
-    try {
-      session = resolveSession(body.sessionRef);
-    } catch (error) {
-      if (linkedRepositoryId === null) throw error;
-    }
-    if (linkedRepositoryId === null && (!session || session.found !== true)) {
-      writeAgentAddResult(response, "session_not_found");
-      return;
-    }
-    const repositoryId = linkedRepositoryId ?? session.repositoryId;
-    if (typeof repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(repositoryId)) {
-      writeAgentAddResult(response, "repository_unavailable");
+    const { repositoryId, reason: boardReason } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
+    if (boardReason) {
+      writeAgentAddResult(response, boardReason);
       return;
     }
     const payload = { text: body.text };
@@ -466,7 +469,8 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       }
       payload.featureId = match.id;
     }
-    const result = taskStore.apply(repositoryId, "create", payload);
+    // The store records the adding session beside the task, which is what lets that session remove it later.
+    const result = taskStore.apply(repositoryId, "agent_create", { sessionId: body.sessionRef, task: payload });
     if (result?.ok !== true) {
       const reason = result?.error === "invalid" ? "invalid" : result?.error === "limit" ? "limit"
         : feature !== undefined && (result?.error === "not_found" || result?.error === "conflict") ? "feature_not_found" : "unavailable";
@@ -483,6 +487,61 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
     writeAgentAddResult(response, null, newest.id);
   } catch {
     writeAgentAddResult(response, "unavailable");
+  }
+}
+
+export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
+// A session reference (at most 135 characters) and a task ID (at most 11) fit well inside this.
+const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
+const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
+const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
+
+function writeAgentRemoveResult(response, reason, { close = false } = {}) {
+  const ok = reason === null;
+  response.writeHead(ok ? 200 : AGENT_REMOVE_STATUS[reason], {
+    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
+  });
+  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
+}
+
+/**
+ * `POST /api/agent/v1/tasks/remove`: the bound session deletes a task it added itself. The request handler has
+ * already applied the agent-query gate. The body is `{ sessionRef, taskId }` and nothing else; the board is the one
+ * `add_task` writes to for this session, so no repository or path is named. The store removes the task only when this
+ * session added it and it still waits (Not queued, Queued, or Scheduled; no linked session, start in flight, or
+ * report). Every refusal after a well-formed request is the same `not_found`: a task that does not exist, one the user
+ * or another session added, one that started, and a session with no board. The answer never carries a task ID, task
+ * content, a state, or who added a task.
+ */
+export async function serveAgentTaskRemoveRoute({ request, response, requestUrl, taskStore, resolveSession }) {
+  const read = await readAgentJson(request, requestUrl, AGENT_REMOVE_BODY_LIMIT_BYTES);
+  if (read.failed) {
+    writeAgentRemoveResult(response, "invalid", { close: true });
+    return;
+  }
+  const { body } = read;
+  const valid = isPlainObject(body) && Object.keys(body).length === 2
+    && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+    && typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId);
+  if (!valid) {
+    writeAgentRemoveResult(response, "invalid");
+    return;
+  }
+  try {
+    if (typeof taskStore?.apply !== "function" || typeof resolveSession !== "function") {
+      writeAgentRemoveResult(response, "unavailable");
+      return;
+    }
+    const { repositoryId } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
+    if (!repositoryId) {
+      writeAgentRemoveResult(response, "not_found");
+      return;
+    }
+    const result = taskStore.apply(repositoryId, "agent_remove", { sessionId: body.sessionRef, id: body.taskId });
+    if (result?.ok === true) writeAgentRemoveResult(response, null);
+    else writeAgentRemoveResult(response, result?.error === "not_found" || result?.error === "invalid" ? result.error : "unavailable");
+  } catch {
+    writeAgentRemoveResult(response, "unavailable");
   }
 }
 
