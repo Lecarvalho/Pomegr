@@ -1429,11 +1429,12 @@ it links to its task; `complete_task` and `add_task` are accepted with the hook'
 Mark done and Requeue work on a linked task with no report and leave the session running,
 and the requeued session's later report is refused; a started task is not the queue's next
 task; a dirty task worktree refuses a manual start and pauses the queue with
-`worktree_dirty`, and Open folder opens it.
+`worktree_dirty`, and Open folder opens it. On 2026-10-10 the owner started a Claude Code
+session for a task with one image: the prompt named the image as `[Image #1]` with its
+file, and the session read the file through `--add-dir` with no permission prompt.
 
-Not yet proven on a device: a session start for a task with images (that Claude Code
-reads the listed files through `--add-dir` without a permission prompt, and that Codex
-takes `--image` after the prompt), that Codex sends the thread identity the binding reads, a
+Not yet proven on a device: that Codex takes `--image` after the prompt for a task with
+images, that Codex sends the thread identity the binding reads, a
 Codex session start, the Stalled state after a real session end, a checked done-when
 condition, and a tool call that waits at a permission prompt inside the proof window.
 
