@@ -205,7 +205,7 @@ test("the prompt names the issue only when the task has a source, and the longes
   assert.ok(lines.includes(line));
   // The issue line sits just before the final instruction.
   assert.equal(lines.at(-2), line);
-  assert.ok(lines.at(-1).startsWith("When the task is done"));
+  assert.ok(lines.at(-1).startsWith("When the task is complete"));
   assert.deepEqual(lines.filter((entry) => entry !== line), plain.split("\n"));
   for (const source of [{ kind: "github_issue", number: "12; rm" }, { kind: "github_issue", number: 0 }, { kind: "github_issue", number: 1.5 },
     { kind: "other", number: 12 }, { kind: "github_issue" }, undefined]) {

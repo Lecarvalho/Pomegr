@@ -63,7 +63,7 @@ export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskRefere
     </> : models && <>
       {issue !== null && <Cell label="Source"><span className="sessionTaskSourceValue"><TaskIssueChip number={issue} />GitHub issue</span></Cell>}
       {featureCell}
-      <Cell label="Done when">{summaryDoneWhen(model.task)}</Cell>
+      <Cell label="Complete when">{summaryDoneWhen(model.task)}</Cell>
       <Cell label="Model">Planned <Part part={models.planned} /> · observed <Part part={models.observed} /></Cell>
       <Cell label="Next">
         {model.queue.blocked ? <span className="sessionTaskBlocked">{queueBlockedLine(model.queue.by)}</span> : model.nextStep.length > 0 ? <code>{nextIds(model.nextStep)}</code> : "—"}

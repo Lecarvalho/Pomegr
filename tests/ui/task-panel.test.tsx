@@ -73,7 +73,7 @@ async function openReviewPanel(user: ReturnType<typeof userEvent.setup>) {
 const updateCalls = () => taskAction.mock.calls.filter((call) => call[1] === "update");
 
 describe("task cards", () => {
-  it("show the provider chip, model, effort and Done when summary only when set", () => {
+  it("show the provider chip, model, effort and Complete when summary only when set", () => {
     setBoard([
       task(1, { run: { provider: "claude", model: "model-a", effort: "high" }, doneWhen: { checks: ["pr_open", "ci_passed"], own: null } }),
       task(2, { run: { provider: "codex", model: null, effort: null }, doneWhen: { checks: ["tree_clean"], own: "Looks right" } }),
@@ -84,14 +84,14 @@ describe("task cards", () => {
     const cards = screen.getAllByRole("listitem");
     expect(within(cards[0]).getByText("Claude Code")).toHaveClass("commandChip");
     expect(within(cards[0]).getByText("model-a · high")).toBeInTheDocument();
-    expect(within(cards[0]).getByText("Done when: 2 checks + agent report")).toBeInTheDocument();
+    expect(within(cards[0]).getByText("Complete when: 2 checks + agent report")).toBeInTheDocument();
     expect(within(cards[1]).getByText("Codex")).toBeInTheDocument();
     expect(within(cards[1]).queryByText(/·/, { selector: ".taskCardPlanned" })).not.toBeInTheDocument();
-    expect(within(cards[1]).getByText("Done when: 1 check + own condition + agent report")).toBeInTheDocument();
+    expect(within(cards[1]).getByText("Complete when: 1 check + own condition + agent report")).toBeInTheDocument();
     expect(cards[2]).toHaveTextContent("low");
     expect(within(cards[2]).queryByText("Claude Code")).not.toBeInTheDocument();
-    expect(within(cards[2]).queryByText(/Done when/)).not.toBeInTheDocument();
-    expect(cards[3]).not.toHaveTextContent(/Claude Code|Codex|Done when/);
+    expect(within(cards[2]).queryByText(/Complete when/)).not.toBeInTheDocument();
+    expect(cards[3]).not.toHaveTextContent(/Claude Code|Codex|Complete when/);
     expect(cards[3].querySelector(".taskCardRun")).toBeNull();
   });
 
@@ -673,7 +673,7 @@ describe("task field styles", () => {
     return match![1];
   };
 
-  it("maps the Run on, Effort, Done when and Task modal contract lines to tokens", () => {
+  it("maps the Run on, Effort, Complete when and Task modal contract lines to tokens", () => {
     expect(rule(".taskRunRow")).toMatch(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*align-items: end;[^}]*gap: var\(--space-4\)/);
     expect(styles).toMatch(/\.taskEffort > button \{ min-height: var\(--control-height\); \}/);
     expect(rule(".taskModelNotice")).toMatch(/border: 1px solid var\(--command-amber\)[^}]*border-radius: var\(--control-radius\)[^}]*background: var\(--color-amber-soft\)/);

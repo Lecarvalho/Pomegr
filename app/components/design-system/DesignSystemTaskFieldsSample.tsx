@@ -40,7 +40,7 @@ export function TaskFieldsSection() {
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
   const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
   const [reported, setReported] = useState<DoneWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
-  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Done when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Done when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
+  return <Section id="task-fields" title="Task fields" lede="The Task field, Run on, Effort, Complete when and Feature, shared by the New task and Task modal forms (the modal has three modes: new, promote issue and edit). Run on is one select that names provider and model, with a Default model entry per provider and Not set. Effort is an optional four-way segmented control: pressing the pressed segment clears it. Complete when is five short checks in a wrapping row and one input for an own condition judged by the agent. Feature and Step are two selects over the board's unfinished features, with a folded list of the feature's other tasks.">
     <div className="designSystemStates">
       <Sample label="Run on and Effort, chosen" note="Models come from the model list the app already serves; the names here are static samples.">
         <RunFields run={run} models={MODELS} onChange={setRun} />
@@ -48,10 +48,10 @@ export function TaskFieldsSection() {
       <Sample label="Nothing chosen, no model list" note="Nothing selected is valid. A provider with no observed model offers only its Default model.">
         <RunFields run={unset} models={NO_MODELS} onChange={setUnset} />
       </Sample>
-      <Sample label="Done when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
+      <Sample label="Complete when, new task" note="PR open and Tree clean start checked. A non-blank own condition counts; a blank one is none.">
         <DoneWhenField draft={fresh} onDraftChange={setFresh} />
       </Sample>
-      <Sample label="Done when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
+      <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
         <DoneWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
       <Sample label="Feature and Step" note="Feature lists unfinished features, No feature and New feature…; Step offers Last or an existing step. The folded In this feature list counts the feature's tasks and opens on demand.">
@@ -80,7 +80,7 @@ export function TaskFieldsSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, on the desktop the Also create a GitHub issue checkbox (checked when the account can create issues), Run on and Effort in one row, Done when, and a footer with Cancel and the one primary. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
+      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, on the desktop the Also create a GitHub issue checkbox (checked when the account can create issues), Run on and Effort in one row, Complete when, and a footer with Cancel and the one primary. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
         <div className="designSystemTaskFrame designSystemTaskModalStage">
           <TaskModalChrome titleId={modalTitleId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
             footer={<>
@@ -136,7 +136,7 @@ function TaskModalEditSamples() {
         </TaskModalChrome>
       </div>
     </Sample>
-    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Done when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
+    <Sample label="Task modal, edit, needs review" note="A task that needs the user leads the footer with its resolutions as Secondary actions in a row of their own, so Save stays the one primary. Complete when shows each checked condition's outcome from the agent's report, and the agent's own attention line when it gave one.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={reviewId} title="Task" subtitle="pomegr · in Review" onClose={noop}
           titleExtra={<>
@@ -189,7 +189,7 @@ function TaskModalPromoteSamples() {
   const [changedDoneWhen, setChangedDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
   const closes = (number: number) => <span className="taskModalNote taskModalCloses">The pull request will say Closes <span className="taskModalCloseRef">#{number}</span>.</span>;
   return <>
-    <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature and Step, Run on and Effort, and Done when are the New task form's (Feature and Step are drawn in their own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
+    <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature and Step, Run on and Effort, and Complete when are the New task form's (Feature and Step are drawn in their own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={normalId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
           footer={<>

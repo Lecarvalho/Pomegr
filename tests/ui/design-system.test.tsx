@@ -114,7 +114,7 @@ describe("Design-system reference page", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders the Task fields samples from static data: grouped Run on, optional Effort and Done when", async () => {
+  it("renders the Task fields samples from static data: grouped Run on, optional Effort and Complete when", async () => {
     const user = userEvent.setup();
     render(<DesignSystemView />);
     const section = screen.getByRole("heading", { level: 2, name: "Task fields" }).closest("section") as HTMLElement;
@@ -127,7 +127,7 @@ describe("Design-system reference page", () => {
     expect(efforts[0]).toHaveAttribute("aria-pressed", "false");
     expect(efforts[0].parentElement).toHaveClass("commandSegmented");
     expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
-    // Done when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
+    // Complete when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
     expect(within(section).getAllByText("Not passed")).toHaveLength(2);
     expect(within(section).getAllByText("Passed")).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();

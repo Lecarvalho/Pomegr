@@ -22,7 +22,7 @@ import { useFeatureCreation } from "./use-feature-creation";
 
 // Task modal, mode issue (design contract G159-G233): one GitHub issue becomes a task. The issue text is shown read-only
 // and is never sent back; a promote sends the issue number and the digest of the version shown, and the monitor reads
-// the issue again. Feature and Step, Run on and Effort and Done when are a local draft that one update sends after the
+// the issue again. Feature and Step, Run on and Effort and Complete when are a local draft that one update sends after the
 // task exists, holding only what differs from the task the monitor made.
 
 /** `Source`, the issue chip and an optional caption (G178-G179, G253-G257); `status` follows the chip, `children` fill the group under the row. */
