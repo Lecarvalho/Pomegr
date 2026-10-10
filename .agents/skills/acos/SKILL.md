@@ -64,7 +64,8 @@ log records what ran.
 2. **Size.** Count files, lines and deliverables, then derive context
    reservations from the counts, never the reverse. Fits: one manifest.
    Does not fit: ask the run mode (`single`, `sequential`, `parallel`),
-   cut for it, confirm the cut, write the plan, present it and stop.
+   cut for it, mark each part `afk` or `present`, confirm the cut,
+   write the plan, present it and stop.
    Inside a part the plan only suggests workers and slices.
    `references/sizing.md`.
 3. **Compose.** Build the manifest from a preset or ad hoc from blocks,
@@ -79,7 +80,8 @@ log records what ran.
 5. **Execute.** For a part of a plan, settle your strategy first:
    catch up on what earlier parts found, read what you need, re-cut
    your own work, rewrite the manifest, print it and start without
-   waiting. Then stage by stage through its adapter, checking each; on
+   waiting. A `present` part first settles with the user what `afk`
+   parts left pending. Then stage by stage through its adapter, checking each; on
    failure apply `on_fail`; log drift and discoveries without asking.
    `references/execute.md`, `references/adapters.md`,
    `references/workflow.md` for `adapter: workflow`.
@@ -119,6 +121,12 @@ Shape
   sessions at the same time on parts sharing no file, so their pull
   requests cannot conflict, in one worktree unless a part cannot share
   it. Ask before cutting unless the request says.
+- **Attendance shapes it too.** Every part is wholly `afk` or
+  `present`, negotiated: the user may say it, you propose it with the
+  cut, either pushes back. Put what needs the user in as few `present`
+  parts as the work allows: one first for a decision the rest is built
+  on, one later for everything else. A doubt with a defensible answer
+  does not make a part `present`.
 - **In `single` you are there until the end.** Delegate every group,
   read what you need to cut and brief, then verdicts instead of diffs
   and artifacts. Edit inline only what is cheaper than a spawn. Your
@@ -180,6 +188,13 @@ Running
   running, log drift, continue. The only questions: `on_fail: ask`, a
   gate, or a discovery that invalidates the part's intent. A larger
   volume than the plan suggested is not one of them.
+- **Away means decide, not wait.** An `afk` part asks nothing. Where
+  it would have asked it judges, with no fixed rule: assume and just
+  mention it, assume and have it confirmed, or defer. All three go to
+  `plan.yaml` `pending`. A `present` part opens by settling with the
+  user what is addressed to it and may ask when an answer changes the
+  work. An `afk` part with nobody to address marks a later part
+  `present`. `references/execute.md`.
 - **Say the strategy, then start.** When a part starts, print how you
   will run it (slices, workers, order) and begin; the user challenges
   while you work.

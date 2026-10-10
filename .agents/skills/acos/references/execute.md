@@ -9,7 +9,9 @@ files already open is yours: go to Start.
 
 1. **Catch up.** `plan.yaml` `discoveries`, earlier parts' `actual`,
    the previous handoff. Scale reservations by the measured ratio
-   (`sizing.md` §2).
+   (`sizing.md` §2). In a `present` part, settle the `pending` entries
+   addressed to it now (Attendance): the answers are part of the work
+   you are about to cut.
 2. **Read to plan.** Open what decides how the work splits and what a
    brief must say (`sizing.md` §3, Reading). Reading your lane cannot
    hold goes to a delegated `plan` stage that writes the briefs.
@@ -49,7 +51,8 @@ Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
 - `single`: GO covered the whole plan. Run it wave by wave: settle the
   strategy of every part in the wave, spawn their delegated stages in
   one message, check each, verify the merged tree, close those parts, start the next wave
-  without stopping or asking. One `log.yaml` per part, no handoff
+  without stopping or asking, except where a `present` part starts
+  (Attendance). One `log.yaml` per part, no handoff
   between them. Keep from each worker its verdict and paths, nothing
   else. A session that dies is resumed with `/acos run <plan>`, from
   the first part not `done`.
@@ -62,14 +65,83 @@ Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
   session's: never fixed, reverted or reported as yours. Run the part's
   scoped check, not the full verify, unless this is the last part.
 
+## Attendance
+
+`part.attendance` says whether the user is at the terminal. Absent, or
+outside a plan: `present`.
+
+**`afk`: nobody is watching. Never wait.**
+- Where you would have asked, choose one of three, by judgement:
+  - **assume and mention** (`noted`): the choice is sound and cheap to
+    change. Take it; the user is only told.
+  - **assume and confirm** (`assumed`): build on your best guess, kept
+    in one place, and have a `present` part ask the user to keep or
+    change it.
+  - **defer** (`deferred`): leave it undone for a `present` part.
+- No rule says which. Weigh how hard it is to undo, how much later
+  work would stand on it, how far it reaches beyond the working tree,
+  and how sure the guess is. Most doubts deserve an assumption; the
+  more a wrong one would cost, the further toward confirm or defer.
+- Each is an entry in `plan.yaml` `pending`, appended when it happens,
+  not at close:
+
+  ```yaml
+  pending:
+    - part: 1
+      kind: noted                    # assumed, told only
+      item: "Retry backoff starts at 250 ms, as the other clients do."
+      where: src/auth/client.ts:88
+    - part: 1
+      kind: assumed                  # assumed, to confirm
+      item: "Refresh tokens live 30 days; nothing in the repo says."
+      where: src/auth/refresh.ts:41  # where changing it lands
+      to: 3                          # the present part that settles it
+    - part: 1
+      kind: deferred                 # not done
+      item: "Rotate the signing key in the staging vault; no credential here."
+      to: 3
+  ```
+
+  `to`, on `assumed` and `deferred`, is a `present` part that runs
+  after this one. None in the plan: mark a later part `present`
+  yourself, one not started, the nearest that builds on this work or
+  else the last. Change `attendance` in its `plan.yaml` entry and its
+  manifest, and say why in one line in the report. No later part at
+  all: leave `to` out and print the entries in the report.
+- Tell every worker the part is `afk`. It never asks, and ends its
+  status with `Assumed:` and `Left for the user:` lines; you decide
+  each one's kind and append it.
+- A discovery that invalidates the part's intent has nobody to ask:
+  record it, add the question as a `deferred` entry, close the part as
+  `stopped`. Parts that do not build on it still run.
+- A change of strategy is drift, never pending. Pending holds only
+  what was the user's to decide or do.
+
+**`present`: the user is here.**
+- Before the first stage, list the `noted` entries written since the
+  last `present` part, one line each, then put every entry addressed
+  to this part to the user in one batch, with the harness's question
+  tool when it has one. `assumed`: keep or change. `deferred`: the
+  decision, or for an action, do it now, the user does it, or drop it.
+  The user may reopen a `noted` entry; treat it as `assumed`.
+- Apply the answers first. A changed assumption is work: do it here
+  when it fits what this part may write (Start) and hold; otherwise
+  give it to a later part, updating that part's `plan.yaml` entry as
+  for a discovery. Write `settled` on each entry, in a few words. The
+  part does not close with one unsettled; an entry the user leaves
+  open is settled as `left open`.
+- While working, ask when an answer changes the work and no assumption
+  is cheap to reverse, several questions at once. Strategy and volume
+  are still yours and still not asked.
+
 ## Each stage
 
 1. **Gate.** `gate: true` or `gates.per_stage: true`: show the stage, ask.
 2. **Prompt.** Block `prompt` + stage `prompt` + intent + scope notes +
    every named input. Inline: it is your own instruction. A fan-out
    implementer gets only its brief (its `## <stage>` section of the
-   plan), its `owns`, the interfaces the brief names, and whether other
-   agents run at the same time. Its `owns` is then its perimeter: free
+   plan), its `owns`, the interfaces the brief names, whether the part
+   is `afk`, and whether other agents run at the same time. Its `owns` is then its perimeter: free
    inside, nothing written outside.
 3. **Run** through the adapter (`adapters.md`). `∥` stages are spawned in
    one message and awaited together. When they return, apply the
@@ -99,7 +171,7 @@ Code: `claude:` + `CLAUDE_CODE_SESSION_ID`; Codex: `codex:` +
   effort; the last entry repeats. From an inline stage the retry runs as
   a subagent (log `adapter: subagent`).
 - `ask`: show the output; retry, skip or stop. Opt-in only: blocks and
-  shipped presets never default to it.
+  shipped presets never default to it, and never in an `afk` part.
 - `stop`: end the run as failed.
 
 Whatever `on_fail` says:
@@ -139,7 +211,7 @@ cause, later part's scope, order, ownership or acceptance target).
 
 - Changes only how this part gets there: drift.
 - Invalidates this part's intent: stop and ask once (re-scope, continue,
-  stop).
+  stop). In an `afk` part: close it as `stopped` (Attendance).
 - In a plan: append it to `plan.yaml` `discoveries` (date, part,
   finding, evidence path) and update the entries of the later parts it
   changes (summary, `owns`, `after`, acceptance), saying so in one
@@ -153,8 +225,11 @@ cause, later part's scope, order, ownership or acceptance target).
 1. **Log.** `ended`, `outcome`, `actual` (files and lines from
    `git diff --stat`, new files included; agents) and `observed` only for
    measured tokens, orchestrator and workers apart.
-2. **Plan.** In `plan.yaml`: status `done` or `failed`, `actual` beside
-   `estimate`.
+2. **Plan.** In `plan.yaml`: status `done`, `failed` or `stopped`,
+   `actual` beside `estimate`. An `afk` part: every assumption and
+   every thing left undone is in `pending`, its workers' included, and
+   each `assumed` or `deferred` entry names a `present` part. A
+   `present` part: every entry addressed to it has `settled`.
 3. **Handoff.** When later parts build on this one,
    `artifacts/handoff.md`, at most 40 lines: what they reuse, decisions
    not to undo, deferred findings with their owning part, verify result,
@@ -176,9 +251,12 @@ cause, later part's scope, order, ownership or acceptance target).
    - run id and outcome (success, failed at stage X, stopped)
    - per stage: name, iterations, model used, check result
    - drift, one line each
+   - pending: entries this part added, one line each with the part
+     that settles them; entries it settled, with the answer
    - actual files, lines, agents against the estimate; tokens if reported
    - in a plan: parts done/total and the next command
-     (`/acos run runs/<plan-id> <i+1>`), or "plan complete"; in
+     (`/acos run runs/<plan-id> <i+1>`), saying when that part is
+     `present` and how many entries wait for it, or "plan complete"; in
      `single`, one report at the end of the plan, not one per part
    - `git status --short`
    - paths worth opening: run dir, handoff, try-it page
