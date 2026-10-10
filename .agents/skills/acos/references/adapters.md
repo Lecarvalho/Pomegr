@@ -95,7 +95,10 @@ inside, nothing written outside. No other worker opens its files, and
 what it needs from a file it does not own arrives as a signature in
 the brief. Its report ends with the
 capture lines for its slice when the slice is visible; collect those from
-every implementer into the evidence stage's prompt.
+every implementer into the evidence stage's prompt. In an `afk` part it
+is told so, and its report also ends with `Assumed:` and `Left for the
+user:` lines, which you append to `plan.yaml` `pending`
+(`execute.md`, Attendance).
 
 Background stages: an `evidence` stage is spawned in the background
 where the harness can and awaited after the handoff is written. Its report

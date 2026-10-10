@@ -68,7 +68,11 @@ Own session, never during a task. Fewer than two runs: say so and stop.
      finished a slice; worse than one in three means `strong`
      implementers or smaller slices;
    - one more part vs one more worker, and whether fan-out and parallel
-     parts saved time.
+     parts saved time;
+   - `pending` entries by how they were settled: assumptions the user
+     reversed and what the reversal touched, and `present` parts that
+     had nothing to settle. The same kind of assumption reversed twice
+     is a decision for a `present` part that runs first.
 5. **Write `calibration.md`**, under 40 lines, overwriting: a header
    (run count, date range, today), then **Shape**, **Cost**, **Recurring
    drift** (each config fix names its file), **Notes** (keep old entries

@@ -136,6 +136,39 @@ requests cannot conflict.
   its own branch before the others finish.
 - Inside each part, slice as below.
 
+### Attendance
+
+Mark every part `afk` or `present`: is the user at the terminal while
+it runs? A part is one or the other for its whole length. It is
+`attendance` on the part's entry in `plan.yaml` and `part.attendance`
+in its manifest.
+
+It is negotiated, both ways. The user may say it in the request ("all
+of it while I am away, I am back at the end"): cut for that. Otherwise
+propose it with the cut. Push back, in the cut confirmation, when a
+part the user wants `afk` needs a decision you cannot defensibly
+guess; expect the user to push back when a part you marked `present`
+could run without them.
+
+- `afk`: work a brief and a check can carry. It never waits: where it
+  would have asked, it assumes or defers by its own judgement and
+  records it in `plan.yaml` `pending` (`execute.md`, Attendance).
+- `present`: what the work needs the user for. A product or taste
+  decision with no defensible guess, a look at the result, a credential
+  or interactive login, an action the user would want to take or watch
+  themselves.
+
+Cut so the user is needed in few, known places:
+- A decision the rest of the plan is built on: a small `present` part
+  that runs first.
+- Everything else of the user's: a `present` part that runs later,
+  usually last. It opens by settling what the `afk` parts left pending,
+  and its orchestrator re-sizes it then, once it knows what changed.
+- A doubt with a defensible answer does not make a part `present`. The
+  `afk` part assumes and records.
+- No `present` part is required after an `afk` one. A part that turns
+  out to need the user marks a later part `present` itself.
+
 ### Reading
 
 Planning the execution means opening files, and that is the
@@ -200,9 +233,10 @@ Confirm the cut before writing anything:
 Too big for one context (~<files> files; <lane that does not fit>: ~<reserved> / <limit>).
 Mode: <single | sequential | parallel>
 Proposed cut, <n> parts, one owner per file:
-  1. <what>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <suggested lanes>
+  1. <what>   <afk | present>   <paths it owns>   ~<files> files   orchestrator ~<reserved>/<limit>; workers <suggested lanes>
   2. ...
 Waves: 1, 2, 3 together; then 4   (single and parallel)
+Present: part <n>, for <what it needs you for>   (one line per present part)
 Shared: <path> owned by <n>, assumed by <m>   (only if a file could not get one owner)
 Own worktree: part <n>; <why it cannot share>   (parallel, only if any)
 OK to write the plan, or change the cut?
@@ -210,13 +244,13 @@ OK to write the plan, or change the cut?
 
 If the paths read as layers, you cut wrong: regroup before asking.
 Wait, apply what the user says, then compose every part's manifest
-(`part.plan`, `index`, `of`, `mode`, `after`, `assumes`, `worktree`
-in `parallel`) and write:
+(`part.plan`, `index`, `of`, `mode`, `attendance`, `after`, `assumes`,
+`worktree` in `parallel`) and write:
 
 ```
 runs/<plan-id>/plan.yaml                      intent, mode, limits, one entry per part
-                                              (index, dir, summary, owns, after,
-                                              worktree, estimate, status: planned),
+                                              (index, dir, summary, attendance, owns,
+                                              after, worktree, estimate, status: planned),
                                               aggregate volume
                                               (one startup per session; volume,
                                               not fit), sessions: <n>
@@ -231,10 +265,11 @@ A table, not the manifests:
 intent: <what the whole plan makes true>
 mode: <single | sequential | parallel>   sessions: <n>
 
-| part | wave | summary | files | orchestrator | workers (suggested) |
-|------|------|---------|-------|--------------|---------------------|
-| 1 | 1 | <few words> | 4 | ~88k / 120k | none |
-| 2 | 1 | <few words> | 22 | ~110k / 120k | implement-a ~150k / 200k; implement-b ~165k / 200k |
+| part | wave | user | summary | files | orchestrator | workers (suggested) |
+|------|------|------|---------|-------|--------------|---------------------|
+| 1 | 1 | afk | <few words> | 4 | ~88k / 120k | none |
+| 2 | 1 | afk | <few words> | 22 | ~110k / 120k | implement-a ~150k / 200k; implement-b ~165k / 200k |
+| 3 | 2 | present | <few words> | 3 | ~70k / 120k | none |
 
 Manifests: runs/<plan-id>/<index>-<slug>/manifest.yaml
 Next: <per mode, below>
@@ -242,7 +277,8 @@ Next: <per mode, below>
 
 Columns come straight off each `estimate`; never add unlike lanes into
 one column. One part per row, in run order; `wave` only in `single` and
-`parallel`; no other columns, no stage lists, tier names or totals row.
+`parallel`; `user` is the part's attendance; no other columns, no stage
+lists, tier names or totals row.
 In `single` the orchestrator column is each part's share, and one line
 under the table gives the session: `orchestrator, whole session:
 ~<reserved> / <limit>`. Any `Own worktree:` line of
@@ -253,7 +289,9 @@ unknown until execution.` Then `Next:`, by mode:
 
 - `single`: `GO runs every part here, wave by wave`, or
   `/acos run runs/<plan-id>` in a fresh session when this one already
-  carries a long conversation. GO covers the whole plan.
+  carries a long conversation. GO covers the whole plan; the session
+  waits for the user only where a `present` part starts, and says
+  which parts those are.
 - `sequential`: `/acos run runs/<plan-id> 1`, and one line on whether
   to run part 1 here (cheap plan, small part) or in a fresh session.
   If the user says GO, run part 1 here.
