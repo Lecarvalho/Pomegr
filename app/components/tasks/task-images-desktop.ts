@@ -68,7 +68,7 @@ export function readDesktopTaskImage(repositoryId: string, taskId: string, image
 }
 
 const MEGABYTES = TASK_BOUNDS.imageBytes / (1024 * 1024);
-export const TASK_IMAGE_HELPER = `Paste an image into the task, or attach one. PNG, JPEG, GIF or WebP; up to ${TASK_BOUNDS.imagesPerTask} images of ${MEGABYTES} MB each. A session gets the images the task holds when it starts.`;
+export const TASK_IMAGE_HELPER = `Paste or drop an image into the task, or attach one. PNG, JPEG, GIF or WebP; up to ${TASK_BOUNDS.imagesPerTask} images of ${MEGABYTES} MB each. A session gets the images the task holds when it starts.`;
 export const TASK_IMAGE_TYPE_MESSAGE = "Only PNG, JPEG, GIF and WebP images can be attached.";
 export const TASK_IMAGE_SIZE_MESSAGE = `An image can be at most ${MEGABYTES} MB.`;
 export const TASK_IMAGE_LIMIT_MESSAGE = `A task holds at most ${TASK_BOUNDS.imagesPerTask} images.`;

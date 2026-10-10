@@ -1127,8 +1127,10 @@ task text, and they are a desktop feature: a browser neither sends nor receives 
 - In the New task form the images wait in renderer memory until the task exists; the
   form then adds them one by one. When one fails, the task stays and its own modal
   opens with one fixed line. In the Task form, attach and remove act at once and are
-  not part of the Save draft. The renderer draws an image from an object URL of its
-  own page and revokes it when the image leaves or the modal closes.
+  not part of the Save draft. The images show inside the Task field's own frame,
+  under the text. The renderer draws an image from an object URL of its
+  own page and revokes it when the image leaves or the modal closes; the desktop
+  content security policy allows `blob:` for `img-src` only, for this.
 - A session gets the images the task holds when it starts; see
   [Starting a session](#starting-a-session). An image attached later is not sent to
   that session. A requeued task starts its next session with the images it holds

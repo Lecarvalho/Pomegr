@@ -107,6 +107,16 @@ describe("New task", () => {
     expect(screen.getAllByRole("img")).toHaveLength(1);
   });
 
+  it("shows the images inside the Task field's own frame and takes a dropped image", () => {
+    renderNew();
+    const frame = field().parentElement!;
+    expect(frame).toHaveClass("taskComposer");
+    fireEvent.drop(frame, { dataTransfer: { files: [image(), image("notes.txt", "text/plain")], types: ["Files"] } });
+    expect(frame).toContainElement(screen.getByRole("img", { name: "Image 1" }));
+    expect(frame).toContainElement(screen.getByRole("button", { name: "Attach image" }));
+    expect(screen.getAllByRole("img")).toHaveLength(1);
+  });
+
   it("keeps the task when an image cannot be stored and opens it to say so", async () => {
     taskImage.mockResolvedValue({ ok: false, error: "unavailable" });
     const user = userEvent.setup();

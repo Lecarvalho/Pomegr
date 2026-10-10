@@ -10,7 +10,8 @@ export const DESKTOP_CSP = [
   "form-action 'none'",
   "frame-ancestors 'none'",
   "frame-src 'none'",
-  "img-src 'self' data:",
+  // `blob:` is for a task's images only: the task modal draws each from an object URL the page itself made.
+  "img-src 'self' data: blob:",
   "media-src 'none'",
   "object-src 'none'",
   "script-src 'self' 'unsafe-inline'",

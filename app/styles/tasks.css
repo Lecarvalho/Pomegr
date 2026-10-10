@@ -147,7 +147,13 @@
 .newTaskHelper { color: var(--command-muted); }
 .newTaskError { color: var(--command-error); }
 
-/* A task's images: Attach image, then one 72px thumbnail per image with its Remove beside it, in a wrapping row. */
+/* The Task field with images: one frame holds the textarea and, under it, the image tray (one 72px thumbnail per image
+   with its Remove beside it, in a wrapping row, then Attach image). The frame carries the border and the focus ring. */
+.taskComposer { min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); }
+.taskComposer:has(textarea:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.newTaskField .taskComposer textarea { border: 0; background: transparent; }
+.newTaskField .taskComposer textarea:focus-visible { outline: none; }
+.taskImages { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-top: 1px solid var(--command-line); }
 .taskImagesHead { display: flex; align-items: center; gap: var(--space-2); }
 .taskImageList { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-3); list-style: none; }
 .taskImageItem { min-width: 0; display: flex; align-items: flex-start; gap: var(--space-1); }

@@ -186,8 +186,9 @@ end with no report, not that the work failed.
 ### Attach images
 
 In the desktop app a task can hold up to four images: PNG, JPEG, GIF, or WebP, each
-at most 5 MB. Paste an image into the **Task** field, or select **Attach image**
-and choose files. Each image shows as a small preview with its own **Remove**.
+at most 5 MB. Paste or drop an image into the **Task** field, or select **Attach
+image** at the foot of the field and choose files. Each image shows inside the
+field, under the text, as a small preview with its own **Remove**.
 
 - In **New task** the images wait in the window and are stored when you select
   **Create task**. If one cannot be stored, the task is still created and its task

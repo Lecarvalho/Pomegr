@@ -5,7 +5,6 @@ import type { Task, TaskCheck } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
-import { TaskImageField } from "./TaskImages";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
@@ -219,8 +218,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {task.session && <TaskSessionLink sessionId={task.session.id} />}
       </span>
     </div>}
-    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure} onPasteImages={imagesOffered && !blocked ? images.add : undefined} />
-    {imagesOffered && <TaskImageField items={images.items} busy={images.busy} disabled={blocked} error={images.error} onAttach={images.add} onRemove={images.remove} />}
+    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure}
+      images={imagesOffered ? { items: images.items, busy: images.busy, disabled: blocked, error: images.error, onAttach: images.add, onRemove: images.remove } : undefined} />
     <FeatureFields draft={draft.feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
       onCancelName={cancelName} onOpenTask={onOpenTask} />
     <div className="taskRunGroup">

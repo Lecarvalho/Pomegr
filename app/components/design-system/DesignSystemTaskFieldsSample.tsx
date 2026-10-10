@@ -6,7 +6,6 @@ import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from 
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
-import { TaskImageField } from "../tasks/TaskImages";
 import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, NO_MODELS, type DoneWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
@@ -31,6 +30,7 @@ export function TaskFieldsSection() {
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
+  const [imageText, setImageText] = useState("Match the settings page to the attached mock-up.");
   const [issueChecked, setIssueChecked] = useState(true);
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
   const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
@@ -58,14 +58,14 @@ export function TaskFieldsSection() {
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
         <FeatureFields draft={created} board={BOARD_RUNNING} onChange={setCreated} />
       </Sample>
-      <Sample label="Images, none yet" note="Under the Task field, in the desktop app only. Attach image opens the file picker; a paste into the Task field that holds an image adds it too.">
-        <TaskImageField items={[]} onAttach={noop} onRemove={noop} />
+      <Sample label="Task field with images, none yet" note="In the desktop app the Task field is one frame that holds the text and the task's images. Attach image sits at its foot and opens the file picker; a paste or a drop that holds an image adds it too.">
+        <TaskTextField value={imageText} onChange={setImageText} images={{ items: [], onAttach: noop, onRemove: noop }} />
       </Sample>
-      <Sample label="Images, attached" note="One 72px thumbnail per image with its Remove beside it, in a wrapping row. A thumbnail shows the ground fill until its image is read; these samples stay there.">
-        <TaskImageField items={IMAGES_LOADING} onAttach={noop} onRemove={noop} />
+      <Sample label="Task field with images, attached" note="Inside the frame, under the text: one 72px thumbnail per image with its Remove beside it, in a wrapping row. A thumbnail shows the ground fill until its image is read; these samples stay there.">
+        <TaskTextField value={imageText} onChange={setImageText} images={{ items: IMAGES_LOADING, onAttach: noop, onRemove: noop }} />
       </Sample>
-      <Sample label="Images, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line.">
-        <TaskImageField items={IMAGES_FULL} error={TASK_IMAGE_TYPE_MESSAGE} onAttach={noop} onRemove={noop} />
+      <Sample label="Task field with images, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line under the frame.">
+        <TaskTextField value={imageText} onChange={setImageText} images={{ items: IMAGES_FULL, error: TASK_IMAGE_TYPE_MESSAGE, onAttach: noop, onRemove: noop }} />
       </Sample>
       <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
         <div className="taskGateField">

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import type { TaskRun } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
-import { TaskImageField } from "./TaskImages";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
@@ -21,7 +20,7 @@ import { useDraftImages } from "./use-task-images";
 // preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
 // always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
 // a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
-// Images pasted into the Task field or attached under it wait in the form and are stored once the task exists.
+// Images pasted, dropped or attached into the Task field show inside it, wait in the form, and are stored once the task exists.
 
 /**
  * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
@@ -120,8 +119,8 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
       <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>
       <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>{busy ? "Creating…" : "Create task"}</button>
     </>}>
-    <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure} onPasteImages={imagesOffered && !busy ? images.add : undefined} />
-    {imagesOffered && <TaskImageField items={images.items} disabled={busy} error={images.error} onAttach={images.add} onRemove={images.remove} />}
+    <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure}
+      images={imagesOffered ? { items: images.items, disabled: busy, error: images.error, onAttach: images.add, onRemove: images.remove } : undefined} />
     <IssueCreateCheckbox option={issueOption} checked={issueChecked} disabled={busy} onChange={setWantIssue} />
     <FeatureFields draft={feature} board={board} error={featureError}
       onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />

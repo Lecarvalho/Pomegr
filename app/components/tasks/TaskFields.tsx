@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, type ReactNode, type Ref } from "react";
-import { pastedImageFiles } from "./TaskImages";
+import { TaskImageTray, pastedImageFiles, type TaskFieldImages } from "./TaskImages";
+import { TASK_IMAGE_HELPER } from "./task-images-desktop";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
@@ -17,13 +18,14 @@ const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 /**
  * The Task textarea with its `{n} / 4,000` counter under it, right-aligned. `helper` and `error` are optional lines
  * under the counter (the error is an alert); the textarea is described by the counter and by whichever of them show.
- * With `onPasteImages`, a paste that holds image files hands them over instead of typing into the field.
+ * With `images` the field can hold the task's images: the textarea and the image tray share one frame, so an image
+ * shows inside the field, under the text. A paste or a drop that holds image files hands them over instead of typing.
  */
-export function TaskTextField({ value, onChange, onBlur, onPasteImages, readOnly, helper, error, ref }: {
+export function TaskTextField({ value, onChange, onBlur, images, readOnly, helper, error, ref }: {
   value: string;
   onChange(value: string): void;
   onBlur?(): void;
-  onPasteImages?(files: File[]): void;
+  images?: TaskFieldImages;
   readOnly?: boolean;
   helper?: ReactNode;
   error?: string | null;
@@ -33,17 +35,32 @@ export function TaskTextField({ value, onChange, onBlur, onPasteImages, readOnly
   const counterId = useId();
   const helperId = useId();
   const errorId = useId();
+  const imageHelperId = useId();
   const describedBy = [helper ? helperId : null, error ? errorId : null, counterId].filter(Boolean).join(" ");
+  // Images are taken only while the form can store them; a paste or a drop of one is still not typed into the field.
+  const takeImages = (files: File[]) => { if (images && files.length > 0 && !images.busy && !images.disabled) images.onAttach(files); };
+  const textarea = <textarea ref={ref} id={fieldId} rows={6} maxLength={TASK_BOUNDS.textLength} value={value} readOnly={readOnly}
+    placeholder="What should the session do?" aria-describedby={describedBy}
+    onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur}
+    onPaste={images && ((event) => takeImages(pastedImageFiles(event)))} />;
   return <div className="newTaskField">
     <label htmlFor={fieldId}>Task</label>
-    <textarea ref={ref} id={fieldId} rows={6} maxLength={TASK_BOUNDS.textLength} value={value} readOnly={readOnly}
-      placeholder="What should the session do?" aria-describedby={describedBy}
-      onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur}
-      onPaste={onPasteImages && ((event) => {
-        const files = pastedImageFiles(event);
-        if (files.length > 0) onPasteImages(files);
-      })} />
+    {images
+      ? <div className="taskComposer"
+        onDragOver={(event) => { if ([...event.dataTransfer.types].includes("Files")) event.preventDefault(); }}
+        onDrop={(event) => {
+          const files = [...event.dataTransfer.files].filter((file) => file.type.startsWith("image/"));
+          if (files.length === 0) return;
+          event.preventDefault();
+          takeImages(files);
+        }}>
+        {textarea}
+        <TaskImageTray images={images} describedBy={imageHelperId} />
+      </div>
+      : textarea}
     <span id={counterId} className="taskTextCounter">{`${COUNT_FORMAT.format(value.length)} / ${COUNT_FORMAT.format(TASK_BOUNDS.textLength)}`}</span>
+    {images && <p id={imageHelperId} className="newTaskHelper">{TASK_IMAGE_HELPER}</p>}
+    {images?.error && <p className="newTaskError" role="alert">{images.error}</p>}
     {helper && <p id={helperId} className="newTaskHelper">{helper}</p>}
     {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
   </div>;
