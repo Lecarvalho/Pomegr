@@ -3,13 +3,14 @@
 import { useCallback, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import { TASK_ID_PATTERN, type TaskBoard } from "../../../shared/task-contract";
-import { dropPosition, isNoopMove } from "./task-board-model";
+import { dropPosition, isNoopMove, leavesReady } from "./task-board-model";
 import type { TaskMove } from "./task-desktop";
 
 // Native HTML drag and drop for cards (design contract D86, D442, D443). The payload is the plain-text task ID with
 // effect move. Dropping on a column appends the card to it; dropping on a card places it before that card; dropping a
 // card on itself changes nothing. The column under the pointer takes the raised fill while a card is over it or any
-// card in it, and loses it when the pointer leaves, the card drops, or the drag ends.
+// card in it, and loses it when the pointer leaves, the card drops, or the drag ends. A card that waits in the queue
+// stays in Ready: no other column offers itself as its drop target, and a drop there sends nothing.
 
 export type ColumnDropHandlers = {
   onDragOver(event: DragEvent<HTMLElement>): void;
@@ -32,7 +33,7 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void) 
   };
   const send = (id: string, columnId: string, beforeId: string | null) => {
     const move = { id, columnId, position: dropPosition(board, id, columnId, beforeId) };
-    if (!isNoopMove(board, move)) onMove(move);
+    if (!leavesReady(board, move) && !isNoopMove(board, move)) onMove(move);
   };
 
   const cardHandlers = (id: string) => ({
@@ -54,7 +55,7 @@ export function useCardDrag(board: TaskBoard, onMove: (move: TaskMove) => void) 
 
   const columnHandlers = (columnId: string): ColumnDropHandlers => ({
     onDragOver: (event: DragEvent<HTMLElement>) => {
-      if (dragged.current === null) return;
+      if (dragged.current === null || leavesReady(board, { id: dragged.current, columnId })) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
       setOverColumn(columnId);

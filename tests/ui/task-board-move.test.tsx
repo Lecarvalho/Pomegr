@@ -21,7 +21,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -32,8 +32,8 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
   };
 }
 
-/** Backlog: T-1, T-2, T-3. Ready: T-4. Done: T-5 (a finished task). */
-const tasks = () => [task(1), task(2), task(3), task(4, { columnId: "col-2", position: 0, state: "queued" }), task(5, { columnId: "col-3", position: 0, state: "done" })];
+/** Backlog: T-1, T-2, T-3. Ready: T-4 (not queued, so it can go anywhere). Done: T-5 (a finished task). */
+const tasks = () => [task(1), task(2), task(3), task(4, { columnId: "col-2", position: 0 }), task(5, { columnId: "col-3", position: 0, state: "done" })];
 
 function setBoard(overrides: Partial<TaskBoard> = {}) {
   const board: TaskBoard = { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: tasks(), queue: { status: "idle", blockedBy: null, pauseReason: null, order: [] }, ...overrides };
@@ -415,6 +415,66 @@ describe("keyboard moves", () => {
     await waitFor(() => expect(alertText()).toBe("The card could not be moved."));
     expect(order("Backlog")).toEqual(["T-1", "T-2", "T-3"]);
     expect(screen.getByRole("button", { name: "Move T-2 to the next column" })).toHaveFocus();
+  });
+});
+
+describe("queued cards in Ready", () => {
+  const featureId = "feat-0123456789ab";
+  const inReady = (id: number, position: number, overrides: Partial<Task> = {}) => task(id, { columnId: "col-2", position, state: "queued", ...overrides });
+  /** Ready: T-1 (feature step 1), T-2 (single), T-3 (not queued), T-4 (single, scheduled). Backlog: T-6. Done: T-5. */
+  const queuedBoard = () => setBoard({
+    features: [{ id: featureId, name: "Search", done: false }],
+    tasks: [inReady(1, 0, { featureId, step: 1 }), inReady(2, 1), task(3, { columnId: "col-2", position: 2 }), inReady(4, 3, { state: "scheduled", scheduledAt: "2026-10-09T02:00:00.000Z" }),
+      task(5, { columnId: "col-3", position: 0, state: "done" }), task(6, { position: 0 })],
+    queue: { status: "idle", blockedBy: null, pauseReason: null, order: ["T-1", "T-2"] },
+  });
+  const bar = (id: string) => within(screen.getByRole("toolbar", { name: `Move ${id}` }));
+
+  it("keeps a queued or scheduled card in Ready: no other column takes the drop and nothing is sent", () => {
+    queuedBoard();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    for (const id of ["T-2", "T-4"]) {
+      const dataTransfer = transfer();
+      fireEvent.dragStart(card(id), { dataTransfer });
+      expect(fireEvent.dragOver(column("Backlog"), { dataTransfer })).toBe(true);
+      expect(column("Backlog")).not.toHaveClass("isDropTarget");
+      fireEvent.drop(column("Done"), { dataTransfer });
+      fireEvent.dragEnd(card(id), { dataTransfer });
+      dragTo(id, card("T-6"));
+    }
+    expect(taskAction).not.toHaveBeenCalled();
+    expect(order("Ready")).toEqual(["T-1", "T-2", "T-3", "T-4"]);
+    expect(alertText()).toBeNull();
+  });
+
+  it("offers a queued card no neighbouring column from the keyboard, and a card that is not queued both", () => {
+    queuedBoard();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    for (const id of ["T-1", "T-2", "T-4"]) {
+      expect(bar(id).getByRole("button", { name: `Move ${id} to the previous column` })).toBeDisabled();
+      expect(bar(id).getByRole("button", { name: `Move ${id} to the next column` })).toBeDisabled();
+    }
+    expect(bar("T-2").getByRole("button", { name: "Move T-2 down" })).toBeEnabled();
+    expect(bar("T-3").getByRole("button", { name: "Move T-3 to the previous column" })).toBeEnabled();
+    expect(bar("T-3").getByRole("button", { name: "Move T-3 to the next column" })).toBeEnabled();
+  });
+
+  it("reorders single queued cards inside Ready, and draws a drop ahead of a feature card in start order", () => {
+    queuedBoard();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    dragTo("T-4", card("T-2"));
+    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-2", position: 1 });
+    expect(order("Ready")).toEqual(["T-1", "T-4", "T-2", "T-3"]);
+    // The monitor keeps the feature's card first among the waiting ones, so the board draws it that way at once.
+    dragTo("T-2", card("T-1"));
+    expect(order("Ready")).toEqual(["T-1", "T-2", "T-4", "T-3"]);
+  });
+
+  it("lets a card that started leave Ready, because it no longer waits", () => {
+    setBoard({ tasks: [inReady(1, 0, { session: { id: "claude:abc", title: null, state: "working", observedModel: null } }), task(5, { columnId: "col-3", position: 0, state: "done" })] });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    dragTo("T-1", column("Done"));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-1", columnId: "col-3", position: 1 });
   });
 });
 

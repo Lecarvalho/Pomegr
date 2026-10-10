@@ -21,9 +21,9 @@ test("every running queue answers its next task, in repository order, and starts
   const { store, directory } = await openTemporaryStore(context);
   runningRepository(store, OTHER_REPOSITORY, 2);
   runningRepository(store, REPOSITORY, 2);
-  // Queue order, not task number: T-1 re-joins behind T-2.
-  store.apply(REPOSITORY, "queue_remove", { id: "T-1" });
-  store.apply(REPOSITORY, "queue_add", { id: "T-1" });
+  // Card order in Ready, not task number: T-1 is moved below T-2.
+  const ready = store.readBoard(REPOSITORY).columns.find((column) => column.name === "Ready");
+  assert.equal(store.apply(REPOSITORY, "move", { id: "T-1", columnId: ready.id, position: 1 }).ok, true);
   const stored = withDatabase(directory, (database) => database.prepare("SELECT repository_id, number, state, session_id, dispatch_token, updated_at FROM tasks ORDER BY repository_id, number").all().map((row) => ({ ...row })));
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2"), start("T-1", OTHER_REPOSITORY)] }, "asking again changes nothing");

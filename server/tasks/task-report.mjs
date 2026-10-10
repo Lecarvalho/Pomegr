@@ -11,7 +11,8 @@
 // the last task that needs the user lets it run again. An idle or paused queue keeps its status.
 //
 // The write that sets Done or Needs review also moves the card to the column that holds that role
-// (task-columns.mjs). Blocked and Requeue leave the card where it is.
+// (task-columns.mjs). Blocked leaves the card where it is; Requeue puts it back in Ready, last, like any task that
+// joins the queue (`settleReadyColumn`, run by the store after the action).
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
@@ -130,17 +131,15 @@ export function resolveDone({ database, repositoryId }, payload) {
 /**
  * `resolve_requeue`: the user sends the task back to the end of the queue for a new session. The report, the
  * session link, and any dispatch are cleared, so the task can be started and reported on once more. The same
- * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped. The card stays
- * in its column until the new session links.
+ * tasks as `resolve_done` qualify, including a linked task with no report; the session is not stopped. The card goes
+ * to the end of Ready in the same store write, which is the end of the single tasks.
  */
 export function resolveRequeue({ database, repositoryId }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
-  const highest = preparedStatement(database, "SELECT MAX(queue_position) AS highest FROM tasks WHERE repository_id = ?").get(repositoryId)?.highest;
-  const position = highest === null || highest === undefined || !Number.isSafeInteger(Number(highest)) ? 0 : Number(highest) + 1;
-  preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = ?, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
+  preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = NULL, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
-    .run(position, Date.now(), repositoryId, target.number);
+    .run(Date.now(), repositoryId, target.number);
   releaseQueue(database, repositoryId);
   return { ok: true };
 }

@@ -17,7 +17,8 @@ function chipOf(task: Task, nextQueued: boolean) {
 
 /**
  * Tasks with no feature that are queued or further along (design contract D147-D155). They run after the features, one
- * at a time: queued ones in the order the monitor lists them, then the rest by task number.
+ * at a time: queued ones in the order the monitor lists them, which is the order of their cards in the Board's Ready
+ * column, then the rest by task number.
  */
 export function QueueSingleTasks({ tasks, nextId, queue, onOpenTask }: { tasks: Task[]; nextId: string | null; queue: TaskBoard["queue"]; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
   const headingId = useId();

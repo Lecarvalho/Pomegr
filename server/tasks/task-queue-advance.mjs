@@ -179,7 +179,7 @@ function queueRecord(row, at) {
     featureId: row.feature_id ?? null,
     step: row.step ?? null,
     state: row.state,
-    queuePosition: row.queue_position ?? null,
+    queuePosition: row.position ?? null,
     due: row.state === "scheduled" && taskIsDue(row.scheduled_at ?? null, at),
     inFlight: rowInFlight(row, at),
     unlinked: !linked && standing === "expired",

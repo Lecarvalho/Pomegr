@@ -50,7 +50,7 @@ export type TaskReport = { at: string; results: { check: TaskCheck; passed: bool
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
  * order, each feature's steps ascending, tasks of one step by task number, then tasks without a feature in the
- * order they were queued. A queued task is in it, and a scheduled task once its own time has come. Its first entry
+ * order of their cards in the Ready column, which holds every waiting card in this same order. A queued task is in it, and a scheduled task once its own time has come. Its first entry
  * is the "Queued · next" task. It carries IDs only, at most one per task.
  *
  * `idle` is the queue turned off (the default); `running` is on. `blocked` names in `blockedBy` the task that

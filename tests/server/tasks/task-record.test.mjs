@@ -315,15 +315,15 @@ test("an empty board carries no content", () => {
   });
 });
 
-test("the projected queue order lists queued task IDs only and keeps the private queue position off every task", () => {
+test("the projected queue order lists queued task IDs only, single tasks by card position, and ignores a stored queue position", () => {
   const board = projectBoard(REPOSITORY, {
     repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
     tasks: [
-      storedTask({ number: 1, state: "queued", queue_position: 9, position: 0 }),
+      storedTask({ number: 1, state: "queued", queue_position: 9, position: 4 }),
       storedTask({ number: 2, state: "queued", feature_id: FEATURE, step: 2, queue_position: 0, position: 1 }),
       storedTask({ number: 3, state: "queued", feature_id: FEATURE, step: 1, queue_position: 4, position: 2 }),
       storedTask({ number: 4, state: "done", queue_position: 1, position: 3 }),
-      storedTask({ number: 5, state: "queued", queue_position: 2, position: 4 }),
+      storedTask({ number: 5, state: "queued", queue_position: 2, position: 0 }),
       storedTask({ number: 6, state: "queued", queue_position: "junk", position: 5 }),
     ],
   });

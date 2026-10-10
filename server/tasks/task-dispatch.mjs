@@ -153,8 +153,8 @@ const BIND_REFUSED = Object.freeze({ ok: false, error: "not_found" });
  * transaction, and clears the digest. The lookup is monitor-wide: the token is the only input that names a
  * task. A wrong or reused token, an expired unbound dispatch, a task that already has a session, and a session
  * already linked to another task all answer the same `not_found`, so the answer says nothing about which
- * one failed and never carries a task or repository. The link is single assignment; it changes no state or
- * queue position, moves the card to the In progress column in the same write, and a linked task is never
+ * one failed and never carries a task or repository. The link is single assignment; it changes no state,
+ * moves the card to the In progress column in the same write, and a linked task is never
  * startable again.
  */
 export function bindDispatch({ database, transaction, payload, now }) {

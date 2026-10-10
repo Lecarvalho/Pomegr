@@ -136,8 +136,8 @@ type TaskBoard = {
 - `doneWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - `queue.order` holds task IDs only: the queued tasks that have not started, in the order
-  they would start (see [Queue](#queue)). It adds no task content, and the private queue
-  position never leaves the monitor.
+  they would start (see [Queue](#queue)). It adds no task content. The waiting cards of
+  the Ready column read in this same order.
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
   `worktree_dirty` says that a requeued task's own worktree holds uncommitted changes.
@@ -236,15 +236,56 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 - **A card already in the role's column keeps its place.** The state still changes.
 - **Blocked by agent and Stalled move nothing.** The card stays where it is, normally
   the In progress column, and its chip and the Queue banner say that it needs the user.
-- **Requeue moves nothing.** A requeued card stays where it is and moves to the
-  In progress column when its new session links.
 - **A move by hand does not opt a card out.** The user may drag a card anywhere at any
-  time; it stays there until the task's next state change in the table, which moves it
-  again wherever it is. Moving a card by hand never changes its state or chip.
-- **No move is taken back.** Only the persisted writes in the table move a card. No
-  observation does: not a borrowed session state, not the queue, not a start, and not a
-  start gate. So Pomegr never moves a card and later moves it back because an
-  observation changed.
+  time, except a card that waits in the queue (see
+  [Queued cards stay in Ready](#queued-cards-stay-in-ready)); it stays there until the
+  task's next state change in the table, which moves it again wherever it is. Moving a
+  card by hand never changes its state or chip.
+- **No move is taken back.** Only the persisted writes in the table, and the queue
+  writes below, move a card. No observation does: not a borrowed session state, not a
+  start, not a start gate, and not the clock. So Pomegr never moves a card and later
+  moves it back because an observation changed.
+
+### Queued cards stay in Ready
+
+Decided for GitHub issue #133 (2026-10-10). It replaces the earlier rule that queuing
+and Requeue move nothing, and the private queue position that ordered single tasks.
+
+Ready is the queue's column. A task waits in the queue when its state is Queued or
+Scheduled and no session is linked. For every such task:
+
+- **Its card is in Ready.** The write that puts a task in the queue (`queue_add`, with or
+  without a time, and `resolve_requeue`) moves the card to the end of Ready in the same
+  transaction. A card already in Ready keeps its place. Requeue therefore moves a card:
+  from In progress or Review back to Ready, and on to In progress when its new session
+  links.
+- **It stays there.** `move` answers `conflict` for a waiting card sent to any other
+  column, and the board offers no such drop or keyboard move. Removing the task from
+  the queue, or its session linking, frees the card; **Remove from queue** leaves the
+  card where it is in Ready.
+- **Ready reads in start order.** The waiting cards of Ready are, top to bottom, in the
+  order the queue starts them: features in board order, each feature's steps ascending,
+  a step's tasks by number, then the single tasks. The store settles this after every
+  action (`settleReadyColumn` in `server/tasks/task-columns.mjs`, called by `apply`): the
+  places the waiting cards hold are filled again in that order, and a card that is not
+  in the queue keeps its place. So a change of step or feature moves the cards with it.
+- **The card order of single tasks is the queue order.** Single tasks have no other
+  order, so dragging one above another in Ready is how the user reorders them. A drop
+  that would put a single task ahead of a feature task, or a later step ahead of an
+  earlier one, lands in start order instead, in the same write.
+- **The order is the standing one.** A scheduled task that is not due and a dispatched
+  task that has not linked keep their place among the waiting cards, although neither is
+  in `queue.order` at that moment. The clock therefore never moves a card.
+
+The board mirrors the two rules for its optimistic move (`task-board-model.ts`), so a
+dragged card is drawn at once where the committed board will show it.
+
+A store written before this rule may hold queued cards in other columns, with single
+tasks ordered by a stored `queue_position`. When the monitor opens the store, each
+repository is settled once in one transaction: the waiting cards move to the end of
+Ready, the single tasks keep the order their stored positions gave (once), and the
+stored positions are cleared. The `queue_position` column stays in the schema, unread
+after that and never written with a value, so the schema version stays 1.
 
 ### Boards made before the fixed columns
 
@@ -322,8 +363,10 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   are in the order they would start, one ID per task. Features come in board order. Inside a
   feature the steps ascend, and the tasks of one step order by task number as a number
   (T-2 before T-10); they are the tasks that run in parallel. After every feature task
-  come the single queued tasks, which have no feature or step. They run in the order
-  they were queued, because no other order is defined for them. A task in another state
+  come the single queued tasks, which have no feature or step. They run in the order of
+  their cards in the Ready column, top first (see
+  [Queued cards stay in Ready](#queued-cards-stay-in-ready)), so the Board and the Queue
+  view always show one order. A task in another state
   is not in the order, even when it belongs to a queued task's feature. A task that
   already started is not in the order either: one with a linked session and no report, or
   a dispatch still inside its ten minutes (`rowInFlight` in `task-record.mjs`, which judges
@@ -333,10 +376,11 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   never names it. The Queue view shows it with the borrowed session state, or its own chip
   until a session links, with no Waiting line, no next marker, and no move. The first
   entry is the task shown as next.
-- **Queue position.** Adding a task to the queue stamps it with a private integer, one
-  above the highest the repository holds. The monitor keeps it beside the task and uses
-  it only to order single tasks. It is never part of a task record or of the board.
-  Removing a task from the queue clears it, so queuing it again places it last.
+- **Place in the queue.** A single task's place is its card's place in Ready
+  (`Task.position`, already on the board). A task queued from another column joins last,
+  because its card lands last in Ready; one queued from Ready runs where its card is.
+  Removing a task from the queue leaves its card in Ready, so queuing it again gives it
+  the same place unless the card was moved.
 - **Steps.** `orderQueue` also reports every step of every feature with the IDs of its
   tasks of any state and whether the step is done (it has tasks and each one is done).
   The store uses that rule to refuse a move into a done step.
@@ -393,7 +437,7 @@ and only one step at a time. Every start first passes the [start gates](#start-g
     `paused` queue keeps its status; turning the queue on then computes `blocked` when any
     task needs review, is blocked, or is stalled.
   - `resolve_done` sets such a task to Done and keeps its report and session link.
-    `resolve_requeue` puts it back at the end of the queue as Queued and clears its
+    `resolve_requeue` puts it back in the queue as Queued, its card last in Ready, and clears its
     report, session link, and any dispatch, so a new session can be started for it and
     report once more. Either one, on a blocked queue, names the lowest-numbered task
     that still needs the user in `blockedBy`, or sets the queue back to `running` when
@@ -418,8 +462,8 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   `taskIsDue` and `queueWindowHold` in `task-queue.mjs`, and the store hands them its
   clock.
   - **A task's own time.** `queue_add` with `{ id, at }` stores `scheduled_at` and sets
-    the task to `scheduled`. A scheduled task is a queued task with a start time: it keeps
-    its queue position, is in `queue.order` only from its time on, and is started by the
+    the task to `scheduled`. A scheduled task is a queued task with a start time: its card
+    keeps its place in Ready, it is in `queue.order` only from its time on, and is started by the
     queue like any other task, so it needs the queue on. Until then it is not startable by
     hand either (`start-plan` answers `gate_held`). A scheduled task that is not due holds
     nothing behind it: the tasks after it start. Its feature step is not done until it
@@ -724,7 +768,7 @@ supplies.
   dispatch. In one write transaction the store sets the task's session, clears the
   digest, and bumps the update time, and moves the card to the column with the
   `in_progress` role (see [Columns and card moves](#columns-and-card-moves)). It changes
-  no state or queue position.
+  no state.
 - The link is single assignment. A wrong or reused token, an unbound dispatch older than
   ten minutes, a task that already has a session, and a session already linked to
   another task all answer the same `not_found`, so the answer never says which failed.
@@ -820,7 +864,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
 - When the plan is malformed, its provider executable is missing, or the launcher fails or does not end within 15 seconds,
   desktop main calls
   `POST /internal/tasks/start-abort` with the token, which clears the matching dispatch.
-- Starting never changes the task's state, column, or queue position. The card moves
+- Starting never changes the task's state or column. The card moves
   only when the started session links.
 - After a manual start answers `worktree_dirty`, the task modal shows **Open folder**. It
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
@@ -990,7 +1034,8 @@ so it reads nothing and says that issues are read in the desktop app.
   and an absent field is left as stored. `move` takes `{ id, columnId, position }`:
   `position` is the zero-based index in the destination column counted after the task
   leaves its place, and a value past the end appends. A
-  `columnId` that is not one of the board's five columns answers `not_found`. Task
+  `columnId` that is not one of the board's five columns answers `not_found`, and a card
+  that waits in the queue sent to another column than Ready answers `conflict`. Task
   positions stay dense after every action.
   `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
   duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
@@ -1008,10 +1053,10 @@ so it reads nothing and says that issues are read in the desktop app.
   reorder yet.
   `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
   `2026-10-09T02:00:00.000Z`. Without `at`, a task in state `not_queued` becomes `queued`
-  at the end of the queue, and a `scheduled` task becomes `queued` in the place it has and
+  with its card in Ready (last when it comes from another column), and a `scheduled` task becomes `queued` in the place it has and
   loses its time; any other state is `conflict`. With `at`, a task in state `not_queued`,
   `queued`, or `scheduled` with no linked session becomes `scheduled` with that time, in
-  the place it has or at the end; a task with a session or an outcome is `conflict`, and a
+  the place its card has in Ready or at the end of it; a task with a session or an outcome is `conflict`, and a
   time outside the bounds is `invalid`. An unknown task is `not_found`. `queue_remove`
   takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
   its time; any other state is `conflict`. `resolve_requeue` clears the time too.

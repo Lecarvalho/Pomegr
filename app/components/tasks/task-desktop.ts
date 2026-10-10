@@ -181,7 +181,7 @@ export function resolveDesktopTaskDone(repositoryId: string, id: string): Promis
   return sendTaskAction(repositoryId, "resolve_done", { id });
 }
 
-/** Sends such a task back to the end of the queue for a new session; its report and session link are cleared. */
+/** Sends such a task back to the queue for a new session, its card last in Ready; its report and session link are cleared. */
 export function requeueDesktopTask(repositoryId: string, id: string): Promise<TaskActionResult> {
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
