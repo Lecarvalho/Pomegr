@@ -97,8 +97,8 @@ function assertRefusal(response, status, error) {
   assert.deepEqual(response.json, { ok: false, error });
 }
 
-test("the three action names are the fixed list", () => {
-  assert.deepEqual([...TASK_ISSUE_ACTIONS], ["github-status", "issues-list", "issue-promote"]);
+test("the four action names are the fixed list", () => {
+  assert.deepEqual([...TASK_ISSUE_ACTIONS], ["github-status", "issues-list", "issue-promote", "issue-create"]);
 });
 
 test("github-status answers the connection and the repository access, never the root", async (context) => {
@@ -278,7 +278,7 @@ test("a missing store or a missing composition is unavailable", async (context) 
   context.after(() => new Promise((resolve) => server.close(resolve)));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   for (const name of TASK_ISSUE_ACTIONS) {
-    assertRefusal(await call(server.address().port, name, REPOSITORY, name === "issue-promote" ? { number: 1, digest: "a".repeat(64) } : {}), 503, "unavailable");
+    assertRefusal(await call(server.address().port, name, REPOSITORY, name === "issue-promote" ? { number: 1, digest: "a".repeat(64) } : name === "issue-create" ? { taskId: "T-1" } : {}), 503, "unavailable");
   }
   const { port } = await setup(context, { reader: fakeReader().reader });
   const noComposition = http.createServer(createRequestHandler({ runtime: {}, taskStore: { apply() {}, promotedIssues: () => new Map(), close() {} }, authorizationToken: TOKEN }));

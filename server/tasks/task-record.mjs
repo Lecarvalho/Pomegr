@@ -180,6 +180,18 @@ export function normalizePromotePayload(value) {
   return { number, title, body: body.trim() };
 }
 
+/**
+ * `record_issue` is a store action only. It holds exactly a task `id` and the `number` of the issue GitHub created for
+ * it. Returns `{ taskNumber, issueNumber }`, or undefined when invalid.
+ */
+export function normalizeRecordIssuePayload(value) {
+  if (!isPlainObject(value) || Object.keys(value).length !== 2 || !hasOnlyKeys(value, ["id", "number"])) return undefined;
+  const taskNumber = isTaskId(value.id) ? Number(value.id.slice(2)) : undefined;
+  const { number } = value;
+  if (taskNumber === undefined || !Number.isSafeInteger(number) || number < 1 || number > 999_999_999) return undefined;
+  return { taskNumber, issueNumber: number };
+}
+
 /** The text a promoted task stores: the title alone for an empty body, else the title, a blank line, and the body. */
 export function composePromotedText({ title, body }) {
   return body === "" ? title : `${title}\n\n${body}`;

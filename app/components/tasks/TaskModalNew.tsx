@@ -3,18 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import type { TaskRun } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
+import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, createPayload, type DoneWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, featureCreateInput, type FeatureDraft } from "./task-features";
+import { createTaskIssue } from "./task-issues-desktop";
 import { firstColumnName, modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
 
 // Task modal, mode new (design contract G115-G158): Task, Feature and Step, Run on and Effort, Done when. Nothing is
 // preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
-// always lands in the first column, which the subtitle names.
+// always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
+// a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
 
 /**
  * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
@@ -38,9 +41,12 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const [doneWhen, setDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
   const [feature, setFeature] = useState<FeatureDraft>(NO_FEATURE_DRAFT);
   const [featureError, setFeatureError] = useState<string | null>(null);
+  const [wantIssue, setWantIssue] = useState(true);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
+  const issueOption = useIssueCreateOption(repositoryId);
+  const issueChecked = issueOption.kind === "can" && wantIssue;
   const trimmed = text.trim();
   const featureName = feature.name.trim();
   const canSubmit = trimmed.length > 0 && !busy && (!feature.creating || featureName.length > 0);
@@ -69,9 +75,13 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
       if (mounted.current) setFeature(draft);
     }
     const result = await createDesktopTask(repositoryId, createPayload(trimmed, run, doneWhen, featureCreateInput(draft, null)));
+    // The task exists once the monitor says so, even if the modal was closed in the meantime. The issue comes second and
+    // its failure is only remembered for the task's own modal: it never undoes or blocks the task.
+    if (result.ok) {
+      if (issueChecked && result.taskId !== null) await createTaskIssue(repositoryId, result.taskId);
+      onCreated();
+    }
     inFlight.current = false;
-    // The task exists once the monitor says so, even if the modal was closed in the meantime.
-    if (result.ok) onCreated();
     if (!mounted.current) return;
     setBusy(false);
     if (!result.ok) {
@@ -86,9 +96,10 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     footer={<>
       <span className="taskModalSpacer" aria-hidden="true" />
       <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>
-      <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>Create task</button>
+      <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>{busy ? "Creating…" : "Create task"}</button>
     </>}>
     <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure} />
+    <IssueCreateCheckbox option={issueOption} checked={issueChecked} disabled={busy} onChange={setWantIssue} />
     <FeatureFields draft={feature} board={board} error={featureError}
       onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />
     <RunFields run={run} models={models} onChange={setRun} />

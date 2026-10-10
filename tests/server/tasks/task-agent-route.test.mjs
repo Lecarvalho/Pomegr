@@ -96,6 +96,24 @@ test("success lands in the first column not queued with run and doneWhen stored,
   assert.equal((await add(port, { text: "again" })).json.taskId, "T-2");
 });
 
+test("add_task creates a local task with no source and never reaches the issue reader", async (context) => {
+  const store = await realStore(context);
+  const touched = [];
+  const runtime = new Proxy({
+    resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY_ID }),
+    taskIssues: { create: () => { touched.push("create"); }, list: () => { touched.push("list"); }, status: () => { touched.push("status"); }, read: () => { touched.push("read"); } },
+  }, { get(target, property) { touched.push(String(property)); return target[property]; } });
+  const server = http.createServer(createRequestHandler({ runtime, taskStore: store, agentAuthorizationToken: TOKEN }));
+  context.after(() => new Promise((done) => server.close(done)));
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const response = await add(server.address().port, { text: SECRET_TEXT });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, taskId: "T-1" });
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks[0].source, null);
+  assert.equal(store.issueDraft(REPOSITORY_ID, "T-1").hasSource, false);
+  assert.equal(touched.includes("taskIssues"), false);
+  assert.deepEqual(touched.filter((name) => ["create", "list", "status", "read"].includes(name)), []);
+});
+
 test("unauthorized and Origin-bearing requests are refused before any write", async (context) => {
   const store = await realStore(context);
   const { port, lookups } = await start(context, store);

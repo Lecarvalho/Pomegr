@@ -491,7 +491,7 @@ describe("Pomegr visual contract", () => {
     expect(existsSync(join(dir, "TaskPanel.tsx"))).toBe(false);
     expect(tasksStyles).not.toMatch(/\.(?:newTaskPanel|taskPanel)[A-Za-z]*/);
     // D4: mode new ends with a Quiet Cancel and the one primary Create task; no "create and add another".
-    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*>Create task<\/button>/);
+    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*Create task[^\n]*<\/button>/);
     expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
     // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
     expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);

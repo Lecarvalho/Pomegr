@@ -350,7 +350,9 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     }
     const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
     if (result?.ok === true) {
-      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
+      // Only `create` answers the task it made, so the caller can name it (for example to open its GitHub issue).
+      const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
+      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(taskId === null ? {} : { taskId }) });
       return;
     }
     const error = Object.hasOwn(ACTION_STATUS, result?.error) ? result.error : "conflict";

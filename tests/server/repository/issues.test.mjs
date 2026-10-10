@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import test from "node:test";
 import {
-  ISSUE_LIST_LIMIT, ISSUE_TASK_TEXT_LIMIT, createIssueReader, normalizeIssue, stripHiddenComments,
+  ISSUE_CREATE_TITLE_LIMIT, ISSUE_LIST_LIMIT, ISSUE_TASK_TEXT_LIMIT, createIssueReader, issueTitleOf, normalizeIssue, stripHiddenComments,
 } from "../../../server/repository/issues.mjs";
 
 const ROOT = "C:\\Work\\SECRET-ROOT\\repo";
@@ -335,4 +335,97 @@ test("no result carries stderr, a path, a login, or a URL", async () => {
   for (const secret of ["SECRET", "C:\\\\Work", "https://", "api.github.com"]) assert.ok(!text.includes(secret), secret);
   // The one issue read above held a login and a URL in the raw object; the normalized issue has neither.
   assert.ok(!JSON.stringify(await r.listOpenIssues(ROOT)).includes("SECRET"));
+});
+
+// A fake `gh` whose child has a standard input, so the text a create sends can be read back.
+function fakeCreateGh(answer) {
+  const calls = [];
+  const execFile = (file, args, options, callback) => {
+    const call = { file, args, options, stdin: null };
+    calls.push(call);
+    const child = { stdin: { on() {}, end(text) { call.stdin = text; } } };
+    const result = answer(args, options);
+    setImmediate(() => (result.error ? callback(result.error, "", result.stderr ?? "") : callback(null, result.stdout, "")));
+    return child;
+  };
+  return { execFile, calls };
+}
+
+test("issueTitleOf is the first line, one bounded line, never half a surrogate pair", () => {
+  assert.equal(issueTitleOf("Fix the parser\n\nIt crashes.\nMore."), "Fix the parser");
+  assert.equal(issueTitleOf("  \n  Padded\ttitle \r\nsecond"), "Padded title");
+  assert.equal(issueTitleOf("Bell \u0007 and \u0001 control\u0000chars \u2028 end"), "Bell and control chars");
+  assert.equal(issueTitleOf("a    b\t\t c"), "a b c");
+  assert.equal(ISSUE_CREATE_TITLE_LIMIT, 120);
+  assert.equal(issueTitleOf("x".repeat(500)), "x".repeat(120));
+  assert.equal(issueTitleOf("x".repeat(120)), "x".repeat(120));
+  const pair = issueTitleOf(`${"a".repeat(119)}\u{1F600} tail`);
+  assert.equal(pair, "a".repeat(119));
+  assert.equal(pair.isWellFormed(), true);
+  assert.equal(issueTitleOf(`${"a".repeat(118)}\u{1F600}`), `${"a".repeat(118)}\u{1F600}`);
+  assert.equal(issueTitleOf("bad \ud800 lone"), "bad \ufffd lone");
+  for (const empty of ["", "   \n\t ", "\u0007\u0001", undefined, null, 7]) assert.equal(issueTitleOf(empty), "");
+});
+
+test("createIssue posts through gh api with the JSON on standard input and no task text in the arguments", async () => {
+  const gh = fakeCreateGh(() => ({ stdout: JSON.stringify({ number: 91, html_url: "https://github.com/SECRET/repo/issues/91", user: { login: "SECRET-LOGIN" } }) }));
+  const issues = createIssueReader({ execFile: gh.execFile });
+  const title = "Title SECRET-TITLE";
+  const body = "Body SECRET-BODY\nwith `shell` $(whoami) \"quotes\"";
+  assert.deepEqual(await issues.createIssue(ROOT, { title, body }), { status: "ok", number: 91 });
+  assert.equal(gh.calls.length, 1);
+  const [call] = gh.calls;
+  assert.equal(call.file, "gh");
+  assert.deepEqual(call.args, ["api", "--method", "POST", "repos/{owner}/{repo}/issues", "--input", "-"]);
+  assert.ok(!JSON.stringify(call.args).includes("SECRET"));
+  assert.deepEqual(JSON.parse(call.stdin), { title, body });
+  assert.equal(call.options.cwd, ROOT);
+  assert.equal(call.options.timeout, 20_000);
+  assert.equal(call.options.env.GH_PROMPT_DISABLED, "1");
+});
+
+test("createIssue maps every failure to one fixed status and keeps the CLI's message to itself", async () => {
+  const cases = [
+    [missing(), "cli_missing"],
+    [failure("gh: HTTP 401: Bad credentials"), "not_signed_in"],
+    [failure("To get started with GitHub CLI, please run:  gh auth login"), "not_signed_in"],
+    [failure("gh: Issues are disabled for this repo (HTTP 410)"), "issues_disabled"],
+    [failure("gh: Not Found (HTTP 404)"), "no_access"],
+    [failure("gh: Resource not accessible (HTTP 403)"), "no_access"],
+    [failure("gh: Validation Failed (HTTP 422)"), "failed"],
+    [failure("gh: server error (HTTP 502)"), "failed"],
+    [failure("something odd C:\secret\path"), "failed"],
+    [{ error: Object.assign(new Error("timed out"), { killed: true, signal: "SIGTERM" }), stderr: "" }, "failed"],
+  ];
+  for (const [answer, expected] of cases) {
+    const gh = fakeCreateGh(() => answer);
+    const result = await createIssueReader({ execFile: gh.execFile }).createIssue(ROOT, { title: "t", body: "b" });
+    assert.deepEqual(result, { status: expected, number: null });
+    assert.ok(!JSON.stringify(result).includes("secret"));
+  }
+});
+
+test("createIssue accepts only a valid issue number in an object answer", async () => {
+  for (const stdout of ["", "not json", "[]", "null", "{}", '{"number":0}', '{"number":-1}', '{"number":1.5}', '{"number":"7"}', '{"number":1000000000}']) {
+    const gh = fakeCreateGh(() => ({ stdout }));
+    assert.deepEqual(await createIssueReader({ execFile: gh.execFile }).createIssue(ROOT, { title: "t", body: "b" }), { status: "failed", number: null }, stdout);
+  }
+  const gh = fakeCreateGh(() => ({ stdout: '{"number":999999999}' }));
+  assert.deepEqual(await createIssueReader({ execFile: gh.execFile }).createIssue(ROOT, { title: "t", body: "b" }), { status: "ok", number: 999_999_999 });
+});
+
+test("createIssue refuses a missing root, title, or body before any process starts", async () => {
+  const gh = fakeCreateGh(() => ({ stdout: '{"number":1}' }));
+  const issues = createIssueReader({ execFile: gh.execFile });
+  for (const [root, input] of [[undefined, { title: "t", body: "b" }], ["", { title: "t", body: "b" }], [ROOT, { title: "", body: "b" }], [ROOT, { title: "t", body: 3 }], [ROOT, { title: 3, body: "b" }]]) {
+    assert.deepEqual(await issues.createIssue(root, input), { status: "failed", number: null });
+  }
+  assert.equal(gh.calls.length, 0);
+});
+
+test("a child without a standard input, or a throwing execFile, still ends in a fixed answer", async () => {
+  const noStdin = createIssueReader({ execFile: (file, args, options, callback) => { setImmediate(() => callback(null, '{"number":3}', "")); } });
+  assert.deepEqual(await noStdin.createIssue(ROOT, { title: "t", body: "b" }), { status: "ok", number: 3 });
+  const throwing = createIssueReader({ execFile: () => { throw Object.assign(new Error("spawn gh ENOENT"), { code: "ENOENT" }); } });
+  assert.deepEqual(await throwing.createIssue(ROOT, { title: "t", body: "b" }), { status: "cli_missing", number: null });
 });

@@ -54,5 +54,13 @@ export function createTaskIssues({ repositoryRoot, reader = createIssueReader(),
     return { status: result.status, issue: result.status === "ok" ? result.issue : null };
   }
 
-  return Object.freeze({ status, list, read, held: (repositoryId) => held.get(repositoryId) ?? null });
+  /** Creates one issue now. `{ status: "ok", number }` or one fixed failure; an unknown root is `unavailable`. */
+  async function create(repositoryId, { title, body }) {
+    const root = rootOf(repositoryId);
+    if (root === null) return { status: "unavailable", number: null };
+    const result = await reader.createIssue(root, { title, body });
+    return { status: result.status, number: result.status === "ok" ? result.number : null };
+  }
+
+  return Object.freeze({ status, list, read, create, held: (repositoryId) => held.get(repositoryId) ?? null });
 }

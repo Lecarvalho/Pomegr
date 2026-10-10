@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Task, TaskCheck } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { FeatureFields } from "./FeatureFields";
+import { IssueCreateRow } from "./IssueCreate";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
@@ -15,6 +16,7 @@ import {
   resolveDesktopTaskDone, updateDesktopTask,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
+import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
 import { modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
@@ -83,12 +85,14 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   const awaitingReport = taskAwaitsReport(task);
   const sessionTitle = taskSessionTitle(task);
   const issueNumber = taskIssueNumber(task);
+  // Only a task with no GitHub issue offers one, and only on the desktop. No GitHub status is read when a task opens.
+  const issueOffered = issueNumber === null && taskIssuesAvailable();
   const hasSessionLink = task.session !== null && taskSessionHref(task.session.id) !== null;
   const columnName = board.columns.find((column) => column.id === task.columnId)?.name ?? null;
   const blocked = saving || deleting;
   // The start gate words "Save your changes first." itself; any other offered action gets the same line.
   const startLine = showStart && start.line !== SAVE_FIRST_LINE ? start.line : null;
-  const saveLine = dirty && !confirming && startLine === null && (showStart || waiting || unresolved || awaitingReport);
+  const saveLine = dirty && !confirming && startLine === null && (showStart || waiting || unresolved || awaitingReport || issueOffered);
   const folderOffered = showStart && start.folder.offered;
   const folderLine = showStart ? start.folder.line : null;
   const resolveRow = !confirming && (startLine || saveLine || folderLine || folderOffered || unresolved || awaitingReport);
@@ -201,6 +205,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
       </>}
     </>}>
     {issueNumber !== null && <TaskModalSource number={issueNumber} caption="GitHub issue" />}
+    {issueOffered && <IssueCreateRow repositoryId={repositoryId} taskId={task.id} unsaved={dirty} saveFirst={saveLine || confirming ? null : SAVE_FIRST_LINE}
+      onChanged={onChanged} />}
     {(sessionTitle !== null || hasSessionLink) && <div className="taskModalSession">
       {sessionTitle !== null && <p className="taskModalSessionTitle">{sessionTitle}</p>}
       <span className="newTaskHelper">

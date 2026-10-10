@@ -397,10 +397,10 @@ describe("mode edit, the Source block", () => {
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
-  it("draws no Source block for a task with no source", () => {
+  it("draws no issue chip for a task with no source; on the desktop its Source row says Not on GitHub", () => {
     render(editModal(null));
-    expect(document.querySelector(".taskIssueSource")).toBeNull();
-    expect(screen.queryByText("Source")).not.toBeInTheDocument();
+    expect(document.querySelector(".taskIssueChip")).toBeNull();
+    expect(screen.getByText("Not on GitHub")).toBeInTheDocument();
   });
 });
 

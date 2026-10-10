@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { FeatureFields } from "../tasks/FeatureFields";
+import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from "../tasks/IssueCreate";
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
@@ -25,6 +26,7 @@ export function TaskFieldsSection() {
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
+  const [issueChecked, setIssueChecked] = useState(true);
   const [modalRun, setModalRun] = useState<TaskRun>(EMPTY_RUN);
   const [modalDoneWhen, setModalDoneWhen] = useState<DoneWhenDraft>(DEFAULT_DONE_WHEN);
   const [reported, setReported] = useState<DoneWhenDraft>({ checks: ["pr_open", "tree_clean"], ownText: "The store rejects a malformed record." });
@@ -59,7 +61,7 @@ export function TaskFieldsSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, Run on and Effort in one row, Done when, and a footer with Cancel and the one primary. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
+      <Sample label="Task modal, new" note="The modal frame drawn as static chrome over its scrim: a header with the title and subtitle, the Task field with its counter, on the desktop the Also create a GitHub issue checkbox (checked when the account can create issues), Run on and Effort in one row, Done when, and a footer with Cancel and the one primary. The real frame is a modal dialog; this sample has no focus trap and does not make the page inert.">
         <div className="designSystemTaskFrame designSystemTaskModalStage">
           <TaskModalChrome titleId={modalTitleId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
             footer={<>
@@ -68,11 +70,13 @@ export function TaskFieldsSection() {
               <button type="button" className="commandPrimaryAction" onClick={noop}>Create task</button>
             </>}>
             <TaskTextField value={modalText} onChange={setModalText} />
+            <IssueCreateCheckbox option={{ kind: "can" }} checked={issueChecked} onChange={setIssueChecked} />
             <RunFields run={modalRun} models={MODELS} onChange={setModalRun} />
             <DoneWhenField draft={modalDoneWhen} onDraftChange={setModalDoneWhen} />
           </TaskModalChrome>
         </div>
       </Sample>
+      <IssueCreateSamples />
       <TaskModalPromoteSamples />
       <TaskModalEditSamples />
     </div>
@@ -203,6 +207,44 @@ function TaskModalPromoteSamples() {
           </>}>
           <PromoteIssueSummary issue={sampleIssue({ taskId: "T-40" })} notices={<PromoteOutcomeNotice outcome={{ kind: "unsaved", taskId: "T-40" }} />} />
         </TaskModalChrome>
+      </div>
+    </Sample>
+  </>;
+}
+
+const CANNOT: { label: string; option: IssueCreateOption }[] = [
+  { label: "Not signed in", option: { kind: "cannot", reason: "not_signed_in" } },
+  { label: "GitHub CLI not installed", option: { kind: "cannot", reason: "cli_missing" } },
+  { label: "Issues turned off", option: { kind: "cannot", reason: "issues_disabled" } },
+  { label: "No access", option: { kind: "cannot", reason: "no_access" } },
+  { label: "GitHub could not be read", option: { kind: "cannot", reason: "unreadable" } },
+];
+
+/** Create a GitHub issue from a task: the New task checkbox in each state, and the Edit row for a task with no source. */
+function IssueCreateSamples() {
+  const [checked, setChecked] = useState(true);
+  const [off, setOff] = useState(false);
+  return <>
+    <Sample label="Also create a GitHub issue" note="Under the Task counter. Checked by default when the account can create issues in the repository; the task is created first and a failed issue never costs it. Nothing is drawn in a browser or before the first GitHub read answers.">
+      <div className="designSystemStates">
+        <IssueCreateCheckbox option={{ kind: "can" }} checked={checked} onChange={setChecked} />
+        <IssueCreateCheckbox option={{ kind: "can" }} checked={off} onChange={setOff} />
+      </div>
+    </Sample>
+    <Sample label="Also create a GitHub issue, unavailable" note="Unchecked and disabled, with the one reason as its helper.">
+      <div className="designSystemStates">
+        {CANNOT.map(({ label, option }) => <div key={label}>
+          <p className="newTaskHelper">{label}</p>
+          <IssueCreateCheckbox option={option} checked onChange={noop} />
+        </div>)}
+      </div>
+    </Sample>
+    <Sample label="Source, not on GitHub" note="Task modal, edit, for a task with no source, on the desktop. Create GitHub issue is disabled while the draft is unsaved or a create runs; a failure shows one fixed line and the action stays offered. On success the board is read again and the Source block with the issue chip replaces this row.">
+      <div className="designSystemStates">
+        <IssueCreateRowView helperId="design-system-issue-helper-1" creating={false} disabled={false} saveFirst={null} failure={null} onCreate={noop} />
+        <IssueCreateRowView helperId="design-system-issue-helper-2" creating disabled saveFirst={null} failure={null} onCreate={noop} />
+        <IssueCreateRowView helperId="design-system-issue-helper-3" creating={false} disabled saveFirst="Save your changes first." failure={null} onCreate={noop} />
+        <IssueCreateRowView helperId="design-system-issue-helper-4" creating={false} disabled={false} saveFirst={null} failure="not_signed_in" onCreate={noop} />
       </div>
     </Sample>
   </>;

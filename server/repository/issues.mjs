@@ -13,9 +13,12 @@ export const ISSUE_BODY_PREVIEW_LIMIT = 20_000;
 export const ISSUE_NUMBER_MAX = 999_999_999;
 export const ISSUE_HIDDEN_RANGE_LIMIT = 64;
 export const ISSUE_HIDDEN_COUNT_LIMIT = 1000;
+export const ISSUE_CREATE_TITLE_LIMIT = 120;
 
 const DEFAULT_TIMEOUT_MS = 8000;
 const DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
+// Creating an issue is one write, so it gets a longer deadline than a read.
+const CREATE_TIMEOUT_MS = 20_000;
 // Free text may span lines and tabs; every other control character is dropped from a promoted task's text.
 const TEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/gu;
 const TITLE_RUNS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\s]+/gu;
@@ -35,6 +38,17 @@ function cut(text, length) {
 
 function wellFormed(value) {
   return typeof value === "string" ? value.toWellFormed() : "";
+}
+
+/**
+ * The issue title of a task's text: its first line, control characters and runs of white space made one space,
+ * trimmed, and cut to 120 characters without splitting a surrogate pair. Pure; "" means no title.
+ *
+ * @param {unknown} text
+ */
+export function issueTitleOf(text) {
+  const firstLine = wellFormed(text).trim().split(/[\r\n\u2028\u2029]/u)[0] ?? "";
+  return cut(firstLine.replace(TITLE_RUNS, " ").trim(), ISSUE_CREATE_TITLE_LIMIT).trim();
 }
 
 /** One bounded line: control characters and runs of white space become one space. */
@@ -141,14 +155,15 @@ function failureStatus(failure, { single }) {
  */
 export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT_TIMEOUT_MS, maxBytes = DEFAULT_MAX_BYTES } = {}) {
   // Resolves `{ ok: true, stdout }` or `{ ok: false, error, stderr }`; never rejects and never throws.
-  function runGh(root, args) {
+  // `input` (text for the child's standard input) is how a write passes text: it is never an argument.
+  function runGh(root, args, { input, deadlineMs = timeoutMs } = {}) {
     return new Promise((resolve) => {
       const failed = (error, stderr = "") => resolve({ ok: false, error, stderr: typeof stderr === "string" ? stderr : "" });
       try {
-        execFile("gh", args, {
+        const child = execFile("gh", args, {
           cwd: typeof root === "string" && root !== "" ? root : undefined,
           encoding: "utf8",
-          timeout: timeoutMs,
+          timeout: deadlineMs,
           maxBuffer: maxBytes,
           windowsHide: true,
           env: { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" },
@@ -157,6 +172,11 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
           if (typeof stdout !== "string" || stdout.length > maxBytes) return failed(new Error("output"), "");
           return resolve({ ok: true, stdout });
         });
+        if (input !== undefined) {
+          // A fake or a child without a pipe has no stdin; the call then simply sends nothing.
+          child?.stdin?.on?.("error", () => {});
+          child?.stdin?.end?.(input);
+        }
       } catch (error) {
         failed(error);
       }
@@ -208,5 +228,24 @@ export function createIssueReader({ execFile = nodeExecFile, timeoutMs = DEFAULT
     return issue === null || issue.number !== number ? none("unavailable") : { status: "ok", issue };
   }
 
-  return Object.freeze({ connection, repositoryAccess, listOpenIssues, readIssue });
+  /**
+   * Creates one issue with `gh api --method POST`. The JSON `{ title, body }` goes to the child's standard input; no
+   * part of it is an argument. Answers `{ status: "ok", number }` only for a valid issue number, else one fixed failure.
+   */
+  async function createIssue(root, { title, body }) {
+    const none = (status) => ({ status, number: null });
+    if (!validRoot(root)) return none("failed");
+    if (typeof title !== "string" || title === "" || typeof body !== "string") return none("failed");
+    const input = JSON.stringify({ title: wellFormed(title), body: wellFormed(body) });
+    const result = await runGh(root, ["api", "--method", "POST", "repos/{owner}/{repo}/issues", "--input", "-"], { input, deadlineMs: CREATE_TIMEOUT_MS });
+    if (!result.ok) {
+      const status = failureStatus(result, { single: false });
+      return none(status === "unavailable" || status === "not_found" ? "failed" : status);
+    }
+    const raw = parseJson(result.stdout);
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !isIssueNumber(raw.number)) return none("failed");
+    return { status: "ok", number: raw.number };
+  }
+
+  return Object.freeze({ connection, repositoryAccess, listOpenIssues, readIssue, createIssue });
 }

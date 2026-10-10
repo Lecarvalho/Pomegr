@@ -6,7 +6,7 @@ import { DESKTOP_AUTH_HEADER } from "../../shared/local-auth.mjs";
 import { environmentValue, userSessionEnvironment } from "./environment-policy.mjs";
 
 export const TASK_ISSUES_CHANNEL = "pomegr:task-issues";
-export const TASK_ISSUES_OPERATIONS = Object.freeze(["status", "list", "promote", "sign_in"]);
+export const TASK_ISSUES_OPERATIONS = Object.freeze(["status", "list", "promote", "create", "sign_in"]);
 export const TASK_ISSUES_SIGN_IN_STATUSES = Object.freeze([
   "opened", "cancelled", "cli_missing", "unsupported_platform", "unavailable",
 ]);
@@ -22,7 +22,12 @@ export const TASK_ISSUES_LAUNCH_ARGUMENTS = Object.freeze([
     + "Start-Process -FilePath $f -ArgumentList $a",
 ]);
 
-const ROUTES = Object.freeze({ status: "github-status", list: "issues-list", promote: "issue-promote" });
+const ROUTES = Object.freeze({ status: "github-status", list: "issues-list", promote: "issue-promote", create: "issue-create" });
+// The fixed failures of a create: GitHub's own refusals travel as these strings and nothing else.
+const CREATE_ERRORS = new Set(["cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed"]);
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+// One create is a GitHub write behind the monitor's 20 second deadline, so it gets a longer wait than a read.
+const CREATE_TIMEOUT_MS = 30_000;
 const OPERATION_SET = new Set(TASK_ISSUES_OPERATIONS);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "conflict", "limit", "unavailable"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -54,6 +59,8 @@ function validPayload(operation, payload) {
     const { number, digest } = payload;
     if (!Number.isInteger(number) || number < 1 || number > 999_999_999) return null;
     if (typeof digest !== "string" || !DIGEST.test(digest)) return null;
+  } else if (operation === "create") {
+    if (keys.length !== 1 || !keys.includes("taskId") || typeof payload.taskId !== "string" || !TASK_ID.test(payload.taskId)) return null;
   } else if (keys.length !== 0) return null;
   try {
     const serialized = JSON.stringify(payload);
@@ -62,10 +69,17 @@ function validPayload(operation, payload) {
 }
 
 /** The monitor's answer is the one place issue text crosses to the renderer; a refusal keeps only its fixed error. */
-function boundedResult(response, body) {
+function boundedResult(response, body, operation) {
   if (!isPlainObject(body)) return UNAVAILABLE;
+  if (body.ok === true && operation === "create") {
+    // Only the issue number crosses: anything else the monitor said is dropped.
+    return response.ok && Number.isInteger(body.number) && body.number >= 1 && body.number <= 999_999_999
+      ? Object.freeze({ ok: true, number: body.number })
+      : UNAVAILABLE;
+  }
   if (body.ok === true) return response.ok ? body : UNAVAILABLE;
-  if (body.ok === false && typeof body.error === "string" && MONITOR_ERRORS.has(body.error)) {
+  if (body.ok === false && typeof body.error === "string"
+    && (MONITOR_ERRORS.has(body.error) || (operation === "create" && CREATE_ERRORS.has(body.error)))) {
     return Object.freeze({ ok: false, error: body.error });
   }
   return UNAVAILABLE;
@@ -128,6 +142,7 @@ export function createTaskIssues(options = {}) {
   const monitorOrigin = trustedMonitorOrigin(options.monitorOrigin);
   const authorizationToken = options.authorizationToken;
   const timeoutMs = options.timeoutMs ?? 20_000;
+  const createTimeoutMs = options.createTimeoutMs ?? CREATE_TIMEOUT_MS;
   const launchTimeoutMs = options.launchTimeoutMs ?? 15_000;
   const platform = options.platform || process.platform;
   const sourceEnvironment = options.environment || process.env;
@@ -201,12 +216,12 @@ export function createTaskIssues(options = {}) {
         cache: "no-store",
         headers: { [DESKTOP_AUTH_HEADER]: authorizationToken, "content-type": "application/json" },
         body: `{"repositoryId":${JSON.stringify(repositoryId)},"payload":${serialized}}`,
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(operation === "create" ? createTimeoutMs : timeoutMs),
         redirect: "error",
       });
       let parsed = null;
       try { parsed = await response.json(); } catch { return UNAVAILABLE; }
-      return boundedResult(response, parsed);
+      return boundedResult(response, parsed, operation);
     } catch {
       return UNAVAILABLE;
     }

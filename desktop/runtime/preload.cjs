@@ -11,8 +11,9 @@ const TASK_ACTIONS = new Set([
   "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);
-const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "sign_in"]);
+const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);
 const ISSUE_DIGEST = /^[a-f0-9]{64}$/u;
+const ISSUE_TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const HOME_UPDATE_ID =/^[a-z0-9][a-z0-9-]{0,63}$/u;
 const STORAGE_SETTING_ENUMS = {
   retentionDays: new Set([30, 90, 180, 365, 0]),
@@ -123,7 +124,9 @@ contextBridge.exposeInMainWorld("pomegrDesktop", Object.freeze({
       valid = operation === "promote"
         ? keys.length === 2 && Number.isInteger(payload.number) && payload.number >= 1 && payload.number <= 999999999
           && typeof payload.digest === "string" && ISSUE_DIGEST.test(payload.digest)
-        : keys.length === 0;
+        : operation === "create"
+          ? keys.length === 1 && typeof payload.taskId === "string" && ISSUE_TASK_ID.test(payload.taskId)
+          : keys.length === 0;
     }
     if (valid) {
       try { valid = JSON.stringify(payload).length <= 16 * 1024; } catch { valid = false; }

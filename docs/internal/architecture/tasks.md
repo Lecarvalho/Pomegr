@@ -92,7 +92,7 @@ type Task = {
   session: { id: string; title: string | null; state: string; observedModel: string | null;
     checks?: { check: TaskCheck; passed: boolean }[] } | null;
   report: { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null } | null;
-  source: { kind: "github_issue"; number: number } | null;   // set once, by a promote
+  source: { kind: "github_issue"; number: number } | null;   // set once, by a promote or an issue create
   createdAt: string; updatedAt: string;
 };
 type TaskBoard = {
@@ -834,13 +834,14 @@ like any other.
 ## GitHub issues
 
 Decided by the product owner on 2026-10-09. Pomegr's own task store stays the source of
-truth for execution: GitHub is a source of task text, never a source of task state. The
-monitor, the desktop channel, and the interface that lists issues and promotes one are
-built. Pomegr writes nothing to GitHub.
+truth for execution: GitHub is a source of task text and a destination for it, never a
+source of task state. The monitor, the desktop channel, and the interface that lists
+issues, promotes one, and creates one from a task are built. Creating an issue is
+Pomegr's first and only write to an external service; nothing else is written to GitHub.
 
 - **Connection.** Pomegr never reads, stores, refreshes, or forwards a GitHub token. Every
-  read runs as the owner through the installed GitHub CLI, so a private repository works
-  when the owner's `gh` session can read it. `server/repository/issues.mjs` calls `gh`
+  read, and the one write, runs as the owner through the installed GitHub CLI, so a
+  private repository works when the owner's `gh` session can read it. `server/repository/issues.mjs` calls `gh`
   with `execFile`, an argument array, a deadline, and an output size cap. The connection
   is `connected`, `not_signed_in`, or `cli_missing`. A repository's access is a
   visibility (`private`, `public`, `unknown`) and capabilities from `read_issues`,
@@ -868,6 +869,21 @@ built. Pomegr writes nothing to GitHub.
   the source in its `meta` table under `task_source:<repositoryId>:<taskId>`, so the
   schema version is unchanged, and deletes it with the task; an issue whose task was
   deleted can be promoted again.
+- **Creating an issue.** Decided by the product owner on 2026-10-09. The `create`
+  operation takes a repository ID and a task ID and nothing else; the caller never
+  supplies a title or a body. The monitor reads the task's text from the store. The title
+  is the first line of that text as one line of at most 120 characters, and the body is
+  the whole task text. `createIssue` in `server/repository/issues.mjs` posts them through
+  `gh api` with the JSON on standard input, so no task text is in a command line, and
+  with a 20 second deadline. On success the store records the source
+  (`record_issue`, a store action only, like `promote_issue`) and the task shows the
+  `#N` chip. A task that already has a source, or that has a create in flight, answers
+  `conflict`; a task that is gone answers `not_found`. A failure answers one fixed
+  reason (`cli_missing`, `not_signed_in`, `no_access`, `issues_disabled`, `failed`) and
+  changes neither the task nor the store. The text is sent once: later edits to the task
+  are never sent, the issue is never read back, and nothing is retried by itself. It
+  runs only on the explicit desktop action. No GET, queue step, session start, or agent
+  tool creates an issue, and `add_task` stays local.
 - **Sign-in.** `sign_in` is an explicit native action behind a native confirmation, on
   Windows only. It opens the GitHub CLI's own sign-in in a visible terminal with `spawn`,
   a fixed argument array, and `shell: false`, and answers one fixed status (`opened`,
@@ -898,6 +914,16 @@ so it reads nothing and says that issues are read in the desktop app.
   task the monitor made (feature and step, run, done-when), and none when nothing differs.
   If that update fails the task still exists: the modal says so and offers only Close, so
   an issue is never promoted twice.
+- **Creating an issue from the Task modal.** In the new mode the modal reads the GitHub
+  status once when it opens. When the repository can create issues it shows **Also create
+  a GitHub issue**, checked, with one line saying that the text is sent once and who can
+  read it; otherwise the box is disabled with one fixed reason. **Create task** creates
+  the task first and asks for the issue only after the task exists. If the issue fails,
+  the modal closes on the created task, which has no chip. In the edit mode a task with
+  no source offers **Create GitHub issue**, disabled while the draft is unsaved because
+  the monitor sends the saved text. A failure shows its fixed reason as one line, kept
+  in renderer memory only, and the action stays offered. Opening a task reads nothing
+  from GitHub.
 - **The `#N` chip.** A task with a source shows a `#N` chip right after its ID on a board
   card and on a queue step card (`TaskIssueChip`: the shared outline chip with a circle-dot
   glyph and the number in the data font). The session view's Task tab and Overview task
@@ -924,13 +950,13 @@ so it reads nothing and says that issues are read in the desktop app.
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client, gated like `GET /api/provider-folders`; not on the LAN gateway list | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
 | `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client; the LAN gateway forwards the path but marks its requests, and a marked request never gets the marker | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
-| `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record |
+| `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID; answers one fixed status |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
 | `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
-| `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `sign_in`, a repository ID, and for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest. `status`, `list`, and `promote` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
-| `POST /internal/tasks/github-status`, `issues-list`, and `issue-promote` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out |
+| `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
+| `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the AGENTS.md rule |
 
@@ -1024,6 +1050,11 @@ class. Column names are five fixed values.
   and follows the rules below. `GET /api/tasks` gains only `Task.source`. The Sessions
   list's task reference carries the same issue number as one nullable field (below); those
   two places serve the number, and neither serves issue text.
+- Creating a GitHub issue sends a task's text outside the computer, to GitHub, once and
+  only on the owner's explicit desktop action. Anyone who can see the repository can then
+  read it. This is the one place user-authored task content leaves Pomegr. The request
+  carries a repository ID and a task ID; the answer carries the issue number or one fixed
+  error, never the text, a title, a URL, or a `gh` message.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
@@ -1096,6 +1127,10 @@ class. Column names are five fixed values.
   `unavailable`. If observation is unavailable, the board still reads, but borrowed
   session state is unknown rather than guessed.
 - A mutation that fails validation changes nothing and returns a fixed error.
+- A failed GitHub issue create never changes, blocks, or undoes a task. The store is
+  written only after GitHub answered with an issue number. Nothing is retried by itself.
+  If the deadline passes before GitHub answers, the create reads as `failed` although
+  GitHub may have made the issue; asking again would then make a second one.
 - Preserve the last known-good board. A write replaces it atomically or not at all.
 - Task and queue behavior is deterministic. Pomegr verifies conditions from committed
   facts; it makes no AI judgment about whether work is complete, and the own condition
@@ -1125,10 +1160,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 4. **Board deep links.** The board has no address for the Queue view or one task, so
    feature links and Open on board in the session view open the board only, and a task
    ID on the Sessions list opens the board instead of the session's Task tab.
-5. **Creating an issue.** Creating a GitHub issue from a task, Pomegr's first write to an
-   external service, is not built. The Promote issues page and the modal's promote mode
-   are described under [Interface](#interface).
-6. **Session start outside Windows.** Other platforms answer the fixed
+5. **Session start outside Windows.** Other platforms answer the fixed
    `unsupported_platform` result until a launcher is validated for them.
 
 ## Known defects

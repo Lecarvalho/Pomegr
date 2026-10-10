@@ -57,9 +57,9 @@ function signInHarness(overrides = {}) {
 
 test("channel and operation list are fixed; unknown operations are refused", async () => {
   assert.equal(TASK_ISSUES_CHANNEL, "pomegr:task-issues");
-  assert.deepEqual([...TASK_ISSUES_OPERATIONS], ["status", "list", "promote", "sign_in"]);
+  assert.deepEqual([...TASK_ISSUES_OPERATIONS], ["status", "list", "promote", "create", "sign_in"]);
   const { issues, calls } = harness(() => json({ ok: true }));
-  for (const operation of ["create", "../list", "STATUS", "", undefined, 3, "github-status"]) {
+  for (const operation of ["../list", "STATUS", "", undefined, 3, "github-status"]) {
     assert.deepEqual(await issues.run(trusted, repositoryId, operation, {}), invalid);
   }
   assert.equal(calls.length, 0);
@@ -70,10 +70,10 @@ test("every input is validated before any request", async () => {
   const good = { number: 5, digest };
   for (const id of ["C:\\x", "repo-0123", "repo-0123456789ABCDEF01234567", "repo-0123456789abcdef012345678", undefined, 7]) {
     for (const operation of TASK_ISSUES_OPERATIONS) {
-      assert.deepEqual(await issues.run(trusted, id, operation, operation === "promote" ? good : {}), invalid);
+      assert.deepEqual(await issues.run(trusted, id, operation, operation === "promote" ? good : operation === "create" ? { taskId: "T-1" } : {}), invalid);
     }
   }
-  for (const operation of ["status", "list", "sign_in"]) {
+  for (const operation of ["status", "list", "create", "sign_in"]) {
     assert.deepEqual(await issues.run(trusted, repositoryId, operation, { extra: 1 }), invalid);
   }
   const bad = [
@@ -96,7 +96,7 @@ test("an untrusted frame is refused for every operation without a request or lau
   const sign = signInHarness();
   for (const event of [{}, undefined, null, { trusted: false }]) {
     for (const operation of TASK_ISSUES_OPERATIONS) {
-      const payload = operation === "promote" ? { number: 1, digest } : {};
+      const payload = operation === "promote" ? { number: 1, digest } : operation === "create" ? { taskId: "T-1" } : {};
       assert.deepEqual(await issues.run(event, repositoryId, operation, payload), invalid);
       assert.deepEqual(await sign.issues.run(event, repositoryId, operation, payload), invalid);
     }
@@ -274,10 +274,53 @@ test("preload exposes taskIssues on the fixed channel and refuses bad calls loca
     [repositoryId, "promote", { ...good, number: 0 }], [repositoryId, "promote", { ...good, number: 1.5 }],
     [repositoryId, "promote", { ...good, number: 1_000_000_000 }], [repositoryId, "promote", { ...good, digest: "z" }],
     [repositoryId, "promote", { ...good, extra: 1 }], [repositoryId, "status", new Map()],
+    [repositoryId, "create", {}], [repositoryId, "create", good], [repositoryId, "create", { taskId: "t-1" }], [repositoryId, "create", { taskId: "T-0" }],
+    [repositoryId, "create", { taskId: "T-1234567890" }], [repositoryId, "create", { taskId: 1 }], [repositoryId, "create", { taskId: "T-1", text: "x" }],
+    [repositoryId, "create", { taskId: "T-1\n" }], [repositoryId, "create", null], [repositoryId, "list", { taskId: "T-1" }],
   ]) assert.deepEqual(await exposed.taskIssues(...call), invalid, JSON.stringify(call));
   assert.equal(invokes.length, 0);
   for (const operation of ["status", "list", "sign_in"]) assert.deepEqual(await exposed.taskIssues(repositoryId, operation, {}), { ok: true });
   assert.deepEqual(await exposed.taskIssues(repositoryId, "promote", good), { ok: true });
-  assert.equal(invokes.length, 4);
+  assert.deepEqual(await exposed.taskIssues(repositoryId, "create", { taskId: "T-12" }), { ok: true });
+  assert.equal(invokes.length, 5);
   assert.deepEqual(invokes[3], ["pomegr:task-issues", repositoryId, "promote", good]);
+  assert.deepEqual(invokes[4], ["pomegr:task-issues", repositoryId, "create", { taskId: "T-12" }]);
+});
+
+test("create posts the issue-create route with exactly a task ID and answers only the number", async () => {
+  const { issues, calls } = harness(() => json({ ok: true, number: 41, title: "SECRET TITLE", path: "C:\secret" }));
+  assert.deepEqual(await issues.run(trusted, repositoryId, "create", { taskId: "T-12" }), { ok: true, number: 41 });
+  assert.equal(calls[0].url, `${origin}/internal/tasks/issue-create`);
+  assert.deepEqual(JSON.parse(calls[0].options.body), { repositoryId, payload: { taskId: "T-12" } });
+  for (const payload of [{}, { taskId: "t-12" }, { taskId: "T-0" }, { taskId: "T-1234567890" }, { taskId: 12 }, { taskId: "T-1", extra: 1 }, { taskId: "T-1\n" }]) {
+    assert.deepEqual(await issues.run(trusted, repositoryId, "create", payload), invalid);
+  }
+  assert.equal(calls.length, 1);
+  for (const body of [{ ok: true }, { ok: true, number: 0 }, { ok: true, number: 1_000_000_000 }, { ok: true, number: "4" }, { ok: true, number: 1.5 }]) {
+    assert.deepEqual(await harness(() => json(body)).issues.run(trusted, repositoryId, "create", { taskId: "T-1" }), unavailable);
+  }
+});
+
+test("create passes only the fixed GitHub failures through, and only for create", async () => {
+  for (const error of ["invalid", "not_found", "conflict", "unavailable", "cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed"]) {
+    const { issues } = harness(() => json({ ok: false, error, detail: "C:\secret", message: "gh said" }, 502));
+    assert.deepEqual(await issues.run(trusted, repositoryId, "create", { taskId: "T-1" }), { ok: false, error });
+  }
+  for (const error of ["cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed"]) {
+    const { issues } = harness(() => json({ ok: false, error }, 502));
+    assert.deepEqual(await issues.run(trusted, repositoryId, "list", {}), unavailable);
+  }
+  const { issues } = harness(() => json({ ok: false, error: "teapot" }));
+  assert.deepEqual(await issues.run(trusted, repositoryId, "create", { taskId: "T-1" }), unavailable);
+});
+
+test("create waits up to its own 30 second deadline, other operations keep theirs", async () => {
+  const { issues, calls } = harness(() => json({ ok: true, number: 1, connection: "connected", repository: null }));
+  await issues.run(trusted, repositoryId, "create", { taskId: "T-1" });
+  await issues.run(trusted, repositoryId, "status", {});
+  assert.ok(calls[0].options.signal instanceof AbortSignal);
+  assert.ok(calls[1].options.signal instanceof AbortSignal);
+  const source = await readFile(new URL("../desktop/runtime/task-issues.mjs", import.meta.url), "utf8");
+  assert.match(source, /const CREATE_TIMEOUT_MS = 30_000;/u);
+  assert.match(source, /const timeoutMs = options\.timeoutMs \?\? 20_000;/u);
 });

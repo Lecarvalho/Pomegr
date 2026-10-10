@@ -212,15 +212,16 @@ describe("with the desktop bridge", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("allows one create at a time and disables Create task while it is in flight", async () => {
+  it("allows one create at a time and disables the button, which reads Creating…, while it is in flight", async () => {
     let resolve!: (result: Result) => void;
     taskAction.mockReturnValue(new Promise<Result>((done) => { resolve = done; }));
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.type(await openPanel(user), "Slow task");
     await user.click(createButton());
-    expect(createButton()).toBeDisabled();
-    await user.click(createButton());
+    const busy = screen.getByRole("button", { name: "Creating…" });
+    expect(busy).toBeDisabled();
+    await user.click(busy);
     expect(taskAction).toHaveBeenCalledTimes(1);
     await act(async () => { resolve({ ok: true }); });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());

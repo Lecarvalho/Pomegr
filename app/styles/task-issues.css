@@ -68,7 +68,11 @@
 .taskIssueSource { display: flex; flex-direction: column; gap: var(--space-2); }
 .taskSourceRow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .taskSourceLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
-.taskSourceCaption { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+.taskSourceCaption, .taskSourceNone { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Create a GitHub issue from a task (G129-G131, G265). The New task checkbox sits tight under the Task counter, inside the
+   gap the modal body leaves between fields; the Edit row puts Create GitHub issue (the Secondary role) at the row's end. */
+.taskModalBody > .taskIssueOption { margin-top: calc(var(--space-2) - var(--space-4)); }
+.taskIssueCreateAction { margin-inline-start: auto; }
 .taskIssueTitle { margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-base)/1.4 var(--font-ui); }
 .taskIssuePreview { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .taskIssuePreview .taskIssueCount { align-self: flex-end; }

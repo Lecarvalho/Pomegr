@@ -147,7 +147,7 @@ test("the GitHub issues bridge is one trusted-frame channel with a closed surfac
   assert.match(main, /installTaskIssuesIpc\(\{ \.\.\.taskBridge, dialog, getWindow/u);
   assert.match(main, /isTrustedEvent: trustedDesktopEvent/u);
   assert.match(bridge, /export const TASK_ISSUES_CHANNEL = "pomegr:task-issues"/u);
-  assert.match(bridge, /\["status", "list", "promote", "sign_in"\]/u);
+  assert.match(bridge, /\["status", "list", "promote", "create", "sign_in"\]/u);
   assert.match(bridge, /if \(!isTrustedEvent\(event\)\) return INVALID;/u);
   assert.match(bridge, /redirect: "error"/u);
   assert.match(bridge, /shell: false/u);

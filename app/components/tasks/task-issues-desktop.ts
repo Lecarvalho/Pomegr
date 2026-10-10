@@ -48,7 +48,7 @@ export type TaskIssueError = "invalid" | "not_found" | "conflict" | "limit" | "u
 export type TaskIssueResult<Value> = { ok: true; value: Value } | { ok: false; error: TaskIssueError };
 export type GitHubSignInStatus = "opened" | "cancelled" | "cli_missing" | "unsupported_platform" | "unavailable";
 
-type Operation = "status" | "list" | "promote" | "sign_in";
+type Operation = "status" | "list" | "promote" | "sign_in" | "create";
 type Bridge = { taskIssues(repositoryId: string, operation: Operation, payload: Record<string, unknown>): Promise<unknown> };
 type Json = Record<string, unknown>;
 
@@ -168,4 +168,64 @@ export async function signInToGitHub(repositoryId: string): Promise<GitHubSignIn
   const result = await call(repositoryId, "sign_in", {}, (answer) =>
     typeof answer.status === "string" && SIGN_IN_STATUSES.has(answer.status) ? answer.status as GitHubSignInStatus : null);
   return result.ok ? result.value : "unavailable";
+}
+
+/** The fixed answers of a create beyond the shared ones; the monitor never sends GitHub's own words. */
+export type TaskIssueCreateError = "invalid" | "not_found" | "conflict" | "cli_missing" | "not_signed_in" | "no_access" | "issues_disabled" | "failed" | "unavailable";
+export type TaskIssueCreateResult = { ok: true; number: number } | { ok: false; error: TaskIssueCreateError };
+
+const CREATE_ERRORS = new Set<string>(["invalid", "not_found", "conflict", "cli_missing", "not_signed_in", "no_access", "issues_disabled", "failed", "unavailable"]);
+
+// The last failed create per repository and task, so the task's edit modal can say why it has no issue. Renderer memory
+// only (never browser storage), the fixed error and nothing else, the oldest entry dropped past 64.
+const FAILED_CREATES = new Map<string, TaskIssueCreateError>();
+const MAX_REMEMBERED = 64;
+const failureKey = (repositoryId: string, taskId: string) => `${repositoryId}/${taskId}`;
+
+export function rememberIssueCreateFailure(repositoryId: string, taskId: string, error: TaskIssueCreateError): void {
+  const key = failureKey(repositoryId, taskId);
+  FAILED_CREATES.delete(key);
+  FAILED_CREATES.set(key, error);
+  while (FAILED_CREATES.size > MAX_REMEMBERED) FAILED_CREATES.delete(FAILED_CREATES.keys().next().value as string);
+}
+
+export function issueCreateFailure(repositoryId: string, taskId: string): TaskIssueCreateError | null {
+  return FAILED_CREATES.get(failureKey(repositoryId, taskId)) ?? null;
+}
+
+/**
+ * Creates the GitHub issue for one saved task: the monitor builds it from the stored text (first line as the title) and
+ * the renderer sends only the task ID. A failure never touches the task. Never throws; the last failure is remembered.
+ */
+export async function createTaskIssue(repositoryId: string, taskId: string): Promise<TaskIssueCreateResult> {
+  const bridge = issueBridge();
+  if (!bridge || !REPOSITORY_ID.test(repositoryId) || !TASK_ID.test(taskId)) return { ok: false, error: bridge ? "invalid" : "unavailable" };
+  let result: TaskIssueCreateResult = { ok: false, error: "unavailable" };
+  try {
+    const answer = record(await bridge.taskIssues(repositoryId, "create", { taskId }));
+    if (answer?.ok === true) {
+      if (typeof answer.number === "number" && Number.isInteger(answer.number) && answer.number >= 1 && answer.number <= MAX_NUMBER) result = { ok: true, number: answer.number };
+    } else if (typeof answer?.error === "string" && CREATE_ERRORS.has(answer.error)) {
+      result = { ok: false, error: answer.error as TaskIssueCreateError };
+    }
+  } catch {
+    // Falls through to the fixed unavailable result.
+  }
+  if (result.ok) FAILED_CREATES.delete(failureKey(repositoryId, taskId));
+  else rememberIssueCreateFailure(repositoryId, taskId, result.error);
+  return result;
+}
+
+/** One short fixed sentence per failed create. */
+export function issueCreateFailureMessage(error: TaskIssueCreateError): string {
+  switch (error) {
+    case "cli_missing": return "The GitHub issue was not created: the GitHub CLI is not installed.";
+    case "not_signed_in": return "The GitHub issue was not created: you are not signed in to GitHub.";
+    case "no_access": return "The GitHub issue was not created: you cannot create issues in this repository.";
+    case "issues_disabled": return "The GitHub issue was not created: issues are turned off for this repository.";
+    case "conflict": return "This task already has a GitHub issue, or one is being created.";
+    case "not_found": return "The GitHub issue was not created: the task was not found.";
+    case "failed": return "GitHub did not accept the issue. Try again.";
+    default: return "The GitHub issue could not be created.";
+  }
 }

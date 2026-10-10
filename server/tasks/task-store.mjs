@@ -25,10 +25,10 @@ import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseRe
 import { releaseQueue, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
-import { deleteTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
+import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, normalizeCreatePayload, normalizeDeletePayload,
+  composePromotedText, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   projectBoard, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -258,6 +258,20 @@ function promoteIssue({ database, repositoryId }, payload) {
   return { ok: true, number: created.number };
 }
 
+// Records the issue GitHub created for an existing task as its source, the way a promote does. A store action only:
+// no route or desktop channel carries it. A task that already has a source, or an issue number another task holds, is
+// `conflict`; a missing task is `not_found`. The source is written in the same transaction as the check.
+function recordIssue({ database, repositoryId }, payload) {
+  const input = normalizeRecordIssuePayload(payload);
+  if (!input) return { ok: false, error: "invalid" };
+  const stored = preparedStatement(database, "SELECT number FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.taskNumber);
+  if (!stored) return { ok: false, error: "not_found" };
+  if (readTaskSource(database, repositoryId, input.taskNumber) !== null) return { ok: false, error: "conflict" };
+  for (const issueNumber of readTaskSources(database, repositoryId).values()) if (issueNumber === input.issueNumber) return { ok: false, error: "conflict" };
+  writeTaskSource(database, repositoryId, input.taskNumber, input.issueNumber);
+  return { ok: true };
+}
+
 function updateTask({ database, repositoryId }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
@@ -431,7 +445,7 @@ const ACTIONS = Object.freeze({
   queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
-  promote_issue: promoteIssue,
+  promote_issue: promoteIssue, record_issue: recordIssue,
 });
 
 /** Raised inside a transaction to roll it back with a fixed error code. */
@@ -531,8 +545,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
         const result = handler({ database, repositoryId, ensureRepository, now }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
-        // Only `promote_issue` answers the task it made.
-        taskId = action === "promote_issue" ? taskIdFromNumber(result.number) ?? null : null;
+        // Only `create` and `promote_issue` answer the task they made.
+        taskId = action === "promote_issue" || action === "create" ? taskIdFromNumber(result.number) ?? null : null;
         // The write stands only if the whole board, the new row included, still projects.
         const projected = projectBoard(repositoryId, loadRows(repositoryId), { at: now() });
         if (!projected) throw new ActionRejected("conflict");
@@ -557,6 +571,18 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
       }
     } catch { /* an unreadable store promotes nothing */ }
     return promoted;
+  }
+
+  // What the issue-create route needs about one task, from a plain committed read: its saved text and whether it already
+  // has a source. Null for a task that does not exist, an invalid ID, or a store that cannot be used.
+  function issueDraft(repositoryId, taskId) {
+    if (!database || !isRepositoryId(repositoryId) || !isTaskId(taskId)) return null;
+    try {
+      const number = Number(taskId.slice(2));
+      const row = preparedStatement(database, "SELECT text FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number);
+      if (!row || typeof row.text !== "string") return null;
+      return { text: row.text, hasSource: readTaskSource(database, repositoryId, number) !== null };
+    } catch { return null; }
   }
 
   // Dispatch (task-dispatch.mjs): a plan mints a token and keeps only its digest; a bind links the session that
@@ -601,6 +627,6 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const sessionTasks = (sessionIds) => link(sessionTaskReferences, { sessionIds });
   const featureLink = (featureId) => link(featureSessions, { featureId });
   const featureLinks = () => link(featureSessionGroups, {});
-  return Object.freeze({ readBoard, apply, promotedIssues, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
+  return Object.freeze({ readBoard, apply, promotedIssues, issueDraft, planStart, abortStart, bindSession, completeTask, blockTask, stallEndedTasks: stallEnded, nextQueueStarts: nextStarts, pauseQueue: pauseAt,
     sessionTasks, featureSessions: featureLink, featureSessionGroups: featureLinks, close });
 }
