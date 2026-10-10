@@ -65,6 +65,7 @@ export const DESKTOP_RUNTIME_FILES = Object.freeze([
   "desktop/runtime/startup-error.mjs",
   "desktop/runtime/updater.mjs",
   "desktop/runtime/utility-lifecycle.mjs",
+  "desktop/runtime/web-build-snapshot.mjs",
   "desktop/workers/monitor-host.cjs",
   "desktop/workers/claude-statusline-bridge.cjs",
   "shared/local-auth.mjs",

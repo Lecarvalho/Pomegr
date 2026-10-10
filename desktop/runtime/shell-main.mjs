@@ -38,6 +38,7 @@ import { withDeadline } from "./bounded-lifecycle.mjs";
 import { focusShellWindow, startShellRuntime } from "./shell-orchestrator.mjs";
 import { startupErrorDocument } from "./startup-error.mjs";
 import { desktopUserDataOverride, resolveDesktopPaths } from "./paths.mjs";
+import { createWebBuildSnapshot } from "./web-build-snapshot.mjs";
 import { createDesktopSettingsStore, settingsForWindowClose } from "./settings.mjs";
 import { createProviderSettingsController, installProviderSettingsIpc, providerSessionEnvironment, providerSettingsEnvironment, restartProviderSettingsApp } from "./provider-settings.mjs";
 import { createStorageSettingsController, installStorageSettingsIpc, storageSettingsEnvironment } from "./storage-settings.mjs";
@@ -601,7 +602,7 @@ async function startDesktop() {
           "DESKTOP_WEB_IMPORT_TIMEOUT",
         );
         recordStage("SHELL_WEB_IMPORTED");
-        const outDir = path.join(desktopPaths.unpackedRoot, "dist");
+        const outDir = app.isPackaged ? path.join(desktopPaths.unpackedRoot, "dist") : await createWebBuildSnapshot(desktopPaths.applicationRoot);
         recordStage("SHELL_WEB_STARTING");
         webHandle = await startWebServer({
           host: "127.0.0.1",

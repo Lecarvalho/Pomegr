@@ -12,6 +12,8 @@ Before releasing a new version, test if the new version works locally
 $env:POMEGR_DATA_DIR = "C:\Temp\pomegr-test-data"; npm run desktop:start
 ```
 
+An app started from the source checkout serves a copy of `dist` that it makes at startup under `.wrangler/desktop-web/`, so a build that runs while the app is open does not change the running app. Restart the app to load a new build.
+
 Bump the version from a clean checkout of whichever branch carries the release changes. The release command never changes the version:
 
 ```powershell
