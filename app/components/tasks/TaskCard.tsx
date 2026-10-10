@@ -18,7 +18,7 @@ export type TaskCardMove = {
 
 /**
  * One task: its ID (with the #N issue chip after it for a task promoted from a GitHub issue), its state chip, its text
- * (or its session's title once it has one), the planned run with the observed model, the Done when summary, for a task
+ * (or its session's title once it has one), the planned run with the observed model, the Complete when summary, for a task
  * in a feature the feature line, and, for a task with a session, Open session, each only when set. With `onOpen` the
  * card opens the Task modal; with `move` it can be dragged and moved from the keyboard. Without either the card is
  * read-only.

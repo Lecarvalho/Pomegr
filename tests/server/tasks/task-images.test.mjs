@@ -216,7 +216,7 @@ test("the start plan names the task's image files and the prompt lists them betw
   const at = lines.indexOf("The task has 2 attached images. The task text shows where each belongs as [Image #n]. Read each one before you start:");
   assert.ok(at > 0);
   assert.deepEqual(lines.slice(at + 1, at + 3), plan.images.map((file, index) => `- [Image #${index + 1}] ${file}`));
-  assert.equal(lines[at + 3], "Done when:");
+  assert.equal(lines[at + 3], "Complete when:");
 });
 
 test("a task without images has no image lines and an empty list in its plan", async (context) => {

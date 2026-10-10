@@ -121,7 +121,7 @@ describe("with the desktop bridge", () => {
     expect(dialog).not.toHaveTextContent("The card shows this text until the session has a title.");
     expect(dialog).toHaveTextContent("Run on");
     expect(dialog).toHaveTextContent("Effort");
-    expect(dialog).toHaveTextContent("Done when");
+    expect(dialog).toHaveTextContent("Complete when");
     expect(screen.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
     expect(screen.getByRole("combobox", { name: "Step" })).toBeDisabled();
   });
@@ -272,7 +272,7 @@ describe("with the desktop bridge", () => {
   });
 });
 
-describe("Run on, Effort and Done when", () => {
+describe("Run on, Effort and Complete when", () => {
   const runOn = () => screen.getByRole("combobox", { name: "Run on" });
   const effort = (name: string) => screen.getByRole("button", { name });
   const checkbox = (name: string) => screen.getByRole("checkbox", { name }) as HTMLInputElement;

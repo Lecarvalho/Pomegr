@@ -75,10 +75,10 @@ export function buildTaskPrompt(task, images = []) {
     `Task ${task.id}:`,
     promptText(task.text, images),
     ...imageLines(images),
-    "Done when:",
+    "Complete when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     ...issueLine(task),
-    "When the task is done, call the Pomegr MCP tool complete_task. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
+    "When the task is complete, call the Pomegr MCP tool complete_task. It puts the task in Review for the owner. If you cannot proceed, call the Pomegr MCP tool block_task with a short reason.",
   ].join("\n");
 }
 

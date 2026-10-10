@@ -28,7 +28,7 @@ import { shownTaskText, useStoredImages } from "./use-task-images";
 import { useTaskStart } from "./use-task-start";
 
 // Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
-// body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Done when,
+// body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Complete when,
 // Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
 // keeps saving by itself. An image in the text is part of the draft like the text: Save stores it, and removes one the text no longer names. A task that is blocked or stalled leads the footer with Mark done and resume
 // queue and Requeue task; one that needs review holds no queue, so its first action reads Mark done. A task whose linked session has not reported offers Mark done and Requeue task too, with a

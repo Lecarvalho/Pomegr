@@ -146,8 +146,8 @@ test("a Codex session that reads Stopped with its writer present leaves the task
   // The turn failed, then the same process recovered and reported: the report is accepted.
   const reported = env.store.completeTask({ sessionId: OTHER_SESSION }, () => null);
   assert.equal(reported.ok, true);
-  assert.equal(reported.state, "done");
-  assert.equal(taskOf(env, id).state, "done");
+  assert.equal(reported.state, "needs_review");
+  assert.equal(taskOf(env, id).state, "needs_review");
 });
 
 test("a Codex session that reads Stopped with its writer released stalls the task once; Closed stalls it too", async (context) => {
@@ -197,7 +197,7 @@ test("a task without a session, and a task that already has a report, are left a
   assert.deepEqual(env.store.stallEndedTasks((sessionId) => { seen.push(sessionId); return CLOSED; }), { ok: true, stalled: 0 });
   assert.deepEqual(seen, []);
   assert.equal(taskOf(env, unlinked).state, "not_queued");
-  assert.equal(taskOf(env, reported).state, "done");
+  assert.equal(taskOf(env, reported).state, "needs_review");
   assert.equal(taskOf(env, blocked).state, "blocked");
 });
 

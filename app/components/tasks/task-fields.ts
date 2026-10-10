@@ -3,7 +3,7 @@ import type { FeatureInput } from "./task-features";
 import type { ProviderSource } from "../../../shared/monitor-contract";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, TASK_PROVIDERS, type Task, type TaskCheck, type TaskEffort, type TaskProvider, type TaskRun } from "../../../shared/task-contract";
 
-// Pure helpers behind the Run on, Effort and Done when fields shared by the New task and Task modal forms.
+// Pure helpers behind the Run on, Effort and Complete when fields shared by the New task and Task modal forms.
 
 export const PROVIDER_LABELS: Record<TaskProvider, ProviderSource> = { claude: "Claude Code", codex: "Codex" };
 export const EFFORT_LABELS: Record<TaskEffort, string> = { low: "Low", medium: "Medium", high: "High", xhigh: "Xhigh" };
@@ -14,7 +14,7 @@ export const CHECK_LABELS: Record<TaskCheck, string> = {
   pr_merged: "Pull request merged",
   ci_passed: "CI passed",
 };
-/** The short check copy of the task modal's Done when row (design contract G148-G149). Cards and the session view keep CHECK_LABELS. */
+/** The short check copy of the task modal's Complete when row (design contract G148-G149). Cards and the session view keep CHECK_LABELS. */
 export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   pr_open: "PR open",
   tree_clean: "Tree clean",
@@ -158,7 +158,7 @@ export function doneWhenSummary(doneWhen: Task["doneWhen"]): string | null {
     doneWhen.checks.length > 0 && `${doneWhen.checks.length} ${doneWhen.checks.length === 1 ? "check" : "checks"}`,
     doneWhen.own !== null && "own condition",
   ].filter(Boolean);
-  return parts.length === 0 ? null : `Done when: ${[...parts, "agent report"].join(" + ")}`;
+  return parts.length === 0 ? null : `Complete when: ${[...parts, "agent report"].join(" + ")}`;
 }
 
 /**

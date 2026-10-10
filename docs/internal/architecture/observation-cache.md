@@ -3297,7 +3297,7 @@ per directory: concurrent callers share the lookup, and its answer is reused for
 The committed public state of a live session may carry monitor-private `readAt` stamps on
 `session.repository` (the start of the Git read its working-tree files and branch comparison
 come from) and `session.pullRequests` (the start of the oldest read its items rest on).
-The task board's done-when rule dates a fact by them and refuses a fact read before the
+The task board's complete-when rule dates a fact by them and refuses a fact read before the
 session's latest relevant work (see [Tasks](tasks.md#completion)). A `complete_task`
 report makes one such live read itself, outside the derive cadence and the pull-request
 read cache, and its answer replaces the session's live repository value like any refresh;

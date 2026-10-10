@@ -31,7 +31,7 @@ they never import observation internals beyond the shared value primitives.
 
 | Owner | Responsibility | May not import |
 | --- | --- | --- |
-| `server/tasks/` | Task store, record validation, board projection, queue rules, done-when checks, start gates | `server/runtime/` or `server/serving/` (dependency-cruiser rule `only-entry-points-import-runtime-and-serving`); the `server-tasks-layer` rule limits it to `server/tasks/`, `server/normalize/`, and `server/persistence/` |
+| `server/tasks/` | Task store, record validation, board projection, queue rules, complete-when checks, start gates | `server/runtime/` or `server/serving/` (dependency-cruiser rule `only-entry-points-import-runtime-and-serving`); the `server-tasks-layer` rule limits it to `server/tasks/`, `server/normalize/`, and `server/persistence/` |
 | `server/serving/task-routes.mjs` | HTTP for tasks, called from the request handler (pattern: `notification-routes.mjs`) | Task rules; it only parses, authorizes, and delegates |
 | `shared/task-contract.ts` | Browser-visible types and bounds | Anything from `server/` or `desktop/` |
 | `desktop/runtime/task-*.mjs` | Trusted IPC, session start, queue runner, worktrees | The renderer; `server/` internals (the monitor is reached over its internal HTTP) |
@@ -186,10 +186,10 @@ task state.
 | Not queued | On the board, not in the queue | Creation, or removal from the queue |
 | Queued | In the queue, waiting for its turn and the start gates | The user adds it to the queue, or requeues a task that needs review, is blocked, or stalled |
 | Scheduled | In the queue, waiting for its own start time, then for its turn and the start gates | The user sets a start time on the task |
-| Needs review | The agent reported complete, and a checked condition failed or the agent asked for the owner's attention | Verification of a `complete_task` report |
+| Needs review | The agent reported complete; the report holds each checked condition's result and the optional attention line | Verification of a `complete_task` report |
 | Stalled | The bound session ended without a report | Observation of an established session end |
 | Blocked by agent | The agent called `block_task` with a reason | The agent |
-| Done | The agent reported complete with no attention line, and every checked condition passed or none was checked | Verification of a `complete_task` report |
+| Done | The owner accepted the task | The user's Mark done (`resolve_done`) |
 
 **No transient states.** Never show a state and then retract it. The state is decided
 at first observation of its evidence: Stalled is assigned only once the end of the
@@ -232,7 +232,7 @@ Backlog and Ready hold no role. In progress, Review, and Done always hold one:
 | --- | --- | --- |
 | `in_progress` | Its session links | `POST /api/agent/v1/tasks/bind` |
 | `review` | Its state becomes Needs review | Verification of a `complete_task` report |
-| `done` | Its state becomes Done | Verification of a `complete_task` report, or the user's Mark done (`resolve_done`) |
+| `done` | Its state becomes Done | The user's Mark done (`resolve_done`) |
 
 - **Roles are fixed.** In progress holds `in_progress`, Review holds `review`, and Done
   holds `done`, on every board. The `column_role` action is removed and is refused like
@@ -532,7 +532,7 @@ proceed. A start needs all of the following.
    (`provider_incident`): any status but operational is an incident. Public status does
    not prove impact or causation, so it gates a start but is not shown as a cause.
 4. The working tree of the repository root is clean (`tree_dirty`), by the same Git
-   status rule the done-when check uses. The gate reads the root for every task, a task
+   status rule the complete-when check uses. The gate reads the root for every task, a task
    that starts in its own worktree included: a new worktree starts at the root's current
    commit, so uncommitted changes of the root would not be part of it. A worktree that
    is used again must be clean too; the desktop checks that itself and fails the start
@@ -580,7 +580,8 @@ runtime without the lookup serves no `gates` and holds every start.
 ## Completion
 
 The agent reports through the Pomegr MCP tool `complete_task`. Pomegr then verifies
-the conditions the user checked and sets the state.
+the conditions the user checked (the task's **Complete when**; the stored and served
+field keeps the name `doneWhen`) and puts the task in Review.
 
 | Condition | Verified by Pomegr |
 | --- | --- |
@@ -591,13 +592,15 @@ the conditions the user checked and sets the state.
 | CI passed | Check status of the task branch's pull request, as last read by the monitor |
 | Own condition | Not verified; the agent judges it in its report |
 
-- Pass: Done. Fail: Needs review. The agent can call `block_task` with a bounded
-  reason; the state becomes Blocked by agent.
+- **A report always sets Needs review** (task T-45, 2026-10-10; it replaces the earlier
+  rule that a report whose conditions all passed set Done). Pass or fail, with or
+  without an attention line, the card goes to Review with each condition's result, and
+  only the owner sets Done, with Mark done (`resolve_done`). The agent can call
+  `block_task` with a bounded reason; the state becomes Blocked by agent.
 - **Attention line** (GitHub issue #135, 2026-10-10). `complete_task` takes one optional
   input, `attention`: one line of at most 200 characters that names what in the finished
-  work needs the owner's attention, such as a choice the agent made for them. A report
-  that carries one is Needs review even when every checked condition passed, so the
-  card goes to Review; a report without one is Done when every check passed. The
+  work needs the owner's attention, such as a choice the agent made for them. It does
+  not decide the state: every report is Needs review. The
   checks are verified and stored either way. The line is agent-authored text, bounded
   and validated like the block reason. The store keeps it in its `meta` table under
   `task_attention:<repositoryId>:<taskId>` (`server/tasks/task-attention.mjs`), so the
@@ -607,7 +610,7 @@ the conditions the user checked and sets the state.
   the report's answer. A session that ends without a report is
   Stalled once its end is established (see [States](#states)).
 - With no condition checked, the agent's `complete_task` report alone completes the
-  task.
+  task: it has no result to show, and the task still goes to Review.
 - The report keeps only `{ check, passed }` results, the time, the bounded block
   reason, and the bounded attention line. Command output, diffs, and provider payloads are never kept or exposed.
 - **A report is verified on a read made when it arrives** (product-owner decision,
@@ -633,8 +636,8 @@ the conditions the user checked and sets the state.
   - A read that cannot be made (no bound repository, a failed Git read, the deadline)
     falls back to the committed facts below, which the age rule then judges. A fact that
     is unknown is not a pass.
-  - CI still running when the report arrives is a known `pending`, so the task needs
-    review. The agent waits for CI before it reports.
+  - CI still running when the report arrives is a known `pending`, so the condition
+    does not pass. The agent waits for CI before it reports.
 - The board's reading of a waiting task (below) uses committed facts only and never
   blocks on acquisition (`resolveTaskCheckFacts`).
 - Both hand the pure rule `verifyChecks(checks, facts)` the same shape,
@@ -721,13 +724,13 @@ the conditions the user checked and sets the state.
     on its own read, so it can pass a condition the reading still shows as "Not yet".
   - It carries pass or fail only: no fact, read time, work time, CI status, pull-request
     item, or path.
-- A report is verified once. A task that needs review although its condition holds
+- A report is verified once. A task whose condition did not pass but holds
   later (CI that finished after the report, for example) is resolved by the user with
   Mark done; the verification is not repeated.
 - **Limits, stated plainly.**
   - The work times come from committed state, which can trail the agent by a moment. A
     command that ended just before the report and is still committed as running leaves
-    its facts unknown, and the task needs review although the condition holds. The
+    its facts unknown, and the condition reads not passed although it holds. The
     report's read takes long enough that this is rare.
   - The board's reading judges committed facts. A refresh enters the committed state only
     at the next evidence-driven derive, and the store's unchanged-detection ignores the
@@ -748,7 +751,7 @@ the conditions the user checked and sets the state.
   `reason` of at most 200 characters for a block, or an optional one-line `attention`
   of at most 200 characters for a completion; any other key is `invalid`. The
   session is the only input that names a task. The answer is
-  `{ schemaVersion: 1, ok: true, state, results }` (`state` is `done`, `needs_review`, or
+  `{ schemaVersion: 1, ok: true, state, results }` (`state` is `needs_review` or
   `blocked`; `results` only for a completion) or `{ schemaVersion: 1, ok: false, reason }`
   with `invalid` (400), `not_found` (404, no task is linked to the session),
   `already_reported` (409), or `unavailable` (503). It never carries a task ID, task
@@ -872,7 +875,7 @@ Starting is desktop-only and explicit.
    `shell: false`. Task text is untrusted user content and is never interpolated into
    a command line or a path.
 3. The session prompt is a fixed template holding the task text, the files of the
-   task's images when it has any, the done-when list, and
+   task's images when it has any, the Complete when list, and
    the instruction to call `complete_task` or `block_task`. For a task promoted from a
    GitHub issue it also holds one fixed line with the issue number, asking for
    `Closes #<number>` in the pull request. Only the integer from the task store enters
@@ -1054,7 +1057,7 @@ so it reads nothing and says that issues are read in the desktop app.
   offers Show new version, which shows the issue as it is now. `limit` (the task text
   would pass 4000 characters) names the limit and creates no task; the text is never cut.
   After the task exists the modal sends one update holding only what differs from the
-  task the monitor made (feature and step, run, done-when), and none when nothing differs.
+  task the monitor made (feature and step, run, complete-when), and none when nothing differs.
   If that update fails the task still exists: the modal says so and offers only Close, so
   an issue is never promoted twice.
 - **Creating an issue from the Task modal.** In the new mode the modal reads the GitHub
@@ -1409,7 +1412,7 @@ Each item is owned by the product owner; none is implemented until they answer.
 The acceptance review of 2026-10-08 passed the privacy, mutation, spawn, and binding
 rules and reported seven defects. The follow-up of 2026-10-09 fixed them, and the sections
 above now describe the fixed behavior. The first run on a device, on 2026-10-09, found
-three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. Two items remain open, and the maintainer owns each. The stated limits of the age rule for done-when conditions are listed under
+three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. Two items remain open, and the maintainer owns each. The stated limits of the age rule for complete-when conditions are listed under
 [Completion](#completion).
 
 1. **A started task without a feature holds every start, but `queue.gates.next` does not
@@ -1435,7 +1438,7 @@ file, and the session read the file through `--add-dir` with no permission promp
 
 Not yet proven on a device: that Codex takes `--image` after the prompt for a task with
 images, that Codex sends the thread identity the binding reads, a
-Codex session start, the Stalled state after a real session end, a checked done-when
+Codex session start, the Stalled state after a real session end, a checked complete-when
 condition, and a tool call that waits at a permission prompt inside the proof window.
 
 ## Change and verify

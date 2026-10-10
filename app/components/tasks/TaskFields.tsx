@@ -10,7 +10,7 @@ import {
   type DoneWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
-// The Task field, Run on, Effort and Done when, shared by the New task and Task modal forms (design contract G124-G128
+// The Task field, Run on, Effort and Complete when, shared by the New task and Task modal forms (design contract G124-G128
 // and G138-G152). Controls only report changes; each form decides when a change is saved.
 
 const COUNT_FORMAT = new Intl.NumberFormat("en-US");
@@ -109,7 +109,7 @@ export function DoneWhenField({ draft, results, ownNote, footnote, onDraftChange
   const prefix = useId();
   const change = (next: DoneWhenDraft) => { onDraftChange(next); onCommit?.(next); };
   return <fieldset className="taskDoneWhen">
-    <legend>Done when</legend>
+    <legend>Complete when</legend>
     <div className="taskChecks">
       {TASK_CHECKS.map((check) => {
         const id = `${prefix}-${check}`;

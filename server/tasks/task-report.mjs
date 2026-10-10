@@ -1,8 +1,8 @@
 // The agent's report on the task its session was started for, and the user's two resolutions.
 //
-// `complete` verifies the task's checked conditions from committed repository facts and sets Done, or Needs
-// review when a checked condition failed or the agent named something for the owner's attention (a bounded
-// one-line note); `block` stores the agent's bounded reason and sets Blocked by agent. Both find the task
+// `complete` verifies the task's checked conditions from committed repository facts and always sets Needs
+// review: the report puts the card in Review with each condition's result and the agent's optional bounded
+// one-line attention note, and only the owner sets Done (`resolve_done`); `block` stores the agent's bounded reason and sets Blocked by agent. Both find the task
 // only through the session the harness bound the call to, and a task takes one report per dispatch: a
 // second report, or a report on a task that already has an outcome, changes nothing. The stored report
 // holds only `{ check, passed }` results, the time, the block reason, and the attention note. A task is never
@@ -12,13 +12,13 @@
 // (task-stall.mjs); resolving the last of them lets it run again. An idle or paused queue keeps its status.
 // Needs review never stops the queue: the work is finished and waits in the Review column for the owner.
 //
-// The write that sets Done or Needs review also moves the card to the column that holds that role
+// The write that sets Needs review (a report) or Done (the owner's Mark done) also moves the card to the column that holds that role
 // (task-columns.mjs). Blocked leaves the card where it is; Requeue puts it back in Ready, last, like any task that
 // joins the queue (`settleReadyColumn`, run by the store after the action).
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
-import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
+import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
@@ -61,7 +61,7 @@ function storeReport(database, row, { state, at, results, blockReason, attention
   if (Number(written.changes) !== 1) return false;
   if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
   else writeTaskAttention(database, row.repository_id, Number(row.number), attention);
-  if (state === "done" || state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), state === "done" ? "done" : "review");
+  if (state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), "review");
   if (QUEUE_HOLDING_STATES.includes(state)) blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
   return true;
 }
@@ -82,7 +82,7 @@ export function reportableChecks({ database, sessionId }) {
  * `verifyChecks` judges, read by the entry point (for a report, from a read made when the report arrived), and is
  * called only for a task that can still be reported on. The payload is `{ sessionId }`, or `{ sessionId, attention }`
  * with one line of at most 200 characters that names what the owner should look at. Answers `{ ok: true, state, results }`
- * with `state` `done`, or `needs_review` when a checked condition failed or the report carries an attention note.
+ * with `state` always `needs_review`: a report never sets Done, whatever the conditions say. The owner does.
  */
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
   const noted = hasExactKeys(payload, ["sessionId", "attention"]);
@@ -97,7 +97,7 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.doneWhen.checks, facts);
-  const state = attention === null && allChecksPassed(results) ? "done" : "needs_review";
+  const state = "needs_review";
   const stored = transaction(() => {
     // The task may have been reported, resolved, or deleted since the read above.
     const fresh = linkedRow(database, payload.sessionId);
