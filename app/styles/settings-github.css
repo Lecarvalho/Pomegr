@@ -1,0 +1,21 @@
+/* Settings, GitHub section (design contract GitHub.dc.html). Tokens only. */
+.githubSettings > header h2 { margin: 0; font: 650 var(--text-base)/1.3 var(--font-ui); }
+.githubSettings > header p { margin: 6px 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.githubSettingsPanel { margin-top: var(--space-4); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); }
+.githubSettingsPanel .commandSettingRow { padding: 14px 16px; }
+.githubSettingsPanel > .commandSettingRow:first-child { border-top: 0; }
+/* The shared row styles every span in it as a block of quiet text; a chip keeps its own box and type. */
+.githubSettingsPanel .commandChip { display: inline-flex; max-width: none; margin-top: 0; font: 500 var(--text-caption)/1.3 var(--font-ui); }
+.githubConnectionControls, .githubRepositoryAccess { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+.githubRepositoriesHead { grid-template-columns: minmax(0, 1fr); }
+.githubRepositoryList { margin: 0; padding: 0; list-style: none; }
+.githubRepositoryName { color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-data); overflow-wrap: anywhere; }
+.githubRepositoryUnchecked { color: var(--command-muted); font-size: var(--text-xs); }
+.githubSettingsNote { margin: 0; padding: var(--space-3) var(--space-4); border-top: 1px solid var(--command-line); color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+.githubSettingsFootnote { margin: var(--space-3) 0 0; color: var(--command-muted); font-size: var(--text-xs); line-height: 1.45; }
+
+@media (max-width: 760px) {
+  .githubSettingsPanel .commandSettingRow { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  .githubConnectionControls { align-items: stretch; flex-direction: column; justify-content: flex-start; }
+  .githubRepositoryAccess { justify-content: flex-start; }
+}

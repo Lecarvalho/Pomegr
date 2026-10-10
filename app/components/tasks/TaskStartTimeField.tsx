@@ -8,7 +8,7 @@ import { instantOfLocalDateTime, localDateTime } from "./task-schedule";
 const HELPER = "The queue starts this task at this time or later, never before. Setting a time adds the task to the queue; clearing it leaves the task queued.";
 
 /**
- * The task's own start time in the Task panel. It saves when the field loses focus after a change: a time makes the
+ * The task's own start time in the Task modal. It saves when the field loses focus after a change: a time makes the
  * task Scheduled, and clearing it leaves the task Queued. Only a task that still waits for a session has the field.
  */
 export function TaskStartTimeField({ repositoryId, task, onChanged }: { repositoryId: string; task: Task; onChanged(): void }) {

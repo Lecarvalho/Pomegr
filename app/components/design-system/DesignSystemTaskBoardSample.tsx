@@ -12,7 +12,7 @@ import { ALL_FEATURES, featureLines, type FeatureFilterValue } from "../tasks/ta
 import { taskColumns } from "../tasks/task-presentation";
 import { Sample, Section } from "./DesignSystemKit";
 import {
-  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, inertEdits,
+  BOARD_BLOCKED, BOARD_RUNNING, SAMPLE_REPOSITORY_ID, T1_DONE, T2_BLOCKED, T2_REVIEW, T2_STALLED, T3_QUEUED, T6_WORKING, T7_SCHEDULED, T8_IDLE, T9_ISSUE, inertEdits,
 } from "./DesignSystemTaskSampleData";
 
 const LINES = featureLines(BOARD_BLOCKED);
@@ -37,6 +37,7 @@ const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[]
   { label: "Stalled", note: "The session ended with no report.", task: T2_STALLED },
   { label: "Blocked by agent", note: "The agent reported it cannot continue.", task: T2_BLOCKED },
   { label: "Done", note: "Muted title and Open session.", task: T1_DONE },
+  { label: "From a GitHub issue", note: "A task promoted from an issue carries its #N chip right after the task ID: the outline chip in the data font with a circle-dot glyph. It is a label, not a link.", task: T9_ISSUE },
 ];
 
 function Frame({ children }: { children: ReactNode }) {
@@ -56,7 +57,7 @@ export function TaskBoardSection() {
       </Sample>)}
     </div>
     <div className="designSystemGrid">
-      <Sample label="Card, desktop app" note="The title opens the Task panel, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
+      <Sample label="Card, desktop app" note="The title opens the Task modal, and the card can be dragged. Tab into the card to draw the four move actions (one toolbar, one tab stop, arrow keys inside); a coarse pointer always draws them.">
         <Frame><ul className="taskColumnList"><TaskCard task={T3_QUEUED} nextQueued featureLine={LINES.get("T-3")} onOpen={noop} move={MOVE} /></ul></Frame>
       </Sample>
       <Sample label="Column header" note="The name and a data-font count over a one-pixel rule, with no control: the board has five fixed columns, in the desktop app and in a browser alike.">
@@ -75,7 +76,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Feature filter" note="Toggle chips with a data-font count: All first, No feature last. Filtering is client state only.">
+      <Sample label="Feature filter" note="One select whose options carry a task count: All first, No feature last. Filtering is client state only.">
         <FilterSample desktop={false} />
       </Sample>
       <Sample label="Feature filter, desktop app" note="Adds the Quiet + New feature action. Choose a feature to see the line that says moving cards is off.">
@@ -91,7 +92,7 @@ export function TaskBoardSection() {
       </Sample>
     </div>
     <div className="designSystemGrid">
-      <Sample label="Board, desktop app (queue on)" note="Cards open the Task panel and move by drag or keyboard, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
+      <Sample label="Board, desktop app (queue on)" note="Cards open the Task modal and move by drag or keyboard, and the footnote explains dragging. The first lane ends with + New task, shown while the lane is hovered or focused.">
         <Frame><div className="tasksPageBody"><TaskBoardView board={BOARD_RUNNING} edits={EDITS} onOpenTask={noop} newTask={BOARD_ENTRY} /></div></Frame>
       </Sample>
     </div>
@@ -106,6 +107,6 @@ export function TaskBoardSection() {
       <Sample label="Board, desktop only" note="Served to a client that is not on this computer, with no task content."><Frame><TaskBoardView board={createEmptyTaskBoard(SAMPLE_REPOSITORY_ID, "desktop_only")} /></Frame></Sample>
       <Sample label="Board, no tasks"><Frame><div className="tasksPageBody"><TaskBoardView board={{ ...BOARD_RUNNING, features: [], tasks: [] }} /></div></Frame></Sample>
     </div>
-    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task panels (fixed drawers that save through the desktop), the Start at field of the Task panel, and the Tasks page header, whose repository switcher is the shared CommandSelect and whose other controls are shown above and in the Task queue section.</p>
+    <p className="designSystemNote">Not rendered here because they need the desktop bridge or a live store: the New task and Task modals (native dialogs that save through the desktop), the Start at field of the Task modal, and the Tasks page header, whose repository switcher is the shared CommandSelect and whose other controls are shown above and in the Task queue section.</p>
   </Section>;
 }

@@ -1,7 +1,8 @@
 // Serves one Sessions directory page with the task each listed session was started for. The join happens
 // here, at serving time, from the task store: the session catalog and its checkpoints never hold a task
-// reference. Task references are task-board content, so only a same-computer client that the proxy marked
-// (`tasks=1`) gets them; any other client is answered `taskReadiness: "desktop_only"` and no reference.
+// reference. Task references are task-board content (their one issue field is the number of the GitHub issue the task
+// was promoted from, never issue text), so only a same-computer client that the proxy marked (`tasks=1`) gets them; any
+// other client is answered `taskReadiness: "desktop_only"` and no reference.
 
 const EMPTY_PAGE = Object.freeze({
   revision: 0, sessions: [], matchedCount: 0, counts: { all: 0, live: 0, needs: 0 }, pageSize: 25, nextCursor: null,

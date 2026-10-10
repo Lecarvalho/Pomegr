@@ -26,6 +26,36 @@
 /* A column is a lane (G26-G30): the raised fill with a rule, cards stay on the panel fill. The contract draws it 680px
    tall for its frame; that has no token, so the lane keeps its 240px minimum and the grid stretches all five to the tallest. */
 .taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }
+/* On the Tasks page the board takes exactly the height the window leaves (product owner, 2026-10-10): the page is a
+   column as tall as the shell's main area, the board region takes what the header, gates and footnote leave, and each
+   lane scrolls its own cards, so its header and + New task stay in view and the page itself does not scroll. The
+   main area's bottom padding is the gap under the lanes. Phones keep growing lanes and the page scroll. */
+.tasksPage .taskBoardSkeletonColumn { min-height: max(240px, calc(100dvh - 18rem)); }
+@media (min-width: 761px) {
+  /* The shell is only at least as tall as the window, so its main area has no height to fill; with the board on
+     the page it is exactly the window, which gives the main area, and the page inside it, a height. */
+  .commandShell:has(.tasksPage .taskBoardScroller) { height: 100dvh; }
+  .tasksPage:has(.taskBoardScroller) { height: 100%; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskBoardScroller) .tasksPageBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  /* Only the board region gives way: the header and the lines above the board keep their height. */
+  .tasksPage:has(.taskBoardScroller) > :not(.tasksPageBody), .tasksPage:has(.taskBoardScroller) .tasksPageBody > :not(.taskBoardScroller) { flex: 0 0 auto; }
+  .tasksPage .taskBoardScroller { flex: 1 1 0; min-height: 240px; }
+  .tasksPage .taskBoardGrid { height: 100%; grid-template-rows: minmax(0, 1fr); }
+  .tasksPage .taskColumn { min-height: 0; }
+}
+/* The Queue view fits the window the same way once its two columns sit side by side: the queue and the settings
+   each scroll on their own. Narrower, the settings wrap under the queue and the page scrolls. */
+@media (min-width: 1100px) {
+  .commandShell:has(.tasksPage .taskQueueRow) { height: 100dvh; }
+  .tasksPage:has(.taskQueueRow) { height: 100%; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskQueueRow) .tasksPageBody { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .tasksPage:has(.taskQueueRow) > :not(.tasksPageBody), .tasksPage:has(.taskQueueRow) .tasksPageBody > :not(.taskQueueRow) { flex: 0 0 auto; }
+  .tasksPage .taskQueueRow { flex: 1 1 0; min-height: 240px; flex-wrap: nowrap; align-items: stretch; }
+  .tasksPage .taskQueueRow > :is(.taskQueueView, .taskQueueAside) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: var(--space-1); scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+  .tasksPage .taskQueueRow > .taskQueueView { align-content: start; }
+  .tasksPage .taskQueueAside > * { flex: 0 0 auto; }
+}
+.tasksPage .taskColumnList { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px var(--space-1) 2px 2px; margin: -2px calc(-1 * var(--space-1)) -2px -2px; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 .taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-2); border-bottom: 1px solid var(--command-line); }
 .taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -37,6 +67,11 @@
 .taskCard.isAttention { border-color: var(--command-amber); }
 .taskCardTop { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); }
 .taskCardId { flex: 0 0 auto; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); white-space: nowrap; }
+/* The IDs group (G36): the task ID, then the #N chip of a task promoted from a GitHub issue (G38). The chip is the shared
+   outline chip with a data-font number and an 11px glyph; it is a label, never a link. */
+.taskCardIds { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.taskIssueChip { flex: 0 0 auto; gap: var(--space-1); color: var(--command-muted); font: 400 var(--text-caption)/1.3 var(--font-data); white-space: nowrap; }
+.taskIssueChip > svg { width: 11px; height: 11px; flex: 0 0 auto; }
 .taskCardChip { flex: 0 0 auto; white-space: nowrap; }
 .taskCardChip.isInk { color: var(--command-ink); }
 .taskCardTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 6; line-clamp: 6; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
@@ -100,82 +135,94 @@
 .taskBoardNotice { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-4); }
 .taskBoardNotice p, .taskBoardEmpty { margin: 0; color: var(--command-muted); font-size: var(--text-sm); }
 
-/* New task and Task side panels (design contract D184-D194, D234-D238, D239-D249, D295-D299). Fixed to the right
-   edge below the header, like the Agents evidence drawer; no entrance motion (the contract declares none). The Task
-   panel reuses the .newTaskPanel chrome. */
-.newTaskPanel { position: fixed; z-index: 40; top: 60px; right: 0; bottom: 0; box-sizing: border-box; width: min(640px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--command-line); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
-.newTaskPanelHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-1) var(--space-3) var(--space-1) var(--space-6); border-bottom: 1px solid var(--command-line); }
-.newTaskPanelHeader h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
-.newTaskPanelRepository { min-width: 0; overflow: hidden; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
-.newTaskPanelSpacer { flex: 1 1 0; }
-/* Close is the Icon role drawn at the touch size (role default 32). */
-.newTaskPanelHeader .commandIconAction { flex: 0 0 auto; width: 44px; height: 44px; }
-.newTaskPanelBody { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-6); }
-.newTaskField { display: flex; flex-direction: column; gap: var(--space-1); }
+/* Task modal fields: the label, textarea, counter, helper and error lines shared by both modes. */
+.newTaskField { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .newTaskField label { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
 .newTaskEffortLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
-.newTaskField textarea { box-sizing: border-box; display: block; width: 100%; padding: var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); resize: vertical; }
+.newTaskField textarea { box-sizing: border-box; display: block; width: 100%; min-height: 150px; padding: var(--space-2) var(--space-3); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.5 var(--font-ui); resize: vertical; }
 .newTaskField textarea::placeholder { color: var(--command-muted); opacity: 1; }
 .newTaskField textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.taskTextCounter { align-self: flex-end; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
 .newTaskHelper, .newTaskError { margin: 0; font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .newTaskHelper { color: var(--command-muted); }
 .newTaskError { color: var(--command-error); }
-.newTaskPanelFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--command-line); background: var(--command-ground); }
-.newTaskPanelNote { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
-/* Create and add another is the Secondary role drawn at 36 with the stronger line and panel fill (role default 32). */
+
+/* Task modal frame (design contract G115-G123, G153, D2 of the part brief). A native modal dialog is the scrim: it fills
+   the viewport, scrolls when the panel is taller, and the panel sits top-aligned in it, at most 640px wide. There is no
+   token for a 40% ink scrim, so it mixes the text token. No entrance or exit motion. */
+.taskModalScrim { box-sizing: border-box; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: var(--space-8) var(--space-4) var(--space-6); border: 0; background: color-mix(in srgb, var(--color-text) 40%, transparent); color: var(--command-ink); overflow-y: auto; }
+.taskModalScrim[open] { display: flex; align-items: flex-start; justify-content: center; }
+.taskModalScrim:focus { outline: none; }
+/* Centred in the window; the auto margins keep the top of a panel taller than the window reachable by scrolling. */
+.taskModalScrim > .taskModal { margin-block: auto; }
+.taskModal { box-sizing: border-box; flex: 0 1 640px; width: 100%; max-width: 640px; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel); box-shadow: var(--command-overlay-shadow); color: var(--command-ink); font: 400 var(--text-base)/1.5 var(--font-ui); }
+.taskModalHeader { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6); border-bottom: 1px solid var(--command-line); }
+.taskModalTitleGroup { flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-2); }
+.taskModalTitleGroup h2 { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
+.taskModalSubtitle { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-overflow: ellipsis; white-space: nowrap; }
+.taskModalHeader .commandIconAction { flex: 0 0 auto; }
+.taskModalBody { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-6); }
+.taskModalFooter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-6); border-top: 1px solid var(--command-line); }
+.taskModalSpacer { flex: 1 1 0; }
+.taskModalResolve { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskModalNote { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
+/* Footer actions keep their roles and are drawn at the control height on a fine pointer at 761px and wider (role defaults
+   are 28 to 36); phone and coarse pointers keep the 44px size and do not stretch across the row. */
+.taskModalFooter :is(.commandPrimaryAction, .commandSecondaryAction, .commandQuietAction) { min-height: 44px; width: auto; justify-content: center; }
+.taskModalFooter .commandQuietAction { padding: 0 var(--space-3); }
 @media (min-width: 761px) and (pointer: fine) {
-  .newTaskPanelFooter .commandSecondaryAction { min-height: var(--control-height); border-color: var(--command-line-strong); background: var(--command-panel); }
+  .taskModalFooter :is(.commandPrimaryAction, .commandSecondaryAction, .commandQuietAction) { min-height: var(--control-height); }
 }
-@media (max-width: 1080px) { .newTaskPanel { top: 56px; } }
 @media (max-width: 760px) {
-  .newTaskPanelBody { padding: var(--space-4); }
-  .newTaskPanelFooter { padding: var(--space-3) var(--space-4); }
-  .newTaskPanelSpacer { display: none; }
-  .newTaskPanelNote { flex: 1 0 100%; }
+  .taskModalScrim { padding: 0; }
+  .taskModal { flex-basis: 100%; max-width: none; min-height: 100%; }
+  .taskModalHeader { padding-left: var(--space-4); }
+  .taskModalBody { padding: var(--space-4); }
+  .taskModalFooter { padding: var(--space-3) var(--space-4); }
 }
 
-/* Run on and Effort (D195-D205, D252-D261): the select grows, the four-way Effort sits beside it. Segments are drawn
-   at the control height on a fine pointer; phone and coarse pointers keep the 44px role size. */
+/* Run on and Effort (G138-G144): two equal columns, one at 760px and narrower. Segments are drawn at the control
+   height on a fine pointer; phone and coarse pointers keep the 44px role size. */
 .taskRunGroup { display: flex; flex-direction: column; gap: var(--space-2); }
-.taskRunRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-4); }
-.taskRunOn { flex: 1 1 220px; min-width: 0; }
+.taskRunRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: var(--space-4); }
+.taskRunOn { min-width: 0; }
+@media (max-width: 760px) { .taskRunRow { grid-template-columns: minmax(0, 1fr); } }
 .taskRunOn .commandSelect { display: grid; }
 @media (min-width: 761px) and (pointer: fine) { .taskEffort > button { min-height: var(--control-height); } }
 .taskModelNotice { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--command-amber); border-radius: var(--control-radius); background: var(--color-amber-soft); color: var(--command-ink); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .taskModelNoticeTitle { color: var(--command-amber); font-weight: 500; }
 .taskModelNotice code { font: 400 var(--text-xs)/1.4 var(--font-data); }
 
-/* Done when (D206-D216, D265-D272): two columns in New task, one list in the Task panel. */
+/* Done when (G145-G152): a wrapping row of the five checks, then one input for the agent-judged own condition. */
 .taskDoneWhen { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; }
-.taskDoneWhen legend { padding: 0; margin-bottom: var(--space-1); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
-.taskChecks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: var(--space-4); }
-.taskChecks.isList { grid-template-columns: minmax(0, 1fr); }
-.taskCheckRow { display: flex; align-items: center; gap: var(--space-2); min-height: 44px; border-top: 1px solid var(--command-line); }
-.taskChecks:not(.isList) .taskCheckRow:nth-last-child(-n+2), .taskChecks.isList .taskCheckRow:last-child { border-bottom: 1px solid var(--command-line); }
+.taskDoneWhen legend { padding: 0; margin-bottom: var(--space-2); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
+.taskChecks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
+.taskCheckRow { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 28px; }
 .taskCheckRow input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--command-brand); }
-.taskCheckRow label:not(.commandVisuallyHidden) { flex: 1 1 auto; min-width: 0; color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskCheckRow label { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
 .taskCheckResult { flex: 0 0 auto; color: var(--command-muted); font: 500 var(--text-xs)/1.4 var(--font-ui); white-space: nowrap; }
 .taskCheckResult.isPassed { color: var(--command-green); }
 .taskCheckResult.isFailed { color: var(--command-error); }
+.taskOwnRow { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-2); }
 .taskOwnInput { box-sizing: border-box; flex: 1 1 auto; min-width: 0; min-height: var(--control-compact); padding: 0 var(--space-2); border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-panel); color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); }
+.taskDoneWhen .taskOwnInput { min-height: var(--control-height); padding: 0 var(--space-3); }
 .taskOwnInput::placeholder { color: var(--command-muted); opacity: 1; }
 .taskOwnInput:focus-visible, .taskCheckRow input[type="checkbox"]:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskDoneWhenNote { margin-top: var(--space-2); }
-@media (max-width: 760px) {
-  .taskChecks { grid-template-columns: minmax(0, 1fr); }
-  .taskChecks:not(.isList) .taskCheckRow:nth-last-child(2) { border-bottom: 0; }
+@media (max-width: 760px), (pointer: coarse) {
+  .taskCheckRow { min-height: 44px; }
+  .taskDoneWhen .taskOwnInput { min-height: 44px; }
 }
 
-/* Task panel header, title group and footer (D240-D249, D295, D298, D299). */
-.taskPanelId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
-.taskPanelTitle { display: flex; flex-direction: column; gap: var(--space-2); }
-.taskPanelHeading { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
-.taskPanelConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-/* Delete task is the Quiet role drawn at the control height (role default 28). */
-@media (min-width: 761px) and (pointer: fine) { .taskPanelFooter .commandQuietAction { min-height: var(--control-height); } }
+/* Task modal, mode edit (G241-G298): the task ID beside the title, the session title line, and the inline delete confirmation.
+   The footer actions are sized by the .taskModalFooter rule above. */
+.taskModalId { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
+.taskModalSession { display: flex; flex-direction: column; gap: var(--space-1); }
+.taskModalSessionTitle { margin: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow-wrap: anywhere; color: var(--command-ink); font: 500 var(--text-sm)/1.4 var(--font-ui); }
+.taskModalConfirm { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 
 /* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
-   disclosure between two lines, and rows that lead with the step number only in the Task panel. */
+   disclosure between two lines, and rows that lead with the step number only in the Task modal. */
 .taskFeatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
 .taskFeatureRow .commandSelect { display: grid; }
 .taskFeatureName { width: 100%; }
@@ -201,8 +248,10 @@
 
 /* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
 .taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.taskFeatureSelect { max-width: 320px; }
+.taskFeatureSelect .commandSelectTrigger { min-height: var(--control-compact); font-size: var(--text-xs); }
+@media (max-width: 760px), (pointer: coarse) { .taskFeatureSelect .commandSelectTrigger { min-height: 44px; } }
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
-.taskFilterCount { color: var(--command-muted); font: 400 var(--text-xs)/1 var(--font-data); }
 .taskCardFeature { overflow-wrap: anywhere; }
 
 /* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
@@ -317,6 +366,7 @@
 .sessionTaskValue { color: var(--command-ink); font: 400 var(--text-sm)/1.4 var(--font-ui); overflow-wrap: anywhere; }
 .sessionTaskValue code, .sessionTaskFeatureLine code { font: 400 var(--text-xs)/1.4 var(--font-data); }
 .sessionTaskValue.isDiffers { color: var(--command-amber); }
+.sessionTaskSourceValue { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .sessionTaskBlocked { color: var(--command-error); }
 .sessionTaskNote { flex: 1 1 100%; margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionTaskSummary .sessionTaskNote { flex: 1 1 240px; }
@@ -332,6 +382,7 @@
 .sessionTaskPanelHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); overflow-wrap: anywhere; }
 .sessionTaskStarted { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 .sessionTaskSpacer { flex: 1 1 0; }
+.sessionTaskSource { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .sessionTaskBlock, .sessionTaskChecks { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
 .sessionTaskBlock.isRuled, .sessionTaskChecks.isRuled, .sessionTaskRunFacts { padding-top: var(--space-3); border-top: 1px solid var(--command-line); }
 .sessionTaskLabel { color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }

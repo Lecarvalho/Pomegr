@@ -41,6 +41,11 @@ export type TaskRun = { provider: TaskProvider | null; model: string | null; eff
  * condition is checked, and from an older monitor. It is a reading as of this board, not a result.
  */
 export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null; checks?: { check: TaskCheck; passed: boolean }[] };
+/**
+ * Where a task came from. A task promoted from a GitHub issue carries the issue number only; its title and body were
+ * copied once into the task's text and nothing is read from the issue again. Null for a task made on the board.
+ */
+export type TaskSource = { kind: "github_issue"; number: number };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null };
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
@@ -110,6 +115,7 @@ export type Task = {
   /** The task's own start time while its state is `scheduled`: it is not started before it, by the queue or by hand. */
   scheduledAt: string | null;
   session: TaskSession | null; // borrowed from observation; never transcript content
+  source: TaskSource | null;
   report: TaskReport | null;
   createdAt: string;
   updatedAt: string;

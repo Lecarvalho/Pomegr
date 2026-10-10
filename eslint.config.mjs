@@ -24,6 +24,7 @@ const eslintConfig = defineConfig([
     "plugins/claude-code/hooks/**",
     "plugins/claude-code/tests/**",
     "plugins/claude-code/types/**",
+    "plugins/claude-code/.claude-plugin/types/**",
     "next-env.d.ts",
   ]),
   {

@@ -9,7 +9,7 @@ export const TASK_ACTIONS = Object.freeze([
 export const TASK_ACTION_PATH_PREFIX = "/internal/tasks/";
 // The renderer caps the action payload at 16 KiB; the request adds only the fixed envelope around it.
 const TASK_PAYLOAD_LIMIT_BYTES = 16 * 1024;
-const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
+export const TASK_BODY_LIMIT_BYTES = TASK_PAYLOAD_LIMIT_BYTES + 1024;
 const ACTION_STATUS = Object.freeze({ invalid: 400, not_found: 404, limit: 409, conflict: 409, unsupported: 501 });
 // Session-start actions answer through their own handler, not the renderer's `pomegr:task-action` list above.
 const START_ACTIONS = Object.freeze(["start-plan", "start-abort"]);
@@ -106,6 +106,16 @@ export function projectSchedule(schedule) {
   return { startAt: schedule.startAt, stopAfter: schedule.stopAfter };
 }
 
+// A promoted task's source: the fixed kind and a positive issue number, else none.
+function projectSource(source) {
+  return source !== null && typeof source === "object" && source.kind === "github_issue"
+    && Number.isSafeInteger(source.number) && source.number >= 1 && source.number <= 999_999_999
+    ? { kind: "github_issue", number: source.number }
+    : null;
+}
+
+const projectTask = (task) => (task !== null && typeof task === "object" ? { ...task, source: projectSource(task.source) } : task);
+
 // The store validated every record; the route only pins the contract's top-level keys, the queue's keys, and the requested ID.
 function projectBoard(repositoryId, board, runModels) {
   if (!board || typeof board !== "object" || !SERVED_READINESS.has(board.readiness)
@@ -117,7 +127,7 @@ function projectBoard(repositoryId, board, runModels) {
   const schedule = projectSchedule(board.queue.schedule);
   return {
     version: 1, readiness: board.readiness, repositoryId,
-    columns: board.columns, features: board.features, tasks: board.tasks,
+    columns: board.columns, features: board.features, tasks: board.tasks.map(projectTask),
     queue: { status: board.queue.status, blockedBy: board.queue.blockedBy ?? null, pauseReason: board.queue.pauseReason ?? null, order: board.queue.order, ...(schedule ? { schedule } : {}), ...(gates ? { gates } : {}) },
     runModels: projectRunModels(runModels),
   };
@@ -168,7 +178,7 @@ export function serveTaskRoute({ request, response, requestUrl, taskStore, autho
   }
 }
 
-function writeActionResult(response, status, body, { close = false } = {}) {
+export function writeActionResult(response, status, body, { close = false } = {}) {
   response.writeHead(status, { ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}) });
   response.end(JSON.stringify(body));
 }
@@ -176,7 +186,7 @@ function writeActionResult(response, status, body, { close = false } = {}) {
 const rejected = (error) => ({ ok: false, error });
 
 /** Reads the request body up to `limit` bytes. Resolves null when the body is larger, without buffering the rest. */
-function readLimitedBody(request, limit) {
+export function readLimitedBody(request, limit) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -202,7 +212,7 @@ function readLimitedBody(request, limit) {
   });
 }
 
-function isPlainObject(value) {
+export function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
@@ -340,7 +350,9 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     }
     const result = taskStore.apply(body.repositoryId, action, body.payload, { resolveSessionFacts, resolveGateFacts, resolveCheckFacts });
     if (result?.ok === true) {
-      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board) });
+      // Only `create` answers the task it made, so the caller can name it (for example to open its GitHub issue).
+      const taskId = action === "create" && typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId) ? result.taskId : null;
+      writeActionResult(response, 200, { ok: true, board: projectBoard(body.repositoryId, result.board), ...(taskId === null ? {} : { taskId }) });
       return;
     }
     const error = Object.hasOwn(ACTION_STATUS, result?.error) ? result.error : "conflict";
@@ -421,9 +433,10 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, "unavailable");
       return;
     }
-    // A session started for a task adds to the board that holds that task, even when it runs in a task
-    // worktree whose committed repository identity is another one. The task store's link wins; it is
-    // read from the store alone, and a store that cannot answer leaves the committed identity in charge.
+    // A session started for a task adds to the board that holds that task, even when its committed
+    // repository identity is missing or another one (a task worktree whose folder is gone, for example).
+    // The task store's link wins; it is read from the store alone, and a store that cannot answer leaves
+    // the committed identity in charge.
     const linkedRepositoryId = linkedBoardRepositoryId(taskStore, body.sessionRef);
     let session = null;
     try {

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
-import { taskStateLabels } from "./task-presentation";
+import { taskStateLabels, validIssueNumber } from "./task-presentation";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 
@@ -20,17 +20,24 @@ export function sessionTaskHref(task: SessionTaskReference): string | null {
 }
 
 /**
- * The Task cell (D330 to D333): the task ID, the outcome chip, and the feature and step. A session the user
- * started has a dash. `omitFeature` drops the name a Feature group header already shows.
+ * The Task cell (D330 to D333, G340 to G346): the task ID, then for a task promoted from a GitHub issue its number as
+ * plain muted text (no chip, border, icon or link, so the ID stays the one prominent identifier), the outcome chip, and
+ * the feature and step. A session the user started has a dash. `omitFeature` drops the name a Feature group header
+ * already shows.
  */
 export function SessionTaskCell({ task, omitFeature = false }: { task: SessionTaskReference | null | undefined; omitFeature?: boolean }) {
   if (!task) return <span title="Not started from a task">—</span>;
   const chip = sessionTaskChip(task.state);
   const href = sessionTaskHref(task);
   const placed = task.feature !== null && task.step !== null;
+  const issue = validIssueNumber(task.issue);
   return <div className="commandSessionTask">
     <span className="commandSessionTaskHead">
       {href ? <Link className="commandTextLink commandSessionTaskId" href={href} aria-label={`Open task ${task.id} on its board`}>{task.id}</Link> : <span className="commandSessionTaskId">{task.id}</span>}
+      {issue !== null && <span className="commandSessionTaskIssue" title={`GitHub issue ${issue}`}>
+        <span aria-hidden="true">#{issue}</span>
+        <span className="commandVisuallyHidden">GitHub issue #{issue}</span>
+      </span>}
       {chip && <span className={`commandChip ${chip.tone}`}>{chip.label}</span>}
     </span>
     {placed && <span className="commandSessionTaskFeature">{omitFeature ? `Step ${task.step}` : `${task.feature} · step ${task.step}`}</span>}

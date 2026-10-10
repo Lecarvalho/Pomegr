@@ -1,5 +1,6 @@
 import { createTaskGateFacts, createTaskTreeObservation } from "./task-gate-facts.mjs";
 import { resolveTaskCheckFacts, resolveTaskSession, resolveTaskSessionFacts } from "./task-session-lookup.mjs";
+import { createTaskIssues } from "./task-issues.mjs";
 import { comparePluginVersions } from "../../shared/repository-plugin-state.mjs";
 
 /** The first Pomegr plugin version with the session-start bind hook and the task tools; both provider plugins share it. */
@@ -22,7 +23,7 @@ export const MINIMUM_TASK_PLUGIN_VERSION = "0.9.0";
  * request path (task-gate-facts.mjs). Without `gateSources` every fact but the tree is unknown.
  * No provider acquisition and no synchronous Git call happen here.
  */
-export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null }) {
+export function createTaskLookups({ observationStore, catalogSessions, repositoryInventory, runModels = null, gateSources = null, issueReader = undefined }) {
   const tree = createTaskTreeObservation({
     repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null,
     ...(gateSources?.gitReader ? { gitReader: gateSources.gitReader } : {}),
@@ -30,6 +31,8 @@ export function createTaskLookups({ observationStore, catalogSessions, repositor
     ...(gateSources?.now ? { now: gateSources.now } : {}),
   });
   return {
+    // GitHub issues for the task board: explicit desktop actions only, never a GET. The root stays inside the composition.
+    taskIssues: createTaskIssues({ repositoryRoot: (repositoryId) => repositoryInventory.repositoryRoot?.(repositoryId) ?? null, reader: issueReader }),
     resolveTaskGateFacts: createTaskGateFacts({
       usageLimits: gateSources?.usageLimits, providerStatus: gateSources?.providerStatus, tree, ...(gateSources?.now ? { now: gateSources.now } : {}),
     }),

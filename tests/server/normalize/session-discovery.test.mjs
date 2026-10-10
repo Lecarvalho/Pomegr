@@ -55,6 +55,30 @@ test("uses the repository root instead of a working subdirectory as the project"
   assert.equal(repositoryProjectName(frontend), "Clapline");
 });
 
+test("names a linked worktree after its main repository from the .git pointer file alone", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-project-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const main = path.join(root, "Pomegr");
+  const worktree = path.join(root, "task-worktrees", "T-20");
+  await mkdir(path.join(main, ".git", "worktrees", "T-20"), { recursive: true });
+  await mkdir(path.join(worktree, "src"), { recursive: true });
+  await writeFile(path.join(worktree, ".git"), `gitdir: ${path.join(main, ".git", "worktrees", "T-20").split(path.sep).join("/")}\n`);
+  assert.equal(repositoryProjectName(path.join(worktree, "src")), "Pomegr");
+  assert.equal(repositoryProjectName(main), "Pomegr");
+
+  // A submodule pointer, a garbled pointer, and an oversized file keep the folder's own name.
+  const submodule = path.join(main, "vendor", "lib");
+  await mkdir(submodule, { recursive: true });
+  await writeFile(path.join(submodule, ".git"), "gitdir: ../../.git/modules/lib\n");
+  assert.equal(repositoryProjectName(submodule), "lib");
+  for (const [name, content] of [["garbled", "not a pointer\n"], ["oversized", `gitdir: ${"x".repeat(5000)}/.git/worktrees/a\n`]]) {
+    const folder = path.join(root, name);
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, ".git"), content);
+    assert.equal(repositoryProjectName(folder), name);
+  }
+});
+
 test("keeps a session selected while one of its subagents is newest", async (context) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-session-"));
   context.after(() => rm(root, { recursive: true, force: true }));

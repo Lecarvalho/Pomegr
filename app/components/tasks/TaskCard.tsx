@@ -2,6 +2,7 @@ import type { HTMLAttributes } from "react";
 import type { Task } from "../../../shared/task-contract";
 import { TaskMoveBar, type CardMoves } from "./TaskMoveBar";
 import type { CardMoveKind } from "./task-board-model";
+import { TaskCardIds } from "./TaskIssueChip";
 import { TaskRunLine } from "./TaskRunLine";
 import { TaskSessionLink } from "./TaskSessionLink";
 import { doneWhenSummary } from "./task-fields";
@@ -16,10 +17,11 @@ export type TaskCardMove = {
 };
 
 /**
- * One task: its ID, its state chip, its text (or its session's title once it has one), the planned run with the observed
- * model, the Done when summary, for a task in a feature the feature line, and, for a task with a session, Open session,
- * each only when set. With `onOpen` the card opens the Task panel; with `move` it can be dragged and moved from the
- * keyboard. Without either the card is read-only.
+ * One task: its ID (with the #N issue chip after it for a task promoted from a GitHub issue), its state chip, its text
+ * (or its session's title once it has one), the planned run with the observed model, the Done when summary, for a task
+ * in a feature the feature line, and, for a task with a session, Open session, each only when set. With `onOpen` the
+ * card opens the Task modal; with `move` it can be dragged and moved from the keyboard. Without either the card is
+ * read-only.
  */
 export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move }: { task: Task; featureLine?: string | null; nextQueued?: boolean; onOpen?: (task: Task, opener: HTMLElement) => void; move?: TaskCardMove }) {
   const chip = taskChip(task, nextQueued);
@@ -29,7 +31,7 @@ export function TaskCard({ task, featureLine, nextQueued = false, onOpen, move }
   const className = ["taskCard", move && "isMovable", chip.border === "live" && "isLive", chip.border === "attention" && "isAttention", task.state === "done" && "isDone"].filter(Boolean).join(" ");
   return <li className={className} data-task-id={task.id} data-task-state={task.state} draggable={move ? true : undefined} {...move?.drag}>
     <div className="taskCardTop">
-      <span className="taskCardId">{task.id}</span>
+      <TaskCardIds task={task} />
       <span className={`commandChip taskCardChip ${chip.tone}${chip.ink ? " isInk" : ""}`}>{chip.label}</span>
     </div>
     {onOpen

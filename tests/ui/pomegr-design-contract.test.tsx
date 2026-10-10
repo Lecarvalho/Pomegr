@@ -389,6 +389,175 @@ describe("Pomegr visual contract", () => {
     expect(designSystemStyles).toMatch(/\.designSystemRevealAdd \.taskColumnAdd \{ opacity: 1; \}/);
   });
 
+  it("draws the task modal frame as a modal dialog scrim with tokens only and documents its fields", () => {
+    const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    const frame = readFileSync(join(tasksComponents, "TaskModalFrame.tsx"), "utf8");
+    const fields = readFileSync(join(tasksComponents, "TaskFields.tsx"), "utf8");
+    const featureFields = readFileSync(join(tasksComponents, "FeatureFields.tsx"), "utf8");
+    // G115-G123: the scrim mixes the text token (no literal color), the panel is at most 640px with the panel radius and overlay shadow, and nothing moves.
+    expect(tasksStyles).toMatch(/\.taskModalScrim \{[^}]*background: color-mix\(in srgb, var\(--color-text\) 40%, transparent\)/);
+    expect(tasksStyles).toMatch(/\.taskModal \{[^}]*max-width: 640px[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel\)[^}]*box-shadow: var\(--command-overlay-shadow\)/);
+    expect(tasksStyles).toMatch(/\.taskModalHeader \{[^}]*padding: var\(--space-2\) var\(--space-3\) var\(--space-2\) var\(--space-6\)[^}]*border-bottom: 1px solid var\(--command-line\)/);
+    expect(tasksStyles).toMatch(/\.taskModalBody \{[^}]*gap: var\(--space-4\)[^}]*padding: var\(--space-6\)/);
+    expect(tasksStyles).toMatch(/\.taskModalFooter \{[^}]*padding: var\(--space-3\) var\(--space-6\)[^}]*border-top: 1px solid var\(--command-line\)/);
+    expect(tasksStyles).not.toMatch(/\.taskModal[A-Za-z]*[^{]*\{[^}]*(?:transition|animation|#[0-9a-fA-F]{3,8}|rgba?\()/);
+    // G153-G158: footer actions keep their roles and are 36px with a fine pointer at 761px and wider, 44px otherwise.
+    expect(tasksStyles).toMatch(/\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: 44px; width: auto/);
+    expect(tasksStyles).toMatch(/@media \(min-width: 761px\) and \(pointer: fine\) \{\s*\.taskModalFooter :is\(\.commandPrimaryAction, \.commandSecondaryAction, \.commandQuietAction\) \{ min-height: var\(--control-height\); \}/);
+    // G138-G152: Run on and Effort sit in a two-column row, the checks wrap, and the own condition is a 36px input.
+    expect(tasksStyles).toMatch(/\.taskRunRow \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+    expect(tasksStyles).toMatch(/\.taskChecks \{[^}]*flex-wrap: wrap[^}]*gap: var\(--space-1\) var\(--space-4\)/);
+    expect(tasksStyles).toMatch(/\.taskDoneWhen \.taskOwnInput \{ min-height: var\(--control-height\)/);
+    expect(tasksStyles).toMatch(/\.taskTextCounter \{[^}]*align-self: flex-end[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)/);
+    // D2: a native modal dialog with its name, no scrim-click close, and Escape unless a control inside handled the key.
+    expect(frame).toMatch(/<dialog[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby=\{titleId\}/);
+    expect(frame).toMatch(/showModal\(\)/);
+    expect(frame).toMatch(/event\.key !== "Escape" \|\| event\.defaultPrevented/);
+    expect(frame).toMatch(/className="commandIconAction" aria-label="Close"/);
+    expect(frame).not.toMatch(/onClick=\{\(event\) => \{ if \(event\.target === dialog/);
+    // D3: the copy of the fields, and Feature and Run on stay CommandSelect.
+    expect(fields).toMatch(/placeholder="What should the session do\?"/);
+    expect(fields).toMatch(/aria-label="Own condition"[^>]*placeholder="Own condition, judged by the agent \(optional\)"/);
+    expect(fields).not.toMatch(/Use your own condition/);
+    expect(featureFields).toMatch(/<label htmlFor=\{stepId\}>Step<\/label>/);
+    expect(fields + featureFields).not.toMatch(/<select/);
+    // DESIGN.md and the design-system sample document the frame and the fields.
+    expect(designContract).toMatch(/\*\*Task modal frame\.\*\* `TaskModalFrame`[^]*native modal `<dialog>`[^]*`--color-text` mixed to 40%/);
+    expect(designContract).toMatch(/a click on the scrim closes it only while the form holds nothing to save/);
+    expect(designContract).toMatch(/\*\*Task fields\.\*\*[^]*“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, and “CI passed”/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
+    expect(sample).toMatch(/Task modal, new/);
+    expect(sample).toMatch(/TaskModalChrome/);
+    expect(sample).not.toMatch(/<TaskModalFrame/);
+    expect(designSystemStyles).toMatch(/\.designSystemTaskModalStage \{[^}]*background: color-mix\(in srgb, var\(--color-text\) 40%, transparent\)/);
+  });
+
+  it("draws the Promote issues page and the issue preview with tokens only, as text, and documents them", () => {
+    const issuesStyles = readFileSync(join(process.cwd(), "app", "styles", "task-issues.css"), "utf8");
+    const tasksComponents = join(process.cwd(), "app", "components", "tasks");
+    // Tokens only and no motion: no literal color, transition or animation anywhere in the issue styles.
+    expect(issuesStyles).not.toMatch(/#[0-9a-fA-F]{3,8}|rgba?\(|transition|animation/);
+    // G90-G93: a soft-filled box with a one-pixel line in its tone, never a side stripe.
+    expect(issuesStyles).toMatch(/\.taskNotice \{[^}]*padding: var\(--space-2\) var\(--space-3\)[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--control-radius\)[^}]*font: 400 var\(--text-xs\)\/1\.5/);
+    expect(issuesStyles).toMatch(/\.taskNotice\.warning \{[^}]*border-color: var\(--command-amber\)[^}]*background: var\(--color-amber-soft\)[^}]*color: var\(--command-amber\)/);
+    expect(issuesStyles).toMatch(/\.taskNotice\.negative \{[^}]*background: var\(--color-error-soft\)[^}]*color: var\(--command-error\)/);
+    expect(issuesStyles).toMatch(/\.taskNotice\.positive \{[^}]*background: var\(--color-green-soft\)[^}]*color: var\(--command-green\)/);
+    expect(issuesStyles).not.toMatch(/\.taskNotice[^{]*\{[^}]*border-(?:left|inline-start)/);
+    // G97-G101: the raw body is data-font text on the canvas fill, and a hidden comment is struck through in amber.
+    expect(issuesStyles).toMatch(/\.taskIssueBodyBox \{[^}]*min-height: 240px[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--control-radius\)[^}]*background: var\(--command-ground\)[^}]*font: 400 var\(--text-xs\)\/1\.4 var\(--font-data\)[^}]*white-space: pre-wrap/);
+    expect(issuesStyles).toMatch(/\.taskIssueHidden \{[^}]*background: var\(--color-amber-soft\)[^}]*color: var\(--command-amber\)[^}]*text-decoration: line-through/);
+    expect(issuesStyles).toMatch(/\.taskIssueCount\.over \{ color: var\(--command-error\); \}/);
+    // G72-G85: the list and detail panes, and a row that is a full-width button with an inset focus ring.
+    expect(issuesStyles).toMatch(/\.promoteIssuesListPane \{[^}]*flex: 1 1 340px[^}]*max-width: 420px[^}]*border-right: 1px solid var\(--command-line\)/);
+    expect(issuesStyles).toMatch(/\.promoteIssueDetail \{[^}]*flex: 999 1 480px[^}]*gap: var\(--space-3\)/);
+    expect(issuesStyles).toMatch(/\.promoteIssueRow \{[^}]*width: 100%[^}]*border-bottom: 1px solid var\(--command-line\)/);
+    expect(issuesStyles).toMatch(/\.promoteIssueRow\[aria-pressed="true"\] \{ background: var\(--command-panel-2\); \}/);
+    expect(issuesStyles).toMatch(/\.promoteIssueRow:focus-visible \{ outline: 2px solid var\(--focus-ring\); outline-offset: -2px; \}/);
+    expect(issuesStyles).toMatch(/\.promoteIssuesPanel \{[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel\)/);
+    // The page uses the shared roles: a Quiet back link and Refresh, the one Primary Promote, a Secondary header link.
+    const actions = readFileSync(join(tasksComponents, "promote-issues-action.tsx"), "utf8");
+    const split = readFileSync(join(tasksComponents, "promote-issues-split.tsx"), "utf8");
+    const view = readFileSync(join(tasksComponents, "PromoteIssuesView.tsx"), "utf8");
+    expect(actions).toMatch(/className="commandSecondaryAction promoteIssuesAction"/);
+    expect(actions).toMatch(/className="commandQuietAction promoteIssuesBack"/);
+    expect(view).toMatch(/className="commandQuietAction"[^>]*>Refresh<\/button>/);
+    expect(split).toMatch(/className="commandPrimaryAction"[^]*?>Promote<\/button>/);
+    expect(view + split + actions).not.toMatch(/<select|dangerouslySetInnerHTML/);
+    // DESIGN.md and the design-system sample document the same page.
+    expect(designContract).toMatch(/\*\*Promote issues page\.\*\* `\/tasks\/issues\?repository=<repositoryId>`[^]*the Quiet \*\*Tasks\*\* back link is the header's breadcrumb[^]*Quiet \*\*Refresh\*\*/);
+    expect(designContract).toMatch(/its focus ring is inset \(offset −2px\) because the rows touch/);
+    expect(designContract).toMatch(/A \*\*notice\*\* \(`\.taskNotice`, shared with the task modal\) is a soft-filled box[^]*never a side stripe/);
+    expect(designContract).toMatch(/hidden HTML comment is a struck-through segment/);
+    expect(designContract).toMatch(/The page reads once when it opens and once per Refresh, never on a timer, on focus, or on a GET/);
+    expect(designContract).toMatch(/last, where the desktop issues bridge exists, the Secondary \*\*Promote issues\*\* link/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemPromoteIssuesSample.tsx"), "utf8");
+    expect(sample).toMatch(/export function PromoteIssuesSection/);
+    expect(sample).toMatch(/Tasks header action/);
+    expect(sample).toMatch(/Raw body/);
+    expect(sample).toMatch(/Desktop only/);
+  });
+
+  it("builds the New task and Task modals as two modes of one component with a primary Create and Save, and no drawers", () => {
+    const tasksStyles = readFileSync(join(process.cwd(), "app", "styles", "tasks.css"), "utf8");
+    const dir = join(process.cwd(), "app", "components", "tasks");
+    const modalNew = readFileSync(join(dir, "TaskModalNew.tsx"), "utf8");
+    const modalEdit = readFileSync(join(dir, "TaskModalEdit.tsx"), "utf8");
+    const modal = readFileSync(join(dir, "TaskModal.tsx"), "utf8");
+    // D1: one modal with a mode switch over one form per mode, both inside the shared frame; the two panels are gone.
+    expect(modal).toMatch(/mode: "new"[^]*mode: "edit"/);
+    expect(modalNew + modalEdit).toMatch(/<TaskModalFrame/);
+    expect(existsSync(join(dir, "NewTaskPanel.tsx"))).toBe(false);
+    expect(existsSync(join(dir, "TaskPanel.tsx"))).toBe(false);
+    expect(tasksStyles).not.toMatch(/\.(?:newTaskPanel|taskPanel)[A-Za-z]*/);
+    // D4: mode new ends with a Quiet Cancel and the one primary Create task; no "create and add another".
+    expect(modalNew).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*Create task[^\n]*<\/button>/);
+    expect(modalNew).not.toMatch(/add another|Goes to Backlog/);
+    // D5: mode edit has Save as its one primary; the resolutions, queue and start actions are Secondary.
+    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
+    expect(modalEdit).toMatch(/className="commandPrimaryAction"[^\n]*>Save<\/button>/);
+    expect(modalEdit).toMatch(/className="commandQuietAction"[^\n]*>Delete task<\/button>/);
+    expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*>Mark done and resume queue<\/button>/);
+    expect(modalEdit).toMatch(/className="taskModalResolve"/);
+    expect(tasksStyles).toMatch(/\.taskModalResolve \{[^}]*flex: 1 0 100%/);
+    // DESIGN.md and the design-system sample document both modes.
+    expect(designContract).toMatch(/\*\*New task modal\.\*\*[^]*\*\*Cancel\*\*[^]*\*\*Create task\*\*/);
+    expect(designContract).toMatch(/\*\*Task modal, mode edit\.\*\*[^]*nothing is sent until \*\*Save\*\*[^]*Save your changes first\./);
+    expect(designContract).not.toMatch(/\*\*(?:New task|Task) panel\.\*\*/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
+    expect(sample).toMatch(/Task modal, edit"/);
+    expect(sample).toMatch(/Task modal, edit, needs review/);
+  });
+
+  it("builds the Promote form as the third mode of the task modal, text-free, with one primary and the Source block of mode edit", () => {
+    const issuesStyles = readFileSync(join(process.cwd(), "app", "styles", "task-issues.css"), "utf8");
+    const dir = join(process.cwd(), "app", "components", "tasks");
+    const modal = readFileSync(join(dir, "TaskModal.tsx"), "utf8");
+    const promote = readFileSync(join(dir, "TaskModalPromote.tsx"), "utf8");
+    const modalEdit = readFileSync(join(dir, "TaskModalEdit.tsx"), "utf8");
+    const view = readFileSync(join(dir, "PromoteIssuesView.tsx"), "utf8");
+    // D1: a third mode beside new and edit, rendered by its own form inside the shared frame.
+    expect(modal).toMatch(/mode: "new"[^]*mode: "issue"[^]*mode: "edit"/);
+    expect(modal).toMatch(/<TaskModalPromote /);
+    expect(promote).toMatch(/<TaskModalFrame title="New task"/);
+    // G227-G233: the closes line, a Quiet Cancel and the one Primary Promote issue; the follow-up Close is Secondary.
+    expect(promote).toMatch(/className="commandQuietAction" onClick=\{onClose\}>Cancel<\/button>[^]*className="commandPrimaryAction"[^\n]*>Promote issue<\/button>/);
+    expect(promote.match(/commandPrimaryAction/g)).toHaveLength(1);
+    expect(promote).toMatch(/className="commandSecondaryAction" onClick=\{onClose\}>Close<\/button>/);
+    expect(promote).toMatch(/className="commandSecondaryAction"[^\n]*>Show new version<\/button>/);
+    expect(promote).toMatch(/The pull request will say Closes/);
+    // The renderer never supplies task text: no Task field, and a promote sends only the number and the digest.
+    expect(promote).not.toMatch(/TaskTextField|<textarea/);
+    expect(promote).toMatch(/promoteTaskIssue\(repositoryId, \{ number: issue\.number, digest: issue\.digest \}\)/);
+    expect(promote + modal + view).not.toMatch(/<select|dangerouslySetInnerHTML|innerHTML|localStorage|sessionStorage|console\./);
+    // The page opens the modal for the chosen issue and re-reads only for Show new version and a finished promote.
+    expect(view).toMatch(/<TaskModal key=\{modalIssue\.number\} mode="issue"/);
+    // G175-G204, G253-G257: the Source group, the 150px body box, the right-aligned count and the closes line use tokens only.
+    expect(issuesStyles).toMatch(/\.taskIssueContent \{[^}]*flex-direction: column[^}]*gap: var\(--space-3\)/);
+    expect(issuesStyles).toMatch(/\.taskIssueSource \{[^}]*flex-direction: column[^}]*gap: var\(--space-2\)/);
+    expect(issuesStyles).toMatch(/\.taskSourceRow \{[^}]*flex-wrap: wrap[^}]*gap: var\(--space-2\)/);
+    expect(issuesStyles).toMatch(/\.taskSourceLabel \{[^}]*font: 500 var\(--text-xs\)\/1\.4 var\(--font-ui\)/);
+    expect(issuesStyles).toMatch(/\.taskIssueTitle \{[^}]*font: 650 var\(--text-base\)\/1\.4 var\(--font-ui\)/);
+    expect(issuesStyles).toMatch(/\.taskModalBody \.taskIssueBodyBox \{[^}]*height: 150px/);
+    expect(issuesStyles).toMatch(/\.taskIssuePreview \.taskIssueCount \{ align-self: flex-end; \}/);
+    expect(issuesStyles).toMatch(/\.taskModalCloses \{[^}]*flex: 1 1 auto/);
+    expect(issuesStyles).not.toMatch(/#[0-9a-fA-F]{3,8}|rgba?\(|transition|animation/);
+    // Mode edit starts with the Source block for a promoted task only, and keeps Save as its one primary.
+    expect(modalEdit).toMatch(/\{issueNumber !== null && <TaskModalSource number=\{issueNumber\} caption="GitHub issue" \/>\}/);
+    expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
+    // DESIGN.md and the design-system sample document the mode, the Source block and the issue chip.
+    expect(designContract).toMatch(/\*\*Task modal, mode promote\.\*\*[^]*There is no Task field[^]*Closes #n[^]*\*\*Promote issue\*\*[^]*\*\*Show new version\*\*[^]*offers only a Secondary \*\*Close\*\*, so an issue is never promoted twice/);
+    expect(designContract).toMatch(/\*\*Task modal, mode edit\.\*\*[^]*starts the body with a \*\*Source\*\* block[^]*“GitHub issue”/);
+    expect(designContract).toMatch(/The \*\*issue chip\*\* is the same outline `\.commandChip` with the class `taskIssueChip`/);
+    expect(designContract).toMatch(/the number follows the ID as plain muted `--text-xs` data-font text/);
+    expect(designContract).toMatch(/Settings includes a \*\*GitHub\*\* section directly after \*\*Providers\*\* and before \*\*Storage\*\*/);
+    const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
+    expect(sample).toMatch(/Task modal, promote issue"/);
+    expect(sample).toMatch(/Task modal, promote issue, outside contributor and changed/);
+    expect(sample).toMatch(/Task modal, promote issue, run settings not saved/);
+    expect(sample).not.toMatch(/<TaskModalFrame/);
+  });
+
   it("documents the promoted roster, inspector, command table, and settings rail samples with tokens only", () => {
     expect(designContract).toMatch(/shipped `AgentActivityPanel` from static agents/);
     expect(designContract).toMatch(/standalone inline `AgentInspector`/);

@@ -637,6 +637,7 @@ export function createMonitorRuntime(options = {}) {
     serveNotifications: notifications.read,
     resolveRunModels: observation.resolveRunModels,
     resolveTaskStart: observation.resolveTaskStart,
+    taskIssues: observation.taskIssues,
     resolveTaskSession: observation.resolveTaskSession,
     resolveTaskSessionFacts: observation.resolveTaskSessionFacts,
     resolveTaskCheckFacts: observation.resolveTaskCheckFacts,

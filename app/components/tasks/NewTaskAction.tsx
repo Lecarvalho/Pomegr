@@ -2,7 +2,7 @@
 
 import type { RefObject } from "react";
 
-/** What the first column needs to open the New task panel and to take focus back when it closes. */
+/** What the first column needs to open the New task modal and to take focus back when it closes. */
 export type NewTaskEntry = { triggerRef: RefObject<HTMLButtonElement | null>; onOpen(): void };
 
 /**

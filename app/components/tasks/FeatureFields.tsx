@@ -10,8 +10,8 @@ import {
 } from "./task-features";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
-// Feature, Step in feature and the folded "In this feature" list, shared by the New task and Task panels (design
-// contract D217-D233 and D273-D294). Controls only report changes; each panel decides when a change is saved.
+// Feature, Step and the folded "In this feature" list, shared by the New task and Task modal forms (design contract
+// G132-G137 and G266-G271). Controls only report changes; each form decides when a change is saved.
 
 type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
 
@@ -29,7 +29,7 @@ function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: 
 }
 
 /**
- * The other tasks of the chosen feature, closed until opened. `selfId` marks the open Task panel: that task is not
+ * The other tasks of the chosen feature, closed until opened. `selfId` marks the open Task modal: that task is not
  * listed (it is still counted) and each row leads with its step.
  */
 function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: BoardShape; featureId: string; selfId?: string; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
@@ -48,13 +48,13 @@ function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: Boar
 }
 
 /**
- * Feature (unfinished features, No feature, New feature…) and Step in feature (Last, or an existing step), then the
- * folded sibling list once a created feature is chosen. New feature… reveals a one-line name in place.
+ * Feature (unfinished features, No feature, New feature…) and Step (Last, or an existing step) in one two-column row,
+ * then the folded sibling list once a created feature is chosen. New feature… reveals a one-line name in place.
  */
 export function FeatureFields({ draft, board, selfId, error, onChange, onCommitName, onCancelName, onOpenTask }: {
   draft: FeatureDraft;
   board: BoardShape;
-  /** The open task, for the Task panel: it is not listed as a sibling and is left out of "parallel with". */
+  /** The open task, for the Task modal: it is not listed as a sibling and is left out of "parallel with". */
   selfId?: string;
   error?: string | null;
   onChange(next: FeatureDraft): void;
@@ -71,7 +71,7 @@ export function FeatureFields({ draft, board, selfId, error, onChange, onCommitN
   const nameKeys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") { event.preventDefault(); onCommitName?.(); return; }
     if (event.key !== "Escape") return;
-    // Escape leaves the name and keeps the panel's own Escape handling (closing it) out of it.
+    // Escape leaves the name and keeps the modal's own Escape handling (closing it) out of it.
     event.preventDefault();
     onCancelName?.();
   };
@@ -87,8 +87,8 @@ export function FeatureFields({ draft, board, selfId, error, onChange, onCommitN
         {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
       </div>
       <div className="newTaskField">
-        <label htmlFor={stepId}>Step in feature</label>
-        <CommandSelect id={stepId} aria-label="Step in feature" options={steps.options} value={stepSelectValue(draft)} disabled={steps.disabled}
+        <label htmlFor={stepId}>Step</label>
+        <CommandSelect id={stepId} aria-label="Step" options={steps.options} value={stepSelectValue(draft)} disabled={steps.disabled}
           onChange={(value) => onChange(stepFromSelect(value, draft))} />
       </div>
     </div>

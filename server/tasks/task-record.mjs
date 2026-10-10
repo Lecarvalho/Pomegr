@@ -161,6 +161,42 @@ export function normalizeTaskInput(value) {
   return text === undefined || run === undefined || doneWhen === undefined ? undefined : { text, run, doneWhen };
 }
 
+const PROMOTE_TITLE_LENGTH = 200;
+// A body longer than any task could hold is refused before it is measured.
+const PROMOTE_BODY_READ_LENGTH = 1_000_000;
+
+/**
+ * `promote_issue` is a store action only; no route or desktop channel carries it. It holds exactly the issue
+ * `number`, its bounded one-line `title`, and the already stripped `body`. Returns `{ number, title, body }`, or
+ * undefined when invalid. Whether the composed text fits the task bound is the store's to judge (`limit`).
+ */
+export function normalizePromotePayload(value) {
+  if (!isPlainObject(value) || Object.keys(value).length !== 3 || !hasOnlyKeys(value, ["number", "title", "body"])) return undefined;
+  const { number, title, body } = value;
+  if (!Number.isSafeInteger(number) || number < 1 || number > 999_999_999) return undefined;
+  if (typeof title !== "string" || !title.isWellFormed() || title !== title.trim() || title.length === 0
+    || title.length > PROMOTE_TITLE_LENGTH || LINE_CONTROL.test(title)) return undefined;
+  if (typeof body !== "string" || !body.isWellFormed() || body.length > PROMOTE_BODY_READ_LENGTH || TEXT_CONTROL.test(body)) return undefined;
+  return { number, title, body: body.trim() };
+}
+
+/**
+ * `record_issue` is a store action only. It holds exactly a task `id` and the `number` of the issue GitHub created for
+ * it. Returns `{ taskNumber, issueNumber }`, or undefined when invalid.
+ */
+export function normalizeRecordIssuePayload(value) {
+  if (!isPlainObject(value) || Object.keys(value).length !== 2 || !hasOnlyKeys(value, ["id", "number"])) return undefined;
+  const taskNumber = isTaskId(value.id) ? Number(value.id.slice(2)) : undefined;
+  const { number } = value;
+  if (taskNumber === undefined || !Number.isSafeInteger(number) || number < 1 || number > 999_999_999) return undefined;
+  return { taskNumber, issueNumber: number };
+}
+
+/** The text a promoted task stores: the title alone for an empty body, else the title, a blank line, and the body. */
+export function composePromotedText({ title, body }) {
+  return body === "" ? title : `${title}\n\n${body}`;
+}
+
 /** The number of a validated `T-<n>` task ID, or undefined. */
 function taskNumberFromId(value) {
   return isTaskId(value) ? Number(value.slice(2)) : undefined;
@@ -369,6 +405,9 @@ export function normalizeStoredTask(row) {
   const featureId = row.feature_id ?? null;
   const step = row.step ?? null;
   const sessionId = row.session_id ?? null;
+  // The store attaches the issue number a promoted task came from (task-source.mjs); a value outside the contract is no source.
+  const issueNumber = row.source_issue ?? null;
+  const source = Number.isSafeInteger(issueNumber) && issueNumber >= 1 && issueNumber <= 999_999_999 ? { kind: "github_issue", number: issueNumber } : null;
   if ([id, text, position, run, checks, own, scheduledAt, report, createdAt, updatedAt].includes(undefined)) return undefined;
   if (typeof row.column_id !== "string" || !COLUMN_ID.test(row.column_id)) return undefined;
   if (!TASK_STATES.includes(row.state)) return undefined;
@@ -383,6 +422,7 @@ export function normalizeStoredTask(row) {
     // A linked session's title, state, and model are borrowed from committed observation by
     // `fillTaskSessions` (task-board.mjs); until it supplies them they are unknown, never guessed.
     session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null },
+    source,
     report, createdAt, updatedAt,
   };
 }

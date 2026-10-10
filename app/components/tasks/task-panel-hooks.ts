@@ -16,19 +16,6 @@ export function useTaskModelOptions(runModels?: NonNullable<TaskBoard["runModels
   return useMemo(() => modelsByProvider(runs ?? [], codex ?? []), [runs, codex]);
 }
 
-/** Non-modal drawer behavior: Escape closes unless a control inside already handled it (an open list, for instance). */
-export function useEscapeToClose(onClose: () => void) {
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      event.preventDefault();
-      onClose();
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
-}
-
 /** The clock in epoch milliseconds, read once and again every minute, for lines that say whether a time has passed. */
 export function useMinuteClock(): number {
   const [now, setNow] = useState(() => Date.now());

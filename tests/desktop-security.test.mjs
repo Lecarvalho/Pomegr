@@ -139,6 +139,22 @@ test("renderer, preload, IPC, native UI, diagnostics, update, and packaged API s
   assert.match(source, /DESKTOP_ARTIFACT_PRIVACY_SENTINEL/);
 });
 
+test("the GitHub issues bridge is one trusted-frame channel with a closed surface", async () => {
+  const [preload, main, bridge] = await Promise.all([
+    "../desktop/runtime/preload.cjs", "../desktop/runtime/shell-main.mjs", "../desktop/runtime/task-issues.mjs",
+  ].map((file) => readFile(new URL(file, import.meta.url), "utf8")));
+  assert.match(preload, /ipcRenderer\.invoke\("pomegr:task-issues", repositoryId, operation, payload\)/u);
+  assert.match(main, /installTaskIssuesIpc\(\{ \.\.\.taskBridge, dialog, getWindow/u);
+  assert.match(main, /isTrustedEvent: trustedDesktopEvent/u);
+  assert.match(bridge, /export const TASK_ISSUES_CHANNEL = "pomegr:task-issues"/u);
+  assert.match(bridge, /\["status", "list", "promote", "create", "sign_in"\]/u);
+  assert.match(bridge, /if \(!isTrustedEvent\(event\)\) return INVALID;/u);
+  assert.match(bridge, /redirect: "error"/u);
+  assert.match(bridge, /shell: false/u);
+  assert.doesNotMatch(bridge, /server\//u);
+  assert.doesNotMatch(bridge, /console\.|shell\.openExternal|process\.env\.(?:GH|GITHUB)_TOKEN/u);
+});
+
 test("artifact privacy scans extracted payloads and the exact final publish allowlist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-artifact-security-"));
   const extracted = path.join(root, "extracted");

@@ -15,6 +15,7 @@ export const TASK_ACTION_PAYLOAD_MAX_BYTES = 16 * 1024;
 const ACTION_SET = new Set(TASK_ACTION_NAMES);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported"]);
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const INVALID = Object.freeze({ ok: false, error: "invalid" });
 const UNAVAILABLE = Object.freeze({ ok: false, error: "unavailable" });
 
@@ -43,9 +44,15 @@ function requestBody(repositoryId, payload) {
 }
 
 /** Maps a monitor answer to the bounded result the renderer sees. Board, text and HTTP details never cross. */
-function boundedResult(response, body) {
+function boundedResult(response, body, action) {
   if (!isPlainObject(body)) return UNAVAILABLE;
-  if (body.ok === true) return response.ok ? Object.freeze({ ok: true }) : UNAVAILABLE;
+  if (body.ok === true) {
+    if (!response.ok) return UNAVAILABLE;
+    // Only `create` carries the one validated field it may answer: the new task's ID.
+    return action === "create" && typeof body.taskId === "string" && TASK_ID.test(body.taskId)
+      ? Object.freeze({ ok: true, taskId: body.taskId })
+      : Object.freeze({ ok: true });
+  }
   if (body.ok === false && typeof body.error === "string" && MONITOR_ERRORS.has(body.error)) {
     return Object.freeze({ ok: false, error: body.error });
   }
@@ -83,7 +90,7 @@ export function createTaskAction(options = {}) {
       });
       let parsed = null;
       try { parsed = await response.json(); } catch { return UNAVAILABLE; }
-      return boundedResult(response, parsed);
+      return boundedResult(response, parsed, action);
     } catch {
       return UNAVAILABLE;
     }

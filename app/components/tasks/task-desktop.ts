@@ -8,7 +8,7 @@ import type { FeatureInput } from "./task-features";
 // `pomegr:task-action`). A plain browser has no bridge, so it never mutates tasks and never POSTs.
 
 /** Fixed result of one desktop task action. `unavailable` means the desktop could not reach the monitor. */
-export type TaskActionResult = { ok: true } | { ok: false; error: TaskActionError | "unavailable" };
+export type TaskActionResult = { ok: true; /** Only a create answers it: the new task's ID. */ taskId?: string } | { ok: false; error: TaskActionError | "unavailable" };
 
 export type TaskDesktopBridge = {
   taskAction(repositoryId: string, action: string, payload: unknown): Promise<TaskActionResult>;
@@ -28,6 +28,7 @@ export type TaskStartStatus = "started" | "cancelled" | "unsupported_platform" |
 const START_STATUSES = new Set<string>(["started", "cancelled", "unsupported_platform", "cli_missing", "plugin_missing", "not_startable",
   "unsupported_provider", "not_found", "busy", "invalid", "unavailable", "failed", "gate_held", "worktree_dirty"]);
 
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const FAILURES = new Set<string>(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable"]);
 
 export function taskDesktopBridge(): TaskDesktopBridge | undefined {
@@ -55,7 +56,10 @@ async function sendTaskAction(repositoryId: string, action: TaskActionName, payl
   try {
     const result: unknown = await bridge.taskAction(repositoryId, action, payload);
     if (typeof result === "object" && result !== null) {
-      if ((result as { ok?: unknown }).ok === true) return { ok: true };
+      if ((result as { ok?: unknown }).ok === true) {
+        const taskId = (result as { taskId?: unknown }).taskId;
+        return typeof taskId === "string" && TASK_ID.test(taskId) ? { ok: true, taskId } : { ok: true };
+      }
       const error = (result as { error?: unknown }).error;
       if (typeof error === "string" && FAILURES.has(error)) return { ok: false, error: error as TaskActionError | "unavailable" };
     }
@@ -72,8 +76,12 @@ async function sendTaskAction(repositoryId: string, action: TaskActionName, payl
 export type TaskFieldsInput = { run?: TaskRun; doneWhen?: { checks: TaskCheck[]; own: string | null } } & FeatureInput;
 
 /** Creates a task in the repository's first column. Omitted `run` or `doneWhen` means nothing set. */
-export function createDesktopTask(repositoryId: string, input: { text: string } & TaskFieldsInput): Promise<TaskActionResult> {
-  return sendTaskAction(repositoryId, "create", input);
+export type CreateTaskResult = { ok: true; taskId: string | null } | { ok: false; error: TaskActionError | "unavailable" };
+
+/** `taskId` is the new task's ID when the monitor answered one, else null. */
+export async function createDesktopTask(repositoryId: string, input: { text: string } & TaskFieldsInput): Promise<CreateTaskResult> {
+  const result = await sendTaskAction(repositoryId, "create", input);
+  return result.ok ? { ok: true, taskId: result.taskId ?? null } : result;
 }
 
 /** Updates the given fields of one task; at least one of text, run and doneWhen is present. */
@@ -178,7 +186,7 @@ export function requeueDesktopTask(repositoryId: string, id: string): Promise<Ta
   return sendTaskAction(repositoryId, "resolve_requeue", { id });
 }
 
-/** One short fixed message per failure; the monitor's own wording and any text never reach the panel. */
+/** One short fixed message per failure; the monitor's own wording and any text never reach the modal. */
 export function createFailureMessage(error: TaskActionError | "unavailable"): string {
   return error === "limit"
     ? `The board is full: it holds ${TASK_BOUNDS.tasksPerRepository} tasks.`
@@ -200,7 +208,7 @@ export const RESOLVE_DONE_FAILURE_MESSAGE = "The task could not be marked done."
 export const REQUEUE_FAILURE_MESSAGE = "The task could not be requeued.";
 export const FEATURE_ATTACH_FAILURE_MESSAGE = "The task could not join that feature. It may be finished.";
 
-/** One fixed message per feature failure; the monitor's own wording never reaches the panel. */
+/** One fixed message per feature failure; the monitor's own wording never reaches the modal. */
 export function featureFailureMessage(error: TaskActionError | "unavailable"): string {
   if (error === "conflict") return "A feature with this name already exists.";
   if (error === "limit") return `The board holds ${TASK_BOUNDS.featuresPerRepository} features, the most it allows.`;

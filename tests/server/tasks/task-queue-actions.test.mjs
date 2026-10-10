@@ -8,7 +8,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "position", "report", "run", "scheduledAt", "session", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
 const INVALID_PAYLOADS = [{}, { id: "" }, { id: "T-0" }, { id: "t-1" }, { id: "T-01" }, { id: 1 }, { id: null }, { id: "T-1", extra: true }, null, "T-1", [], 7, undefined];
 
 async function temporaryStore(t) {

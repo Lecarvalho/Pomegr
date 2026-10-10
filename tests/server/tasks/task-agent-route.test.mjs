@@ -13,7 +13,7 @@ const TOKEN = "a".repeat(40);
 const SECRET_TEXT = "AGENT-TASK-TEXT-do-not-leak";
 const SESSIONS = {
   "claude:known": REPOSITORY_ID, "claude:norepo": null,
-  // Committed under the worktree's own identity (or none), but started for a task of REPOSITORY.
+  // Committed under another identity (a task worktree whose folder is gone, for example) or none, but started for a task of REPOSITORY.
   "claude:worktree": "repo-ffffffffffffffffffffffff", "claude:worktree-norepo": null,
 };
 const headers = { "x-pomegr-agent-authorization": TOKEN, "content-type": "application/json" };
@@ -94,6 +94,24 @@ test("success lands in the first column not queued with run and doneWhen stored,
   assert.equal(task.run.provider, "codex");
   assert.deepEqual(task.doneWhen, { checks: ["pr_open"], own: "tests green" });
   assert.equal((await add(port, { text: "again" })).json.taskId, "T-2");
+});
+
+test("add_task creates a local task with no source and never reaches the issue reader", async (context) => {
+  const store = await realStore(context);
+  const touched = [];
+  const runtime = new Proxy({
+    resolveTaskSession: () => ({ found: true, repositoryId: REPOSITORY_ID }),
+    taskIssues: { create: () => { touched.push("create"); }, list: () => { touched.push("list"); }, status: () => { touched.push("status"); }, read: () => { touched.push("read"); } },
+  }, { get(target, property) { touched.push(String(property)); return target[property]; } });
+  const server = http.createServer(createRequestHandler({ runtime, taskStore: store, agentAuthorizationToken: TOKEN }));
+  context.after(() => new Promise((done) => server.close(done)));
+  await new Promise((done) => server.listen(0, "127.0.0.1", done));
+  const response = await add(server.address().port, { text: SECRET_TEXT });
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, taskId: "T-1" });
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks[0].source, null);
+  assert.equal(store.issueDraft(REPOSITORY_ID, "T-1").hasSource, false);
+  assert.equal(touched.includes("taskIssues"), false);
+  assert.deepEqual(touched.filter((name) => ["create", "list", "status", "read"].includes(name)), []);
 });
 
 test("unauthorized and Origin-bearing requests are refused before any write", async (context) => {
@@ -217,7 +235,7 @@ const addTo = (port, sessionRef, extra = {}) => send(port, { body: JSON.stringif
 test("a session linked to a task adds to the linked task's board, whatever repository it committed under", async (context) => {
   const { store } = await linkedStore(context, "claude:worktree", "claude:worktree-norepo", "claude:uncommitted");
   const { port } = await start(context, store);
-  // The committed identity of a task worktree differs from the repository whose board holds the task.
+  // A committed identity that differs from the repository whose board holds the task does not redirect the add.
   assert.deepEqual((await addTo(port, "claude:worktree")).json, { schemaVersion: 1, ok: true, taskId: "T-4" });
   // A committed session with no repository identity, and a linked session the monitor has not committed yet, still add.
   assert.deepEqual((await addTo(port, "claude:worktree-norepo")).json, { schemaVersion: 1, ok: true, taskId: "T-5" });
@@ -254,7 +272,7 @@ test("a store that cannot read the link leaves the committed identity in charge"
   const { store } = await linkedStore(context, "claude:worktree");
   const throwing = await start(context, { ...store, sessionTasks() { throw new Error("SECRET-LINK-FAILURE"); } });
   assert.equal((await addTo(throwing.port, "claude:known")).json.ok, true);
-  // Without the link the worktree's own committed identity is used, as before the link existed.
+  // Without the link the session's own committed identity is used, as before the link existed.
   assert.equal((await addTo(throwing.port, "claude:worktree")).json.ok, true);
   assert.equal(store.readBoard("repo-ffffffffffffffffffffffff").tasks.length, 1);
   const missing = await start(context, { apply: store.apply, readBoard: store.readBoard });

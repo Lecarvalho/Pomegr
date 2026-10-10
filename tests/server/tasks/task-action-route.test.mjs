@@ -99,7 +99,8 @@ test("an authorized create answers the new board, no-store JSON, without reachin
   assert.equal(response.headers["cache-control"], "no-store");
   assert.match(response.headers["content-type"], /^application\/json/u);
   assert.equal(response.json.ok, true);
-  assert.deepEqual(Object.keys(response.json).sort(), ["board", "ok"]);
+  assert.deepEqual(Object.keys(response.json).sort(), ["board", "ok", "taskId"]);
+  assert.equal(response.json.taskId, "T-1");
   assert.deepEqual(Object.keys(response.json.board).sort(), ["columns", "features", "queue", "readiness", "repositoryId", "runModels", "tasks", "version"]);
   assert.equal(response.json.board.repositoryId, REPOSITORY_ID);
   assert.deepEqual(response.json.board.tasks.map((task) => [task.id, task.text, task.state]), [["T-1", SECRET_TEXT, "not_queued"]]);

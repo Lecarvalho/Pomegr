@@ -119,7 +119,7 @@ export type TaskView = "board" | "queue";
 
 /**
  * Lanes with a name and a count, each holding its task cards, or with `view="queue"` the Queue view of the same
- * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task panel only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard;
+ * data, both under the Queue banner while the queue is blocked or paused. Cards open the Task modal only when `onOpenTask` is given. With `edits` (the desktop app) cards can be dragged or moved from the keyboard;
  * without it the board is read-only: no draggable card, no control, no mutation. `newTask` (the desktop app) adds the
  * + New task action to the first lane of the Board; the Queue view has no lanes and so no such entry.
  */

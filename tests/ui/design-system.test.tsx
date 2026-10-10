@@ -17,7 +17,7 @@ import { DesignSystemView } from "../../app/components/design-system/DesignSyste
 import DesignSystemPage from "../../app/design-system/page";
 
 const ROLE_HEADINGS = ["Primary", "Secondary", "Segmented", "Quiet", "Text link", "Icon"];
-const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Typography and tokens"];
+const SECTION_HEADINGS = ["Buttons", "Form fields", "Request charts", "Events rail", "Agent roster", "Agent inspector", "Chips and pills", "Panels and dividers", "Command table", "Settings tab rail", "Task fields", "Task cards and board", "Task queue", "Start gates and schedule", "Sessions list Task cell", "Promote issues", "GitHub settings", "Typography and tokens"];
 const SAMPLE_SOURCES = [
   "DesignSystemView", "DesignSystemKit", "DesignSystemAgentSamples", "DesignSystemLayoutSamples", "DesignSystemEventsSample", "DesignSystemTaskFieldsSample",
   "DesignSystemTaskBoardSample", "DesignSystemTaskQueueSample", "DesignSystemTaskGatesSample", "DesignSystemSessionTaskSample",
@@ -126,11 +126,12 @@ describe("Design-system reference page", () => {
     await user.click(efforts[0]);
     expect(efforts[0]).toHaveAttribute("aria-pressed", "false");
     expect(efforts[0].parentElement).toHaveClass("commandSegmented");
-    expect(within(section).getAllByRole("checkbox", { name: "Pull request open" })[0]).toBeChecked();
-    expect(within(section).getByText("Not passed")).toBeInTheDocument();
-    expect(within(section).getByText("Passed")).toBeInTheDocument();
+    expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
+    // Done when, reported, and the edit modal sample that needs review each show the agent report's outcomes.
+    expect(within(section).getAllByText("Not passed")).toHaveLength(2);
+    expect(within(section).getAllByText("Passed")).toHaveLength(2);
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  }, 20_000);
 
   it("renders the Events rail from static data: every kind, the expander, and the empty and unavailable states", async () => {
     const user = userEvent.setup();
@@ -304,12 +305,20 @@ describe("Design-system reference page", () => {
     expect(within(readOnlyHeader).queryByRole("button")).toBeNull();
 
     const filter = sample(board, "Feature filter");
-    expect(within(filter).getByRole("button", { name: /^All/, pressed: true })).toHaveClass("commandSecondaryAction");
-    expect(within(filter).getByRole("button", { name: /^No feature/ })).toBeInTheDocument();
+    const filterSelect = within(filter).getByRole("combobox", { name: "Feature" });
+    expect(filterSelect).toHaveTextContent(/^All \(\d+\)$/);
+    expect(filterSelect.closest(".commandSelect")).toHaveClass("taskFeatureSelect");
+    await user.click(filterSelect);
+    const filterOptions = screen.getAllByRole("option").map((option) => option.textContent ?? "");
+    expect(filterOptions[0]).toMatch(/^All \(\d+\)$/);
+    expect(filterOptions.at(-1)).toMatch(/^No feature \(\d+\)$/);
+    await user.click(filterSelect);
     expect(within(filter).queryByRole("button", { name: "+ New feature" })).toBeNull();
     const desktopFilter = sample(board, "Feature filter, desktop app");
     expect(within(desktopFilter).getByRole("button", { name: "+ New feature" })).toHaveClass("commandQuietAction");
-    await user.click(within(desktopFilter).getByRole("button", { name: /^Upload reliability/ }));
+    await user.click(within(desktopFilter).getByRole("combobox", { name: "Feature" }));
+    await user.click(screen.getByRole("option", { name: /^Upload reliability \(\d+\)$/ }));
+    expect(within(desktopFilter).getByRole("combobox", { name: "Feature" })).toHaveTextContent(/^Upload reliability \(\d+\)$/);
     expect(within(desktopFilter).getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
 
     const strip = within(sample(board, "Capacity strip")).getByRole("region", { name: "Provider capacity" });
@@ -501,7 +510,7 @@ describe("Design-system reference page", () => {
 
     const fields = sectionOf("Task fields");
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })).toHaveLength(3);
-    expect(within(fields).getAllByRole("combobox", { name: "Step in feature" })).toHaveLength(3);
+    expect(within(fields).getAllByRole("combobox", { name: "Step" })).toHaveLength(3);
     expect(within(fields).getAllByRole("combobox", { name: "Feature" })[0]).toHaveTextContent("Upload reliability");
     const created = sample(fields, "New feature");
     expect(within(created).getByRole("textbox", { name: "Feature name" })).toHaveValue("Retry telemetry");
@@ -509,7 +518,7 @@ describe("Design-system reference page", () => {
     expect(placed.querySelector(".taskFeatureDetails > summary")).toHaveTextContent("In this feature4 tasks · 1 done");
     expect(placed.querySelectorAll(".taskFeatureItem")).toHaveLength(4);
     expect(placed.querySelector(".taskFeatureItem.hasStep")).toBeNull();
-    const inPanel = sample(fields, "Feature and Step, in the Task panel");
+    const inPanel = sample(fields, "Feature and Step, in the Task modal");
     expect(inPanel.querySelectorAll(".taskFeatureItem")).toHaveLength(3);
     expect(inPanel.querySelectorAll(".taskFeatureItem.hasStep")).toHaveLength(3);
     await user.type(within(created).getByRole("textbox", { name: "Feature name" }), "!");

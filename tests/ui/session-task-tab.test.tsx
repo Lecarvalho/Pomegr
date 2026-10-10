@@ -17,7 +17,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
     run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
-    state: "not_queued", scheduledAt: null, session: null, report: null,
+    state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
@@ -68,6 +68,35 @@ describe("SessionTaskTab", () => {
     expect(panel).toHaveTextContent("Add the complete_task and block_task tools.");
     expect(panel).toHaveTextContent("PlannedClaude Code · opus · high");
     expect(panel).toHaveTextContent("Observedopus as the latest recorded for the main agent");
+  });
+
+  it("shows one source line for a task promoted from a GitHub issue: Source, the #N chip, then GitHub issue", () => {
+    setBoard(board({ tasks: [{ ...mine, source: { kind: "github_issue", number: 142 } }, ...siblings] }));
+    const { container } = render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    const panel = screen.getByRole("region", { name: "Task T-14" });
+    const line = panel.querySelector(".sessionTaskSource") as HTMLElement;
+    expect([...line.children].map((child) => child.textContent)).toEqual(["Source", "#142", "GitHub issue"]);
+    expect(within(line).getByRole("img", { name: "GitHub issue #142" })).toHaveClass("commandChip", "taskIssueChip");
+    expect(panel.querySelectorAll(".sessionTaskSource")).toHaveLength(1);
+    // The line leads the body, before the task text, and no promote time is invented for it.
+    const text = panel.querySelector(".sessionTaskText") as HTMLElement;
+    expect(line.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(line.textContent).not.toMatch(/promoted|\d{4}/i);
+    expect(container.querySelector("a[href*='github'], .sessionTaskSource a, .sessionTaskSource button")).toBeNull();
+  });
+
+  it("shows no source line for a task with no source, an older monitor's task, or a reduced form", () => {
+    const older = { ...mine } as Partial<Task>;
+    delete older.source;
+    for (const tasks of [[mine, ...siblings], [older as Task, ...siblings]]) {
+      setBoard(board({ tasks }));
+      const { unmount } = render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+      expect(screen.getByRole("region", { name: "Task T-14" }).querySelector(".sessionTaskSource")).toBeNull();
+      unmount();
+    }
+    setBoard(board({ readiness: "loading", tasks: [] }));
+    render(<SessionTaskTab task={reference} sessionId={sessionId} />);
+    expect(document.querySelector(".sessionTaskSource")).toBeNull();
   });
 
   it("is read only: no button, form field or IPC call", () => {

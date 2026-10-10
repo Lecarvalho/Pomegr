@@ -11,6 +11,7 @@ vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: []
 const inventory: RepositoryInventorySnapshot = { revision: 1, readiness: "ready", repositories: [] };
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory, loading: false, connected: true, refresh: vi.fn() }) }));
 
+import { chooseCommandOption } from "./command-select-helpers";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
@@ -26,7 +27,7 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
     id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id - 1, featureId: null, step: null,
     run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
-    state: "not_queued", scheduledAt: null, session: null, report: null,
+    state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
@@ -455,7 +456,7 @@ describe("New task in the first lane", () => {
     expect(within(column("Backlog")).getByRole("button", { name: "New task" })).toBe(add());
   });
 
-  it("opens the New task panel, and focus returns to it when the panel closes", async () => {
+  it("opens the New task modal, and focus returns to it when the modal closes", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(add());
@@ -476,14 +477,13 @@ describe("New task in the first lane", () => {
     expect(screen.getByRole("dialog", { name: "New task" })).toBeInTheDocument();
   });
 
-  it("stays while a feature filter is on, because creating a task is not a move", async () => {
-    const user = userEvent.setup();
+  it("stays while a feature filter is on, because creating a task is not a move", () => {
     setBoard({
       features: [{ id: "feature-1", name: "Upload reliability", done: false }],
       tasks: [task(1, { featureId: "feature-1", step: 1 }), task(2)],
     });
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.click(screen.getByRole("button", { name: /^Upload reliability/ }));
+    chooseCommandOption(screen.getByRole("combobox", { name: "Feature" }), "Upload reliability (1)");
     expect(screen.getByText("Moving cards is off while a feature filter is on.")).toBeInTheDocument();
     expect(add()).toBeInTheDocument();
   });

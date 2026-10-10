@@ -11,7 +11,7 @@ function task(overrides: Partial<Task> = {}): Task {
   return {
     id: "T-1", text: "Write the changelog", columnId: "col-1", position: 0, featureId: null, step: null,
     run: { provider: null, model: null, effort: null }, doneWhen: { checks: [], own: null },
-    state: "not_queued", scheduledAt: null, session: null, report: null,
+    state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
   };
 }
@@ -151,6 +151,21 @@ describe("parseTaskBoard", () => {
     const parsed = parseTaskBoard(board({ tasks: [task({ session: { id: "claude:1", title: "Fix parser", state: "working", observedModel: "opus" }, report: { at: "2026-10-08T11:00:00.000Z", results: [{ check: "pr_open", passed: false }], blockReason: null } })] }), repositoryId);
     expect(parsed?.tasks[0].session?.title).toBe("Fix parser");
     expect(parsed?.queue).toEqual({ status: "idle", blockedBy: null, pauseReason: null, order: [] });
+  });
+
+  it("keeps a task's GitHub issue source, reads a missing key as none, and rejects anything else", () => {
+    const parsed = parseTaskBoard(board({ tasks: [task({ source: { kind: "github_issue", number: 142 } }), task({ id: "T-2", source: null })] }), repositoryId);
+    expect(parsed?.tasks.map((entry) => entry.source)).toEqual([{ kind: "github_issue", number: 142 }, null]);
+    // The edges of the documented range are valid.
+    for (const number of [1, 999_999_999]) expect(parseTaskBoard(board({ tasks: [task({ source: { kind: "github_issue", number } })] }), repositoryId)?.tasks[0].source?.number).toBe(number);
+    // An older monitor sends no key at all.
+    const older = task() as Partial<Task>;
+    delete older.source;
+    expect(parseTaskBoard(board({ tasks: [older as Task] }), repositoryId)?.tasks[0].source).toBeNull();
+    for (const source of [{ kind: "github_issue", number: 0 }, { kind: "github_issue", number: 1_000_000_000 }, { kind: "github_issue", number: 1.5 }, { kind: "github_issue", number: -2 },
+      { kind: "github_issue", number: "142" }, { kind: "github_issue" }, { kind: "pull_request", number: 4 }, { number: 4 }, "github_issue", 142, [], true]) {
+      expect(parseTaskBoard(board({ tasks: [task({ source: source as never })] }), repositoryId), JSON.stringify(source)).toBeNull();
+    }
   });
 
   it("keeps the queue start order and rejects a malformed one like any malformed board", () => {
