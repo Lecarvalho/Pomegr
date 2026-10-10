@@ -1188,6 +1188,17 @@ class. Column names are five fixed values.
 
 - They live only in the task store, and are served only by `GET /api/tasks` and the
   desktop IPC.
+- The Search bar (the Ctrl K palette) searches the tasks of the board in view. This is a
+  presentation of the board the client already holds, not a new read or route:
+  `TaskBoardPane` registers the ready board's tasks as the palette's scope
+  (`app/components/command-center/palette-scope.ts`, items built by
+  `app/components/tasks/task-search.ts`) and withdraws them when the board leaves the
+  page or stops being ready, so a `desktop_only` client has nothing to search. The items
+  and the query stay in renderer memory: never in browser storage, a URL, a request, or
+  the notification layer. A match is by task ID, task text, session title, feature name,
+  column name, chip label, and `#<issue number>`. Choosing a task opens its Task modal
+  in the desktop app; any other client is shown the card on the Board, with a feature
+  filter cleared. No other page puts task text in the palette.
 - A column's role is not user-authored text: it is one of three fixed values or null,
   served on `GET /api/tasks` beside the fixed column name and nowhere else.
 - They never enter `/api/state`, session catalogs, reports, logs, notifications,
