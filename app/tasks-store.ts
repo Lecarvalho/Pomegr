@@ -84,7 +84,9 @@ function validTask(value: unknown): value is Task {
     && checks !== null && nullableText(doneWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))
-    && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)))
+    && (report === null || (timestamp(report.at) && results !== null && nullableText(report.blockReason, LIMITS.blockReason)
+      // An older monitor serves no attention note, which reads as none.
+      && (report.attention === undefined || nullableText(report.attention, LIMITS.blockReason))))
     && timestamp(task.createdAt) && timestamp(task.updatedAt);
 }
 

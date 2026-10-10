@@ -3,7 +3,7 @@ import { z } from "zod";
 export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
-export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. When Pomegr started this session for a task, call complete_task once the task is done, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
+export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. When Pomegr started this session for a task, call complete_task once the task is done, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
 
@@ -71,6 +71,7 @@ const REPORT_REASON_TEXT = {
 };
 export const TASK_REPORT_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so nothing was reported.";
 
+const ONE_LINE = /^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u;
 const SAFE_THREAD_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 
 /**
@@ -136,14 +137,20 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
 
   server.registerTool("complete_task", {
     title: "Report the Pomegr task complete",
-    description: "Report that the task Pomegr started this session for is complete. Pomegr then verifies the conditions the user checked and marks the task done or in need of review. It takes no input: the session is bound by the host, and each session reports once.",
-    inputSchema: z.object(hookFields(hookBound)).strict(),
+    description: "Report that the task Pomegr started this session for is complete. Pomegr then verifies the conditions the user checked and marks the task done, or puts it in Review when a condition is not confirmed or you set attention. Set attention only when the work is finished but something needs the user's attention, such as a choice you made for them or a follow-up they must do; leave it out otherwise. A task in Review does not hold the queue; when the work that follows must not start, call block_task instead. The session is bound by the host, and each session reports once.",
+    inputSchema: z.object({
+      attention: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.").optional()
+        .describe("Optional. What in the finished work needs the user's attention, in one line of at most 200 characters. No secrets, commands, or output."),
+      ...hookFields(hookBound),
+    }).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), {}, (answer) => {
+  }, async (input, extra) => report(TASK_COMPLETE_PATH, await resolveSession(input, extra, "complete_task"), input.attention === undefined ? {} : { attention: input.attention }, (answer) => {
     if (answer.state === "done") return "Task reported complete. Pomegr marked it done.";
     if (answer.state !== "needs_review") return null;
     const failed = (Array.isArray(answer.results) ? answer.results : [])
       .filter((entry) => entry && entry.passed === false && Object.hasOwn(CHECK_LABELS, entry.check)).map((entry) => CHECK_LABELS[entry.check]);
+    // With a note and no failed check, Review is what the agent asked for.
+    if (input.attention !== undefined && failed.length === 0) return "Task reported complete. Pomegr put it in Review for the user's attention; do not report again.";
     return `Task reported complete, but Pomegr could not confirm: ${failed.length > 0 ? failed.join(", ") : "a checked condition"}. The task now needs the user's review; do not report again.`;
   }));
 
@@ -151,7 +158,7 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     title: "Report the Pomegr task blocked",
     description: "Report that you cannot continue the task Pomegr started this session for, with a short reason the user will read. The task is marked blocked until the user resolves it. The session is bound by the host, and each session reports once.",
     inputSchema: z.object({
-      reason: z.string().trim().min(1).max(200).regex(/^[^\u0000-\u001f\u007f-\u009f\u2028\u2029]+$/u, "Use one line of plain text.")
+      reason: z.string().trim().min(1).max(200).regex(ONE_LINE, "Use one line of plain text.")
         .describe("Why the task cannot continue, in one line of at most 200 characters. No secrets, commands, or output."),
       ...hookFields(hookBound),
     }).strict(),

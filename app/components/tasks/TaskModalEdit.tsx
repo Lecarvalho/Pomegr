@@ -28,8 +28,8 @@ import { useTaskStart } from "./use-task-start";
 // Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
 // body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Done when,
 // Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
-// keeps saving by itself. A task that needs review, is blocked or stalled leads the footer with Mark done and resume
-// queue and Requeue task. A task whose linked session has not reported offers Mark done and Requeue task too, with a
+// keeps saving by itself. A task that is blocked or stalled leads the footer with Mark done and resume
+// queue and Requeue task; one that needs review holds no queue, so its first action reads Mark done. A task whose linked session has not reported offers Mark done and Requeue task too, with a
 // line that neither stops the session; nothing marks such a task done or stalled by itself. While the draft is unsaved
 // Start session, Add to queue, Remove from queue, Mark done and Requeue task are disabled.
 
@@ -38,9 +38,9 @@ const STALLED_NOTE = "The session ended with no report.";
 function reportLine(report: NonNullable<Task["report"]>) {
   // The time sits in parentheses: a locale whose time ends in a period ("p.m.") must not double the sentence's own.
   const time = Number.isFinite(Date.parse(report.at)) ? <> (<time dateTime={report.at}>{sessionListTime(report.at)}</time>)</> : null;
-  return report.blockReason === null
-    ? <>Agent reported complete{time}.</>
-    : <>Agent reported it cannot continue{time}: {report.blockReason}</>;
+  if (report.blockReason !== null) return <>Agent reported it cannot continue{time}: {report.blockReason}</>;
+  // The agent's own line, shown as its words: Pomegr does not judge it.
+  return report.attention ? <>Agent reported complete{time} and asks for your attention: {report.attention}</> : <>Agent reported complete{time}.</>;
 }
 
 /** Every change goes through the desktop bridge; success refreshes the board, failure keeps the draft and says so once. */
@@ -177,7 +177,7 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {folderLine && <span className="taskModalNote" role="status" aria-live="polite">{folderLine}</span>}
         {folderOffered && <button type="button" className="commandSecondaryAction" disabled={start.folder.opening} onClick={() => void start.folder.open()}>Open folder</button>}
         {unresolved && <>
-          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(true)}>Mark done and resume queue</button>
+          <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(true)}>{task.state === "needs_review" ? "Mark done" : "Mark done and resume queue"}</button>
           <button type="button" className="commandSecondaryAction" disabled={resolveDisabled} onClick={() => void resolve(false)}>Requeue task</button>
         </>}
         {awaitingReport && <>

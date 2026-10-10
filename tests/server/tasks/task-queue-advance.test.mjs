@@ -11,14 +11,16 @@ const FEATURE = features[0].id;
 const OTHER_FEATURE = features[1].id;
 const next = (tasks, status = "running", list = features) => nextQueueStart({ status, tasks, features: list });
 
-test("queueWhenTurnedOn runs unless a task needs the user, then blocks at the lowest-numbered one", () => {
+test("queueWhenTurnedOn runs unless a task is stalled or blocked, then blocks at the lowest-numbered one", () => {
   assert.deepEqual(queueWhenTurnedOn([]), { status: "running", blockedBy: null });
   assert.deepEqual(queueWhenTurnedOn([task(1), task(2, { state: "done" }), task(3, { state: "not_queued" }), task(4, { state: "scheduled" })]), { status: "running", blockedBy: null });
-  for (const state of ["needs_review", "stalled", "blocked"]) {
+  // A task in review is finished work that waits for the owner: it never holds the queue.
+  assert.deepEqual(queueWhenTurnedOn([task(1), task(7, { state: "needs_review" })]), { status: "running", blockedBy: null });
+  for (const state of ["stalled", "blocked"]) {
     assert.deepEqual(queueWhenTurnedOn([task(1), task(7, { state })]), { status: "blocked", blockedBy: "T-7" }, state);
   }
   // Numeric, not textual: T-2 sorts before T-10, whatever the list order.
-  assert.deepEqual(queueWhenTurnedOn([task(10, { state: "blocked" }), task(2, { state: "stalled" }), task(30, { state: "needs_review" })]), { status: "blocked", blockedBy: "T-2" });
+  assert.deepEqual(queueWhenTurnedOn([task(10, { state: "blocked" }), task(2, { state: "stalled" }), task(1, { state: "needs_review" })]), { status: "blocked", blockedBy: "T-2" });
 });
 
 test("queueWhenTurnedOn never throws and ignores records it cannot place", () => {
@@ -89,11 +91,15 @@ test("a candidate waits for every earlier step of its feature and never skips ah
   assert.deepEqual(next([step(1, 1), step(2, 2)]), { starts: ["T-1"] });
   assert.deepEqual(next([step(1, 1, { state: "done" }), step(2, 2)]), { starts: ["T-2"] });
   // Step 1 is not done: its task is still queued behind, in progress, or waiting on the user.
-  for (const state of ["not_queued", "scheduled", "needs_review", "stalled", "blocked"]) {
+  for (const state of ["not_queued", "scheduled", "stalled", "blocked"]) {
     assert.equal(next([step(1, 1, { state }), step(2, 2)]), null, state);
   }
+  // A task in review is finished work: the next step starts, alone or beside a done task of the same step.
+  assert.deepEqual(next([step(1, 1, { state: "needs_review" }), step(2, 2)]), { starts: ["T-2"] });
+  assert.deepEqual(next([step(1, 1, { state: "done" }), step(2, 1, { state: "needs_review" }), step(3, 2)]), { starts: ["T-3"] });
+  assert.equal(next([step(1, 1, { state: "needs_review" }), step(2, 1, { state: "stalled" }), step(3, 2)]), null);
   // The queue waits; a queued task without a feature further down does not jump the line.
-  assert.equal(next([step(1, 1, { state: "needs_review" }), step(2, 2), task(3)]), null);
+  assert.equal(next([step(1, 1, { state: "stalled" }), step(2, 2), task(3)]), null);
   // One undone task in an earlier step is enough, and every step before the candidate counts.
   assert.equal(next([step(1, 1, { state: "done" }), step(2, 2, { state: "done" }), step(3, 2, { state: "stalled" }), step(4, 3)]), null);
   assert.equal(next([step(1, 1, { state: "stalled" }), step(2, 2, { state: "done" }), step(3, 3)]), null);

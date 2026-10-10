@@ -1,28 +1,33 @@
 // The agent's report on the task its session was started for, and the user's two resolutions.
 //
-// `complete` verifies the task's checked conditions from committed repository facts and sets Done or
-// Needs review; `block` stores the agent's bounded reason and sets Blocked by agent. Both find the task
+// `complete` verifies the task's checked conditions from committed repository facts and sets Done, or Needs
+// review when a checked condition failed or the agent named something for the owner's attention (a bounded
+// one-line note); `block` stores the agent's bounded reason and sets Blocked by agent. Both find the task
 // only through the session the harness bound the call to, and a task takes one report per dispatch: a
 // second report, or a report on a task that already has an outcome, changes nothing. The stored report
-// holds only `{ check, passed }` results, the time, and the block reason. A task is never completed here
-// without a report.
+// holds only `{ check, passed }` results, the time, the block reason, and the attention note. A task is never
+// completed here without a report.
 //
-// A failed check or a block stops a running queue (the task is named in `queue_blocked_by`); resolving
-// the last task that needs the user lets it run again. An idle or paused queue keeps its status.
+// A block stops a running queue (the task is named in `queue_blocked_by`), and so does a stalled task
+// (task-stall.mjs); resolving the last of them lets it run again. An idle or paused queue keeps its status.
+// Needs review never stops the queue: the work is finished and waits in the Review column for the owner.
 //
 // The write that sets Done or Needs review also moves the card to the column that holds that role
 // (task-columns.mjs). Blocked leaves the card where it is; Requeue puts it back in Ready, last, like any task that
 // joins the queue (`settleReadyColumn`, run by the store after the action).
 
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
+import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { allChecksPassed, verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
 
-/** Outcomes that need the user and hold the queue. */
+/** Outcomes the user resolves with Mark done or Requeue. */
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
+/** The ones that hold the queue. A task that needs review is finished work, so the queue goes on past it. */
+const QUEUE_HOLDING_STATES = Object.freeze(["stalled", "blocked"]);
 
 const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "object" && !Array.isArray(payload)
   && Object.keys(payload).length === keys.length && keys.every((key) => Object.hasOwn(payload, key));
@@ -32,30 +37,32 @@ const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT *
 // A session can still report on a task in flight that has no report yet; an outcome is final for its dispatch.
 const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
 
-// The first task that needs the user holds a running queue; a queue already blocked keeps its first blocker.
+// The first stalled or blocked task holds a running queue; a queue already blocked keeps its first blocker.
 export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
     .run(taskId, repositoryId);
 }
 
-// After a resolution or a deletion: a blocked queue names the lowest-numbered task that still needs the user, or runs again when none does.
+// After a resolution or a deletion, and when the store opens: a blocked queue names the lowest-numbered task that still holds it, or runs again when none does.
 export function releaseQueue(database, repositoryId) {
   const repository = preparedStatement(database, "SELECT queue_status FROM repositories WHERE repository_id = ?").get(repositoryId);
   if (repository?.queue_status !== "blocked") return;
-  const next = preparedStatement(database, `SELECT MIN(number) AS number FROM tasks WHERE repository_id = ? AND state IN (${UNRESOLVED_STATES.map(() => "?").join(", ")})`)
-    .get(repositoryId, ...UNRESOLVED_STATES);
+  const next = preparedStatement(database, `SELECT MIN(number) AS number FROM tasks WHERE repository_id = ? AND state IN (${QUEUE_HOLDING_STATES.map(() => "?").join(", ")})`)
+    .get(repositoryId, ...QUEUE_HOLDING_STATES);
   const blocker = next?.number === null || next?.number === undefined ? undefined : taskIdFromNumber(Number(next.number));
   if (blocker) preparedStatement(database, "UPDATE repositories SET queue_blocked_by = ? WHERE repository_id = ?").run(blocker, repositoryId);
   else preparedStatement(database, "UPDATE repositories SET queue_status = 'running', queue_blocked_by = NULL WHERE repository_id = ?").run(repositoryId);
 }
 
-function storeReport(database, row, { state, at, results, blockReason }) {
+function storeReport(database, row, { state, at, results, blockReason, attention = null }) {
   const written = preparedStatement(database, `UPDATE tasks SET state = ?, queue_position = NULL, report_at = ?, report_results = ?, report_block_reason = ?, updated_at = ?
     WHERE repository_id = ? AND number = ? AND session_id = ? AND report_at IS NULL`)
     .run(state, at, JSON.stringify(results), blockReason, at, row.repository_id, row.number, row.session_id);
   if (Number(written.changes) !== 1) return false;
+  if (attention === null) deleteTaskAttention(database, row.repository_id, Number(row.number));
+  else writeTaskAttention(database, row.repository_id, Number(row.number), attention);
   if (state === "done" || state === "needs_review") moveTaskToRole(database, row.repository_id, Number(row.number), state === "done" ? "done" : "review");
-  if (state !== "done") blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
+  if (QUEUE_HOLDING_STATES.includes(state)) blockQueue(database, row.repository_id, taskIdFromNumber(Number(row.number)));
   return true;
 }
 
@@ -73,10 +80,15 @@ export function reportableChecks({ database, sessionId }) {
 /**
  * `complete`: the bound session reports its task complete. `resolveFacts()` returns the plain repository facts
  * `verifyChecks` judges, read by the entry point (for a report, from a read made when the report arrived), and is
- * called only for a task that can still be reported on. Answers `{ ok: true, state, results }` with `state` `done` or `needs_review`.
+ * called only for a task that can still be reported on. The payload is `{ sessionId }`, or `{ sessionId, attention }`
+ * with one line of at most 200 characters that names what the owner should look at. Answers `{ ok: true, state, results }`
+ * with `state` `done`, or `needs_review` when a checked condition failed or the report carries an attention note.
  */
 export function reportComplete({ database, transaction, payload, resolveFacts, now }) {
-  if (!hasExactKeys(payload, ["sessionId"]) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
+  const noted = hasExactKeys(payload, ["sessionId", "attention"]);
+  if ((!noted && !hasExactKeys(payload, ["sessionId"])) || !isTaskSessionId(payload.sessionId)) return { ok: false, error: "invalid" };
+  const attention = noted ? normalizeBlockReason(payload.attention) : null;
+  if (attention === undefined || (noted && attention === null)) return { ok: false, error: "invalid" };
   const row = linkedRow(database, payload.sessionId);
   if (!row) return { ok: false, error: "not_found" };
   const task = normalizeStoredTask(row);
@@ -85,12 +97,12 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.doneWhen.checks, facts);
-  const state = allChecksPassed(results) ? "done" : "needs_review";
+  const state = attention === null && allChecksPassed(results) ? "done" : "needs_review";
   const stored = transaction(() => {
     // The task may have been reported, resolved, or deleted since the read above.
     const fresh = linkedRow(database, payload.sessionId);
     return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
-      && storeReport(database, fresh, { state, at: now(), results, blockReason: null });
+      && storeReport(database, fresh, { state, at: now(), results, blockReason: null, attention });
   });
   return stored ? { ok: true, state, results } : { ok: false, error: "already_reported" };
 }
@@ -151,6 +163,7 @@ export function resolveRequeue({ database, repositoryId }, payload) {
   preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = NULL, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
     report_at = NULL, report_results = NULL, report_block_reason = NULL, updated_at = ? WHERE repository_id = ? AND number = ?`)
     .run(Date.now(), repositoryId, target.number);
+  deleteTaskAttention(database, repositoryId, target.number);
   releaseQueue(database, repositoryId);
   return { ok: true };
 }

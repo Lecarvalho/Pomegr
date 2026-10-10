@@ -23,7 +23,7 @@ export function taskAwaitsReport(task: Pick<Task, "state" | "session">): boolean
 
 /** States that end a task's run. They stay on the card even while its session is still bound. */
 const OUTCOME_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked", "done"]);
-/** Outcomes that hold the queue and need the user, so the card carries the attention border. */
+/** Outcomes that need the user, so the card carries the attention border. Only Stalled and Blocked by agent hold the queue. */
 const ATTENTION_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked"]);
 /** What the Sessions list State column shows once the monitor holds committed facts. `unknown` is the monitor saying it has none yet. */
 const BORROWED_STATUSES = new Set<SessionActivityStatus>(["working", "needs_input", "idle", "open", "stopped", "closed"]);

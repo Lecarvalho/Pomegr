@@ -103,7 +103,8 @@ export function reportOutcome(task: Task): string {
   if (task.state === "blocked") return "Blocked by agent";
   if (task.state === "needs_review") {
     const failed = failedCount(task);
-    return failed > 0 ? `Needs review, ${failed} ${failed === 1 ? "check" : "checks"} did not pass` : "Needs review";
+    if (failed > 0) return `Needs review, ${failed} ${failed === 1 ? "check" : "checks"} did not pass`;
+    return task.report?.attention ? "Needs review, the agent asks for your attention" : "Needs review";
   }
   if (task.state === "stalled") return "Stalled, the session ended with no report";
   return "not yet reported";

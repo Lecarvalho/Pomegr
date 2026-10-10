@@ -33,7 +33,7 @@ const CARD_STATES: { label: string; note: string; task: Task; next?: boolean }[]
   { label: "Queued · next", note: "The first task the monitor would start. Queued reads in ink on the raised fill.", task: T3_QUEUED, next: true },
   { label: "Scheduled", note: "Info tone, plus the muted Starts line until a session is linked.", task: T7_SCHEDULED },
   { label: "Session working", note: "The chip is the bound session's state, borrowed from the Sessions list, with a green border. A differing model is one amber line.", task: T6_WORKING },
-  { label: "Needs review", note: "Amber border and chip: a check did not pass.", task: T2_REVIEW },
+  { label: "Needs review", note: "Amber border and chip: a check did not pass, or the agent asks for the owner's attention.", task: T2_REVIEW },
   { label: "Stalled", note: "The session ended with no report.", task: T2_STALLED },
   { label: "Blocked by agent", note: "The agent reported it cannot continue.", task: T2_BLOCKED },
   { label: "Done", note: "Muted title and Open session.", task: T1_DONE },

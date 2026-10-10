@@ -378,6 +378,9 @@ function normalizeReport(row) {
   const at = isoTime(row.report_at);
   const parsed = parsedJsonArray(row.report_results);
   const blockReason = normalizeBlockReason(row.report_block_reason);
+  // The store attaches what the agent asked the owner to look at (task-attention.mjs), bounded like a block reason; a
+  // value outside the contract is no note.
+  const attention = normalizeBlockReason(row.report_attention) ?? null;
   if (at === undefined || parsed === undefined || blockReason === undefined || parsed.length > TASK_CHECKS.length) return undefined;
   const results = [];
   for (const item of parsed) {
@@ -385,7 +388,7 @@ function normalizeReport(row) {
       || typeof item.check !== "string" || !TASK_CHECKS.includes(item.check)) return undefined;
     results.push({ check: item.check, passed: item.passed });
   }
-  return { at, results, blockReason };
+  return { at, results, blockReason, attention };
 }
 
 /** Projects one stored `tasks` row; undefined when any stored field is outside the contract. */

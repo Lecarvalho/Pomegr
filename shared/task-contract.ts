@@ -46,7 +46,12 @@ export type TaskSession = { id: string; title: string | null; state: string; obs
  * copied once into the task's text and nothing is read from the issue again. Null for a task made on the board.
  */
 export type TaskSource = { kind: "github_issue"; number: number };
-export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null };
+/**
+ * `attention` is what the agent asked the owner to look at when it reported complete: one line of at most 200
+ * characters, agent-authored like `blockReason`. A report that carries one puts the task in Review even when every
+ * check passed. Null when the agent named nothing, and absent from an older monitor, which means the same.
+ */
+export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null; attention?: string | null };
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
  * order, each feature's steps ascending, tasks of one step by task number, then tasks without a feature in the
@@ -54,7 +59,7 @@ export type TaskReport = { at: string; results: { check: TaskCheck; passed: bool
  * is the "Queued · next" task. It carries IDs only, at most one per task.
  *
  * `idle` is the queue turned off (the default); `running` is on. `blocked` names in `blockedBy` the task that
- * needs the user (Needs review, Stalled, or Blocked by agent). `paused` names in `blockedBy` the task whose start
+ * holds it (Stalled or Blocked by agent; a task that needs review never holds the queue). `paused` names in `blockedBy` the task whose start
  * did not succeed, with the fixed `pauseReason`; `pauseReason` is null in every other status.
  */
 export type TaskQueue = {

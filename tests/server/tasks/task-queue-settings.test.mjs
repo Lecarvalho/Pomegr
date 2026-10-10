@@ -42,7 +42,7 @@ test("a repository the board never saw can have its queue turned on or off and k
   assert.equal(queueSettings(store, false, `repo-${"c3".repeat(12)}`).board.queue.status, "idle");
 });
 
-test("turning the queue on with a task that needs the user blocks it at the lowest-numbered such task", async (context) => {
+test("turning the queue on with a stalled or blocked task blocks it at the lowest-numbered such task, and a task in review holds nothing", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   for (let count = 0; count < 12; count += 1) createTask(store);
   updateTask(directory, 11, { state: "stalled" });
@@ -50,11 +50,18 @@ test("turning the queue on with a task that needs the user blocks it at the lowe
   updateTask(directory, 3, { state: "needs_review" });
   updateTask(directory, 2, { state: "done" });
   const result = queueSettings(store, true);
-  assert.deepEqual({ ...result.board.queue, order: undefined }, { status: "blocked", blockedBy: "T-3", pauseReason: null, order: undefined });
-  assert.deepEqual(queueRow(directory), { queue_status: "blocked", queue_blocked_by: "T-3" });
+  assert.deepEqual({ ...result.board.queue, order: undefined }, { status: "blocked", blockedBy: "T-10", pauseReason: null, order: undefined });
+  assert.deepEqual(queueRow(directory), { queue_status: "blocked", queue_blocked_by: "T-10" });
   // On again leaves a blocked queue as it is, so its named task does not change under the user.
   updateTask(directory, 1, { state: "stalled" });
-  assert.equal(queueSettings(store, true).board.queue.blockedBy, "T-3");
+  assert.equal(queueSettings(store, true).board.queue.blockedBy, "T-10");
+});
+
+test("a queue with only tasks in review runs when it is turned on", async (context) => {
+  const { store, directory } = await openTemporaryStore(context);
+  for (let count = 0; count < 3; count += 1) createTask(store);
+  updateTask(directory, 2, { state: "needs_review" });
+  assert.deepEqual({ ...queueSettings(store, true).board.queue, order: undefined }, { status: "running", blockedBy: null, pauseReason: null, order: undefined });
 });
 
 test("turning the queue off idles it from every status and never touches a task or its session", async (context) => {

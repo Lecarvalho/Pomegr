@@ -17,6 +17,7 @@ const OTHER_SESSION = "codex:019a0000-2222-7333-8444-555566667777";
 const COMPLETE = "/api/agent/v1/tasks/complete";
 const BLOCK = "/api/agent/v1/tasks/block";
 const REASON = "The SECRET-REASON migration needs a decision";
+const ATTENTION = "The SECRET-NOTE retry limit is a guess; confirm it";
 const agentHeaders = { "x-pomegr-agent-authorization": AGENT, "content-type": "application/json" };
 const START_FACTS = { root: "C:/Work/SECRET-ROOT/repo", pluginReady: true };
 // Every fact carries the time it was read, later than the work it judges; a fact without one is unknown.
@@ -66,7 +67,8 @@ function send(port, { method = "POST", path: requestPath, headers = agentHeaders
   });
 }
 
-const complete = (env, sessionRef = SESSION) => send(env.port, { path: COMPLETE, body: JSON.stringify({ sessionRef }) });
+const complete = (env, sessionRef = SESSION, attention = undefined) =>
+  send(env.port, { path: COMPLETE, body: JSON.stringify(attention === undefined ? { sessionRef } : { sessionRef, attention }) });
 const block = (env, reason = REASON, sessionRef = SESSION) => send(env.port, { path: BLOCK, body: JSON.stringify({ sessionRef, reason }) });
 const refused = (response, status, reason) => {
   assert.equal(response.status, status);
@@ -105,8 +107,84 @@ test("complete with no checked condition is done on the report alone", async (co
   assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "done", results: [] });
   const task = taskOf(env);
   assert.equal(task.state, "done");
-  assert.deepEqual(task.report, { at: new Date(2_000_000).toISOString(), results: [], blockReason: null });
+  assert.deepEqual(task.report, { at: new Date(2_000_000).toISOString(), results: [], blockReason: null, attention: null });
   assert.equal(task.session.id, SESSION);
+});
+
+test("complete with an attention note needs review even when every check passed, and keeps the bounded note", async (context) => {
+  const env = await setup(context);
+  startedTask(env, { checks: ["tree_clean"] });
+  env.clock.now = 2_000_000;
+  const response = await complete(env, SESSION, `  ${ATTENTION}  `);
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "needs_review", results: [{ check: "tree_clean", passed: true }] });
+  assert.doesNotMatch(response.text, /SECRET/u);
+  const task = taskOf(env);
+  assert.equal(task.state, "needs_review");
+  assert.deepEqual(task.report, { at: new Date(2_000_000).toISOString(), results: [{ check: "tree_clean", passed: true }], blockReason: null, attention: ATTENTION });
+  const board = env.store.readBoard(REPOSITORY_ID);
+  assert.equal(board.columns.find((column) => column.id === task.columnId).role, "review");
+  // The note is kept beside the report in `meta`, and the tasks table gains no column.
+  assert.equal(withDatabase(env.directory, (database) => database.prepare("SELECT value FROM meta WHERE key = ?").get(`task_attention:${REPOSITORY_ID}:T-1`).value), ATTENTION);
+  refused(await complete(env, SESSION, "again"), 409, "already_reported");
+  // Mark done keeps the report with its note; the card goes to Done.
+  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+  assert.equal(taskOf(env).report.attention, ATTENTION);
+  assert.equal(taskOf(env).state, "done");
+});
+
+test("a note is cleared with its report on requeue and removed with its task", async (context) => {
+  const noteRows = (env) => withDatabase(env.directory, (database) => database.prepare("SELECT COUNT(*) AS total FROM meta WHERE key LIKE 'task_attention:%'").get().total);
+  const env = await setup(context);
+  startedTask(env);
+  await complete(env, SESSION, ATTENTION);
+  assert.equal(noteRows(env), 1);
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(taskOf(env).report, null);
+  assert.equal(noteRows(env), 0);
+
+  const other = await setup(context);
+  startedTask(other);
+  await complete(other, SESSION, ATTENTION);
+  assert.equal(apply(other, "delete", { id: "T-1" }).ok, true);
+  assert.equal(noteRows(other), 0);
+});
+
+test("a task in review does not hold the queue: the next task starts, and a later step of its feature too", async (context) => {
+  const env = await setup(context);
+  const feature = apply(env, "feature_create", { name: "Uploads" }).board.features[0].id;
+  startedTask(env);
+  apply(env, "update", { id: "T-1", featureId: feature, step: 1 });
+  apply(env, "create", { text: "Second step" });
+  apply(env, "update", { id: "T-2", featureId: feature, step: 2 });
+  apply(env, "queue_add", { id: "T-2" });
+  setQueue(env, "running");
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
+  assert.equal((await complete(env, SESSION, ATTENTION)).json.state, "needs_review");
+  const board = env.store.readBoard(REPOSITORY_ID, { resolveGateFacts: passingGates });
+  assert.deepEqual({ status: board.queue.status, blockedBy: board.queue.blockedBy }, { status: "running", blockedBy: null });
+  assert.deepEqual(board.queue.gates.next, { taskId: "T-2", provider: "claude", blockedBy: null, reasons: [] });
+  assert.deepEqual(env.store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [{ repositoryId: REPOSITORY_ID, taskId: "T-2" }] });
+});
+
+test("a store whose queue an older build blocked at a task in review runs again when it opens", async (context) => {
+  const env = await setup(context, { facts: { ...PASSING, treeClean: false } });
+  startedTask(env, { checks: ["tree_clean"] });
+  startedTask(env, { session: OTHER_SESSION });
+  await complete(env);
+  setQueue(env, "blocked", "T-1");
+  env.store.close();
+  env.store = openTaskStore({ directory: env.directory, now: () => env.clock.now });
+  assert.deepEqual({ ...env.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "running", blockedBy: null, pauseReason: null, order: undefined });
+  // A blocker that still holds the queue is named instead.
+  const held = await setup(context, { facts: { ...PASSING, treeClean: false } });
+  startedTask(held, { checks: ["tree_clean"] });
+  startedTask(held, { session: OTHER_SESSION });
+  await complete(held);
+  await block(held, REASON, OTHER_SESSION);
+  setQueue(held, "blocked", "T-1");
+  held.store.close();
+  held.store = openTaskStore({ directory: held.directory, now: () => held.clock.now });
+  assert.deepEqual({ ...held.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "blocked", blockedBy: "T-2", pauseReason: null, order: undefined });
 });
 
 test("complete verifies the checked conditions from the bound session's facts: all pass is done", async (context) => {
@@ -161,7 +239,7 @@ test("block stores the bounded reason and sets blocked", async (context) => {
   assert.doesNotMatch(response.text, /SECRET/u);
   const task = taskOf(env);
   assert.equal(task.state, "blocked");
-  assert.deepEqual(task.report, { at: new Date(3_000_000).toISOString(), results: [], blockReason: REASON });
+  assert.deepEqual(task.report, { at: new Date(3_000_000).toISOString(), results: [], blockReason: REASON, attention: null });
   assert.deepEqual(env.factCalls, []);
 });
 
@@ -200,6 +278,9 @@ test("malformed reports are invalid and change nothing", async (context) => {
   const bodies = [
     [COMPLETE, {}], [COMPLETE, { sessionRef: "claude:" }], [COMPLETE, { sessionRef: SESSION, id: "T-1" }],
     [COMPLETE, { sessionRef: SESSION, repositoryId: REPOSITORY_ID }], [COMPLETE, { sessionRef: SESSION, reason: REASON }],
+    [COMPLETE, { sessionRef: SESSION, attention: "" }], [COMPLETE, { sessionRef: SESSION, attention: "   " }], [COMPLETE, { sessionRef: SESSION, attention: "x".repeat(201) }],
+    [COMPLETE, { sessionRef: SESSION, attention: "two\nlines" }], [COMPLETE, { sessionRef: SESSION, attention: 7 }], [COMPLETE, { sessionRef: SESSION, attention: null }],
+    [COMPLETE, { sessionRef: SESSION, attention: "x", id: "T-1" }], [BLOCK, { sessionRef: SESSION, reason: REASON, attention: "x" }],
     [COMPLETE, [SESSION]], [BLOCK, { sessionRef: SESSION }], [BLOCK, { sessionRef: SESSION, reason: "" }],
     [BLOCK, { sessionRef: SESSION, reason: "   " }], [BLOCK, { sessionRef: SESSION, reason: "x".repeat(201) }],
     [BLOCK, { sessionRef: SESSION, reason: "two\nlines" }], [BLOCK, { sessionRef: SESSION, reason: 7 }],
@@ -353,7 +434,7 @@ test("block_task from the bound session works on a linked task with no report an
   assert.deepEqual(response.json, { schemaVersion: 1, ok: true, state: "blocked" });
   const task = taskOf(env);
   assert.equal(task.state, "blocked");
-  assert.deepEqual(task.report, { at: new Date(3_000_000).toISOString(), results: [], blockReason: REASON });
+  assert.deepEqual(task.report, { at: new Date(3_000_000).toISOString(), results: [], blockReason: REASON, attention: null });
   assert.equal(task.session.id, SESSION);
   const queue = env.store.readBoard(REPOSITORY_ID).queue;
   assert.deepEqual({ status: queue.status, blockedBy: queue.blockedBy }, { status: "blocked", blockedBy: "T-1" });
@@ -365,17 +446,20 @@ test("block_task from the bound session works on a linked task with no report an
   assert.equal(env.store.readBoard(REPOSITORY_ID).queue.status, "running");
 });
 
-test("a failed report blocks a running queue and its resolution lets it run again", async (context) => {
+test("a failed report leaves a running queue running; a block holds it until its resolution", async (context) => {
   const env = await setup(context, { facts: { ...PASSING, treeClean: false } });
   startedTask(env, { checks: ["tree_clean"] });
   startedTask(env, { session: OTHER_SESSION });
   setQueue(env, "running");
-  await complete(env);
-  assert.deepEqual({ ...env.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "blocked", blockedBy: "T-1", pauseReason: null, order: undefined });
+  assert.equal((await complete(env)).json.state, "needs_review");
+  assert.deepEqual({ ...env.store.readBoard(REPOSITORY_ID).queue, order: undefined }, { status: "running", blockedBy: null, pauseReason: null, order: undefined });
   await block(env, REASON, OTHER_SESSION);
-  assert.equal(env.store.readBoard(REPOSITORY_ID).queue.blockedBy, "T-1");
-  apply(env, "resolve_done", { id: "T-1" });
   let queue = env.store.readBoard(REPOSITORY_ID).queue;
+  assert.equal(queue.status, "blocked");
+  assert.equal(queue.blockedBy, "T-2");
+  // Resolving the task in review changes nothing for the queue: the blocked task still holds it.
+  apply(env, "resolve_done", { id: "T-1" });
+  queue = env.store.readBoard(REPOSITORY_ID).queue;
   assert.equal(queue.status, "blocked");
   assert.equal(queue.blockedBy, "T-2");
   apply(env, "resolve_requeue", { id: "T-2" });

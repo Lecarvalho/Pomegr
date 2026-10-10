@@ -222,6 +222,7 @@ test("a stored task projects to exactly the contract keys", () => {
       at: "2023-11-14T22:13:23.000Z",
       results: [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }],
       blockReason: "waiting on review",
+      attention: null,
     },
     createdAt: "2023-11-14T22:13:20.000Z", updatedAt: "2023-11-14T22:13:21.000Z",
   });
