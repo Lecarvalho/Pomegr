@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, type ReactNode, type Ref } from "react";
+import { pastedImageFiles } from "./TaskImages";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
@@ -16,11 +17,13 @@ const COUNT_FORMAT = new Intl.NumberFormat("en-US");
 /**
  * The Task textarea with its `{n} / 4,000` counter under it, right-aligned. `helper` and `error` are optional lines
  * under the counter (the error is an alert); the textarea is described by the counter and by whichever of them show.
+ * With `onPasteImages`, a paste that holds image files hands them over instead of typing into the field.
  */
-export function TaskTextField({ value, onChange, onBlur, readOnly, helper, error, ref }: {
+export function TaskTextField({ value, onChange, onBlur, onPasteImages, readOnly, helper, error, ref }: {
   value: string;
   onChange(value: string): void;
   onBlur?(): void;
+  onPasteImages?(files: File[]): void;
   readOnly?: boolean;
   helper?: ReactNode;
   error?: string | null;
@@ -35,7 +38,11 @@ export function TaskTextField({ value, onChange, onBlur, readOnly, helper, error
     <label htmlFor={fieldId}>Task</label>
     <textarea ref={ref} id={fieldId} rows={6} maxLength={TASK_BOUNDS.textLength} value={value} readOnly={readOnly}
       placeholder="What should the session do?" aria-describedby={describedBy}
-      onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur} />
+      onChange={(event) => onChange(event.currentTarget.value)} onBlur={onBlur}
+      onPaste={onPasteImages && ((event) => {
+        const files = pastedImageFiles(event);
+        if (files.length > 0) onPasteImages(files);
+      })} />
     <span id={counterId} className="taskTextCounter">{`${COUNT_FORMAT.format(value.length)} / ${COUNT_FORMAT.format(TASK_BOUNDS.textLength)}`}</span>
     {helper && <p id={helperId} className="newTaskHelper">{helper}</p>}
     {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}

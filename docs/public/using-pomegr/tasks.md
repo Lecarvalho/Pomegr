@@ -49,8 +49,10 @@ there until its session starts.
    **New task**.
 2. Describe the work in **Task**, up to 4,000 characters. It is the only required
    field. A card shows this text until its session has a title, then the title.
-3. Set the optional fields below.
-4. Select **Create task**. **Cancel** closes the window and writes nothing.
+3. To show the agent a screenshot or a mock-up, paste an image into **Task** or
+   select **Attach image**; see [Attach images](#attach-images).
+4. Set the optional fields below.
+5. Select **Create task**. **Cancel** closes the window and writes nothing.
 
 The task lands in the first column and is not queued. To start from an open GitHub
 issue, or to create an issue from a task, see [GitHub issues](github-issues.md).
@@ -181,6 +183,24 @@ Pomegr has observed the session, the card keeps the task's own state, so a state
 is never shown and then taken back. **Stalled** means Pomegr observed the session
 end with no report, not that the work failed.
 
+### Attach images
+
+In the desktop app a task can hold up to four images: PNG, JPEG, GIF, or WebP, each
+at most 5 MB. Paste an image into the **Task** field, or select **Attach image**
+and choose files. Each image shows as a small preview with its own **Remove**.
+
+- In **New task** the images wait in the window and are stored when you select
+  **Create task**. If one cannot be stored, the task is still created and its task
+  window opens to say so.
+- In a task window, attaching and removing take effect at once. They are not part
+  of the draft, so **Save** and **Close** do not change them.
+- A session gets the images the task holds when it starts. An image you attach
+  after that reaches the next session, for example after **Requeue task**.
+- Deleting a task deletes its images.
+
+Images stay on this computer, in the same private store as the task text. Creating
+a GitHub issue from a task sends the text only, never an image.
+
 ## Start a session
 
 Open a card and select **Start session**. A task can start when it is **Not
@@ -195,10 +215,13 @@ cannot start before its own time.
 3. When the plugin in that session reports in, the task links to the session. The
    card then shows **Open session** and the session's state.
 
-The session is told one fixed message: your task text, the **Done when** list, and
+The session is told one fixed message: your task text, where the task's images
+are, the **Done when** list, and
 the instruction to call `complete_task` when the work is done or `block_task` with
 a short reason if it cannot proceed. With nothing checked, the message says the
-agent's report alone completes the task. Starting never changes the task's state
+agent's report alone completes the task. A Claude Code session may read the folder
+that holds the task's images, and a Codex session gets them attached to the
+message. Starting never changes the task's state
 or its place in the queue. The card moves once the session links (see
 [Cards Pomegr moves](#cards-pomegr-moves)). Until the session links, or ten minutes pass, the task
 cannot start again, so you do not get two sessions.
@@ -409,8 +432,9 @@ started for them. Other devices see none of it.
   report with observed facts, and the own condition is the agent's judgment.
 - It does not turn silence into success. An unknown fact does not pass, and a
   session that vanished is **Stalled** only after its end is established.
-- Task text and your other task content stay in a private store on this computer,
-  apart from session history, so pruning history never deletes a task. They are
+- Task text, task images, and your other task content stay in a private store on
+  this computer, apart from session history, so pruning history never deletes a
+  task. The session Pomegr starts for a task is given that task's images. They are
   never in reports, notifications, or the session list, which carries only a task's
   number, outcome, feature name, step, and GitHub issue number.
 

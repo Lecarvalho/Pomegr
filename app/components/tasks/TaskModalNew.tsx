@@ -4,27 +4,32 @@ import { useEffect, useRef, useState } from "react";
 import type { TaskRun } from "../../../shared/task-contract";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateCheckbox, useIssueCreateOption } from "./IssueCreate";
+import { TaskImageField } from "./TaskImages";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
 import { createDesktopTask, createFailureMessage } from "./task-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, createPayload, type DoneWhenDraft } from "./task-fields";
 import { NO_FEATURE_DRAFT, featureCreateInput, type FeatureDraft } from "./task-features";
+import { addDesktopTaskImage, rememberImageCreateFailure, taskImagesAvailable } from "./task-images-desktop";
 import { createTaskIssue } from "./task-issues-desktop";
 import { firstColumnName, modalSubtitle, type TaskModalBoard } from "./task-modal-types";
 import { useTaskModelOptions } from "./task-panel-hooks";
 import { useFeatureCreation } from "./use-feature-creation";
+import { useDraftImages } from "./use-task-images";
 
 // Task modal, mode new (design contract G115-G158): Task, Feature and Step, Run on and Effort, Done when. Nothing is
 // preselected in Run on and Effort; PR open and Tree clean start checked, and the feature is No feature. A new task
 // always lands in the first column, which the subtitle names. On the desktop a checkbox under the Task counter also creates
 // a GitHub issue from the saved task (G129-G131); the task is created first and an issue failure never costs it.
+// Images pasted into the Task field or attached under it wait in the form and are stored once the task exists.
 
 /**
  * The only mutations here go through the desktop bridge (`createDesktopTask`, and `feature_create` for a new
  * feature, which comes first). Success calls `onCreated` so the board is re-read; the monitor's committed
  * answer is what the board then shows. When the ticked issue create fails, the task stays as created and the modal does
  * not close silently: after `onCreated` it calls `onIssueFailed` with the new task's ID so the page can open that task,
- * where the fixed reason is shown (without the prop it closes as on success).
+ * where the fixed reason is shown (without the prop it closes as on success). An image that could not be attached to
+ * the new task is handled the same way: the task stays, and its own modal says so.
  */
 export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onCreated, onIssueFailed, onClose }: {
   repositoryId: string;
@@ -49,6 +54,8 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
   const [failure, setFailure] = useState<string | null>(null);
   const createFeature = useFeatureCreation(repositoryId, board, refresh);
   const issueOption = useIssueCreateOption(repositoryId);
+  const images = useDraftImages();
+  const imagesOffered = taskImagesAvailable();
   const issueChecked = issueOption.kind === "can" && wantIssue;
   const trimmed = text.trim();
   const featureName = feature.name.trim();
@@ -82,6 +89,16 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     // its failure is remembered for the task's own modal, which opens in place of this one: it never undoes or blocks the task.
     let issueFailedFor: string | null = null;
     if (result.ok) {
+      if (result.taskId !== null) {
+        // The images come first, so an issue failure never leaves them behind. One that fails is not retried here.
+        for (const file of images.files) {
+          const added = await addDesktopTaskImage(repositoryId, result.taskId, new Uint8Array(await file.arrayBuffer()));
+          if (added.ok) continue;
+          rememberImageCreateFailure(repositoryId, result.taskId);
+          issueFailedFor = result.taskId;
+          break;
+        }
+      }
       if (issueChecked && result.taskId !== null && !(await createTaskIssue(repositoryId, result.taskId)).ok) issueFailedFor = result.taskId;
       onCreated();
     }
@@ -97,13 +114,14 @@ export function TaskModalNew({ repositoryId, repositoryName, board, refresh, onC
     else onClose();
   };
 
-  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} closeOnScrim={trimmed.length === 0 && !busy} onClose={onClose}
+  return <TaskModalFrame title="New task" subtitle={modalSubtitle(repositoryName, firstColumnName(board.columns))} initialFocus={field} closeOnScrim={trimmed.length === 0 && images.items.length === 0 && !busy} onClose={onClose}
     footer={<>
       <span className="taskModalSpacer" aria-hidden="true" />
       <button type="button" className="commandQuietAction" onClick={onClose}>Cancel</button>
       <button type="button" className="commandPrimaryAction" disabled={!canSubmit} onClick={() => void submit()}>{busy ? "Creating…" : "Create task"}</button>
     </>}>
-    <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure} />
+    <TaskTextField ref={field} value={text} onChange={setText} readOnly={busy} error={failure} onPasteImages={imagesOffered && !busy ? images.add : undefined} />
+    {imagesOffered && <TaskImageField items={images.items} disabled={busy} error={images.error} onAttach={images.add} onRemove={images.remove} />}
     <IssueCreateCheckbox option={issueOption} checked={issueChecked} disabled={busy} onChange={setWantIssue} />
     <FeatureFields draft={feature} board={board} error={featureError}
       onChange={(next) => { setFeature(next); setFeatureError(null); }} onCancelName={() => setFeature(NO_FEATURE_DRAFT)} />

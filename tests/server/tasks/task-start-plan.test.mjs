@@ -86,7 +86,7 @@ test("a startable task yields the plan with null model and effort", async (conte
   assert.equal(response.headers["cache-control"], "no-store");
   assert.deepEqual(Object.keys(response.json), ["ok", "plan"]);
   const body = response.json.plan;
-  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "repositoryRoot", "worktree", "prompt", "token"]);
+  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "repositoryRoot", "worktree", "prompt", "images", "token"]);
   assert.equal(body.taskId, "T-1");
   assert.equal(body.provider, "claude");
   assert.equal(body.model, null);

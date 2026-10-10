@@ -66,7 +66,7 @@ function insertTask(database, repositoryId, columnId, overrides = {}) {
 const BOARD_KEYS = ["columns", "features", "queue", "readiness", "repositoryId", "tasks", "version"];
 const COLUMN_KEYS = ["id", "name", "position", "role"];
 const FEATURE_KEYS = ["done", "id", "name"];
-const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
+const TASK_KEYS = ["columnId", "createdAt", "doneWhen", "featureId", "id", "images", "position", "report", "run", "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"];
 
 function keysOf(value) {
   return Object.keys(value).toSorted();
@@ -160,7 +160,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
     session: { id: "session-abc", title: null, state: "unknown", observedModel: null },
-    source: null,
+    source: null, images: [],
     report: {
       at: "2023-11-14T22:13:23.000Z",
       results: [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }],
@@ -384,7 +384,7 @@ test("closing is idempotent and an unusable store serves nothing", async (t) => 
   store.close();
   assert.equal(store.readBoard(REPOSITORY).readiness, "unavailable");
   assert.equal(store.apply(REPOSITORY, "create", { text: "x" }).ok, false);
-  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "reportChecks", "sessionTasks", "stallEndedTasks"]);
+  assert.deepEqual(Object.keys(store).toSorted(), ["abortStart", "addImage", "apply", "bindSession", "blockTask", "close", "completeTask", "featureSessionGroups", "featureSessions", "issueDraft", "nextQueueStarts", "pauseQueue", "planStart", "promotedIssues", "readBoard", "readImage", "removeImage", "reportChecks", "sessionTasks", "stallEndedTasks"]);
 });
 
 test("the task layer imports neither the runtime nor the serving layer", async () => {

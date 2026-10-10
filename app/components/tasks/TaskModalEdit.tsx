@@ -5,6 +5,7 @@ import type { Task, TaskCheck } from "../../../shared/task-contract";
 import { sessionListTime } from "../../dashboard-utils";
 import { FeatureFields } from "./FeatureFields";
 import { IssueCreateRow } from "./IssueCreate";
+import { TaskImageField } from "./TaskImages";
 import { TaskModalFrame } from "./TaskModalFrame";
 import { TaskModalSource } from "./TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "./TaskFields";
@@ -16,6 +17,7 @@ import {
   resolveDesktopTaskDone, updateDesktopTask,
 } from "./task-desktop";
 import { observedModelDiffers } from "./task-fields";
+import { taskImagesAvailable } from "./task-images-desktop";
 import { taskIssuesAvailable } from "./task-issues-desktop";
 import { featureDraftFromTask, type FeatureDraft } from "./task-features";
 import { modalSubtitle, type TaskModalBoard } from "./task-modal-types";
@@ -23,12 +25,13 @@ import { useTaskModelOptions } from "./task-panel-hooks";
 import { AWAITING_REPORT_NOTE, taskAwaitsReport, taskChip, taskIssueNumber, taskSessionHref, taskSessionTitle } from "./task-presentation";
 import { SAVE_FIRST_LINE, taskDraftPatch, useTaskDraft } from "./use-task-draft";
 import { useFeatureCreation } from "./use-feature-creation";
+import { useStoredImages } from "./use-task-images";
 import { useTaskStart } from "./use-task-start";
 
 // Task modal, mode edit (design contract G241-G298), opened from a card. A task promoted from a GitHub issue starts the
 // body with its Source block (G253-G257); its text stays editable like any task's. Text, Run on, Effort, Done when,
 // Feature and Step are a local draft that Save sends as one patch holding only what changed; Close and Escape discard it. Start at
-// keeps saving by itself. A task that is blocked or stalled leads the footer with Mark done and resume
+// keeps saving by itself, and so do the task's images: Attach image, a paste into the Task field and Remove act at once. A task that is blocked or stalled leads the footer with Mark done and resume
 // queue and Requeue task; one that needs review holds no queue, so its first action reads Mark done. A task whose linked session has not reported offers Mark done and Requeue task too, with a
 // line that neither stops the session; nothing marks such a task done or stalled by itself. While the draft is unsaved
 // Start session, Add to queue, Remove from queue, Mark done and Requeue task are disabled.
@@ -77,6 +80,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
   // A stalled task has no report: its session ended before the agent reported complete or blocked.
   const outcomeNote = task.report ? reportLine(task.report) : task.state === "stalled" ? STALLED_NOTE : null;
   const start = useTaskStart(repositoryId, task, dirty, refresh);
+  const images = useStoredImages(repositoryId, task, onChanged);
+  const imagesOffered = taskImagesAvailable();
   // A task that needs the user offers its resolutions instead of Start session.
   const showStart = start.available && !unresolved;
   const waiting = task.state === "not_queued" || task.state === "queued" || task.state === "scheduled";
@@ -214,7 +219,8 @@ export function TaskModalEdit({ repositoryId, repositoryName, task, board, refre
         {task.session && <TaskSessionLink sessionId={task.session.id} />}
       </span>
     </div>}
-    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure} />
+    <TaskTextField value={draft.text} onChange={setText} readOnly={saving} error={failure} onPasteImages={imagesOffered && !blocked ? images.add : undefined} />
+    {imagesOffered && <TaskImageField items={images.items} busy={images.busy} disabled={blocked} error={images.error} onAttach={images.add} onRemove={images.remove} />}
     <FeatureFields draft={draft.feature} board={board} selfId={task.id} error={featureError} onChange={changeFeature}
       onCancelName={cancelName} onOpenTask={onOpenTask} />
     <div className="taskRunGroup">

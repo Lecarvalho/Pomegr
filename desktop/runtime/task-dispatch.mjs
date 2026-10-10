@@ -25,6 +25,8 @@ const TOKEN = /^[A-Za-z0-9_-]{32,128}$/u;
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const MONITOR_ERRORS = new Set(["invalid", "not_found", "not_startable", "unsupported_provider", "plugin_missing", "gate_held", "unavailable"]);
 const PROMPT_MAX = 8000;
+const IMAGE_MAX = 4;
+const IMAGE_FILE = /^img-[0-9a-f]{12}\.(?:png|jpg|gif|webp)$/u;
 const LAUNCH_TIMEOUT_MS = 15_000;
 
 // A detached child of a windowless app gets no console, so the session is opened through one fixed
@@ -68,10 +70,13 @@ const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["--effort", plan.effort] : [])],
+    // The prompt names the image files; the folder that holds them is opened to the session's read tools.
+    imageFlags: (plan) => ["--add-dir", path.dirname(plan.images[0])],
   }),
   codex: Object.freeze({
     executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["-c", `model_reasoning_effort=${plan.effort}`] : [])],
+    imageFlags: (plan) => ["--image", ...plan.images],
   }),
 });
 
@@ -93,8 +98,25 @@ function defaultDirectoryExists(directory) {
   try { return statSync(directory).isDirectory(); } catch { return false; }
 }
 
+/**
+ * The plan's image files: at most four absolute, normalized paths with a store-made file name, all in one folder, each
+ * an existing file and named in the prompt. Null when any of that fails; an older monitor sends none.
+ */
+function planImages(images, prompt, fileExists) {
+  if (images === undefined) return [];
+  if (!Array.isArray(images) || images.length > IMAGE_MAX) return null;
+  for (const file of images) {
+    if (typeof file !== "string" || /[\u0000\r\n"]/u.test(file) || !path.isAbsolute(file) || path.resolve(file) !== file) return null;
+    if (!IMAGE_FILE.test(path.basename(file)) || path.dirname(file) !== path.dirname(images[0]) || !prompt.includes(file)) return null;
+    let exists = false;
+    try { exists = fileExists(file) === true; } catch { exists = false; }
+    if (!exists) return null;
+  }
+  return new Set(images).size === images.length ? [...images] : null;
+}
+
 /** Returns a validated plan, or null when anything about it is unsafe to use. */
-function validatePlan(plan, taskId, directoryExists) {
+function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!isPlainObject(plan) || !Object.hasOwn(PROVIDERS, plan.provider) || plan.taskId !== taskId) return null;
   if (!(plan.model === null || (typeof plan.model === "string" && MODEL.test(plan.model)))) return null;
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
@@ -106,7 +128,9 @@ function validatePlan(plan, taskId, directoryExists) {
   let exists = false;
   try { exists = directoryExists(root) === true; } catch { exists = false; }
   if (!exists) return null;
-  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true };
+  const images = planImages(plan.images, prompt, fileExists);
+  if (images === null) return null;
+  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, images };
 }
 
 /** Resolves true when the launcher exits with code 0 in time, false otherwise. Never throws. */
@@ -140,6 +164,8 @@ function waitForLaunch(child, timeoutMs) {
  * plan asks for a worktree (a task of a step that runs in parallel), the session starts in the task's own Git
  * worktree (`task-worktree.mjs`) instead of the repository root; a worktree that cannot be made or safely reused
  * fails the start. A worktree made for a start that then fails is removed again, by the rule that discards no work.
+ * A task's images are files in the monitor's task store that the plan names: Claude Code is given their folder as an
+ * extra readable directory, and Codex gets them attached to the prompt.
  */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -198,7 +224,7 @@ export function createTaskStart(options = {}) {
     }
     const rawToken = isPlainObject(answer.plan) && typeof answer.plan.token === "string" && TOKEN.test(answer.plan.token)
       ? answer.plan.token : null;
-    const plan = validatePlan(answer.plan, taskId, directoryExists);
+    const plan = validatePlan(answer.plan, taskId, directoryExists, fileExists);
     if (!plan) {
       if (rawToken) await abort(repositoryId, taskId, rawToken);
       return result("failed");
@@ -221,7 +247,8 @@ export function createTaskStart(options = {}) {
       }
       directory = made.directory;
     }
-    const args = [...provider.flags(plan), plan.prompt];
+    // Both image flags take a list of values, so they follow the prompt: a flag before it would swallow it.
+    const args = [...provider.flags(plan), plan.prompt, ...(plan.images.length > 0 ? provider.imageFlags(plan) : [])];
     let started = false;
     try {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {

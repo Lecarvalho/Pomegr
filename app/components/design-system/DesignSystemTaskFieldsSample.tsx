@@ -6,6 +6,8 @@ import { IssueCreateCheckbox, IssueCreateRowView, type IssueCreateOption } from 
 import { TaskModalChrome } from "../tasks/TaskModalFrame";
 import { PromoteIssueSummary, PromoteOutcomeNotice, TaskModalSource } from "../tasks/TaskModalPromote";
 import { DoneWhenField, RunFields, TaskTextField } from "../tasks/TaskFields";
+import { TaskImageField } from "../tasks/TaskImages";
+import { TASK_IMAGE_TYPE_MESSAGE } from "../tasks/task-images-desktop";
 import { DEFAULT_DONE_WHEN, EMPTY_RUN, NO_MODELS, type DoneWhenDraft } from "../tasks/task-fields";
 import { NO_FEATURE_DRAFT, type FeatureDraft } from "../tasks/task-features";
 import type { TaskIssue } from "../tasks/task-issues-desktop";
@@ -16,6 +18,9 @@ import { BOARD_RUNNING, SAMPLE_FEATURE_ID } from "./DesignSystemTaskSampleData";
 const MODELS = { claude: ["model-large", "model-small"], codex: ["model-code"] } as const;
 const RESULTS = new Map([["pr_open", false], ["tree_clean", true]] as const);
 const noop = () => undefined;
+// Static samples: an image that is still being read has no URL, so no image file ships with the page.
+const IMAGES_LOADING = [{ key: "sample-1", url: null, label: "Image 1" }, { key: "sample-2", url: null, label: "Image 2" }];
+const IMAGES_FULL = [...IMAGES_LOADING, { key: "sample-3", url: null, label: "Image 3" }, { key: "sample-4", url: null, label: "Image 4" }];
 
 export function TaskFieldsSection() {
   const [run, setRun] = useState<TaskRun>({ provider: "claude", model: "model-large", effort: "high" });
@@ -52,6 +57,15 @@ export function TaskFieldsSection() {
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
         <FeatureFields draft={created} board={BOARD_RUNNING} onChange={setCreated} />
+      </Sample>
+      <Sample label="Images, none yet" note="Under the Task field, in the desktop app only. Attach image opens the file picker; a paste into the Task field that holds an image adds it too.">
+        <TaskImageField items={[]} onAttach={noop} onRemove={noop} />
+      </Sample>
+      <Sample label="Images, attached" note="One 72px thumbnail per image with its Remove beside it, in a wrapping row. A thumbnail shows the ground fill until its image is read; these samples stay there.">
+        <TaskImageField items={IMAGES_LOADING} onAttach={noop} onRemove={noop} />
+      </Sample>
+      <Sample label="Images, full and refused" note="A task holds four images, so Attach image is disabled. A file that cannot be attached is named by one fixed error line.">
+        <TaskImageField items={IMAGES_FULL} error={TASK_IMAGE_TYPE_MESSAGE} onAttach={noop} onRemove={noop} />
       </Sample>
       <Sample label="Time field" note="A native time or date-and-time input at control height in the data font, for the queue's Schedule panel and a task's own start time.">
         <div className="taskGateField">

@@ -85,6 +85,7 @@ test("the contract's bounds are the product owner's bounds", () => {
   assert.deepEqual({ ...CONTRACT_BOUNDS }, {
     tasksPerRepository: 500, featuresPerRepository: 50, textLength: 4000,
     ownConditionLength: 500, featureNameLength: 80, blockReasonLength: 200, modelIdentifierLength: 120,
+    imagesPerTask: 4, imageBytes: 5 * 1024 * 1024,
   });
   assert.deepEqual([...CONTRACT_DEFAULT_COLUMNS], ["Backlog", "Ready", "In progress", "Review", "Done"]);
 });
@@ -218,6 +219,7 @@ test("a stored task projects to exactly the contract keys", () => {
     scheduledAt: "2023-11-14T22:13:22.000Z",
     session: { id: "6f1c-session", title: null, state: "unknown", observedModel: null },
     source: null,
+    images: [],
     report: {
       at: "2023-11-14T22:13:23.000Z",
       results: [{ check: "pr_open", passed: true }, { check: "tree_clean", passed: false }],
@@ -226,7 +228,7 @@ test("a stored task projects to exactly the contract keys", () => {
     },
     createdAt: "2023-11-14T22:13:20.000Z", updatedAt: "2023-11-14T22:13:21.000Z",
   });
-  assert.deepEqual(Object.keys(task).toSorted(), ["columnId", "createdAt", "doneWhen", "featureId", "id", "position", "report", "run",
+  assert.deepEqual(Object.keys(task).toSorted(), ["columnId", "createdAt", "doneWhen", "featureId", "id", "images", "position", "report", "run",
     "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"]);
   assert.equal(JSON.stringify(task).includes("must-never-appear"), false);
 });

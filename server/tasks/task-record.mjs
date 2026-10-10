@@ -18,7 +18,11 @@ export const TASK_BOUNDS = Object.freeze({
   featureNameLength: 80,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
+  imagesPerTask: 4,
+  imageBytes: 5 * 1024 * 1024,
 });
+/** The image formats a task may hold; the store decides the type from the bytes (task-images.mjs). */
+export const TASK_IMAGE_TYPES = Object.freeze(["png", "jpeg", "gif", "webp"]);
 // What an older store may hold in columns, read before the board is brought to the fixed five (task-columns.mjs).
 // Not a bound a user meets: a store over them stays unavailable and unwritten.
 export const STORED_COLUMN_READ_BOUNDS = Object.freeze({ columns: 12, nameLength: 40 });
@@ -47,6 +51,7 @@ const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
 const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 export const COLUMN_ID = /^col-[0-9a-f]{12}$/u;
 export const FEATURE_ID = /^feat-[0-9a-f]{12}$/u;
+const IMAGE_ID = /^img-[0-9a-f]{12}$/u;
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 // Free text may span lines and tabs; every other control character is rejected.
 const TEXT_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u2028\u2029]/u;
@@ -391,6 +396,23 @@ function normalizeReport(row) {
   return { at, results, blockReason, attention };
 }
 
+/**
+ * A task's stored image list as `{ id, type, bytes }[]`. An entry outside the contract, a repeated ID, and anything past
+ * the per-task bound are dropped, so a damaged list shows fewer images instead of making the board unavailable.
+ */
+export function normalizeStoredImages(value) {
+  const images = [];
+  const seen = new Set();
+  for (const entry of Array.isArray(value) ? value : []) {
+    if (images.length >= TASK_BOUNDS.imagesPerTask) break;
+    if (!isPlainObject(entry) || typeof entry.id !== "string" || !IMAGE_ID.test(entry.id) || seen.has(entry.id)
+      || !TASK_IMAGE_TYPES.includes(entry.type) || !Number.isSafeInteger(entry.bytes) || entry.bytes < 1 || entry.bytes > TASK_BOUNDS.imageBytes) continue;
+    seen.add(entry.id);
+    images.push({ id: entry.id, type: entry.type, bytes: entry.bytes });
+  }
+  return images;
+}
+
 /** Projects one stored `tasks` row; undefined when any stored field is outside the contract. */
 export function normalizeStoredTask(row) {
   if (!isPlainObject(row)) return undefined;
@@ -426,6 +448,8 @@ export function normalizeStoredTask(row) {
     // `fillTaskSessions` (task-board.mjs); until it supplies them they are unknown, never guessed.
     session: sessionId === null ? null : { id: sessionId, title: null, state: "unknown", observedModel: null },
     source,
+    // The store attaches the task's image list (task-images.mjs): identifiers, fixed types, and sizes, never bytes.
+    images: normalizeStoredImages(row.images),
     report, createdAt, updatedAt,
   };
 }

@@ -4,7 +4,8 @@
  * Privacy: task text, the own condition, and feature names are user-authored
  * content (a separate data class from observation). They reach the browser only through
  * `GET /api/tasks` and trusted desktop IPC, never through `/api/state`, session catalogs,
- * reports, logs, notifications, diagnostics, or checkpoints. Provider and model names,
+ * reports, logs, notifications, diagnostics, or checkpoints. A task's images are the same data class: the board
+ * carries only each one's ID, fixed type, and size, and the bytes reach only the desktop app. Provider and model names,
  * effort, check results, and times are normalized enums or identifiers. The board never
  * carries commands, command output, diffs, provider payloads, paths, or the private
  * dispatch token. See AGENTS.md ("Task board and dispatch") and
@@ -51,6 +52,13 @@ export type TaskSource = { kind: "github_issue"; number: number };
  * characters, agent-authored like `blockReason`. A report that carries one puts the task in Review even when every
  * check passed. Null when the agent named nothing, and absent from an older monitor, which means the same.
  */
+/** The image formats a task may hold. The monitor decides the type from the bytes, never from a name. */
+export type TaskImageType = "png" | "jpeg" | "gif" | "webp";
+/**
+ * One image attached to a task: an opaque ID, its fixed type, and its size in bytes. The board carries only this; the
+ * bytes are user-authored content like the task text and reach only the desktop app, through trusted IPC.
+ */
+export type TaskImage = { id: string; type: TaskImageType; bytes: number };
 export type TaskReport = { at: string; results: { check: TaskCheck; passed: boolean }[]; blockReason: string | null; attention?: string | null };
 /**
  * `order` holds the IDs of the tasks that wait to start now, in the order they would start: features in board
@@ -121,6 +129,8 @@ export type Task = {
   scheduledAt: string | null;
   session: TaskSession | null; // borrowed from observation; never transcript content
   source: TaskSource | null;
+  /** The task's images, at most four, in the order they were attached. Absent from an older monitor, which means none. */
+  images?: TaskImage[];
   report: TaskReport | null;
   createdAt: string;
   updatedAt: string;
@@ -155,7 +165,11 @@ export const TASK_BOUNDS = {
   featureNameLength: 80,
   blockReasonLength: 200,
   modelIdentifierLength: 120,
+  imagesPerTask: 4,
+  imageBytes: 5 * 1024 * 1024,
 } as const;
+
+export const TASK_IMAGE_TYPES: readonly TaskImageType[] = ["png", "jpeg", "gif", "webp"];
 
 export const TASK_CHECKS: readonly TaskCheck[] = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
 export const TASK_STATES: readonly TaskState[] = ["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"];

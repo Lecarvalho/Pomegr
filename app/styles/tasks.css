@@ -147,6 +147,12 @@
 .newTaskHelper { color: var(--command-muted); }
 .newTaskError { color: var(--command-error); }
 
+/* A task's images: Attach image, then one 72px thumbnail per image with its Remove beside it, in a wrapping row. */
+.taskImagesHead { display: flex; align-items: center; gap: var(--space-2); }
+.taskImageList { margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-3); list-style: none; }
+.taskImageItem { min-width: 0; display: flex; align-items: flex-start; gap: var(--space-1); }
+.taskImageThumb { box-sizing: border-box; display: block; width: 72px; height: 72px; border: 1px solid var(--command-line-strong); border-radius: var(--control-radius); background: var(--command-ground); object-fit: cover; }
+
 /* Task modal frame (design contract G115-G123, G153, D2 of the part brief). A native modal dialog is the scrim: it fills
    the viewport, scrolls when the panel is taller, and the panel sits top-aligned in it, at most 640px wide. There is no
    token for a 40% ink scrim, so it mixes the text token. No entrance or exit motion. */

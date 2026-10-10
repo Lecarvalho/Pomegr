@@ -44,17 +44,28 @@ function issueLine(task) {
   return source === null ? [] : [`This task comes from GitHub issue #${source.number}. Write "Closes #${source.number}" in the pull request description.`];
 }
 
+// A task's images are files in the private task store. The session is told where they are; each path is built by the
+// store from validated identifiers, never from task text.
+function imageLines(imagePaths) {
+  if (imagePaths.length === 0) return [];
+  return [
+    imagePaths.length === 1 ? "The task has 1 attached image. Read it before you start:" : `The task has ${imagePaths.length} attached images. Read each one before you start:`,
+    ...imagePaths.map((file) => `- ${file}`),
+  ];
+}
+
 /**
  * The fixed session prompt. It begins with a fixed non-dash sentence, so it can never parse as a CLI
  * flag, and holds the task text only as quoted data between fixed sentences.
  */
-export function buildTaskPrompt(task) {
+export function buildTaskPrompt(task, imagePaths = []) {
   const conditions = task.doneWhen.checks.map((check) => `- ${CHECK_LABELS[check]}`);
   if (task.doneWhen.own) conditions.push(`- ${task.doneWhen.own}`);
   return [
     TASK_PROMPT_OPENING,
     `Task ${task.id}:`,
     task.text,
+    ...imageLines(imagePaths),
     "Done when:",
     ...(conditions.length > 0 ? conditions : ["- No condition is checked: your report alone completes the task."]),
     ...issueLine(task),
@@ -90,8 +101,10 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
  * refusals. `gatesHold(taskId)` is the store's start-gate judgement for this task from committed facts; a held
  * start answers `gate_held` and mints nothing. `transaction(work)` runs `work` in one write transaction. The plan's
  * `worktree` says whether the session must run in a worktree of its own; where that worktree is, only the desktop knows.
+ * `imagePaths(taskId)` supplies the files of the task's images from the store; the plan carries them in `images` and
+ * names them in the prompt.
  */
-export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, now }) {
+export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, now }) {
   const number = isRepositoryId(repositoryId) ? taskNumber(payload, ["id"]) : undefined;
   if (number === undefined) return { ok: false, error: "invalid" };
   const row = loadRow(database, repositoryId, number);
@@ -117,11 +130,14 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
     return { worktree: worktreeRequired(database, fresh) };
   });
   if (!minted) return { ok: false, error: "not_startable" };
+  // The images the task holds now are the ones the session gets; one attached later is not sent to it.
+  let images = [];
+  try { images = typeof imagePaths === "function" ? imagePaths(task.id) : []; } catch { images = []; }
   return {
     ok: true,
     plan: {
       taskId: task.id, provider, model: task.run.model, effort: task.run.effort,
-      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task), token,
+      repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images), images, token,
     },
   };
 }
