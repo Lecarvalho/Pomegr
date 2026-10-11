@@ -91,8 +91,14 @@
 
 /* Moving cards: dragging is the desktop app only. The raised fill is the lane itself, so the lane under a dragged card
    takes the strong line on its border instead (D48), two pixels wide; a movable card shows the grab cursor (D53); the
-   dragged card itself does not change (D86). */
+   dragged card itself does not change (D86). The drop line is a two-pixel ink rule in the gap where the dragged card
+   would land: above the card it would go before, or under the last card. At the ends of the list it sits against the
+   card, inside the two pixels the scrolling list leaves, so it is never clipped. */
 .taskColumn.isDropTarget { border-color: var(--command-line-strong); box-shadow: inset 0 0 0 1px var(--command-line-strong); }
+.taskCard.isDropBefore::before, .taskCard.isDropAfter::after { content: ""; position: absolute; right: -1px; left: -1px; height: 2px; background: var(--command-ink); pointer-events: none; }
+.taskCard.isDropBefore::before { top: -6px; }
+.taskCard.isDropBefore:first-child::before { top: -3px; }
+.taskCard.isDropAfter::after { bottom: -3px; }
 .taskCard.isMovable { cursor: grab; }
 .taskBoardError { margin: 0; }
 .taskBoardFootnote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }

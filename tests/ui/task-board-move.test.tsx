@@ -14,6 +14,7 @@ vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory
 import { chooseCommandOption } from "./command-select-helpers";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
+import { dragScrollStep } from "../../app/components/tasks/use-card-drag";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -21,7 +22,7 @@ const taskAction = vi.fn<(repositoryId: string, action: string, payload: unknown
 const refresh = vi.fn(async () => {});
 
 const columns = ["Backlog", "Ready", "Done"].map((name, position) => ({ id: `col-${position + 1}`, name, position }));
-const FOOTNOTE = "Drag a card to another column, or onto a card to place it before that card. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
+const FOOTNOTE = "Drag a card to another column, or between cards: a line shows where it will land. Pomegr moves a card when its session starts, when it needs review, and when it is done. A queued card stays in Ready, where the queued cards read top to bottom in the order the queue starts them. Moving a card never changes its chip. While a session works on a task, the chip is that session's state.";
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
@@ -223,6 +224,142 @@ describe("dragging a card", () => {
     fireEvent.dragOver(column("Ready"), { dataTransfer });
     fireEvent.dragEnd(card("T-2"));
     expect(column("Ready")).not.toHaveClass("isDropTarget");
+  });
+});
+
+/** Lays the cards of a column out as 100px boxes, 100px apart from `top`, since jsdom measures every box as empty. */
+function layOut(name: string, top = 0) {
+  [...column(name).querySelectorAll<HTMLElement>("li[data-task-id]")].forEach((element, index) => {
+    const y = top + index * 100;
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue({ top: y, bottom: y + 100, height: 100, left: 0, right: 200, width: 200, x: 0, y, toJSON: () => ({}) });
+  });
+}
+/** A drag event at height `clientY`, which jsdom's generic drag events cannot carry by themselves. */
+function dragAt(kind: "dragOver" | "drop", element: HTMLElement, clientY: number, dataTransfer: Transfer) {
+  const event = createEvent[kind](element, { dataTransfer });
+  Object.defineProperty(event, "clientY", { value: clientY });
+  fireEvent(element, event);
+}
+const dragOverAt = (element: HTMLElement, clientY: number, dataTransfer: Transfer) => dragAt("dragOver", element, clientY, dataTransfer);
+const dropAt = (element: HTMLElement, clientY: number, dataTransfer: Transfer) => dragAt("drop", element, clientY, dataTransfer);
+const lines = () => [...document.querySelectorAll(".isDropBefore, .isDropAfter")].map((element) => `${element.classList.contains("isDropBefore") ? "before" : "after"} ${element.getAttribute("data-task-id")}`);
+
+describe("the drop line", () => {
+  it("shows where the card will land: before a card under its upper half, after it under its lower half", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    layOut("Backlog");
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-4"), { dataTransfer });
+    expect(lines()).toEqual([]);
+    dragOverAt(card("T-2"), 120, dataTransfer);
+    expect(lines()).toEqual(["before T-2"]);
+    dragOverAt(card("T-2"), 180, dataTransfer);
+    expect(lines()).toEqual(["before T-3"]);
+    dragOverAt(card("T-3"), 280, dataTransfer);
+    expect(lines()).toEqual(["after T-3"]);
+    // Anywhere else in the lane is its end, and the drop lands where the line was.
+    dragOverAt(column("Backlog"), 900, dataTransfer);
+    expect(lines()).toEqual(["after T-3"]);
+    dragOverAt(card("T-1"), 80, dataTransfer);
+    expect(lines()).toEqual(["before T-2"]);
+    dropAt(card("T-1"), 80, dataTransfer);
+    expect(lines()).toEqual([]);
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "move", { id: "T-4", columnId: "col-1", position: 1 });
+    expect(order("Backlog")).toEqual(["T-1", "T-4", "T-2", "T-3"]);
+  });
+
+  it("reads a gap between cards as before the next card", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    layOut("Backlog");
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-4"), { dataTransfer });
+    dragOverAt(column("Backlog").querySelector("ul") as HTMLElement, 100, dataTransfer);
+    expect(lines()).toEqual(["before T-2"]);
+  });
+
+  it("draws no line for a drop that leaves the card where it is, and sends nothing", () => {
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    layOut("Backlog");
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-2"), { dataTransfer });
+    for (const [target, clientY] of [["T-2", 120], ["T-2", 180], ["T-1", 80], ["T-3", 220]] as const) {
+      dragOverAt(card(target), clientY, dataTransfer);
+      expect(lines()).toEqual([]);
+    }
+    expect(column("Backlog")).toHaveClass("isDropTarget");
+    dropAt(card("T-1"), 80, dataTransfer);
+    expect(taskAction).not.toHaveBeenCalled();
+    fireEvent.dragStart(card("T-2"), { dataTransfer });
+    dragOverAt(card("T-1"), 20, dataTransfer);
+    expect(lines()).toEqual(["before T-1"]);
+  });
+
+  it("clears on leave and drag end, and an empty lane draws none", () => {
+    setBoard({ tasks: [task(1), task(2)], columns });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-2"), { dataTransfer });
+    fireEvent.dragOver(card("T-1"), { dataTransfer });
+    expect(lines()).toEqual(["before T-1"]);
+    dragLeave(column("Backlog"), column("Done"));
+    expect(lines()).toEqual([]);
+    fireEvent.dragOver(column("Done"), { dataTransfer });
+    expect(column("Done")).toHaveClass("isDropTarget");
+    expect(lines()).toEqual([]);
+    fireEvent.dragOver(card("T-1"), { dataTransfer });
+    fireEvent.dragEnd(card("T-2"));
+    expect(lines()).toEqual([]);
+  });
+});
+
+describe("scrolling a lane while dragging", () => {
+  it("scrolls faster the closer the pointer is to an end of the list, and not at all in the middle", () => {
+    expect(dragScrollStep(100, 500, 300)).toBe(0);
+    expect(dragScrollStep(100, 500, 156)).toBe(0);
+    expect(dragScrollStep(100, 500, 128)).toBe(-8);
+    expect(dragScrollStep(100, 500, 100)).toBe(-16);
+    // Above or below the list, over the lane header or + New task, is the full speed.
+    expect(dragScrollStep(100, 500, 60)).toBe(-16);
+    expect(dragScrollStep(100, 500, 472)).toBe(8);
+    expect(dragScrollStep(100, 500, 540)).toBe(16);
+    // A short list keeps a middle third that does not scroll.
+    expect(dragScrollStep(0, 90, 45)).toBe(0);
+    expect(dragScrollStep(0, 90, 0)).toBe(-16);
+    expect(dragScrollStep(0, 0, 0)).toBe(0);
+  });
+
+  it("scrolls the lane's card list on each frame while the card is held near an end, and stops on leave, drop and drag end", () => {
+    let frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => { frames = []; });
+    const frame = () => { const due = frames; frames = []; for (const callback of due) callback(0); };
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const list = column("Backlog").querySelector("ul") as HTMLElement;
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ top: 100, bottom: 500, height: 400, left: 0, right: 200, width: 200, x: 0, y: 100, toJSON: () => ({}) });
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-4"), { dataTransfer });
+    expect(frames).toHaveLength(0);
+    dragOverAt(column("Backlog"), 490, dataTransfer);
+    frame();
+    frame();
+    expect(list.scrollTop).toBe(28);
+    // The middle of the list scrolls nothing, the top scrolls back.
+    dragOverAt(column("Backlog"), 300, dataTransfer);
+    frame();
+    expect(list.scrollTop).toBe(28);
+    dragOverAt(column("Backlog"), 100, dataTransfer);
+    frame();
+    expect(list.scrollTop).toBe(12);
+    dragLeave(column("Backlog"), column("Done"));
+    expect(frames).toHaveLength(0);
+    dragOverAt(column("Backlog"), 490, dataTransfer);
+    expect(frames).toHaveLength(1);
+    fireEvent.dragEnd(card("T-4"));
+    expect(frames).toHaveLength(0);
+    fireEvent.dragStart(card("T-4"), { dataTransfer });
+    dragOverAt(column("Backlog"), 490, dataTransfer);
+    dropAt(column("Backlog"), 490, dataTransfer);
+    expect(frames).toHaveLength(0);
   });
 });
 

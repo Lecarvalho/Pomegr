@@ -363,6 +363,8 @@ describe("Pomegr visual contract", () => {
     // The raised fill is the lane itself, so the lane under a dragged card is marked by the strong line on its border instead.
     expect(styles).toMatch(/\.taskColumn\.isDropTarget \{[^}]*border-color: var\(--command-line-strong\)/);
     expect(styles).not.toMatch(/\.taskColumn\.isDropTarget \{[^}]*background/);
+    // The drop line is a two-pixel ink rule where the dragged card would land.
+    expect(styles).toMatch(/\.taskCard\.isDropBefore::before, \.taskCard\.isDropAfter::after \{[^}]*height: 2px[^}]*background: var\(--command-ink\)/);
     // The skeleton keeps the lane shape.
     expect(styles).toMatch(/\.taskBoardSkeletonColumn \{[^}]*border: 1px solid var\(--command-line\)[^}]*border-radius: var\(--panel-radius\)[^}]*background: var\(--command-panel-2\)/);
     // G53-G58: hidden with opacity (never display or visibility), revealed by lane hover and focus, always on a coarse pointer at 44px, no motion.
@@ -379,6 +381,7 @@ describe("Pomegr visual contract", () => {
     // DESIGN.md and the design-system sample document the same rules.
     expect(designContract).toMatch(/A column is a \*\*lane\*\* \(`\.taskColumn`\)[^.]*raised fill[^.]*one-pixel `--command-line` border/);
     expect(designContract).toMatch(/The lane under a dragged card cannot take the raised fill, so it takes the strong line \(`--command-line-strong`\) on its border/);
+    expect(designContract).toMatch(/a \*\*drop line\*\* \(`\.taskCard\.isDropBefore`, `\.isDropAfter`: a two-pixel `--command-ink` rule/);
     expect(designContract).toMatch(/the \*\*first lane only\*\* ends with the Quiet \*\*\+ New task\*\*/);
     expect(designContract).toMatch(/invisible \(opacity 0, never `display: none`/);
     expect(designContract).toMatch(/The header has no primary action: \*\*New task\*\* lives in the first lane\./);

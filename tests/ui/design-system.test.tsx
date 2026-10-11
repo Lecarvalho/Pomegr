@@ -344,6 +344,7 @@ describe("Design-system reference page", () => {
 
     const dropTarget = sample(board, "Lane, drop target");
     expect(dropTarget.querySelector(".taskColumn")).toHaveClass("isDropTarget");
+    expect(dropTarget.querySelector(".taskCard:last-child")).toHaveClass("isDropAfter");
     expect(within(dropTarget).queryByRole("button", { name: "New task" })).toBeNull();
     expect(within(dropTarget).getAllByRole("listitem").length).toBeGreaterThan(0);
   });
