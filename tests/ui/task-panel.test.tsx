@@ -151,7 +151,7 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByText(/Agent reported complete/).textContent).toMatch(/^Agent reported complete \(.+\)\.$/u);
     expect(dialog.getByText("Observed model differs")).toBeInTheDocument();
     expect(dialog.getByText("model-b")).toBeInTheDocument();
-    expect(dialog.queryByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).not.toBeInTheDocument();
+    expect(dialog.queryByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).not.toBeInTheDocument();
   });
 
   it("omits results, the report line and the notice for a task with no report and no differing model", async () => {
@@ -164,7 +164,7 @@ describe("Task modal, mode edit", () => {
     expect(dialog.queryByText(/Title from the session/)).not.toBeInTheDocument();
     expect(dialog.queryByText(/^Passed$|Not passed|Agent reported/)).not.toBeInTheDocument();
     expect(dialog.queryByText("Observed model differs")).not.toBeInTheDocument();
-    expect(dialog.getByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).toBeInTheDocument();
+    expect(dialog.getByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).toBeInTheDocument();
   });
 
   it("words the observed-model notice from the contract", async () => {
