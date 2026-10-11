@@ -62,7 +62,15 @@ When two pages differ, the owner in this section is correct. Repair the other pa
 
 | Subject | Owner |
 | --- | --- |
-| Controls, tokens, styles, and component rules | [DESIGN.md](../../DESIGN.md) |
+| Tokens, button roles, chips, fields, panels, tables, shell, navigation | [DESIGN.md](../../DESIGN.md) |
+| Settings sections and the storage usage meter | [Settings design](design/settings.md) |
+| Home and the What's new card | [Home design](design/home.md) |
+| Sessions directory, session header, Overview, Events, Signals | [Sessions design](design/sessions.md) |
+| Agents panel, inspector, grid, tree, the Agents route, role tint | [Agents design](design/agents.md) |
+| Activities feed and the Requests chart | [Activities design](design/activities.md) |
+| Repositories index and detail, file tree, file history | [Repositories design](design/repositories.md) |
+| Tasks page, board, cards, queue, session task surfaces | [Task board design](design/task-board.md) |
+| Task modal, task fields, Promote issues page | [Task modal design](design/task-modal.md) |
 | Visual reference | The `/design-system` page and its [samples](../../app/components/design-system/). No HTML preview or mockup is an authority. |
 | Command table integration | [Command table](development/command-table.md) |
 

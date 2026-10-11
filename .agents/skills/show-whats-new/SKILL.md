@@ -118,7 +118,7 @@ Keep announcement updates scoped to the first five files above. The same Home so
 in the desktop web bundle; no separate desktop announcement copy is needed. A notes
 update does not require a version bump, installer build, release tag, or deployment.
 For styling or control changes to the card or dialog themselves, consult `DESIGN.md`
-and the applicable UI workflow, and update its Home update paragraph and the
+and the applicable UI workflow, and update `docs/internal/design/home.md` and the
 `/design-system` sample together; do not turn routine release copy into a redesign.
 
 ## Verify and hand off

@@ -258,7 +258,7 @@ with its owner where useful. No Mermaid or other diagram runtime is assumed by
 the documentation publication pipeline.
 
 The existing `/design-system` page on the web development server is the
-authoritative visual reference. [DESIGN.md](../DESIGN.md) is the written contract;
+authoritative visual reference. [DESIGN.md](../DESIGN.md) and the surface pages it lists are the written contract;
 the [design-system samples](../app/components/design-system/) use the
 actual shared tokens and components. Documentation and HTML previews must
 not become a second visual authority or component gallery.

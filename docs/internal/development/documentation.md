@@ -17,6 +17,7 @@ authorities before editing.
 | --- | --- |
 | User tasks, concepts, and recovery | `docs/public/` under `get-started/`, `using-pomegr/`, `concepts/`, or `help/` |
 | Runtime contracts and boundaries | `docs/internal/architecture/` |
+| How one surface looks and how the user operates it | `docs/internal/design/` |
 | Contributor workflows and tooling | `docs/internal/development/` |
 | Release procedures and diagnostics | `docs/internal/operations/` |
 | Accepted rationale with continuing relevance | `docs/internal/decisions/` |

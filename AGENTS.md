@@ -46,6 +46,7 @@ copying it here.
 | Task board, queue, dispatch, agent task tools, and their privacy rules | [Tasks](docs/internal/architecture/tasks.md) |
 | Provider adapter conformance | `server/providers/provider-contract.mjs` |
 | Controls, tokens, and styles | [DESIGN.md](DESIGN.md) |
+| How one surface looks and how the user operates it | Its page in `docs/internal/design/`, listed in [DESIGN.md](DESIGN.md#find-the-page) |
 | Pomegr MCP tools | [MCP tools](docs/public/using-pomegr/mcp-tools.md) |
 | Writing and placing documentation | [Style guide](docs/STYLE_GUIDE.md) and [maintenance workflow](docs/internal/development/documentation.md) |
 
@@ -102,11 +103,13 @@ same pull request.
 
 - Read [DESIGN.md](DESIGN.md) before you add or style a control. It owns the button
   roles, the chip contract, and the tokens.
+- Put a rule for one surface in the page of that surface in `docs/internal/design/`, not
+  in `DESIGN.md`. Write one fact for each bullet or table row, on one line.
 - Use no literal color, off-scale radius, or off-ramp font size in `app/styles/`. For an
   intended exception, add it to `DESIGN.md` first. Then persist it with
   `.agents/skills/impeccable/scripts/hook-admin.mjs ignore-value`.
-- Add a sample to `/design-system` for each new shared control. Change `DESIGN.md`,
-  `tests/ui/pomegr-design-contract.test.tsx`, and the samples in
+- Add a sample to `/design-system` for each new shared control. Change `DESIGN.md`
+  or the surface page, `tests/ui/pomegr-design-contract.test.tsx`, and the samples in
   `app/components/design-system/` together.
 
 ## Commands
