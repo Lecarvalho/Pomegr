@@ -9,7 +9,7 @@ export const BOARD_TEXT_PREVIEW = 240;
 export const HISTORY_BUDGET = 24_000;
 export const PROMPT_LIMIT = 200_000;
 
-const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
+const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"];
 const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
 const MODEL_LIST_LIMIT = 32;
 

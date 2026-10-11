@@ -6,7 +6,7 @@ import { TASK_IMAGE_HELPER } from "./task-images-desktop";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
+  AGENT_REPORTED_LABEL, CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, isAgentJudged, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
@@ -136,6 +136,7 @@ export function CompleteWhenField({ draft, results, ownNote, footnote, disabled,
           <input id={id} type="checkbox" checked={draft.checks.includes(check)} disabled={disabled} onChange={(event) => change(withCheck(draft, check, event.currentTarget.checked))} />
           <label htmlFor={id}>{CHECK_SHORT_LABELS[check]}</label>
           {result !== undefined && <span className={`taskCheckResult ${result ? "isPassed" : "isFailed"}`}>{result ? "Passed" : "Not passed"}</span>}
+          {results !== undefined && isAgentJudged(check) && draft.checks.includes(check) && <span className="taskCheckResult">{AGENT_REPORTED_LABEL}</span>}
         </div>;
       })}
     </div>
@@ -144,6 +145,6 @@ export function CompleteWhenField({ draft, results, ownNote, footnote, disabled,
         value={draft.ownText} readOnly={disabled} onChange={(event) => onDraftChange({ ...draft, ownText: event.currentTarget.value })} onBlur={() => onCommit?.(draft)} />
       {ownNote && <span className="taskCheckResult">{ownNote}</span>}
     </div>
-    {footnote ?? <span className="newTaskHelper taskCompleteWhenNote">Pomegr verifies the listed conditions. Your own condition is judged by the agent.</span>}
+    {footnote ?? <span className="newTaskHelper taskCompleteWhenNote">Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.</span>}
   </fieldset>;
 }
