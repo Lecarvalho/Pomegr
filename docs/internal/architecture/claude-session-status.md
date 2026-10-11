@@ -90,7 +90,11 @@ A non-live Claude catalog row uses **Closed** when the native registry observer 
 confirmed that its registered runtime owner ended or no longer matches the recorded
 process identity. It describes runtime closure only, never successful work, an exit
 reason, or task completion. Registry removal alone and failed process inspection do
-not establish Closed. A new validated registration replaces that closure observation.
+not establish Closed. An inspection that returns no answer for the owner, such as empty
+output from the Windows helper, is a failed inspection. A new validated registration
+replaces that closure observation, so Closed is one reading that a later one can
+reverse; a task stalls only after a second reading confirms it (see
+[Tasks: States](tasks.md#states)).
 The bounded ownership and closure evidence remains monitor-private and memory-only;
 after monitor restart, sessions without fresh closure evidence use the normal fallback.
 An owner whose process has exited loses validation on the next read. A reused process ID

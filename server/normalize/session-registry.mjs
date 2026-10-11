@@ -8,6 +8,22 @@ const OWNER_FRESH_MS = 1_500;
 const OWNER_MAX_STALE_MS = 5_000;
 const MAX_OWNER_VALIDATION_ENTRIES = 2_048;
 
+export const OWNER_PROBE_COUNTERS = Object.freeze([
+  "probeAnswers", "probeNoAnswers", "ownersCurrent", "ownersReplaced", "ownersAbsent", "ownersUnknown",
+  "ownersExited", "sessionsClosed", "sessionsReinstated",
+]);
+
+// Counts of owner-probe outcomes only: no pid, start identity, session, or error.
+export function createOwnerProbeCounters() {
+  const counts = Object.fromEntries(OWNER_PROBE_COUNTERS.map((key) => [key, 0]));
+  return Object.freeze({
+    record(key, amount = 1) {
+      if (Object.hasOwn(counts, key)) counts[key] = Math.min(Number.MAX_SAFE_INTEGER, counts[key] + amount);
+    },
+    snapshot: () => Object.freeze({ ...counts }),
+  });
+}
+
 // Non-spawning liveness: true, false only for a definitely absent pid, null when unknown.
 export function processAlive(pid) {
   try { process.kill(pid, 0); return true; }
@@ -45,26 +61,34 @@ $items = @()
 foreach ($id in $ids) {
   try { $item = Get-Process -Id $id -ErrorAction Stop }
   catch {
-    if ($_.CategoryInfo.Category -ne [System.Management.Automation.ErrorCategory]::ObjectNotFound) {
-      $items += [pscustomobject]@{ pid = [int]$id; procStart = $null }
-    }
+    $gone = $_.CategoryInfo.Category -eq [System.Management.Automation.ErrorCategory]::ObjectNotFound
+    $items += [pscustomobject]@{ pid = [int]$id; procStart = $null; gone = $gone }
     continue
   }
   try {
-    $items += [pscustomobject]@{ pid = [int]$item.Id; procStart = $item.StartTime.ToUniversalTime().ToFileTimeUtc().ToString() }
-  } catch { $items += [pscustomobject]@{ pid = [int]$id; procStart = $null } }
+    $items += [pscustomobject]@{ pid = [int]$item.Id; procStart = $item.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(); gone = $false }
+  } catch { $items += [pscustomobject]@{ pid = [int]$id; procStart = $null; gone = $false } }
 }
-$items | ConvertTo-Json -Compress
+ConvertTo-Json -Compress -InputObject @($items)
 `;
   return [powershell, ["-NoProfile", "-NonInteractive", "-Command", script]];
 }
 
-function parseWindowsIdentities(output) {
-  const parsed = JSON.parse(String(output || "").trim() || "[]");
-  return new Map((Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => {
+// The helper answers for every requested pid, and says so when a process is gone. A pid
+// with no answer is never read as an exit: a helper that the timeout cut off as it
+// finished returns success with empty output.
+export function parseWindowsIdentities(output, pids) {
+  const text = String(output || "").trim();
+  if (text === "") return null;
+  const parsed = JSON.parse(text);
+  const answers = new Map((Array.isArray(parsed) ? parsed : [parsed]).flatMap((item) => {
     const pid = normalizedPid(item?.pid);
-    const processStart = normalizedProcessStart(item?.procStart);
-    return pid ? [[pid, processStart]] : [];
+    return pid ? [[pid, item]] : [];
+  }));
+  if (pids.some((pid) => !answers.has(pid))) return null;
+  return new Map(pids.flatMap((pid) => {
+    const answer = answers.get(pid);
+    return answer.gone === true ? [] : [[pid, normalizedProcessStart(answer.procStart)]];
   }));
 }
 
@@ -74,7 +98,7 @@ function asyncProcessIdentities(options = {}) {
   return (pids) => new Promise((resolve) => {
     const [command, args] = windowsIdentityCommand(pids, options);
     execFile(command, args, { encoding: "utf8", windowsHide: true, timeout: 3_000 }, (error, stdout) => {
-      try { resolve(error ? null : parseWindowsIdentities(stdout)); } catch { resolve(null); }
+      try { resolve(error ? null : parseWindowsIdentities(stdout, pids)); } catch { resolve(null); }
     });
   });
 }
@@ -86,7 +110,7 @@ function processIdentities(pids, options = {}) {
     const platform = options.platform || process.platform;
     if (platform === "win32") {
       const [command, args] = windowsIdentityCommand(pids, options);
-      return parseWindowsIdentities(execFileSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 3_000 }));
+      return parseWindowsIdentities(execFileSync(command, args, { encoding: "utf8", windowsHide: true, timeout: 3_000 }), pids);
     }
 
     if (platform !== "linux") return null;
@@ -117,6 +141,15 @@ export function createSessionRegistryOwnerValidator(options = {}) {
   const maxStaleMs = Math.max(freshMs, Number.isFinite(options.maxStaleMs) ? options.maxStaleMs : OWNER_MAX_STALE_MS);
   const processExists = typeof options.processExists === "function" ? options.processExists : () => null;
   const probeAsync = asyncProcessIdentities(options);
+  const count = (key) => { try { options.counters?.record?.(key); } catch { /* diagnostics cannot affect validation */ } };
+  // Reads one owner's answer: true current, false replaced or absent, null unknown.
+  function judge(entry, identities) {
+    const identity = identities.get(entry.pid);
+    if (identity === null) { count("ownersUnknown"); return null; }
+    const isCurrent = identity === entry.procStart;
+    count(isCurrent ? "ownersCurrent" : identity === undefined ? "ownersAbsent" : "ownersReplaced");
+    return isCurrent;
+  }
   /** @type {Map<string, {pid: number, procStart: string, isCurrent: boolean, validatedAt: number}>} */
   const cache = new Map();
   const refreshing = new Set();
@@ -134,13 +167,14 @@ export function createSessionRegistryOwnerValidator(options = {}) {
     const pids = [...new Set(pending.map((entry) => entry.pid))].sort((left, right) => left - right);
     Promise.resolve().then(() => probeAsync(pids)).catch(() => null).then((identities) => {
       const checkedAt = now();
+      count(identities ? "probeAnswers" : "probeNoAnswers");
       for (const entry of pending) {
         refreshing.delete(entry.sessionId);
         const cached = cache.get(entry.sessionId);
         if (!identities || !cached || cached.pid !== entry.pid || cached.procStart !== entry.procStart) continue;
-        const identity = identities.get(entry.pid);
-        if (identity === null) continue;
-        remember(entry, identity === entry.procStart, checkedAt);
+        const isCurrent = judge(entry, identities);
+        if (isCurrent === null) continue;
+        remember(entry, isCurrent, checkedAt);
       }
     });
   }
@@ -154,6 +188,7 @@ export function createSessionRegistryOwnerValidator(options = {}) {
       const cached = cache.get(entry.sessionId);
       if (!cached || cached.pid !== entry.pid || cached.procStart !== entry.procStart) { toProbe.push(entry); continue; }
       if (cached.isCurrent && processExists(entry.pid) === false) {
+        count("ownersExited");
         remember(entry, false, now());
         result.set(entry.sessionId, false);
         continue;
@@ -170,13 +205,13 @@ export function createSessionRegistryOwnerValidator(options = {}) {
     if (toRefresh.length) refresh(toRefresh);
     if (toProbe.length) {
       const pids = [...new Set(toProbe.map((entry) => entry.pid))].sort((left, right) => left - right);
-      const identities = processIdentities(pids, options);
+      const identities = processIdentities(pids, options) ?? null;
+      count(identities ? "probeAnswers" : "probeNoAnswers");
       if (identities !== null) {
         const checkedAt = now();
         for (const entry of toProbe) {
-          const identity = identities.get(entry.pid);
-          if (identity === null) continue; // an individual inspection failure is unknown, never cached or resolved
-          const isCurrent = identity === entry.procStart;
+          const isCurrent = judge(entry, identities);
+          if (isCurrent === null) continue; // an individual inspection failure is unknown, never cached or resolved
           remember(entry, isCurrent, checkedAt);
           result.set(entry.sessionId, isCurrent);
         }

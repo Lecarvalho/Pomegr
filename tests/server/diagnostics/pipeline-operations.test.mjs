@@ -73,6 +73,7 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
           pendingHydrations: 3,
           hydrationAttempts: 8,
           prompt: "PROMPT_MUST_NOT_LEAK",
+          ownerProbe: { probeNoAnswers: 2, sessionsClosed: 1, sessionsReinstated: 1, pid: 4242, procStart: "PRIVATE_START" },
           timings: {
             catalogDiscovery: timing,
             queueWait: timing,
@@ -100,14 +101,21 @@ test("pipeline operations snapshots expose only the fixed aggregate schema", () 
   assert.equal(snapshot.providers[0].timings.queueWaitSourceUpdate.p95Ms, 7);
   assert.equal(snapshot.providers[0].timings.queueWaitBackground.sampleCount, 0);
   assert.deepEqual(snapshot.revisions, { catalog: 12, home: 4, usageLimits: 2 });
-  assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE|PROMPT|RAW_ERROR|transcriptPath|rawError/i);
+  const ownerProbe = {
+    probeAnswers: 0, probeNoAnswers: 2, ownersCurrent: 0, ownersReplaced: 0, ownersAbsent: 0, ownersUnknown: 0,
+    ownersExited: 0, sessionsClosed: 1, sessionsReinstated: 1,
+  };
+  assert.deepEqual(snapshot.providers[0].ownerProbe, ownerProbe);
+  assert.doesNotMatch(JSON.stringify(snapshot), /PRIVATE|PROMPT|RAW_ERROR|transcriptPath|rawError|4242|procStart/i);
 
   const revalidated = normalizePipelineOperationsSnapshot({
     ...snapshot,
     private: "PRIVATE_MUST_NOT_LEAK",
-    providers: snapshot.providers.map((provider) => ({ ...provider, raw: "RAW_MUST_NOT_LEAK" })),
+    providers: snapshot.providers.map((provider) => ({ ...provider, raw: "RAW_MUST_NOT_LEAK",
+      ownerProbe: { ...provider.ownerProbe, pid: "PRIVATE_PID" } })),
   });
   assert.equal(revalidated.providers[0].timings.queueWaitUrgent.p95Ms, 3);
+  assert.deepEqual(revalidated.providers[0].ownerProbe, ownerProbe);
   assert.doesNotMatch(JSON.stringify(revalidated), /PRIVATE|RAW_MUST_NOT_LEAK/);
 });
 test("failure details retain only the latest bounded stage, reason and timestamp per category", () => {

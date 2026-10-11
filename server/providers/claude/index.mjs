@@ -18,7 +18,7 @@ import { contextCompactions, mergeContextCompactions, readContextCompactions } f
 import { createExecutionTaskReader } from "../../normalize/execution-tasks.mjs";
 import { createSessionFileLister, liveSessionFiles, statSafe, walkJsonl } from "../../normalize/session-discovery.mjs";
 import { memoizeRepositoryResolver } from "../../normalize/session-identity.mjs";
-import { createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../../normalize/session-registry.mjs";
+import { createOwnerProbeCounters, createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../../normalize/session-registry.mjs";
 import { readSessionTasks } from "../../normalize/session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../../normalize/session-signals.mjs";
 import { latestSessionSummary } from "../../normalize/session-summary.mjs";
@@ -105,7 +105,9 @@ export function createClaudeProvider(options = {}) {
   const transcriptPathsBySessionId = new Map();
   const sessionWorkStartReader = createClaudeSessionWorkStartReader({ yieldControl: options.yieldControl });
   const catalogPresence = createClaudeCatalogPresence();
+  const ownerProbeCounters = createOwnerProbeCounters();
   const validateRegistryOwners = options.validateRegistryOwners || createSessionRegistryOwnerValidator({
+    counters: ownerProbeCounters,
     env: environment,
     now,
     platform: options.platform,
@@ -125,6 +127,7 @@ export function createClaudeProvider(options = {}) {
   });
   const registryObservation = createClaudeRegistryObservation({
     root: registryRoot, validateOwners: validateRegistryOwners, now, ownerExists: options.registryProcessExists,
+    counters: ownerProbeCounters,
   });
   const backgroundLifecycle = createClaudeBackgroundLifecycleReader();
   const readAgentLifecycle = createClaudeAgentLifecycleReader();
@@ -724,6 +727,7 @@ export function createClaudeProvider(options = {}) {
       let cleanup = () => {};
       return Object.freeze({
         ...observer,
+        diagnostics: () => Object.freeze({ ...observer.diagnostics?.(), ownerProbe: registryObservation.diagnostics() }),
         async start(...args) {
           titleEnrichment.activate();
           backgroundLifecycle.activate();

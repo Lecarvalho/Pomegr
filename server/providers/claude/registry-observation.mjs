@@ -10,9 +10,14 @@ function processExists(pid) {
   catch (error) { return error?.code === "ESRCH" ? false : null; }
 }
 
-export function createClaudeRegistryObservation({ root, validateOwners, now = Date.now, ownerExists = processExists }) {
+export function createClaudeRegistryObservation({ root, validateOwners, now = Date.now, ownerExists = processExists, counters = null }) {
   const owners = new Map();
   const closed = new Set();
+  const count = (key) => { try { counters?.record?.(key); } catch { /* diagnostics cannot affect observation */ } };
+  const close = (id) => {
+    if (!closed.has(id)) count("sessionsClosed");
+    closed.add(id);
+  };
   const listeners = new Set();
   const probes = new Map();
   let timer = null;
@@ -22,6 +27,7 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
     if (cached && now() - cached.at < DEPARTURE_CHECK_MS) return cached.value;
     let value = null;
     try { value = ownerExists(pid); } catch { /* Inspection failure is unknown. */ }
+    if (value === false) count("ownersExited");
     probes.delete(pid);
     probes.set(pid, { at: now(), value });
     while (probes.size > MAX_OWNERS) probes.delete(probes.keys().next().value);
@@ -46,7 +52,7 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
         if (!owner.deadline) continue;
         if (probe(owner.pid) === false) {
           owner.deadline = 0;
-          closed.add(id);
+          close(id);
           departed.push(id);
         } else if (owner.deadline <= now()) owner.deadline = 0;
       }
@@ -74,10 +80,12 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
             current = false;
             validation.set(entry.sessionId, false);
           }
-          if (current === false) closed.add(entry.sessionId);
+          if (current === false) close(entry.sessionId);
           if (current !== true && current !== false) continue;
           owners.delete(entry.sessionId);
           owners.set(entry.sessionId, { pid: entry.pid, procStart: entry.procStart, deadline: 0, missing: false });
+          // The same owner reads current after it read closed: the closed reading was wrong.
+          if (current === true && sameOwner && closed.has(entry.sessionId)) count("sessionsReinstated");
           if (current === true) closed.delete(entry.sessionId);
         }
         return validation;
@@ -100,7 +108,7 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
         owner.missing = false;
         owner.deadline = 0;
       } else if (!closed.has(id)) {
-        if (probe(owner.pid) === false) closed.add(id);
+        if (probe(owner.pid) === false) close(id);
         else if (!owner.missing) owner.deadline = now() + SESSION_REGISTRY_GRACE_MS;
         owner.missing = true;
       }
@@ -111,6 +119,7 @@ export function createClaudeRegistryObservation({ root, validateOwners, now = Da
 
   return {
     read,
+    diagnostics: () => counters?.snapshot?.() ?? null,
     subscribe(notify) {
       listeners.add(notify);
       schedule();

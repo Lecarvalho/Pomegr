@@ -8,7 +8,7 @@ import { releasePause } from "./task-queue-advance.mjs";
 import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
-export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
+export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "stalled", "unavailable"]);
 
 const UNRESOLVED_STATES = Object.freeze(["needs_review", "stalled", "blocked"]);
 const QUEUE_HOLDING_STATES = Object.freeze(["stalled", "blocked"]);
@@ -19,6 +19,9 @@ const hasExactKeys = (payload, keys) => payload !== null && typeof payload === "
 const linkedRow = (database, sessionId) => preparedStatement(database, "SELECT * FROM tasks WHERE session_id = ?").get(sessionId);
 
 const reportable = (row) => IN_FLIGHT_STATES.includes(row.state) && (row.report_at ?? null) === null;
+
+// Why a linked task takes no report: Pomegr stalled it before any report, or it has an outcome.
+const refusal = (row) => (row?.state === "stalled" && (row.report_at ?? null) === null ? "stalled" : "already_reported");
 
 export function blockQueue(database, repositoryId, taskId) {
   preparedStatement(database, "UPDATE repositories SET queue_status = 'blocked', queue_blocked_by = ? WHERE repository_id = ? AND queue_status = 'running'")
@@ -64,17 +67,18 @@ export function reportComplete({ database, transaction, payload, resolveFacts, n
   if (!row) return { ok: false, error: "not_found" };
   const task = normalizeStoredTask(row);
   if (!task) return { ok: false, error: "unavailable" };
-  if (!reportable(row)) return { ok: false, error: "already_reported" };
+  if (!reportable(row)) return { ok: false, error: refusal(row) };
   let facts = null;
   try { facts = typeof resolveFacts === "function" ? resolveFacts() : null; } catch { facts = null; }
   const results = verifyChecks(task.completeWhen.checks, facts);
   const state = "needs_review";
+  let fresh = null;
   const stored = transaction(() => {
-    const fresh = linkedRow(database, payload.sessionId);
+    fresh = linkedRow(database, payload.sessionId);
     return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
       && storeReport(database, fresh, { state, at: now(), results, blockReason: null, attention });
   });
-  return stored ? { ok: true, state, results } : { ok: false, error: "already_reported" };
+  return stored ? { ok: true, state, results } : { ok: false, error: refusal(fresh) };
 }
 
 // `block`: the bound session reports it cannot continue, with a one-line reason of at most 200 characters.
@@ -85,13 +89,14 @@ export function reportBlock({ database, transaction, payload, now }) {
   const row = linkedRow(database, payload.sessionId);
   if (!row) return { ok: false, error: "not_found" };
   if (!normalizeStoredTask(row)) return { ok: false, error: "unavailable" };
-  if (!reportable(row)) return { ok: false, error: "already_reported" };
+  if (!reportable(row)) return { ok: false, error: refusal(row) };
+  let fresh = null;
   const stored = transaction(() => {
-    const fresh = linkedRow(database, payload.sessionId);
+    fresh = linkedRow(database, payload.sessionId);
     return Boolean(fresh) && fresh.number === row.number && fresh.repository_id === row.repository_id && reportable(fresh)
       && storeReport(database, fresh, { state: "blocked", at: now(), results: [], blockReason: reason });
   });
-  return stored ? { ok: true, state: "blocked" } : { ok: false, error: "already_reported" };
+  return stored ? { ok: true, state: "blocked" } : { ok: false, error: refusal(fresh) };
 }
 
 const awaitingReport = (row) => rowInFlight(row) && reportable(row);

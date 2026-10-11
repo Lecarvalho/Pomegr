@@ -195,7 +195,9 @@ outcome yet, its card shows that session's observed state, such as **In progress
 (see [Sessions and agents](sessions-and-agents.md#read-a-sessions-state)). Until
 Pomegr has observed the session, the card keeps the task's own state, so a state
 is never shown and then taken back. **Stalled** means Pomegr observed the session
-end with no report, not that the work failed.
+end with no report, not that the work failed. Pomegr confirms the end with a second
+reading about 20 seconds after the first, so a session that reads as ended for a
+moment does not stall its task.
 
 ### Attach images
 

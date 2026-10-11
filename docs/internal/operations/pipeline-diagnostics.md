@@ -96,6 +96,26 @@ paths, source/session identity, prompts, responses, credentials, and provider pa
 monitor-private. It is auxiliary current health; retained JSONL is the sole historical diagnostics
 path.
 
+Each provider has an `ownerProbe` block of nine counters. They count the outcomes of the checks
+on the process that owns a session, since the monitor started. Only Claude Code counts them
+today; another provider reads zero.
+
+| Counter | Counts |
+| --- | --- |
+| `probeAnswers` | Identity checks that returned an answer. |
+| `probeNoAnswers` | Identity checks that returned none: a timeout, an error, or output that lacks a requested process. |
+| `ownersCurrent` | Owners that an answer confirmed. |
+| `ownersReplaced` | Owners whose process ID now has another start identity. |
+| `ownersAbsent` | Owners that an answer reported gone. |
+| `ownersUnknown` | Owners that one answer could not inspect. |
+| `ownersExited` | Owners that the non-spawning liveness check found gone. |
+| `sessionsClosed` | Sessions that entered the closed set. |
+| `sessionsReinstated` | Sessions that read closed, and then read current again with the same owner. |
+
+A `sessionsReinstated` count above zero means that a closed reading was wrong. Because the
+`health` record holds the snapshot once a second, the JSONL shows when a counter moved. The block
+holds counts only: no process ID, start identity, session, command, or error.
+
 ## Development and build boundary
 
 The generic monitor-private instrumentation emits only the fixed JSONL vocabulary and opaque
