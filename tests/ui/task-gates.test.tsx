@@ -82,6 +82,17 @@ describe("the Start gates panel", () => {
     expect(row("Working tree").textContent).toContain("Uncommitted changes");
   });
 
+  it("says Unknown, on the panel and the strip, when the gate reads usage as unknown beside a seven-day figure", async () => {
+    setBoard({ gates: gates({ usage: { claude: { status: "unknown", fiveHourPercent: null, sevenDayPercent: 31 }, codex: { status: "ok", fiveHourPercent: 18, sevenDayPercent: 9 } } }) });
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const strip = screen.getByRole("region", { name: "Provider capacity" });
+    expect(strip.textContent).toContain("Claude Code Unknown");
+    expect(strip.textContent).not.toContain("31%");
+    await userEvent.click(within(screen.getByRole("group", { name: "Tasks view" })).getByRole("button", { name: "Queue" }));
+    expect(row("Claude Code capacity").textContent).toBe("Claude Code capacityUnknown");
+    expect(row("Codex capacity").textContent).toContain("5h 18% · 7d 9%");
+  });
+
   it("shows unknown provider status and no queued task as muted words", async () => {
     setBoard({ gates: gates({ providerStatus: { claude: "ok", codex: "unknown" }, workingTree: "unknown", next: null }) });
     await showQueue();
