@@ -357,12 +357,12 @@ describe("Run on, Effort and Complete when", () => {
     for (const name of ["Low", "Medium", "High", "Xhigh"]) expect(effort(name)).toHaveAttribute("aria-pressed", String(name === "Medium"));
     expect(checkbox("PR open")).toBeChecked();
     expect(checkbox("Tree clean")).toBeChecked();
-    for (const name of ["Commit on branch", "PR merged", "CI passed"]) expect(checkbox(name)).not.toBeChecked();
+    for (const name of ["Commit on branch", "PR merged", "CI passed", "Validated with the user"]) expect(checkbox(name)).not.toBeChecked();
     expect(screen.queryByRole("checkbox", { name: "Use your own condition" })).not.toBeInTheDocument();
     expect(own()).toHaveValue("");
     expect(own()).toHaveAttribute("maxlength", String(TASK_BOUNDS.ownConditionLength));
     expect(own()).toHaveAttribute("placeholder", "Own condition, judged by the agent (optional)");
-    expect(screen.getByText("Pomegr verifies the listed conditions. Your own condition is judged by the agent.")).toBeInTheDocument();
+    expect(screen.getByText("Pomegr verifies the listed conditions. Validated with the user and your own condition are judged by the agent.")).toBeInTheDocument();
   });
 
   it("groups the options by provider from the served model list and always offers Default model", async () => {

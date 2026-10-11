@@ -1,6 +1,6 @@
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import type { Task, TaskBoard, TaskCheck, TaskFeature, TaskRun } from "../../../shared/task-contract";
-import { CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, observedModelDiffers } from "./task-fields";
+import { AGENT_REPORTED_LABEL, CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, isAgentJudged, observedModelDiffers } from "./task-fields";
 import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
@@ -119,6 +119,7 @@ export function checkRows(task: Task): CheckRow[] {
       if (!reading) return { check, label, result: "Waiting for report", tone: "waiting" };
       return reading.passed ? { check, label, result: "Holds now", tone: "passed" } : { check, label, result: "Not yet", tone: "waiting" };
     }
+    if (isAgentJudged(check)) return { check, label, result: AGENT_REPORTED_LABEL, tone: "waiting" };
     const found = task.report.results.find((entry) => entry.check === check);
     if (!found) return { check, label, result: "Not checked", tone: "waiting" };
     return found.passed ? { check, label, result: "Passed", tone: "passed" } : { check, label, result: "Did not pass", tone: "failed" };

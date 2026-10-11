@@ -224,7 +224,7 @@
 .taskModelNoticeTitle { color: var(--command-amber); font-weight: 500; }
 .taskModelNotice code { font: 400 var(--text-xs)/1.4 var(--font-data); }
 
-/* Complete when (G145-G152): a wrapping row of the five checks, then one input for the agent-judged own condition. */
+/* Complete when (G145-G152): a wrapping row of the six checks, then one input for the agent-judged own condition. */
 .taskCompleteWhen { min-width: 0; margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; }
 .taskCompleteWhen legend { padding: 0; margin-bottom: var(--space-2); color: var(--command-ink); font: 500 var(--text-xs)/1.4 var(--font-ui); }
 .taskChecks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); }
