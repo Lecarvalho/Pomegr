@@ -26,8 +26,8 @@ function withoutId({ id, ...event }) {
   return event;
 }
 // Refill and compaction events read the recorded union; a test hands in the public feeds it derives from.
-function derive({ cacheEvents, contextBoundaries, ...inputs } = {}) {
-  const eventRecord = cacheEvents === undefined && contextBoundaries === undefined ? inputs.eventRecord : derivedSessionEventRecord({ cacheEvents, contextBoundaries });
+function derive({ cacheEvents, contextBoundaries, toolCalls, ...inputs } = {}) {
+  const eventRecord = cacheEvents === undefined && contextBoundaries === undefined && toolCalls === undefined ? inputs.eventRecord : derivedSessionEventRecord({ cacheEvents, contextBoundaries, toolCalls });
   return sessionEvents({ readiness: READY, ...inputs, eventRecord });
 }
 function kinds(feed) { return feed.items.map((item) => item.kind); }
@@ -244,6 +244,37 @@ test("context_compacted comes only from recorded automatic and manual compaction
   assert.equal(derive({ agents, contextBoundaries: "none" }).total, 0);
 });
 
+test("the four task kinds come only from tool calls an adapter marked with a fixed task action", () => {
+  const agents = [{ id: "primary", label: "Primary agent", status: "active" }, { id: "agent-a", label: "Reviewer", status: "active" }];
+  const call = (timestamp, taskAction, actorId = "primary", fields = {}) => ({ id: `call-${timestamp}-${taskAction}`, timestamp, actor: { id: actorId, label: "PRIVATE_ACTOR_LABEL" },
+    tool: "mcp__plugin_pomegr_pomegr__add_task", detail: "PRIVATE_TASK_TEXT", status: null, ...(taskAction ? { taskAction } : {}), ...fields });
+  const toolCalls = [
+    call(at(1), "added"), call(at(1), "added"), call(at(1), "added"), // three calls of one assistant turn share its time
+    call(at(2), "removed"),
+    call(at(3), "completed", "agent-a"),
+    call(at(4), "blocked"),
+    call(at(5), undefined), // a refused or unanswered call carries no action
+    call(at(6), "updated"), // an action outside the fixed four
+    call(at(7), "added", "hidden"), // no visible agent
+    call("soon", "added"),
+    call(at(8), "added", "primary", { wrapper: true }),
+    null,
+  ];
+  const feed = derive({ agents, toolCalls });
+  assert.deepEqual(feed.items.map(withoutId), [
+    expected("task_blocked", at(4), { agentId: "primary", agentLabel: "Primary agent" }),
+    expected("task_completed", at(3), { agentId: "agent-a", agentLabel: "Reviewer" }),
+    expected("task_removed", at(2), { agentId: "primary", agentLabel: "Primary agent" }),
+    expected("task_added", at(1), { agentId: "primary", agentLabel: "Primary agent" }),
+    expected("task_added", at(1), { agentId: "primary", agentLabel: "Primary agent" }),
+    expected("task_added", at(1), { agentId: "primary", agentLabel: "Primary agent" }),
+  ]);
+  assert.equal(new Set(feed.items.map((item) => item.id)).size, 6);
+  for (const forbidden of ["PRIVATE_", "call-", "add_task", "mcp__"]) assert.ok(!JSON.stringify(feed).includes(forbidden), forbidden);
+  assert.equal(derive({ agents, toolCalls: "none" }).total, 0);
+  assert.equal(derive({ toolCalls }).total, 0, "no visible agent, no task event");
+});
+
 test("the feed is gated by its three evidence sections and by nothing else", () => {
   const input = { agents: [{ id: "agent-a", label: "A", status: "active", startedAt: at(1) }], session: { progress: { phase: "planning", percent: 1, reportedAt: at(1) } } };
   assert.deepEqual([...SESSION_EVENT_READINESS_SECTIONS], ["core", "agentEvidence", "activityEvidence"]);
@@ -384,7 +415,7 @@ test("a feed built from sentinel-laden inputs exposes only the twelve contract k
     "SENTINEL_COMMIT_HASH", "SENTINEL_COMMIT_SUBJECT", "SENTINEL_PR_URL", "SENTINEL_PR_OWNER", "SENTINEL_PR_TITLE", "SENTINEL_CREATION_ID", "SENTINEL_CREATION_ACTOR",
     "SENTINEL_USER_DETAIL", "SENTINEL_USER_ROW_ID", "SENTINEL_USER_REQUEST", "SENTINEL_SIGNAL_DESCRIPTION", "SENTINEL_AGENT_DESCRIPTION", "SENTINEL_TASK_LABEL",
     "SENTINEL_TASK_ID", "SENTINEL_PEAK_ID", "SENTINEL_PROGRESS_CONFIDENCE", "SENTINEL_PROVIDER_KIND", "SENTINEL_TRANSCRIPT_PATH",
-    "SENTINEL_CACHE_EVENT_ID", "SENTINEL_REFILL_REASON", "SENTINEL_BOUNDARY_ID",
+    "SENTINEL_CACHE_EVENT_ID", "SENTINEL_REFILL_REASON", "SENTINEL_BOUNDARY_ID", "SENTINEL_TASK_CALL_ID", "SENTINEL_TASK_TOOL", "SENTINEL_TASK_TEXT",
   ];
   const url = "https://github.com/SENTINEL_PR_OWNER/repo/pull/23";
   const feed = derive({
@@ -412,8 +443,10 @@ test("a feed built from sentinel-laden inputs exposes only the twelve contract k
     cacheEvents: { status: "ready", items: [{ id: "SENTINEL_CACHE_EVENT_ID", agentId: "primary", kind: "refill", observedAt: at(4, 10) }],
       possibleFullRefills: [{ agentId: "primary", count: 1, occurrences: [{ observedAt: at(4, 10), reason: "SENTINEL_REFILL_REASON", cacheLifetimeInference: { elapsedMs: 424242 } }] }] },
     contextBoundaries: [{ id: "SENTINEL_BOUNDARY_ID", agentId: "primary", timestamp: at(4, 20), kind: "automatic_compaction", preTokens: 434343 }],
+    toolCalls: ["added", "removed", "completed", "blocked"].map((taskAction, index) => ({ id: "SENTINEL_TASK_CALL_ID", timestamp: at(4, 40 + index), actor: { id: "primary", label: "Primary agent" },
+      tool: "mcp__plugin_pomegr_pomegr__SENTINEL_TASK_TOOL", detail: "SENTINEL_TASK_TEXT", status: null, taskAction })),
   });
-  assert.equal(feed.total, 12);
+  assert.equal(feed.total, 16);
   assert.deepEqual(new Set(kinds(feed)), new Set(SESSION_EVENT_KINDS));
   const serialized = JSON.stringify(feed);
   for (const sentinel of sentinels) assert.ok(!serialized.includes(sentinel), `${sentinel} must not reach the feed`);

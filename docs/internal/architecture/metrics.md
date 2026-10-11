@@ -964,7 +964,7 @@ retained evidence before that cap. It is not a count of everything that happened
 session, because each source is itself bounded: the newest 256 user-message times, the newest
 50 commit times, the retained pull-request creations (eight for Claude), one peak per
 resource field, only the latest signal and estimate, and the newest 256 recorded refill
-times and 256 recorded compaction times. Each event has an opaque ID, a fixed kind, the time recorded with
+times, 256 recorded compaction times, and 256 recorded task-action entries. Each event has an opaque ID, a fixed kind, the time recorded with
 its evidence, and only the fields its kind needs; every other field is null. D derives the
 feed from committed normalized evidence, never from the observation time and never from new
 provider parsing. The feed selects recorded transitions. It is not a complete session
@@ -975,8 +975,8 @@ An event is never shown and then withdrawn while its evidence is retained. User-
 commit events come from recorded lists that only grow until their bound; an older time then
 leaves the list, and by then it is already outside the 50 events the feed shows. Signal,
 estimate, and resource-peak events are latest-only by definition and move rather than
-accumulate. Cache-refill and compaction events come from the session's recorded event
-record, which also only grows until its bound of 256 per list.
+accumulate. Cache-refill, compaction, and task events come from the session's recorded
+event record, which also only grows until its bound of 256 per list.
 
 | Kind | Source | Event time | Fields |
 | --- | --- | --- | --- |
@@ -990,6 +990,7 @@ record, which also only grows until its bound of 256 per list.
 | `pull_request_opened` | A recorded pull-request creation | The recorded creation time | The pull-request number, when listed |
 | `cache_refill` | The recorded refill times in the session-event sidecar, accumulated from the cache-event feed's per-agent refill occurrences (`possibleFullRefills[].occurrences`) | The occurrence's recorded request time | Agent ID and label; the fixed refill kind |
 | `context_compacted` | The recorded compaction times in the session-event sidecar, accumulated from context-history boundaries of kind `automatic_compaction` or `manual_compaction` | The boundary's recorded time | Agent ID and label; the fixed trigger |
+| `task_added`, `task_removed`, `task_completed`, `task_blocked` | The recorded task actions in the session-event sidecar, accumulated from tool calls whose adapter set `taskAction`: a Pomegr `add_task`, `remove_task`, `complete_task`, or `block_task` call with a recorded result that is not an error | The tool call's recorded time | Agent ID and label |
 
 Ordering and identity:
 
@@ -1103,12 +1104,51 @@ Limits of each source:
   boundaries. `snapshot_drop` boundaries are unexplained context reductions, not recorded
   compactions, and yield no event. The event carries the agent and the trigger only, never
   the prior context total, the boundary ID, or the compaction summary.
+- **Task events** (task T-57, 2026-10-11) are the agent's own calls of the four Pomegr
+  task tools that change a task: `add_task`, `remove_task`, `complete_task`, and
+  `block_task`. No agent tool updates a task, so there is no update event; the feature
+  tools and `get_feature` change no task and yield none. The source is the session's
+  recorded tool calls, never the task store: the feed reads no board, and a task the
+  owner adds, changes, or resolves in Pomegr is not an event.
+  - **Which calls.** Each adapter marks a tool call with the optional `taskAction`
+    evidence field (`added`, `removed`, `completed`, or `blocked`) only when the call
+    names Pomegr's own MCP server exactly (`pomegr`, or `plugin_pomegr_pomegr` in Claude
+    Code) and one of those four tools, and its recorded result is not an error
+    (`pomegrTaskAction` in `server/normalize/work-kind.mjs`). The task tools answer every
+    refusal as an error result, so a refused, unbound, unanswered, or denied call is not
+    an event. A call that has no result yet is not one either; it becomes one when the
+    result is recorded, so an event is never shown and then withdrawn.
+  - **Claude Code.** The first tool result recorded for the call at or after its start
+    must not be an error.
+  - **Codex.** The call's status must be completed, and no source may have recorded its
+    MCP result as an error (`Err`, an `isError` result, or an item error). A refusal seen
+    by the rollout or by the app server wins over the other source. A Codex call recorded
+    only as a function call with a completed output, with no MCP result record, counts:
+    its outcome is not visible, so this is a limit, not a measurement of acceptance.
+    The call must also carry the time its rollout recorded (`sealCodexTaskActions`). The
+    app server times a call by its turn, and that time moves when the turn ends, while
+    the record keeps an action by its time. So an action waits while the merged call
+    carries a turn time, and a call that only the app server reports yields no event.
+  - **What an event means.** The agent's call returned without an error. `task_completed`
+    is the agent's report: Pomegr puts the task in Review, and only the owner marks it
+    done, so the row reads **Task reported complete**. `task_blocked` reads **Task
+    reported blocked**. An event is not the task's current state, which the Task tab
+    shows from the task store.
+  - **What it carries.** The agent and the recorded time only. It never carries the task
+    ID, the task text, a feature, the block reason, the attention line, a tool argument,
+    a tool result, or the tool call's ID.
+  - **Counting.** The tool calls of one assistant turn share its recorded time, so the
+    record keeps one entry per agent, time, and action with a count from 1 to 64, and the
+    feed lists that many events. The larger count wins a merge.
+  - **Limits.** The tool-call evidence is a window of the transcript. A call made while no
+    monitor observed the session, and that had left the retained evidence when one did, is
+    not recorded. An entry for an agent that is not visible is skipped.
 - **The session-event record** is why refill and compaction events do not disappear. The
   evidence they derive from slides: a live read keeps the newest 1,000 usage snapshots and,
   after a restart, only what the transcript tail and the checkpoint still hold. So each
   projection merges what it derives into a per-session record of refill times (`at`, agent
-  ID, kind) and compaction times (`at`, agent ID, trigger), the newest 256 of each, and the
-  feed reads only that record. Entries only accumulate. One the current evidence no longer
+  ID, kind), compaction times (`at`, agent ID, trigger), and task actions (`at`, agent ID,
+  action, count), the newest 256 of each, and the feed reads only that record. Entries only accumulate. One the current evidence no longer
   derives stays, and for the same agent and time the newest kind replaces the older one. The
   record is persisted as a sidecar next to the session checkpoint; see
   [Session-event sidecar](observation-cache.md#session-event-sidecar). Because entries are

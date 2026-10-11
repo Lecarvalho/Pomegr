@@ -9,6 +9,7 @@ import { createClaudeToolCallEvidenceReader, mergeUpdatedAt } from "../../../../
 import { createClaudeLiveUsageSnapshotReader } from "../../../../server/providers/claude/live-usage-snapshots.mjs";
 import { parseClaudeContextRecords } from "../../../../server/providers/claude/context.mjs";
 import { repositoryRelativePath } from "../../../../server/normalize/repository-path.mjs";
+import { providerSessionEvidenceSchema } from "../../../../server/providers/provider-contract.mjs";
 
 async function withTempDir(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "pomegr-warm-derivation-"));
@@ -412,4 +413,34 @@ test("every per-file cache prunes through a caller-supplied existence check", ()
   asked.length = 0;
   for (const cache of [tasks, toolCalls, usage]) cache.pruneMissingFiles(exists);
   assert.deepStrictEqual(asked, []);
+});
+
+test("tool-call evidence reader: a Pomegr task tool call names its action only once its result is recorded without an error", () => {
+  const tool = (name) => `mcp__plugin_pomegr_pomegr__${name}`;
+  const records = [
+    toolUse("add1", "2026-09-01T00:00:00.000Z", tool("add_task"), { text: "TASK_TEXT_MUST_NOT_LEAK" }),
+    toolResult("add1", "2026-09-01T00:00:01.000Z"),
+    toolUse("add2", "2026-09-01T00:01:00.000Z", tool("add_task"), { text: "TASK_TEXT_MUST_NOT_LEAK" }),
+    toolResult("add2", "2026-09-01T00:01:01.000Z", { isError: true }),
+    toolUse("remove1", "2026-09-01T00:02:00.000Z", "mcp__pomegr__remove_task", { task_id: "T-12" }),
+    toolResult("remove1", "2026-09-01T00:02:01.000Z"),
+    toolUse("block1", "2026-09-01T00:03:00.000Z", tool("block_task"), { reason: "REASON_MUST_NOT_LEAK" }),
+    toolResult("block1", "2026-09-01T00:03:01.000Z"),
+    toolUse("feature1", "2026-09-01T00:04:00.000Z", tool("update_feature"), { feature: "F" }),
+    toolResult("feature1", "2026-09-01T00:04:01.000Z"),
+    toolUse("other1", "2026-09-01T00:05:00.000Z", "mcp__notpomegr__add_task", {}),
+    toolResult("other1", "2026-09-01T00:05:01.000Z"),
+    toolUse("complete1", "2026-09-01T00:06:00.000Z", tool("complete_task"), {}),
+  ];
+  const args = { file: "/fake/session.jsonl", key: null, actor: primaryActor, isMain: true, stat, cwd: os.tmpdir(), forbiddenRoots: [], validatePath: repositoryRelativePath };
+  const pending = createClaudeToolCallEvidenceReader({}).read({ ...args, records });
+  assert.deepEqual(pending.toolCalls.map((call) => [call.id, call.taskAction ?? null]), [
+    ["add1", "added"], ["add2", null], ["remove1", "removed"], ["block1", "blocked"], ["feature1", null], ["other1", null], ["complete1", null],
+  ]);
+  assert.ok(pending.toolCalls.filter((call) => !call.taskAction).every((call) => !Object.hasOwn(call, "taskAction")));
+  // The report gains its action when its result arrives; it is never named before.
+  const answered = createClaudeToolCallEvidenceReader({}).read({ ...args, records: [...records, toolResult("complete1", "2026-09-01T00:06:01.000Z")] });
+  assert.equal(answered.toolCalls.at(-1).taskAction, "completed");
+  for (const call of answered.toolCalls) assert.equal(providerSessionEvidenceSchema.shape.toolCalls.element.safeParse(call).success, true, call.id);
+  assert.doesNotMatch(JSON.stringify(answered.toolCalls.map((call) => call.taskAction)), /T-12|MUST_NOT_LEAK/u);
 });

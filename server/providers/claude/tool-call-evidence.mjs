@@ -3,7 +3,7 @@ import path from "node:path";
 import { boundedActivityDuration, boundedFileChanges } from "../../normalize/activity-events.mjs";
 import { statSafe } from "../../normalize/session-discovery.mjs";
 import { mutationScopes, repetitionSignature } from "../../normalize/tool-efficiency.mjs";
-import { toolWorkKind } from "../../normalize/work-kind.mjs";
+import { pomegrTaskAction, toolWorkKind } from "../../normalize/work-kind.mjs";
 import { userInputContentType } from "./activity-events.mjs";
 import { claudeToolResultTimestamps, firstClaudeToolResultAfter } from "./activity-correlation.mjs";
 import { claudeFileChangeCandidates, claudeToolOutcomes, firstSuccessfulClaudeToolOutcome, safeDetail } from "./tool-detail.mjs";
@@ -74,6 +74,7 @@ function computeTemplate(file, records, stat, isMain) {
       const fileChangeCandidates = successfulOutcome
         ? claudeFileChangeCandidates(tool, input, successfulOutcome.toolUseResult)
         : null;
+      const taskAction = successfulOutcome ? pomegrTaskAction(tool) : null;
       toolCallTemplates.push({
         id: content.id || crypto.createHash("sha1").update(`${file}:${timestamp}:${calls}:${tool}`).digest("hex").slice(0, 12),
         timestamp: timestamp || stat.mtime.toISOString(),
@@ -86,6 +87,7 @@ function computeTemplate(file, records, stat, isMain) {
         repetitionSignature: repetitionSignature(tool, input),
         mutation: scopes.length ? { display: path.basename(target), scopes } : null,
         fileChangeCandidates,
+        ...(taskAction ? { taskAction } : {}),
       });
     }
   }

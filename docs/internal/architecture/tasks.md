@@ -1933,6 +1933,15 @@ fixed values.
     session.
 - Task state shown beside a session is a projection of the task store, never an
   observation of the session.
+- The session view's Events feed lists the agent's own `add_task`, `remove_task`,
+  `complete_task`, and `block_task` calls (task T-57, 2026-10-11). That is the reverse
+  case: an observation of the session's recorded tool calls, never a projection of the
+  task store. No observation module reads the store for it, and the store is not told.
+  Each event carries a fixed kind, the agent, and the recorded time. It never carries a
+  task ID, task text, a feature, a block reason, or an attention line, so no value of the
+  task data class enters a session domain, a checkpoint, or the session-event sidecar.
+  The rules and limits are in [Session events](metrics.md#session-events) and
+  [Session evidence](privacy/session-evidence.md#session-events).
 - Provider and model names, effort, check results, and times are normalized enums or
   identifiers, not user content.
 - The pull-request check status is monitor-private. It is held only in memory, as one

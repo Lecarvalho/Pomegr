@@ -148,6 +148,21 @@ function carriedKind({ server, tool }) {
   return github && pullRequest ? "pull_request" : "integration";
 }
 
+// The agent task tools that change a task on the board, by the fixed action each one reports.
+const TASK_TOOL_ACTIONS = new Map([["add_task", "added"], ["remove_task", "removed"], ["complete_task", "completed"], ["block_task", "blocked"]]);
+// Only Pomegr's own MCP server, as either host names it; a server whose name merely contains it is third-party.
+const POMEGR_SERVER = /^(?:plugin_pomegr_)?pomegr$/;
+
+export const TASK_ACTIONS = Object.freeze([...TASK_TOOL_ACTIONS.values()]);
+
+/** The fixed task action of a Pomegr task tool call, or null for any other tool. It reads the tool identity only. */
+export function pomegrTaskAction(tool, detail = "") {
+  const raw = String(tool || "");
+  const carried = carriedTool(raw, raw.toLowerCase().replace(/[^a-z0-9]/g, ""), detail);
+  if (!carried || !POMEGR_SERVER.test(carried.server.trim().toLowerCase())) return null;
+  return TASK_TOOL_ACTIONS.get(carried.tool.trim().toLowerCase()) ?? null;
+}
+
 // Normalize a provider tool identity without asking React to interpret provider text.
 export function toolWorkKind(tool, { detail = "", input = null } = {}) {
   const raw = String(tool || "");

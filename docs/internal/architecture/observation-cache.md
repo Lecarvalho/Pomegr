@@ -212,12 +212,13 @@ is retained separately from its bounded items; missing evidence is never a measu
 `session-summary` also carries `events`, a bounded feed of high-level transitions: agent
 starts, finishes and stops, the latest reported signals and progress estimate, user-message
 times, one retained peak per resource field, Git-observed commits in the session window,
-and pull-request creations. D derives it in the same commit as the other summary fields,
+pull-request creations, cache refills, compactions, and the agent's own Pomegr task tool
+calls. D derives it in the same commit as the other summary fields,
 from committed normalized evidence only: the public agents, session signal and progress,
 the recorded user-message times and pull-request-creation evidence, the public pull
 requests, the recorded in-window commit times from the repository snapshot sidecar, and
-the committed retained-resource block, and the session's recorded refill and compaction
-times. D itself adds no acquisition or provider parsing, and a GET serves the committed
+the committed retained-resource block, and the session's recorded refill, compaction,
+and task-action entries. D itself adds no acquisition or provider parsing, and a GET serves the committed
 value. Its only persistence is the session-event sidecar described below, written by P
 after a commit. Its two recorded lists are written
 upstream: both adapters produce the same optional `userMessageTimes` evidence field (the
@@ -233,7 +234,10 @@ the derived-domain cache is rebuilt without them until that read recommits; no G
 projection reads the sidecar synchronously to close that gap. Refill and compaction times
 follow the same pattern through `eventRecordForSession`, with one difference: the
 projection also derives the current entries from committed cache-event and context-boundary
-state, so only entries older than the retained evidence wait for that read. See
+state, so only entries older than the retained evidence wait for that read. Task actions
+follow it too: the projection derives the current ones from the committed tool-call
+evidence (the optional `taskAction` field an adapter sets on a Pomegr task tool call whose
+recorded result is not an error), and reads nothing from the task store. See
 [Session-event sidecar](#session-event-sidecar). The feed reads
 neither the windowed activity evidence nor the live repository commit list. Items are the
 50 newest by the time recorded with their evidence, never the observation time, and
@@ -3600,25 +3604,34 @@ recorded list, never the current tree.
 
 Cache-refill and compaction events are derived from usage evidence that slides: a live read
 keeps the newest 1,000 usage snapshots, and after a restart the evidence holds only what the
-transcript tail and the checkpoint still carry. To keep an event from being shown and then
+transcript tail and the checkpoint still carry. Task events are derived from tool-call
+evidence, which is a window of the transcript too. To keep an event from being shown and then
 withdrawn, the monitor records them in a second sidecar, `events-<identity hash>.json`, next
 to the session checkpoint and its repository sidecar.
 
 - **Content.** `{ version: 1, refills: [{ at, agentId, kind }], compactions: [{ at, agentId, trigger }] }`:
   canonical UTC times, normalized agent IDs, `kind` one of `possible_full`,
   `provider_diagnosed`, `lifetime_elapsed`, and `trigger` one of `automatic`, `manual`. Each
-  list keeps its newest 256 entries, oldest first. Nothing else is stored: no reason,
+  list keeps its newest 256 entries, oldest first. A record that holds a task action has a
+  third list, `taskActions: [{ at, agentId, action, count }]`, with `action` one of `added`,
+  `removed`, `completed`, `blocked` and `count` an integer from 1 to 64 (the tool calls of
+  one assistant turn share its recorded time). The key is absent while the list is empty,
+  so a record without a task action is written as it was before task T-57, and the version
+  stays 1. A build from before that task treats a record that has the key as invalid: it
+  does not load it and prunes it. Nothing else is stored: no reason,
   provider status, inference detail, token count, percentage, prior context total, request
-  number, or provider ID. `normalizeSessionEventRecord` validates the record as a whole, with
+  number, provider ID, tool-call ID, task ID, task text, or tool argument. `normalizeSessionEventRecord` validates the record as a whole, with
   exact key sets; an invalid record is neither written nor loaded. The file is at most
   128 KiB and passes the checkpoint privacy sentinels.
 - **Derivation (D).** `projectSessionDomains` derives the current entries from the public
-  cache-event feed (only while its status is `ready`) and the public context boundaries, and
+  cache-event feed (only while its status is `ready`), the public context boundaries, and
+  the committed tool calls that carry `taskAction`, and
   merges them with the record it is given. The feed reads the merged record, and the
   projection returns it beside the domains. It is never placed in a domain response or on
   `/api/state`.
 - **Merge rule.** Entries only accumulate. One entry per agent and time; for the same agent
-  and time the later kind wins. An entry the current evidence no longer derives stays.
+  and time the later kind wins. A task action has one entry per agent, time, and action, and
+  the larger count wins. An entry the current evidence no longer derives stays.
 - **Persistence (P).** After a commit whose merged record changed, the domain store hands it
   to `createSessionEventRecorder`. The recorder first reads the session's sidecar when it
   holds no answer for it, merges into what the disk holds, and writes atomically only when
