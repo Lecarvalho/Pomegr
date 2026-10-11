@@ -442,6 +442,27 @@ describe("Run on, Effort and Complete when", () => {
     });
   });
 
+  it("removes the worktree and branch when done by default, and sends the choice only when it is unchecked", async () => {
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Keep my worktree");
+    const remove = () => checkbox("Remove worktree and branch when done");
+    expect(remove()).toBeChecked();
+    expect(screen.getByText("For a task that runs in its own worktree. Uncommitted or unpushed work is never removed.")).toBeInTheDocument();
+    await user.click(remove());
+    expect(remove()).not.toBeChecked();
+    // The choice stays through a change of Run on and of Remote Control.
+    chooseCommandOption(runOn(), "claude:default");
+    await user.click(checkbox("Remote Control"));
+    await user.click(checkbox("Remote Control"));
+    expect(remove()).not.toBeChecked();
+    await user.click(createButton());
+    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(1));
+    expect(taskAction).toHaveBeenCalledWith(repositoryId, "create", {
+      text: "Keep my worktree", run: { provider: "claude", model: null, effort: null, keepWorktree: true }, completeWhen: DEFAULT_COMPLETE_WHEN,
+    });
+  });
+
   it("clears Effort by pressing the pressed segment and Run on by choosing Not set", async () => {
     const user = userEvent.setup();
     render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -478,7 +499,7 @@ describe("Run on, Effort and Complete when", () => {
       ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }],
       // T-12 is newer than T-9, whatever the order the board lists them in.
       tasks: [
-        earlier("T-12", { run: { provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Docs updated." } }),
+        earlier("T-12", { run: { provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true, keepWorktree: true }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Docs updated." } }),
         earlier("T-9", { run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean"], own: null } }),
       ],
     }, refresh });
@@ -488,6 +509,8 @@ describe("Run on, Effort and Complete when", () => {
     expect(runOn()).toHaveTextContent("claude-opus-5-5");
     expect(effort("High")).toHaveAttribute("aria-pressed", "true");
     expect(checkbox("Remote Control")).toBeChecked();
+    // Removing the worktree when done is not taken from the newest task: it is always on for a new one.
+    expect(checkbox("Remove worktree and branch when done")).toBeChecked();
     expect(checkbox("PR open")).toBeChecked();
     expect(checkbox("CI passed")).toBeChecked();
     expect(checkbox("Tree clean")).not.toBeChecked();

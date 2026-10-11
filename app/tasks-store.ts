@@ -77,6 +77,7 @@ function validTask(value: unknown): value is Task {
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
     && (run.remoteControl === undefined || typeof run.remoteControl === "boolean")
+    && (run.keepWorktree === undefined || typeof run.keepWorktree === "boolean")
     && checks !== null && nullableText(completeWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))

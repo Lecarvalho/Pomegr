@@ -13,7 +13,8 @@ export type TaskActionError = "invalid" | "not_found" | "limit" | "conflict" | "
 export type TaskColumnRole = "in_progress" | "review" | "done";
 export type TaskColumn = { id: string; name: string; position: number; role?: TaskColumnRole | null };
 export type TaskFeature = { id: string; name: string; done: boolean };
-export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null; remoteControl?: boolean };
+// `keepWorktree` is present only when on: by default a done task's own worktree and branch are removed.
+export type TaskRun = { provider: TaskProvider | null; model: string | null; effort: TaskEffort | null; remoteControl?: boolean; keepWorktree?: boolean };
 export type TaskSession = { id: string; title: string | null; state: string; observedModel: string | null; checks?: { check: TaskCheck; passed: boolean }[] };
 export type TaskSource = { kind: "github_issue"; number: number };
 // The image formats a task may hold.

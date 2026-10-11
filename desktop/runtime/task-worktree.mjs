@@ -1,10 +1,13 @@
 import { execFile as execFileChild } from "node:child_process";
-import { mkdirSync, realpathSync, statSync } from "node:fs";
+import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-// Git worktrees for parallel tasks under one Pomegr-owned directory: `<root>/<repository id>/<task id>`. Paths stay in desktop main.
+// Git worktrees for parallel tasks inside the repository: `<repository root>/.pomegr/worktrees/<task id>`. Paths stay in desktop main.
 // Nothing here discards work: a worktree is removed only when clean and its HEAD holds no commit that exists nowhere else.
 
+export const TASK_WORKTREE_REPOSITORY_PATH = Object.freeze([".pomegr", "worktrees"]);
+// Where worktrees were made before they moved into the repository: `<desktop data root>/task-worktrees/<repository id>/<task id>`.
+// One that is still there is used, opened, and removed where it is.
 export const TASK_WORKTREE_DIRECTORY = "task-worktrees";
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -33,6 +36,11 @@ function samePath(left, right, platform) {
   return same(path.resolve(left), path.resolve(right)) || same(canonicalPath(left), canonicalPath(right));
 }
 
+// Ignores everything in the worktrees folder, itself included, so the repository's own working tree stays clean.
+function defaultIgnoreContents(directory) {
+  try { writeFileSync(path.join(directory, ".gitignore"), "*\n", { flag: "wx" }); } catch (error) { if (error?.code !== "EEXIST") throw error; }
+}
+
 function listedBranch(porcelain, directory, platform) {
   for (const block of porcelain.split(/\r?\n\r?\n/u)) {
     const lines = block.split(/\r?\n/u);
@@ -44,13 +52,14 @@ function listedBranch(porcelain, directory, platform) {
 }
 
 export function createTaskWorktrees(options = {}) {
-  const root = safeAbsolute(options.root) ? options.root : null;
+  const legacyRoot = safeAbsolute(options.root) ? options.root : null;
   const execFile = options.execFile || execFileChild;
   const executable = options.git || "git";
   const environment = options.environment || process.env;
   const platform = options.platform || process.platform;
   const directoryExists = options.directoryExists || defaultDirectoryExists;
   const makeDirectory = options.makeDirectory || ((directory) => { mkdirSync(directory, { recursive: true }); });
+  const ignoreContents = options.ignoreContents || defaultIgnoreContents;
 
   function git(directory, args) {
     return new Promise((resolve) => {
@@ -64,9 +73,11 @@ export function createTaskWorktrees(options = {}) {
   }
 
   function target({ repositoryRoot, repositoryId, taskId } = {}) {
-    if (!root || !safeAbsolute(repositoryRoot)) return null;
+    if (!safeAbsolute(repositoryRoot)) return null;
     if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof taskId !== "string" || !TASK_ID.test(taskId)) return null;
-    return { repositoryRoot, directory: path.join(root, repositoryId, taskId), branch: taskBranch(taskId) };
+    const legacy = legacyRoot ? path.join(legacyRoot, repositoryId, taskId) : null;
+    const made = legacy !== null && directoryExists(legacy);
+    return { repositoryRoot, directory: made ? legacy : path.join(repositoryRoot, ...TASK_WORKTREE_REPOSITORY_PATH, taskId), branch: taskBranch(taskId) };
   }
 
   async function listed({ repositoryRoot, directory }) {
@@ -98,6 +109,7 @@ export function createTaskWorktrees(options = {}) {
         return { ok: true, directory: at.directory, created: false, branchCreated: false };
       }
       makeDirectory(path.dirname(at.directory));
+      ignoreContents(path.dirname(at.directory));
       const existing = await git(at.repositoryRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${at.branch}`]);
       const added = existing.ok
         ? await git(at.repositoryRoot, ["worktree", "add", at.directory, at.branch])
@@ -107,30 +119,37 @@ export function createTaskWorktrees(options = {}) {
     } catch { return { ok: false }; }
   }
 
-  /** Removes the worktree only when nothing would be lost; the branch delete is Git's safe delete. */
+  /** Removes the worktree only when nothing would be lost. The branch goes only when it was the worktree's own, so every commit of it was just found elsewhere. */
   async function remove(request) {
     const at = target(request);
     if (!at) return "failed";
     try {
       if (!directoryExists(at.directory)) return "absent";
-      if (await listed(at) === null) return "kept";
+      const branch = await listed(at);
+      if (branch === null) return "kept";
       if (!(await clean(at.directory))) return "kept";
       const unique = await git(at.directory, ["rev-list", "--count", "HEAD", "--not", "--remotes", `--exclude=${at.branch}`, "--branches"]);
       if (!unique.ok || unique.stdout.trim() !== "0") return "kept";
       if (!(await git(at.repositoryRoot, ["worktree", "remove", at.directory])).ok) return "failed";
-      if (request.deleteBranch === true) await git(at.repositoryRoot, ["branch", "-d", at.branch]);
+      if (request.deleteBranch === true && branch === `refs/heads/${at.branch}`) await git(at.repositoryRoot, ["branch", "-D", at.branch]);
       return "removed";
     } catch { return "failed"; }
   }
 
-  /** For desktop main alone: the path never leaves main. */
-  async function locate({ repositoryId, taskId } = {}) {
-    const at = target({ repositoryRoot: root, repositoryId, taskId });
-    if (!at) return null;
+  /** For desktop main alone: the path never leaves main. Without a repository root only a worktree made before the move is found. */
+  async function locate({ repositoryRoot, repositoryId, taskId } = {}) {
+    if (typeof repositoryId !== "string" || !REPOSITORY_ID.test(repositoryId) || typeof taskId !== "string" || !TASK_ID.test(taskId)) return null;
+    const directories = [
+      ...(safeAbsolute(repositoryRoot) ? [path.join(repositoryRoot, ...TASK_WORKTREE_REPOSITORY_PATH, taskId)] : []),
+      ...(legacyRoot ? [path.join(legacyRoot, repositoryId, taskId)] : []),
+    ];
     try {
-      if (!directoryExists(at.directory)) return null;
-      const branch = await listed({ repositoryRoot: at.directory, directory: at.directory });
-      return branch === `refs/heads/${at.branch}` ? at.directory : null;
+      for (const directory of directories) {
+        if (!directoryExists(directory)) continue;
+        const branch = await listed({ repositoryRoot: directory, directory });
+        if (branch === `refs/heads/${taskBranch(taskId)}`) return directory;
+      }
+      return null;
     } catch { return null; }
   }
 

@@ -5,6 +5,7 @@ import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { releasePause } from "./task-queue-advance.mjs";
+import { requestWorktreeCleanup } from "./task-worktree-cleanup.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
@@ -109,6 +110,7 @@ export function resolveDone({ database, repositoryId, now }, payload) {
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, target.number);
   moveTaskToRole(database, repositoryId, target.number, "done");
+  requestWorktreeCleanup(database, repositoryId, target.number);
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
   return { ok: true };

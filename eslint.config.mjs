@@ -19,6 +19,8 @@ const eslintConfig = defineConfig([
     "docs/internal/plans/session-allowance/prototype/vendor/**",
     "docs/internal/plans/session-allowance/prototype/support.js",
     "desktop/workers/**",
+    // Task worktrees Pomegr makes inside the repository: each is a checkout of its own.
+    ".pomegr/worktrees/**",
     "plugins/claude-code/mcp/server.bundle.mjs",
     // Claude Code function hooks: JSX here compiles against the engine, not React.
     "plugins/claude-code/hooks/**",

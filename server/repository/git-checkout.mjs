@@ -49,6 +49,24 @@ export function taskWorktreeRepositoryId(cwd) {
   return null;
 }
 
+/**
+ * The main root a Pomegr task worktree inside its repository names: `<main root>/.pomegr/worktrees/<task ID>`.
+ * @param {string} cwd @returns {string | null}
+ */
+export function taskWorktreeMainRoot(cwd) {
+  if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
+  const resolved = path.resolve(cwd);
+  const segments = resolved.split(/[\\/]+/u);
+  for (let index = 1; index + 2 < segments.length; index += 1) {
+    if (segments[index] === ".pomegr" && segments[index + 1] === "worktrees" && isTaskId(segments[index + 2])) {
+      let root = resolved;
+      for (let up = segments.length - index; up > 0; up -= 1) root = path.dirname(root);
+      return root;
+    }
+  }
+  return null;
+}
+
 /** @param {string | { root?: unknown, commonDir?: unknown } | null | undefined} answer @returns {{ root: string, mainRoot: string } | null} */
 export function checkoutRoots(answer) {
   const root = typeof answer === "string" ? answer : answer?.root;

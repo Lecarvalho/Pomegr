@@ -132,14 +132,16 @@ function enumValue(value, allowed) {
 // The planned main-agent settings.
 export function normalizeRun(value) {
   if (value === undefined || value === null) return { provider: null, model: null, effort: null, remoteControl: false };
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["provider", "model", "effort", "remoteControl"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["provider", "model", "effort", "remoteControl", "keepWorktree"])) return undefined;
   const provider = enumValue(value.provider, TASK_PROVIDERS);
   const model = normalizeModelIdentifier(value.model);
   const effort = enumValue(value.effort, TASK_EFFORTS);
   const remoteControl = value.remoteControl ?? false;
-  if (provider === undefined || model === undefined || effort === undefined || typeof remoteControl !== "boolean") return undefined;
+  const keepWorktree = value.keepWorktree ?? false;
+  if (provider === undefined || model === undefined || effort === undefined || typeof remoteControl !== "boolean" || typeof keepWorktree !== "boolean") return undefined;
   if (remoteControl && provider === "codex") return undefined;
-  return model !== null && provider === null ? undefined : { provider, model, effort, remoteControl };
+  // `keepWorktree` is on the run only when it is on: removing the worktree of a done task is the default.
+  return model !== null && provider === null ? undefined : { provider, model, effort, remoteControl, ...(keepWorktree ? { keepWorktree: true } : {}) };
 }
 
 export function normalizeChecks(value) {
@@ -397,7 +399,7 @@ export function normalizeStoredTask(row) {
   const id = taskIdFromNumber(row.number);
   const text = normalizeTaskText(row.text);
   const position = nonNegativeInteger(row.position);
-  const run = normalizeRun({ provider: row.run_provider, model: row.run_model, effort: row.run_effort, remoteControl: row.run_remote_control === true && row.run_provider !== "codex" });
+  const run = normalizeRun({ provider: row.run_provider, model: row.run_model, effort: row.run_effort, remoteControl: row.run_remote_control === true && row.run_provider !== "codex", keepWorktree: row.run_keep_worktree === true });
   const storedChecks = parsedJsonArray(row.checks);
   const checks = storedChecks === undefined ? undefined : normalizeChecks(storedChecks);
   const own = normalizeOwnCondition(row.own_condition);

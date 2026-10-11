@@ -33,12 +33,14 @@ function scheduler() {
 }
 
 /** Fake monitor: `next` answers queue-next (a value, or a function), pauses are recorded. */
-function harness({ next = { ok: true, starts: [] }, startQueued, pauseAnswer, overrides = {} } = {}) {
+function harness({ next = { ok: true, starts: [] }, startQueued, pauseAnswer, cleanups, cleanWorktree, overrides = {} } = {}) {
   const timers = scheduler();
   const calls = [];
   const started = [];
   const starter = {
     startQueued: startQueued || (async (repositoryId, taskId) => { started.push({ repositoryId, taskId }); return { status: "started" }; }),
+    // Only a starter that can remove worktrees is asked to.
+    ...(cleanWorktree ? { cleanWorktree } : {}),
   };
   const runner = createTaskQueueRunner({
     starter,
@@ -50,6 +52,8 @@ function harness({ next = { ok: true, starts: [] }, startQueued, pauseAnswer, ov
       const route = url.split("/").pop();
       calls.push({ url, route, options, body: JSON.parse(options.body) });
       if (route === "queue-pause") return pauseAnswer ? pauseAnswer() : json({ ok: true });
+      if (route === "worktree-cleanups") return typeof cleanups === "function" ? cleanups() : json(cleanups ?? { ok: true, cleanups: [] });
+      if (route === "worktree-cleaned") return json({ ok: true });
       return typeof next === "function" ? next() : json(next);
     },
     ...overrides,
@@ -305,4 +309,69 @@ test("a held start of a step does not stop the rest of the step", async () => {
   await h.timers.fire();
   assert.deepEqual(begun, ["T-1", "T-2"]);
   assert.equal(h.pauses().length, 0);
+});
+
+const rootA = "C:\\Work\\a";
+const cleanup = (repositoryId, taskId, repositoryRoot = rootA) => ({ repositoryId, taskId, repositoryRoot });
+const routes = (h) => h.calls.map((call) => call.route);
+
+test("a starter that cannot remove worktrees is never asked which wait", async () => {
+  const h = harness();
+  h.runner.start();
+  for (let tick = 0; tick < 5; tick += 1) await h.timers.fire();
+  assert.deepEqual(routes(h), Array(5).fill("queue-next"));
+});
+
+test("the worktrees of done tasks are removed on the first tick and every fourth after it, and only a removed one is reported", async () => {
+  const outcomes = { "T-1": "removed", "T-2": "absent", "T-3": "kept", "T-4": "failed", "T-5": undefined };
+  const cleaned = [];
+  const h = harness({
+    cleanups: { ok: true, cleanups: [cleanup(repoA, "T-1"), cleanup(repoA, "T-2"), cleanup(repoB, "T-3"), cleanup(repoB, "T-4"), cleanup(repoB, "T-5")] },
+    cleanWorktree: async (repositoryId, taskId, repositoryRoot) => {
+      cleaned.push({ repositoryId, taskId, repositoryRoot });
+      if (taskId === "T-5") throw new Error("git");
+      return outcomes[taskId];
+    },
+  });
+  h.runner.start();
+  await h.timers.fire();
+  assert.deepEqual(cleaned.map((entry) => entry.taskId), ["T-1", "T-2", "T-3", "T-4", "T-5"]);
+  assert.deepEqual(cleaned[0], { repositoryId: repoA, taskId: "T-1", repositoryRoot: rootA });
+  assert.deepEqual(routes(h), ["queue-next", "worktree-cleanups", "worktree-cleaned", "worktree-cleaned"]);
+  assert.deepEqual(h.calls.filter((call) => call.route === "worktree-cleaned").map((call) => call.body), [
+    { repositoryId: repoA, payload: { id: "T-1" } }, { repositoryId: repoA, payload: { id: "T-2" } },
+  ]);
+  assert.deepEqual(h.calls[1].body, {});
+  for (let tick = 0; tick < 3; tick += 1) await h.timers.fire();
+  assert.equal(routes(h).filter((route) => route === "worktree-cleanups").length, 1);
+  await h.timers.fire();
+  assert.equal(routes(h).filter((route) => route === "worktree-cleanups").length, 2);
+});
+
+test("a malformed or failed cleanup answer removes nothing, and the next tick is still armed", async () => {
+  const answers = [
+    () => json({ ok: false, error: "unavailable" }), () => json({ ok: true, cleanups: "T-1" }), () => json(null), () => { throw new Error("offline"); },
+    () => json({ ok: true, cleanups: [null, cleanup("repo-x", "T-1"), cleanup(repoA, "T-0"), cleanup(repoA, "T-1", 7), { repositoryId: repoA, taskId: "T-1" }] }),
+  ];
+  for (const cleanups of answers) {
+    const cleaned = [];
+    const h = harness({ cleanups, cleanWorktree: async (...request) => { cleaned.push(request); return "removed"; } });
+    h.runner.start();
+    await h.timers.fire();
+    assert.deepEqual(cleaned, []);
+    assert.equal(routes(h).includes("worktree-cleaned"), false);
+    assert.equal(h.timers.pending().length, 1);
+  }
+});
+
+test("a disposed runner stops removing worktrees", async () => {
+  const cleaned = [];
+  const h = harness({
+    cleanups: { ok: true, cleanups: [cleanup(repoA, "T-1"), cleanup(repoA, "T-2")] },
+    cleanWorktree: async (_repositoryId, taskId) => { cleaned.push(taskId); h.runner.dispose(); return "removed"; },
+  });
+  h.runner.start();
+  await h.timers.fire();
+  assert.deepEqual(cleaned, ["T-1"]);
+  assert.equal(routes(h).includes("worktree-cleaned"), false);
 });
