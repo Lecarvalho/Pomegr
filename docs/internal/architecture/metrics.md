@@ -1113,10 +1113,10 @@ Limits of each source:
   boundaries. `snapshot_drop` boundaries are unexplained context reductions, not recorded
   compactions, and yield no event. The event carries the agent and the trigger only, never
   the prior context total, the boundary ID, or the compaction summary.
-- **Task events** (task T-57, 2026-10-11) are the agent's own calls of the four Pomegr
-  task tools that change a task: `add_task`, `remove_task`, `complete_task`, and
-  `block_task`. No agent tool updates a task, so there is no update event; the feature
-  tools and `get_feature` change no task and yield none. The source is the session's
+- **Task events** (task T-57, 2026-10-11) are the agent's own calls of four Pomegr task
+  tools: `add_task`, `remove_task`, `complete_task`, and `block_task`. An `update_task`
+  call yields no event; the feature tools and `get_feature` change no task and yield
+  none. The source is the session's
   recorded tool calls, never the task store: the feed reads no board, and a task the
   owner adds, changes, or resolves in Pomegr is not an event.
   - **Which calls.** Each adapter marks a tool call with the optional `taskAction`

@@ -154,6 +154,7 @@ test("installed Codex plugin starts without repository dependencies and lists bo
       "report_session_signal",
       "report_task_signal",
       "update_feature",
+      "update_task",
     ]);
     assert.ok(tools.every((tool) => !JSON.stringify(tool).includes("anthropic/alwaysLoad")));
   });

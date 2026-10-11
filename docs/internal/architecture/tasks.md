@@ -186,7 +186,7 @@ type TaskBoard = {
   [Starting a session](#starting-a-session)). It is one boolean, off when absent, and
   valid alone. Codex has no Remote Control, so `true` on a Codex task is invalid, in
   the desktop actions and in `add_task` alike. Only the `create` and `update` actions
-  and `add_task` set it. The `add_task` tool takes it as the optional input
+  and `add_task` set it; `update_task` only turns it off, when it moves a task to Codex. The `add_task` tool takes it as the optional input
   `remote_control`, a boolean and nothing else.
 - `run.keepWorktree` says that the task's own worktree and branch stay when the task is
   marked done. It is one boolean, on the run only when it is `true`: removing them is the
@@ -1089,7 +1089,7 @@ supplies.
 
 - **Claude Code**: a `PreToolUse` hook, like `plugins/claude-code/scripts/rename-session.mjs`,
   supplies the session on every call. The hook hands `session_ref` to `add_task`,
-  `remove_task`, `complete_task`, `block_task`, and the four feature tools (see
+  `update_task`, `remove_task`, `complete_task`, `block_task`, and the four feature tools (see
   [Feature context](#feature-context)) through `updatedInput`, together with `session_proof`:
   `<issuedAtMs>.<base64url HMAC-SHA256>` over the tool name, the session reference, and the
   issue time, keyed by the local agent-query capability token
@@ -1229,9 +1229,9 @@ supplies.
     agent must not assume a failure, and what is safe: the same `add_task` again within
     a few minutes returns the same task; `complete_task` and `block_task` once more,
     because a task takes one report per dispatch; `remove_task` once more with the same
-    ID.
+    ID; `update_task` once more with the same input, which sets the same values.
   - The tool writes wait longer than a read, because a write is not repeated by
-    itself and a busy monitor commits it and answers late. `add_task`, `remove_task`,
+    itself and a busy monitor commits it and answers late. `add_task`, `update_task`, `remove_task`,
     `block_task`, and the feature tools wait 10 seconds; `get_feature` goes through the
     same transport, so it waits as long, and when it gets no answer it says only that
     nothing was read. After an unanswered feature write the agent reads the feature
@@ -1349,6 +1349,77 @@ How it is built:
   remove anything; Codex binds it from the call's thread identity. The tool is in the
   plugins from version 0.9.1. An older plugin has no such tool, and starting a task
   still needs only 0.9.0.
+
+## Agent task update
+
+`update_task` lets an agent edit a task that is already on the board. Before it, only
+the desktop Task modal could change a task, so an agent that had a finding for a task
+had no way to add it. It is the agent write for task T-55, and the product owner settled
+the rules below on 2026-10-11.
+
+- **Which tasks.** Any task on the calling session's board: one the owner made, one
+  promoted from a GitHub issue, and one any session added. The right does not depend on
+  who added the task, so the added-by record of
+  [Agent task removal](#agent-task-removal) is not read.
+- **Only while the task waits.** Not queued, Queued, or Scheduled, with no linked
+  session and no start in flight (a dispatch minted less than ten minutes ago). This is
+  the rule of the desktop `update` action (`rowStarted` in
+  `server/tasks/task-record.mjs`): the session was started from the stored task, so a
+  later edit would never reach it. A task that started, was reported on, or has an
+  outcome is refused. A requeue makes it editable again. The task a session was started
+  for has started, so a session cannot update its own task.
+- **What it changes.** The task text, **Run on** (`provider` and `model`), **Effort**,
+  and **Complete when** (`complete_when` and `own_condition`). It never changes the
+  task's feature, step, column, position, queue state, schedule, images, Remote Control,
+  or the keep-worktree setting, and it never queues or starts the task.
+- **Replace, not append.** A field that is set replaces the stored one whole. A field
+  that is left out stays as it is. An empty `complete_when` list clears the checks, and
+  an empty `own_condition` clears the own condition. The provider, the model, and the
+  effort cannot be cleared.
+  - No agent tool reads a task's text, so an agent that sets `text` replaces text that
+    it cannot read back. The tool description says so: the agent sets the text only when
+    it holds the full text the task should have, for example from its own prompt or
+    from the owner.
+  - A new text that leaves out an image marker (`[image:<id>]`) leaves the image
+    attached to the task. The session prompt still lists the image, without a place for
+    it in the text.
+  - A provider that is set without a model clears the stored model, because a model
+    belongs to its provider. A change to Codex turns the task's Remote Control off,
+    because Codex has none.
+- **Bounds.** The record rules are the store's, shared with the desktop `update`: the
+  text is at most 4000 characters with no control character, the own condition at most
+  500 characters, the checks come from the fixed list, and a model needs a provider.
+- **Input.** One task ID (`T-` and a number from 1 to 999999999) and at least one of
+  the fields above. There is no repository ID, path, or feature input. The calling
+  session is bound as for `add_task` (see [Session binding](#session-binding)), and the
+  board is the one `add_task` writes to for that session.
+- **Answer.** Updated, or one fixed refusal. It never carries the task's text, a stored
+  field, a state, or who added the task. A task that does not exist and a task that
+  started answer the same `not_found`, so the answer tells nothing about a task.
+- **Confirmation.** None from Pomegr. Claude Code asks the user to approve the call as
+  it does for any MCP write, because the hook makes no permission decision for it.
+
+How it is built:
+
+- The store action `agent_update` (`server/tasks/task-store.mjs`) is store only, like
+  `agent_remove`: it is absent from the fixed action list, so the desktop route and the
+  IPC channel never accept it. It takes exactly `id` and at least one of `text`, `run`
+  (`provider`, `model`, `effort`), and `completeWhen` (`checks`, `own`). It checks the
+  rule inside the store's transaction, fills each absent field from the stored row, and
+  then runs the desktop `update`, so the validation is that action's.
+- The monitor serves it as `POST /api/agent/v1/tasks/update`, under the gate of `add`
+  and with the same content-type check. The body is a JSON object of at most 16 KiB with
+  `sessionRef`, `taskId`, and at least one of `text`, `run`, and `completeWhen`; any
+  other key, a query string, or an ID outside the pattern is `invalid`. The answer is
+  `{ schemaVersion: 1, ok: true }` or `{ schemaVersion: 1, ok: false, reason }` with
+  `invalid` (400), `session_not_found` (404), `repository_unavailable` (409),
+  `not_found` (404), or `unavailable` (503).
+- The MCP tool is `update_task` in `mcp/task-tools.mjs`. The Claude Code hook binds and
+  signs it as its own tool name (`plugin-src/claude-query-session.mjs`), so a proof made
+  for another tool does not update anything; Codex binds it from the call's thread
+  identity. The tool waits 10 seconds like the other writes. The same input again sets
+  the same values, so a call that got no answer is safe to repeat. The tool is in the
+  plugins from version 0.9.6. An older plugin has no such tool.
 
 ## Starting a session
 
@@ -1738,6 +1809,7 @@ serves no other client.
 | `POST /internal/tasks/image-add`, `image-remove`, and `image-read` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `image-add`: the bytes as the body and the IDs in the query; answers the image's ID. `image-remove`: `{ taskId, imageId }`. `image-read`: the same in, the bytes with a fixed media type out; the only place image bytes are served. No answer carries a path |
 | `POST /api/agent/v1/tasks/add\|complete\|block` | An agent through the MCP tools, authorized like the agent-query GETs | The only agent writes of the tools. `complete` and `block` carry the bound session and, for a block, the reason; they answer the resulting state and per-condition pass or fail |
 | `POST /api/agent/v1/tasks/remove` | An agent through the MCP tool `remove_task`, authorized like the agent-query GETs | The bound session and one task ID in; `ok` or one fixed reason out, with `not_found` for every task the session may not remove. Never task content, a state, or who added a task |
+| `POST /api/agent/v1/tasks/update` | An agent through the MCP tool `update_task`, authorized like the agent-query GETs | The bound session, one task ID, and the task fields the agent supplied in (text, Run on, effort, Complete when); `ok` or one fixed reason out, with `not_found` for a task that does not exist and for one that started. Never task content or a state |
 | `POST /api/agent/v1/tasks/feature-get` | An agent through the MCP tool `get_feature`, authorized like the agent-query GETs | The bound session and optionally one feature ID or title in; that feature's ID, title, description, and app version out, or one fixed reason. The only agent path that answers user-authored board content |
 | `POST /api/agent/v1/tasks/feature-create\|feature-update\|feature-delete` | An agent through the MCP tools `create_feature`, `update_feature`, and `delete_feature`, authorized like the agent-query GETs | The bound session and the feature fields the agent supplied in; the feature's ID, or nothing for a delete, or one fixed reason out. Never feature content |
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
@@ -1877,6 +1949,10 @@ fixed values.
   the session did not add as for one that does not exist. It never appears on
   `GET /api/tasks`, the Sessions list's task reference, `/api/state`, a session domain,
   a catalog, a notification, or diagnostics.
+- `update_task` sends task fields to the local monitor and gets none back. Its answer is
+  `ok` or one fixed reason, and no agent path returns a task's text, Run on, effort, or
+  Complete when (see [Agent task update](#agent-task-update)). The fields it writes are
+  the ones the desktop `update` action writes, kept and served only as that action's are.
 - What makes `add_task` safe to repeat is memory only: a digest that covers the task
   text, never the text, held in the monitor for five minutes (see
   [Session binding](#session-binding)). It is on no board, route, list, log, report,
