@@ -76,8 +76,8 @@ done, and requeue a started task.
 
 | Field | What it sets |
 | --- | --- |
-| **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
-| **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
+| **Run on** | Required. The provider and model of the started session's main agent: under **Claude Code** or **Codex**, a model or **Default model**. A new task starts with the choice of the newest task on the board, or with **Claude Code** and **Default model** on an empty board. Subagents are not set. A task that an agent added without a provider shows **Not set** until you choose one, and starts on Claude Code. |
+| **Effort** | Required. **Low**, **Medium**, **High**, or **Xhigh**. A new task starts with the effort of the newest task on the board, or with **Medium** on an empty board. You cannot clear it. |
 | **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
 | **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |

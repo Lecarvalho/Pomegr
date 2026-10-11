@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { latestModels, modelsByProvider, runSelectOptions } from "../../app/components/tasks/task-fields";
+import { DEFAULT_RUN, latestModels, modelsByProvider, newTaskDefaults, runSelectOptions, withRequiredRun } from "../../app/components/tasks/task-fields";
 
 describe("task model options", () => {
   it("keeps only the newest model of each family", () => {
@@ -38,6 +38,22 @@ describe("task model options", () => {
     expect(models.codex).toEqual([]);
     const labels = runSelectOptions(models, { provider: null, model: null, effort: null }).filter((option) => option.group === "Codex").map((option) => option.label);
     expect(labels).toEqual(["Default model"]);
+  });
+
+  it("offers Not set only to a stored run with no provider", () => {
+    const models = { claude: ["claude-opus-5-5"], codex: [] };
+    expect(runSelectOptions(models, { provider: null, model: null, effort: "low" }).map((option) => option.label)).toContain("Not set");
+    expect(runSelectOptions(models, { provider: "claude", model: null, effort: null }).map((option) => option.label)).not.toContain("Not set");
+    expect(runSelectOptions(models, DEFAULT_RUN).map((option) => option.label)).not.toContain("Not set");
+  });
+
+  it("fills only the Run on or Effort a run lacks", () => {
+    expect(DEFAULT_RUN).toEqual({ provider: "claude", model: null, effort: "medium" });
+    expect(withRequiredRun({ provider: null, model: null, effort: null })).toEqual(DEFAULT_RUN);
+    expect(withRequiredRun({ provider: null, model: null, effort: "xhigh" })).toEqual({ provider: "claude", model: null, effort: "xhigh" });
+    expect(withRequiredRun({ provider: "codex", model: "gpt-6.1-sol", effort: null })).toEqual({ provider: "codex", model: "gpt-6.1-sol", effort: "medium" });
+    expect(withRequiredRun({ provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true })).toEqual({ provider: "claude", model: "claude-opus-5-5", effort: "high", remoteControl: true });
+    expect(newTaskDefaults([]).run).toEqual(DEFAULT_RUN);
   });
 
   it("keeps a task's stored older model selectable", () => {

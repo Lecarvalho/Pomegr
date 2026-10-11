@@ -45,6 +45,14 @@ export function withKeepWorktree(run: TaskRun, keep: boolean): TaskRun {
 }
 
 export const EMPTY_RUN: TaskRun = { provider: null, model: null, effort: null };
+/** Run on and Effort are required in the task forms: a new task starts from this run. */
+export const DEFAULT_RUN: TaskRun = { provider: "claude", model: null, effort: "medium" };
+
+/** Fills the Run on or Effort a stored run lacks. A model belongs to its provider, so a run without a provider takes the default pair. */
+export function withRequiredRun(run: TaskRun): TaskRun {
+  const chosen = run.provider === null ? { provider: DEFAULT_RUN.provider, model: DEFAULT_RUN.model } : {};
+  return { ...run, ...chosen, effort: run.effort ?? DEFAULT_RUN.effort };
+}
 
 export type TaskModelOptions = Record<TaskProvider, readonly string[]>;
 export const NO_MODELS: TaskModelOptions = { claude: [], codex: [] };
@@ -107,7 +115,8 @@ export function runFromSelectValue(value: string, effort: TaskEffort | null): Ta
 }
 
 export function runSelectOptions(models: TaskModelOptions, run: TaskRun): CommandSelectOption[] {
-  const options: CommandSelectOption[] = [{ value: UNSET, label: "Not set" }];
+  // Run on is required: Not set shows only for a stored task that has none, and is gone once one is chosen.
+  const options: CommandSelectOption[] = run.provider === null ? [{ value: UNSET, label: "Not set" }] : [];
   for (const provider of TASK_PROVIDERS) {
     const names = new Set(models[provider]);
     if (run.provider === provider && run.model) names.add(run.model);
@@ -135,11 +144,11 @@ export function completeWhenFromTask(completeWhen: Task["completeWhen"]): Comple
   return { checks: [...completeWhen.checks], ownText: completeWhen.own ?? "" };
 }
 
-/** A new task starts from the Run on and Complete when of the newest task on the board. Removing its worktree when done is always on. */
+/** A new task starts from the Run on and Complete when of the newest task on the board, with Run on and Effort always chosen. Removing its worktree when done is always on. */
 export function newTaskDefaults(tasks: ReadonlyArray<Pick<Task, "id" | "run" | "completeWhen">>): { run: TaskRun; completeWhen: CompleteWhenDraft } {
   const number = (task: Pick<Task, "id">) => Number(task.id.slice(2));
   const newest = tasks.reduce<Pick<Task, "id" | "run" | "completeWhen"> | null>((latest, task) => (latest === null || number(task) > number(latest) ? task : latest), null);
-  return newest === null ? { run: EMPTY_RUN, completeWhen: DEFAULT_COMPLETE_WHEN } : { run: withKeepWorktree(newest.run, false), completeWhen: completeWhenFromTask(newest.completeWhen) };
+  return newest === null ? { run: DEFAULT_RUN, completeWhen: DEFAULT_COMPLETE_WHEN } : { run: withRequiredRun(withKeepWorktree(newest.run, false)), completeWhen: completeWhenFromTask(newest.completeWhen) };
 }
 
 export function toCompleteWhen(draft: CompleteWhenDraft): CompleteWhenValue {

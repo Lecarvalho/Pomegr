@@ -336,7 +336,7 @@ describe("Task modal, mode edit", () => {
     expect(taskAction).not.toHaveBeenCalled();
   });
 
-  it("saves a run change and an effort change as the complete run, and clears effort", async () => {
+  it("saves a run change and an effort change as the complete run, and never clears either", async () => {
     const user = userEvent.setup();
     setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
@@ -350,22 +350,14 @@ describe("Task modal, mode edit", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
-    // Pressing the chosen effort again clears it.
+    // Pressing the chosen effort again keeps it, and Run on offers no Not set: the draft is unchanged.
     dialog = await openDraftPanel(user);
     await user.click(dialog.getByRole("button", { name: "High" }));
-    expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "false");
-    await user.click(save(dialog));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", run: { provider: "claude", model: "model-a", effort: null } });
-    await waitFor(() => expect(panel()).not.toBeInTheDocument());
-
-    dialog = await openDraftPanel(user);
-    chooseCommandOption(dialog.getByRole("combobox", { name: "Run on" }), "");
-    await user.click(save(dialog));
-    await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
-    // Not set clears the provider and model; the effort is its own control and stays.
-    expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", run: { provider: null, model: null, effort: "high" } });
-    expect(refresh).toHaveBeenCalledTimes(3);
+    expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(dialog.getByRole("combobox", { name: "Run on" }));
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).not.toContain("Not set");
+    expect(save(dialog)).toBeDisabled();
+    expect(taskAction).toHaveBeenCalledTimes(1);
   });
 
   it("saves a checkbox change as the complete completeWhen", async () => {
@@ -564,7 +556,7 @@ describe("Task modal, mode edit", () => {
     expect(trigger).toHaveTextContent("Claude Code · model-a");
     fireEvent.click(trigger);
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
-      "Not set", "model-a, Claude Code", "Default model, Claude Code", "Default model, Codex",
+      "model-a, Claude Code", "Default model, Claude Code", "Default model, Codex",
     ]);
   });
 });
