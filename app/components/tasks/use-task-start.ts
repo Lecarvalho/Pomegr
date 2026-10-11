@@ -71,7 +71,8 @@ export function useTaskStart(repositoryId: string, task: Task, board: TaskModalB
     inFlight.current = false;
     setPending(false);
     setAnswer({ status: separateWorktree && status === "cancelled" ? "tree_dirty" : status, mark });
-    if (status === "started") await refresh().catch(() => {});
+    // A held start is named from the board's gate readings, so the line is drawn from fresh ones.
+    if (status === "started" || status === "gate_held") await refresh().catch(() => {});
   };
   const resultLine = result === null ? null : (result === "gate_held" ? heldStartLine(task, board.queue) : null) ?? LINES[result];
   const line = pending ? null : locked ? resultLine : reason ?? resultLine;

@@ -75,7 +75,6 @@ describe("Start session", () => {
     ["unsupported_provider", "Sessions cannot be started on this provider.", true],
     ["not_startable", "This task cannot be started right now.", false],
     ["not_found", "This task no longer exists.", false],
-    ["gate_held", "A start gate holds this task. See Start gates in the Queue view.", false],
     ["busy", "Another session is being started.", false],
     ["invalid", "The session could not be started.", false],
     ["unavailable", "The session could not be started.", false],
@@ -92,27 +91,81 @@ describe("Start session", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
-  it("names the gates the board shows holding a gate_held start, for the task's own provider", async () => {
-    const board: TaskBoard = {
-      version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [task({ run: { provider: "codex", model: null, effort: null } })],
-      queue: {
-        status: "idle", blockedBy: null, pauseReason: null, order: [],
-        gates: {
-          threshold: 85, workingTree: "unknown", next: null,
-          usage: { claude: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { status: "over", fiveHourPercent: 91, sevenDayPercent: 40 } },
-          providerStatus: { claude: "incident", codex: "ok" },
-        },
-      },
+  describe("held by a start gate", () => {
+    type Gates = NonNullable<TaskBoard["queue"]["gates"]>;
+    const passing: Gates = {
+      threshold: 85, workingTree: "clean", next: null,
+      usage: { claude: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 }, codex: { status: "ok", fiveHourPercent: 10, sevenDayPercent: 10 } },
+      providerStatus: { claude: "ok", codex: "ok" },
     };
-    useTasks.mockReturnValue({ board, refresh });
-    taskStart.mockResolvedValue({ status: "gate_held" });
-    const user = userEvent.setup();
-    render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openModal(user);
-    await user.click(dialog.getByRole("button", { name: "Start session" }));
-    await waitFor(() => expect(dialog.getByRole("status")).toHaveTextContent(
-      "This task is held: Codex is above 85% of the five-hour window; the working tree state is not known."));
-    expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+    const over = { status: "over" as const, fiveHourPercent: 91, sevenDayPercent: 40 };
+    const unknown = { status: "unknown" as const, fiveHourPercent: null, sevenDayPercent: null };
+    function heldBoard(gates: Gates | undefined, t: Task = task()): TaskBoard {
+      return { version: 1, readiness: "ready", repositoryId, columns, features: [], tasks: [t], queue: { status: "idle", blockedBy: null, pauseReason: null, order: [], ...(gates ? { gates } : {}) } };
+    }
+    async function startHeld(gates: Gates | undefined, t?: Task) {
+      useTasks.mockReturnValue({ board: heldBoard(gates, t), refresh });
+      taskStart.mockResolvedValue({ status: "gate_held" });
+      const user = userEvent.setup();
+      const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+      const dialog = await openModal(user);
+      await user.click(dialog.getByRole("button", { name: "Start session" }));
+      await waitFor(() => expect(dialog.getByRole("status")).toBeInTheDocument());
+      return { dialog, view };
+    }
+
+    it.each<[string, Partial<Gates>, string]>([
+      ["usage above the threshold", { threshold: 70, usage: { ...passing.usage, claude: over } }, "This task is held: Claude Code is above 70% of the five-hour window."],
+      ["a provider incident", { providerStatus: { claude: "incident", codex: "ok" } }, "This task is held: Claude Code reports an incident."],
+      ["uncommitted changes beside another hold", { workingTree: "dirty", providerStatus: { claude: "incident", codex: "ok" } }, "This task is held: Claude Code reports an incident; the working tree has uncommitted changes."],
+      ["usage that is unknown", { usage: { ...passing.usage, claude: unknown } }, "This task is held: Claude Code usage is not known yet."],
+      ["a provider status that is unknown", { providerStatus: { claude: "unknown", codex: "ok" } }, "This task is held: Claude Code status is not known yet."],
+      ["a working tree that is unknown", { workingTree: "unknown" }, "This task is held: the working tree state is not known yet."],
+      ["every reading unknown", { workingTree: "unknown", usage: { claude: unknown, codex: unknown }, providerStatus: { claude: "unknown", codex: "unknown" } },
+        "This task is held: Claude Code usage is not known yet; Claude Code status is not known yet; the working tree state is not known yet."],
+    ])("names %s", async (_name, held, line) => {
+      const { dialog } = await startHeld({ ...passing, ...held });
+      expect(dialog.getByRole("status")).toHaveTextContent(line);
+      expect(dialog.getByRole("status")).not.toHaveTextContent("Codex");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+    });
+
+    it("reads the task's own provider and never the other one", async () => {
+      const { dialog } = await startHeld(
+        { ...passing, workingTree: "unknown", usage: { claude: passing.usage.claude, codex: over }, providerStatus: { claude: "incident", codex: "ok" } },
+        task({ run: { provider: "codex", model: null, effort: null } }));
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Codex is above 85% of the five-hour window; the working tree state is not known yet.");
+      expect(dialog.getByRole("status")).not.toHaveTextContent("Claude Code");
+    });
+
+    it("judges a task with no provider as Claude Code", async () => {
+      const { dialog } = await startHeld({ ...passing, usage: { claude: over, codex: passing.usage.codex } }, task({ run: { provider: null, model: null, effort: null } }));
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Claude Code is above 85% of the five-hour window.");
+    });
+
+    it("does not name the step before it, which holds the queue's starts only", async () => {
+      const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-9", reasons: ["previous_step" as const, "provider_incident" as const] };
+      const { dialog } = await startHeld({ ...passing, next, providerStatus: { claude: "incident", codex: "ok" } });
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: Claude Code reports an incident.");
+      expect(dialog.getByRole("status")).not.toHaveTextContent("T-9");
+    });
+
+    it.each<[string, Gates | undefined]>([
+      ["the board serves no gate readings", undefined],
+      ["the readings show no hold", passing],
+    ])("points at the Queue view when %s, and never says a gate passed", async (_name, gates) => {
+      const { dialog } = await startHeld(gates);
+      expect(dialog.getByRole("status")).toHaveTextContent("A start gate holds this task. See Start gates in the Queue view.");
+      expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+    });
+
+    it("asks the board again, and names the gate from the readings that arrive", async () => {
+      const { dialog, view } = await startHeld(passing);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      useTasks.mockReturnValue({ board: heldBoard({ ...passing, workingTree: "unknown" }), refresh });
+      view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
+      expect(dialog.getByRole("status")).toHaveTextContent("This task is held: the working tree state is not known yet.");
+    });
   });
 
   it("shows no line for a cancelled start and clears an earlier one", async () => {
