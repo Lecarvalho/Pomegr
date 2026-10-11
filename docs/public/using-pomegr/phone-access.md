@@ -40,6 +40,14 @@ Repositories, Models & delegation, Usage limits, and Settings, where
 use desktop controls, sign in to a coding tool, or change sharing. The **Phone
 access** tab exists only in the desktop app.
 
+[Tasks](tasks.md) are the one thing a paired phone can change. It shows each
+repository's board with its task text, and you can create, edit, delete, move,
+queue, and schedule tasks, mark a task done, requeue it, and turn the queue off.
+It cannot start a session, turn the queue on, attach or show images, or work with
+GitHub issues; do those in the desktop app. A task you queue from the phone
+starts only while the queue is on. The phone talks to your computer over plain
+HTTP on your network, so pair only on a network you trust.
+
 ## Control sharing
 
 - **Stop sharing**, or quitting Pomegr, revokes every phone and closes open

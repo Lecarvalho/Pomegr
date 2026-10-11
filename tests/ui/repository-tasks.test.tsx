@@ -20,6 +20,9 @@ vi.mock("../../app/repository-inventory-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../app/repository-inventory-client")>();
   return { ...actual, useRepositoryInventory: () => ({ snapshot: inventoryState.snapshot, loading: inventoryState.loading, connected: inventoryState.connected, refresh: vi.fn(async () => {}) }) };
 });
+// Which client this is, as `/api/client-access` would answer; each test sets it.
+const access = vi.hoisted(() => ({ mode: "local" as "unknown" | "local" | "lan" }));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => ({ mode: access.mode }), clientAccessMode: () => access.mode }));
 
 import { RepositoryDetailView } from "../../app/components/repositories/RepositoryDetailView";
 import { repositoryTabs } from "../../app/components/repositories/repository-route";
@@ -60,6 +63,7 @@ function setBridge(bridge: unknown) {
 }
 
 beforeEach(() => {
+  access.mode = "local";
   navigation.search = "tab=tasks";
   inventoryState.snapshot = inventory;
   inventoryState.loading = false;
@@ -238,7 +242,7 @@ describe("the Tasks page", () => {
     navigation.search = `repository=${repositoryId}`;
     useTasks.mockReturnValue({ board: board({ tasks: [task(1)] }), refresh: vi.fn() });
     render(<TasksPage />);
-    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app or on a paired device.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
     expect(document.querySelector(".taskColumnAdd")).toBeNull();
     expect(document.querySelector("[draggable]")).toBeNull();

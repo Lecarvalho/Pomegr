@@ -6,8 +6,9 @@ export const dynamic = "force-dynamic";
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 
 // Task text is user-authored content, so the monitor gates this read like GET /api/provider-folders:
-// a same-computer client only. The checks mirror app/api/provider-folders/route.ts (its helpers are
-// route-private); a denied client gets a content-free desktop_only board, never task data.
+// a same-computer client, or a paired device through the desktop's LAN gateway, which forwards with a
+// loopback host. The checks mirror app/api/provider-folders/route.ts (its helpers are route-private);
+// a denied client gets a content-free desktop_only board, never task data.
 function isLoopbackHost(value: string | null) {
   if (!value) return false;
   try {

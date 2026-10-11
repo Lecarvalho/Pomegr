@@ -5,7 +5,11 @@ import { lanPairingPage } from "./lan-pairing-page.mjs";
 const PRIVATE_RANGES = Object.freeze([
   [10, 0, 0, 0, 8], [172, 16, 0, 0, 12], [192, 168, 0, 0, 16],
 ]);
-const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-domain", "/api/session-history", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/notifications", "/api/storage", "/api/provider-folders", "/api/repositories", "/api/repository-files", "/api/events"]);
+const API_PATHS = new Set(["/api/state", "/api/sessions", "/api/session-domain", "/api/session-history", "/api/home", "/api/agents", "/api/usage-limits", "/api/provider-status", "/api/notifications", "/api/storage", "/api/provider-folders", "/api/repositories", "/api/repository-files", "/api/events", "/api/tasks"]);
+// The one write a paired device has: a fixed task-board action. The web route behind it holds the closed action list.
+const TASK_ACTION_PATH = "/api/tasks/action";
+// The 16 KiB action payload plus its fixed envelope, as the monitor bounds it.
+const MAX_TASK_ACTION_BODY_BYTES = 17 * 1024;
 const APP_PATHS = new Set(["/", "/sessions", "/tasks", "/agents", "/usage-limits", "/repositories", "/dashboards", "/settings"]);
 const REQUEST_HEADERS = new Set([
   "accept", "accept-encoding", "accept-language", "content-type", "if-none-match", "if-modified-since",
@@ -135,6 +139,21 @@ function readPairingBody(request) {
       } catch { reject(new LanGatewayError("LAN_GATEWAY_PAIRING_BODY")); }
     });
     request.once("error", () => reject(new LanGatewayError("LAN_GATEWAY_PAIRING_BODY")));
+  });
+}
+
+// The whole body within `limit` bytes, or null when it is larger or the request fails.
+function readBoundedBody(request, limit) {
+  return new Promise((resolve) => {
+    let size = 0;
+    const chunks = [];
+    request.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > limit) { resolve(null); request.destroy(); return; }
+      chunks.push(chunk);
+    });
+    request.once("end", () => resolve(Buffer.concat(chunks)));
+    request.once("error", () => resolve(null));
   });
 }
 
@@ -319,7 +338,8 @@ export async function startLanGateway(options = {}) {
       response.setHeader("Set-Cookie", `${cookieName}=${session}; HttpOnly; SameSite=Strict; Path=/`);
       response.writeHead(204); response.end(); return;
     }
-    if (method !== "GET" && method !== "HEAD") { fixed(response, 405); return; }
+    const taskAction = method === "POST" && pathname === TASK_ACTION_PATH;
+    if (method !== "GET" && method !== "HEAD" && !taskAction) { fixed(response, 405); return; }
     if (!authenticated(request)) {
       if (pathname.startsWith("/api/")) { fixed(response, 401, "Unauthorized"); return; }
       if (acceptsHtml(request)) { noStore(response); response.writeHead(302, { Location: "/__pomegr/pair" }); response.end(); return; }
@@ -337,14 +357,24 @@ export async function startLanGateway(options = {}) {
       if (method !== "GET") { fixed(response, 405); return; }
       if (url.search || hasBody) { fixed(response, 403); return; }
     }
-    if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
-    // The upstream sees a loopback host, so every forwarded request is marked: a route that serves same-computer
-    // content (the Sessions list's task references) refuses a marked request. Client headers pass only by allowlist.
+    let actionBody = null;
+    if (taskAction) {
+      // A paired device's own page only: the gateway's origin, a JSON body within the bound, and no query.
+      const declared = request.headers["content-length"];
+      if (url.search || request.headers.origin !== origin || !String(request.headers["content-type"] || "").startsWith("application/json")
+        || request.headers["transfer-encoding"] !== undefined || !/^\d+$/.test(String(declared ?? "")) || Number(declared) > MAX_TASK_ACTION_BODY_BYTES) { fixed(response, 403); return; }
+      actionBody = await readBoundedBody(request, MAX_TASK_ACTION_BODY_BYTES);
+      if (actionBody === null) { fixed(response, 400); return; }
+      if (!active || suspended || !authenticated(request)) { fixed(response, 403); return; }
+    } else if (!routeIsAllowed(pathname)) { fixed(response, 404); return; }
+    // The upstream sees a loopback host, so every forwarded request is marked: a route can tell a paired device from a
+    // same-computer client, and the one write route takes only a marked request. Client headers pass only by allowlist.
     const headers = { host: upstream.host, "x-pomegr-desktop-authorization": options.authorizationToken, "x-pomegr-lan-gateway": "1" };
     for (const [name, value] of Object.entries(request.headers)) {
       if (!REQUEST_HEADERS.has(name) || typeof value !== "string" || value.length > 4096 || /[\r\n]/.test(value)) continue;
       headers[name] = value;
     }
+    if (actionBody) { headers["content-type"] = "application/json"; headers["content-length"] = String(actionBody.length); }
     const forwardingRevision = networkRevision;
     const upstreamRequest = http.request({
       protocol: upstream.protocol, hostname: upstream.hostname.replace(/^\[|\]$/g, ""), port: upstream.port,
@@ -384,7 +414,7 @@ export async function startLanGateway(options = {}) {
     upstreamRequest.once("error", () => { upstreamRequests.delete(upstreamRequest); if (!response.headersSent) fixed(response, 502, "Gateway unavailable"); else response.destroy(); });
     request.once("aborted", () => upstreamRequest.destroy());
     response.once("close", () => { if (!response.writableEnded) upstreamRequest.destroy(); });
-    upstreamRequest.end();
+    upstreamRequest.end(actionBody ?? undefined);
   });
   server.headersTimeout = 10_000;
   server.requestTimeout = 15_000;

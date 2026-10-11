@@ -249,9 +249,10 @@ test("the monitor server composes the injected task store into the same gated ro
   assert.equal(unavailable.json.readiness, "unavailable");
 });
 
-test("the LAN gateway does not forward the task board", async () => {
+test("the LAN gateway forwards the task board read and one task write, and no other task path", async () => {
   const gateway = await readFile(new URL("../../../desktop/runtime/lan-gateway.mjs", import.meta.url), "utf8");
-  assert.ok(!gateway.includes("/api/tasks"), "tasks stay off the LAN gateway route list");
+  // A paired device reads the board and sends fixed actions; starts, images, issues, and the monitor's own routes stay off it.
+  assert.deepEqual([...new Set(gateway.match(/["`]\/(?:api|internal)\/tasks[^"`]*["`]/gu))].sort(), ['"/api/tasks"', '"/api/tasks/action"']);
 });
 
 test("the board carries runModels.codex from the injected lookup: bounded to 64, invalid ids and labels dropped", async (context) => {

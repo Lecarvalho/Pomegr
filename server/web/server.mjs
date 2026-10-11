@@ -14,6 +14,8 @@ import {
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DEFAULT_OUT_DIR = path.join(ROOT, "dist");
 
+const TASK_ACTION_PATH = "/api/tasks/action";
+
 function recordStartupStage(options, stage) {
   try { options.recordStage?.(stage); } catch { /* Diagnostics never affect service startup. */ }
 }
@@ -60,7 +62,9 @@ export function installLocalRequestGate(server, options) {
   server.removeAllListeners("request");
   server.on("request", (request, response) => {
     const origin = typeof request.headers.origin === "string" ? request.headers.origin : "";
-    const allowed = active && ["GET", "HEAD"].includes(request.method || "")
+    // The one write that reaches the app: a paired device's task action, which the LAN gateway forwards as a POST.
+    const taskAction = request.method === "POST" && request.url === TASK_ACTION_PATH && !origin;
+    const allowed = active && (["GET", "HEAD"].includes(request.method || "") || taskAction)
       && request.headers.host === expectedHost
       && (!origin || origin === expectedOrigin)
       && requestHasDesktopAuthorization(request, authorizationToken);

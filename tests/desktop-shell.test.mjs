@@ -333,6 +333,13 @@ test("desktop web gate requires the dynamic host, same origin, read-only method,
     assert.equal((await request(port, { token: TOKEN, host: "localhost" })).status, 401);
     assert.equal((await request(port, { token: TOKEN, origin: "http://127.0.0.1:9999" })).status, 401);
     assert.equal((await request(port, { token: TOKEN, method: "POST" })).status, 401);
+    // The one write that reaches the app is a paired device's task action, forwarded by the LAN gateway with no Origin.
+    assert.equal((await request(port, { token: TOKEN, method: "POST", path: "/api/tasks/action" })).status, 200);
+    assert.equal((await request(port, { method: "POST", path: "/api/tasks/action" })).status, 401);
+    assert.equal((await request(port, { token: TOKEN, method: "POST", path: "/api/tasks/action", origin: `http://127.0.0.1:${port}` })).status, 401);
+    for (const path of ["/api/tasks/action?x=1", "/api/tasks/action/", "/api/tasks", "/api/tasks/action/start"]) {
+      assert.equal((await request(port, { token: TOKEN, method: "POST", path })).status, 401);
+    }
   } finally {
     await close(server);
   }
@@ -388,6 +395,8 @@ test("authorized monitor mode removes wildcard CORS and rejects untrusted local 
     assert.equal((await request(port, { token: TOKEN, host: "localhost" })).status, 401);
     assert.equal((await request(port, { token: TOKEN, origin: `http://127.0.0.1:${port}` })).status, 401);
     assert.equal((await request(port, { token: TOKEN, method: "POST" })).status, 401);
+    // The paired-device write is a route of the web app; the monitor itself takes no such POST.
+    assert.equal((await request(port, { token: TOKEN, method: "POST", path: "/api/tasks/action" })).status, 401);
   } finally {
     await close(server);
   }

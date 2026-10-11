@@ -14,6 +14,9 @@ const agents = vi.hoisted(() => ({ runs: [] as Array<{ source: string; model: st
 vi.mock("../../app/agents-client", () => ({ useAgents: () => ({ data: { runs: agents.runs }, loading: false, refreshing: false, connected: true, checkedAt: null }) }));
 const inventory = vi.hoisted(() => ({ snapshot: { revision: 1, readiness: "ready", repositories: [] } as RepositoryInventorySnapshot }));
 vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory: () => ({ snapshot: inventory.snapshot, loading: false, connected: true, refresh: vi.fn() }) }));
+// Which client this is, as `/api/client-access` would answer; each test sets it.
+const access = vi.hoisted(() => ({ mode: "local" as "unknown" | "local" | "lan" }));
+vi.mock("../../app/hooks/ClientAccessContext", () => ({ useClientAccess: () => ({ mode: access.mode }), clientAccessMode: () => access.mode }));
 
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
 
@@ -28,6 +31,7 @@ function setBridge(bridge: unknown) {
 }
 
 beforeEach(() => {
+  access.mode = "local";
   agents.runs = [];
   inventory.snapshot = { revision: 1, readiness: "ready", repositories: [{
     id: repositoryId, name: "example", displayName: "Example project", sessionCount: 0, liveCount: 0, historyCount: 0, providerCount: 0, updatedAt: null, providers: [],
@@ -61,7 +65,7 @@ describe("without the desktop bridge", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
-    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app or on a paired device.")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Task board" })).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -70,7 +74,15 @@ describe("without the desktop bridge", () => {
     setBridge({ getDesktopState: vi.fn() });
     render(<TaskBoardPane repositoryId={repositoryId} />);
     expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
-    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app.")).toBeInTheDocument();
+    expect(screen.getByText("Tasks are created and edited in the Pomegr desktop app or on a paired device.")).toBeInTheDocument();
+  });
+
+  it("draws neither the action nor the note until the client knows whether it is a paired device", () => {
+    setBridge(undefined);
+    access.mode = "unknown";
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.queryByRole("button", { name: "New task" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/created and edited|turned on in the Pomegr desktop app/)).not.toBeInTheDocument();
   });
 
   it("draws neither the action nor the note in the server pass, so nothing is shown and then removed", () => {
@@ -269,6 +281,59 @@ describe("with the desktop bridge", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     const source = ["TaskModal.tsx", "TaskModalNew.tsx", "TaskModalEdit.tsx", "TaskModalFrame.tsx", "TaskFields.tsx", "FeatureFields.tsx", "TaskCard.tsx", "TaskBoardPane.tsx", "task-desktop.ts", "task-fields.ts", "task-panel-hooks.ts", "use-task-draft.ts"].map((file) => readFileSync(join(process.cwd(), "app", "components", "tasks", file), "utf8")).join("\n");
     expect(source).not.toMatch(/\bfetch\(|XMLHttpRequest|sendBeacon|localStorage|sessionStorage/);
+  });
+});
+
+describe("on a paired device", () => {
+  beforeEach(() => {
+    setBridge(undefined);
+    access.mode = "lan";
+  });
+
+  it("creates a task through the one paired route, with the fixed action and no board in the answer", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ ok: true, taskId: "T-7" }));
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.getByText("Sessions are started and the queue is turned on in the Pomegr desktop app.")).toBeInTheDocument();
+    await user.type(await openPanel(user), "From a phone");
+    await user.click(createButton());
+    await waitFor(() => expect(panel()).not.toBeInTheDocument());
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(url).toBe("/api/tasks/action");
+    expect(init).toMatchObject({ method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" } });
+    expect(JSON.parse(String(init?.body))).toEqual({ repositoryId, action: "create", payload: { text: "From a phone", completeWhen: DEFAULT_COMPLETE_WHEN } });
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps the draft and says so once when the route refuses or cannot be reached", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("Request unavailable", { status: 403 }));
+    const user = userEvent.setup();
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    await user.type(await openPanel(user), "Kept");
+    await user.click(createButton());
+    expect(await screen.findByText("The task could not be saved.")).toBeInTheDocument();
+    expect(field().value).toBe("Kept");
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns the queue off but never on", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ ok: true }));
+    const queue = (status: "idle" | "running" | "paused") => ({ status, blockedBy: null, pauseReason: null, order: [] });
+    const ready = { ...createEmptyTaskBoard(repositoryId, "ready"), columns: [{ id: "col-1", name: "Backlog", position: 0 }] };
+    useTasks.mockReturnValue({ board: { ...ready, queue: queue("idle") }, refresh });
+    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+    const group = () => screen.getByRole("group", { name: "Queue" });
+    const button = (name: string) => [...group().querySelectorAll("button")].find((entry) => entry.textContent === name) as HTMLButtonElement;
+    expect(button("On")).toBeDisabled();
+    useTasks.mockReturnValue({ board: { ...ready, queue: queue("paused") }, refresh });
+    view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(button("On")).toBeDisabled();
+    useTasks.mockReturnValue({ board: { ...ready, queue: queue("running") }, refresh });
+    view.rerender(<TaskBoardPane repositoryId={repositoryId} />);
+    fireEvent.click(button("Off"));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body))).toEqual({ repositoryId, action: "queue_settings", payload: { on: false } });
   });
 });
 

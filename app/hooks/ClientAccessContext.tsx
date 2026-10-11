@@ -55,6 +55,11 @@ function subscribeClientAccess(listener: () => void) {
   return () => accessListeners.delete(listener);
 }
 
+/** The access mode last read, for code outside a component; `unknown` until the first answer. */
+export function clientAccessMode(): ClientAccessMode {
+  return accessSnapshot.mode;
+}
+
 const defaultAccess: ClientAccessContextValue = {
   ...unknownAccess,
   markAccessExpired() {},
