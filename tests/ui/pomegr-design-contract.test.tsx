@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SettingsPage } from "../../app/settings/SettingsPage";
@@ -26,7 +26,10 @@ const requestsPanelSource = readFileSync(join(process.cwd(), "app", "components"
 const activityStyles = readFileSync(join(process.cwd(), "app", "styles", "activity-feed.css"), "utf8");
 const evidenceStyles = readFileSync(join(process.cwd(), "app", "styles", "evidence.css"), "utf8");
 const signalsTabStyles = readFileSync(join(process.cwd(), "app", "components", "dashboard", "SignalsTab.module.css"), "utf8");
-const designContract = readFileSync(join(process.cwd(), "DESIGN.md"), "utf8");
+// The contract is the root file and one page for each surface. Read them as one text, so a rule may move between pages.
+const designPagesPath = join(process.cwd(), "docs", "internal", "design");
+const designContract = [join(process.cwd(), "DESIGN.md"), ...readdirSync(designPagesPath).sort().map((name) => join(designPagesPath, name))]
+  .map((path) => readFileSync(path, "utf8")).join("\n");
 const designSystemStyles = readFileSync(join(process.cwd(), "app", "styles", "design-system.css"), "utf8");
 const repositoriesComponentsPath = join(process.cwd(), "app", "components", "repositories");
 const fileTreeSource = readFileSync(join(repositoriesComponentsPath, "FileTree.tsx"), "utf8");
@@ -305,16 +308,17 @@ describe("Pomegr visual contract", () => {
       expect(source).not.toMatch(/repository-files-store|useSyncExternalStore|fetch\(/);
     }
 
-    expect(designContract).toMatch(/### File tree and file history panel/);
+    expect(designContract).toMatch(/^## FileTree$/m);
+    expect(designContract).toMatch(/^## FileHistoryPanel$/m);
     expect(designContract).toMatch(/`\.fileTreeStatusLetter`/);
     expect(designContract).toMatch(/amber \*\*M\*\* \(Modified\)/);
-    expect(designContract).toMatch(/indent 14\/30\/46\/62px per depth/);
+    expect(designContract).toMatch(/14\/30\/46\/62px per depth/);
     expect(designContract).toMatch(/ancestors of the current\s+selection and top-level folders with 12 or fewer files/);
     expect(designContract).toMatch(/\*\*Changed elsewhere\*\*/);
     expect(designContract).toMatch(/\*\*Status from the working tree · select a\s+file for its history\*\*/);
     expect(designContract).toMatch(/\*\*Folders roll up distinct sessions\*\*/);
     expect(designContract).toMatch(/\*\*How to read this\*\*/);
-    expect(designContract).toMatch(/SessionFilePanel \(`app\/components\/dashboard\/SessionFilePanel\.tsx`\)/);
+    expect(designContract).toMatch(/`SessionFilePanel` \(`app\/components\/dashboard\/SessionFilePanel\.tsx`\)/);
     expect(designContract).toMatch(/selecting a file never waits\s+on a fetch/);
     expect(designContract).toMatch(/\*\*N changes without\s+session attribution \(moves seen in Git\)\*\*/);
 
@@ -378,11 +382,11 @@ describe("Pomegr visual contract", () => {
     expect(pane).not.toMatch(/commandPrimaryAction/);
     expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "NewTaskAction.tsx"), "utf8")).toMatch(/className="commandQuietAction taskColumnAdd"/);
     expect(readFileSync(join(process.cwd(), "app", "components", "tasks", "TaskColumnHeader.tsx"), "utf8")).not.toMatch(/<button/);
-    // DESIGN.md and the design-system sample document the same rules.
-    expect(designContract).toMatch(/A column is a \*\*lane\*\* \(`\.taskColumn`\)[^.]*raised fill[^.]*one-pixel `--command-line` border/);
+    // The design contract and the design-system sample document the same rules.
+    expect(designContract).toMatch(/lane has the raised fill[^.]*one-pixel `--command-line` border/);
     expect(designContract).toMatch(/The lane under a dragged card cannot take the raised fill, so it takes the strong line \(`--command-line-strong`\) on its border/);
-    expect(designContract).toMatch(/a \*\*drop line\*\* \(`\.taskCard\.isDropBefore`, `\.isDropAfter`: a two-pixel `--command-ink` rule/);
-    expect(designContract).toMatch(/the \*\*first lane only\*\* ends with the Quiet \*\*\+ New task\*\*/);
+    expect(designContract).toMatch(/`\.taskCard\.isDropBefore`, `\.isDropAfter`\) is a two-pixel `--command-ink` rule/);
+    expect(designContract).toMatch(/\*\*first lane only\*\* ends with the \[Quiet\]\([^)]*\) \*\*\+ New task\*\*/);
     expect(designContract).toMatch(/invisible \(opacity 0, never `display: none`/);
     expect(designContract).toMatch(/The header has no primary action: \*\*New task\*\* lives in the first lane\./);
     expect(designContract).toMatch(/Tasks is a root item of the primary rail, directly after Sessions/);
@@ -425,10 +429,12 @@ describe("Pomegr visual contract", () => {
     expect(fields).not.toMatch(/Use your own condition/);
     expect(featureFields).not.toMatch(/>Step<|aria-label="Step"/);
     expect(fields + featureFields).not.toMatch(/<select/);
-    // DESIGN.md and the design-system sample document the frame and the fields.
-    expect(designContract).toMatch(/\*\*Task modal frame\.\*\* `TaskModalFrame`[^]*native modal `<dialog>`[^]*`--color-text` mixed to 40%/);
-    expect(designContract).toMatch(/a click on the scrim closes it only while the form holds nothing to save/);
-    expect(designContract).toMatch(/\*\*Task fields\.\*\*[^]*“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, “CI passed”, and “Validated with the user”/);
+    // The design contract and the design-system sample document the frame and the fields.
+    expect(designContract).toMatch(/`TaskModalFrame`/);
+    expect(designContract).toMatch(/native modal `<dialog>`/);
+    expect(designContract).toMatch(/`--color-text` mixed to 40%/);
+    expect(designContract).toMatch(/A click on the scrim closes the dialog only while the form holds nothing to save/);
+    expect(designContract).toMatch(/“PR open”, “Tree clean”, “Commit on branch”, “PR merged”, “CI passed”, and “Validated with the user”/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, new/);
     expect(sample).toMatch(/TaskModalChrome/);
@@ -467,13 +473,16 @@ describe("Pomegr visual contract", () => {
     expect(view).toMatch(/className="commandQuietAction"[^>]*>Refresh<\/button>/);
     expect(split).toMatch(/className="commandPrimaryAction"[^]*?>Promote<\/button>/);
     expect(view + split + actions).not.toMatch(/<select|dangerouslySetInnerHTML/);
-    // DESIGN.md and the design-system sample document the same page.
-    expect(designContract).toMatch(/\*\*Promote issues page\.\*\* `\/tasks\/issues\?repository=<repositoryId>`[^]*the Quiet \*\*Tasks\*\* back link is the header's breadcrumb[^]*Quiet \*\*Refresh\*\*/);
-    expect(designContract).toMatch(/its focus ring is inset \(offset −2px\) because the rows touch/);
-    expect(designContract).toMatch(/A \*\*notice\*\* \(`\.taskNotice`, shared with the task modal\) is a soft-filled box[^]*never a side stripe/);
+    // The design contract and the design-system sample document the same page.
+    expect(designContract).toMatch(/`\/tasks\/issues\?repository=<repositoryId>`/);
+    expect(designContract).toMatch(/Quiet \*\*Tasks\*\* back link is the header's breadcrumb/);
+    expect(designContract).toMatch(/Quiet \*\*Refresh\*\* is the header action/);
+    expect(designContract).toMatch(/The focus ring of a row is inset \(offset −2px\) because the rows touch/);
+    expect(designContract).toMatch(/A notice \(`\.taskNotice`\) is shared with the task modal/);
+    expect(designContract).toMatch(/A notice is never a side stripe/);
     expect(designContract).toMatch(/hidden HTML comment is a struck-through segment/);
-    expect(designContract).toMatch(/The page reads once when it opens and once per Refresh, never on a timer, on focus, or on a GET/);
-    expect(designContract).toMatch(/last, where the desktop issues bridge exists, the Secondary \*\*Promote issues\*\* link/);
+    expect(designContract).toMatch(/The page never reads on a timer, on focus, or on a GET/);
+    expect(designContract).toMatch(/The Secondary \*\*Promote issues\*\* link \| The desktop issues bridge exists\./);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemPromoteIssuesSample.tsx"), "utf8");
     expect(sample).toMatch(/export function PromoteIssuesSection/);
     expect(sample).toMatch(/Tasks header action/);
@@ -503,9 +512,13 @@ describe("Pomegr visual contract", () => {
     expect(modalEdit).toMatch(/className="commandSecondaryAction"[^\n]*Mark done and resume queue[^\n]*<\/button>/);
     expect(modalEdit).toMatch(/className="taskModalResolve"/);
     expect(tasksStyles).toMatch(/\.taskModalResolve \{[^}]*flex: 1 0 100%/);
-    // DESIGN.md and the design-system sample document both modes.
-    expect(designContract).toMatch(/\*\*New task modal\.\*\*[^]*\*\*Cancel\*\*[^]*\*\*Create task\*\*/);
-    expect(designContract).toMatch(/\*\*Task modal, mode edit\.\*\*[^]*nothing is sent until \*\*Save\*\*[^]*Save your changes first\./);
+    // The design contract and the design-system sample document both modes.
+    expect(designContract).toMatch(/^## Mode new$/m);
+    expect(designContract).toMatch(/Quiet \*\*Cancel\*\*/);
+    expect(designContract).toMatch(/primary \*\*Create task\*\*/);
+    expect(designContract).toMatch(/^## Mode edit$/m);
+    expect(designContract).toMatch(/Nothing is sent until \*\*Save\*\*/);
+    expect(designContract).toMatch(/“Save your changes first\.”/);
     expect(designContract).not.toMatch(/\*\*(?:New task|Task) panel\.\*\*/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, edit"/);
@@ -548,12 +561,19 @@ describe("Pomegr visual contract", () => {
     // Mode edit starts with the Source block for a promoted task only, and keeps Save as its one primary.
     expect(modalEdit).toMatch(/\{issueNumber !== null && <TaskModalSource number=\{issueNumber\} caption="GitHub issue" \/>\}/);
     expect(modalEdit.match(/commandPrimaryAction/g)).toHaveLength(1);
-    // DESIGN.md and the design-system sample document the mode, the Source block and the issue chip.
-    expect(designContract).toMatch(/\*\*Task modal, mode promote\.\*\*[^]*There is no Task field[^]*Closes #n[^]*\*\*Promote issue\*\*[^]*\*\*Show new version\*\*[^]*offers only a Secondary \*\*Close\*\*, so an issue is never promoted twice/);
-    expect(designContract).toMatch(/\*\*Task modal, mode edit\.\*\*[^]*starts the body with a \*\*Source\*\* block[^]*“GitHub issue”/);
-    expect(designContract).toMatch(/The \*\*issue chip\*\* is the same outline `\.commandChip` with the class `taskIssueChip`/);
+    // The design contract and the design-system sample document the mode, the Source block and the issue chip.
+    expect(designContract).toMatch(/^## Mode promote$/m);
+    expect(designContract).toMatch(/There is no Task field/);
+    expect(designContract).toMatch(/Closes #n/);
+    expect(designContract).toMatch(/primary \*\*Promote issue\*\*/);
+    expect(designContract).toMatch(/Secondary \*\*Show new version\*\*/);
+    expect(designContract).toMatch(/offers only a Secondary \*\*Close\*\*/);
+    expect(designContract).toMatch(/starts the body with a \*\*Source\*\* block/);
+    expect(designContract).toMatch(/the muted caption “GitHub issue”/);
+    expect(designContract).toMatch(/issue chip\*\* is the same outline `\.commandChip` with the class `taskIssueChip`/);
     expect(designContract).toMatch(/the number follows the ID as plain muted `--text-xs` data-font text/);
-    expect(designContract).toMatch(/Settings includes a \*\*GitHub\*\* section directly after \*\*Providers\*\* and before \*\*Storage\*\*/);
+    expect(designContract).toMatch(/^## GitHub$/m);
+    expect(designContract).toMatch(/\*\*Providers\*\*, \*\*GitHub\*\*, \*\*Storage\*\*, \*\*Data display\*\*/);
     const sample = readFileSync(join(process.cwd(), "app", "components", "design-system", "DesignSystemTaskFieldsSample.tsx"), "utf8");
     expect(sample).toMatch(/Task modal, promote issue"/);
     expect(sample).toMatch(/Task modal, promote issue, outside contributor and changed/);
@@ -564,8 +584,9 @@ describe("Pomegr visual contract", () => {
   it("documents the promoted roster, inspector, command table, and settings rail samples with tokens only", () => {
     expect(designContract).toMatch(/shipped `AgentActivityPanel` from static agents/);
     expect(designContract).toMatch(/standalone inline `AgentInspector`/);
-    expect(designContract).toMatch(/`CommandTable` adds opt-in states: a sortable header/);
-    expect(designContract).toMatch(/`\.commandSettingsNav`, `role="tab"`, rendered with its pane at `\/design-system`/);
+    expect(designContract).toMatch(/`CommandTable` adds opt-in states\./);
+    expect(designContract).toMatch(/\| Sortable header \|/);
+    expect(designContract).toMatch(/`\.commandSettingsNav`, `role="tab"` \| Rendered with its pane at `\/design-system`/);
     expect(designContract).toMatch(/the agent roster and inspector, the command table, the settings tab rail/);
 
     // The static reference adds layout only: tokens for color, radius, and size, never literals.
@@ -638,13 +659,14 @@ describe("Pomegr visual contract", () => {
     }
     expect(designSystemStyles).toMatch(/\.designSystemChatGrid \{ grid-template-columns: repeat\(auto-fit, minmax\(min\(100%, 420px\), 1fr\)\); \}/);
 
-    // DESIGN.md documents the launcher, the panel, the proposal card, the composer, and the conversation list, placed directly before the file tree.
-    expect(designContract).toMatch(/### Agent chat\r?\n[^]*\r?\n### File tree and file history panel/);
+    // The Agent chat design page documents the launcher, the panel, the proposal card, the composer, and the conversation list, and DESIGN.md routes to it.
+    expect(designContract).toMatch(/^# Agent chat design$/m);
+    expect(designContract).toMatch(/\[Agent chat design\]\(docs\/internal\/design\/agent-chat\.md\)/);
     expect(designContract).toMatch(/`\.agentChatLauncher` is shell chrome like the header icon buttons \(`\.commandIconButton`\), not a seventh role/);
-    expect(designContract).toMatch(/Its z-index, and the panel's, is 85: above the sidebar and the header, below the agent inspector sheet \(90\) and the select list \(120\)/);
+    expect(designContract).toMatch(/The z-index of the launcher and of the panel is 85: above the sidebar and the header, below the agent inspector sheet \(90\) and the select list \(120\)/);
     expect(designContract).toMatch(/420px wide and `min\(640px, calc\(100dvh - 92px\)\)` tall/);
-    expect(designContract).toMatch(/At 760px and narrower it is a full-screen sheet \(`inset: 0`, no radius, border, or shadow/);
-    expect(designContract).toMatch(/the only thing it writes to browser storage is the last repository ID \(`pomegr\.agentChat\.repository`\), never a message/);
+    expect(designContract).toMatch(/At 760px and narrower, the panel is a full-screen sheet \(`inset: 0`, no radius, border, or shadow/);
+    expect(designContract).toMatch(/The only thing the chat writes to browser storage is the last repository ID \(`pomegr\.agentChat\.repository`\), never a message/);
     expect(designContract).toMatch(/Escape first belongs to a layer inside the panel/);
     expect(designContract).toMatch(/`AgentChatMarkdown` builds React elements from the answer and sets no HTML/);
     expect(designContract).toMatch(/Only a pending proposal has a footer: the Primary \*\*Apply changes\*\* and the Quiet \*\*Dismiss\*\*/);

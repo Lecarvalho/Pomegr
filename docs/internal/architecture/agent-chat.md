@@ -4,7 +4,7 @@
 > reads, how it proposes board changes, the saved conversations, and the two ways a
 > client reaches it. It does not cover the board itself, which
 > [Tasks](tasks.md) owns, or the controls and styles, which
-> [DESIGN.md](../../../DESIGN.md#agent-chat) owns.
+> [Agent chat design](../design/agent-chat.md) owns.
 > Authority: canonical contract for the agent chat, and canonical owner of its privacy
 > invariants (the [Privacy](#privacy) section). Requested by the product owner on
 > 2026-10-11 (task T-29, GitHub issue #170). A change that widens exposure changes the
