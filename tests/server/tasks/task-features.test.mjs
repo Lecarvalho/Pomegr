@@ -117,9 +117,9 @@ test("the done flag is false for an empty or mixed feature and true once every t
   assert.equal(addTask(store, {}).ok, true);
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-4", featureId: feature }), { ok: false, error: "conflict" });
   assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-3", featureId: feature }), { ok: false, error: "conflict" });
-  // A task stays free to move inside its own done feature.
-  assert.equal(store.apply(REPOSITORY, "update", { id: "T-2", step: 1 }).ok, true);
-  assert.deepEqual(steps(store.readBoard(REPOSITORY), feature), [1, 1]);
+  // A done task has started, so it no longer moves inside its own feature either.
+  assert.deepEqual(store.apply(REPOSITORY, "update", { id: "T-2", step: 1 }), { ok: false, error: "conflict" });
+  assert.deepEqual(steps(store.readBoard(REPOSITORY), feature), [1, 2]);
   assert.equal(flag(), true);
 });
 

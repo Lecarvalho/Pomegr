@@ -248,6 +248,40 @@ test("block stores the bounded reason and sets blocked", async (context) => {
   assert.deepEqual(env.factCalls, []);
 });
 
+test("a started task takes no update until it is requeued", async (context) => {
+  const env = await setup(context);
+  const feature = apply(env, "feature_create", { name: "Search" }).board.features[0].id;
+  assert.equal(apply(env, "create", { text: TEXT }).ok, true);
+  const refused = () => {
+    for (const payload of [{ text: "edited" }, { run: { provider: "codex" } }, { completeWhen: { checks: ["pr_open"] } }, { featureId: feature }]) {
+      assert.deepEqual(apply(env, "update", { id: "T-1", ...payload }), { ok: false, error: "conflict" }, JSON.stringify(payload));
+    }
+    const task = taskOf(env);
+    assert.deepEqual([task.text, task.run.provider, task.completeWhen.checks, task.featureId], [TEXT, null, [], null]);
+  };
+  // A minted dispatch already carries the prompt, so the task is closed before its session links.
+  const planned = env.store.planStart(REPOSITORY_ID, { id: "T-1" }, () => START_FACTS, passingGates);
+  assert.equal(planned.ok, true);
+  refused();
+  assert.deepEqual(env.store.bindSession({ token: planned.plan.token, sessionId: SESSION }), { ok: true });
+  refused();
+  assert.equal((await complete(env)).json.state, "needs_review");
+  refused();
+  // Requeue clears the link and the report, so the task is the owner's to change again.
+  assert.equal(apply(env, "resolve_requeue", { id: "T-1" }).ok, true);
+  assert.equal(apply(env, "update", { id: "T-1", text: "edited" }).ok, true);
+  assert.equal(apply(env, "update", { id: "T-1", text: TEXT }).ok, true);
+  const again = env.store.planStart(REPOSITORY_ID, { id: "T-1" }, () => START_FACTS, passingGates);
+  assert.deepEqual(env.store.bindSession({ token: again.plan.token, sessionId: OTHER_SESSION }), { ok: true });
+  assert.equal((await block(env, REASON, OTHER_SESSION)).json.state, "blocked");
+  refused();
+  assert.equal(apply(env, "resolve_done", { id: "T-1" }).ok, true);
+  refused();
+  // Another task of the board is not held by it.
+  assert.equal(apply(env, "create", { text: "second" }).ok, true);
+  assert.equal(apply(env, "update", { id: "T-2", text: "second, edited" }).ok, true);
+});
+
 test("a task takes one report per dispatch", async (context) => {
   const env = await setup(context);
   startedTask(env, { checks: ["tree_clean"] });

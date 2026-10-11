@@ -138,8 +138,8 @@ describe("Start session", () => {
     // A task in review holds no queue, so its first resolution does not speak of one.
     expect(dialog.getByRole("button", { name: state === "needs_review" ? "Mark done" : "Mark done and resume queue" })).toBeInTheDocument();
     expect(dialog.getByRole("button", { name: "Requeue task" })).toBeInTheDocument();
-    // Save is the one primary action of the modal, and it waits for a change.
-    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction")).map((button) => button.textContent)).toEqual(["Save"]);
+    // A started task is read-only, so the modal offers no Save and has no primary action.
+    expect(dialog.getAllByRole("button").filter((button) => button.classList.contains("commandPrimaryAction"))).toEqual([]);
   });
 
   it.each([

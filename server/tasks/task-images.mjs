@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
-import { TASK_BOUNDS, isRepositoryId, isTaskId, normalizeStoredImages } from "./task-record.mjs";
+import { TASK_BOUNDS, isRepositoryId, isTaskId, normalizeStoredImages, rowStarted } from "./task-record.mjs";
 
 const IMAGE_DIRECTORY = "images";
 const IMAGE_ID = /^img-[0-9a-f]{12}$/u;
@@ -72,6 +72,12 @@ export function removeTaskImageFiles(directory, repositoryId, taskId) {
 const taskExists = (database, repositoryId, taskId) =>
   preparedStatement(database, "SELECT 1 FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, Number(taskId.slice(2))) !== undefined;
 
+// A started task keeps the images its session was given, like its text.
+function taskStarted(database, repositoryId, taskId, at) {
+  const row = preparedStatement(database, "SELECT state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, Number(taskId.slice(2)));
+  return row !== undefined && rowStarted(row, at);
+}
+
 const touchTask = (database, repositoryId, taskId) =>
   preparedStatement(database, "UPDATE tasks SET updated_at = ? WHERE repository_id = ? AND number = ?").run(Date.now(), repositoryId, Number(taskId.slice(2)));
 
@@ -81,7 +87,7 @@ function shaped(payload, keys) {
 }
 
 // Attaches one image to an existing task.
-export function addTaskImage({ database, transaction, directory, repositoryId, payload }) {
+export function addTaskImage({ database, transaction, directory, repositoryId, payload, now = Date.now }) {
   const named = payload !== null && typeof payload === "object" && Object.hasOwn(payload, "imageId");
   if (!isRepositoryId(repositoryId) || !shaped(payload, named ? ["taskId", "bytes", "imageId"] : ["taskId", "bytes"]) || !isTaskId(payload.taskId)
     || (named && (typeof payload.imageId !== "string" || !IMAGE_ID.test(payload.imageId)))) return { ok: false, error: "invalid" };
@@ -89,6 +95,7 @@ export function addTaskImage({ database, transaction, directory, repositoryId, p
   const type = sniffImageType(bytes);
   if (type === null || bytes.length > TASK_BOUNDS.imageBytes) return { ok: false, error: "invalid" };
   if (!taskExists(database, repositoryId, taskId)) return { ok: false, error: "not_found" };
+  if (taskStarted(database, repositoryId, taskId, now())) return { ok: false, error: "conflict" };
   const held = readList(database, repositoryId, taskId);
   if (named && held.some((entry) => entry.id === payload.imageId)) return { ok: false, error: "conflict" };
   if (held.length >= TASK_BOUNDS.imagesPerTask) return { ok: false, error: "limit" };
@@ -101,6 +108,7 @@ export function addTaskImage({ database, transaction, directory, repositoryId, p
     renameSync(partial, file);
     const result = transaction(() => {
       if (!taskExists(database, repositoryId, taskId)) return { ok: false, error: "not_found" };
+      if (taskStarted(database, repositoryId, taskId, now())) return { ok: false, error: "conflict" };
       const list = readList(database, repositoryId, taskId);
       if (list.some((entry) => entry.id === image.id)) return { ok: false, error: "conflict" };
       if (list.length >= TASK_BOUNDS.imagesPerTask) return { ok: false, error: "limit" };
@@ -121,18 +129,20 @@ function imagePayload(repositoryId, payload) {
     && typeof payload.imageId === "string" && IMAGE_ID.test(payload.imageId);
 }
 
-export function removeTaskImage({ database, transaction, directory, repositoryId, payload }) {
+export function removeTaskImage({ database, transaction, directory, repositoryId, payload, now = Date.now }) {
   if (!imagePayload(repositoryId, payload)) return { ok: false, error: "invalid" };
   const { taskId, imageId } = payload;
   const removed = transaction(() => {
     const list = readList(database, repositoryId, taskId);
     const image = list.find((entry) => entry.id === imageId);
     if (!image || !taskExists(database, repositoryId, taskId)) return null;
+    if (taskStarted(database, repositoryId, taskId, now())) return "started";
     writeList(database, repositoryId, taskId, list.filter((entry) => entry.id !== imageId));
     touchTask(database, repositoryId, taskId);
     return image;
   });
   if (!removed) return { ok: false, error: "not_found" };
+  if (removed === "started") return { ok: false, error: "conflict" };
   try { rmSync(imageFile(directory, repositoryId, taskId, removed), { force: true }); } catch { /* left behind, never served */ }
   return { ok: true };
 }

@@ -20,6 +20,14 @@ export function taskAwaitsReport(task: Pick<Task, "state" | "session">): boolean
 }
 
 const OUTCOME_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked", "done"]);
+
+export const STARTED_NOTE = "This task has started, so it cannot be changed.";
+export const STARTED_REQUEUE_NOTE = `${STARTED_NOTE} Requeue it to change it.`;
+
+/** A task with a session or an outcome has started: the monitor refuses a change to it until it is requeued. */
+export function taskStarted(task: Pick<Task, "state" | "session">): boolean {
+  return task.session !== null || OUTCOME_STATES.has(task.state);
+}
 const ATTENTION_STATES = new Set<TaskState>(["needs_review", "stalled", "blocked"]);
 const BORROWED_STATUSES = new Set<SessionActivityStatus>(["working", "needs_input", "idle", "open", "stopped", "closed"]);
 
