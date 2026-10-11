@@ -229,9 +229,9 @@ describe("the Queue view", () => {
 
   it("explains the steps, with the exact note on the desktop", async () => {
     await showQueue();
-    const notes = screen.getAllByText("Steps run in order. Tasks inside one step run at the same time. Drag a queued task to another step to change when it runs. Tasks that started or finished stay where they are.");
+    const notes = screen.getAllByText("Steps run in order. Tasks inside one step run at the same time. Drag a task that has not started to another step to change when it runs. Tasks that started or finished stay where they are.");
     expect(notes).toHaveLength(2);
-    expect(screen.getAllByText("Drop a queued task here to add a step at the end")).toHaveLength(2);
+    expect(screen.getAllByText("Drop a task here to add a step at the end")).toHaveLength(2);
   });
 
   it("renders on the server without the desktop bridge", () => {
@@ -253,7 +253,9 @@ describe("pure queue rules", () => {
     expect(reorderTarget(first, t4, 9)).toBeNull();
     const t6 = board.tasks.find((entry) => entry.id === "T-6")!;
     expect(reorderTarget(first, t6, null)).toBeNull();
-    expect(reorderTarget(first, board.tasks.find((entry) => entry.id === "T-5")!, 2)).toBeNull();
+    // Not queued and not started: it moves like a queued task. T-3 started, so it does not.
+    expect(reorderTarget(first, board.tasks.find((entry) => entry.id === "T-5")!, 2)).toBe(2);
+    expect(reorderTarget(first, board.tasks.find((entry) => entry.id === "T-3")!, 3)).toBeNull();
     expect(moveChoices(first, t4).map((choice) => choice.label)).toEqual(["Step 2", "Step 4", "New last step"]);
     expect(moveChoices(first, t6).map((choice) => choice.label)).toEqual(["Step 2", "Step 3"]);
     expect(singleQueueTasks(board).map((entry) => entry.id)).toEqual(["T-13", "T-9", "T-10"]);
@@ -299,23 +301,32 @@ describe("dragging a queued task", () => {
     expect(reorders()).toHaveLength(0);
   });
 
-  it("starts a drag only on queued cards and shows the grab cursor only there", async () => {
+  it("starts a drag only on cards that have not started and shows the grab cursor only there", async () => {
     await showQueue();
-    for (const id of ["T-2", "T-4", "T-6", "T-7"]) {
+    for (const id of ["T-2", "T-4", "T-5", "T-6", "T-7"]) {
       expect(card(id)).toHaveAttribute("draggable", "true");
       expect(card(id)).toHaveClass("isMovable");
     }
     // T-3 started (queued state, linked session, not in the order): it cannot be moved either.
-    for (const id of ["T-1", "T-3", "T-5"]) {
+    for (const id of ["T-1", "T-3"]) {
       expect(card(id)).not.toHaveAttribute("draggable");
       expect(card(id)).not.toHaveClass("isMovable");
     }
-    // A drag that never started from a queued card offers no drop target, even for a foreign payload.
+    // A drag that never started from a movable card offers no drop target, even for a foreign payload.
     const foreign = transfer();
-    fireEvent.dragStart(card("T-5"), { dataTransfer: foreign });
-    expect(fireEvent.dragOver(step("f1", 2), { dataTransfer: foreign })).toBe(true);
-    fireEvent.drop(step("f1", 2), { dataTransfer: foreign });
+    fireEvent.dragStart(card("T-3"), { dataTransfer: foreign });
+    expect(fireEvent.dragOver(step("f1", 3), { dataTransfer: foreign })).toBe(true);
+    fireEvent.drop(step("f1", 3), { dataTransfer: foreign });
     expect(reorders()).toHaveLength(0);
+  });
+
+  it("moves a task that is not queued to a new last step", async () => {
+    await showQueue();
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card("T-5"), { dataTransfer });
+    expect(fireEvent.dragOver(zone("f1"), { dataTransfer })).toBe(false);
+    fireEvent.drop(zone("f1"), { dataTransfer });
+    await waitFor(() => expect(taskAction).toHaveBeenCalledWith(repositoryId, "queue_reorder", { id: "T-5", step: 5 }));
   });
 
   it("ignores drag-over and drop on a step whose tasks are all done", async () => {
@@ -368,9 +379,10 @@ describe("moving a queued task from the keyboard", () => {
     expect(screen.getByRole("status")).toHaveTextContent("T-4 moved to step 5.");
   });
 
-  it("is offered on queued cards only", async () => {
+  it("is offered only on cards that have not started", async () => {
     await showQueue();
-    expect(within(card("T-5")).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(within(card("T-5")).getByRole("combobox", { name: "Move T-5 to step" })).toBeInTheDocument();
+    expect(within(card("T-3")).queryByRole("combobox")).not.toBeInTheDocument();
     expect(within(card("T-1")).queryByRole("combobox")).not.toBeInTheDocument();
     // A queued task alone in the last step can still go earlier but has no new last step.
     const trigger = within(card("T-6")).getByRole("combobox", { name: "Move T-6 to step" });
@@ -387,9 +399,9 @@ describe("without the desktop bridge", () => {
     expect(card("T-4")).toBeInTheDocument();
     expect(document.querySelectorAll("[draggable]")).toHaveLength(0);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    expect(screen.queryByText("Drop a queued task here to add a step at the end")).not.toBeInTheDocument();
+    expect(screen.queryByText("Drop a task here to add a step at the end")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "+ New feature" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Drag a queued task/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Drag a task that has not started/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/^Steps run in order\./)).toHaveLength(2);
     expect(chipText("T-2")).toBe("Queued · next");
     expect(taskAction).not.toHaveBeenCalled();

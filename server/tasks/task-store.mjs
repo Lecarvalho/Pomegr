@@ -22,7 +22,7 @@ import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl }
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
+  DEFAULT_TASK_COLUMNS, IN_FLIGHT_STATES, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
@@ -464,9 +464,10 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
 function reorderQueuedTask({ database, repositoryId }, payload) {
   const input = normalizeQueueReorderPayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state, feature_id, step FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT state, session_id, feature_id, step FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
-  if (task.state !== "queued" || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
+  const started = !IN_FLIGHT_STATES.includes(task.state) || (task.session_id ?? null) !== null;
+  if (started || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
   const highest = highestStep(database, repositoryId, task.feature_id);
   if (stepWithin(input.step, highest) === undefined) return { ok: false, error: "invalid" };
   const current = Number(task.step);

@@ -392,7 +392,7 @@ test("queue_reorder answers not_found for an unknown or foreign task", async (t)
   assert.equal(taskOf(store.readBoard(REPOSITORY), "T-2").step, 1);
 });
 
-test("queue_reorder refuses a task that is not queued or has no feature", async (t) => {
+test("queue_reorder refuses a task that started or finished, or has no feature", async (t) => {
   const { store, databasePath } = await temporaryStore(t);
   const feature = addFeature(store, "Search");
   for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
@@ -400,15 +400,38 @@ test("queue_reorder refuses a task that is not queued or has no feature", async 
   queue(store, "T-1");
   queue(store, "T-4");
   const before = store.readBoard(REPOSITORY);
-  // Not queued, and a single task: it runs in the order it was queued and has no step.
-  assert.deepEqual(reorder(store, "T-2", 1), { ok: false, error: "conflict" });
+  // A single task: it runs in the order it was queued and has no step.
   assert.deepEqual(reorder(store, "T-4", 1), { ok: false, error: "conflict" });
-  for (const state of ["scheduled", "needs_review", "stalled", "blocked", "done"]) {
+  for (const state of ["needs_review", "stalled", "blocked", "done"]) {
     setState(databasePath, 1, state);
     assert.deepEqual(reorder(store, "T-1", 2), { ok: false, error: "conflict" }, state);
   }
   setState(databasePath, 1, "queued");
   assert.deepEqual(store.readBoard(REPOSITORY), before);
+  // A linked session is a start, whatever the state.
+  const link = (sessionId) => withRawDatabase(databasePath, (database) => database.prepare("UPDATE tasks SET session_id = ? WHERE repository_id = ? AND number = 1").run(sessionId, REPOSITORY));
+  link("claude:abc");
+  assert.deepEqual(reorder(store, "T-1", 2), { ok: false, error: "conflict" });
+  link(null);
+  assert.deepEqual(store.readBoard(REPOSITORY), before);
+});
+
+test("queue_reorder moves a task that is not queued or is scheduled, and keeps its state", async (t) => {
+  const { store, databasePath } = await temporaryStore(t);
+  const feature = addFeature(store, "Search");
+  for (let count = 0; count < 3; count += 1) addTask(store, { featureId: feature });
+  queue(store, "T-1");
+  // T-2 is not queued: it goes to a new last step and stays out of the queue.
+  const moved = reorder(store, "T-2", 4);
+  assert.equal(moved.ok, true);
+  assert.deepEqual(placement(moved.board, feature), [["T-1", 1], ["T-2", 3], ["T-3", 2]]);
+  assert.equal(taskOf(moved.board, "T-2").state, "not_queued");
+  assert.deepEqual(moved.board.queue.order, ["T-1"]);
+  setState(databasePath, 3, "scheduled");
+  const scheduled = reorder(store, "T-3", 1);
+  assert.equal(scheduled.ok, true);
+  assert.deepEqual(placement(scheduled.board, feature), [["T-1", 1], ["T-2", 2], ["T-3", 1]]);
+  assert.equal(taskOf(scheduled.board, "T-3").state, "scheduled");
 });
 
 test("queue_reorder refuses a step whose tasks are all done and accepts one that is only partly done", async (t) => {
