@@ -86,7 +86,7 @@ test("a startable task yields the plan with null model and effort", async (conte
   assert.equal(response.headers["cache-control"], "no-store");
   assert.deepEqual(Object.keys(response.json), ["ok", "plan"]);
   const body = response.json.plan;
-  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "repositoryRoot", "worktree", "prompt", "images", "token"]);
+  assert.deepEqual(Object.keys(body), ["taskId", "provider", "model", "effort", "remoteControl", "repositoryRoot", "worktree", "prompt", "images", "token"]);
   assert.equal(body.taskId, "T-1");
   assert.equal(body.provider, "claude");
   assert.equal(body.model, null);
@@ -103,6 +103,15 @@ test("run settings flow into the plan", async (context) => {
   const response = await plan(env, { id: "T-1" });
   assert.equal(response.json.plan.model, "claude-opus-4-1");
   assert.equal(response.json.plan.effort, "xhigh");
+  assert.equal(response.json.plan.remoteControl, false);
+});
+
+test("Remote Control flows into the plan of a Claude Code task, named or by default", async (context) => {
+  const env = await setup(context);
+  create(env, { run: { remoteControl: true } });
+  create(env, { run: { provider: "claude", remoteControl: true } });
+  assert.equal((await plan(env, { id: "T-1" })).json.plan.remoteControl, true);
+  assert.equal((await plan(env, { id: "T-2" })).json.plan.remoteControl, true);
 });
 
 test("a queued task is startable and keeps its state", async (context) => {

@@ -73,6 +73,11 @@ private data root, beside `monitor-store-v1` and outside its prune cycle.
 - A column's role is kept in the store's `meta` table under
   `column_role:<repositoryId>:<role>` with the column ID as the value, like the pause
   reason, so the schema version does not change.
+- Whether a task asks for Remote Control is kept there too, under
+  `task_remote_control:<repositoryId>:<taskId>` with the fixed value `1`
+  (`server/tasks/task-remote-control.mjs`). The row exists only while the flag is on:
+  it is written in the write that creates or updates the task and removed when an
+  update turns it off or the task is deleted. A row left on a Codex task reads as off.
 - The session that added a task through `add_task` is kept there too, under
   `task_added_by:<repositoryId>:<taskId>` with the normalized session ID as the value
   (`server/tasks/task-adder.mjs`). It is written in the write that creates the task and
@@ -92,7 +97,8 @@ type Task = {
   text: string;
   columnId: string; position: number;
   featureId: string | null; step: number | null;      // step >= 1
-  run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null };
+  run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null;
+    remoteControl?: boolean };                         // Claude Code only; absent from an older monitor, which means off
   completeWhen: { checks: TaskCheck[]; own: string | null };
   state: TaskState;
   scheduledAt: string | null;
@@ -142,6 +148,11 @@ type TaskBoard = {
   account entitlement, and with no committed catalog Codex offers only its Default model.
   A model belongs to one provider, so a model
   without a provider is invalid; an effort alone is valid.
+- `run.remoteControl` asks that the task's Claude Code session start with Remote
+  Control on, so its owner can also reach it from another device (see
+  [Starting a session](#starting-a-session)). It is one boolean, off when absent, and
+  valid alone. Codex has no Remote Control, so `true` on a Codex task is invalid, in
+  the desktop actions and in `add_task` alike.
 - `completeWhen.own` is a free-text condition that the agent judges. Pomegr does not
   evaluate it.
 - `queue.order` holds task IDs only: the queued tasks that have not started, in the order
@@ -1056,7 +1067,8 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   the plan's own provider executable is missing desktop main aborts the dispatch and
   answers `cli_missing`.
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
-  model, effort, the repository root resolved monitor-side, whether the session must run
+  model, effort, whether the session starts with Remote Control (`remoteControl`, true only for a
+  Claude Code session whose task asks for it), the repository root resolved monitor-side, whether the session must run
   in a worktree of its own (`worktree`), the prompt, the absolute files of the task's images (`images`, at most four, only files that exist with their listed size), and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
   session is linked, and no dispatch is live. A task with no provider starts Claude Code;
   a Codex task starts Codex, and any other provider value answers
@@ -1089,7 +1101,15 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   Codex gets `--image` with the files, which attaches them to the prompt. Desktop main
   uses the plan's images only when each is an absolute, normalized path with a
   store-made file name (`img-<12 hex>` and one of four extensions), all in one folder,
-  an existing file, and named in the prompt; otherwise the plan is malformed. Claude Code
+  an existing file, and named in the prompt; otherwise the plan is malformed. A Claude
+  Code plan with `remoteControl` adds the one fixed flag `--remote-control` after the
+  prompt and before the image flag: the flag takes an optional session name, so before
+  the prompt it would take the prompt as that name. Pomegr passes no name. A
+  `remoteControl` that is not a boolean, or is true on a Codex plan, makes the plan
+  malformed. Remote Control is Claude Code's own feature: the session registers itself
+  with the owner's Claude account, and Pomegr never connects to it, reads its remote
+  identifier for this, or sends anything to it (the read-only status exception in
+  [Claude session status](claude-session-status.md) is unchanged). Claude Code
   takes `--model` and `--effort`; Codex takes `--model` and
   `-c model_reasoning_effort=<effort>`, and accepts each task effort by name, `xhigh`
   included. The environment is the user's own, as the desktop app inherited it at launch

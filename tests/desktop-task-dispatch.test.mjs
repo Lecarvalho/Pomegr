@@ -698,3 +698,29 @@ test("image files that are not the store's own fail the start and abort", async 
     assert.ok(aborted(h)[0], JSON.stringify(change));
   }
 });
+
+test("a Claude Code plan that asks for Remote Control adds the fixed flag after the prompt, before the image folder", async () => {
+  const plain = harness({ plan: { ...basePlan(), model: "claude-opus-4-1", remoteControl: true } });
+  assert.deepEqual(await go(plain), { status: "started" });
+  assert.equal(plain.spawns[0][2].env.POMEGR_START_ARGUMENTS, '--model claude-opus-4-1 "Do the thing" --remote-control');
+  const images = harness({ plan: imagePlan({ remoteControl: true }), overrides: withImageFiles() });
+  assert.deepEqual(await go(images), { status: "started" });
+  assert.equal(images.spawns[0][2].env.POMEGR_START_ARGUMENTS, `${windowsArgument(imagePlan().prompt)} --remote-control --add-dir ${imageFolder}`);
+});
+
+test("a plan without Remote Control, or from an older monitor, adds no Remote Control flag", async () => {
+  for (const plan of [{ ...basePlan(), remoteControl: false }, basePlan()]) {
+    const h = harness({ plan });
+    assert.deepEqual(await go(h), { status: "started" });
+    assert.equal(h.spawns[0][2].env.POMEGR_START_ARGUMENTS, '"Do the thing"');
+  }
+});
+
+test("a Remote Control field that is not a boolean, or is set on a Codex plan, is malformed", async () => {
+  for (const plan of [{ ...basePlan(), remoteControl: "yes" }, { ...basePlan(), remoteControl: "--remote-control" }, { ...basePlan(), provider: "codex", remoteControl: true }]) {
+    const h = harness({ plan, overrides: { fileExists: (f) => f === exe || f === powershell || codexFiles(f) } });
+    assert.deepEqual(await go(h), { status: "failed" });
+    assert.equal(h.spawns.length, 0);
+    assert.equal(aborted(h).length, 1);
+  }
+});

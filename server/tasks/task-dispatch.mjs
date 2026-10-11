@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
+import { withTaskRemoteControl } from "./task-remote-control.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
 import { TASK_IMAGE_MARKER, isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
@@ -91,7 +92,7 @@ function taskNumber(payload, keys) {
 }
 
 const loadRow = (database, repositoryId, number) =>
-  withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number));
+  withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number)));
 
 // A task of a feature step that holds more than one task runs in a Git worktree of its own, because the tasks of one
 // step run in parallel. A task alone in its step, and a task without a feature, runs in the repository root.
@@ -117,7 +118,7 @@ const startable = (row, now) => STARTABLE_STATES.has(row.state) && (row.session_
  * write transaction. The plan's `worktree` says whether the session must run in a worktree of its own (the owner
  * asked for it, or the task's step runs in parallel); where that worktree is, only the desktop knows.
  * `imagePaths(taskId)` supplies the files of the task's images from the store; the plan carries them in `images` and
- * names them in the prompt.
+ * names them in the prompt. `remoteControl` is true only for a Claude Code session whose task asks for Remote Control.
  */
 export function startPlan({ database, transaction, repositoryId, payload, resolveFacts, gatesHold, imagePaths = null, now }) {
   const separate = payload !== null && typeof payload === "object" && !Array.isArray(payload) && Object.hasOwn(payload, "worktree");
@@ -154,7 +155,7 @@ export function startPlan({ database, transaction, repositoryId, payload, resolv
   return {
     ok: true,
     plan: {
-      taskId: task.id, provider, model: task.run.model, effort: task.run.effort,
+      taskId: task.id, provider, model: task.run.model, effort: task.run.effort, remoteControl: provider === "claude" && task.run.remoteControl,
       repositoryRoot: facts.root, worktree: minted.worktree, prompt: buildTaskPrompt(task, images), images: images.map((image) => image.file), token,
     },
   };

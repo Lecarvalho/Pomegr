@@ -155,7 +155,7 @@ test("stored tasks, features, and queue state survive close and reopen", async (
   assert.deepEqual(board.tasks.map((task) => task.id), ["T-1", "T-3", "T-2"]);
   assert.deepEqual(board.tasks[0], {
     id: "T-1", text: "Add the invoice export\nwith totals", columnId: backlog.id, position: 0, featureId: FEATURE, step: 1,
-    run: { provider: "codex", model: "gpt-5.2-codex", effort: "xhigh" },
+    run: { provider: "codex", model: "gpt-5.2-codex", effort: "xhigh", remoteControl: false },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "the export is documented" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",
@@ -200,7 +200,7 @@ test("the served board holds only the contract keys and never private store fiel
   assert.equal(wire.tasks.length, 1);
   const [task] = wire.tasks;
   assert.deepEqual(keysOf(task), TASK_KEYS);
-  assert.deepEqual(keysOf(task.run), ["effort", "model", "provider"]);
+  assert.deepEqual(keysOf(task.run), ["effort", "model", "provider", "remoteControl"]);
   assert.deepEqual(keysOf(task.completeWhen), ["checks", "own"]);
   assert.deepEqual(keysOf(task.session), ["id", "observedModel", "state", "title"]);
   assert.deepEqual(keysOf(task.report), ["at", "attention", "blockReason", "results"]);

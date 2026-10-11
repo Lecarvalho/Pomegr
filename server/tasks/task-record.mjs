@@ -140,16 +140,19 @@ function enumValue(value, allowed) {
 
 /**
  * The planned main-agent settings. Every part is optional; an unknown key is invalid. A model
- * names one provider's model, so a model without its provider is invalid.
+ * names one provider's model, so a model without its provider is invalid. `remoteControl` asks for a Claude Code
+ * session with Remote Control on; absent is off, and it is invalid on a Codex task, which has no such session.
  */
 export function normalizeRun(value) {
-  if (value === undefined || value === null) return { provider: null, model: null, effort: null };
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["provider", "model", "effort"])) return undefined;
+  if (value === undefined || value === null) return { provider: null, model: null, effort: null, remoteControl: false };
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["provider", "model", "effort", "remoteControl"])) return undefined;
   const provider = enumValue(value.provider, TASK_PROVIDERS);
   const model = normalizeModelIdentifier(value.model);
   const effort = enumValue(value.effort, TASK_EFFORTS);
-  if (provider === undefined || model === undefined || effort === undefined) return undefined;
-  return model !== null && provider === null ? undefined : { provider, model, effort };
+  const remoteControl = value.remoteControl ?? false;
+  if (provider === undefined || model === undefined || effort === undefined || typeof remoteControl !== "boolean") return undefined;
+  if (remoteControl && provider === "codex") return undefined;
+  return model !== null && provider === null ? undefined : { provider, model, effort, remoteControl };
 }
 
 /** Checks are unique and known; the result is in the fixed contract order. */
@@ -430,7 +433,8 @@ export function normalizeStoredTask(row) {
   const id = taskIdFromNumber(row.number);
   const text = normalizeTaskText(row.text);
   const position = nonNegativeInteger(row.position);
-  const run = normalizeRun({ provider: row.run_provider, model: row.run_model, effort: row.run_effort });
+  // The store attaches the Remote Control flag (task-remote-control.mjs); a flag left on a Codex task reads as off.
+  const run = normalizeRun({ provider: row.run_provider, model: row.run_model, effort: row.run_effort, remoteControl: row.run_remote_control === true && row.run_provider !== "codex" });
   const storedChecks = parsedJsonArray(row.checks);
   const checks = storedChecks === undefined ? undefined : normalizeChecks(storedChecks);
   const own = normalizeOwnCondition(row.own_condition);

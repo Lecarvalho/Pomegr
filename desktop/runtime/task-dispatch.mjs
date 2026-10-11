@@ -78,13 +78,15 @@ const result = (status) => Object.freeze({ status });
 // One entry per startable provider: where its CLI is and its flags. Every provider's session runs in the user's
 // own environment (`userSessionEnvironment`). A flag is
 // passed only when the task sets it. Codex takes the effort as a configuration override and accepts every
-// task effort by name, `xhigh` included.
+// task effort by name, `xhigh` included. Only Claude Code has Remote Control.
 const PROVIDERS = Object.freeze({
   claude: Object.freeze({
     executable: (environment, fileExists) => resolveClaudeExecutable(claudeDiscoveryEnvironment(environment), fileExists),
     flags: (plan) => [...(plan.model ? ["--model", plan.model] : []), ...(plan.effort ? ["--effort", plan.effort] : [])],
     // The prompt names the image files; the folder that holds them is opened to the session's read tools.
     imageFlags: (plan) => ["--add-dir", path.dirname(plan.images[0])],
+    // `--remote-control` takes an optional name, so it follows the prompt: before it, it would take the prompt as the name.
+    remoteControlFlags: () => ["--remote-control"],
   }),
   codex: Object.freeze({
     executable: (environment, fileExists, platform) => resolveCodexExecutable(environment, fileExists, { platform }),
@@ -135,6 +137,9 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!(plan.effort === null || (typeof plan.effort === "string" && EFFORTS.has(plan.effort)))) return null;
   if (typeof plan.token !== "string" || !TOKEN.test(plan.token)) return null;
   if (!(plan.worktree === undefined || typeof plan.worktree === "boolean")) return null;
+  // An older monitor sends no key; a provider without Remote Control never gets the flag.
+  if (!(plan.remoteControl === undefined || typeof plan.remoteControl === "boolean")) return null;
+  if (plan.remoteControl === true && typeof PROVIDERS[plan.provider].remoteControlFlags !== "function") return null;
   const { prompt, repositoryRoot: root } = plan;
   if (typeof prompt !== "string" || !prompt || prompt.length > PROMPT_MAX || prompt.includes("\u0000") || prompt.startsWith("-")) return null;
   if (typeof root !== "string" || /[\u0000\r\n"]/u.test(root) || !path.isAbsolute(root) || path.resolve(root) !== root) return null;
@@ -143,7 +148,7 @@ function validatePlan(plan, taskId, directoryExists, fileExists) {
   if (!exists) return null;
   const images = planImages(plan.images, prompt, fileExists);
   if (images === null) return null;
-  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, images };
+  return { provider: plan.provider, model: plan.model, effort: plan.effort, token: plan.token, prompt, root, worktree: plan.worktree === true, remoteControl: plan.remoteControl === true, images };
 }
 
 /** Resolves true when the launcher exits with code 0 in time, false otherwise. Never throws. */
@@ -181,7 +186,8 @@ function waitForLaunch(child, timeoutMs) {
  * for the same start with `separateWorktree`, which the confirmation names and which asks the monitor for a plan in a
  * worktree of the task's own.
  * A task's images are files in the monitor's task store that the plan names: Claude Code is given their folder as an
- * extra readable directory, and Codex gets them attached to the prompt.
+ * extra readable directory, and Codex gets them attached to the prompt. When the plan asks for Remote Control, Claude
+ * Code is started with its own `--remote-control` flag; Pomegr never connects to that session itself.
  */
 export function createTaskStart(options = {}) {
   const isTrustedEvent = options.isTrustedEvent || (() => false);
@@ -266,7 +272,11 @@ export function createTaskStart(options = {}) {
       directory = made.directory;
     }
     // Both image flags take a list of values, so they follow the prompt: a flag before it would swallow it.
-    const args = [...provider.flags(plan), plan.prompt, ...(plan.images.length > 0 ? provider.imageFlags(plan) : [])];
+    const args = [
+      ...provider.flags(plan), plan.prompt,
+      ...(plan.remoteControl ? provider.remoteControlFlags(plan) : []),
+      ...(plan.images.length > 0 ? provider.imageFlags(plan) : []),
+    ];
     let started = false;
     try {
       const child = spawn(launcher, [...TASK_START_LAUNCH_ARGUMENTS], {
