@@ -512,6 +512,9 @@ started for them. Other devices see none of it.
   never in reports, notifications, or the session list, which carries only a task's
   number, outcome, feature name, step, and GitHub issue number.
 
+To have an agent cut a feature into tasks or order the board for you, see
+[Agent chat](agent-chat.md).
+
 For what the session list and states mean, see
 [Sessions and agents](sessions-and-agents.md); for which values are agent
 reports, see [Signals and estimates](../concepts/signals-and-estimates.md).

@@ -51,6 +51,7 @@ import { TaskQueueSection } from "./DesignSystemTaskQueueSample";
 import { TaskGatesSection } from "./DesignSystemTaskGatesSample";
 import { PromoteIssuesSection } from "./DesignSystemPromoteIssuesSample";
 import { GitHubSettingsSection } from "./DesignSystemGitHubSettingsSample";
+import { AgentChatSection } from "./DesignSystemAgentChatSample";
 import { SessionTaskSection } from "./DesignSystemSessionTaskSample";
 import { CommandTableSection, SettingsRailSection } from "./DesignSystemLayoutSamples";
 
@@ -95,6 +96,7 @@ export function DesignSystemView() {
     <SessionTaskSection />
     <PromoteIssuesSection />
     <GitHubSettingsSection />
+    <AgentChatSection />
     <CommandTableSection />
     <SettingsRailSection />
     <TypographySection />

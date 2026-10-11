@@ -5,6 +5,7 @@ import { build } from "vite";
 const serviceEntries = Object.freeze([
   ["desktop/runtime/monitor-host.mjs", "monitor-host.cjs"],
   ["scripts/claude-statusline-bridge.mjs", "claude-statusline-bridge.cjs"],
+  ["mcp/agent-chat-entry.mjs", "agent-chat-mcp.cjs"],
 ]);
 
 export async function buildDesktopServiceBundles(repositoryRoot, stagingRoot) {

@@ -40,6 +40,8 @@ Repositories, Models & delegation, Usage limits, and Settings, where
 use desktop controls, sign in to a coding tool, or change sharing. The **Phone
 access** tab exists only in the desktop app.
 
+A paired phone can also use the [agent chat](agent-chat.md).
+
 [Tasks](tasks.md) are the one thing a paired phone can change. It shows each
 repository's board with its task text, and you can create, edit, delete, move,
 queue, and schedule tasks, mark a task done, requeue it, and turn the queue off.

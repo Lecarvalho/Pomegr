@@ -16,6 +16,7 @@ import { useRepositoryInventoryPollingPause } from "../repository-inventory-clie
 import { DisplayPreferencesProvider } from "../hooks/DisplayPreferencesContext";
 import { PhoneAccessExpiredNotice, useClientAccess } from "../hooks/ClientAccessContext";
 import { CommandCenterShell } from "./command-center/CommandCenterShell";
+import { AgentChatDock } from "./agent-chat/AgentChatDock";
 import { subscribeLiveEvents } from "../live-events";
 
 type AppShellDesktopBridge = {
@@ -222,6 +223,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <PhoneAccessExpiredNotice />
             {children}
           </CommandCenterShell>
+          <AgentChatDock />
         </SessionCatalogProvider>
       </LiveClockProvider>
     </DisplayPreferencesProvider>

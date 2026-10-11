@@ -251,3 +251,15 @@ test("version-three migration cannot activate LAN sharing from an unknown legacy
   assert.equal(loaded.settings.lanSharingAutoStart, false);
   assert.doesNotMatch(JSON.stringify(loaded), /PRIVATE|pairingToken/);
 });
+
+test("the gateway is started with the agent chat handler the controller was given, and with none by default", async () => {
+  const agentChat = async () => ({ ok: true });
+  const wired = harness({ agentChat });
+  await wired.controller.setSharing(true);
+  assert.equal(wired.handles[0].options.agentChat, agentChat);
+  await wired.controller.dispose();
+  const bare = harness();
+  await bare.controller.setSharing(true);
+  assert.equal(bare.handles[0].options.agentChat, undefined);
+  await bare.controller.dispose();
+});

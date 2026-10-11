@@ -1,0 +1,205 @@
+// The saved conversations of the Pomegr agent chat: one private JSON file per conversation, under the desktop data
+// root. Only desktop main reads or writes them; nothing here is observed, indexed, logged, or sent anywhere.
+
+import { randomBytes, randomUUID } from "node:crypto";
+import * as fs from "node:fs/promises";
+import path from "node:path";
+
+import { BOARD_OPERATIONS, normalizeOperation, PROPOSAL_OPERATION_LIMIT, PROPOSAL_SUMMARY_LIMIT } from "./agent-chat-proposal.mjs";
+
+export const AGENT_CHAT_DIRECTORY = "agent-chat-v1";
+export const CONVERSATION_LIMIT = 50;
+export const MESSAGE_LIMIT = 200;
+export const MESSAGE_LENGTH = 4000;
+export const ANSWER_LENGTH = 32_000;
+export const TITLE_LENGTH = 80;
+
+const VERSION = 1;
+const FILE_LIMIT_BYTES = 12 * 1024 * 1024;
+const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
+const CONVERSATION_ID = /^chat-[0-9a-f]{12}$/u;
+const PROPOSAL_ID = /^p-[0-9a-f]{12}$/u;
+const MESSAGE_ID = /^m-[1-9][0-9]{0,5}$/u;
+const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
+const MODEL = /^[A-Za-z0-9][A-Za-z0-9._:\-[\]]{0,119}$/u;
+const PROVIDERS = new Set(["claude", "codex"]);
+const TURN_STATUSES = new Set(["complete", "stopped", "failed", "timed_out", "interrupted"]);
+const PROPOSAL_STATES = new Set(["pending", "applied", "partial", "dismissed"]);
+const RESULT_ERRORS = new Set(["invalid", "not_found", "limit", "conflict", "unsupported", "unavailable", "skipped"]);
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const instant = (value) => typeof value === "string" && value.length <= 40 && Number.isFinite(Date.parse(value));
+const bounded = (value, limit, { empty = false } = {}) => typeof value === "string" && value.length <= limit && (empty || value.length > 0);
+
+export const newConversationId = () => `chat-${randomBytes(6).toString("hex")}`;
+export const newProposalId = () => `p-${randomBytes(6).toString("hex")}`;
+
+/** The first line of a message, cut to a title. */
+export function conversationTitle(text) {
+  const line = String(text).split(/\r?\n/u).map((part) => part.trim()).find(Boolean) ?? "New conversation";
+  return line.length <= TITLE_LENGTH ? line : `${line.slice(0, TITLE_LENGTH - 1)}…`;
+}
+
+// The stored operation is already normalized, so it reads back through the agent-facing shape it came from.
+function storedOperation(operation) {
+  if (!isPlainObject(operation) || !BOARD_OPERATIONS.includes(operation.op)) return null;
+  const { run, completeWhen, ...rest } = operation;
+  const source = { ...rest };
+  if (run !== undefined) { if (!isPlainObject(run)) return null; Object.assign(source, run); }
+  if (completeWhen !== undefined) {
+    if (!isPlainObject(completeWhen)) return null;
+    if (Object.hasOwn(completeWhen, "checks")) source.complete_when = completeWhen.checks;
+    if (Object.hasOwn(completeWhen, "own")) source.own_condition = completeWhen.own;
+  }
+  return normalizeOperation(source);
+}
+
+function storedResult(result) {
+  if (!isPlainObject(result) || typeof result.ok !== "boolean") return null;
+  const taskId = typeof result.taskId === "string" && TASK_ID.test(result.taskId) ? { taskId: result.taskId } : {};
+  if (result.ok) return { ok: true, ...taskId };
+  return typeof result.error === "string" && RESULT_ERRORS.has(result.error) ? { ok: false, error: result.error, ...taskId } : null;
+}
+
+function storedProposal(proposal) {
+  if (!isPlainObject(proposal) || typeof proposal.id !== "string" || !PROPOSAL_ID.test(proposal.id) || !PROPOSAL_STATES.has(proposal.state)
+    || !bounded(proposal.summary, PROPOSAL_SUMMARY_LIMIT) || !Array.isArray(proposal.operations)
+    || proposal.operations.length === 0 || proposal.operations.length > PROPOSAL_OPERATION_LIMIT) return null;
+  const operations = proposal.operations.map(storedOperation);
+  if (operations.some((operation) => operation === null)) return null;
+  const stored = { id: proposal.id, summary: proposal.summary, operations, state: proposal.state };
+  if (proposal.results !== undefined) {
+    if (!Array.isArray(proposal.results) || proposal.results.length !== operations.length) return null;
+    const results = proposal.results.map(storedResult);
+    if (results.some((result) => result === null)) return null;
+    stored.results = results;
+  }
+  return stored;
+}
+
+function storedMessage(message) {
+  if (!isPlainObject(message) || typeof message.id !== "string" || !MESSAGE_ID.test(message.id) || !instant(message.at)) return null;
+  if (message.role === "user") return bounded(message.text, MESSAGE_LENGTH) ? { id: message.id, role: "user", text: message.text, at: message.at } : null;
+  if (message.role !== "agent" || !bounded(message.text, ANSWER_LENGTH, { empty: true }) || !PROVIDERS.has(message.provider)
+    || !(message.model === null || (typeof message.model === "string" && MODEL.test(message.model))) || !TURN_STATUSES.has(message.status)) return null;
+  const stored = { id: message.id, role: "agent", text: message.text, at: message.at, provider: message.provider, model: message.model, status: message.status };
+  if (message.proposal !== undefined) {
+    const proposal = storedProposal(message.proposal);
+    if (!proposal) return null;
+    stored.proposal = proposal;
+  }
+  if (message.proposalUnreadable === true) stored.proposalUnreadable = true;
+  return stored;
+}
+
+/** A conversation inside the stored contract, or null. */
+export function normalizeConversation(value) {
+  if (!isPlainObject(value) || typeof value.id !== "string" || !CONVERSATION_ID.test(value.id) || !bounded(value.title, TITLE_LENGTH)
+    || !PROVIDERS.has(value.provider) || !(value.model === null || (typeof value.model === "string" && MODEL.test(value.model)))
+    || !instant(value.createdAt) || !instant(value.updatedAt) || !Array.isArray(value.messages) || value.messages.length > MESSAGE_LIMIT) return null;
+  const messages = value.messages.map(storedMessage);
+  if (messages.some((message) => message === null) || new Set(messages.map((message) => message.id)).size !== messages.length) return null;
+  return { id: value.id, title: value.title, provider: value.provider, model: value.model, createdAt: value.createdAt, updatedAt: value.updatedAt, messages };
+}
+
+export function createAgentChatStore({ directory, filesystem = fs, now = () => new Date() } = {}) {
+  if (typeof directory !== "string" || !path.isAbsolute(directory)) throw new TypeError("Invalid agent chat directory");
+  const loaded = new Map();
+  const writes = new Map();
+
+  const folder = (repositoryId) => path.join(directory, repositoryId);
+  const file = (repositoryId, id) => path.join(folder(repositoryId), `${id}.json`);
+
+  async function load(repositoryId) {
+    if (loaded.has(repositoryId)) return loaded.get(repositoryId);
+    const conversations = new Map();
+    let names = [];
+    try { names = await filesystem.readdir(folder(repositoryId)); } catch { names = []; }
+    for (const name of names) {
+      const id = name.endsWith(".json") ? name.slice(0, -5) : "";
+      if (!CONVERSATION_ID.test(id)) continue;
+      try {
+        const target = file(repositoryId, id);
+        if ((await filesystem.stat(target)).size > FILE_LIMIT_BYTES) continue;
+        const parsed = JSON.parse(await filesystem.readFile(target, "utf8"));
+        const conversation = isPlainObject(parsed) && parsed.version === VERSION && parsed.repositoryId === repositoryId ? normalizeConversation(parsed.conversation) : null;
+        // A file outside the contract is left as it is: never listed, never overwritten.
+        if (conversation && conversation.id === id) conversations.set(id, conversation);
+      } catch { /* unreadable: skipped */ }
+    }
+    loaded.set(repositoryId, conversations);
+    return conversations;
+  }
+
+  // One write per conversation at a time, each replacing the file whole.
+  function write(repositoryId, conversation) {
+    const key = `${repositoryId}/${conversation.id}`;
+    const run = async () => {
+      const serialized = `${JSON.stringify({ version: VERSION, repositoryId, conversation })}\n`;
+      if (Buffer.byteLength(serialized, "utf8") > FILE_LIMIT_BYTES) return false;
+      const target = file(repositoryId, conversation.id);
+      const temporary = `${target}.${randomUUID()}.tmp`;
+      try {
+        await filesystem.mkdir(folder(repositoryId), { recursive: true });
+        await filesystem.writeFile(temporary, serialized, { encoding: "utf8", flag: "wx", mode: 0o600 });
+        await filesystem.rename(temporary, target);
+        return true;
+      } catch {
+        await filesystem.unlink(temporary).catch(() => {});
+        return false;
+      }
+    };
+    const next = (writes.get(key) ?? Promise.resolve()).then(run, run);
+    writes.set(key, next);
+    void next.finally(() => { if (writes.get(key) === next) writes.delete(key); });
+    return next;
+  }
+
+  const valid = (repositoryId, id) => typeof repositoryId === "string" && REPOSITORY_ID.test(repositoryId) && (id === undefined || (typeof id === "string" && CONVERSATION_ID.test(id)));
+
+  return Object.freeze({
+    /** Newest first. */
+    async list(repositoryId) {
+      if (!valid(repositoryId)) return [];
+      return [...(await load(repositoryId)).values()].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    },
+    async read(repositoryId, id) {
+      if (!valid(repositoryId, id)) return null;
+      return (await load(repositoryId)).get(id) ?? null;
+    },
+    /** A new, empty conversation, kept in memory until its first save; `null` when the repository holds its limit. */
+    async create(repositoryId, { provider, model, title }) {
+      if (!valid(repositoryId)) return null;
+      const conversations = await load(repositoryId);
+      if (conversations.size >= CONVERSATION_LIMIT) return null;
+      const at = now().toISOString();
+      const conversation = normalizeConversation({ id: newConversationId(), title, provider, model, createdAt: at, updatedAt: at, messages: [] });
+      if (conversation) conversations.set(conversation.id, conversation);
+      return conversation;
+    },
+    /** Replaces the stored conversation; answers whether the file was written. A refused one changes nothing. */
+    async save(repositoryId, conversation) {
+      const next = valid(repositoryId) ? normalizeConversation(conversation) : null;
+      if (!next) return false;
+      const conversations = await load(repositoryId);
+      const previous = conversations.get(next.id);
+      if (!previous) return false;
+      conversations.set(next.id, next);
+      const written = await write(repositoryId, next);
+      // A write that failed leaves the conversation as it is on disk.
+      if (!written && conversations.get(next.id) === next) conversations.set(next.id, previous);
+      return written;
+    },
+    async remove(repositoryId, id) {
+      if (!valid(repositoryId, id)) return false;
+      const conversations = await load(repositoryId);
+      if (!conversations.delete(id)) return false;
+      await (writes.get(`${repositoryId}/${id}`) ?? Promise.resolve()).catch(() => {});
+      try { await filesystem.unlink(file(repositoryId, id)); } catch { /* never written, or already gone */ }
+      return true;
+    },
+  });
+}

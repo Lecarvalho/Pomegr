@@ -489,3 +489,177 @@ test("new suspension or revocation wins over a pending successful request check"
     } finally { await gateway.close(); await close(upstream); }
   }
 });
+
+const CHAT_REPOSITORY = "repo-0123456789abcdef01234567";
+const CHAT_LIMIT_BYTES = 17 * 1024;
+
+async function startChatGateway(agentChat) {
+  const observed = [];
+  const upstream = http.createServer((request, response) => { observed.push({ url: request.url, method: request.method }); response.end("{}"); });
+  const upstreamOrigin = await listen(upstream);
+  const gateway = await startLanGateway({
+    host: "127.0.0.1", subnetMask: "255.255.255.0", upstreamOrigin,
+    authorizationToken: AUTHORIZATION, isNetworkAllowed: async () => true, networkPolicy: loopbackTestNetwork,
+    ...(agentChat === undefined ? {} : { agentChat }),
+  });
+  return { gateway, upstream, observed };
+}
+
+test("LAN gateway answers POST /api/agent-chat itself, holds it to the task-action rules, and never forwards it", async () => {
+  const received = [];
+  const agentChat = async (operation, payload) => { received.push([operation, payload]); return { ok: true, conversations: [], running: null }; };
+  const { gateway, upstream, observed } = await startChatGateway(agentChat);
+  try {
+    const cookie = await pair(gateway);
+    const headers = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    const body = JSON.stringify({ operation: "list", payload: { repositoryId: CHAT_REPOSITORY } });
+    const answered = await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers: { ...headers, "x-pomegr-desktop-authorization": "client-value" }, body });
+    assert.equal(answered.status, 200);
+    assert.equal(answered.headers.get("content-type"), "application/json; charset=utf-8");
+    assert.equal(answered.headers.get("cache-control"), "no-store");
+    assert.equal(answered.headers.get("set-cookie"), null);
+    assert.deepEqual(await answered.json(), { ok: true, conversations: [], running: null });
+    assert.deepEqual(received, [["list", { repositoryId: CHAT_REPOSITORY }]]);
+    // The operation and payload are handed over unchanged: the chat, not the gateway, decides what they mean.
+    await (await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body: JSON.stringify({ operation: "erase", payload: { any: ["thing"] } }) })).text();
+    assert.deepEqual(received.at(-1), ["erase", { any: ["thing"] }]);
+    received.length = 0;
+
+    // Not paired, another origin or none, another content type, a query, a chunked or oversize body: refused, never handed on.
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers: { Origin: gateway.origin, "Content-Type": "application/json" }, body })).status, 401);
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers: { ...headers, Origin: "http://127.0.0.1:1" }, body })).status, 403);
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/agent-chat", method: "POST", headers: { Cookie: cookie, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }, body }), 403);
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers: { ...headers, "Content-Type": "text/plain" }, body })).status, 403);
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat?x=1`, { method: "POST", headers, body })).status, 403);
+    assert.equal(await requestStatus(gateway.origin, { path: "/api/agent-chat", method: "POST", headers: { ...headers, "Transfer-Encoding": "chunked" }, body }), 403);
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body: JSON.stringify({ operation: "list", payload: { pad: "x".repeat(CHAT_LIMIT_BYTES) } }) })).status, 403);
+    // A GET is not a chat request, and every other write path stays closed.
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { headers: { Cookie: cookie } })).status, 404);
+    for (const route of ["/api/agent-chat/", "/api/agent-chat/send", "/api/chat", "/internal/agent-chat", "/api/agent-chat.rsc"]) {
+      assert.equal((await fetch(`${gateway.origin}${route}`, { method: "POST", headers, body })).status, 405, route);
+    }
+    for (const method of ["PUT", "PATCH", "DELETE"]) assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method, headers, body })).status, 405, method);
+    assert.deepEqual(received, [], "a refused request never reaches the chat");
+    assert.deepEqual(observed, [], "the web host never sees a chat request");
+  } finally {
+    await gateway.close();
+    await close(upstream);
+  }
+});
+
+test("LAN gateway accepts a chat request of exactly 17 KiB and refuses one byte more", async () => {
+  const received = [];
+  const { gateway, upstream, observed } = await startChatGateway(async (operation, payload) => { received.push([operation, payload]); return { ok: true }; });
+  try {
+    const cookie = await pair(gateway);
+    const headers = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    const envelope = JSON.stringify({ operation: "list", payload: { pad: "" } }).length;
+    const sized = (size) => JSON.stringify({ operation: "list", payload: { pad: "x".repeat(size - envelope) } });
+    const exact = sized(CHAT_LIMIT_BYTES);
+    assert.equal(Buffer.byteLength(exact), CHAT_LIMIT_BYTES);
+    const accepted = await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body: exact });
+    assert.equal(accepted.status, 200);
+    assert.deepEqual(await accepted.json(), { ok: true });
+    assert.equal(received.length, 1);
+    assert.equal((await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body: sized(CHAT_LIMIT_BYTES + 1) })).status, 403);
+    assert.equal(received.length, 1);
+    assert.deepEqual(observed, []);
+  } finally {
+    await gateway.close();
+    await close(upstream);
+  }
+});
+
+test("LAN gateway answers a chat body with another key, or that is not JSON, as invalid without calling the chat", async () => {
+  const received = [];
+  const { gateway, upstream, observed } = await startChatGateway(async (...args) => { received.push(args); return { ok: true }; });
+  try {
+    const cookie = await pair(gateway);
+    const headers = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    for (const body of [
+      JSON.stringify({ operation: "list", payload: { repositoryId: CHAT_REPOSITORY }, extra: true }), JSON.stringify({ operation: "list", repositoryId: CHAT_REPOSITORY }),
+      JSON.stringify({ action: "list", payload: {} }), JSON.stringify([]), JSON.stringify([{ operation: "list", payload: {} }]), "null", "5", '"list"', "not json", "{", "",
+    ]) {
+      const response = await fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body });
+      assert.equal(response.status, 200, body);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await response.json(), { ok: false, error: "invalid" }, body);
+    }
+    assert.deepEqual(received, []);
+    assert.deepEqual(observed, []);
+  } finally {
+    await gateway.close();
+    await close(upstream);
+  }
+});
+
+test("LAN gateway answers unavailable when it was given no chat, and never leaks what a failing chat says", async () => {
+  for (const agentChat of [undefined, null, "chat", {}]) {
+    const { gateway, upstream, observed } = await startChatGateway(agentChat);
+    try {
+      const cookie = await pair(gateway);
+      const response = await fetch(`${gateway.origin}/api/agent-chat`, {
+        method: "POST", headers: { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "list", payload: { repositoryId: CHAT_REPOSITORY } }),
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { ok: false, error: "unavailable" });
+      assert.deepEqual(observed, []);
+    } finally {
+      await gateway.close();
+      await close(upstream);
+    }
+  }
+  const { gateway, upstream } = await startChatGateway(async () => { throw new Error("private failure C:\\secret\\path"); });
+  try {
+    const cookie = await pair(gateway);
+    const response = await fetch(`${gateway.origin}/api/agent-chat`, {
+      method: "POST", headers: { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "list", payload: { repositoryId: CHAT_REPOSITORY } }),
+    });
+    const answer = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(answer.ok, false);
+    assert.ok(["invalid", "unavailable"].includes(answer.error));
+    assert.equal(JSON.stringify(answer).includes("private"), false);
+  } finally {
+    await gateway.close();
+    await close(upstream);
+  }
+});
+
+test("LAN gateway ends chat access when pairing is revoked, including a chat call that was already running", async () => {
+  let started;
+  const begun = new Promise((resolve) => { started = resolve; });
+  let finish;
+  const gate = new Promise((resolve) => { finish = resolve; });
+  const received = [];
+  const { gateway, upstream, observed } = await startChatGateway(async (operation) => {
+    received.push(operation);
+    if (operation === "send") { started(); await gate; }
+    return { ok: true, note: "answer-after-revocation" };
+  });
+  try {
+    const cookie = await pair(gateway);
+    const headers = { Cookie: cookie, Origin: gateway.origin, "Content-Type": "application/json" };
+    const request = (operation) => fetch(`${gateway.origin}/api/agent-chat`, { method: "POST", headers, body: JSON.stringify({ operation, payload: { repositoryId: CHAT_REPOSITORY } }) })
+      .then(async (response) => ({ status: response.status, text: await response.text() }), () => ({ status: "closed", text: "" }));
+    const running = request("send");
+    await begun;
+    gateway.revoke();
+    finish();
+    const outcome = await running;
+    assert.notEqual(outcome.status, 200);
+    assert.equal(outcome.text.includes("answer-after-revocation"), false);
+    // Revocation destroys pooled sockets, so a fresh connection checks that access is gone.
+    const later = JSON.stringify({ operation: "list", payload: {} });
+    assert.equal(await requestStatus(gateway.origin, {
+      path: "/api/agent-chat", method: "POST", headers: { ...headers, "Content-Length": Buffer.byteLength(later) }, body: later,
+    }), 403);
+    assert.deepEqual(received, ["send"]);
+    assert.deepEqual(observed, []);
+  } finally {
+    await gateway.close();
+    await close(upstream);
+  }
+});

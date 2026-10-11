@@ -1670,6 +1670,8 @@ serves no other client.
   while the queue is on is started by the desktop queue runner like any other.
 - **Desktop only.** Starting a session by hand, Open folder, images, and GitHub issues
   have no forwarded route. The device's Task field shows an image as its marker.
+- **Agent chat.** A paired device also reaches the agent chat, through one route that
+  the gateway answers itself. [Agent chat](agent-chat.md#boundaries) owns it.
 - **Client.** `useTaskEditAvailability` in `app/components/tasks/task-desktop.ts` answers
   `desktop`, `paired`, `absent`, or `pending` until the client knows which, so no control
   or note is drawn and then taken back. `sendTaskAction` uses the bridge when there is
@@ -1875,6 +1877,11 @@ fixed values.
 - They never enter `/api/state`, session catalogs, reports, logs, notifications,
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
+- The agent chat reads the board for desktop main and puts task text, own conditions,
+  feature titles, block reasons, and attention lines in the prompt of its provider run.
+  That is a deliberate widening (task T-29, 2026-10-11), owned by
+  [Agent chat: Privacy](agent-chat.md#privacy). The chat changes the board only through
+  the fixed task actions, after the owner applies a proposal.
 - The Sessions list and session view receive only the task ID, task state, feature name,
   step, and the number of the GitHub issue the task was promoted from. That is a
   deliberate widening of exposure (the issue number was added on 2026-10-09): the part
@@ -1998,7 +2005,7 @@ Each item is owned by the product owner; none is implemented until they answer.
    its test, and the
    [product positioning decision](../decisions/product-positioning.md) still call
    Pomegr a read-only observer. Observation is read-only; the product now also starts
-   sessions. No delivered change owned those files.
+   sessions and has an [agent chat](agent-chat.md). No delivered change owned those files.
 4. **Board deep links.** The board has no address for the Queue view or one task, so
    feature links and Open on board in the session view open the board only, and a task
    ID on the Sessions list opens the board instead of the session's Task tab.
