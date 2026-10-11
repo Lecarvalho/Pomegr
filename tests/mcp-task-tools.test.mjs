@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,7 @@ import { buildPomegrMcpServer as buildCodexServer } from "../mcp/server.mjs";
 import { buildPomegrMcpServer as buildClaudeServer } from "../plugins/claude-code/mcp/server.mjs";
 import {
   buildAddTaskBody, registerTaskTools, resolveCodexCallSession, TASK_ADD_PATH, TASK_BLOCK_PATH, TASK_COMPLETE_PATH, TASK_REMOVE_PATH, TASK_REMOVE_UNBOUND_TEXT, TASK_REPORT_UNBOUND_TEXT, TASK_UNBOUND_TEXT,
-  TASK_UNAVAILABLE_TEXT,
+  TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT,
 } from "../mcp/task-tools.mjs";
 import {
   AGENT_QUERY_AUTH_HEADER,
@@ -18,7 +19,12 @@ import {
   AGENT_TASK_BIND_PATH,
   AGENT_TASK_BLOCK_PATH,
   AGENT_TASK_COMPLETE_PATH,
+  AGENT_TASK_COMPLETE_TIMEOUT_MS,
+  AGENT_TASK_NO_ANSWER,
+  AGENT_TASK_REMOVE_PATH,
   AGENT_TASK_WRITE_PATHS,
+  AGENT_TASK_WRITE_TIMEOUT_MS,
+  AGENT_QUERY_TIMEOUT_MS,
   createAgentTaskWriter,
   readAgentQueryDescriptor,
 } from "../shared/agent-query-transport.mjs";
@@ -29,6 +35,9 @@ import {
 
 const SESSION_ID = "33333333-3333-4333-8333-333333333333";
 const SENTINEL = "TASK_TEXT_SENTINEL_9f3";
+
+// What Node's fetch throws when nothing listens on the port.
+const connectionRefused = () => Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" }) });
 
 function fakeServer() {
   const tools = {};
@@ -57,6 +66,7 @@ function parse(tool, input) {
 
 test("add_task schema is strict and bounded with no repository or path input", () => {
   const { tool } = setup();
+  // The repeat is safe only for a few minutes, so the tool is not announced as idempotent to a host that might retry later.
   assert.deepEqual(tool.config.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
   assert.equal(tool.config._meta, undefined);
   assert.equal(parse(tool, { text: "do it" }).success, true);
@@ -203,10 +213,8 @@ test("transport POST sends the descriptor token, JSON, and refuses other paths a
   assert.deepEqual(await refused(AGENT_TASK_ADD_PATH, {}), { schemaVersion: 1, ok: false, reason: "invalid" });
   const unauthorized = createAgentTaskWriter({ ...base, fetchFn: respond(401, "nope") });
   await assert.rejects(() => unauthorized(AGENT_TASK_ADD_PATH, {}), /AGENT_QUERY_UNAVAILABLE/u);
-  const array = createAgentTaskWriter({ ...base, fetchFn: respond(200, "[1]") });
-  await assert.rejects(() => array(AGENT_TASK_ADD_PATH, {}), /AGENT_QUERY_UNAVAILABLE/u);
-  const down = createAgentTaskWriter({ ...base, fetchFn: async () => { throw new Error("ECONNREFUSED"); } });
-  await assert.rejects(() => down(AGENT_TASK_ADD_PATH, {}), /AGENT_QUERY_UNAVAILABLE/u);
+  const down = createAgentTaskWriter({ ...base, fetchFn: async () => { throw connectionRefused(); } });
+  await assert.rejects(() => down(AGENT_TASK_ADD_PATH, {}), /^Error: AGENT_QUERY_UNAVAILABLE$/u);
   const badDescriptor = createAgentTaskWriter({ ...base, readFileFn: async () => "{}", fetchFn: respond(200, { ok: true }) });
   await assert.rejects(() => badDescriptor(AGENT_TASK_ADD_PATH, {}), /AGENT_QUERY_UNAVAILABLE/u);
 });
@@ -659,4 +667,110 @@ test("Claude hook binds remove_task from the host transcript, signed for that to
   }
   const hooks = JSON.parse(readFileSync(new URL("../plugin-src/claude-hooks.json", import.meta.url), "utf8"));
   assert.ok(hooks.hooks.PreToolUse.some((entry) => new RegExp(entry.matcher, "u").test("mcp__plugin_pomegr_pomegr__remove_task")));
+});
+
+const descriptorFor = (origin) => {
+  const descriptor = JSON.stringify({ version: 1, origin, token: "t".repeat(43) });
+  return { descriptorPath: path.resolve("descriptor.json"), statFn: async () => ({ isFile: () => true, size: descriptor.length }), readFileFn: async () => descriptor };
+};
+
+test("the write transport tells a monitor that was not reached from one that got the request and did not answer in time", async (context) => {
+  // A monitor that takes the request and never answers: the write may have happened.
+  const received = [];
+  const silent = http.createServer((request) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => received.push(Buffer.concat(chunks).toString("utf8")));
+  });
+  await new Promise((done) => silent.listen(0, "127.0.0.1", done));
+  context.after(() => new Promise((done) => { silent.closeAllConnections(); silent.close(done); }));
+  const origin = `http://127.0.0.1:${silent.address().port}`;
+  const late = createAgentTaskWriter({ ...descriptorFor(origin), timeoutMs: 150 });
+  await assert.rejects(() => late(AGENT_TASK_ADD_PATH, { sessionRef: "claude:a", text: SENTINEL }), (error) => {
+    assert.equal(error.message, AGENT_TASK_NO_ANSWER);
+    assert.equal(error.cause, undefined);
+    return true;
+  });
+  assert.deepEqual(received, [JSON.stringify({ sessionRef: "claude:a", text: SENTINEL })], "the request had arrived when the client gave up");
+
+  // Nothing listens: no request was sent, so nothing was written.
+  const closed = http.createServer();
+  await new Promise((done) => closed.listen(0, "127.0.0.1", done));
+  const deadOrigin = `http://127.0.0.1:${closed.address().port}`;
+  await new Promise((done) => closed.close(done));
+  const down = createAgentTaskWriter({ ...descriptorFor(deadOrigin), timeoutMs: 5_000 });
+  await assert.rejects(() => down(AGENT_TASK_ADD_PATH, { sessionRef: "claude:a", text: "x" }), /^Error: AGENT_QUERY_UNAVAILABLE$/u);
+});
+
+test("the write transport reads every failure as refused or as unanswered, with no detail", async () => {
+  const base = descriptorFor("http://127.0.0.1:4317");
+  const failing = (fetchFn, options = {}) => createAgentTaskWriter({ ...base, fetchFn, ...options })(AGENT_TASK_ADD_PATH, {});
+  const respond = (status, body) => async () => new Response(body, { status });
+  const unavailable = /^Error: AGENT_QUERY_UNAVAILABLE$/u;
+  const unanswered = /^Error: AGENT_QUERY_NO_ANSWER$/u;
+  // Never connected, or refused by the gate before a route ran: nothing was written.
+  await assert.rejects(() => failing(async () => { throw connectionRefused(); }), unavailable);
+  await assert.rejects(() => failing(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: new AggregateError([{ code: "ECONNREFUSED" }, { code: "ENETUNREACH" }]) }); }), unavailable);
+  await assert.rejects(() => failing(respond(401, "Unauthorized")), unavailable);
+  await assert.rejects(() => failing(respond(404, "")), unavailable);
+  // Sent, and then no usable answer: the outcome is unknown.
+  await assert.rejects(() => failing(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ECONNRESET" } }); }), unanswered);
+  await assert.rejects(() => failing(async () => { throw Object.assign(new TypeError("fetch failed"), { cause: new AggregateError([{ code: "ECONNREFUSED" }, { code: "ECONNRESET" }]) }); }), unanswered);
+  await assert.rejects(() => failing(async () => { throw new Error(`socket ${SENTINEL}`); }), unanswered);
+  await assert.rejects(() => failing(respond(200, "[1]")), unanswered);
+  await assert.rejects(() => failing(respond(200, "not json")), unanswered);
+  await assert.rejects(() => failing(respond(503, "Bad gateway")), unanswered);
+  // The deadline itself, whatever the abort looks like.
+  const hang = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(connectionRefused())));
+  await assert.rejects(() => failing(hang, { timeoutMs: 5 }), unanswered);
+});
+
+test("a write waits longer than a read, complete outlasts the monitor's 20-second read, and bind keeps the hook's bound", async () => {
+  assert.equal(AGENT_QUERY_TIMEOUT_MS, 2_000);
+  assert.equal(AGENT_TASK_WRITE_TIMEOUT_MS, 10_000);
+  assert.equal(AGENT_TASK_COMPLETE_TIMEOUT_MS, 25_000);
+  const base = descriptorFor("http://127.0.0.1:4317");
+  const waits = [];
+  const original = globalThis.setTimeout;
+  globalThis.setTimeout = (callback, ms, ...rest) => { waits.push(ms); return original(callback, 0, ...rest); };
+  try {
+    const hang = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new Error("aborted"))));
+    const write = createAgentTaskWriter({ ...base, fetchFn: hang });
+    for (const pathname of [AGENT_TASK_ADD_PATH, AGENT_TASK_REMOVE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_COMPLETE_PATH]) {
+      await assert.rejects(() => write(pathname, {}), /AGENT_QUERY_NO_ANSWER/u);
+    }
+    await assert.rejects(() => createAgentTaskWriter({ ...base, fetchFn: hang, timeoutMs: AGENT_QUERY_TIMEOUT_MS })(AGENT_TASK_BIND_PATH, {}), /AGENT_QUERY_NO_ANSWER/u);
+  } finally {
+    globalThis.setTimeout = original;
+  }
+  assert.deepEqual(waits, [10_000, 10_000, 10_000, 25_000, 2_000]);
+});
+
+test("an unanswered write says the outcome is unknown, and an unreachable monitor says nothing was written", async () => {
+  const unanswered = new Error(AGENT_TASK_NO_ANSWER);
+  const unreachable = new Error("AGENT_QUERY_UNAVAILABLE");
+  const calls = [
+    ["add_task", { text: SENTINEL }, TASK_NO_ANSWER_TEXT, TASK_UNAVAILABLE_TEXT],
+    ["remove_task", { task_id: "T-4" }, TASK_REMOVE_NO_ANSWER_TEXT, "Pomegr is unavailable, so no task was removed."],
+    ["complete_task", { attention: SENTINEL }, TASK_REPORT_NO_ANSWER_TEXT, "Pomegr is unavailable, so nothing was reported."],
+    ["block_task", { reason: SENTINEL }, TASK_REPORT_NO_ANSWER_TEXT, "Pomegr is unavailable, so nothing was reported."],
+  ];
+  for (const [name, input, unknownText, refusedText] of calls) {
+    const late = await setup({ answer: unanswered }).tools[name].handler(input);
+    assert.equal(late.isError, true);
+    assert.equal(late.content[0].text, unknownText, name);
+    assert.doesNotMatch(JSON.stringify(late), new RegExp(`${SENTINEL}|AGENT_QUERY`, "u"));
+    const down = await setup({ answer: unreachable }).tools[name].handler(input);
+    assert.equal(down.isError, true);
+    assert.equal(down.content[0].text, refusedText, name);
+  }
+  assert.equal(TASK_NO_ANSWER_TEXT, "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.");
+  // No unknown-outcome text claims that nothing happened.
+  for (const text of [TASK_NO_ANSWER_TEXT, TASK_REMOVE_NO_ANSWER_TEXT, TASK_REPORT_NO_ANSWER_TEXT]) {
+    assert.match(text, /^Pomegr did not answer in time, so it is unknown whether /u);
+    assert.doesNotMatch(text, /so no task was|so nothing was|is unavailable/u);
+  }
+  // Only the transport's own error is read as unanswered; a lookalike is not.
+  const lookalike = await setup({ answer: new Error(`${AGENT_TASK_NO_ANSWER} extra`) }).tool.handler({ text: "x" });
+  assert.equal(lookalike.content[0].text, TASK_UNAVAILABLE_TEXT);
 });

@@ -227,10 +227,34 @@ export const AGENT_TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 /** The only monitor paths the agent write transport may POST to. */
 export const AGENT_TASK_WRITE_PATHS = Object.freeze([AGENT_TASK_ADD_PATH, AGENT_TASK_BIND_PATH, AGENT_TASK_COMPLETE_PATH, AGENT_TASK_BLOCK_PATH, AGENT_TASK_REMOVE_PATH]);
 export const AGENT_TASK_MAX_BODY_BYTES = 16 * 1024;
+/**
+ * How long a tool's write waits for the monitor's answer. A write is not repeated by itself, so it waits longer than
+ * a read: a busy monitor commits a write and answers late. `complete` waits past the 20 seconds the monitor may take
+ * to read the session's repository and pull requests before it judges a report. Every bound stays under the hosts'
+ * tool-call limits (Codex: 60 seconds by default). The session-start `bind` hook passes its own shorter bound.
+ */
+export const AGENT_TASK_WRITE_TIMEOUT_MS = 10_000;
+export const AGENT_TASK_COMPLETE_TIMEOUT_MS = 25_000;
+/** Thrown when nothing was written: the request was not sent, the monitor was not reached, or it refused the request. */
+export const AGENT_TASK_UNAVAILABLE = "AGENT_QUERY_UNAVAILABLE";
+/** Thrown when the request was sent and no usable answer came back: the write may or may not have happened. */
+export const AGENT_TASK_NO_ANSWER = "AGENT_QUERY_NO_ANSWER";
+// A connection that was never made carried no request.
+const NOT_CONNECTED_CODES = new Set(["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EADDRNOTAVAIL", "ENETUNREACH", "EHOSTUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
+
+function neverConnected(error) {
+  const cause = error?.cause;
+  const codes = Array.isArray(cause?.errors) && cause.errors.length > 0 ? cause.errors.map((entry) => entry?.code) : [cause?.code ?? error?.code];
+  return codes.every((code) => typeof code === "string" && NOT_CONNECTED_CODES.has(code));
+}
 
 /**
  * Adapter shape for the MCP task tools: (allowlisted path, JSON body) => parsed JSON body.
  * Returns the body for any HTTP status that carries a JSON object (refusals use 4xx/5xx).
+ * A failure is one of two fixed errors and never carries a detail. `AGENT_QUERY_UNAVAILABLE`: nothing was written
+ * (the request was not sent, no connection was made, or the monitor refused it with a 4xx that is not an answer).
+ * `AGENT_QUERY_NO_ANSWER`: the request was sent and no usable answer came back in time, so the outcome is unknown.
+ * Without a `timeoutMs` the wait is the write bound of the path.
  */
 export function createAgentTaskWriter({
   dataRoot,
@@ -238,7 +262,7 @@ export function createAgentTaskWriter({
   fetchFn = fetch,
   readFileFn,
   statFn,
-  timeoutMs = AGENT_QUERY_TIMEOUT_MS,
+  timeoutMs,
   maxBytes = AGENT_QUERY_MAX_RESPONSE_BYTES,
   maxBodyBytes = AGENT_TASK_MAX_BODY_BYTES,
 } = {}) {
@@ -259,21 +283,28 @@ export function createAgentTaskWriter({
       ...(descriptor?.token ? { [AGENT_QUERY_AUTH_HEADER]: descriptor.token } : {}),
     };
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(1, timeoutMs));
+    const wait = timeoutMs ?? (pathname === AGENT_TASK_COMPLETE_PATH ? AGENT_TASK_COMPLETE_TIMEOUT_MS : AGENT_TASK_WRITE_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), Math.max(1, wait));
+    let response;
     try {
-      const response = await fetchFn(`${origin}${pathname}`, {
-        method: "POST",
-        headers,
-        body: payload,
-        redirect: "error",
-        signal: controller.signal,
-      });
-      const text = await readResponseText(response, maxBytes);
-      const parsed = JSON.parse(text);
-      if (!isRecord(parsed)) throw new Error("AGENT_QUERY_UNAVAILABLE");
-      return parsed;
-    } catch {
-      throw new Error("AGENT_QUERY_UNAVAILABLE");
+      try {
+        response = await fetchFn(`${origin}${pathname}`, {
+          method: "POST",
+          headers,
+          body: payload,
+          redirect: "error",
+          signal: controller.signal,
+        });
+      } catch (error) {
+        // Our own deadline means the request was on its way; only a connection that was never made sent nothing.
+        throw new Error(!controller.signal.aborted && neverConnected(error) ? AGENT_TASK_UNAVAILABLE : AGENT_TASK_NO_ANSWER);
+      }
+      let parsed = null;
+      try { parsed = JSON.parse(await readResponseText(response, maxBytes)); } catch { /* judged by the status below */ }
+      if (isRecord(parsed)) return parsed;
+      // A 4xx without an answer is the monitor's gate refusing the request before any route ran.
+      const refused = Number.isInteger(response?.status) && response.status >= 400 && response.status < 500;
+      throw new Error(refused ? AGENT_TASK_UNAVAILABLE : AGENT_TASK_NO_ANSWER);
     } finally {
       clearTimeout(timer);
     }

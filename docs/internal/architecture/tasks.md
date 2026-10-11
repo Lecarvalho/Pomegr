@@ -637,7 +637,10 @@ installed plugin from before the rename sends; a body with both names is `invali
     made once more.
   - The request waits for the read, for at most 20 seconds. This is the one place a task
     request waits for Git or GitHub: it is the agent's POST, bound to its session. No
-    GET reads anything, and a task with no checked condition reads nothing.
+    GET reads anything, and a task with no checked condition reads nothing. The
+    `complete_task` tool waits 25 seconds for the answer, so it outlasts this read; a
+    plugin before 0.9.2 waited 2 seconds and told the agent that nothing was reported
+    although the report was recorded.
   - The answer of the read replaces the session's live repository value like any
     refresh, so the next derive commits it. Nothing new is stored or served.
   - A read that cannot be made (no bound repository, a failed Git read, the deadline)
@@ -833,6 +836,47 @@ supplies.
   (404), `repository_unavailable` (409), `feature_not_found` (404), `limit` (409), and
   `unavailable` (503). Any other path under `/api/agent/v1/tasks/` is not served, and no
   other agent route accepts a write.
+- **`add_task` is safe to repeat for five minutes.** An agent whose first answer was
+  lost asks again, and that second call must not make a second task (seen on a device on
+  2026-10-09: one task was added twice). When the same bound session adds the same task
+  text to the same feature again within five minutes of the add, the store answers the
+  task it already added and writes nothing. The answer has the same shape, with only the
+  task ID.
+  - The text is compared as the store keeps it (trimmed), and the feature by its ID. Run
+    on and Complete when do not tell two adds apart: the first add's values stand.
+  - Another text, another session, another feature, or another board makes a new task.
+  - The window counts from the add, and a repeated call does not extend it. After it,
+    the same call adds a new task.
+  - The earlier task is answered only while it still exists and is still recorded as
+    added by that session. The owner's edits and moves do not end this; a deleted task
+    is never answered, so the same text then makes a new task.
+  - The memory is in the monitor's memory only, inside the task store
+    (`server/tasks/task-recent-adds.mjs`): for each add a SHA-256 digest of the
+    repository ID, the session ID, the trimmed text, and the feature ID, with the task
+    number and the time of the add, for at most 256 adds. The task text is not copied
+    there. Nothing of it is persisted, logged, or served, and a monitor restart forgets
+    it. An add is remembered only after its write committed.
+- **A tool says what it knows about a write that did not answer.** The transport
+  (`createAgentTaskWriter` in `shared/agent-query-transport.mjs`) tells two failures
+  apart, and neither carries an error detail.
+  - Nothing was written: the request was not sent, no connection was made, or the
+    monitor's gate refused it with a 4xx that is not an answer. The tool says so, for
+    example "Pomegr is unavailable, so no task was added."
+  - The outcome is unknown: the request was sent and no usable answer came back in time
+    (the wait ran out, the connection broke, or the answer was not the route's). The
+    monitor may have committed the write. The tool says the outcome is unknown, that the
+    agent must not assume a failure, and what is safe: the same `add_task` again within
+    a few minutes returns the same task; `complete_task` and `block_task` once more,
+    because a task takes one report per dispatch; `remove_task` once more with the same
+    ID.
+  - The four tool writes wait longer than a read, because a write is not repeated by
+    itself and a busy monitor commits it and answers late. `add_task`, `remove_task`,
+    and `block_task` wait 10 seconds. `complete_task` waits 25 seconds, past the 20
+    seconds the monitor may take to read the repository before it judges a report (see
+    [Completion](#completion)). Reads keep 2 seconds, and so does the session-start
+    `bind`, which runs under the 5-second hook limit. The waits stay under the hosts'
+    tool-call limits (Codex: 60 seconds by default); the Claude Code `PreToolUse` hook
+    runs before the call and does not bound it.
 - A started session carries an opaque random dispatch token in `POMEGR_TASK_TOKEN`. The
   plugin's session-start hook reports the token and the session ID to the monitor, which
   links the task to the session. `complete_task` and `block_task` act only on the task
@@ -1362,6 +1406,10 @@ class. Column names are five fixed values.
   [Agent task removal](#agent-task-removal) reads it. It is on no board, route, list,
   log, report, or checkpoint, and `remove_task` answers the same `not_found` for a task
   the session did not add as for one that does not exist.
+- What makes `add_task` safe to repeat is memory only: a digest that covers the task
+  text, never the text, held in the monitor for five minutes (see
+  [Session binding](#session-binding)). It is on no board, route, list, log, report,
+  checkpoint, or disk.
 - A task's images are the same data class. `GET /api/tasks` carries only each image's
   opaque ID, fixed type, and size. The bytes cross only the `pomegr:task-image` channel
   and its three desktop-token routes, to and from the trusted renderer; no GET serves

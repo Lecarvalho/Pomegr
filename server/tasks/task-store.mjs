@@ -26,6 +26,7 @@ import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDon
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
 import { deleteTaskAdder, readTaskAdder, writeTaskAdder } from "./task-adder.mjs";
+import { createRecentAdds, recentAddKey } from "./task-recent-adds.mjs";
 import { deleteTaskAttention, readTaskAttentions } from "./task-attention.mjs";
 import { dispatchStanding } from "./task-dispatch-standing.mjs";
 import { addTaskImage, deleteTaskImageList, readTaskImage, readTaskImages, removeTaskImage, removeTaskImageFiles, taskImagePaths } from "./task-images.mjs";
@@ -340,9 +341,21 @@ function agentCreateTask(context, payload) {
   if (!isRecord(payload) || Object.keys(payload).some((key) => key !== "sessionId" && key !== "task") || !isTaskSessionId(payload.sessionId)) {
     return { ok: false, error: "invalid" };
   }
+  // The same session adding the same text to the same feature again inside the window gets the task it already
+  // added (task-recent-adds.mjs), as long as that task still exists; nothing is written for it.
+  const { database, repositoryId, recentAdds } = context;
+  const input = normalizeCreatePayload(payload.task);
+  const addKey = input && recentAdds ? recentAddKey(repositoryId, payload.sessionId, input.text, input.featureId) : null;
+  const earlier = addKey === null ? null : recentAdds.find(addKey);
+  if (earlier !== null) {
+    const stillThere = preparedStatement(database, "SELECT 1 FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, earlier) !== undefined
+      && readTaskAdder(database, repositoryId, earlier) === payload.sessionId;
+    if (stillThere) return { ok: true, number: earlier };
+    recentAdds.forget(addKey);
+  }
   const created = createTask(context, payload.task);
-  if (created.ok) writeTaskAdder(context.database, context.repositoryId, created.number, payload.sessionId);
-  return created;
+  if (created.ok) writeTaskAdder(database, repositoryId, created.number, payload.sessionId);
+  return created.ok && addKey !== null ? { ...created, addKey } : created;
 }
 
 // `{ sessionId, id }` deletes a task with the effects of `delete`, and only a task this session added that still waits:
@@ -501,6 +514,8 @@ class ActionRejected extends Error {
  */
 export function openTaskStore({ directory, now = Date.now } = {}) {
   let database = openDatabase(directory);
+  // Memory only: what makes the agent's `add_task` safe to repeat for a few minutes (task-recent-adds.mjs).
+  const recentAdds = createRecentAdds({ now });
 
   const repositoryExists = (repositoryId) => preparedStatement(database, "SELECT 1 FROM repositories WHERE repository_id = ?").get(repositoryId) !== undefined;
 
@@ -590,6 +605,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   function apply(repositoryId, action, payload, resolvers = {}) {
     if (!isRepositoryId(repositoryId)) return { ok: false, error: "invalid" };
     let taskId = null;
+    let added = null;
     const handler = typeof action === "string" && Object.hasOwn(ACTIONS, action) ? ACTIONS[action] : null;
     if (!handler) return { ok: false, error: "unsupported" };
     // A store that cannot be used refuses the write before any handler can touch it.
@@ -597,8 +613,9 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
     try {
       const board = runTransaction(database, () => {
         if (repositoryExists(repositoryId)) reconcileColumns(repositoryId);
-        const result = handler({ database, repositoryId, ensureRepository, now }, payload);
+        const result = handler({ database, repositoryId, ensureRepository, now, recentAdds }, payload);
         if (!result.ok) throw new ActionRejected(result.error);
+        added = typeof result.addKey === "string" ? { key: result.addKey, number: result.number } : null;
         // Whatever the action changed, the waiting queue cards are in Ready and in start order when it commits.
         settleReadyColumn(database, repositoryId);
         // Only `create`, `agent_create`, and `promote_issue` answer the task they made.
@@ -608,6 +625,8 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         if (!projected) throw new ActionRejected("conflict");
         return projected;
       });
+      // An agent's add is remembered only once it has committed, so a rolled-back add is never answered as made.
+      if (added) recentAdds.remember(added.key, added.number);
       // A deleted task's image files go once the delete has committed.
       if (action === "delete" || action === "agent_remove") removeTaskImageFiles(directory, repositoryId, payload?.id);
       return { ok: true, board: served(board, resolvers), ...(taskId === null ? {} : { taskId }) };
