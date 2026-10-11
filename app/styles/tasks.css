@@ -254,7 +254,7 @@
 
 /* Feature fields and the folded "In this feature" list (D217-D233, D273-D294): two selects in a row, a native
    disclosure between two lines, and rows that lead with the step number only in the Task modal. */
-.taskFeatureRow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.taskFeatureRow { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 .taskFeatureRow .commandSelect { display: grid; }
 .taskFeatureName { width: 100%; }
 .taskFeatureDetails { border-top: 1px solid var(--command-line); border-bottom: 1px solid var(--command-line); }
@@ -275,7 +275,6 @@
 .taskFeatureOpen.commandQuietAction { flex: 1 1 auto; min-width: 0; padding: 0; justify-content: flex-start; background: transparent; text-align: left; white-space: normal; }
 .taskFeatureOpen.commandQuietAction:hover:not(:disabled) .taskFeatureTitle { text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 761px) and (pointer: fine) { .taskFeatureOpen.commandQuietAction { min-height: 0; } }
-@media (max-width: 760px) { .taskFeatureRow { grid-template-columns: minmax(0, 1fr); } }
 
 /* Feature filter row above the board (D40-D44) and the feature line on a card (D78-D85). */
 .taskFeatureFilter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
@@ -285,8 +284,8 @@
 .taskFilterEyebrow { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; }
 .taskCardFeature { overflow-wrap: anywhere; }
 
-/* Queue view (D101-D155): one panel per unfinished feature, steps as rows, the single tasks after them. A step card is
-   the board card at the compact padding. Drag-over takes the raised fill; a step whose tasks are all done never does. */
+/* Queue view (D101-D155): one panel per unfinished feature, steps as rows (one task each), the single tasks after them. A step card
+   is the board card at the compact padding. Drag-over takes the raised fill; only the step of a waiting task takes a drop. */
 .taskQueueView { display: grid; gap: var(--space-4); }
 .taskQueuePanel { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-4); }
 .taskQueueHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
@@ -296,15 +295,12 @@
 .taskQueueSteps { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
 .taskQueueStep { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3); padding: var(--space-2); border-radius: var(--panel-radius); }
 .taskQueueStep + .taskQueueStep { border-top: 1px solid var(--command-line); }
-.taskQueueStep.isDragOver, .taskQueueNewStep.isDragOver { background: var(--command-panel-2); }
+.taskQueueStep.isDragOver { background: var(--command-panel-2); }
 .taskQueueStepLabel { flex: 0 0 96px; display: flex; flex-direction: column; gap: 2px; padding-top: var(--space-2); }
 .taskQueueStepName { color: var(--command-ink); font: 650 var(--text-xs)/1.4 var(--font-ui); }
-.taskQueueStepMode, .taskQueueStepNote { color: var(--command-muted); font: 500 var(--text-caption)/1.4 var(--font-ui); }
-.taskQueueStepNote { font-weight: 400; }
 .taskQueueCards { flex: 1 1 320px; min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
 .taskQueueCard { gap: var(--space-1); padding: var(--space-2) var(--space-3); cursor: default; }
 .taskQueueCard.isMovable { cursor: grab; }
-.taskQueueNewStep { padding: var(--space-3) var(--space-2); border: 1px dashed var(--command-line-strong); border-radius: var(--panel-radius); color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); text-align: center; }
 .taskQueueNote { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }
 /* Keyboard alternative: the move select is drawn while the card holds keyboard focus (or on a coarse pointer) and
    stays in the accessibility tree otherwise, like the board's move toolbar. */

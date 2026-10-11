@@ -306,14 +306,14 @@ describe("Sessions view", () => {
   describe("task and feature", () => {
     const REPOSITORY = "repo-0123456789abcdef01234567";
     const FEATURE = "feat-0123456789ab";
-    const task = (id: string, state: "needs_review" | "stalled" | "blocked" | "done" | null, step: number | null = 2) =>
-      ({ id, repositoryId: REPOSITORY, state, featureId: step === null ? null : FEATURE, feature: step === null ? null : "Task board v1", step });
+    const task = (id: string, state: "needs_review" | "stalled" | "blocked" | "done" | null, inFeature = true) =>
+      ({ id, repositoryId: REPOSITORY, state, featureId: inFeature ? FEATURE : null, feature: inFeature ? "Task board v1" : null });
     const rows = [
       { ...session(5), isLive: true, activityStatus: "working" as const, task: task("T-14", null) },
       { ...session(4), task: task("T-12", "needs_review") },
       { ...session(3), task: task("T-13", "done") },
-      { ...session(2), task: task("T-9", "stalled", null) },
-      { ...session(1), task: task("T-8", "blocked", 1) },
+      { ...session(2), task: task("T-9", "stalled", false) },
+      { ...session(1), task: task("T-8", "blocked") },
       { ...session(0), task: null },
     ];
     const stubDirectory = (answer: (url: string) => Record<string, unknown>) => {
@@ -331,7 +331,7 @@ describe("Sessions view", () => {
       expect(screen.getAllByRole("columnheader").slice(0, 3).map((header) => header.textContent)).toEqual(["Session", "Task", "State"]);
       const cell = (title: string) => rowOf(title).querySelector("td.commandSessionCellTask") as HTMLElement;
       // While the session works on the task, State is the only status.
-      expect(cell("Session 5")).toHaveTextContent("T-14Task board v1 · step 2");
+      expect(cell("Session 5")).toHaveTextContent("T-14Task board v1");
       expect(cell("Session 5").querySelector(".commandChip")).toBeNull();
       expect(cell("Session 4").querySelector(".commandChip.warning")).toHaveTextContent("Needs review");
       expect(cell("Session 3").querySelector(".commandChip.neutral")).toHaveTextContent("Done");
@@ -349,9 +349,9 @@ describe("Sessions view", () => {
         { ...session(4), task: { ...task("T-12", "needs_review"), issue: 128 } },
         { ...session(3), task: { ...task("T-13", "done"), issue: null } },
         // A reference from a monitor that does not send the field, and one with a number outside the documented range, print none.
-        { ...session(2), task: task("T-9", null, null) },
-        { ...session(1), task: { ...task("T-8", null, null), issue: 0 } },
-        { ...session(0), task: { ...task("T-7", null, null), issue: 1_000_000_000 } },
+        { ...session(2), task: task("T-9", null, false) },
+        { ...session(1), task: { ...task("T-8", null, false), issue: 0 } },
+        { ...session(0), task: { ...task("T-7", null, false), issue: 1_000_000_000 } },
       ];
       stubDirectory(() => directorySnapshot(promoted, { matchedCount: 6, taskReadiness: "ready" }));
       render(<SessionCatalogProvider sessions={[]}><SessionsView /></SessionCatalogProvider>);
@@ -369,7 +369,7 @@ describe("Sessions view", () => {
       expect(number).toHaveAttribute("aria-hidden", "true");
       expect(within(cell("Session 5")).getByText("GitHub issue #128")).toHaveClass("commandVisuallyHidden");
       // The task ID stays first and the outcome chip follows the number.
-      expect(cell("Session 4").textContent).toMatch(/^T-12#128GitHub issue #128Needs reviewTask board v1 · step 2$/);
+      expect(cell("Session 4").textContent).toMatch(/^T-12#128GitHub issue #128Needs reviewTask board v1$/);
       const id = within(cell("Session 4")).getByRole("link", { name: "Open task T-12 on its board" });
       const chip = cell("Session 4").querySelector(".commandChip.warning") as HTMLElement;
       const issue = cell("Session 4").querySelector(".commandSessionTaskIssue") as HTMLElement;
@@ -405,8 +405,8 @@ describe("Sessions view", () => {
 
       await waitFor(() => expect(screen.getByRole("button", { name: /Task board v1.*7 sessions/ })).toBeInTheDocument());
       expect(window.localStorage.getItem("pomegr-sessions-group-by")).toBe("feature");
-      // The group header names the feature, so a row shows only its step.
-      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent(/^T-14Step 2$/);
+      // The group header names the feature, so a row shows only the task.
+      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent(/^T-14$/);
       expect(rowOf("Session 5")).toHaveTextContent("Pomegr · Codex");
       expect(screen.getByText(/1 feature · 7 sessions · Only sessions started for a feature's task are listed\./)).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "Show all 7 in Task board v1" }));
@@ -415,7 +415,7 @@ describe("Sessions view", () => {
       expect(chip).toHaveTextContent("Feature: Task board v1 (renamed)");
       expect(fetchMock.mock.calls.map(([url]) => String(url)).filter((url) => url.includes(`feature=${FEATURE}`)).every((url) => !url.includes("group="))).toBe(true);
       expect(screen.getByRole("navigation", { name: "Session pages" })).toBeInTheDocument();
-      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent("T-14Task board v1 · step 2");
+      expect(rowOf("Session 5").querySelector("td.commandSessionCellTask")).toHaveTextContent("T-14Task board v1");
       await user.click(chip);
 
       await waitFor(() => expect(screen.queryByRole("button", { name: /Clear feature filter/ })).not.toBeInTheDocument());

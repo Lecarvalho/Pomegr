@@ -16,7 +16,7 @@ const NO_RUN = { provider: null, model: null, effort: null } as const;
 
 export function sampleTask(id: string, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id, text, columnId: "col-ready", position: 0, featureId: null, step: null, run: NO_RUN, completeWhen: { checks: [], own: null },
+    id, text, columnId: "col-ready", position: 0, featureId: null, run: NO_RUN, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null, createdAt: CREATED, updatedAt: CREATED, ...overrides,
   };
 }
@@ -25,11 +25,11 @@ const session = (id: string, title: string, state: string, observedModel: string
 const passed = [{ check: "pr_open" as const, passed: true }, { check: "tree_clean" as const, passed: true }];
 
 export const T1_DONE = sampleTask("T-1", "Add retry to the upload client", {
-  columnId: "col-done", featureId: SAMPLE_FEATURE_ID, step: 1, state: "done", run: { provider: "claude", model: "model-large", effort: "high" },
+  columnId: "col-done", featureId: SAMPLE_FEATURE_ID, state: "done", run: { provider: "claude", model: "model-large", effort: "high" },
   completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, session: session("t1", "Upload retry", "closed"), report: { at: CREATED, results: passed, blockReason: null },
 });
 const T2_QUEUED = sampleTask("T-2", "Back off between upload retries", {
-  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "claude", model: "model-large", effort: "medium" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Retries stop after five attempts." },
+  featureId: SAMPLE_FEATURE_ID, state: "queued", run: { provider: "claude", model: "model-large", effort: "medium" }, completeWhen: { checks: ["pr_open", "ci_passed"], own: "Retries stop after five attempts." },
 });
 export const T2_REVIEW = { ...T2_QUEUED, columnId: "col-review", state: "needs_review", session: session("t2", "Retry back-off", "closed"),
   report: { at: CREATED, results: [{ check: "pr_open", passed: true }, { check: "ci_passed", passed: false }], blockReason: null } } satisfies Task;
@@ -37,10 +37,10 @@ export const T2_STALLED = { ...T2_REVIEW, state: "stalled", report: null } satis
 export const T2_BLOCKED = { ...T2_REVIEW, state: "blocked", report: { at: CREATED, results: [], blockReason: "The upload service rejects every retry in the test environment." } } satisfies Task;
 const T2_BLOCKED_IN_PROGRESS = { ...T2_BLOCKED, columnId: "col-progress" } satisfies Task;
 export const T3_QUEUED = sampleTask("T-3", "Show the retry count in the upload log", {
-  featureId: SAMPLE_FEATURE_ID, step: 2, state: "queued", run: { provider: "codex", model: "model-code", effort: "medium" }, completeWhen: { checks: ["pr_open"], own: null },
+  featureId: SAMPLE_FEATURE_ID, state: "queued", run: { provider: "codex", model: "model-code", effort: "medium" }, completeWhen: { checks: ["pr_open"], own: null },
 });
-export const T4_QUEUED = sampleTask("T-4", "Document the retry settings", { featureId: SAMPLE_FEATURE_ID, step: 3, state: "queued", run: { provider: "claude", model: null, effort: null } });
-export const T5_IDLE = sampleTask("T-5", "Remove the unused upload helper", { columnId: "col-backlog", featureId: "feature-cleanup", step: 1 });
+export const T4_QUEUED = sampleTask("T-4", "Document the retry settings", { featureId: SAMPLE_FEATURE_ID, state: "queued", run: { provider: "claude", model: null, effort: null } });
+export const T5_IDLE = sampleTask("T-5", "Remove the unused upload helper", { columnId: "col-backlog", featureId: "feature-cleanup" });
 export const T6_WORKING = sampleTask("T-6", "Check the cache headers", {
   columnId: "col-progress", state: "queued", run: { provider: "claude", model: "model-large", effort: "high" }, completeWhen: { checks: ["tree_clean"], own: null },
   session: session("t6", "Cache header check", "working", "model-small"),
@@ -82,6 +82,6 @@ export function inertEdits(board: TaskBoard): TaskBoardEdits {
   const none = async () => false;
   return {
     board, failure: null, busy: false, settled: 0, moveTask: none, addFeature: none,
-    reorderQueueTask: none, setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none,
+    setQueue: none, setGateThreshold: none, setQueueSchedule: none, resolveTask: none,
   };
 }

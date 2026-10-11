@@ -287,7 +287,7 @@ test("the runner exposes only start and dispose, and returns nothing", async () 
   assert.equal(h.runner.dispose(), undefined);
 });
 
-test("a queue paused by one start of a step starts nothing more in that tick, and other queues go on", async () => {
+test("a queue paused by one start starts nothing more in that tick, and other queues go on", async () => {
   const begun = [];
   const h = harness({
     next: { ok: true, starts: entries([repoA, "T-1"], [repoA, "T-2"], [repoB, "T-7"], [repoA, "T-3"]) },
@@ -299,10 +299,10 @@ test("a queue paused by one start of a step starts nothing more in that tick, an
   assert.deepEqual(h.pauses().map((call) => call.body), [{ repositoryId: repoA, payload: { id: "T-1", reason: "start_failed" } }]);
 });
 
-test("a held start of a step does not stop the rest of the step", async () => {
+test("a held start does not stop the starts of other queues", async () => {
   const begun = [];
   const h = harness({
-    next: { ok: true, starts: entries([repoA, "T-1"], [repoA, "T-2"]) },
+    next: { ok: true, starts: entries([repoA, "T-1"], [repoB, "T-2"]) },
     startQueued: async (repositoryId, taskId) => { begun.push(taskId); return { status: taskId === "T-1" ? "gate_held" : "started" }; },
   });
   h.runner.start();

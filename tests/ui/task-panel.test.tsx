@@ -25,7 +25,7 @@ const columns = ["Backlog", "Ready", "In progress", "Review", "Done"].map((name,
 
 function task(id: number, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text: `Task text ${id}`, columnId: "col-1", position: id, featureId: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -134,7 +134,6 @@ describe("Task modal, mode edit", () => {
     expect(dialog.getByRole("button", { name: "Close" })).toHaveClass("commandIconAction");
     expect(dialog.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
     expect(dialog.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
-    expect(dialog.getByRole("combobox", { name: "Step" })).toBeDisabled();
     // Nothing is written by opening the modal.
     expect(taskAction).not.toHaveBeenCalled();
   });
@@ -283,7 +282,7 @@ describe("Task modal, mode edit", () => {
       expect(dialog.getByText(note), text).toHaveClass("newTaskHelper");
       expect(dialog.getByRole("textbox", { name: "Task" }), text).toHaveAttribute("readonly");
       expect(dialog.getByRole("textbox", { name: "Own condition" }), text).toHaveAttribute("readonly");
-      for (const name of ["Run on", "Feature", "Step"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
+      for (const name of ["Run on", "Feature"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
       for (const name of ["Low", "High"]) expect(dialog.getByRole("button", { name }), `${text} ${name}`).toBeDisabled();
       for (const name of ["PR open", "CI passed", "Remote Control"]) expect(dialog.getByRole("checkbox", { name }), `${text} ${name}`).toBeDisabled();
       expect(dialog.queryByRole("button", { name: "Save" }), text).not.toBeInTheDocument();

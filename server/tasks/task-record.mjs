@@ -39,7 +39,7 @@ export const TASK_COLUMN_ROLES = Object.freeze(["in_progress", "review", "done"]
 export const DEFAULT_TASK_COLUMN_ROLES = Object.freeze([null, null, "in_progress", "review", "done"]);
 export const TASK_ACTIONS = Object.freeze([
   "create", "update", "delete", "move",
-  "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
+  "feature_create", "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue",
 ]);
 
 const REPOSITORY_ID = /^repo-[a-f0-9]{24}$/u;
@@ -197,40 +197,27 @@ function taskNumberFromId(value) {
   return isTaskId(value) ? Number(value.slice(2)) : undefined;
 }
 
-function placementFields(value) {
-  const { featureId, step } = value;
-  if (featureId !== undefined && featureId !== null && (typeof featureId !== "string" || !FEATURE_ID.test(featureId))) return null;
-  if (step !== undefined && step !== null && (!Number.isSafeInteger(step) || step < 1)) return null;
-  return { featureId, step };
-}
+const validFeatureId = (featureId) => featureId === undefined || featureId === null || (typeof featureId === "string" && FEATURE_ID.test(featureId));
 
 export function normalizeCreatePayload(value) {
   if (!isPlainObject(value)) return undefined;
   const rest = { ...value };
   delete rest.featureId;
-  delete rest.step;
   const input = normalizeTaskInput(rest);
-  const placement = placementFields(value);
-  if (input === undefined || placement === null) return undefined;
-  const featureId = placement.featureId ?? null;
-  const step = placement.step ?? null;
-  return featureId === null && step !== null ? undefined : { ...input, featureId, step };
+  return input === undefined || !validFeatureId(value.featureId) ? undefined : { ...input, featureId: value.featureId ?? null };
 }
 
 // `update` edits one task.
 export function normalizeUpdatePayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "completeWhen", "featureId", "step"])) return undefined;
+  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "text", "run", "completeWhen", "featureId"])) return undefined;
   const number = taskNumberFromId(value.id);
   if (number === undefined) return undefined;
   const update = { number };
   if (value.text !== undefined) update.text = normalizeTaskText(value.text);
   if (value.run !== undefined) update.run = normalizeRun(value.run);
   if (value.completeWhen !== undefined) update.completeWhen = normalizeCompleteWhen(value.completeWhen);
-  const placement = placementFields(value);
-  if (placement === null) return undefined;
-  if (placement.featureId === null && placement.step !== undefined && placement.step !== null) return undefined;
-  if (placement.featureId !== undefined) update.featureId = placement.featureId;
-  if (placement.step !== undefined) update.step = placement.step;
+  if (!validFeatureId(value.featureId)) return undefined;
+  if (value.featureId !== undefined) update.featureId = value.featureId;
   const fields = Object.keys(update).filter((key) => key !== "number");
   return fields.length === 0 || fields.some((key) => update[key] === undefined) ? undefined : update;
 }
@@ -322,12 +309,6 @@ export function normalizeQueueSchedule(value, stored, now) {
   return startAt !== null && stopAfter !== null && stopAfter <= startAt ? undefined : { startAt, stopAfter };
 }
 
-export function normalizeQueueReorderPayload(value) {
-  if (!isPlainObject(value) || !hasOnlyKeys(value, ["id", "step"])) return undefined;
-  const number = taskNumberFromId(value.id);
-  return number === undefined || !Number.isSafeInteger(value.step) || value.step < 1 ? undefined : { number, step: value.step };
-}
-
 function nonNegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
@@ -408,17 +389,16 @@ export function normalizeStoredTask(row) {
   const createdAt = isoTime(row.created_at);
   const updatedAt = isoTime(row.updated_at);
   const featureId = row.feature_id ?? null;
-  const step = row.step ?? null;
   const sessionId = row.session_id ?? null;
   const issueNumber = row.source_issue ?? null;
   const source = Number.isSafeInteger(issueNumber) && issueNumber >= 1 && issueNumber <= 999_999_999 ? { kind: "github_issue", number: issueNumber } : null;
   if ([id, text, position, run, checks, own, scheduledAt, report, createdAt, updatedAt].includes(undefined)) return undefined;
   if (typeof row.column_id !== "string" || !COLUMN_ID.test(row.column_id)) return undefined;
   if (!TASK_STATES.includes(row.state)) return undefined;
-  if (featureId === null ? step !== null : typeof featureId !== "string" || !FEATURE_ID.test(featureId) || !Number.isSafeInteger(step) || step < 1) return undefined;
+  if (featureId !== null && (typeof featureId !== "string" || !FEATURE_ID.test(featureId))) return undefined;
   if (sessionId !== null && (typeof sessionId !== "string" || !SESSION_ID.test(sessionId))) return undefined;
   return {
-    id, text, columnId: row.column_id, position, featureId, step, run,
+    id, text, columnId: row.column_id, position, featureId, run,
     completeWhen: { checks, own },
     state: row.state,
     scheduledAt,
@@ -491,7 +471,7 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   // The queue order carries task IDs only.
   const { order } = orderQueue(
     projectedTasks.map((task, index) => ({
-      id: task.id, featureId: task.featureId, step: task.step, state: task.state, queuePosition: task.position,
+      id: task.id, featureId: task.featureId, state: task.state, queuePosition: task.position,
       due: task.state === "scheduled" && at !== undefined && taskIsDue(tasks[index].scheduled_at ?? null, at),
       inFlight: rowInFlight(tasks[index], at),
     })),

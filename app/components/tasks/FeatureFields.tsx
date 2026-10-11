@@ -5,18 +5,17 @@ import type { KeyboardEvent } from "react";
 import { TASK_BOUNDS, type Task, type TaskBoard } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  featureCounts, featureDraftFromSelect, featureSelectOptions, featureSelectValue, featureSiblings, stepFromSelect,
-  stepSelectOptions, stepSelectValue, type FeatureDraft,
+  featureCounts, featureDraftFromSelect, featureSelectOptions, featureSelectValue, featureSteps, type FeatureDraft,
 } from "./task-features";
 import { taskCardTitle, taskChip } from "./task-presentation";
 
 type BoardShape = Pick<TaskBoard, "columns" | "features" | "tasks"> & { queue?: Pick<TaskBoard["queue"], "order"> };
 
-function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: boolean; nextQueued: boolean; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
+function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: number | null; nextQueued: boolean; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
   const chip = taskChip(task, nextQueued);
   const title = taskCardTitle(task);
-  return <li className={`taskFeatureItem${step ? " hasStep" : ""}${task.state === "done" ? " isDone" : ""}`} data-task-id={task.id}>
-    {step && <span className="taskFeatureStep">{task.step}</span>}
+  return <li className={`taskFeatureItem${step !== null ? " hasStep" : ""}${task.state === "done" ? " isDone" : ""}`} data-task-id={task.id}>
+    {step !== null && <span className="taskFeatureStep">{step}</span>}
     <span className="taskFeatureId">{task.id}</span>
     {onOpenTask
       ? <button type="button" className="commandQuietAction taskFeatureOpen" title={title} onClick={(event) => onOpenTask(task, event.currentTarget)}><span className="taskFeatureTitle">{title}</span></button>
@@ -27,7 +26,7 @@ function SiblingRow({ task, step, nextQueued, onOpenTask }: { task: Task; step: 
 
 function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: BoardShape; featureId: string; selfId?: string; onOpenTask?: (task: Task, opener: HTMLElement) => void }) {
   const { total, done } = featureCounts(board, featureId);
-  const rows = featureSiblings(board, featureId, selfId);
+  const rows = featureSteps(board, featureId).map((task, index) => ({ task, step: index + 1 })).filter((row) => row.task.id !== selfId);
   return <details className="taskFeatureDetails">
     <summary>
       <svg className="taskFeatureChevron" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
@@ -35,7 +34,7 @@ function FeatureSiblings({ board, featureId, selfId, onOpenTask }: { board: Boar
       <span className="taskFeatureCount"><span className="taskFeatureNum">{total}</span> {total === 1 ? "task" : "tasks"} · <span className="taskFeatureNum">{done}</span> done</span>
     </summary>
     {rows.length > 0 && <ul className="taskFeatureList">
-      {rows.map((task) => <SiblingRow key={task.id} task={task} step={selfId !== undefined} nextQueued={task.id === board.queue?.order[0]} onOpenTask={onOpenTask} />)}
+      {rows.map(({ task, step }) => <SiblingRow key={task.id} task={task} step={selfId !== undefined ? step : null} nextQueued={task.id === board.queue?.order[0]} onOpenTask={onOpenTask} />)}
     </ul>}
   </details>;
 }
@@ -52,9 +51,7 @@ export function FeatureFields({ draft, board, selfId, error, disabled, onChange,
   onOpenTask?: (task: Task, opener: HTMLElement) => void;
 }) {
   const featureId = useId();
-  const stepId = useId();
   const errorId = useId();
-  const steps = stepSelectOptions(board.tasks, draft, selfId);
   const known = draft.featureId !== null && board.features.some((feature) => feature.id === draft.featureId);
   const nameKeys = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") { event.preventDefault(); onCommitName?.(); return; }
@@ -72,11 +69,6 @@ export function FeatureFields({ draft, board, selfId, error, disabled, onChange,
           value={draft.name} aria-describedby={error ? errorId : undefined} onChange={(event) => onChange({ ...draft, name: event.currentTarget.value })}
           onKeyDown={nameKeys} onBlur={onCommitName} />}
         {error && <p id={errorId} className="newTaskError" role="alert">{error}</p>}
-      </div>
-      <div className="newTaskField">
-        <label htmlFor={stepId}>Step</label>
-        <CommandSelect id={stepId} aria-label="Step" options={steps.options} value={stepSelectValue(draft)} disabled={disabled || steps.disabled}
-          onChange={(value) => onChange(stepFromSelect(value, draft))} />
       </div>
     </div>
     {known && draft.featureId !== null && <FeatureSiblings key={draft.featureId} board={board} featureId={draft.featureId} selfId={selfId} onOpenTask={onOpenTask} />}

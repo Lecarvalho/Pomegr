@@ -10,7 +10,7 @@ import { taskIssueNumber } from "../tasks/task-presentation";
 import { useSessionTask } from "../tasks/use-session-task";
 
 export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference; taskHref: string | null }) {
-  const { stepTotal } = useSessionTask(task);
+  const { step } = useSessionTask(task);
   const boardHref = sessionTaskHref(task);
   return <span className="sessionTaskMeta">
     <span className="sessionTaskMetaGroup">
@@ -21,7 +21,7 @@ export function SessionTaskMeta({ task, taskHref }: { task: SessionTaskReference
       <span aria-hidden="true">·</span>
       <span>Feature</span>
       {boardHref ? <Link className="commandTextLink sessionTaskMetaFeature" href={boardHref}>{task.feature}</Link> : <span className="sessionTaskMetaFeature">{task.feature}</span>}
-      {task.step !== null && <span className="sessionTaskMetaStep">{stepLabel(task.step, stepTotal)}</span>}
+      {step !== null && <span className="sessionTaskMetaStep">{stepLabel(step)}</span>}
     </span>}
   </span>;
 }
@@ -41,7 +41,7 @@ export function SessionTaskSummary({ task, taskHref }: { task: SessionTaskRefere
   const models = model.kind === "full" ? modelSummary(model.task) : null;
   const issue = model.kind === "full" ? taskIssueNumber(model.task) : null;
   const featureCell = task.feature !== null && <Cell label="Feature">
-    {task.feature}{task.step !== null && <> · <code>{stepLabel(task.step, model.stepTotal)}</code></>}
+    {task.feature}{model.step !== null && <> · <code>{stepLabel(model.step)}</code></>}
   </Cell>;
   return <section className="panel sessionTaskSummary" aria-labelledby={headingId} data-task-view={model.kind}>
     <h2 id={headingId} className="panelHeading sessionTaskHeading">

@@ -34,7 +34,7 @@ function reasonText(reason: TaskGateReason, gates: TaskGates, next: NonNullable<
   const at = (value: string | null | undefined) => (value ? scheduleLabel(value) : null);
   const provider = PROVIDER_NAMES[next.provider];
   switch (reason) {
-    case "previous_step": return next.blockedBy ? `step before it is not done (${next.blockedBy})` : "step before it is not done";
+    case "previous_step": return next.blockedBy ? `the task before it in its feature is not done (${next.blockedBy})` : "the task before it in its feature is not done";
     case "usage_over": return `${provider} is above ${gates.threshold}% of the five-hour window`;
     case "usage_unknown": return `${provider} usage is not known yet`;
     case "provider_incident": return `${provider} reports an incident`;

@@ -22,8 +22,8 @@ import { readTaskRemoteControl, readTaskRemoteControls, writeTaskRemoteControl }
 import { deleteTaskSource, readTaskSource, readTaskSources, writeTaskSource } from "./task-source.mjs";
 import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktree, readTaskKeepWorktrees, settleWorktreeCleanup, writeTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import {
-  DEFAULT_TASK_COLUMNS, IN_FLIGHT_STATES, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
-  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
+  DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
+  composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
   plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
@@ -183,8 +183,9 @@ function reserveTaskNumber(database, repositoryId, atLeast) {
 const featureExists = (database, repositoryId, id) =>
   preparedStatement(database, "SELECT 1 FROM features WHERE repository_id = ? AND id = ?").get(repositoryId, id) !== undefined;
 
-const highestStep = (database, repositoryId, featureId) =>
-  Number(preparedStatement(database, "SELECT MAX(step) AS highest FROM tasks WHERE repository_id = ? AND feature_id = ?").get(repositoryId, featureId)?.highest ?? 0);
+// The `step` column stays in the version 1 schema, whose CHECK wants a value beside a feature. Nothing reads it:
+// a task's place among its feature's tasks is its card's place.
+const storedStep = (featureId) => (featureId === null ? null : 1);
 
 // A feature is done when it has tasks and every one of them is done; only unfinished features take tasks.
 function featureIsDone(database, repositoryId, featureId) {
@@ -193,27 +194,15 @@ function featureIsDone(database, repositoryId, featureId) {
   return Number(row.total) > 0 && Number(row.total) === Number(row.done);
 }
 
-const stepWithin = (requested, highest) =>
-  requested === null ? highest + 1 : requested >= 1 && requested <= highest + 1 ? requested : undefined;
-
-function renumberSteps(database, repositoryId, featureId) {
-  const steps = preparedStatement(database, "SELECT DISTINCT step FROM tasks WHERE repository_id = ? AND feature_id = ? ORDER BY step").all(repositoryId, featureId);
-  const update = preparedStatement(database, "UPDATE tasks SET step = ? WHERE repository_id = ? AND feature_id = ? AND step = ?");
-  steps.forEach((row, index) => { if (Number(row.step) !== index + 1) update.run(index + 1, repositoryId, featureId, Number(row.step)); });
-}
-
 function createTask({ database, repositoryId }, payload) {
   const input = normalizeCreatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   ensureRepository(database, repositoryId);
   const count = Number(preparedStatement(database, "SELECT COUNT(*) AS n FROM tasks WHERE repository_id = ?").get(repositoryId).n);
   if (count >= TASK_BOUNDS.tasksPerRepository) return { ok: false, error: "limit" };
-  let step = null;
   if (input.featureId !== null) {
     if (!featureExists(database, repositoryId, input.featureId)) return { ok: false, error: "not_found" };
     if (featureIsDone(database, repositoryId, input.featureId)) return { ok: false, error: "conflict" };
-    step = stepWithin(input.step, highestStep(database, repositoryId, input.featureId));
-    if (step === undefined) return { ok: false, error: "invalid" };
   }
   const first = preparedStatement(database, "SELECT id FROM columns WHERE repository_id = ? ORDER BY position, id LIMIT 1").get(repositoryId);
   if (!first) return { ok: false, error: "conflict" };
@@ -225,7 +214,7 @@ function createTask({ database, repositoryId }, payload) {
   preparedStatement(database, `INSERT INTO tasks (repository_id, number, text, column_id, position, run_provider, run_model, run_effort, checks, own_condition, created_at, updated_at, feature_id, step)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(repositoryId, number, input.text, first.id, position, input.run.provider, input.run.model, input.run.effort,
-      JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, step);
+      JSON.stringify(input.completeWhen.checks), input.completeWhen.own, now, now, input.featureId, storedStep(input.featureId));
   if (input.run.remoteControl) writeTaskRemoteControl(database, repositoryId, number, true);
   if (input.run.keepWorktree) writeTaskKeepWorktree(database, repositoryId, number, true);
   reserveTaskNumber(database, repositoryId, number + 1);
@@ -258,41 +247,30 @@ function recordIssue({ database, repositoryId }, payload) {
 function updateTask({ database, repositoryId, now }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const stored = preparedStatement(database, "SELECT text, feature_id, step, run_provider, run_model, run_effort, checks, own_condition, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?")
+  const stored = preparedStatement(database, "SELECT text, feature_id, run_provider, run_model, run_effort, checks, own_condition, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
   // The session was started from the stored task, so a later edit would never reach it.
   if (rowStarted(stored, now())) return { ok: false, error: "conflict" };
   const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number), keepWorktree: readTaskKeepWorktree(database, repositoryId, input.number) };
   const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
-  const placement = updatedPlacement(database, repositoryId, stored, input);
-  if (placement.error) return { ok: false, error: placement.error };
+  const featureId = input.featureId === undefined ? stored.feature_id ?? null : input.featureId;
+  if (featureId !== null && featureId !== (stored.feature_id ?? null)) {
+    if (!featureExists(database, repositoryId, featureId)) return { ok: false, error: "not_found" };
+    if (featureIsDone(database, repositoryId, featureId)) return { ok: false, error: "conflict" };
+  }
   preparedStatement(database, `UPDATE tasks SET text = ?, run_provider = ?, run_model = ?, run_effort = ?, checks = ?, own_condition = ?, feature_id = ?, step = ?, updated_at = ?
     WHERE repository_id = ? AND number = ?`)
-    .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, placement.featureId, placement.step, Date.now(), repositoryId, input.number);
+    .run(input.text ?? stored.text, run.provider, run.model, run.effort, completeWhen.checks, completeWhen.own, featureId, storedStep(featureId), Date.now(), repositoryId, input.number);
   if (input.run) writeTaskRemoteControl(database, repositoryId, input.number, run.remoteControl);
   if (input.run) writeTaskKeepWorktree(database, repositoryId, input.number, run.keepWorktree === true);
-  for (const featureId of new Set([stored.feature_id, placement.featureId])) if (featureId) renumberSteps(database, repositoryId, featureId);
   return { ok: true };
-}
-
-// Where an update leaves the task.
-function updatedPlacement(database, repositoryId, stored, input) {
-  const current = { featureId: stored.feature_id ?? null, step: stored.step ?? null };
-  if (input.featureId === undefined && input.step === undefined) return current;
-  const featureId = input.featureId === undefined ? current.featureId : input.featureId;
-  if (featureId === null) return input.featureId === null ? { featureId: null, step: null } : input.step == null ? current : { error: "invalid" };
-  if (!featureExists(database, repositoryId, featureId)) return { error: "not_found" };
-  const joining = featureId !== current.featureId;
-  if (joining && featureIsDone(database, repositoryId, featureId)) return { error: "conflict" };
-  const step = stepWithin(input.step ?? (joining ? null : current.step), highestStep(database, repositoryId, featureId));
-  return step === undefined ? { error: "invalid" } : { featureId, step };
 }
 
 function deleteTask({ database, repositoryId, now }, payload) {
   const input = normalizeDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT column_id, position, feature_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
+  const task = preparedStatement(database, "SELECT column_id, position FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
   if (!task) return { ok: false, error: "not_found" };
   const reserved = nextTaskNumber(database, repositoryId);
   preparedStatement(database, "DELETE FROM tasks WHERE repository_id = ? AND number = ?").run(repositoryId, input.number);
@@ -305,7 +283,6 @@ function deleteTask({ database, repositoryId, now }, payload) {
   reserveTaskNumber(database, repositoryId, Math.max(reserved, input.number + 1));
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
-  if (task.feature_id) renumberSteps(database, repositoryId, task.feature_id);
   // A blocked or paused queue must not keep naming a task that is gone.
   releaseQueue(database, repositoryId);
   releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
@@ -413,27 +390,16 @@ function agentUpdateFeature({ database, repositoryId }, payload) {
   return { ok: true, featureId: stored.id };
 }
 
-// Only a feature with no task is deleted, so no task loses its feature or its step.
+// Only a feature with no task is deleted, so no task loses its feature.
 function agentDeleteFeature({ database, repositoryId }, payload) {
   const input = normalizeAgentFeatureDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const stored = findFeature(database, repositoryId, input.feature);
   if (!stored) return { ok: false, error: "not_found" };
-  if (highestStep(database, repositoryId, stored.id) > 0) return { ok: false, error: "conflict" };
+  if (preparedStatement(database, "SELECT 1 FROM tasks WHERE repository_id = ? AND feature_id = ? LIMIT 1").get(repositoryId, stored.id) !== undefined) return { ok: false, error: "conflict" };
   preparedStatement(database, "DELETE FROM features WHERE repository_id = ? AND id = ?").run(repositoryId, stored.id);
   deleteFeatureDetails(database, repositoryId, stored.id);
   return { ok: true };
-}
-
-function stepCounts(database, repositoryId, featureId, step) {
-  const row = preparedStatement(database, "SELECT COUNT(*) AS total, COUNT(CASE WHEN state = 'done' THEN 1 END) AS done FROM tasks WHERE repository_id = ? AND feature_id = ? AND step = ?")
-    .get(repositoryId, featureId, step);
-  return { total: Number(row.total), done: Number(row.done) };
-}
-
-function stepIsDone(database, repositoryId, featureId, step) {
-  const { total, done } = stepCounts(database, repositoryId, featureId, step);
-  return total > 0 && total === done;
 }
 
 function addToQueue({ database, repositoryId, now }, payload) {
@@ -460,32 +426,11 @@ function removeFromQueue({ database, repositoryId, now }, payload) {
   return { ok: true };
 }
 
-// Moves a queued task to another step of its own feature.
-function reorderQueuedTask({ database, repositoryId }, payload) {
-  const input = normalizeQueueReorderPayload(payload);
-  if (!input) return { ok: false, error: "invalid" };
-  const task = preparedStatement(database, "SELECT state, session_id, feature_id, step FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
-  if (!task) return { ok: false, error: "not_found" };
-  const started = !IN_FLIGHT_STATES.includes(task.state) || (task.session_id ?? null) !== null;
-  if (started || task.feature_id === null || task.feature_id === undefined) return { ok: false, error: "conflict" };
-  const highest = highestStep(database, repositoryId, task.feature_id);
-  if (stepWithin(input.step, highest) === undefined) return { ok: false, error: "invalid" };
-  const current = Number(task.step);
-  if (input.step === current || (input.step === highest + 1 && current === highest && stepCounts(database, repositoryId, task.feature_id, current).total === 1)) {
-    return { ok: true };
-  }
-  if (stepIsDone(database, repositoryId, task.feature_id, input.step)) return { ok: false, error: "conflict" };
-  preparedStatement(database, "UPDATE tasks SET step = ?, updated_at = ? WHERE repository_id = ? AND number = ?")
-    .run(input.step, Date.now(), repositoryId, input.number);
-  renumberSteps(database, repositoryId, task.feature_id);
-  return { ok: true };
-}
-
 // Actions by name.
 const ACTIONS = Object.freeze({
   create: createTask, update: updateTask, delete: deleteTask, move: moveTask,
   feature_create: createFeature,
-  queue_add: addToQueue, queue_remove: removeFromQueue, queue_reorder: reorderQueuedTask, queue_settings: queueSettings,
+  queue_add: addToQueue, queue_remove: removeFromQueue, queue_settings: queueSettings,
   resolve_done: resolveDone, resolve_requeue: resolveRequeue,
   // Store only: absent from TASK_ACTIONS, so the route and the desktop never accept it.
   promote_issue: promoteIssue, record_issue: recordIssue,

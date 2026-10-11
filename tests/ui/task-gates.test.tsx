@@ -20,7 +20,7 @@ const columns = ["Backlog", "Ready"].map((name, position) => ({ id: `col-${posit
 
 function task(id: number, text: string, overrides: Partial<Task> = {}): Task {
   return {
-    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null, step: null,
+    id: `T-${id}`, text, columnId: "col-1", position: id, featureId: null,
     run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null },
     state: "not_queued", scheduledAt: null, session: null, source: null, report: null,
     createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
@@ -129,7 +129,7 @@ describe("the capacity strip", () => {
   });
 });
 
-describe("the waiting line", () => {
+describe("the ", () => {
   const held = gates({ next: { taskId: "T-15", provider: "codex", blockedBy: null, reasons: ["usage_over", "tree_dirty"] } });
 
   it("shows on the held next task while the queue runs", async () => {
@@ -154,7 +154,7 @@ describe("waitingLine", () => {
   it("words every reason", () => {
     const reasons: TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
     const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-12", reasons };
-    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: step before it is not done (T-12); Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
+    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: the task before it in its feature is not done (T-12); Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
   });
 
   it("is null for another task, no reasons, or a queue that is not running", () => {
