@@ -21,7 +21,7 @@ const DATED_BY = Object.freeze({
 
 test("every check passes on a known passing fact, one result per check in contract order", () => {
   const results = verifyChecks([...TASK_CHECKS].reverse(), PASSING);
-  assert.deepEqual(results.map((result) => result.check), [...TASK_CHECKS]);
+  assert.deepEqual(results.map((result) => result.check), Object.keys(DATED_BY));
   assert.ok(results.every((result) => Object.keys(result).join() === "check,passed" && result.passed === true));
   assert.equal(allChecksPassed(results), true);
 });
@@ -58,6 +58,11 @@ test("an unknown, missing, or malformed fact is never a pass", () => {
     assert.deepEqual(passed(results), nothing, JSON.stringify(facts));
     assert.equal(allChecksPassed(results), false);
   }
+});
+
+test("Validated with the user is judged by the agent and gets no result", () => {
+  assert.deepEqual(verifyChecks(["user_validated"], PASSING), []);
+  assert.deepEqual(verifyChecks(["user_validated", "pr_open"], PASSING), [{ check: "pr_open", passed: true }]);
 });
 
 test("CI passed needs a known passing check status", () => {

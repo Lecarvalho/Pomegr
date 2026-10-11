@@ -18,6 +18,7 @@ import { contextCompactions, mergeContextCompactions, readContextCompactions } f
 import { createExecutionTaskReader } from "../../normalize/execution-tasks.mjs";
 import { createSessionFileLister, liveSessionFiles, statSafe, walkJsonl } from "../../normalize/session-discovery.mjs";
 import { memoizeRepositoryResolver } from "../../normalize/session-identity.mjs";
+import { claudeGitCommandDirectories, resolveClaudeWorkingCheckout } from "./working-checkout.mjs";
 import { createOwnerProbeCounters, createSessionRegistryOwnerValidator, preferredRegisteredSessionId, processAlive } from "../../normalize/session-registry.mjs";
 import { readSessionTasks } from "../../normalize/session-tasks.mjs";
 import { mergeTranscriptSignals, readTranscriptSignals } from "../../normalize/session-signals.mjs";
@@ -97,6 +98,8 @@ export function createClaudeProvider(options = {}) {
   const toolCallEvidence = createClaudeToolCallEvidenceReader();
   const executionTaskReader = createExecutionTaskReader();
   const transcriptPlanTasksCache = new Map();
+  // Monitor-private: the checkout each session's latest Git command ran in, when it is not the launch one.
+  const workingCheckouts = new Map();
   const workflowManifestCache = new Map();
   const historyCache = new Map();
   // Same 4,096-entry bound the prior Claude-private locator used; Claude sessions have no
@@ -283,6 +286,14 @@ export function createClaudeProvider(options = {}) {
     const { startedAt: primaryStartedAt, userMessageTimes } = mainFacts
       || { startedAt: claudeSessionWorkStartedAt(mainRecords), userMessageTimes: claudeUserMessageTimes(mainRecords) };
     const cwd = projectCwd(mainRecords);
+    const gitDirectories = claudeGitCommandDirectories(mainRecords);
+    // A record tail that slid past the last Git command keeps the checkout already found.
+    const workingCheckout = gitDirectories.length
+      ? await resolveClaudeWorkingCheckout({ launchCwd: cwd, directories: gitDirectories, resolveRepository: repositoryResolver })
+      : workingCheckouts.get(sessionId) || null;
+    workingCheckouts.delete(sessionId);
+    if (workingCheckout) workingCheckouts.set(sessionId, workingCheckout);
+    while (workingCheckouts.size > 128) workingCheckouts.delete(workingCheckouts.keys().next().value);
     const mainStat = readGenerations.stat(mainFile);
     const pomegrPlugin = await readLatestPomegrPluginMetadata(mainFile, "claude");
     const signalsByFile = new Map(/** @type {Array<[string, any]>} */ (await Promise.all(files.map(async (file) => [
@@ -363,7 +374,7 @@ export function createClaudeProvider(options = {}) {
         preTokens: compaction.preTokens,
       })));
       const toolEvidence = toolCallEvidence.read({ file, key: generationKeyFor(file), records, actor, isMain: file === mainFile,
-        stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath });
+        stat, cwd, forbiddenRoots: fileChangeForbiddenRoots, validatePath: validateFileChangePath, checkouts: workingCheckout });
       activity.push(...toolEvidence.userInputActivity.map((event) => ({ ...event, _historyAgentId: actor.id })));
       toolCalls.push(...toolEvidence.toolCalls);
       // A pass that is behind the tail is not used for the call counts.
@@ -706,6 +717,10 @@ export function createClaudeProvider(options = {}) {
     setRepositoryResolver(resolver) {
       // Memoized like Codex's header lookups: a warm read never spawns Git per call.
       repositoryResolver = typeof resolver === "function" ? memoizeRepositoryResolver(resolver) : null;
+    },
+    // Null leaves the session on its launch directory.
+    repositoryAttributionForSession(localSessionId) {
+      return workingCheckouts.get(localSessionId)?.attribution || null;
     },
     // Checkpoints written before readSession recorded repositoryAttribution named the
     // project from the first record's launch cwd and trusted it as the repository.

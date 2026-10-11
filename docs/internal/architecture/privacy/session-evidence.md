@@ -149,6 +149,13 @@ Behavior: [Observation cache](../observation-cache.md).
   - The files a command writes cannot be known reliably from its text.
   - Do not parse command text for file writes unless a reliable source is found
     (product-owner decision, 2026-09-24).
+  - The directory of a session's own Git command is a separate read (product need of
+    T-52, 2026-10-11): the Claude adapter may read the directory that a Git command names
+    to find the checkout the session works in. It reads no file path from the command.
+  - That directory and the checkout it resolves to are monitor-private. They are used
+    only as the working directory of read-only Git and GitHub reads, after the directory
+    exists and the repository resolver recognizes it as a checkout of the session's
+    launch repository. They never enter evidence, a checkpoint, a response, or a log.
 - A move observed only through Git may establish repository-scoped path continuity.
 - Such a move must not manufacture session, agent, or request attribution.
 - Such a move must not contribute to session edit counts.
@@ -254,17 +261,36 @@ Present signals as agent-reported, not as Pomegr judgments.
     `automatic`/`manual`
 - Label `lifetime_elapsed` as an inference.
 
+**Task events (task T-57, 2026-10-11):**
+
+- The feed may also carry an event for each of the agent's own Pomegr task tool calls
+  that changes a task: `add_task`, `remove_task`, `complete_task`, and `block_task`.
+- The source is the session's recorded tool calls. The feed never reads the task store,
+  so it is an observation of the session, not task-board content.
+- A provider adapter may mark such a tool call with one optional evidence value,
+  `taskAction`: `added`, `removed`, `completed`, or `blocked`.
+  - It is set only for Pomegr's own MCP server and only when the recorded result is not
+    an error.
+  - It is checkpointed with the tool-call evidence and stays monitor-private. It is not
+    in `/api/state`, the activity feed, a report, or a log.
+- Each of these events exposes only these values:
+  - the normalized agent ID and label
+  - the tool call's recorded time
+  - a fixed kind: `task_added`, `task_removed`, `task_completed`, or `task_blocked`
+- Label a report as the agent's report. Only the owner marks a task done.
+
 **Session-event sidecar:**
 
 - Events must not be withdrawn when their usage evidence slides out of the retained
   window.
 - So the monitor may persist them in a separate monitor-private session-event sidecar
   next to the session checkpoint.
-- The sidecar holds only a version and, for at most the newest 256 refills and 256
-  compactions, these values:
+- The sidecar holds only a version and, for at most the newest 256 refills, 256
+  compactions, and 256 task actions, these values:
   - the recorded time
   - the normalized agent ID
   - the fixed kind
+  - for a task action, a count from 1 to 64 of the calls that share that time
 - The monitor validates it as a whole record.
 - It only accumulates from committed normalized evidence.
 - It reaches the browser only as event times and kinds.
@@ -282,6 +308,8 @@ Present signals as agent-reported, not as Pomegr judgments.
 - inference details
 - token counts
 - cache percentages
+- task IDs, task text, feature names, block reasons, or attention lines
+- tool arguments, tool results, or tool-call IDs
 - prior context totals
 - provider IDs
 

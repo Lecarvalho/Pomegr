@@ -9,6 +9,10 @@ function event(id: string, kind: SessionEvent["kind"], at: string, fields: Parti
 }
 
 const ITEMS: SessionEvent[] = [
+  event("e15", "task_completed", "2026-08-09T11:34:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
+  event("e14", "task_blocked", "2026-08-09T11:33:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
+  event("e13", "task_removed", "2026-08-09T11:32:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
+  event("e12", "task_added", "2026-08-09T11:31:00.000Z", { agentId: "primary", agentLabel: "Primary agent" }),
   event("e11", "estimate_updated", "2026-08-09T11:29:00.000Z", { progress: { percent: 45, phase: "implementing" } }),
   event("e10", "commit_observed", "2026-08-09T11:26:00.000Z"),
   event("e10-repeat", "commit_observed", "2026-08-09T11:25:00.000Z"),
@@ -46,6 +50,6 @@ export function EventsRailSection() {
         <div className="designSystemEventsFrame"><SessionEventsPanel headingId="design-system-events-unavailable" events={UNAVAILABLE} onNavigate={ignore} /></div>
       </Sample>
     </div>
-    <p className="designSystemNote">Glyphs stay muted for every kind; the label names the transition, so no row carries a tone color. Rows read only the normalized fields their kind owns and never print prompt, command, or file content. Timestamps are the evidence time, and a commit row says Git-observed in its detail. A cache-refill row names its recorded kind and marks the elapsed-lifetime partial refill as an inference.</p>
+    <p className="designSystemNote">Glyphs stay muted for every kind; the label names the transition, so no row carries a tone color. Rows read only the normalized fields their kind owns and never print prompt, command, or file content. Timestamps are the evidence time, and a commit row says Git-observed in its detail. A cache-refill row names its recorded kind and marks the elapsed-lifetime partial refill as an inference. A task row is a Pomegr task tool call made by the agent: it names the action and the agent, never the task, and a report reads as reported, because only the owner marks a task done.</p>
   </Section>;
 }

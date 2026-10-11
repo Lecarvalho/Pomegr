@@ -17,7 +17,7 @@ const MODEL_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const SINGLE_LINE = /^[^\u0000-\u001f]*$/u;
 
 const READINESS = new Set<TaskBoard["readiness"]>(["ready", "loading", "unavailable", "desktop_only"]);
-const CHECKS = new Set<TaskCheck>(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"]);
+const CHECKS = new Set<TaskCheck>(["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"]);
 const STATES = new Set<TaskState>(["not_queued", "queued", "scheduled", "needs_review", "stalled", "blocked", "done"]);
 const EFFORTS = new Set(["low", "medium", "high", "xhigh"]);
 const PROVIDERS = new Set(["claude", "codex"]);

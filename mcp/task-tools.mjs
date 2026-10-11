@@ -20,7 +20,7 @@ export const TASK_REMOVE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it 
 
 const noAnswer = (error) => error instanceof Error && error.message === AGENT_TASK_NO_ANSWER;
 
-const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
+const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed", "user_validated"];
 const REASON_TEXT = {
   invalid: "Pomegr rejected the task as invalid, so no task was added.",
   session_not_found: "Pomegr does not know the current session yet, so no task was added.",
@@ -48,9 +48,9 @@ function inputShape(hookBound) {
     model: modelSchema.optional(),
     effort: z.enum(["low", "medium", "high", "xhigh"]).optional().describe("Optional effort level."),
     remote_control: z.boolean().optional().describe("Optional. True starts the task's Claude Code session with Remote Control on, so the user can also reach it from their phone. Claude Code only; not valid with the codex provider."),
-    complete_when: z.array(z.enum(CHECKS)).max(5)
+    complete_when: z.array(z.enum(CHECKS)).max(CHECKS.length)
       .refine((items) => new Set(items).size === items.length, "Checks must be unique.")
-      .optional().describe("Optional conditions Pomegr verifies when the agent reports the task complete."),
+      .optional().describe("Optional conditions Pomegr verifies when the agent reports the task complete. user_validated is not verified: the agent validates the work with the user before it reports."),
     own_condition: z.string().trim().min(1).max(500).optional().describe("Optional free-text condition the agent judges itself."),
     feature: z.string().trim().min(1).max(80).optional().describe("Optional name of an existing feature on the board."),
   };
@@ -91,6 +91,7 @@ const CHECK_LABELS = {
   commit_on_branch: "Commit on task branch",
   pr_merged: "Pull request merged",
   ci_passed: "CI passed",
+  user_validated: "Validated with the user",
 };
 const REPORT_REASON_TEXT = {
   invalid: "Pomegr rejected the report as invalid, so nothing was reported.",

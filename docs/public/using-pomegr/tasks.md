@@ -104,7 +104,11 @@ with **PR open** and **Tree clean** checked.
 | **PR merged** | That pull request is merged. |
 | **CI passed** | Every check on the branch's pull request passed. Pending, failed, and missing checks do not pass. |
 
-The **Own condition** field under the five checks is free text up to 500 characters; an empty field means none. The
+A sixth checkbox, **Validated with the user**, asks the agent to validate the work
+with you before it reports. Pomegr cannot observe that, so the agent judges it and
+the task shows it as **Agent-reported**, with no pass or fail.
+
+The **Own condition** field under the checks is free text up to 500 characters; an empty field means none. The
 agent judges it, and Pomegr does not evaluate it. A fact Pomegr has not observed
 is unknown, and unknown never passes.
 
@@ -522,6 +526,14 @@ started for them. Other devices see none of it.
   definition of done with each check's result, and the feature's tasks in the same
   and next step. **Open on board** goes to the card. A session with no task has no
   **Task** tab.
+- **Events.** The **Events** list on the **Overview** tab adds a row when the agent
+  adds a task, removes a task, reports its task complete, or reports it blocked. The
+  row names the agent and the time, not the task. It comes from the agent's own tool
+  call in the session, so it appears on every device that shows the session, and a
+  call that Pomegr refused adds no row. **Task reported complete** is the agent's
+  report; the task then waits in **Review** until you mark it done. A change you make
+  on the board adds no row. A task that the agent changes with `update_task` adds no
+  row either.
 
 ## What Pomegr does not do
 

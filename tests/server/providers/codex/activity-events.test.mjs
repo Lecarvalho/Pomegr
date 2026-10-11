@@ -9,6 +9,8 @@ import {
   parseCodexCanonicalActivityEvents,
   parseCodexActivityRecords,
   parseCodexCanonicalTurns,
+  mergeCodexToolCalls,
+  sealCodexTaskActions,
 } from "../../../../server/providers/codex/activity-events.mjs";
 import { createCodexProvider } from "../../../../server/providers/codex/index.mjs";
 import { createCodexIncrementalObserver } from "../../../../server/providers/codex/observation.mjs";
@@ -518,4 +520,61 @@ test("native Codex function tools keep their own identity instead of a dynamic-t
     ["MCP", "integration", "cua_repl / js"],
   ]);
   assert.doesNotMatch(JSON.stringify(calls.map(({ repetitionSignature, ...row }) => row)), /PRIVATE/);
+});
+
+test("a Codex Pomegr task tool call names its action only when it completed and its result is not an error", () => {
+  const stamp = (second) => new Date(Date.UTC(2026, 9, 11, 10, 0, second)).toISOString();
+  const begin = (second, id, tool) => ({ type: "event_msg", timestamp: stamp(second), payload: { type: "mcp_tool_call_begin", call_id: id, invocation: { server: "pomegr", tool, arguments: { text: "TASK_TEXT_MUST_NOT_LEAK" } } } });
+  const end = (second, id, tool, result) => ({ type: "event_msg", timestamp: stamp(second), payload: { type: "mcp_tool_call_end", call_id: id, invocation: { server: "pomegr", tool, arguments: {} }, result } });
+  const ok = { Ok: { content: [{ type: "text", text: "RESULT_MUST_NOT_LEAK" }] } };
+  const records = [
+    begin(1, "add-ok", "add_task"), end(2, "add-ok", "add_task", ok),
+    begin(3, "add-refused", "add_task"), end(4, "add-refused", "add_task", { Ok: { isError: true, content: [] } }),
+    // A later output record for the same call reads completed and must not clear the refusal.
+    { type: "response_item", timestamp: stamp(5), payload: { type: "function_call_output", call_id: "add-refused", output: "RESULT_MUST_NOT_LEAK" } },
+    begin(6, "block-err", "block_task"), end(7, "block-err", "block_task", { Err: "PRIVATE_ERROR" }),
+    begin(8, "complete-open", "complete_task"),
+    begin(9, "remove-ok", "remove_task"), end(10, "remove-ok", "remove_task", ok),
+    begin(11, "feature-ok", "delete_feature"), end(12, "feature-ok", "delete_feature", ok),
+    { type: "event_msg", timestamp: stamp(13), payload: { type: "mcp_tool_call_begin", call_id: "other-ok", invocation: { server: "synthetic", tool: "add_task", arguments: {} } } },
+    { type: "event_msg", timestamp: stamp(14), payload: { type: "mcp_tool_call_end", call_id: "other-ok", invocation: { server: "synthetic", tool: "add_task", arguments: {} }, result: ok } },
+    { type: "event_msg", timestamp: stamp(15), payload: { type: "item_completed", item: { type: "McpToolCall", id: "block-item", server: "pomegr", tool: "block_task", arguments: {}, status: "completed", result: { isError: false } } } },
+    { type: "event_msg", timestamp: stamp(16), payload: { type: "item_completed", item: { type: "McpToolCall", id: "complete-item-refused", server: "pomegr", tool: "complete_task", arguments: {}, status: "completed", result: { isError: true } } } },
+  ];
+  const parsed = parseCodexActivityRecords(records, { actor: ACTOR });
+  assert.ok(parsed.every((call) => !Object.hasOwn(call, "taskAction")), "the action is named only at the seal");
+  const sealed = sealCodexTaskActions(parsed, parsed);
+  assert.ok(sealCodexTaskActions(parsed).every((call) => !Object.hasOwn(call, "taskAction")), "a call the rollout does not hold is never named");
+  assert.deepEqual(sealed.map((call) => [call.detail, call.status, call.taskAction ?? null]), [
+    ["pomegr / add_task", "completed", "added"],
+    ["pomegr / add_task", "completed", null],
+    ["pomegr / block_task", "completed", null],
+    ["pomegr / complete_task", "running", null],
+    ["pomegr / remove_task", "completed", "removed"],
+    ["pomegr / delete_feature", "completed", null],
+    ["synthetic / add_task", "completed", null],
+    ["pomegr / block_task", "completed", "blocked"],
+    ["pomegr / complete_task", "failed", null],
+  ]);
+  assert.ok(sealed.every((call) => !Object.hasOwn(call, "mcpRefused")), "the private marker never reaches evidence");
+  assert.doesNotMatch(JSON.stringify(sealed), /MUST_NOT_LEAK|PRIVATE_ERROR/u);
+
+  // The app-server view: a refusal seen by either source wins the merge, and a call it alone reports is never named.
+  const later = Date.parse(stamp(30)) / 1000;
+  const canonical = parseCodexCanonicalTurns([{ id: "turn-tasks", status: "completed", startedAt: later, completedAt: later + 2, items: [
+    { id: "canonical-only", type: "mcpToolCall", server: "pomegr", tool: "complete_task", arguments: {}, status: "completed", result: { content: [] } },
+    { id: "canonical-error", type: "mcpToolCall", server: "pomegr", tool: "add_task", arguments: {}, status: "completed", error: { message: "PRIVATE_ERROR" } },
+    { id: "add-ok", type: "mcpToolCall", server: "pomegr", tool: "add_task", arguments: {}, status: "completed", result: { isError: true, content: [] } },
+    { id: "remove-ok", type: "mcpToolCall", server: "pomegr", tool: "remove_task", arguments: {}, status: "completed", result: { content: [] } },
+  ] }], { actor: ACTOR });
+  const named = (calls) => calls.filter((call) => call.taskAction).map((call) => [call.detail, call.taskAction, call.timestamp]).sort();
+  const merged = sealCodexTaskActions(mergeCodexToolCalls([parsed, canonical]), parsed);
+  assert.deepEqual(named(merged), [["pomegr / block_task", "blocked", stamp(15)], ["pomegr / remove_task", "removed", stamp(9)]]);
+  assert.ok(merged.every((call) => !Object.hasOwn(call, "mcpRefused")));
+  // The app server times a call of an unfinished turn by the turn's start, which is not the call's recorded time:
+  // the action waits, so it is never recorded at a time that later moves.
+  const running = parseCodexCanonicalTurns([{ id: "turn-open", status: "inProgress", startedAt: STARTED_SECONDS, items: [
+    { id: "remove-ok", type: "mcpToolCall", server: "pomegr", tool: "remove_task", arguments: {}, status: "completed", result: { content: [] } },
+  ] }], { actor: ACTOR });
+  assert.deepEqual(named(sealCodexTaskActions(mergeCodexToolCalls([parsed, running]), parsed)).map(([detail]) => detail), ["pomegr / add_task", "pomegr / block_task"]);
 });

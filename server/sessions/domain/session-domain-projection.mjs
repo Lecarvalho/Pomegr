@@ -438,7 +438,7 @@ export function projectSessionDomains(sessionId, snapshot, options = {}) {
   const loops = list(state.loops, publicLoop);
   const toolCalls = Array.isArray(snapshot.evidence?.toolCalls) ? snapshot.evidence.toolCalls : [];
   const touchedFiles = sessionTouchedFiles({ fileHistory: options.fileHistory, gitObserved: options.gitObserved, agents });
-  const eventRecord = mergeSessionEventRecord(options.eventRecord || null, derivedSessionEventRecord({ cacheEvents, contextBoundaries: boundaries }));
+  const eventRecord = mergeSessionEventRecord(options.eventRecord || null, derivedSessionEventRecord({ cacheEvents, contextBoundaries: boundaries, toolCalls }));
   const events = sessionEvents({
     readiness: sectionReadiness(ready, SESSION_EVENT_READINESS_SECTIONS),
     session,

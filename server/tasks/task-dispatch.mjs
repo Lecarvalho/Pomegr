@@ -21,6 +21,7 @@ const CHECK_LABELS = Object.freeze({
   commit_on_branch: "Commit on task branch",
   pr_merged: "Pull request merged",
   ci_passed: "CI passed",
+  user_validated: "Validated with the user",
 });
 export const TASK_PROMPT_OPENING = "You are working on one task from the Pomegr task board.";
 
