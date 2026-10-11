@@ -38,7 +38,7 @@ Pomegr may send the existing local Claude OAuth access token only to:
 `GET https://api.anthropic.com/v1/code/sessions/{bridgeSessionId}`
 
 This is an explicitly authorized exception to the usage-only OAuth rule in
-`AGENTS.md`. It is limited to locally discovered live sessions whose registry
+[Provider and account privacy](privacy/providers-and-accounts.md#oauth-credentials-and-remote-control-status). It is limited to locally discovered live sessions whose registry
 `entrypoint` is `sdk-cli`, with validated PID/process-start ownership and a bounded
 `session_` or `cse_` bridge ID. These two native prefixes are aliases; the entire
 remaining identifier must match the returned session ID exactly. Pomegr never lists

@@ -4,6 +4,8 @@ This document is the canonical operational contract for Pomegr's provider-neutra
 session observation cache, API serving model, and progressive UI readiness. Plans under
 `docs/internal/plans/` describe work or historical reasoning, not runtime authority; when
 a plan and this document differ, this document and `AGENTS.md` govern repository changes.
+The privacy invariants for each surface are in the [privacy pages](privacy/session-evidence.md)
+that [AGENTS.md](../../../AGENTS.md#security-and-privacy) lists.
 The [Limitations reference](limitations.md)
 owns the provider-related and Pomegr-specific inventory and capability matrix;
 this document retains authority over acquisition, committed evidence, and serving.
@@ -3064,7 +3066,9 @@ subjects, pull-request URLs, resource values or matched tasks, signal descriptio
 provider IDs. Commit and pull-request events name no agent or request, and a historical
 session gains no event from current Git state.
 
-Browser responses remain subject to every allowlist and privacy invariant in `AGENTS.md`.
+Browser responses remain subject to every allowlist and privacy invariant in
+[Session evidence privacy](privacy/session-evidence.md) and the other pages that
+[AGENTS.md](../../../AGENTS.md#security-and-privacy) lists.
 The optional cache message-change sequence is derived during complete-history provider
 normalization and committed only as the fixed `post_tool_task_notification_resume` enum
 or `null`. Serving and presentation never reconstruct it from browser-visible labels or
@@ -3893,5 +3897,5 @@ performs zero transcript reads, and a background catalog hydration pass cannot s
 `/health` or committed API responses until a frontend proxy deadline expires.
 
 When this contract changes, update this document, the executable provider/monitor
-contracts, frontend and API types, focused regression tests, and `AGENTS.md` if a
-repository-wide invariant changes.
+contracts, frontend and API types, focused regression tests, and the owning privacy page if a
+privacy invariant changes.

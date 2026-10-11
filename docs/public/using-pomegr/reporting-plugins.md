@@ -7,8 +7,9 @@ description: "Install the optional Pomegr plugin for Claude Code or Codex, choos
 
 The Pomegr plugin is optional; Pomegr observes your sessions without it. With it,
 the agents in a repository can report a short status, a task outcome, and a
-progress estimate, and they can read Pomegr's
-[MCP observation queries](mcp-queries.md). The plugin sends no transcript
+progress estimate. They can also read Pomegr's [MCP queries](mcp-queries.md) and
+use the [task tools](tasks.md#what-agents-report). [MCP tools](mcp-tools.md) lists
+each tool of the plugin. The plugin sends no transcript
 contents, prompts, or credentials to Pomegr. Everything an agent reports is
 agent-reported and can be out of date; it is never a Pomegr judgment (see
 [Signals and estimates](../concepts/signals-and-estimates.md)).
@@ -87,7 +88,7 @@ A signal is a short plain-text label, a tone (`neutral`, `info`, `positive`,
 `warning`, or `negative`), and an optional one-line description. Progress is off
 unless the policy enables it. Pomegr shows only these bounded fields, never
 prompts, responses, commands, or tool output. Claude Code can also set a concise
-session title.
+session title. [MCP tools](mcp-tools.md#reporting-tools) names the tool for each report.
 
 The optional usage guard, off until you ask `init` to create
 `.pomegr/usage-guard.json`, adds advisory warnings from Pomegr's cached usage

@@ -385,8 +385,9 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents four tools. Each call is tied to the calling session by
-the coding tool, not by anything the model supplies.
+The plugin gives agents four task tools. Each call is tied to the calling session by
+the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md) lists
+these tools with the plugin's reporting and query tools.
 
 | Tool | What it does |
 | --- | --- |

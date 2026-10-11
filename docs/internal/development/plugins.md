@@ -181,17 +181,7 @@ The Claude `SubagentStop` detector checks recognized Pomegr report or clear call
 
 ## Tools and signal lifetime
 
-The [guide](../../public/using-pomegr/reporting-plugins.md#what-agents-report) shows where each report appears. Both plugins provide:
-
-| Tool | Effect |
-| --- | --- |
-| `report_session_signal` | Reports or replaces the main session's current bounded signal. |
-| `report_agent_signal` | Reports or replaces the calling agent's current bounded signal. |
-| `report_task_signal` | Records a durable outcome for a recognized execution-task ID. |
-| `clear_session_signal` | Removes the main session's current agent-reported signal. |
-| `clear_agent_signal` | Removes the calling agent's current agent-reported signal. |
-| `report_session_progress` | Publishes the root agent's latest bounded progress estimate and resets the opt-in reminder window. |
-| `clear_session_progress` | Removes the current progress estimate and suppresses reminders until later qualifying root-session activity. |
+[MCP tools](../../public/using-pomegr/mcp-tools.md) is the canonical list of every tool that the plugins give an agent. The [guide](../../public/using-pomegr/reporting-plugins.md#what-agents-report) shows where each report appears. `report_session_progress` also resets the opt-in reminder window. `clear_session_progress` suppresses reminders until later qualifying root-session activity.
 
 A visible label remains until a later report replaces it or the matching clear tool removes it. Clearing means no agent-reported state is currently meaningful for that scope. Task signals cannot be cleared; a later report for the same recognized task may replace one.
 
@@ -199,30 +189,7 @@ The MCP server is stateless. Pomegr reconstructs reports and clears chronologica
 
 ## Observation query tools
 
-Both plugins also provide `get_provider_health`, `get_usage_limits`,
-`list_sessions`, `list_session_agents`, `get_agent_context`, `get_recent_failures`,
-and `get_session_report`. These tools read only committed monitor projections. They
-are intended for decisions whose outcome may change based on current provider
-health, account limits, retained agent context, or normalized failures; they are
-not a polling interface or a required session-start checklist.
-
-Session-specific queries default to the validated current-session identity supplied by
-the Codex host or Claude's per-call hook. `get_agent_context` also
-defaults to the main agent, `primary`. Optional exact references from `list_sessions`
-and `list_session_agents` remain available for historical or delegated inspection.
-`get_session_report` needs no arguments for the actual calling session. Claude's
-per-call hook resolves the current identity after `/clear` or a session switch;
-it never falls back to the previous session's launch ID. An optional `session_ref`
-selects another exact session. The tool returns the same bounded Markdown as the
-dashboard download, including every normalized agent's latest bounded provider-reported
-model and reasoning effort when available. These fields are not complete model history,
-service-tier evidence, routing evidence, or performance measurements. No tool infers the
-current session from the working directory or recency. If Pomegr is not running or the
-host identity is unavailable, queries return unavailable without launching it or affecting
-the existing reporting tools.
-
-When to use each query is in the [MCP queries guide](../../public/using-pomegr/mcp-queries.md). The complete contracts, evidence qualifications, and local transport boundary are
-documented in [MCP observation queries](../architecture/mcp-queries.md).
+[MCP tools](../../public/using-pomegr/mcp-tools.md#query-tools) lists the seven query tools. The [MCP queries guide](../../public/using-pomegr/mcp-queries.md) says when to use each one. [MCP observation queries](../architecture/mcp-queries.md) owns session resolution, evidence qualifications, and the local transport boundary. If Pomegr is not running or the host identity is unavailable, a query returns unavailable. It does not start Pomegr and does not affect the reporting tools.
 
 ### Claude Code native naming
 

@@ -33,7 +33,7 @@ Pomegr is not an authoritative evaluator of developer or agent quality: its metr
 ## Capabilities and Constraints
 
 - Claude Code and Codex are the current provider adapters. Both must produce the same provider-neutral normalized shapes, and each exposes a different amount of session data; the [Limitations](docs/internal/architecture/limitations.md) reference lists the gaps.
-- Monitoring is read-only. Control actions require a future explicit confirmation boundary.
+- Monitoring is read-only. The desktop app can also start sessions for repository tasks, as an opt-in control plane that is separate from observation. Each other control action needs an explicit confirmation boundary.
 - The browser receives normalized metadata only. Raw prompts, responses, commands, tool-result content, transcripts, OAuth tokens, and credential contents must not be exposed.
 - The monitor is responsible for transcript discovery and parsing, normalization, Git inspection, usage-limit retrieval, and deterministic metrics. Provider transcript schemas do not belong in React components.
 - Context means the latest non-zero provider usage snapshot. Context history carries those snapshots forward at bounded bucket boundaries to show actual per-agent levels or an explicitly labeled sum of agent snapshots; it is not throughput, unique shared memory, or spend.
@@ -54,7 +54,7 @@ Pomegr is not an authoritative evaluator of developer or agent quality: its metr
 ## Evidence on Hand
 
 - The working dashboard, monitor, provider adapter, normalized contract, MCP signal server, deterministic report generator, and automated test suite are present in this repository.
-- Product and privacy behavior are documented in `README.md`, `AGENTS.md`, `docs/internal/architecture/overview.md`, and `docs/internal/architecture/metrics.md`.
+- Product and privacy behavior are documented in the contracts that the [maintainer index](docs/internal/README.md) lists.
 - The current interface is implemented under `app/`.
 - No testimonials, customer logos, external benchmarks, pricing claims, or deployment claims are established in the repository and future work must not fabricate them.
 - Commercial editions, pricing, hosted coordination, and remote or organization features are unvalidated hypotheses in the [commercial strategy plan](docs/internal/plans/commercial-strategy.md) and its platform plans. None is shipped, and product copy must not present them as capabilities.

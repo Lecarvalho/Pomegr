@@ -3,7 +3,7 @@
 > Status: accepted on 2026-08-10 as a design for `POMEGR-CX-02`. Its primary strategy, an opt-in lifecycle-hook bridge, was superseded on 2026-09-02; the evidence principles, privacy boundary, and rejected alternatives remain in force.
 > Decided: 2026-08-10. The bridge and its watcher were removed in commit `0df9f9a` on 2026-09-02.
 > Scope and owner: classifying Codex threads as active, idle, waiting for input, or not live on Windows, for CLI and desktop-owned threads; Pomegr maintainers.
-> Authority: rationale only. [AGENTS.md](../../../AGENTS.md) (Codex native writer presence) and the [observation cache](../architecture/observation-cache.md) own the current contract, [session status](../architecture/session-status.md) and [metrics](../architecture/metrics.md) own the status rules, and [`liveness.mjs`](../../../server/providers/codex/liveness.mjs) implements them.
+> Authority: rationale only. [Provider and account privacy](../architecture/privacy/providers-and-accounts.md#codex-native-writer-presence) and the [observation cache](../architecture/observation-cache.md) own the current contract, [session status](../architecture/session-status.md) and [metrics](../architecture/metrics.md) own the status rules, and [`liveness.mjs`](../../../server/providers/codex/liveness.mjs) implements them.
 
 ## Decision and context
 
