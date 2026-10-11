@@ -10,6 +10,10 @@ import { SessionHistoryStore } from "../../../../server/sessions/history/session
 // These tests count work and check file lifecycle; none asserts a duration. A store keeps
 // pooled connections only between start() and stop(), so every test stops its store before
 // removing the directory, as the monitor does: Windows cannot delete an open database.
+// The pool releases an idle connection on a timer. Every store here gets a schedule that
+// never fires, so no connection count depends on how fast the runner is. The idle test
+// injects its own clock and schedule and runs the sweep itself.
+const neverFires = { schedule: () => ({ unref() {} }), cancel: () => {} };
 
 const when = (number) => new Date(1_800_000_000_000 + number * 1000).toISOString();
 const numbered = (number) => ({
@@ -22,9 +26,9 @@ const call = (number, requestId = null) => ({
   status: null, durationMs: 2, requestId, agentId: "primary",
 });
 
-async function open(t, { pooled = true, ...options } = {}) {
+async function open(t, { pooled = true, connections = {}, ...options } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-history-connections-"));
-  const store = new SessionHistoryStore({ directory, maxResident: 0, maxIndexResident: 0, ...options });
+  const store = new SessionHistoryStore({ directory, maxResident: 0, maxIndexResident: 0, ...options, connections: { ...neverFires, ...connections } });
   if (pooled) store.start();
   t.after(async () => { await store.stop(); await rm(directory, { recursive: true, force: true }); });
   return { directory, store };
