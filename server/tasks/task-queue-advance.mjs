@@ -111,15 +111,43 @@ export function queueSettings({ database, repositoryId, ensureRepository, now },
   ensureRepository(database, repositoryId);
   const status = preparedStatement(database, "SELECT queue_status FROM repositories WHERE repository_id = ?").get(repositoryId)?.queue_status;
   if (payload.on && (status === "running" || status === "blocked")) return { ok: true };
-  let next = { status: "idle", blockedBy: null };
-  if (payload.on) {
-    clearExpiredDispatches(database, repositoryId, now());
-    next = queueWhenTurnedOn(preparedStatement(database, "SELECT number, state FROM tasks WHERE repository_id = ?").all(repositoryId)
-      .map((row) => ({ id: taskIdFromNumber(Number(row.number)), state: row.state })));
-  }
+  writeQueueStatus(database, repositoryId, payload.on ? turnedOn(database, repositoryId, now()) : QUEUE_OFF);
+  return { ok: true };
+}
+
+const QUEUE_OFF = Object.freeze({ status: "idle", blockedBy: null });
+
+function turnedOn(database, repositoryId, at) {
+  clearExpiredDispatches(database, repositoryId, at);
+  return queueWhenTurnedOn(preparedStatement(database, "SELECT number, state FROM tasks WHERE repository_id = ?").all(repositoryId)
+    .map((row) => ({ id: taskIdFromNumber(Number(row.number)), state: row.state })));
+}
+
+function writeQueueStatus(database, repositoryId, next) {
   preparedStatement(database, "UPDATE repositories SET queue_status = ?, queue_blocked_by = ? WHERE repository_id = ?").run(next.status, next.blockedBy, repositoryId);
   clearPauseReason(database, repositoryId);
-  return { ok: true };
+}
+
+// The pause reasons whose cause is the named task itself, so the cause goes when the task goes.
+const TASK_OWN_PAUSE_REASONS = Object.freeze(["worktree_dirty", "session_not_linked"]);
+
+function endPause(database, repositoryId, at) {
+  const resumes = TASK_OWN_PAUSE_REASONS.includes(readPauseReason(database, repositoryId));
+  writeQueueStatus(database, repositoryId, resumes ? turnedOn(database, repositoryId, at) : QUEUE_OFF);
+}
+
+// A pause must not keep naming a task that was deleted or left the queue. Call it after the task's own write.
+export function releasePause({ database, repositoryId, now }, taskId) {
+  const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
+  if (repository?.queue_status === "paused" && repository.queue_blocked_by === taskId) endPause(database, repositoryId, now());
+}
+
+// A store written before `releasePause` may hold a pause at a task that is gone.
+export function releaseDanglingPause({ database, repositoryId, now }) {
+  const repository = preparedStatement(database, "SELECT queue_status, queue_blocked_by FROM repositories WHERE repository_id = ?").get(repositoryId);
+  if (repository?.queue_status !== "paused" || !isTaskId(repository.queue_blocked_by)) return;
+  const found = preparedStatement(database, "SELECT 1 FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, Number(repository.queue_blocked_by.slice(2)));
+  if (found === undefined) endPause(database, repositoryId, now());
 }
 
 function queueRecord(row, at) {

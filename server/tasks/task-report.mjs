@@ -4,6 +4,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { deleteTaskAttention, writeTaskAttention } from "./task-attention.mjs";
 import { verifyChecks } from "./task-checks.mjs";
 import { moveTaskToRole } from "./task-columns.mjs";
+import { releasePause } from "./task-queue-advance.mjs";
 import { IN_FLIGHT_STATES, isTaskSessionId, normalizeBlockReason, normalizeQueueTaskPayload, normalizeStoredTask, rowInFlight, taskIdFromNumber } from "./task-record.mjs";
 
 export const TASK_REPORT_ERRORS = Object.freeze(["invalid", "not_found", "already_reported", "unavailable"]);
@@ -102,18 +103,19 @@ function unresolvedTask(database, repositoryId, payload) {
   return UNRESOLVED_STATES.includes(task.state) || awaitingReport(task) ? { number: input.number } : { error: "conflict" };
 }
 
-export function resolveDone({ database, repositoryId }, payload) {
+export function resolveDone({ database, repositoryId, now }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
   preparedStatement(database, "UPDATE tasks SET state = 'done', queue_position = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, target.number);
   moveTaskToRole(database, repositoryId, target.number, "done");
   releaseQueue(database, repositoryId);
+  releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
   return { ok: true };
 }
 
 // `resolve_requeue`: the user sends the task back to the end of the queue for a new session.
-export function resolveRequeue({ database, repositoryId }, payload) {
+export function resolveRequeue({ database, repositoryId, now }, payload) {
   const target = unresolvedTask(database, repositoryId, payload);
   if (target.error) return { ok: false, error: target.error };
   preparedStatement(database, `UPDATE tasks SET state = 'queued', queue_position = NULL, scheduled_at = NULL, session_id = NULL, dispatch_token = NULL,
@@ -121,5 +123,6 @@ export function resolveRequeue({ database, repositoryId }, payload) {
     .run(Date.now(), repositoryId, target.number);
   deleteTaskAttention(database, repositoryId, target.number);
   releaseQueue(database, repositoryId);
+  releasePause({ database, repositoryId, now }, taskIdFromNumber(target.number));
   return { ok: true };
 }
