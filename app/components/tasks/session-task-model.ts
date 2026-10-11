@@ -1,6 +1,6 @@
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import type { Task, TaskBoard, TaskCheck, TaskFeature, TaskRun } from "../../../shared/task-contract";
-import { CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, observedModelDiffers } from "./task-fields";
+import { CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, observedModelDiffers } from "./task-fields";
 import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
@@ -147,11 +147,12 @@ export function checkRows(task: Task): CheckRow[] {
 
 export type TextPart = { text: string; code: boolean };
 
-/** "Claude Code · opus · high": the provider plain, a named model and the effort as identifiers. Empty when nothing is planned. */
+/** "Claude Code · opus · high · Remote Control": the provider plain, a named model and the effort as identifiers, then Remote Control when on. Empty when nothing is planned. */
 export function plannedParts(run: TaskRun): TextPart[] {
   const parts: TextPart[] = [];
   if (run.provider) parts.push({ text: PROVIDER_LABELS[run.provider], code: false }, run.model ? { text: run.model, code: true } : { text: "Default model", code: false });
   if (run.effort) parts.push({ text: EFFORT_LABELS[run.effort].toLowerCase(), code: true });
+  if (run.remoteControl === true) parts.push({ text: REMOTE_CONTROL_LABEL, code: false });
   return parts;
 }
 

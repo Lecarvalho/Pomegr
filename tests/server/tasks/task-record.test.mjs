@@ -152,21 +152,35 @@ test("a model identifier is bounded like the request model identifier", () => {
 });
 
 test("the planned run holds a provider, a model, and an effort, all optional", () => {
-  const empty = { provider: null, model: null, effort: null };
+  const empty = { provider: null, model: null, effort: null, remoteControl: false };
   assert.deepEqual(normalizeRun(undefined), empty);
   assert.deepEqual(normalizeRun(null), empty);
   assert.deepEqual(normalizeRun({}), empty);
-  assert.deepEqual(normalizeRun({ provider: "codex", model: null, effort: "xhigh" }), { provider: "codex", model: null, effort: "xhigh" });
-  assert.deepEqual(normalizeRun({ provider: "claude", model: "claude-opus-4-1", effort: "low" }), { provider: "claude", model: "claude-opus-4-1", effort: "low" });
+  assert.deepEqual(normalizeRun({ provider: "codex", model: null, effort: "xhigh", remoteControl: false }), { provider: "codex", model: null, effort: "xhigh", remoteControl: false });
+  assert.deepEqual(normalizeRun({ provider: "claude", model: "claude-opus-4-1", effort: "low", remoteControl: false }), { provider: "claude", model: "claude-opus-4-1", effort: "low", remoteControl: false });
   for (const value of [{ provider: "gemini" }, { effort: "max" }, { model: "C:\\x" }, { provider: "claude", extra: true }, "claude", [], 3]) {
     assert.equal(normalizeRun(value), undefined, JSON.stringify(value));
   }
 });
 
+test("Remote Control is a boolean that a Codex run never holds", () => {
+  assert.deepEqual(normalizeRun({ remoteControl: true }), { provider: null, model: null, effort: null, remoteControl: true });
+  assert.deepEqual(normalizeRun({ provider: "claude", remoteControl: true }), { provider: "claude", model: null, effort: null, remoteControl: true });
+  assert.equal(normalizeRun({ provider: "codex", remoteControl: false }).remoteControl, false);
+  assert.equal(normalizeRun({ remoteControl: null }).remoteControl, false);
+  for (const value of [{ provider: "codex", remoteControl: true }, { remoteControl: "true" }, { remoteControl: 1 }, { remoteControl: "T-1" }]) {
+    assert.equal(normalizeRun(value), undefined, JSON.stringify(value));
+  }
+  // A stored flag reads as on only for a task that can use it.
+  assert.equal(normalizeStoredTask(storedTask({ run_remote_control: true })).run.remoteControl, true);
+  assert.equal(normalizeStoredTask(storedTask({ run_provider: "codex", run_remote_control: true })).run.remoteControl, false);
+  assert.equal(normalizeStoredTask(storedTask({ run_remote_control: "1" })).run.remoteControl, false);
+});
+
 test("a planned model needs its provider", () => {
   assert.equal(normalizeRun({ model: "opus" }), undefined);
-  assert.equal(normalizeRun({ provider: null, model: "opus", effort: "low" }), undefined);
-  assert.deepEqual(normalizeRun({ effort: "low" }), { provider: null, model: null, effort: "low" });
+  assert.equal(normalizeRun({ provider: null, model: "opus", effort: "low", remoteControl: false }), undefined);
+  assert.deepEqual(normalizeRun({ effort: "low" }), { provider: null, model: null, effort: "low", remoteControl: false });
 });
 
 test("complete-when checks are known, unique, and kept in contract order", () => {
@@ -183,7 +197,7 @@ test("complete-when checks are known, unique, and kept in contract order", () =>
 });
 
 test("a task input accepts only text, run, and complete-when", () => {
-  assert.deepEqual(normalizeTaskInput({ text: " Ship it " }), { text: "Ship it", run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null } });
+  assert.deepEqual(normalizeTaskInput({ text: " Ship it " }), { text: "Ship it", run: { provider: null, model: null, effort: null, remoteControl: false }, completeWhen: { checks: [], own: null } });
   assert.equal(normalizeTaskInput({ text: "" }), undefined);
   assert.equal(normalizeTaskInput({ text: "ok", state: "done" }), undefined);
   assert.equal(normalizeTaskInput({ text: "ok", columnId: COLUMN }), undefined);
@@ -213,7 +227,7 @@ test("a stored task projects to exactly the contract keys", () => {
   }));
   assert.deepEqual(task, {
     id: "T-1", text: "Write the release notes", columnId: COLUMN, position: 0, featureId: FEATURE, step: 2,
-    run: { provider: "claude", model: "claude-sonnet-4-5", effort: "high" },
+    run: { provider: "claude", model: "claude-sonnet-4-5", effort: "high", remoteControl: false },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "docs updated" },
     state: "needs_review",
     scheduledAt: "2023-11-14T22:13:22.000Z",

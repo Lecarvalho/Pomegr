@@ -81,6 +81,8 @@ function validTask(value: unknown): value is Task {
     && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.step === null || count(task.step, 1))
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
+    // An older monitor serves no Remote Control flag, which reads as off.
+    && (run.remoteControl === undefined || typeof run.remoteControl === "boolean")
     && checks !== null && nullableText(completeWhen.own, LIMITS.own)
     && STATES.has(task.state as TaskState) && (task.scheduledAt === null || timestamp(task.scheduledAt)) && validSource(task.source)
     && (session === null || (text(session.id, LIMITS.label) && nullableText(session.title, LIMITS.label) && text(session.state, 40) && nullableText(session.observedModel, LIMITS.model) && reading !== null))

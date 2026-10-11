@@ -19,7 +19,8 @@ export function taskDraftFromTask(task: Task): TaskDraft {
   return { text: task.text, run: task.run, completeWhen: completeWhenFromTask(task.completeWhen), feature: featureDraftFromTask(task) };
 }
 
-const sameRun = (left: TaskRun, right: TaskRun) => left.provider === right.provider && left.model === right.model && left.effort === right.effort;
+const sameRun = (left: TaskRun, right: TaskRun) => left.provider === right.provider && left.model === right.model && left.effort === right.effort
+  && (left.remoteControl === true) === (right.remoteControl === true);
 
 /**
  * The fields of `draft` that differ from the stored task, or null when nothing does. The text is compared and sent

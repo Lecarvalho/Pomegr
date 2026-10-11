@@ -80,7 +80,7 @@ test("create lands as the last card of the first column with the next ID and eve
   assert.equal(task.position, 0);
   assert.equal(task.state, "not_queued");
   assert.deepEqual([task.featureId, task.step, task.scheduledAt, task.session, task.report], [null, null, null, null, null]);
-  assert.deepEqual(task.run, { provider: null, model: null, effort: null });
+  assert.deepEqual(task.run, { provider: null, model: null, effort: null, remoteControl: false });
   assert.deepEqual(task.completeWhen, { checks: [], own: null });
   assert.equal(task.createdAt, task.updatedAt);
 
@@ -215,19 +215,19 @@ test("create stores the planned run and the complete-when conditions, and keeps 
   const store = openStore(temp);
   const created = store.apply(REPOSITORY, "create", {
     text: "Planned",
-    run: { provider: "claude", model: "opus", effort: "high" },
+    run: { provider: "claude", model: "opus", effort: "high", remoteControl: false },
     completeWhen: { checks: ["tree_clean", "pr_open"], own: "  The store rejects a malformed record.  " },
   });
   assert.equal(created.ok, true);
-  assert.deepEqual(created.board.tasks[0].run, { provider: "claude", model: "opus", effort: "high" });
+  assert.deepEqual(created.board.tasks[0].run, { provider: "claude", model: "opus", effort: "high", remoteControl: false });
   // Checks come back in the contract order, and the own condition trimmed.
   assert.deepEqual(created.board.tasks[0].completeWhen, { checks: ["pr_open", "tree_clean"], own: "The store rejects a malformed record." });
 
   const partial = store.apply(REPOSITORY, "create", { text: "Default model", run: { provider: "codex" }, completeWhen: { own: "   " } }).board.tasks[1];
-  assert.deepEqual(partial.run, { provider: "codex", model: null, effort: null });
+  assert.deepEqual(partial.run, { provider: "codex", model: null, effort: null, remoteControl: false });
   assert.deepEqual(partial.completeWhen, { checks: [], own: null });
   const effortOnly = store.apply(REPOSITORY, "create", { text: "Effort only", run: { effort: "xhigh" }, completeWhen: null }).board.tasks[2];
-  assert.deepEqual(effortOnly.run, { provider: null, model: null, effort: "xhigh" });
+  assert.deepEqual(effortOnly.run, { provider: null, model: null, effort: "xhigh", remoteControl: false });
   assert.deepEqual(effortOnly.completeWhen, { checks: [], own: null });
   // The bounds themselves are valid, and the stored values survive a restart.
   const bound = store.apply(REPOSITORY, "create", {
@@ -241,20 +241,20 @@ test("create stores the planned run and the complete-when conditions, and keeps 
 test("update replaces only the fields it carries and keeps the others, nulls included", async (t) => {
   const temp = await temporaryDirectory(t);
   const store = openStore(temp);
-  store.apply(REPOSITORY, "create", { text: "Original", run: { provider: "claude", model: "opus", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  store.apply(REPOSITORY, "create", { text: "Original", run: { provider: "claude", model: "opus", effort: "high", remoteControl: false }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
   const fields = (board) => { const { text, run, completeWhen } = board.tasks[0]; return { text, run, completeWhen }; };
 
   const run = store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", effort: "low" } });
-  assert.deepEqual(fields(run.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
+  assert.deepEqual(fields(run.board), { text: "Original", run: { provider: "codex", model: null, effort: "low", remoteControl: false }, completeWhen: { checks: ["pr_open"], own: "Tests pass." } });
   const completeWhen = store.apply(REPOSITORY, "update", { id: "T-1", completeWhen: { checks: ["ci_passed", "tree_clean"] } });
-  assert.deepEqual(fields(completeWhen.board), { text: "Original", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  assert.deepEqual(fields(completeWhen.board), { text: "Original", run: { provider: "codex", model: null, effort: "low", remoteControl: false }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
   const text = store.apply(REPOSITORY, "update", { id: "T-1", text: "Edited" });
-  assert.deepEqual(fields(text.board), { text: "Edited", run: { provider: "codex", model: null, effort: "low" }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
+  assert.deepEqual(fields(text.board), { text: "Edited", run: { provider: "codex", model: null, effort: "low", remoteControl: false }, completeWhen: { checks: ["tree_clean", "ci_passed"], own: null } });
   // A null field clears it; the text is untouched.
   const cleared = store.apply(REPOSITORY, "update", { id: "T-1", run: null, completeWhen: null });
-  assert.deepEqual(fields(cleared.board), { text: "Edited", run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null } });
+  assert.deepEqual(fields(cleared.board), { text: "Edited", run: { provider: null, model: null, effort: null, remoteControl: false }, completeWhen: { checks: [], own: null } });
   const all = store.apply(REPOSITORY, "update", { id: "T-1", text: "All", run: { provider: "claude", model: "sonnet" }, completeWhen: { checks: [], own: "Judged" } });
-  assert.deepEqual(fields(all.board), { text: "All", run: { provider: "claude", model: "sonnet", effort: null }, completeWhen: { checks: [], own: "Judged" } });
+  assert.deepEqual(fields(all.board), { text: "All", run: { provider: "claude", model: "sonnet", effort: null, remoteControl: false }, completeWhen: { checks: [], own: "Judged" } });
 
   const bad = [{ id: "T-1", run: { provider: "gemini" } }, { id: "T-1", run: { model: "opus" } }, { id: "T-1", run: { provider: "claude", model: "../opus" } },
     { id: "T-1", run: { effort: "max" } }, { id: "T-1", completeWhen: { checks: ["tests_pass"] } }, { id: "T-1", completeWhen: { own: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) } },
@@ -345,4 +345,31 @@ test("every listed action has a handler and a name outside the list answers unsu
     assert.deepEqual(store.apply(REPOSITORY, action, { id: "T-1", text: "x" }), { ok: false, error: "unsupported" }, action);
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);
+});
+
+test("Remote Control is stored with the run, replaced with it, refused on Codex, and gone with the task", async (t) => {
+  const temp = await temporaryDirectory(t);
+  const store = openStore(temp);
+  const flagRows = () => withRawDatabase(temp.databasePath, (database) =>
+    database.prepare("SELECT key, value FROM meta WHERE key LIKE 'task_remote_control:%' ORDER BY key").all().map((row) => ({ ...row })));
+  const created = store.apply(REPOSITORY, "create", { text: "Phone", run: { remoteControl: true } });
+  assert.deepEqual(created.board.tasks[0].run, { provider: null, model: null, effort: null, remoteControl: true });
+  assert.deepEqual(flagRows(), [{ key: `task_remote_control:${REPOSITORY}:T-1`, value: "1" }]);
+  // Codex has no Remote Control: neither a new nor an edited task may ask for it.
+  assert.equal(store.apply(REPOSITORY, "create", { text: "Codex", run: { provider: "codex", remoteControl: true } }).ok, false);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", remoteControl: true } }).ok, false);
+  assert.equal(store.apply(REPOSITORY, "create", { text: "Bad", run: { remoteControl: "yes" } }).ok, false);
+  // An edit that leaves the run out keeps the flag; one that carries the run replaces it whole.
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", text: "Phone, edited" }).board.tasks[0].run.remoteControl, true);
+  const kept = store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "claude", model: "opus", remoteControl: true } });
+  assert.deepEqual(kept.board.tasks[0].run, { provider: "claude", model: "opus", effort: null, remoteControl: true });
+  const off = store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "claude", model: "opus" } });
+  assert.equal(off.board.tasks[0].run.remoteControl, false);
+  assert.deepEqual(flagRows(), []);
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", run: { remoteControl: true } }).ok, true);
+  store.close();
+  const reopened = openStore(temp);
+  assert.equal(reopened.readBoard(REPOSITORY).tasks[0].run.remoteControl, true);
+  assert.equal(reopened.apply(REPOSITORY, "delete", { id: "T-1" }).ok, true);
+  assert.deepEqual(flagRows(), []);
 });

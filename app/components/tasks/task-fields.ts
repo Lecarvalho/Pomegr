@@ -23,9 +23,22 @@ export const CHECK_SHORT_LABELS: Record<TaskCheck, string> = {
   ci_passed: "CI passed",
 };
 
-/** Planned model and effort, for example "opus · high"; each only when set. */
+export const REMOTE_CONTROL_LABEL = "Remote Control";
+
+/** Planned model, effort and Remote Control, for example "opus · high · Remote Control"; each only when set. */
 export function plannedRunText(run: TaskRun) {
-  return [run.model, run.effort && EFFORT_LABELS[run.effort].toLowerCase()].filter(Boolean).join(" · ");
+  return [run.model, run.effort && EFFORT_LABELS[run.effort].toLowerCase(), run.remoteControl === true && REMOTE_CONTROL_LABEL].filter(Boolean).join(" · ");
+}
+
+/** Remote Control is a Claude Code feature: a task with no provider starts Claude Code, a Codex task has none. */
+export function canRemoteControl(run: TaskRun): boolean {
+  return run.provider !== "codex";
+}
+
+/** The run with Remote Control on or off. Off drops the key, so an untouched run stays as it was. */
+export function withRemoteControl(run: TaskRun, on: boolean): TaskRun {
+  const { provider, model, effort } = run;
+  return on && canRemoteControl(run) ? { provider, model, effort, remoteControl: true } : { provider, model, effort };
 }
 
 export const EMPTY_RUN: TaskRun = { provider: null, model: null, effort: null };
@@ -118,7 +131,7 @@ export function runSelectOptions(models: TaskModelOptions, run: TaskRun): Comman
 }
 
 export function isRunSet(run: TaskRun): boolean {
-  return run.provider !== null || run.model !== null || run.effort !== null;
+  return run.provider !== null || run.model !== null || run.effort !== null || run.remoteControl === true;
 }
 
 export function isEffort(value: string): value is TaskEffort {

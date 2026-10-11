@@ -82,6 +82,8 @@ test("add_task schema is strict and bounded with no repository or path input", (
     assert.equal(parse(tool, { text: "x", model }).success, false, model);
   }
   assert.equal(parse(tool, { text: "x", model: "gpt-5.5" }).success, true);
+  assert.equal(parse(tool, { text: "x", remote_control: true }).success, true);
+  for (const value of ["true", 1, "name", null]) assert.equal(parse(tool, { text: "x", remote_control: value }).success, false, String(value));
   assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "pr_open"] }).success, false);
   assert.equal(parse(tool, { text: "x", complete_when: ["nope"] }).success, false);
   assert.equal(parse(tool, { text: "x", complete_when: ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"] }).success, true);
@@ -144,6 +146,13 @@ test("body mapping omits or null-fills optional groups", async () => {
   await checks.tool.handler({ text: "t", provider: "claude", model: "m-1", complete_when: ["pr_open"] });
   assert.deepEqual(checks.calls[0].body.run, { provider: "claude", model: "m-1", effort: null });
   assert.deepEqual(checks.calls[0].body.completeWhen, { checks: ["pr_open"], own: null });
+  // Remote Control is sent only when asked for, so every other add keeps the body an older monitor takes.
+  const remote = setup({ ref: "codex:t1" });
+  await remote.tool.handler({ text: "t", remote_control: true });
+  assert.deepEqual(remote.calls[0].body, { sessionRef: "codex:t1", text: "t", run: { provider: null, model: null, effort: null, remoteControl: true } });
+  const off = setup({ ref: "codex:t1" });
+  await off.tool.handler({ text: "t", remote_control: false });
+  assert.deepEqual(off.calls[0].body, { sessionRef: "codex:t1", text: "t" });
 });
 
 test("results map to fixed sentences and never echo task or monitor text", async () => {
