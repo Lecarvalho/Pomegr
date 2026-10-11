@@ -958,8 +958,10 @@ supplies.
     `session_proof` are never copied into a request body, and the server never falls back
     to a launch-time session ID.
   - The window is ten minutes because the hook issues the proof before the host's
-    permission prompt and the server verifies it after the user approves. This reliance on
-    the hook running before the prompt has not been exercised on a device.
+    permission prompt and the server verifies it after the user approves. In the
+    2026-10-10 probe below the hook ran before the permission decision on every call: a
+    call denied for want of approval already carried the hook's fields. An approval given
+    after a wait has not been exercised on a device.
   - The hook makes no permission decision for a write, so Claude Code decides as it does
     for any MCP tool: in its default mode the user approves each of the write tools, and
     in auto mode Claude Code's own classifier decides. Observed on a device on 2026-10-09
@@ -969,9 +971,52 @@ supplies.
     so neither the names nor the hook's fields explain a refusal, and renaming the tools
     would not prevent one. The sample is small and the classifier's reasoning is not
     visible. A refused call posts nothing; the agent stops and tells the user instead of
-    rewording the text. Whether a hook-granted approval would also skip the classifier
-    has not been tested, and granting one would let an agent write to the board with no
-    user approval, which the product owner has not decided.
+    rewording the text.
+  - Probed on a device on 2026-10-10 (Claude Code 2.1.296, plugin 0.9.3): what changes if
+    the hook also returns `permissionDecision: "allow"` for `add_task`, `complete_task`,
+    and `block_task`, as it does for the read `get_agent_context`. The probe was a
+    temporary local build, deleted afterwards; nothing shipped. It used synthetic text,
+    sessions linked to no task, and `claude -p` with no approval surface, where a call
+    that needs a prompt is denied and says so. `remove_task` was not probed.
+    - Default mode: with no hook decision, 4 of 4 calls needed a prompt. With the hook's
+      approval, 10 of 10 calls (at least 3 per tool) ran with no prompt, and the debug log
+      recorded `Hook approved tool use …, bypassing permission prompt` for each.
+    - Auto mode: with no hook decision, each of 10 calls produced one classifier request,
+      and all 10 passed (ordinary text). With the hook's approval, 15 of 15 calls (5 per
+      tool) ran with no classifier request and the same bypass line. So a hook approval
+      skips the classifier as well as the prompt. The evidence is the absence of a
+      classifier request in the local debug log. No call with text that the classifier
+      refuses was tried, and anything Claude Code does off the device is not visible.
+    - With no hook decision in auto mode, the debug log says that because a hook rewrote
+      the call's input, the local classifier judges that one call. The binding through
+      `updatedInput` therefore gives every write its own classifier judgment.
+    - Claude Code's documentation (read 2026-10-10) says a plugin cannot ship permission
+      rules. A plugin's `settings.json` takes effect for two keys only, `agent` and
+      `subagentStatusLine`, "and every other key is dropped"
+      ([plugin components](https://code.claude.com/docs/en/plugins/components)); the
+      manifest has no permission field
+      ([plugins reference](https://code.claude.com/docs/en/plugins-reference)). The
+      classifier reads `autoMode` from user settings, managed settings, and `--settings`,
+      not from a project or a plugin
+      ([auto mode configuration](https://code.claude.com/docs/en/auto-mode-config)). A
+      hook's `"allow"` "skips the permission prompt", and deny and ask rules "are still
+      evaluated regardless of what the hook returns"
+      ([hooks](https://code.claude.com/docs/en/hooks)). In auto mode, a call that matches
+      the user's allow, ask, or deny rule resolves before the classifier
+      ([permission modes](https://code.claude.com/docs/en/permission-modes)); this was
+      not probed. The documentation does not say what a hook's `"allow"` does to the
+      classifier, so the probe is the only evidence for that.
+    - So only two things end an auto-mode refusal: an allow rule that each user adds for a
+      tool, or an approval from the Pomegr hook for every user of the plugin.
+    - Trade-off, not decided: an approval from the hook ends the default-mode prompt and
+      the auto-mode refusal, so a session that nobody watches never waits. In exchange an
+      agent writes to the board in every permission mode with no user approval and no
+      classifier check, including the free text of `add_task` and the `block_task` reason.
+      The user is not asked and can only opt out, with a deny or ask rule. The bounds that
+      remain are Pomegr's own: the session proof, one report per start on the session's own
+      task, and an added task that is last in the first column and not queued. This
+      changes the rule in `AGENTS.md` that dispatch never approves work in a running
+      session, so it needs the product owner's decision before any code ships.
 - **Codex**: the thread identity Codex puts in the `_meta` of every MCP tool call
   (`threadId`, which must agree with `thread_id` in its turn metadata when that is
   present), read by `resolveCodexCallSession` in `mcp/task-tools.mjs`. A stdio MCP server
