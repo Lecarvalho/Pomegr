@@ -24,7 +24,7 @@ import { deleteTaskWorktreeCleanup, pendingWorktreeCleanups, readTaskKeepWorktre
 import {
   DEFAULT_TASK_COLUMNS, TASK_BOUNDS, emptyBoard, isRepositoryId, isTaskId, isTaskSessionId, normalizeCreatePayload, normalizeDeletePayload,
   composePromotedText, normalizeAgentFeatureCreatePayload, normalizeAgentFeatureDeletePayload, normalizeAgentFeatureUpdatePayload, normalizeFeatureCreatePayload, normalizeMovePayload, normalizePromotePayload, normalizeQueueAddPayload, normalizeRecordIssuePayload, normalizeQueueReorderPayload, normalizeQueueTaskPayload, normalizeUpdatePayload,
-  plainTaskText, projectBoard, taskIdFromNumber,
+  plainTaskText, projectBoard, rowStarted, taskIdFromNumber,
 } from "./task-record.mjs";
 
 export const TASK_STORE_SCHEMA_VERSION = 1;
@@ -255,12 +255,14 @@ function recordIssue({ database, repositoryId }, payload) {
   return { ok: true };
 }
 
-function updateTask({ database, repositoryId }, payload) {
+function updateTask({ database, repositoryId, now }, payload) {
   const input = normalizeUpdatePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
-  const stored = preparedStatement(database, "SELECT text, feature_id, step, run_provider, run_model, run_effort, checks, own_condition FROM tasks WHERE repository_id = ? AND number = ?")
+  const stored = preparedStatement(database, "SELECT text, feature_id, step, run_provider, run_model, run_effort, checks, own_condition, state, session_id, dispatch_token FROM tasks WHERE repository_id = ? AND number = ?")
     .get(repositoryId, input.number);
   if (!stored) return { ok: false, error: "not_found" };
+  // The session was started from the stored task, so a later edit would never reach it.
+  if (rowStarted(stored, now())) return { ok: false, error: "conflict" };
   const run = input.run ?? { provider: stored.run_provider, model: stored.run_model, effort: stored.run_effort, remoteControl: readTaskRemoteControl(database, repositoryId, input.number), keepWorktree: readTaskKeepWorktree(database, repositoryId, input.number) };
   const completeWhen = input.completeWhen ? { checks: JSON.stringify(input.completeWhen.checks), own: input.completeWhen.own } : { checks: stored.checks, own: stored.own_condition };
   const placement = updatedPlacement(database, repositoryId, stored, input);
@@ -684,7 +686,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
   const image = (operation, repositoryId, payload) => {
     if (!database) return { ok: false, error: "conflict" };
     try {
-      return operation({ database, transaction: (work) => runTransaction(database, work), directory, repositoryId, payload });
+      return operation({ database, transaction: (work) => runTransaction(database, work), directory, repositoryId, payload, now });
     } catch {
       return { ok: false, error: "conflict" };
     }

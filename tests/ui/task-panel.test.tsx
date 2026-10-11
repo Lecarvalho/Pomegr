@@ -70,6 +70,12 @@ async function openReviewPanel(user: ReturnType<typeof userEvent.setup>) {
   await user.click(card("Task store and privacy rules"));
   return within(screen.getByRole("dialog", { name: "Task" }));
 }
+// A started task is read-only, so the edit tests open the same task before any session started.
+const draftTask = task(12, { text: reviewTask.text, run: reviewTask.run, completeWhen: reviewTask.completeWhen });
+async function openDraftPanel(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(card("Add a private task store."));
+  return within(screen.getByRole("dialog", { name: "Task" }));
+}
 const updateCalls = () => taskAction.mock.calls.filter((call) => call[1] === "update");
 
 describe("task cards", () => {
@@ -260,10 +266,56 @@ describe("Task modal, mode edit", () => {
     expect(taskStart).not.toHaveBeenCalled();
   });
 
+  it("is read-only once the task has started, and says that a requeue opens it again", async () => {
+    const user = userEvent.setup();
+    const started: Array<[string, Partial<Task>, string]> = [
+      ["Linked", { session: { id: "claude:abc123", title: null, state: "working", observedModel: null } }, "This task has started, so it cannot be changed. Requeue it to change it."],
+      ["In review", { state: "needs_review" }, "This task has started, so it cannot be changed. Requeue it to change it."],
+      ["Blocked", { state: "blocked" }, "This task has started, so it cannot be changed. Requeue it to change it."],
+      ["Stalled", { state: "stalled" }, "This task has started, so it cannot be changed. Requeue it to change it."],
+      ["Finished", { state: "done" }, "This task has started, so it cannot be changed."],
+    ];
+    for (const [text, overrides, note] of started) {
+      setBoard([task(30, { text, run: { provider: "claude", model: "model-a", effort: "high" }, completeWhen: { checks: ["pr_open"], own: "Judged" }, ...overrides })]);
+      const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+      await user.click(card(text));
+      const dialog = within(screen.getByRole("dialog", { name: "Task" }));
+      expect(dialog.getByText(note), text).toHaveClass("newTaskHelper");
+      expect(dialog.getByRole("textbox", { name: "Task" }), text).toHaveAttribute("readonly");
+      expect(dialog.getByRole("textbox", { name: "Own condition" }), text).toHaveAttribute("readonly");
+      for (const name of ["Run on", "Feature", "Step"]) expect(dialog.getByRole("combobox", { name }), `${text} ${name}`).toBeDisabled();
+      for (const name of ["Low", "High"]) expect(dialog.getByRole("button", { name }), `${text} ${name}`).toBeDisabled();
+      for (const name of ["PR open", "CI passed", "Remote Control"]) expect(dialog.getByRole("checkbox", { name }), `${text} ${name}`).toBeDisabled();
+      expect(dialog.queryByRole("button", { name: "Save" }), text).not.toBeInTheDocument();
+      // The stored values still show, and the task can still be deleted.
+      expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
+      expect(dialog.getByRole("checkbox", { name: "PR open" })).toBeChecked();
+      expect(dialog.getByRole("button", { name: "Delete task" })).toBeEnabled();
+      view.unmount();
+    }
+    expect(taskAction).not.toHaveBeenCalled();
+  });
+
+  it("stays editable, with no such line, while the task has not started", async () => {
+    const user = userEvent.setup();
+    for (const state of ["not_queued", "queued", "scheduled"] as const) {
+      setBoard([task(31, { text: `Waiting ${state}`, state })]);
+      const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+      await user.click(card(`Waiting ${state}`));
+      const dialog = within(screen.getByRole("dialog", { name: "Task" }));
+      expect(dialog.queryByText(/This task has started/), state).not.toBeInTheDocument();
+      expect(dialog.getByRole("textbox", { name: "Task" }), state).not.toHaveAttribute("readonly");
+      expect(dialog.getByRole("combobox", { name: "Run on" }), state).toBeEnabled();
+      expect(save(dialog), state).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
   it("sends nothing on change or blur, keeps Save disabled until the draft differs, and disables it again when undone", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     expect(save(dialog)).toHaveClass("commandPrimaryAction");
     expect(save(dialog)).toBeDisabled();
     await user.click(dialog.getByRole("button", { name: "Low" }));
@@ -287,8 +339,9 @@ describe("Task modal, mode edit", () => {
 
   it("saves a run change and an effort change as the complete run, and clears effort", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    let dialog = await openReviewPanel(user);
+    let dialog = await openDraftPanel(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Run on" }), "claude:model:model-b");
     await user.click(dialog.getByRole("button", { name: "Xhigh" }));
     expect(taskAction).not.toHaveBeenCalled();
@@ -299,7 +352,7 @@ describe("Task modal, mode edit", () => {
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     // Pressing the chosen effort again clears it.
-    dialog = await openReviewPanel(user);
+    dialog = await openDraftPanel(user);
     await user.click(dialog.getByRole("button", { name: "High" }));
     expect(dialog.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "false");
     await user.click(save(dialog));
@@ -307,7 +360,7 @@ describe("Task modal, mode edit", () => {
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", run: { provider: "claude", model: "model-a", effort: null } });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
-    dialog = await openReviewPanel(user);
+    dialog = await openDraftPanel(user);
     chooseCommandOption(dialog.getByRole("combobox", { name: "Run on" }), "");
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(3));
@@ -318,8 +371,9 @@ describe("Task modal, mode edit", () => {
 
   it("saves a checkbox change as the complete completeWhen", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    let dialog = await openReviewPanel(user);
+    let dialog = await openDraftPanel(user);
     await user.click(dialog.getByRole("checkbox", { name: "Commit on branch" }));
     expect(taskAction).not.toHaveBeenCalled();
     await user.click(save(dialog));
@@ -328,7 +382,7 @@ describe("Task modal, mode edit", () => {
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     // An emptied own condition is no own condition: there is no separate checkbox for it any more.
-    dialog = await openReviewPanel(user);
+    dialog = await openDraftPanel(user);
     await user.clear(dialog.getByRole("textbox", { name: "Own condition" }));
     await user.click(save(dialog));
     await waitFor(() => expect(taskAction).toHaveBeenCalledTimes(2));
@@ -336,7 +390,7 @@ describe("Task modal, mode edit", () => {
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
     // A blank one counts as none too.
-    dialog = await openReviewPanel(user);
+    dialog = await openDraftPanel(user);
     await user.clear(dialog.getByRole("textbox", { name: "Own condition" }));
     await user.type(dialog.getByRole("textbox", { name: "Own condition" }), "   ");
     await user.click(save(dialog));
@@ -346,8 +400,9 @@ describe("Task modal, mode edit", () => {
 
   it("saves the own condition and the task text on Save, in one patch holding only what changed", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    let dialog = await openReviewPanel(user);
+    let dialog = await openDraftPanel(user);
     const ownInput = dialog.getByRole("textbox", { name: "Own condition" });
     await user.click(ownInput);
     await user.tab();
@@ -362,7 +417,7 @@ describe("Task modal, mode edit", () => {
     expect(taskAction).toHaveBeenLastCalledWith(repositoryId, "update", { id: "T-12", completeWhen: { checks: ["pr_open", "tree_clean"], own: "Tests pass. And lint is clean." } });
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
 
-    dialog = await openReviewPanel(user);
+    dialog = await openDraftPanel(user);
     const text = dialog.getByRole("textbox", { name: "Task" });
     await user.click(text);
     await user.tab();
@@ -378,8 +433,9 @@ describe("Task modal, mode edit", () => {
 
   it("will not save a blank task text", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     const text = dialog.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement;
     await user.clear(text);
     await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
@@ -396,8 +452,9 @@ describe("Task modal, mode edit", () => {
   it("stays open, keeps the draft and shows one fixed message when Save fails, then saves the same patch on retry", async () => {
     taskAction.mockResolvedValue({ ok: false, error: "conflict" });
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     await user.click(dialog.getByRole("button", { name: "Low" }));
     await user.click(save(dialog));
     expect(await dialog.findByRole("alert")).toHaveTextContent("The change could not be saved.");
@@ -417,8 +474,9 @@ describe("Task modal, mode edit", () => {
     let resolve!: (value: Result) => void;
     taskAction.mockReturnValue(new Promise<Result>((r) => { resolve = r; }));
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     await user.click(dialog.getByRole("button", { name: "Low" }));
     await user.dblClick(save(dialog));
     expect(taskAction).toHaveBeenCalledTimes(1);
@@ -462,24 +520,25 @@ describe("Task modal, mode edit", () => {
 
   it("closes with Close or Escape without sending anything, discards the draft, and returns focus to the card", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    await openReviewPanel(user);
+    await openDraftPanel(user);
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
-    expect(card("Task store and privacy rules")).toHaveFocus();
-    await user.click(card("Task store and privacy rules"));
+    expect(card("Add a private task store.")).toHaveFocus();
+    await user.click(card("Add a private task store."));
     await user.keyboard("{Escape}");
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
-    expect(card("Task store and privacy rules")).toHaveFocus();
+    expect(card("Add a private task store.")).toHaveFocus();
     expect(taskAction).not.toHaveBeenCalled();
 
     // An unsaved draft is dropped on close: the next open shows the stored task again.
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     await user.type(dialog.getByRole("textbox", { name: "Task" }), " lost");
     await user.click(dialog.getByRole("button", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(panel()).not.toBeInTheDocument());
-    const reopened = await openReviewPanel(user);
+    const reopened = await openDraftPanel(user);
     expect((reopened.getByRole("textbox", { name: "Task" }) as HTMLTextAreaElement).value).toBe("Add a private task store.");
     expect(reopened.getByRole("button", { name: "High" })).toHaveAttribute("aria-pressed", "true");
     expect(save(reopened)).toBeDisabled();
@@ -499,8 +558,9 @@ describe("Task modal, mode edit", () => {
   it("offers a stored model that is no longer observed and only Default model when no list exists", async () => {
     agents.runs = [];
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     const trigger = dialog.getByRole("combobox", { name: "Run on" });
     expect(trigger).toHaveTextContent("Claude Code · model-a");
     fireEvent.click(trigger);
@@ -543,10 +603,10 @@ describe("Task modal resolutions", () => {
     expect(dialog.queryByRole("button", { name: "Mark done and resume queue" })).not.toBeInTheDocument();
     const requeue = dialog.getByRole("button", { name: "Requeue task" });
     const remove = dialog.getByRole("button", { name: "Delete task" });
-    // Save is the one primary action of the modal; the resolutions are secondary and sit above the footer row.
+    // The resolutions are secondary and sit above the footer row; a started task has nothing to save.
     expect(done).toHaveClass("commandSecondaryAction");
     expect(requeue).toHaveClass("commandSecondaryAction");
-    expect(save(dialog)).toHaveClass("commandPrimaryAction");
+    expect(dialog.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(remove).toHaveClass("commandQuietAction");
     expect(done.compareDocumentPosition(requeue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(requeue.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

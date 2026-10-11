@@ -457,6 +457,11 @@ export function rowInFlight(row, at) {
   return at !== undefined && dispatchStanding(row.dispatch_token, at) === "live";
 }
 
+// A task has started once a session is linked, a dispatch is live, or it holds an outcome. Only a requeue makes it editable again.
+export function rowStarted(row, at) {
+  return (row.session_id ?? null) !== null || !IN_FLIGHT_STATES.includes(row.state) || dispatchStanding(row.dispatch_token, at) === "live";
+}
+
 // Builds the browser board from one repository's stored rows.
 export function projectBoard(repositoryId, { repository, columns, features, tasks }, { at } = {}) {
   if (!isRepositoryId(repositoryId) || !isPlainObject(repository)) return undefined;

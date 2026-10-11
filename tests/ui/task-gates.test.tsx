@@ -154,7 +154,7 @@ describe("waitingLine", () => {
   it("words every reason", () => {
     const reasons: TaskGateReason[] = ["previous_step", "usage_over", "usage_unknown", "provider_incident", "provider_status_unknown", "tree_dirty", "tree_unknown"];
     const next = { taskId: "T-1", provider: "claude" as const, blockedBy: "T-12", reasons };
-    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: step before it is not done (T-12); Claude Code is above 70% of the five-hour window; Claude Code usage is not known; Claude Code reports an incident; Claude Code status is not known; the working tree has uncommitted changes; the working tree state is not known");
+    expect(waitingLine(queue("running", next), "T-1")).toBe("Waiting: step before it is not done (T-12); Claude Code is above 70% of the five-hour window; Claude Code usage is not known yet; Claude Code reports an incident; Claude Code status is not known yet; the working tree has uncommitted changes; the working tree state is not known yet");
   });
 
   it("is null for another task, no reasons, or a queue that is not running", () => {

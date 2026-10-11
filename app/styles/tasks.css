@@ -19,10 +19,19 @@
   .tasksPageHeader .taskHeadActions { width: 100%; justify-content: flex-start; }
 }
 
-/* Board: lanes scroll sideways instead of shrinking below 220px. */
-.taskBoardScroller { overflow-x: auto; }
+/* Board: lanes scroll sideways instead of shrinking below 220px. The region is positioned so that it also clips the
+   visually hidden text of its lanes; unclipped, that text sits past the window's edge and makes the whole page as wide
+   as the board, which a phone then pans and zooms. */
+.taskBoardScroller { position: relative; overflow-x: auto; }
 .taskBoardScroller:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .taskBoardGrid { display: grid; grid-template-columns: repeat(var(--task-columns, 5), minmax(220px, 1fr)); gap: var(--space-3); align-items: stretch; }
+/* A phone reads one lane at a time: a lane takes most of the board's width, the next one shows at the edge, and a
+   sideways swipe stops on a lane. The swipe ends at the board, so it never turns into the browser's back gesture. */
+@media (max-width: 760px) {
+  .taskBoardScroller, .taskBoardSkeleton { scroll-snap-type: x mandatory; overscroll-behavior-x: contain; }
+  .taskBoardGrid, .taskBoardSkeleton { grid-template-columns: repeat(var(--task-columns, 5), min(86%, 320px)); }
+  .taskColumn, .taskBoardSkeletonColumn { scroll-snap-align: start; }
+}
 /* A column is a lane (G26-G30): the raised fill with a rule, cards stay on the panel fill. The contract draws it 680px
    tall for its frame; that has no token, so the lane keeps its 240px minimum and the grid stretches all five to the tallest. */
 .taskColumn { min-height: 240px; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2); border: 1px solid var(--command-line); border-radius: var(--panel-radius); background: var(--command-panel-2); }
@@ -42,6 +51,9 @@
   .tasksPage .taskBoardScroller { flex: 1 1 0; min-height: 240px; }
   .tasksPage .taskBoardGrid { height: 100%; grid-template-rows: minmax(0, 1fr); }
   .tasksPage .taskColumn { min-height: 0; }
+  /* Only a lane with a height scrolls its cards. A phone's lane grows, and a list that could scroll there would keep
+     every swipe that starts on a card from reaching the page. Sideways, a swipe on a card still moves the board. */
+  .tasksPage .taskColumnList { overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
 }
 /* The Queue view fits the window the same way once its two columns sit side by side: the queue and the settings
    each scroll on their own. Narrower, the settings wrap under the queue and the page scrolls. */
@@ -55,7 +67,7 @@
   .tasksPage .taskQueueRow > .taskQueueView { align-content: start; }
   .tasksPage .taskQueueAside > * { flex: 0 0 auto; }
 }
-.tasksPage .taskColumnList { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px var(--space-1) 2px 2px; margin: -2px calc(-1 * var(--space-1)) -2px -2px; scrollbar-width: thin; scrollbar-color: var(--command-line-strong) transparent; }
+.tasksPage .taskColumnList { flex: 0 1 auto; min-height: 0; padding: 2px var(--space-1) 2px 2px; margin: -2px calc(-1 * var(--space-1)) -2px -2px; }
 .taskColumnHeader { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) var(--space-1) var(--space-2); border-bottom: 1px solid var(--command-line); }
 .taskColumnHeader h3 { flex: 1 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--command-ink); font: 650 var(--text-sm)/1.4 var(--font-ui); }
 .taskColumnCount { color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-data); }
@@ -343,6 +355,7 @@
 .taskQueueRow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4); }
 .taskQueueRow > .taskQueueView { flex: 999 1 480px; min-width: 0; }
 .taskQueueAside { flex: 1 1 280px; max-width: 360px; min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+@media (max-width: 760px) { .taskQueueAside { max-width: none; } }
 .taskGatesPanel { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); }
 .taskGatesHeading { margin: 0; color: var(--command-ink); font: 650 var(--text-heading)/1.35 var(--font-ui); }
 .taskGatesCaption { margin: 0; color: var(--command-muted); font: 400 var(--text-xs)/1.4 var(--font-ui); }

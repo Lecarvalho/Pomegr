@@ -67,6 +67,12 @@ async function openReviewPanel(user: ReturnType<typeof userEvent.setup>) {
   await user.click(card("Task store and privacy rules"));
   return within(screen.getByRole("dialog", { name: "Task" }));
 }
+// A started task is read-only, so the tests that edit open the same task before any session started.
+const draftTask = task(12, { text: reviewTask.text, run: reviewTask.run, completeWhen: reviewTask.completeWhen });
+async function openDraftPanel(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(card("Add a private task store."));
+  return within(screen.getByRole("dialog", { name: "Task" }));
+}
 
 describe("Task modal dialog, mode edit", () => {
   it("is a modal dialog named by its heading, opened with showModal, with focus moved inside", async () => {
@@ -124,8 +130,9 @@ describe("Task modal dialog, mode edit", () => {
 
   it("does not close on a click on the scrim with an unsaved draft", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     await user.type(dialog.getByRole("textbox", { name: "Task" }), " draft");
     const scrim = screen.getByRole("dialog", { name: "Task" });
     await user.click(scrim);
@@ -137,8 +144,9 @@ describe("Task modal dialog, mode edit", () => {
 
   it("lets an open Run on list take the first Escape, then closes on the next", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     const trigger = dialog.getByRole("combobox", { name: "Run on" });
     await user.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
@@ -152,8 +160,9 @@ describe("Task modal dialog, mode edit", () => {
 
   it("has its own footer: Delete task and Save, and neither Cancel nor Create task", async () => {
     const user = userEvent.setup();
+    setBoard([draftTask, task(13)]);
     render(<TaskBoardPane repositoryId={repositoryId} />);
-    const dialog = await openReviewPanel(user);
+    const dialog = await openDraftPanel(user);
     const footer = within(document.querySelector(".taskModalFooter") as HTMLElement);
     expect(footer.getByRole("button", { name: "Delete task" })).toHaveClass("commandQuietAction");
     expect(footer.getByRole("button", { name: "Save" })).toHaveClass("commandPrimaryAction");
@@ -162,13 +171,13 @@ describe("Task modal dialog, mode edit", () => {
     expect(dialog.queryByRole("heading", { name: "New task" })).not.toBeInTheDocument();
   });
 
-  it("disables Add to queue, Start session and the resolutions while the draft is unsaved, and enables them when it is undone", async () => {
+  it("disables Add to queue and Start session while the draft is unsaved, and enables them when it is undone", async () => {
     const user = userEvent.setup();
     setBridge({ taskAction, taskStart: vi.fn(async () => ({ status: "started" })) });
     setBoard([task(30, { text: "Waiting", run: { provider: "claude", model: null, effort: null } })]);
-    const view = render(<TaskBoardPane repositoryId={repositoryId} />);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
     await user.click(card("Waiting"));
-    let dialog = within(screen.getByRole("dialog", { name: "Task" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Task" }));
     expect(dialog.getByRole("button", { name: "Add to queue" })).toBeEnabled();
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
     await user.type(dialog.getByRole("textbox", { name: "Task" }), "!");
@@ -178,31 +187,7 @@ describe("Task modal dialog, mode edit", () => {
     await user.type(dialog.getByRole("textbox", { name: "Task" }), "{Backspace}");
     expect(dialog.getByRole("button", { name: "Add to queue" })).toBeEnabled();
     expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
-    view.unmount();
-
-    setBoard([reviewTask]);
-    render(<TaskBoardPane repositoryId={repositoryId} />);
-    dialog = await openReviewPanel(user);
-    await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
-    expect(dialog.getByRole("button", { name: "Mark done" })).toBeDisabled();
-    expect(dialog.getByRole("button", { name: "Requeue task" })).toBeDisabled();
-    expect(dialog.getByText("Save your changes first.")).toBeInTheDocument();
-    await user.click(dialog.getByRole("checkbox", { name: "CI passed" }));
-    expect(dialog.getByRole("button", { name: "Mark done" })).toBeEnabled();
     expect(taskAction).not.toHaveBeenCalled();
-  });
-
-  it("disables Mark done and Requeue task for a task awaiting a report while the draft is unsaved", async () => {
-    setBoard([task(20, { text: "In flight", state: "queued", session: { id: "claude:abc126", title: "Working session", state: "working", observedModel: null } })]);
-    const user = userEvent.setup();
-    render(<TaskBoardPane repositoryId={repositoryId} />);
-    await user.click(card("Working session"));
-    const dialog = within(screen.getByRole("dialog", { name: "Task" }));
-    expect(dialog.getByRole("button", { name: "Mark done" })).toBeEnabled();
-    await user.click(dialog.getByRole("button", { name: "High" }));
-    expect(dialog.getByRole("button", { name: "Mark done" })).toBeDisabled();
-    expect(dialog.getByRole("button", { name: "Requeue task" })).toBeDisabled();
-    expect(dialog.getByRole("button", { name: "Remove from queue" })).toBeDisabled();
   });
 });
 

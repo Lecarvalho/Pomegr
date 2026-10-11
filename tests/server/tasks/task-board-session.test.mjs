@@ -220,14 +220,17 @@ test("the board a mutation answers carries the same filled session", async (cont
   const runtime = { resolveTaskSessionFacts: () => ({ title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4" }) };
   const { store, port } = await serving(context, runtime);
   linkTask(store, "original text");
+  // A started task takes no update, so the mutation is on another task of the board.
+  assert.equal(store.apply(REPOSITORY_ID, "create", { text: "second" }).ok, true);
   const response = await send(port, {
     method: "POST", path: "/internal/tasks/update",
-    body: JSON.stringify({ repositoryId: REPOSITORY_ID, payload: { id: "T-1", text: "edited text" } }),
+    body: JSON.stringify({ repositoryId: REPOSITORY_ID, payload: { id: "T-2", text: "edited text" } }),
   });
   assert.equal(response.status, 200);
   assert.equal(response.json.ok, true);
-  assert.deepEqual(response.json.board.tasks[0].session, { id: SESSION, title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4" });
-  assert.equal(response.json.board.tasks[0].text, "edited text");
+  const answered = (id) => response.json.board.tasks.find((task) => task.id === id);
+  assert.deepEqual(answered("T-1").session, { id: SESSION, title: "Borrowed title", state: "working", observedModel: "claude-sonnet-4" });
+  assert.equal(answered("T-2").text, "edited text");
 });
 
 test("the store fills sessions only when it is handed a resolver", async (context) => {
@@ -236,9 +239,11 @@ test("the store fills sessions only when it is handed a resolver", async (contex
   assert.deepEqual(store.readBoard(REPOSITORY_ID).tasks[0].session, UNKNOWN(SESSION));
   const filled = store.readBoard(REPOSITORY_ID, { resolveSessionFacts: () => ({ title: "t", state: "idle", observedModel: null }) });
   assert.equal(filled.tasks[0].session.state, "idle");
-  assert.equal(store.apply(REPOSITORY_ID, "update", { id: "T-1", text: "x" }).board.tasks[0].session.state, "unknown");
-  const applied = store.apply(REPOSITORY_ID, "update", { id: "T-1", text: "y" }, { resolveSessionFacts: () => ({ state: "stopped" }) });
-  assert.equal(applied.board.tasks[0].session.state, "stopped");
+  assert.equal(store.apply(REPOSITORY_ID, "create", { text: "second" }).ok, true);
+  const linkedIn = (result) => result.board.tasks.find((task) => task.id === "T-1");
+  assert.equal(linkedIn(store.apply(REPOSITORY_ID, "update", { id: "T-2", text: "x" })).session.state, "unknown");
+  const applied = store.apply(REPOSITORY_ID, "update", { id: "T-2", text: "y" }, { resolveSessionFacts: () => ({ state: "stopped" }) });
+  assert.equal(linkedIn(applied).session.state, "stopped");
 });
 
 // The reading of a waiting task's checks: the report's own rule, on the facts the report would be judged on.

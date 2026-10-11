@@ -14,7 +14,7 @@ vi.mock("../../app/repository-inventory-client", () => ({ useRepositoryInventory
 import { chooseCommandOption } from "./command-select-helpers";
 import { TaskBoardView } from "../../app/components/tasks/TaskBoardView";
 import { TaskBoardPane } from "../../app/components/tasks/TaskBoardPane";
-import { dragScrollStep } from "../../app/components/tasks/use-card-drag";
+import { dragScrollPort, dragScrollStep } from "../../app/components/tasks/use-card-drag";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 type Result = { ok: true } | { ok: false; error: string };
@@ -332,9 +332,12 @@ describe("scrolling a lane while dragging", () => {
     let frames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => { frames = []; });
-    const frame = () => { const due = frames; frames = []; for (const callback of due) callback(0); };
+    let now = 0;
+    const frame = (elapsed = 1000 / 60) => { now += elapsed; const due = frames; frames = []; for (const callback of due) callback(now); };
     render(<TaskBoardPane repositoryId={repositoryId} />);
     const list = column("Backlog").querySelector("ul") as HTMLElement;
+    // Wider than a phone, the stylesheet makes the list of a lane the scroller.
+    list.style.overflowY = "auto";
     vi.spyOn(list, "getBoundingClientRect").mockReturnValue({ top: 100, bottom: 500, height: 400, left: 0, right: 200, width: 200, x: 0, y: 100, toJSON: () => ({}) });
     const dataTransfer = transfer();
     fireEvent.dragStart(card("T-4"), { dataTransfer });
@@ -360,6 +363,55 @@ describe("scrolling a lane while dragging", () => {
     dragOverAt(column("Backlog"), 490, dataTransfer);
     dropAt(column("Backlog"), 490, dataTransfer);
     expect(frames).toHaveLength(0);
+  });
+});
+
+describe("scrolling the page while dragging on a phone", () => {
+  it("scrolls the page, under the sticky header, when the lane's list does not scroll", () => {
+    let frames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => { frames = []; });
+    let now = 0;
+    const frame = (elapsed = 1000 / 60) => { now += elapsed; const due = frames; frames = []; for (const callback of due) callback(now); };
+    const header = document.body.appendChild(document.createElement("header"));
+    header.className = "commandHeader";
+    vi.spyOn(header, "getBoundingClientRect").mockReturnValue({ top: 0, bottom: 56, height: 56, left: 0, right: 390, width: 390, x: 0, y: 0, toJSON: () => ({}) });
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(756);
+    render(<TaskBoardPane repositoryId={repositoryId} />);
+    const list = column("Backlog").querySelector("ul") as HTMLElement;
+    const page = document.documentElement;
+    // The root scrolls smoothly, so every step must be an instant one: a smooth step replaced on each frame crawls.
+    const scrollBy = vi.fn((options: ScrollToOptions) => { page.scrollTop += options.top ?? 0; });
+    Object.defineProperty(page, "scrollBy", { configurable: true, value: scrollBy });
+    try {
+      expect(dragScrollPort(list)).toEqual({ target: page, top: 56, bottom: 756 });
+      const dataTransfer = transfer();
+      fireEvent.dragStart(card("T-4"), { dataTransfer });
+      dragOverAt(column("Backlog"), 746, dataTransfer);
+      frame();
+      frame();
+      expect(page.scrollTop).toBe(28);
+      expect(scrollBy).toHaveBeenLastCalledWith({ top: 14, behavior: "instant" });
+      expect(list.scrollTop).toBe(0);
+      dragOverAt(column("Backlog"), 400, dataTransfer);
+      frame();
+      expect(page.scrollTop).toBe(28);
+      dragOverAt(column("Backlog"), 56, dataTransfer);
+      frame();
+      expect(page.scrollTop).toBe(12);
+      // A browser that draws fewer frames during a drag scrolls as far in the same time, up to six frames at once.
+      dragOverAt(column("Backlog"), 756, dataTransfer);
+      frame(50);
+      expect(page.scrollTop).toBe(12 + 48);
+      frame(5000);
+      expect(page.scrollTop).toBe(12 + 48 + 96);
+      fireEvent.dragEnd(card("T-4"));
+      expect(frames).toHaveLength(0);
+    } finally {
+      header.remove();
+      Reflect.deleteProperty(page, "scrollBy");
+      page.scrollTop = 0;
+    }
   });
 });
 
