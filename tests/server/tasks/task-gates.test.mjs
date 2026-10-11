@@ -90,7 +90,7 @@ test("a dirty or unknown working tree holds", () => {
   for (const treeClean of [null, undefined, "clean", 1, 0, {}]) assert.deepEqual(reasons(CLAUDE, { ...PASSING, treeClean }, {}), ["tree_unknown"]);
 });
 
-test("an earlier task of the feature that is not done holds, whatever names it", () => {
+test("an earlier step that is not done holds, whatever names it", () => {
   assert.deepEqual(reasons({ provider: "claude", blockedBy: "T-12" }, PASSING, {}), ["previous_step"]);
   assert.deepEqual(reasons({ provider: "claude", blockedBy: "anything" }, PASSING, {}), ["previous_step"]);
 });

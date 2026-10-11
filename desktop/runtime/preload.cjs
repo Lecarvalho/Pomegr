@@ -8,7 +8,7 @@ const TASK_ID = /^T-[1-9][0-9]{0,8}$/u;
 const TASK_ACTIONS = new Set([
   "create", "update", "delete", "move",
   "feature_create",
-  "queue_add", "queue_remove", "queue_settings",
+  "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);
 const TASK_ISSUE_OPERATIONS = new Set(["status", "list", "promote", "create", "sign_in"]);

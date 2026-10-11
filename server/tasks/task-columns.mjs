@@ -68,7 +68,7 @@ export function readyColumnId(database, repositoryId) {
 export function settleReadyColumn(database, repositoryId) {
   const readyId = readyColumnId(database, repositoryId);
   if (readyId === null) return;
-  const waiting = preparedStatement(database, `SELECT number, column_id, feature_id, queue_position FROM tasks
+  const waiting = preparedStatement(database, `SELECT number, column_id, feature_id, step, queue_position FROM tasks
     WHERE repository_id = ? AND state IN ('queued', 'scheduled') AND session_id IS NULL ORDER BY queue_position IS NULL, queue_position, number`).all(repositoryId);
   if (waiting.length === 0) return;
   const cards = taskNumbersInOrder(database, repositoryId, readyId);
@@ -84,7 +84,7 @@ export function settleReadyColumn(database, repositoryId) {
   const place = new Map((legacy ? waiting.map((row) => Number(row.number)) : cards).map((number, index) => [number, index]));
   const features = preparedStatement(database, "SELECT id FROM features WHERE repository_id = ? ORDER BY created_at, id").all(repositoryId);
   const { order } = orderQueue(waiting.map((row) => ({
-    id: `T-${Number(row.number)}`, featureId: row.feature_id ?? null, state: "queued", queuePosition: place.get(Number(row.number)),
+    id: `T-${Number(row.number)}`, featureId: row.feature_id ?? null, step: row.step ?? null, state: "queued", queuePosition: place.get(Number(row.number)),
   })), features);
   const inOrder = order.map((id) => Number(id.slice(2)));
   const waits = new Set(inOrder);

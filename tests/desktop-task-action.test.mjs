@@ -39,7 +39,7 @@ test("task action channel and list are fixed", () => {
   assert.equal(TASK_ACTION_CHANNEL, "pomegr:task-action");
   assert.deepEqual([...TASK_ACTION_NAMES], [
     "create", "update", "delete", "move",
-    "feature_create", "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue",
+    "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue",
   ]);
 });
 
@@ -48,7 +48,7 @@ test("untrusted frame, unknown action, bad ID, and bad payloads are refused with
   assert.deepEqual(await action.run({}, repositoryId, "create", { text: "x" }), invalid);
   assert.deepEqual(await action.run(undefined, repositoryId, "create", { text: "x" }), invalid);
   assert.deepEqual(await action.run(trusted, repositoryId, "erase", { text: "x" }), invalid);
-  for (const removed of ["column_create", "column_rename", "column_reorder", "column_delete", "column_role", "queue_reorder"]) {
+  for (const removed of ["column_create", "column_rename", "column_reorder", "column_delete", "column_role"]) {
     assert.deepEqual(await action.run(trusted, repositoryId, removed, { id: "col-000000000001" }), invalid, removed);
   }
   assert.deepEqual(await action.run(trusted, repositoryId, "../create", { text: "x" }), invalid);

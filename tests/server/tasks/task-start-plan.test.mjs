@@ -263,19 +263,21 @@ test("token, digest, mint time and root never reach the board, other action resu
   }
 });
 
-test("the plan asks for a worktree only when the payload says so, never because tasks share a feature", async (context) => {
+test("the plan asks for a worktree only for a task of a step that holds more than one task", async (context) => {
   const env = await setup(context);
   const feature = env.store.apply(REPOSITORY_ID, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
   const featureId = feature.board.features[0].id;
-  create(env, { featureId });
-  create(env, { featureId });
+  create(env, { featureId, step: 1 });
+  create(env, { featureId, step: 1 });
+  create(env, { featureId, step: 2 });
   create(env, {});
-  create(env, { featureId });
+  // A step counts its tasks of any state, so a done sibling still means a worktree.
   withDatabase(env.directory, (database) => database.prepare("UPDATE tasks SET state = 'done' WHERE number = 1").run());
   const second = await plan(env, { id: "T-2" });
-  assert.equal(second.json.plan.worktree, false, "a feature mate does not ask for a worktree");
+  assert.equal(second.json.plan.worktree, true);
   assert.equal(second.json.plan.repositoryRoot, ROOT, "the plan names the root, never a worktree path");
-  assert.equal((await plan(env, { id: "T-3" })).json.plan.worktree, false, "no feature");
-  assert.equal((await plan(env, { id: "T-4", worktree: true })).json.plan.worktree, true, "asked for by the payload");
+  assert.equal((await plan(env, { id: "T-4" })).json.plan.worktree, false, "no feature");
+  // Step 1 is not done (T-2 only started), and a start made by hand is not held by step order.
+  assert.equal((await plan(env, { id: "T-3" })).json.plan.worktree, false, "alone in its step");
 });

@@ -29,12 +29,11 @@ import {
   normalizeChecks,
   STORED_COLUMN_READ_BOUNDS,
   normalizeColumnName,
-  normalizeCreatePayload,
-  normalizeUpdatePayload,
   normalizeCompleteWhen,
   normalizeFeatureName,
   normalizeModelIdentifier,
   normalizeOwnCondition,
+  normalizeQueueReorderPayload,
   normalizeQueueTaskPayload,
   normalizeRun,
   normalizeStoredColumn,
@@ -54,7 +53,7 @@ const FEATURE = `feat-${"0".repeat(11)}1`;
 function storedTask(overrides = {}) {
   return {
     repository_id: REPOSITORY, number: 1, text: "Write the release notes", column_id: COLUMN, position: 0,
-    feature_id: null, run_provider: null, run_model: null, run_effort: null, checks: "[]",
+    feature_id: null, step: null, run_provider: null, run_model: null, run_effort: null, checks: "[]",
     own_condition: null, state: "not_queued", scheduled_at: null, queue_position: null, session_id: null,
     dispatch_token: null, report_at: null, report_results: null, report_block_reason: null,
     created_at: 1_700_000_000_000, updated_at: 1_700_000_001_000, ...overrides,
@@ -219,7 +218,7 @@ test("stored columns and features are validated", () => {
 
 test("a stored task projects to exactly the contract keys", () => {
   const task = normalizeStoredTask(storedTask({
-    feature_id: FEATURE, run_provider: "claude", run_model: "claude-sonnet-4-5", run_effort: "high",
+    feature_id: FEATURE, step: 2, run_provider: "claude", run_model: "claude-sonnet-4-5", run_effort: "high",
     checks: JSON.stringify(["pr_open", "tree_clean"]), own_condition: "docs updated", state: "needs_review",
     scheduled_at: 1_700_000_002_000, session_id: "6f1c-session",
     dispatch_token: "must-never-appear", queue_position: 3,
@@ -227,7 +226,7 @@ test("a stored task projects to exactly the contract keys", () => {
     report_block_reason: "waiting on review",
   }));
   assert.deepEqual(task, {
-    id: "T-1", text: "Write the release notes", columnId: COLUMN, position: 0, featureId: FEATURE,
+    id: "T-1", text: "Write the release notes", columnId: COLUMN, position: 0, featureId: FEATURE, step: 2,
     run: { provider: "claude", model: "claude-sonnet-4-5", effort: "high", remoteControl: false },
     completeWhen: { checks: ["pr_open", "tree_clean"], own: "docs updated" },
     state: "needs_review",
@@ -244,7 +243,7 @@ test("a stored task projects to exactly the contract keys", () => {
     createdAt: "2023-11-14T22:13:20.000Z", updatedAt: "2023-11-14T22:13:21.000Z",
   });
   assert.deepEqual(Object.keys(task).toSorted(), ["columnId", "completeWhen", "createdAt", "featureId", "id", "images", "position", "report", "run",
-    "scheduledAt", "session", "source", "state", "text", "updatedAt"]);
+    "scheduledAt", "session", "source", "state", "step", "text", "updatedAt"]);
   assert.equal(JSON.stringify(task).includes("must-never-appear"), false);
 });
 
@@ -252,7 +251,7 @@ test("a stored task outside the contract is rejected whole", () => {
   assert.notEqual(normalizeStoredTask(storedTask()), undefined);
   const invalid = [
     { number: 0 }, { text: "" }, { text: "x".repeat(TASK_BOUNDS.textLength + 1) }, { column_id: "col-nope" }, { position: -1 },
-    { feature_id: "feat-nope" }, { feature_id: 7 },
+    { feature_id: FEATURE }, { step: 1 }, { feature_id: FEATURE, step: 0 }, { feature_id: "feat-nope", step: 1 },
     { run_provider: "gemini" }, { run_model: "C:\\x" }, { run_effort: "max" }, { checks: "not json" }, { checks: "{}" },
     { checks: JSON.stringify(["pr_open", "pr_open"]) }, { own_condition: "x".repeat(TASK_BOUNDS.ownConditionLength + 1) },
     { state: "running" }, { scheduled_at: -5 }, { session_id: "../etc/passwd" }, { created_at: "yesterday" }, { updated_at: 1e20 },
@@ -272,9 +271,9 @@ test("the board orders columns and tasks and derives feature completion", () => 
     columns: [{ id: OTHER_COLUMN, name: "Done", position: 1 }, { id: COLUMN, name: "Backlog", position: 0 }],
     features: [{ id: FEATURE, name: "Billing" }, { id: `feat-${"0".repeat(11)}2`, name: "Empty" }],
     tasks: [
-      storedTask({ number: 3, column_id: OTHER_COLUMN, position: 0, state: "done", feature_id: FEATURE }),
+      storedTask({ number: 3, column_id: OTHER_COLUMN, position: 0, state: "done", feature_id: FEATURE, step: 1 }),
       storedTask({ number: 2, column_id: COLUMN, position: 1 }),
-      storedTask({ number: 1, column_id: COLUMN, position: 1, state: "done", feature_id: FEATURE }),
+      storedTask({ number: 1, column_id: COLUMN, position: 1, state: "done", feature_id: FEATURE, step: 2 }),
     ],
   });
   assert.equal(board.version, 1);
@@ -290,7 +289,7 @@ test("the board orders columns and tasks and derives feature completion", () => 
 
   const pending = projectBoard(REPOSITORY, {
     repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
-    tasks: [storedTask({ number: 1, state: "done", feature_id: FEATURE }), storedTask({ number: 2, state: "queued", feature_id: FEATURE })],
+    tasks: [storedTask({ number: 1, state: "done", feature_id: FEATURE, step: 1 }), storedTask({ number: 2, state: "queued", feature_id: FEATURE, step: 2 })],
   });
   assert.equal(pending.features[0].done, false);
 });
@@ -303,7 +302,7 @@ test("a board with inconsistent or out-of-bound rows is not projected", () => {
   assert.equal(projectBoard(REPOSITORY, { ...base, repository: { queue_status: "stuck", queue_blocked_by: null } }), undefined);
   assert.equal(projectBoard(REPOSITORY, { ...base, repository: { queue_status: "blocked", queue_blocked_by: "task one" } }), undefined);
   assert.equal(projectBoard(REPOSITORY, { ...base, tasks: [storedTask({ column_id: `col-${"f".repeat(12)}` })] }), undefined);
-  assert.equal(projectBoard(REPOSITORY, { ...base, tasks: [storedTask({ feature_id: FEATURE })] }), undefined);
+  assert.equal(projectBoard(REPOSITORY, { ...base, tasks: [storedTask({ feature_id: FEATURE, step: 1 })] }), undefined);
   assert.equal(projectBoard(REPOSITORY, { ...base, tasks: [storedTask({ text: "" })] }), undefined);
 
   const columns = (count) => Array.from({ length: count }, (_, index) => ({ id: `col-${index.toString(16).padStart(12, "0")}`, name: `C${index}`, position: index }));
@@ -342,19 +341,19 @@ test("an empty board carries no content", () => {
   });
 });
 
-test("the projected queue order lists queued task IDs only, a feature's tasks by card position before the single tasks, and ignores a stored queue position", () => {
+test("the projected queue order lists queued task IDs only, single tasks by card position, and ignores a stored queue position", () => {
   const board = projectBoard(REPOSITORY, {
     repository: repositoryRow, columns: columnRows, features: [{ id: FEATURE, name: "Billing" }],
     tasks: [
       storedTask({ number: 1, state: "queued", queue_position: 9, position: 4 }),
-      storedTask({ number: 2, state: "queued", feature_id: FEATURE, queue_position: 0, position: 1 }),
-      storedTask({ number: 3, state: "queued", feature_id: FEATURE, queue_position: 4, position: 2 }),
+      storedTask({ number: 2, state: "queued", feature_id: FEATURE, step: 2, queue_position: 0, position: 1 }),
+      storedTask({ number: 3, state: "queued", feature_id: FEATURE, step: 1, queue_position: 4, position: 2 }),
       storedTask({ number: 4, state: "done", queue_position: 1, position: 3 }),
       storedTask({ number: 5, state: "queued", queue_position: 2, position: 0 }),
       storedTask({ number: 6, state: "queued", queue_position: "junk", position: 5 }),
     ],
   });
-  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-2", "T-3", "T-5", "T-1", "T-6"] });
+  assert.deepEqual(board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3", "T-2", "T-5", "T-1", "T-6"] });
   for (const task of board.tasks) assert.equal(Object.hasOwn(task, "queuePosition"), false);
   assert.equal(JSON.stringify(board).includes("queue_position"), false);
 });
@@ -364,15 +363,9 @@ test("queue payloads carry exactly their keys", () => {
   for (const value of [undefined, null, "T-1", [], {}, { id: "T-0" }, { id: 1 }, { id: "T-1", step: 1 }, { id: "T-1", x: 1 }]) {
     assert.equal(normalizeQueueTaskPayload(value), undefined, JSON.stringify(value));
   }
-});
-
-test("create and update place a task by feature only: a step key is invalid", () => {
-  assert.deepEqual(normalizeCreatePayload({ text: "x", featureId: FEATURE }).featureId, FEATURE);
-  assert.equal(Object.hasOwn(normalizeCreatePayload({ text: "x", featureId: FEATURE }), "step"), false);
-  assert.equal(normalizeCreatePayload({ text: "x", featureId: FEATURE, step: 1 }), undefined);
-  assert.equal(normalizeCreatePayload({ text: "x", step: 1 }), undefined);
-  assert.deepEqual(normalizeUpdatePayload({ id: "T-1", featureId: FEATURE }), { number: 1, featureId: FEATURE });
-  assert.deepEqual(normalizeUpdatePayload({ id: "T-1", featureId: null }), { number: 1, featureId: null });
-  assert.equal(normalizeUpdatePayload({ id: "T-1", step: 1 }), undefined);
-  assert.equal(normalizeUpdatePayload({ id: "T-1", featureId: FEATURE, step: 1 }), undefined);
+  assert.deepEqual(normalizeQueueReorderPayload({ id: "T-3", step: 2 }), { number: 3, step: 2 });
+  for (const value of [undefined, null, [], {}, { id: "T-3" }, { step: 2 }, { id: "T-3", step: 0 }, { id: "T-3", step: -1 }, { id: "T-3", step: 1.5 },
+    { id: "T-3", step: "2" }, { id: "T-3", step: null }, { id: "T-3", step: 2 ** 53 }, { id: "T-0", step: 1 }, { id: "T-3", step: 1, extra: 1 }]) {
+    assert.equal(normalizeQueueReorderPayload(value), undefined, JSON.stringify(value));
+  }
 });

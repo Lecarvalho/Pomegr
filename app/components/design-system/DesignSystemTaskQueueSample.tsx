@@ -32,8 +32,8 @@ function Wide({ label, note, children }: { label: string; note?: string; childre
 }
 
 function DesktopFeaturePanel() {
-  const drag = useQueueDrag(BOARD_RUNNING, noop);
-  return <QueueFeaturePanel panel={upload} board={BOARD_RUNNING} nextId="T-2" queue={BOARD_RUNNING.queue} onOpenTask={noop} drag={drag} onMove={noop} />;
+  const drag = useQueueDrag(BOARD_RUNNING.tasks, noop);
+  return <QueueFeaturePanel panel={upload} nextId="T-2" queue={BOARD_RUNNING.queue} onOpenTask={noop} drag={drag} onMove={noop} />;
 }
 
 export function TaskQueueSection() {
@@ -60,14 +60,14 @@ export function TaskQueueSection() {
     <Wide label="Queue cards" note="A step card is the board card at the compact padding. The next task adds the muted Waiting line while a gate holds it; a movable queued task adds the Move to step select, drawn while the card holds keyboard focus or on a coarse pointer.">
       <ul className="taskQueueCards">
         <QueueTaskCard task={task("T-2")} nextQueued waiting={waitingLine(BOARD_RUNNING.queue, "T-2")} />
-        <QueueTaskCard task={task("T-3")} nextQueued={false} onOpen={noop} move={{ drag: {}, choices: moveChoices(BOARD_RUNNING, upload, task("T-3")), onMove: noop }} />
+        <QueueTaskCard task={task("T-3")} nextQueued={false} onOpen={noop} move={{ drag: {}, choices: moveChoices(upload, task("T-3")), onMove: noop }} />
         <QueueTaskCard task={task("T-6")} nextQueued={false} />
       </ul>
     </Wide>
-    <Wide label="Feature panel, browser" note="Feature name and a done count; steps in order, one task each, read from the order of the cards on the board. The read-only copy drops the drag sentence.">
-      <QueueFeaturePanel panel={upload} board={BOARD_RUNNING} nextId="T-2" queue={BOARD_RUNNING.queue} />
+    <Wide label="Feature panel, browser" note="Feature name and a done count; steps in order with Parallel · n when a step holds several tasks, each started in its own worktree. The read-only copy drops the drag sentence.">
+      <QueueFeaturePanel panel={upload} nextId="T-2" queue={BOARD_RUNNING.queue} />
     </Wide>
-    <Wide label="Feature panel, desktop app" note="A card that waits in the queue drags onto the step of another waiting card and takes that step; a step whose task started or finished never takes a drop.">
+    <Wide label="Feature panel, desktop app" note="Queued cards drag onto another step; a step whose tasks are all done never takes a drop. The dashed zone adds a new last step.">
       <DesktopFeaturePanel />
     </Wide>
     <div className="designSystemGrid">

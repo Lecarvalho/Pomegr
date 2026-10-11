@@ -114,7 +114,7 @@ type Task = {
   id: string;                 // "T-<n>", monotonic per repository
   text: string;
   columnId: string; position: number;
-  featureId: string | null;
+  featureId: string | null; step: number | null;      // step >= 1
   run: { provider: "claude" | "codex" | null; model: string | null; effort: "low" | "medium" | "high" | "xhigh" | null;
     remoteControl?: boolean;                           // Claude Code only; absent from an older monitor, which means off
     keepWorktree?: boolean };                          // present only when on; absent means the worktree is removed when done
@@ -194,7 +194,7 @@ type TaskBoard = {
   the Ready column read in this same order.
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
-  `worktree_dirty` says that the worktree of an earlier start of the task holds uncommitted changes. The queue never starts a task in a worktree, so only a manual separate-worktree start sets it.
+  `worktree_dirty` says that a requeued task's own worktree holds uncommitted changes.
 - `queue.blockedBy` is the ID of a task on the same board, or `null`. A stored blocker
   that names no stored task is served as `null`, never as a task ID.
 - `queue.gates` is the [start gates](#start-gates) as the monitor last judged them: fixed
@@ -290,14 +290,14 @@ was not given. A task has **started** when one of these holds (`rowStarted` in
 For a started task:
 
 - **`update` answers `conflict`**, whatever field it carries: text, `run`,
-  `completeWhen`, or `featureId`. Nothing is written.
+  `completeWhen`, `featureId`, or `step`. Nothing is written.
 - **An image is neither added nor removed.** `image-add` and `image-remove` answer
   `conflict`. `image-read` still answers, so the task window shows the images.
 - **Requeue opens it again.** `resolve_requeue` clears the link and the report and sets
   Queued, so the task takes changes until its next session starts. A dispatch that
   expired without a link no longer counts, so that task takes changes too. A done task
   has no requeue and stays as it is.
-- **Everything else still works.** `move`, `delete`, `resolve_done`,
+- **Everything else still works.** `move`, `delete`, `queue_reorder`, `resolve_done`,
   `resolve_requeue`, `record_issue`, and the agent's report are not changes to the task.
 - **The task window shows it.** The Task modal draws a task with a session or an outcome
   read-only, with no Save and one fixed line: "This task has started, so it cannot be
@@ -361,16 +361,15 @@ Scheduled and no session is linked. For every such task:
   the queue, or its session linking, frees the card; **Remove from queue** leaves the
   card where it is in Ready.
 - **Ready reads in start order.** The waiting cards of Ready are, top to bottom, in the
-  order the queue starts them: features in board order, inside a feature its waiting
-  tasks in the order of their cards, then the single tasks in the order of their cards.
-  The store settles this after every action (`settleReadyColumn` in
-  `server/tasks/task-columns.mjs`, called by `apply`): the places the waiting cards hold
-  are filled again in that order, and a card that is not in the queue keeps its place.
-  So a change of a task's feature moves its card with it.
-- **The card order is the queue order.** Dragging a waiting card above or below another
-  waiting card of the same feature, or of the single tasks, reorders them. A drop that
-  would put a single task ahead of a feature task, or a task of a later feature ahead of
-  an earlier feature's task, lands in start order instead, in the same write.
+  order the queue starts them: features in board order, each feature's steps ascending,
+  a step's tasks by number, then the single tasks. The store settles this after every
+  action (`settleReadyColumn` in `server/tasks/task-columns.mjs`, called by `apply`): the
+  places the waiting cards hold are filled again in that order, and a card that is not
+  in the queue keeps its place. So a change of step or feature moves the cards with it.
+- **The card order of single tasks is the queue order.** Single tasks have no other
+  order, so dragging one above another in Ready is how the user reorders them. A drop
+  that would put a single task ahead of a feature task, or a later step ahead of an
+  earlier one, lands in start order instead, in the same write.
 - **The order is the standing one.** A scheduled task that is not due and a dispatched
   task that has not linked keep their place among the waiting cards, although neither is
   in `queue.order` at that moment. The clock therefore never moves a card.
@@ -416,41 +415,18 @@ or without a role. Such a board is brought to the five columns once
 
 ## Features and steps
 
-Task T-39, product-owner decision of 2026-10-11. It replaces the step number a task
-held and the parallel steps.
-
-A feature is an ordered list of tasks. Each task is one step, and the order of the cards
-on the board is the step order: the first task runs first. A task has no `step` field.
-The tasks of a feature run one at a time, so no task gets a Git worktree because of its
-step. Worktree creation and cleanup belong to the desktop (`task-worktree.mjs`); worktree
+A feature is an ordered list of steps. Tasks in the same step run in parallel, each in
+its own Git worktree; a step starts only when every task of the step before it is
+done. A task attached to a feature defaults to a new last step, and `step` is at least
+1. Worktree creation and cleanup belong to the desktop (`task-worktree.mjs`); worktree
 paths stay desktop-private and never reach the monitor store or browser state.
 
-- **Step order is derived.** A feature's tasks, ordered by column from the one furthest
-  along back to the first (Done, Review, In progress, Ready, Backlog) and top to bottom
-  inside a column, give step 1 to m (`featureSteps` in
-  `app/components/tasks/task-features.ts`). The board, the Queue view, and the session
-  view show this order; none of them stores it.
-- **Changing a step.** A card that waits in the queue (Queued or Scheduled, no session,
-  in Ready) can be dragged in the Queue view onto the step of another waiting card of the
-  same feature, and it takes that step. From the keyboard, **Move to step…** offers those
-  steps. Both send the ordinary `move` action for the Ready column, optimistic like a
-  board move. A task that is not in the queue, or started, or finished, cannot be moved
-  there. No action renumbers steps.
-- **Forms.** The New task and Task forms hold **Feature** only. A folded **In this
-  feature** list shows the feature's tasks in step order. In the Task modal each row
-  leads with its step number, and the open task is left out. A board card's feature line
-  reads `<feature> · step n of m`.
-- **The stored `step` column.** The `step` column stays in the version 1 schema, because
-  its CHECK requires a value beside a feature, like `queue_position`. It is written as `1`
-  for a task with a feature and null otherwise, and never read. A store written before this
-  rule keeps its stored numbers, unread. Its waiting cards in Ready are already in the old
-  step order, so the start order does not change on upgrade, but tasks that shared a step
-  now run one after another.
-- **Which tasks get a worktree.** Only a task that the owner starts by hand with **Start
-  in separate worktree** (see
-  [Separate worktree](#separate-worktree-for-a-dirty-repository)). The start plan
-  answers `worktree: true` only for that start. The queue never starts a task in a
-  worktree. The monitor never learns where the worktree is.
+- **Which tasks get a worktree.** A task of a step that holds more than one task, counting
+  tasks of any state. A task alone in its step, and a task without a feature, runs in the
+  repository root, unless the owner asked for a separate worktree for that one manual
+  start (see [Separate worktree](#separate-worktree-for-a-dirty-repository)). The monitor
+  decides this when it answers the start plan (`worktree`, a boolean); it never learns
+  where the worktree is.
 - **Where.** `<repository root>/.pomegr/worktrees/<task ID>`, inside the repository (task
   T-27, product-owner decision of 2026-10-11). The root is the one the monitor answers in
   the start plan and the task ID is a validated identifier, so no task text shapes the
@@ -462,11 +438,11 @@ paths stay desktop-private and never reach the monitor store or browser state.
   start fails and no worktree is made.
 - **Worktrees made before the move.** Until T-27 a worktree was made at
   `<desktop data root>/task-worktrees/<repository ID>/<task ID>`. One that is still there
-  is the task's worktree: another separate-worktree start of the task reuses it, Open folder opens it, and a removal removes
+  is the task's worktree: a requeue reuses it, Open folder opens it, and a removal removes
   it, each where it is. Nothing is moved, and a new worktree is never made there.
 - **Branch.** `tasks/<task ID>`, created at the repository's current commit, or checked out
   when it already exists. Uncommitted changes of the repository root are not part of it.
-- **Reuse.** A worktree left by an earlier start of the task is used again by its next separate-worktree start only
+- **Reuse.** A worktree left by an earlier start of the task (a requeue) is used again only
   when Git still lists it on the task branch and its working tree is clean. Otherwise the
   start fails and nothing is touched. When Git lists it on the task branch and the tree has
   uncommitted changes, the start fails with the fixed `worktree_dirty` (the manual start's
@@ -533,10 +509,10 @@ or compares it, and it gates nothing.
 - **`update_feature`** changes any of the three fields of one feature. A field that is
   present replaces the stored one whole, an absent field is left as stored, and a null
   description or app version clears it (the tool sends null for an empty string). A
-  new title that another feature holds answers `conflict`. It changes no task,
+  new title that another feature holds answers `conflict`. It changes no task, step,
   state, or update time.
 - **`delete_feature`** deletes only a feature that has no task; otherwise it answers
-  `conflict`. A feature's tasks hold their place in the queue through the feature, so
+  `conflict`. A feature's tasks hold their place in the queue through its steps, so
   deleting it under them would reorder the queue. Its description and app version go
   in the same write.
 - **Which features.** Any feature of the session's own board, whoever made it. The
@@ -580,31 +556,34 @@ Code asks or decides as for any MCP write.
 
 The queue is the ordered set of queued and scheduled tasks, ordered by the pure `orderQueue` rule. It
 is advanced only by the desktop queue runner, only after the user turned the queue on,
-and only one task at a time. Every start first passes the [start gates](#start-gates).
+and only one step at a time. Every start first passes the [start gates](#start-gates).
 
 - **Order.** `queue.order` on the board lists the IDs of the tasks that wait to start now:
   those in state `queued`, and those in state `scheduled` whose own time has come. They
   are in the order they would start, one ID per task. Features come in board order. Inside a
-  feature the tasks come in the order of their cards in the Ready column, top first, so
-  that order is the step order of the feature. After every feature task come the single
-  queued tasks, in the order of their cards in Ready too (see
+  feature the steps ascend, and the tasks of one step order by task number as a number
+  (T-2 before T-10); they are the tasks that run in parallel. After every feature task
+  come the single queued tasks, which have no feature or step. They run in the order of
+  their cards in the Ready column, top first (see
   [Queued cards stay in Ready](#queued-cards-stay-in-ready)), so the Board and the Queue
-  view always show one order. `orderQueue` returns only `{ order }`. A task in another state
+  view always show one order. A task in another state
   is not in the order, even when it belongs to a queued task's feature. A task that
   already started is not in the order either: one with a linked session and no report, or
   a dispatch still inside its ten minutes (`rowInFlight` in `task-record.mjs`, which judges
   the dispatch with `dispatchStanding` from the leaf module `task-dispatch-standing.mjs`;
-  the board projection and the queue share this one rule). It keeps its state, so it is not settled, and a later task
-  of its feature waits on it (`blockedBy`). `queue.gates.next`
+  the board projection and the queue share this one rule). It keeps its state and its step, so its step
+  is not done, and a task of a later step waits on it (`blockedBy`). `queue.gates.next`
   never names it. The Queue view shows it with the borrowed session state, or its own chip
   until a session links, with no Waiting line, no next marker, and no move. The first
   entry is the task shown as next.
-- **Place in the queue.** A task's place is its card's place in Ready
-  (`Task.position`, already on the board). A feature task queued later than the feature's
-  waiting tasks lands last in Ready, so it runs after them. A task queued from another column joins last,
+- **Place in the queue.** A single task's place is its card's place in Ready
+  (`Task.position`, already on the board). A task queued from another column joins last,
   because its card lands last in Ready; one queued from Ready runs where its card is.
   Removing a task from the queue leaves its card in Ready, so queuing it again gives it
   the same place unless the card was moved.
+- **Steps.** `orderQueue` also reports every step of every feature with the IDs of its
+  tasks of any state and whether the step is done (it has tasks and each one is done).
+  The store uses that rule to refuse a move into a done step.
 
 - **On and off.** The stored status is per repository and starts as `idle`, which is the
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
@@ -614,23 +593,27 @@ and only one task at a time. Every start first passes the [start gates](#start-g
   other write that turns it off is the end of a pause whose named task is gone (see
   **A pause ends with its task** below).
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
-  repository. Nothing starts unless the status is `running`. The queue runs one task at
-  a time. A task is in flight when it has a linked session and no outcome, or a dispatch
-  that is still live. While any task is in flight, nothing starts. Otherwise the start is
-  the first entry of `queue.order`, exactly one task, so the task shown as next is the
-  one that starts, unless it waits on an earlier task of its feature (see
-  [Start gates](#start-gates)). An expired unlinked dispatch on that first entry still
-  pauses the queue with `session_not_linked`. A task in review is finished work that
-  waits for the owner, so the task after it starts.
-- **Gates.** Each start is judged on its own. One that a start gate holds is
+  repository. Nothing starts unless the status is `running`. The queue runs one step at
+  a time, and a task without a feature is a step of its own. A task is in flight when it
+  has a linked session and no outcome, or a dispatch that is still live. With nothing in
+  flight, the step is the one of the first entry of `queue.order`, and the starts are
+  every queued task of that step, so the task shown as next is always among them. While
+  tasks are in flight, only the queued rest of their own step may start; tasks in flight
+  outside one feature step hold the queue. A step waits while an earlier step of its
+  feature is not settled, and a step is settled only when every one of its tasks is done
+  or needs review (`settled` beside `done` in `orderQueue`'s steps); the queue never
+  skips ahead to a later task. A task in review is finished work that waits for the
+  owner, so the step after it starts. A step is still done, for the feature and for a
+  move into it, only when every one of its tasks is done.
+- **Gates.** Each start of a step is judged on its own. One that a start gate holds is
   not answered as a next start and changes nothing: the queue stays `running`, the task
-  stays `queued`, and the next poll judges the gates again. A held gate is a wait, not
-  one of the outcomes that block or pause the queue.
+  stays `queued`, and the next poll judges the gates again while the rest of its step
+  starts. A held gate is a wait, not one of the outcomes that block or pause the queue.
 - **Runner.** The desktop main process polls `POST /internal/tasks/queue-next` (desktop
   token, body `{}`) every 15 seconds on one unreferenced timer. The answer holds at most
-  16 `{ repositoryId, taskId }` pairs, at most one for each repository whose queue has a
-  next start, and no task content. The runner starts each through the same dispatcher a
-  manual start uses,
+  16 `{ repositoryId, taskId }` pairs, the queued tasks of the current step of each
+  repository whose queue has a next start, and no task content. The runner starts them
+  one after another in the same tick through the same dispatcher a manual start uses,
   without the native confirmation, because the user turned the queue on. When one start
   pauses a queue, the rest of that repository's answer is not started. A manual start and a queued start never overlap. The next start
   is served only on this route, never on `GET /api/tasks`. The same timer also removes the
@@ -641,9 +624,8 @@ and only one task at a time. Every start first passes the [start gates](#start-g
   `plugin_missing`, `unsupported_platform`, `worktree_dirty`, or `start_failed`), and offers
   no next start until the user turns the queue on again. The runner reports a start's
   fixed status as the reason when it is one of the first four, and `start_failed` for any
-  other failure; `worktree_dirty` is a task whose worktree from an earlier start holds
-  uncommitted changes, which Pomegr never removes. The queue does not start a task in a
-  worktree, so the reason arises in practice from a manual separate-worktree start. The user commits or discards the changes in
+  other failure; `worktree_dirty` is a requeued parallel task whose own worktree holds
+  uncommitted changes, which Pomegr never removes. The user commits or discards them in
   the folder (the Queue banner's Open folder, see [Boundaries](#boundaries)) and then turns
   the queue on again. A start whose terminal opened but whose
   session never reported its token leaves an expired dispatch; the monitor pauses the
@@ -660,7 +642,7 @@ and only one task at a time. Every start first passes the [start gates](#start-g
     or no longer the one that failed to start. The same action on any other task leaves
     the pause as it is.
   - **What the status becomes.** It depends on whose the cause was. `worktree_dirty` and
-    `session_not_linked` are the task's own (its earlier worktree, its start), so the cause went
+    `session_not_linked` are the task's own (its worktree, its start), so the cause went
     with the task: the queue is set as if the user turned it on again, `running`, or
     `blocked` at the lowest-numbered stalled or blocked task, and the repository's
     expired unlinked dispatches are cleared. With nothing queued, a running queue starts
@@ -679,7 +661,7 @@ and only one task at a time. Every start first passes the [start gates](#start-g
   - **Review does not stop the queue.** Decided for GitHub issue #135 (2026-10-10); it
     replaces the earlier rule that a failed check blocks the queue. A task that needs
     review is finished work: its card waits in the Review column, the queue stays
-    `running`, the next task starts, and the next task of its feature starts too. The
+    `running`, the next task starts, and a later step of its feature starts too. The
     owner resolves it with the same two actions, at any time. When the work that
     follows must not start, the agent's path is `block_task`, whose card stays in In
     progress and holds the queue.
@@ -721,9 +703,9 @@ and only one task at a time. Every start first passes the [start gates](#start-g
     the task to `scheduled`. A scheduled task is a queued task with a start time: its card
     keeps its place in Ready, it is in `queue.order` only from its time on, and is started by the
     queue like any other task, so it needs the queue on. Until then it is not startable by
-    hand either (`start-plan` answers `gate_held`). A scheduled task that is not due is
-    not the queue's next task: the first entry of `queue.order` is. Until it
-    ran, the later tasks of its feature wait (see [Start gates](#start-gates)), and the queue waits with them while one of them is that first entry. The task keeps the state `scheduled` and
+    hand either (`start-plan` answers `gate_held`). A scheduled task that is not due holds
+    nothing behind it: the tasks after it start. Its feature step is not done until it
+    ran, so the next step of its feature waits. The task keeps the state `scheduled` and
     its time after it started; the card then borrows the session's state.
   - **The queue's window.** `queue_settings` with `{ schedule: { startAt, stopAfter } }`
     stores the two times in the `meta` table under `queue_start_at:<repositoryId>` and
@@ -750,16 +732,9 @@ Before every start, manual or queued, the pure `evaluateGates(task, facts, setti
 `task-gates.mjs` judges committed facts and returns the fixed reasons a start cannot
 proceed. A start needs all of the following.
 
-1. No other task of the task's feature stands in front of it (`previous_step`
-   otherwise; `previousStepBlocker(taskId, tasks)`). A task stands in front of it when it
-   has started and is not settled: it has a linked session or a live dispatch, or it is
-   Stalled or Blocked by agent. The board names the lowest-numbered such task. Otherwise
-   a task stands in front of it when it waits above it in Ready (Queued or Scheduled,
-   not started, its card higher). The board names the first such card. Settled means
-   Done or Needs review. A feature task that is Not queued and not started, for example
-   in Backlog, holds nothing. The second case matters for a scheduled task that is not
-   yet due: it is not in `queue.order`, but the later tasks of its own feature wait on it. The queue
-   never skips its first entry, so while one of them is first, nothing else starts either. This gate holds
+1. The previous step of the task's feature is settled: each of its tasks is done or
+   needs review (`previous_step` otherwise). The board names the lowest-numbered task
+   that is neither, in the earliest step before it that is not settled. This gate holds
    only the queue's starts. As decided by the product owner on 2026-10-10, a manual start
    is an override of step order: `start-plan` does not judge this gate, and the other
    three still hold the start.
@@ -782,8 +757,8 @@ proceed. A start needs all of the following.
 ### Separate worktree for a dirty repository
 
 Task T-46, 2026-10-10. Gate 4 holds a start in the root because the session would work on
-top of the owner's uncommitted changes, and it holds a start in a new worktree because
-that worktree would not hold them. When that gate is the only one that holds a manual start,
+top of the owner's uncommitted changes, and it holds a parallel task because its new
+worktree would not hold them. When that gate is the only one that holds a manual start,
 the owner may accept the second case on purpose:
 
 - `start-plan` answers the fixed `tree_dirty` instead of `gate_held` when the start is
@@ -797,8 +772,7 @@ the owner may accept the second case on purpose:
   the offer in place.
 - Desktop main then asks for the plan with `{ id, worktree: true }`. For that payload the
   monitor does not hold the start on `tree_dirty` (every other gate still holds it) and
-  answers `worktree: true` in the plan. This is the only case in which the plan says
-  `worktree: true`. A `worktree` value
+  answers `worktree: true` in the plan, whatever the task's step. A `worktree` value
   other than `true` is `invalid`. Desktop main refuses a plan without `worktree: true`
   for such a start and aborts the dispatch, so a start confirmed for a separate worktree
   never runs in the root.
@@ -1149,7 +1123,7 @@ supplies.
   the store's. The monitor resolves `sessionRef` to a repository from the task link or, for
   a session without one, from the session's committed repository identity, never reading
   Git or provider files, and creates the task as the desktop `create` action does: last in the first column, not queued. A `feature` must
-  name an unfinished feature of that repository exactly; the task joins that feature.
+  name an unfinished feature of that repository exactly; the task takes a new last step.
   An agent makes a feature with `create_feature` (see [Feature context](#feature-context)).
 - The answer is `{ schemaVersion: 1, ok: true, taskId }` or `{ schemaVersion: 1, ok: false,
   reason }`, never an echo of task content. Reasons: `invalid` (400), `session_not_found`
@@ -1292,7 +1266,7 @@ How it is built:
   are store only, like `promote_issue`: they are absent from the fixed action list, so
   the desktop route and the IPC channel never accept them. `agent_remove` checks the
   rule inside the store's transaction and then runs the desktop `delete`: the task
-  number stays retired, the cards after it close up, the
+  number stays retired, the cards after it and the steps of its feature close up, the
   task's source, attention line, image list, and added-by record go in the same write,
   its image files go after the commit, the waiting queue cards are settled in Ready, and
   a queue blocked or paused at the task is released, so the queue banner no longer names
@@ -1355,7 +1329,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
 - `POST /internal/tasks/start-plan` answers the plan for a startable task: provider,
   model, effort, whether the session starts with Remote Control (`remoteControl`, true only for a
   Claude Code session whose task asks for it), the repository root resolved monitor-side, whether the session must run
-  in a worktree of its own (`worktree`, true only for a manual separate-worktree start), the prompt, the absolute files of the task's images (`images`, at most four, only files that exist with their listed size), and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
+  in a worktree of its own (`worktree`), the prompt, the absolute files of the task's images (`images`, at most four, only files that exist with their listed size), and the dispatch token. A task is startable when its state is `not_queued`, `queued`, or `scheduled`, no
   session is linked, and no dispatch is live. A task with no provider starts Claude Code;
   a Codex task starts Codex, and any other provider value answers
   `unsupported_provider`. The monitor refuses with `plugin_missing` unless the committed
@@ -1519,7 +1493,7 @@ so it reads nothing and says that issues are read in the desktop app.
   offers Show new version, which shows the issue as it is now. `limit` (the task text
   would pass 4000 characters) names the limit and creates no task; the text is never cut.
   After the task exists the modal sends one update holding only what differs from the
-  task the monitor made (feature, run, complete-when), and none when nothing differs.
+  task the monitor made (feature and step, run, complete-when), and none when nothing differs.
   If that update fails the task still exists: the modal says so and offers only Close, so
   an issue is never promoted twice.
 - **Creating an issue from the Task modal.** In the new mode the modal reads the GitHub
@@ -1533,7 +1507,7 @@ so it reads nothing and says that issues are read in the desktop app.
   in renderer memory only, and the action stays offered. Opening a task reads nothing
   from GitHub.
 - **The `#N` chip.** A task with a source shows a `#N` chip right after its ID on a board
-  card and on a Queue view step card (`TaskIssueChip`: the shared outline chip with a circle-dot
+  card and on a queue step card (`TaskIssueChip`: the shared outline chip with a circle-dot
   glyph and the number in the data font). The session view's Task tab and Overview task
   panel show one Source line: `Source`, the chip, then `GitHub issue`. They read
   `Task.source` from a ready board only, and show no promote time because none is stored.
@@ -1681,14 +1655,14 @@ serves no other client.
 | Surface | Who | What it carries |
 | --- | --- | --- |
 | `GET /api/tasks?repositoryId=repo-<24 hex>` | A same-computer client or a paired device, gated like `GET /api/provider-folders`; the LAN gateway forwards it only for a paired device | The committed board, `no-store`, with each linked session's borrowed title, state, and model, and a waiting task's per-condition reading. A denied client gets `readiness: "desktop_only"` and no task content |
-| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
+| `GET /api/sessions?mode=directory` with the proxy's `tasks=1` marker | A same-computer client or a paired device; the LAN gateway marks the requests it forwards, and a marked request gets the marker only with the desktop token the gateway adds | Each row's nullable `task` (task ID, board repository ID, outcome state or null, feature ID, feature name, step, and the nullable number of the GitHub issue the task was promoted from, never an issue title or body), the `feature` scope, `group=feature`, and the `session` scope (one validated session ID, no other scope beside it) that the session view uses to read its own row. Without the marker: `taskReadiness: "desktop_only"`, no `task` key, and a feature scope matches no session |
 | `pomegr:task-action` IPC | The renderer, through a trusted main frame only | A fixed action name, the repository ID pattern, and a payload of at most 16 KiB |
 | `POST /api/tasks/action` | A paired device, through the LAN gateway only (see [Paired devices](#paired-devices)) | `{ repositoryId, action, payload }` with the same fixed action names and bounds; answers `{ ok: true }` (with the new task's ID after `create`) or one fixed error, never the board. `queue_settings` that turns the queue on answers `unsupported` |
 | `POST /internal/tasks/<action>` | Desktop main, with the desktop token | The same action; the monitor validates the whole record. The answer to `create` also carries the new task's ID, so the modal can name the task when it asks for a GitHub issue |
 | `pomegr:task-start` IPC | The renderer, through a trusted main frame only, behind a native confirmation | A repository ID and a task ID, and for a separate-worktree start the fixed value `true`; answers one fixed status |
 | `pomegr:task-worktree-open` IPC | The renderer, through a trusted main frame only (the task modal's and the Queue banner's **Open folder**) | A repository ID and a task ID; answers one fixed status (`opened`, `not_found`, `invalid`, `unavailable`). Desktop main resolves and opens the worktree folder; the path never leaves it |
 | `POST /internal/tasks/start-plan` and `start-abort` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | The start plan with the repository root, prompt, image files, and dispatch token; none of them reaches the renderer or `GET /api/tasks` |
-| `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, one for each repository, and a fixed pause reason in; no task content either way |
+| `POST /internal/tasks/queue-next` and `queue-pause` | The desktop queue runner, with the desktop token; not reachable through `pomegr:task-action` | At most 16 `{ repositoryId, taskId }` next starts, and a fixed pause reason in; no task content either way |
 | `POST /internal/tasks/worktree-cleanups`, `worktree-root`, and `worktree-cleaned` | Desktop main and its queue runner, with the desktop token; not reachable through `pomegr:task-action` | `worktree-cleanups`: at most 64 `{ repositoryId, taskId, repositoryRoot }` done tasks whose worktree waits for removal. `worktree-root`: the root of one repository, or `not_found`. `worktree-cleaned`: a task ID in. The root reaches desktop main only, as in the start plan; no task content either way |
 | `pomegr:task-issues` IPC | The renderer, through a trusted main frame only | One of the fixed operations `status`, `list`, `promote`, `create`, `sign_in`, a repository ID, for `promote` only an issue number (1 to 999999999) and a 64-character hexadecimal digest, and for `create` only a task ID. The payload cap is the 16 KiB cap of `pomegr:task-action`. `status`, `list`, `promote`, and `create` return the monitor's answer; `sign_in` returns one fixed status after a native confirmation |
 | `POST /internal/tasks/github-status`, `issues-list`, `issue-promote`, and `issue-create` | Desktop main, with the desktop token; not reachable through `pomegr:task-action` | `github-status`: the fixed connection and, when connected and the repository root is recognized, its visibility and capabilities. `issues-list`: reads GitHub now and answers a fixed read status, the read time, a truncation flag, and the normalized issues with each one's promoted task ID or null; the only place issue text is served. `issue-promote`: `{ number, digest }` in, `{ ok: true, taskId }` out. `issue-create`: `{ taskId }` in, `{ ok: true, number }` or one fixed error out; the only write to GitHub, and its answer never carries task text |
@@ -1701,10 +1675,10 @@ serves no other client.
 | `POST /api/agent/v1/tasks/bind` | The plugin's session-start hook, authorized like the agent-query GETs | The dispatch token and the normalized session ID; answers a fixed object with no task data. Not an MCP tool; no other path may be added without updating the [Privacy](#privacy) section first |
 
 - The fixed IPC actions are `create`, `update`, `delete`, `move`, `feature_create`, `queue_add`,
-  `queue_remove`, `queue_settings`, `resolve_done`, and
+  `queue_remove`, `queue_reorder`, `queue_settings`, `resolve_done`, and
   `resolve_requeue`. Any other action name is refused: `invalid` from the preload, desktop
   main, and the route, and `unsupported` from the store itself. That includes the removed
-  `column_create`, `column_rename`, `column_reorder`, `column_delete`, `column_role`, and `queue_reorder`. Built so far: `create` with `{ text, run?, completeWhen? }`, `update` with
+  `column_create`, `column_rename`, `column_reorder`, `column_delete`, and `column_role`. Built so far: `create` with `{ text, run?, completeWhen? }`, `update` with
   `{ id, text?, run?, completeWhen? }`, and `delete` with `{ id }`; a payload with any other
   key is `invalid`. In `update` at least one of the three fields is required, a field
   that is present replaces the stored one whole (a null `run` or `completeWhen` clears it),
@@ -1718,12 +1692,16 @@ serves no other client.
   `feature_create` takes exactly `{ name }` (one line, 1 to 80 characters); a
   duplicate name in the repository answers `conflict` and a 51st feature `limit`. A
   feature with no task is listed with `done: false`. `create` and `update` take two
-  optional key, `featureId` (a feature ID or null). A `step` key is `invalid`: a task has
-  no step, and the order of its card sets its place in the feature. An unknown feature,
-  or one of another repository, is `not_found`; a done feature (it has tasks and all are
-  done) refuses a task that is not already in it with `conflict`. In `update`,
-  `featureId: null` detaches the task, and `featureId` is accepted for placement only.
-  The desktop actions have no feature rename,
+  optional keys, `featureId` (a feature ID or null) and `step` (an integer of at least 1
+  or null). Joining a feature without a step lands in a new last step; a `step` is valid
+  from 1 to the feature's highest step + 1 (measured before a move), otherwise `invalid`,
+  and a step without a feature is `invalid`. An unknown feature, or one of another
+  repository, is `not_found`; a done feature (it has tasks and all are done) refuses a
+  task that is not already in it with `conflict`. In `update`, `featureId: null`
+  detaches (a step sent with it must be null), and the task's own feature ID or a `step`
+  alone moves it inside its feature. Steps stay dense (1 to n) after every write that
+  changes a task's feature or step, or deletes a task in a feature, renumbering without
+  changing the update time of other tasks. The desktop actions have no feature rename,
   delete, or reorder yet; an agent renames a feature and deletes an empty one (see
   [Feature context](#feature-context)).
   `queue_add` takes `{ id }` and, optionally, `at`, an instant written as
@@ -1735,10 +1713,19 @@ serves no other client.
   time outside the bounds is `invalid`. An unknown task is `not_found`. `queue_remove`
   takes exactly `{ id }`: a `queued` or `scheduled` task becomes `not_queued` and loses
   its time; any other state is `conflict`. `resolve_requeue` clears the time too.
-  A step change is an ordinary `move` of a waiting card inside Ready; no action renumbers
-  steps. The two actions start no session and leave the stored queue status as it is,
+  `queue_reorder` takes exactly `{ id, step }` with `step` an integer of at least 1. The task
+  must exist (`not_found`), be in a feature, and not have started: state `not_queued`,
+  `queued`, or `scheduled` with no linked session (otherwise `conflict`; a single
+  task is not reordered). `step` is valid from 1 to the feature's highest step + 1, measured
+  before the move, where the highest + 1 is a new last step; anything else is `invalid`. A
+  target step whose tasks are all done answers `conflict`. Moving a task to its own step, or
+  the only task of the last step to a new last step, succeeds and changes nothing. Otherwise
+  the steps are renumbered densely in the same transaction (a step the move empties
+  disappears) without changing the update time of other tasks, and the task keeps
+  its state. The three actions start no session and leave the stored queue status as it is,
   except `queue_remove` of the task a pause names, which ends that pause (see
-  [Queue](#queue)). `resolve_done` and
+  [Queue](#queue)).
+  There is no insertion of a step between two others yet. `resolve_done` and
   `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` takes
   exactly one setting: `{ on }`, a boolean (see [Queue](#queue)); `{ threshold }`,
   one of 70, 85, and 95 (see [Start gates](#start-gates)); or `{ schedule }`, exactly
@@ -1858,7 +1845,7 @@ fixed values.
   diagnostics, pipeline-operations logs, or observation checkpoints, and no pipeline
   stage reads them.
 - The Sessions list and session view receive only the task ID, task state, feature name,
-  and the number of the GitHub issue the task was promoted from. That is a
+  step, and the number of the GitHub issue the task was promoted from. That is a
   deliberate widening of exposure (the issue number was added on 2026-10-09): the part
   that builds it updates this section in the same pull request, and it must not
   carry task text, the own condition, a column name, or an issue title or body. It
@@ -1882,9 +1869,8 @@ fixed values.
   then read the task itself from `GET /api/tasks` for the reference's repository
   (`app/session-task-store.ts`, `app/components/dashboard/SessionTaskSummary.tsx`,
   `SessionTaskTab.tsx`). While that board is not ready they show only the reference's ID,
-  state, and feature; the feature's step (`step n of m`) comes from the ready board, which
-  orders the feature's cards, and is shown only then, never from the reference. The Source
-  line comes from `Task.source` on a ready board too. The Task tab is listed only once the reference is known, so it
+  state, feature, and step; the Source line comes from `Task.source` on a ready board, not
+  from the reference. The Task tab is listed only once the reference is known, so it
   is never shown and then removed; it mutates nothing.
 - A session's task reference is found by the session link, never by repository ID. The
   session catalog stores none of it: the catalog index only takes a bounded set of
@@ -1996,8 +1982,8 @@ above now describe the fixed behavior. The first run on a device, on 2026-10-09,
 three more, one of which (a start with a plugin too old for tasks) is fixed. A fourth (`add_task` from an unlinked session in a task worktree targeted another board) closed on 2026-10-10, when a linked worktree took its main repository's identity. A fifth (the task modal kept its start line after the task changed) closed on 2026-10-10: the line and the lock now hold only while the board shows the task as it was when the start was made. One item remains open, and the maintainer owns it. A sixth (a held manual start did not say which gate holds) closed on 2026-10-10: the modal names the holding gates from the board's readings, and step order no longer holds a manual start. The stated limits of the age rule for complete-when conditions are listed under
 [Completion](#completion).
 
-1. **A started task holds every start, but `queue.gates.next` does not
-   say so.** The queue runs one task at a time, so a started task holds the queue,
+1. **A started task without a feature holds every start, but `queue.gates.next` does not
+   say so.** A started task with no feature is a step of its own that holds the queue,
    yet `queue.gates.next` still names the next queued single task with no hold reason, so
    the Queue view shows **Queued · next** on a task that does not start. A pinned test
    keeps this behavior. A fixed reason such as `task_running` would widen the

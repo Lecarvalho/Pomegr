@@ -135,6 +135,7 @@ describe("with the desktop bridge", () => {
     expect(dialog).toHaveTextContent("Effort");
     expect(dialog).toHaveTextContent("Complete when");
     expect(screen.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
+    expect(screen.getByRole("combobox", { name: "Step" })).toBeDisabled();
   });
 
   it("drops the repository from the subtitle when its name is unknown", async () => {
@@ -490,7 +491,7 @@ describe("Run on, Effort and Complete when", () => {
 
   it("starts from the Run on, Effort and Complete when of the newest task on the board", async () => {
     const earlier = (id: string, overrides: Partial<Task>): Task => ({
-      id, text: "Earlier work", columnId: "col-1", position: 0, featureId: null,
+      id, text: "Earlier work", columnId: "col-1", position: 0, featureId: null, step: null,
       run: { provider: null, model: null, effort: null }, completeWhen: { checks: [], own: null }, state: "not_queued", scheduledAt: null,
       session: null, source: null, report: null, createdAt: "2026-10-08T10:00:00.000Z", updatedAt: "2026-10-08T10:00:00.000Z", ...overrides,
     });

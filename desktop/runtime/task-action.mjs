@@ -7,7 +7,7 @@ export const TASK_ACTION_CHANNEL = "pomegr:task-action";
 export const TASK_ACTION_NAMES = Object.freeze([
   "create", "update", "delete", "move",
   "feature_create",
-  "queue_add", "queue_remove", "queue_settings",
+  "queue_add", "queue_remove", "queue_reorder", "queue_settings",
   "resolve_done", "resolve_requeue",
 ]);
 export const TASK_ACTION_ERRORS = Object.freeze([

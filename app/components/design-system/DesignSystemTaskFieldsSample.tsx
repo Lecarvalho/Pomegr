@@ -28,7 +28,7 @@ export function TaskFieldsSection() {
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
   const [fresh, setFresh] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [startAt, setStartAt] = useState("02:00");
-  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "" });
+  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "", step: 2 });
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
@@ -61,10 +61,10 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
-      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. The folded In this feature list counts the feature's tasks and opens on demand.">
+      <Sample label="Feature and Step" note="Feature lists unfinished features, No feature and New feature…; Step offers Last or an existing step. The folded In this feature list counts the feature's tasks and opens on demand.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} />
       </Sample>
-      <Sample label="Feature, in the Task modal" note="Given the open task, its siblings lead with their step number and the task itself is left out of the list.">
+      <Sample label="Feature and Step, in the Task modal" note="Given the open task, its siblings lead with their step number and the task itself is left out of the list.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} selfId="T-3" onChange={setPlaced} />
       </Sample>
       <Sample label="New feature" note="New feature… reveals a one-line name in place; Enter or leaving the field commits it.">
@@ -196,7 +196,7 @@ function TaskModalPromoteSamples() {
   const [changedCompleteWhen, setChangedCompleteWhen] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const closes = (number: number) => <span className="taskModalNote taskModalCloses">The pull request will say Closes <span className="taskModalCloseRef">#{number}</span>.</span>;
   return <>
-    <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature, Run on and Effort, and Complete when are the New task form's (Feature is drawn in its own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
+    <Sample label="Task modal, promote issue" note="One GitHub issue becomes a task. The heading is New task; the Source group holds the issue chip, who opened it and the title, and the raw body is read-only: the renderer never sends task text. Feature and Step, Run on and Effort, and Complete when are the New task form's (Feature and Step are drawn in their own samples above). Promote issue is the one primary; the footer line says what the pull request will say.">
       <div className="designSystemTaskFrame designSystemTaskModalStage">
         <TaskModalChrome titleId={normalId} title="New task" subtitle="pomegr · in Backlog" onClose={noop}
           footer={<>

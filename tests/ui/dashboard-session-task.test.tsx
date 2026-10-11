@@ -12,7 +12,7 @@ import { resetTasksStoreForTests } from "../../app/tasks-store";
 import { sessionSummaryFixture } from "./session-summary-test-fixture";
 
 const REPOSITORY = `repo-${"a".repeat(24)}`;
-const REFERENCE = { id: "T-14", repositoryId: REPOSITORY, state: null, featureId: "feat-0123456789ab", feature: "Task board v1" };
+const REFERENCE = { id: "T-14", repositoryId: REPOSITORY, state: null, featureId: "feat-0123456789ab", feature: "Task board v1", step: 2 };
 
 function json(value: unknown) { return new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } }); }
 
