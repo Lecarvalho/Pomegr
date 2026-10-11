@@ -713,8 +713,14 @@ describe("task modal styles (mode new)", () => {
     expect(rule(".taskModalFooter")).toMatch(/gap: var\(--space-2\)[^}]*padding: var\(--space-3\) var\(--space-6\)[^}]*border-top: 1px solid var\(--command-line\)/);
     expect(rule(".newTaskField")).toMatch(/gap: var\(--space-2\)/);
     expect(rule(".newTaskField label")).toMatch(/500 var\(--text-xs\)/);
-    expect(rule(".newTaskField textarea")).toMatch(/min-height: 150px[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)[^}]*resize: vertical/);
+    expect(rule(".newTaskField textarea")).toMatch(/min-height: 150px[^}]*border: 1px solid var\(--command-line-strong\)[^}]*border-radius: var\(--control-radius\)[^}]*resize: none/);
     expect(rule(".taskTextCounter")).toMatch(/align-self: flex-end[^}]*var\(--font-data\)/);
+    // The panel is never taller than the window: the Task field shrinks and scrolls first, then the body scrolls.
+    expect(rule(".taskModalScrim > .taskModal")).toMatch(/max-height: 100%/);
+    expect(rule(".taskModalBody")).toMatch(/min-height: 0[^}]*overflow-y: auto/);
+    expect(rule(".taskModalBody > .taskTextField > textarea")).toMatch(/flex-shrink: 1/);
+    expect(rule(".taskModalBody > .taskTextField > .taskComposer")).toMatch(/flex-shrink: 1/);
+    expect(rule(".taskModalBody > .taskTextField .taskRichText")).toMatch(/min-height: 0; max-height: none/);
     expect(styles).toMatch(/@media \(max-width: 760px\)\s*\{[^]*\.taskModal \{[^}]*max-width: none/);
   });
 

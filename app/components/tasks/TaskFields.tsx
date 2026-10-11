@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useImperativeHandle, useRef, type ReactNode, type Ref } from "react";
+import { useId, useImperativeHandle, useLayoutEffect, useRef, type ReactNode, type Ref } from "react";
 import { TaskImageAttach, TaskRichText, type TaskFieldImages, type TaskRichTextHandle } from "./TaskImages";
 import { TASK_IMAGE_HELPER } from "./task-images-desktop";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
@@ -33,9 +33,24 @@ export function TaskTextField({ value, onChange, onBlur, images, readOnly, helpe
   const editor = useRef<TaskRichTextHandle>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   useImperativeHandle(ref, () => ({ focus: (options) => (editor.current ?? textarea.current)?.focus(options) }));
+  // The textarea grows with its text; the stylesheet stops it at the window height, then it scrolls.
+  useLayoutEffect(() => {
+    const grow = () => {
+      const field = textarea.current;
+      if (!field) return;
+      field.style.height = "auto";
+      if (field.scrollHeight > 0) field.style.height = `${field.scrollHeight + (field.offsetHeight - field.clientHeight)}px`;
+    };
+    grow();
+    // Measured again when the field gets its box (the dialog opens after this effect) or a new width.
+    if (!textarea.current || typeof ResizeObserver !== "function") return;
+    const observer = new ResizeObserver(grow);
+    observer.observe(textarea.current);
+    return () => observer.disconnect();
+  }, [value]);
   const describedBy = [helper ? helperId : null, error ? errorId : null, counterId].filter(Boolean).join(" ");
   const over = value.length > TASK_BOUNDS.textLength;
-  return <div className="newTaskField">
+  return <div className="newTaskField taskTextField">
     {images
       ? <>
         <span id={labelId} className="taskRichTextLabel" onClick={() => editor.current?.focus()}>Task</span>
