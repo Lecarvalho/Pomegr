@@ -266,7 +266,7 @@ test("no other agent write path exists", async (context) => {
   const store = await realStore(context);
   const { port } = await start(context, store);
   const body = JSON.stringify({ sessionRef: "claude:known", text: "x" });
-  for (const requestPath of ["/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block/x", "/api/agent/v1/tasks/resolve", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/tasks/remove/", "/api/agent/v1/tasks/delete", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
+  for (const requestPath of ["/api/agent/v1/tasks/complete/", "/api/agent/v1/tasks/block/x", "/api/agent/v1/tasks/resolve", "/api/agent/v1/tasks", "/api/agent/v1/tasks/add/", "/api/agent/v1/tasks/remove/", "/api/agent/v1/tasks/update/", "/api/agent/v1/tasks/edit", "/api/agent/v1/tasks/delete", "/api/agent/v1/sessions", "/api/agent/v1/provider-health"]) {
     for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
       const response = await send(port, { method, path: requestPath, body });
       assert.equal(response.status, 405, `${method} ${requestPath}`);
@@ -484,4 +484,166 @@ test("the desktop route never accepts the agent store actions", async (context) 
   assert.deepEqual(store.apply(REPOSITORY, "agent_remove", { sessionId: "claude:mine", id: "T-1", force: true }), { ok: false, error: "invalid" });
   assert.deepEqual(store.apply(REPOSITORY, "agent_remove", { sessionId: "claude:theirs", id: "T-1" }), { ok: false, error: "not_found" });
   assert.deepEqual(taskIds(store), ["T-1"]);
+});
+
+const UPDATE = "/api/agent/v1/tasks/update";
+const update = (port, taskId, fields = { text: "edited by an agent" }, sessionRef = "claude:mine") => send(port, { path: UPDATE, body: JSON.stringify({ sessionRef, taskId, ...fields }) });
+const taskOf = (store, id) => store.readBoard(REPOSITORY).tasks.find((task) => task.id === id);
+const updated = (response) => {
+  assert.equal(response.status, 200);
+  assert.equal(response.headers["cache-control"], "no-store");
+  assert.deepEqual(response.json, { schemaVersion: 1, ok: true });
+};
+
+test("a session updates any waiting task of its board, and the answer carries no task content", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-update-");
+  const { port } = await start(context, store);
+  // T-1 is the user's, T-2 another session's, and T-3 its own: all three are on the session's board.
+  createTask(store, REPOSITORY, { text: "the user's task", run: { provider: "claude", model: "opus", effort: "high", remoteControl: true, keepWorktree: true }, completeWhen: { checks: ["pr_open"], own: "tests green" } });
+  assert.equal(await addAs(port, "claude:theirs", "another session's task"), "T-2");
+  assert.equal(await addAs(port, "claude:mine", "its own task"), "T-3");
+  for (const id of ["T-1", "T-2", "T-3"]) {
+    const response = await update(port, id, { text: `${SECRET_TEXT} ${id}` });
+    updated(response);
+    assert.doesNotMatch(response.text, /AGENT-TASK|T-\d|claude:|repo-/u);
+    assert.equal(taskOf(store, id).text, `${SECRET_TEXT} ${id}`);
+  }
+  // The text replaced the stored text whole, and nothing else of the task changed.
+  const first = taskOf(store, "T-1");
+  assert.deepEqual(first.run, { provider: "claude", model: "opus", effort: "high", remoteControl: true, keepWorktree: true });
+  assert.deepEqual(first.completeWhen, { checks: ["pr_open"], own: "tests green" });
+  assert.equal(first.state, "not_queued");
+  assert.equal(first.columnId, store.readBoard(REPOSITORY).columns[0].id);
+});
+
+test("update sets Run on, effort, and Complete when field by field, and leaves the rest as stored", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-update-");
+  const { port } = await start(context, store);
+  createTask(store, REPOSITORY, { text: SECRET_TEXT, run: { provider: "claude", model: "opus", effort: "high", remoteControl: true, keepWorktree: true }, completeWhen: { checks: ["pr_open"], own: "tests green" } });
+  updated(await update(port, "T-1", { run: { effort: "low" } }));
+  assert.deepEqual(taskOf(store, "T-1").run, { provider: "claude", model: "opus", effort: "low", remoteControl: true, keepWorktree: true });
+  updated(await update(port, "T-1", { run: { model: "sonnet" } }));
+  assert.deepEqual(taskOf(store, "T-1").run, { provider: "claude", model: "sonnet", effort: "low", remoteControl: true, keepWorktree: true });
+  // Another provider without a model takes that provider's default, and Codex has no Remote Control.
+  updated(await update(port, "T-1", { run: { provider: "codex" } }));
+  assert.deepEqual(taskOf(store, "T-1").run, { provider: "codex", model: null, effort: "low", remoteControl: false, keepWorktree: true });
+  updated(await update(port, "T-1", { run: { provider: "claude", model: "opus", effort: "xhigh" } }));
+  assert.deepEqual(taskOf(store, "T-1").run, { provider: "claude", model: "opus", effort: "xhigh", remoteControl: false, keepWorktree: true });
+  updated(await update(port, "T-1", { completeWhen: { checks: ["ci_passed", "pr_open"] } }));
+  assert.deepEqual(taskOf(store, "T-1").completeWhen, { checks: ["pr_open", "ci_passed"], own: "tests green" });
+  updated(await update(port, "T-1", { completeWhen: { own: null } }));
+  assert.deepEqual(taskOf(store, "T-1").completeWhen, { checks: ["pr_open", "ci_passed"], own: null });
+  updated(await update(port, "T-1", { completeWhen: { checks: [], own: "reviewed" } }));
+  assert.deepEqual(taskOf(store, "T-1").completeWhen, { checks: [], own: "reviewed" });
+  assert.equal(taskOf(store, "T-1").text, SECRET_TEXT);
+  // The same input again leaves the task as it is.
+  updated(await update(port, "T-1", { completeWhen: { checks: [], own: "reviewed" } }));
+  assert.deepEqual(taskOf(store, "T-1").completeWhen, { checks: [], own: "reviewed" });
+});
+
+test("a task that waits in the queue is updated, and one that started, linked, reported, or does not exist is the one fixed refusal", async (context) => {
+  const { store, directory, clock } = await openTemporaryStore(context, "pomegr-agent-update-");
+  const { port } = await start(context, store);
+  for (let number = 1; number <= 7; number += 1) createTask(store, REPOSITORY, { text: `${SECRET_TEXT} ${number}` });
+  // T-1 queued and T-2 scheduled still wait.
+  queueTask(store, "T-1");
+  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-2", at: new Date(START_TIME + 3_600_000).toISOString() }).ok, true);
+  // T-3 has a start in flight, T-4 a linked session, T-5 a report, T-6 is done, and T-7's start ran out.
+  startedTask(directory, 3, { mintedAt: clock.now, state: "queued" });
+  startedTask(directory, 4, { session: "claude:run-4", state: "queued" });
+  updateTask(directory, 5, { state: "blocked", session_id: "claude:run-5", report_at: clock.now, report_results: "[]", report_block_reason: "stuck" });
+  updateTask(directory, 6, { state: "done", session_id: "claude:run-6" });
+  startedTask(directory, 7, { mintedAt: clock.now - 60 * 60_000 });
+  const answers = [];
+  for (const id of ["T-3", "T-4", "T-5", "T-6", "T-99"]) {
+    const response = await update(port, id);
+    refused(response);
+    answers.push(response.text);
+  }
+  assert.equal(new Set(answers).size, 1);
+  for (const id of ["T-1", "T-2", "T-7"]) updated(await update(port, id));
+  for (const id of ["T-1", "T-2", "T-7"]) assert.equal(taskOf(store, id).text, "edited by an agent");
+  for (const id of ["T-3", "T-4", "T-5", "T-6"]) assert.match(taskOf(store, id).text, /AGENT-TASK/u);
+  assert.equal(taskOf(store, "T-1").state, "queued");
+  assert.equal(taskOf(store, "T-2").state, "scheduled");
+});
+
+test("update reaches only the calling session's board", async (context) => {
+  const { store } = await linkedStore(context, "claude:worktree");
+  const { port } = await start(context, store);
+  createTask(store, REPOSITORY, { text: SECRET_TEXT });
+  // A session linked to a task of the board updates there, whatever repository it committed under.
+  updated(await update(port, "T-2", { text: "from the worktree" }, "claude:worktree"));
+  assert.equal(taskOf(store, "T-2").text, "from the worktree");
+  // Its own task has started, so it is left as the session was prompted with it.
+  refused(await update(port, "T-1", { text: "x" }, "claude:worktree"));
+  // A session of another board finds no such task; an unknown session and one with no repository have no board.
+  refused(await update(port, "T-2", { text: "x" }, "claude:known"));
+  reason(await update(port, "T-2", { text: "x" }, "codex:missing"), 404, "session_not_found");
+  reason(await update(port, "T-2", { text: "x" }, "claude:norepo"), 409, "repository_unavailable");
+  assert.equal(taskOf(store, "T-2").text, "from the worktree");
+  assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 0);
+});
+
+test("update takes a session, a task ID, and the three fields, under the store's own bounds", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-update-");
+  const { port } = await start(context, store);
+  createTask(store, REPOSITORY, { text: SECRET_TEXT, run: { provider: "claude", model: null, effort: "high" } });
+  const body = { sessionRef: "claude:mine", taskId: "T-1", text: "x" };
+  for (const extra of [{ repositoryId: REPOSITORY }, { path: "C:/x" }, { id: "T-1" }, { featureId: "feat-0123456789ab" }, { step: 1 }, { feature: "f" }, { state: "done" }, { columnId: "col-0123456789ab" }]) {
+    reason(await update(port, "T-1", { text: "x", ...extra }), 400, "invalid");
+  }
+  // No field to change, and a field outside the store's bounds.
+  for (const fields of [{}, { text: "" }, { text: "   " }, { text: "y".repeat(4001) }, { text: "bell \u0007" }, { text: 7 }, { text: null },
+    { run: {} }, { run: null }, { run: "claude" }, { run: { provider: "other" } }, { run: { provider: null } }, { run: { model: "../x" } }, { run: { effort: "max" } },
+    { run: { remoteControl: true } }, { run: { keepWorktree: true } }, { run: { effort: "low", cwd: "." } },
+    { completeWhen: {} }, { completeWhen: null }, { completeWhen: { checks: ["other"] } }, { completeWhen: { checks: null } }, { completeWhen: { checks: ["pr_open", "pr_open"] } },
+    { completeWhen: { own: "z".repeat(501) } }, { completeWhen: { own: 7 } }, { completeWhen: { own: "c", always: true } }]) {
+    reason(await update(port, "T-1", fields), 400, "invalid");
+  }
+  for (const taskId of ["1", "T-0", "T-01", "t-1", "T-1 ", "T-1234567890", "", null, 1, ["T-1"]]) reason(await update(port, taskId), 400, "invalid");
+  for (const sessionRef of ["", "mine", "claude:", "claude:a b", null]) reason(await update(port, "T-1", { text: "x" }, sessionRef), 400, "invalid");
+  reason(await send(port, { path: UPDATE, body: JSON.stringify({ taskId: "T-1", text: "x" }) }), 400, "invalid");
+  reason(await send(port, { path: UPDATE, body: "{" }), 400, "invalid");
+  reason(await send(port, { path: `${UPDATE}?repositoryId=${REPOSITORY}`, body: JSON.stringify(body) }), 400, "invalid");
+  reason(await send(port, { path: UPDATE, headers: { ...headers, "content-type": "text/plain" }, body: JSON.stringify(body) }), 400, "invalid");
+  // Without the agent capability, or from a page, the call is refused before the store is read.
+  assert.equal((await send(port, { path: UPDATE, headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).status, 401);
+  assert.equal((await send(port, { path: UPDATE, headers: { ...headers, origin: "http://127.0.0.1" }, body: JSON.stringify(body) })).status, 401);
+  const wrong = await send(port, { method: "GET", path: UPDATE, headers: { "x-pomegr-agent-authorization": TOKEN } });
+  assert.equal(wrong.status, 405);
+  assert.equal(wrong.headers.allow, "POST");
+  const task = taskOf(store, "T-1");
+  assert.equal(task.text, SECRET_TEXT);
+  assert.deepEqual(task.run, { provider: "claude", model: null, effort: "high", remoteControl: false });
+  // A model needs a provider, as in the task forms.
+  createTask(store, REPOSITORY, { text: "no run" });
+  reason(await update(port, "T-2", { run: { model: "opus" } }), 400, "invalid");
+});
+
+test("update answers unavailable when the store or the session lookup cannot be used", async (context) => {
+  const { store } = await openTemporaryStore(context, "pomegr-agent-update-");
+  createTask(store, REPOSITORY, { text: SECRET_TEXT });
+  reason(await update((await start(context, null)).port, "T-1"), 503, "unavailable");
+  reason(await update((await start(context, store, { resolve: false })).port, "T-1"), 503, "unavailable");
+  const failing = await start(context, { ...store, apply() { throw new Error("SECRET-STORE-FAILURE"); } });
+  const response = await update(failing.port, "T-1");
+  reason(response, 503, "unavailable");
+  assert.doesNotMatch(response.text, /SECRET/u);
+  assert.equal(taskOf(store, "T-1").text, SECRET_TEXT);
+});
+
+test("the desktop route never accepts the agent update action, and the action takes no other key", async (context) => {
+  const { TASK_ACTIONS } = await import("../../../server/tasks/task-record.mjs");
+  const { TASK_ACTIONS: SERVED_ACTIONS } = await import("../../../server/serving/task-routes.mjs");
+  assert.equal(TASK_ACTIONS.includes("agent_update"), false);
+  assert.equal(SERVED_ACTIONS.includes("agent_update"), false);
+  const { store } = await openTemporaryStore(context, "pomegr-agent-update-");
+  createTask(store, REPOSITORY, { text: SECRET_TEXT });
+  for (const extra of [{ featureId: null }, { step: 1 }, { sessionId: "claude:mine" }, { force: true }]) {
+    assert.deepEqual(store.apply(REPOSITORY, "agent_update", { id: "T-1", text: "x", ...extra }), { ok: false, error: "invalid" });
+  }
+  assert.deepEqual(store.apply(REPOSITORY, "agent_update", { id: "T-1" }), { ok: false, error: "invalid" });
+  assert.deepEqual(store.apply(REPOSITORY, "agent_update", { id: "T-9", text: "x" }), { ok: false, error: "not_found" });
+  assert.equal(taskOf(store, "T-1").text, SECRET_TEXT);
 });

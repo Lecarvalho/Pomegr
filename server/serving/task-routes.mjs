@@ -517,13 +517,15 @@ const AGENT_REMOVE_BODY_LIMIT_BYTES = 1024;
 const AGENT_REMOVE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const AGENT_TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 
-function writeAgentRemoveResult(response, reason, { close = false } = {}) {
+// The answer of a write that carries nothing but its outcome: `ok`, or one fixed reason with its status.
+function writeAgentOutcome(statuses, response, reason, { close = false } = {}) {
   const ok = reason === null;
-  response.writeHead(ok ? 200 : AGENT_REMOVE_STATUS[reason], {
+  response.writeHead(ok ? 200 : statuses[reason], {
     ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
   });
   response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
 }
+const writeAgentRemoveResult = writeAgentOutcome.bind(null, AGENT_REMOVE_STATUS);
 
 // `POST /api/agent/v1/tasks/remove`: the bound session deletes a task it added itself.
 export async function serveAgentTaskRemoveRoute({ request, response, requestUrl, taskStore, resolveSession }) {
@@ -558,7 +560,51 @@ export async function serveAgentTaskRemoveRoute({ request, response, requestUrl,
   }
 }
 
-export const AGENT_FEATURE_GET_PATH = "/api/agent/v1/tasks/feature-get";
+export const AGENT_TASK_UPDATE_PATH = "/api/agent/v1/tasks/update";
+const AGENT_UPDATE_STATUS = Object.freeze({ invalid: 400, session_not_found: 404, repository_unavailable: 409, not_found: 404, unavailable: 503 });
+const AGENT_UPDATE_FIELDS = Object.freeze(["text", "run", "completeWhen"]);
+
+const writeAgentUpdateResult = writeAgentOutcome.bind(null, AGENT_UPDATE_STATUS);
+
+// `POST /api/agent/v1/tasks/update`: the bound session edits a task of its own board that has not started.
+// The answer is a fixed status; it never carries the task's text or any stored field.
+export async function serveAgentTaskUpdateRoute({ request, response, requestUrl, taskStore, resolveSession }) {
+  const read = await readAgentJson(request, requestUrl, TASK_PAYLOAD_LIMIT_BYTES);
+  if (read.failed) {
+    writeAgentUpdateResult(response, "invalid", { close: true });
+    return;
+  }
+  const { body } = read;
+  const valid = isPlainObject(body) && Object.keys(body).every((key) => key === "sessionRef" || key === "taskId" || AGENT_UPDATE_FIELDS.includes(key))
+    && typeof body.sessionRef === "string" && AGENT_SESSION_REF_PATTERN.test(body.sessionRef)
+    && typeof body.taskId === "string" && AGENT_TASK_ID_PATTERN.test(body.taskId)
+    && AGENT_UPDATE_FIELDS.some((key) => body[key] !== undefined)
+    && (body.text === undefined || typeof body.text === "string");
+  if (!valid) {
+    writeAgentUpdateResult(response, "invalid");
+    return;
+  }
+  try {
+    if (typeof taskStore?.apply !== "function" || typeof resolveSession !== "function") {
+      writeAgentUpdateResult(response, "unavailable");
+      return;
+    }
+    const { repositoryId, reason: boardReason } = agentBoardRepository(taskStore, resolveSession, body.sessionRef);
+    if (boardReason) {
+      writeAgentUpdateResult(response, boardReason);
+      return;
+    }
+    const payload = { id: body.taskId };
+    for (const key of AGENT_UPDATE_FIELDS) if (body[key] !== undefined) payload[key] = body[key];
+    const result = taskStore.apply(repositoryId, "agent_update", payload);
+    if (result?.ok === true) writeAgentUpdateResult(response, null);
+    else writeAgentUpdateResult(response, result?.error === "not_found" || result?.error === "invalid" ? result.error : "unavailable");
+  } catch {
+    writeAgentUpdateResult(response, "unavailable");
+  }
+}
+
+export const AGENT_FEATURE_GET_PATH ="/api/agent/v1/tasks/feature-get";
 export const AGENT_FEATURE_CREATE_PATH = "/api/agent/v1/tasks/feature-create";
 export const AGENT_FEATURE_UPDATE_PATH = "/api/agent/v1/tasks/feature-update";
 export const AGENT_FEATURE_DELETE_PATH = "/api/agent/v1/tasks/feature-delete";
@@ -657,13 +703,7 @@ export const AGENT_TASK_BIND_PATH = "/api/agent/v1/tasks/bind";
 const AGENT_BIND_BODY_LIMIT_BYTES = 1024;
 const AGENT_BIND_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 
-function writeAgentBindResult(response, reason, { close = false } = {}) {
-  const ok = reason === null;
-  response.writeHead(ok ? 200 : AGENT_BIND_STATUS[reason], {
-    ...JSON_HEADERS, "Cache-Control": "no-store", ...(close ? { Connection: "close" } : {}),
-  });
-  response.end(JSON.stringify(ok ? { schemaVersion: 1, ok: true } : { schemaVersion: 1, ok: false, reason }));
-}
+const writeAgentBindResult = writeAgentOutcome.bind(null, AGENT_BIND_STATUS);
 
 export async function serveAgentTaskBindRoute({ request, response, requestUrl, taskStore }) {
   const read = await readAgentJson(request, requestUrl, AGENT_BIND_BODY_LIMIT_BYTES);

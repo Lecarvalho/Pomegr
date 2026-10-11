@@ -13,7 +13,7 @@ const sessionTools = ["get_session_report", "list_session_agents", "get_agent_co
 const SESSION_REF = "claude:chat-session-1";
 const ENCODED_REF = "claude%3Achat-session-1";
 const WRITE_TOOLS = [
-  "add_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature", "get_feature",
+  "add_task", "update_task", "remove_task", "complete_task", "block_task", "create_feature", "update_feature", "delete_feature", "get_feature",
   "report_signal", "report_progress", "rename_session", "report_agent_signal", "report_session_signal", "report_task_signal",
 ];
 

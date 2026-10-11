@@ -415,13 +415,14 @@ clear it. A schedule never stops, pauses, or touches a running session.
 
 ## What agents report
 
-The plugin gives agents eight task tools. Each call is tied to the calling session by
+The plugin gives agents nine task tools. Each call is tied to the calling session by
 the coding tool, not by anything the model supplies. [MCP tools](mcp-tools.md) lists
 these tools with the plugin's reporting and query tools.
 
 | Tool | What it does |
 | --- | --- |
 | `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, with plugin 0.9.3 or later **Remote Control** (`remote_control`, for a Claude Code task only), and the exact name of an unfinished feature, which puts the task in a new last step. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
+| `update_task` | Changes a task on the board that has not started: its text, **Run on**, **Effort**, or **Complete when**. A value the agent sets replaces the stored one. It needs plugin 0.9.6 or later. See [Tasks an agent can change](#tasks-an-agent-can-change). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
@@ -437,7 +438,7 @@ a feature ask for your approval like the other task tools.
 
 `complete_task` and `block_task` act only on the task linked to the calling
 session. In Claude Code, the coding tool ties each call to its session; if Claude
-Code hooks are off or the hook times out, an agent's add, remove, complete, block, or feature call is
+Code hooks are off or the hook times out, an agent's add, update, remove, complete, block, or feature call is
 refused and nothing is added, removed, reported, read, or changed. When Claude Code asks you to approve such
 a call, you have up to ten minutes to do so; after that the call is refused and the
 agent can try again. Choose to always allow the tools a session should use without you so
@@ -457,6 +458,32 @@ stalls only once Pomegr sees that Codex no longer holds the session (Windows). A
 only through **Mark done and resume queue** or **Requeue task**. Pomegr keeps only
 each condition's pass or fail, the block reason, and the attention line, never command
 output or diffs.
+
+### Tasks an agent can change
+
+With plugin 0.9.6 or later, an agent can change a task that is already on the board,
+for example to add a finding to it. `update_task` works when all of these are true:
+
+- The task is on the board of the session's repository. It can be a task you made, a
+  task from a GitHub issue, or a task any session added.
+- The task has not started: it is **Not queued**, **Queued**, or **Scheduled**, and
+  no session is linked to it.
+- No start is in progress for it.
+
+The agent can change the task text, **Run on** (the provider and the model),
+**Effort**, and **Complete when**. A value the agent sets replaces the stored value. A
+value it leaves out stays as it is. The agent cannot move the task, queue it, start
+it, or change its feature, its images, or **Remote Control**.
+
+No tool gives a task's text to an agent. An agent that sets the text therefore
+replaces text it has not read. If the agent does not have the full text, give it the
+text you want to keep. A new text that leaves out an image keeps the image attached
+to the task.
+
+An agent can never change a task that started or finished, so a running session
+always matches the task it was started for. The agent gets the same answer for such
+a task as for a task that does not exist. Pomegr answers only that the task was
+changed or not, never with the task's content.
 
 ### Tasks an agent can remove
 
