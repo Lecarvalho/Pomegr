@@ -28,7 +28,7 @@ not whether the work succeeded.
 4. Read a row, then select its title to open the session. A list shows 25 rows
    per page; use **Previous** and **Next**.
 5. Read the **Task** column to see the task a session was started for: its ID,
-   and its feature. Select the ID to open that repository's task board.
+   and its feature and step. Select the ID to open that repository's task board.
    A dash means you started the session yourself. A chip appears only for an
    outcome the session cannot show: **Needs review**, **Stalled**, or **Done**.
    The column and feature details are shown in the desktop app and in a browser

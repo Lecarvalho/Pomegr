@@ -14,7 +14,7 @@ const TOKEN = "t".repeat(40);
 const SECRET_TEXT = "SECRET-TASK-TEXT-do-not-leak";
 const withToken = { "x-pomegr-desktop-authorization": TOKEN };
 const JSON_BODY = { "content-type": "application/json" };
-const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED_ACTIONS = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function realStore(context) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-route-"));
@@ -161,14 +161,13 @@ test("feature_create and feature placement travel through the route with the fix
   const [feature] = created.json.board.features;
   assert.deepEqual([feature.name, feature.done], ["Search", false]);
   const attached = await action("create", REPOSITORY_ID, { text: "in feature", featureId: feature.id }, { port });
-  assert.deepEqual(attached.json.board.tasks.map((task) => [task.featureId, Object.hasOwn(task, "step")]), [[feature.id, false]]);
-  assertFixedError(await action("create", REPOSITORY_ID, { text: "x", featureId: feature.id, step: 1 }, { port }), 400, "invalid");
+  assert.deepEqual(attached.json.board.tasks.map((task) => [task.featureId, task.step]), [[feature.id, 1]]);
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port }), 409, "conflict");
   assertFixedError(await action("feature_create", REPOSITORY_ID, { name: "" }, { port }), 400, "invalid");
   assertFixedError(await action("create", REPOSITORY_ID, { text: "x", featureId: `feat-${"0".repeat(12)}` }, { port }), 404, "not_found");
 });
 
-test("queue_add and queue_remove travel through the route with the fixed statuses", async (context) => {
+test("queue_add, queue_reorder, and queue_remove travel through the route with the fixed statuses", async (context) => {
   const store = await realStore(context);
   const { port, touched } = await startRoute(context, { taskStore: store });
   const feature = (await action("feature_create", REPOSITORY_ID, { name: "Search" }, { port })).json.board.features[0];
@@ -179,8 +178,12 @@ test("queue_add and queue_remove travel through the route with the fixed statuse
   assert.equal(added.status, 200);
   assert.deepEqual(added.json.board.queue, { status: "idle", blockedBy: null, pauseReason: null, order: ["T-3"] });
   assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-2" }, { port })).json.board.queue.order, ["T-2", "T-3"]);
-  // A card queued later lands after the cards of its feature that already wait.
-  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-2", "T-1", "T-3"]);
+  assert.deepEqual((await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port })).json.board.queue.order, ["T-1", "T-2", "T-3"]);
+  const reordered = await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port });
+  assert.equal(reordered.status, 200);
+  assert.deepEqual(reordered.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 1], ["T-3", null]]);
+  const separated = await action("queue_reorder", REPOSITORY_ID, { id: "T-2", step: 2 }, { port });
+  assert.deepEqual(separated.json.board.tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
   const removed = await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port });
   assert.equal(removed.status, 200);
   assert.deepEqual(removed.json.board.queue.order, ["T-1", "T-3"]);
@@ -188,8 +191,8 @@ test("queue_add and queue_remove travel through the route with the fixed statuse
   assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-1" }, { port }), 409, "conflict");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-2" }, { port }), 409, "conflict");
   assertFixedError(await action("queue_add", REPOSITORY_ID, { id: "T-9" }, { port }), 404, "not_found");
-  // queue_reorder is gone: the route refuses its name like any unknown action.
-  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 2 }, { port }), 404, "invalid");
+  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-1", step: 0 }, { port }), 400, "invalid");
+  assertFixedError(await action("queue_reorder", REPOSITORY_ID, { id: "T-3", step: 1 }, { port }), 409, "conflict");
   assertFixedError(await action("queue_remove", REPOSITORY_ID, { id: "T-1", text: SECRET_TEXT }, { port }), 400, "invalid");
   assert.deepEqual(touched, ["resolveTaskGateFacts"]);
 });

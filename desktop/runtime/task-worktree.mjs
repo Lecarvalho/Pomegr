@@ -2,7 +2,7 @@ import { execFile as execFileChild } from "node:child_process";
 import { mkdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-// Git worktrees for tasks started in a separate worktree, inside the repository: `<repository root>/.pomegr/worktrees/<task id>`. Paths stay in desktop main.
+// Git worktrees for parallel tasks inside the repository: `<repository root>/.pomegr/worktrees/<task id>`. Paths stay in desktop main.
 // Nothing here discards work: a worktree is removed only when clean and its HEAD holds no commit that exists nowhere else.
 
 export const TASK_WORKTREE_REPOSITORY_PATH = Object.freeze([".pomegr", "worktrees"]);

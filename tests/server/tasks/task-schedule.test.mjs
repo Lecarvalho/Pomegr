@@ -47,9 +47,9 @@ test("a queue starts nothing before its start time or from its stop time on", ()
 
 test("a scheduled task is in the order only once it is due, and one that is not due lets the tasks behind it start", () => {
   const tasks = [
-    { id: "T-1", featureId: null, state: "scheduled", queuePosition: 0, due: false },
-    { id: "T-2", featureId: null, state: "queued", queuePosition: 1 },
-    { id: "T-3", featureId: null, state: "scheduled", queuePosition: 2, due: true },
+    { id: "T-1", featureId: null, step: null, state: "scheduled", queuePosition: 0, due: false },
+    { id: "T-2", featureId: null, step: null, state: "queued", queuePosition: 1 },
+    { id: "T-3", featureId: null, step: null, state: "scheduled", queuePosition: 2, due: true },
   ];
   assert.deepEqual(orderQueue(tasks, []).order, ["T-2", "T-3"]);
   assert.deepEqual(nextQueueStart({ status: "running", tasks, features: [] }), { starts: ["T-2"] });
@@ -58,21 +58,17 @@ test("a scheduled task is in the order only once it is due, and one that is not 
   assert.deepEqual(nextQueueStart({ status: "running", tasks: due, features: [] }), { starts: ["T-1"] });
 });
 
-test("a scheduled task that is not due keeps the cards below it in its feature waiting: they start once it is done or due", () => {
+test("a scheduled task that is not due keeps its feature step open: the rest of the step starts, the next step waits", () => {
   const features = [{ id: "f" }];
   const tasks = [
-    { id: "T-1", featureId: "f", state: "scheduled", queuePosition: 0, due: false },
-    { id: "T-2", featureId: "f", state: "queued", queuePosition: 1 },
-    { id: "T-3", featureId: "f", state: "queued", queuePosition: 2 },
+    { id: "T-1", featureId: "f", step: 1, state: "scheduled", queuePosition: 0, due: false },
+    { id: "T-2", featureId: "f", step: 1, state: "queued", queuePosition: 1 },
+    { id: "T-3", featureId: "f", step: 2, state: "queued", queuePosition: 2 },
   ];
-  assert.deepEqual(orderQueue(tasks, features).order, ["T-2", "T-3"]);
-  assert.equal(nextQueueStart({ status: "running", tasks, features }), null, "T-2 waits on T-1, which waits for its time");
-  // The feature comes first in the order, so a single task behind it waits too.
-  const single = [...tasks, { id: "T-4", featureId: null, state: "queued", queuePosition: 3 }];
-  assert.equal(nextQueueStart({ status: "running", tasks: single, features }), null);
-  const settled = tasks.map((task) => (task.id === "T-1" ? { ...task, state: "done" } : task));
-  assert.deepEqual(nextQueueStart({ status: "running", tasks: settled, features }), { starts: ["T-2"] });
-  const due = tasks.map((task) => (task.id === "T-1" ? { ...task, due: true } : task));
+  assert.deepEqual(nextQueueStart({ status: "running", tasks, features }), { starts: ["T-2"] });
+  const later = tasks.map((task) => (task.id === "T-2" ? { ...task, state: "done" } : task));
+  assert.equal(nextQueueStart({ status: "running", tasks: later, features }), null, "step 1 is not done while T-1 waits for its time");
+  const due = later.map((task) => (task.id === "T-1" ? { ...task, due: true } : task));
   assert.deepEqual(nextQueueStart({ status: "running", tasks: due, features }), { starts: ["T-1"] });
 });
 

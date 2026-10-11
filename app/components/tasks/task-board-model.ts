@@ -21,11 +21,11 @@ export function leavesReady(board: BoardShape, move: Pick<TaskMove, "id" | "colu
 
 function settledReady(cards: Task[], features: TaskBoard["features"]) {
   const featureOrder = new Map(features.map((feature, index) => [feature.id, index]));
-  const placed = (task: Task) => task.featureId !== null && featureOrder.has(task.featureId);
+  const placed = (task: Task) => task.featureId !== null && task.step !== null && featureOrder.has(task.featureId);
   const waiting = cards.filter(waitsInQueue);
-  // The sort is stable: the waiting cards of one feature keep the order of their cards.
   const inOrder = [
-    ...waiting.filter(placed).sort((left, right) => (featureOrder.get(left.featureId ?? "") ?? 0) - (featureOrder.get(right.featureId ?? "") ?? 0)),
+    ...waiting.filter(placed).sort((left, right) => (featureOrder.get(left.featureId ?? "") ?? 0) - (featureOrder.get(right.featureId ?? "") ?? 0)
+      || (left.step ?? 0) - (right.step ?? 0) || Number(left.id.slice(2)) - Number(right.id.slice(2))),
     ...waiting.filter((task) => !placed(task)),
   ];
   let next = 0;

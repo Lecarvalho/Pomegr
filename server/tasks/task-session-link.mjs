@@ -8,7 +8,7 @@ export const FEATURE_LINK_MAX = 2000;
 // The states a session's own state cannot show.
 const OUTCOME_STATES = new Set(["needs_review", "stalled", "blocked", "done"]);
 
-const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state,
+const REFERENCE = `SELECT t.repository_id AS repositoryId, t.number AS number, t.state AS state, t.step AS step,
   t.feature_id AS featureId, f.name AS featureName
   FROM tasks t LEFT JOIN features f ON f.id = t.feature_id WHERE t.session_id = ?`;
 
@@ -19,12 +19,14 @@ function reference(database, row) {
   if (id === undefined) return null;
   const feature = row.featureId === null ? null : safeName(row.featureName);
   // A feature whose stored name does not validate is served as no feature, never as raw text.
+  const attached = feature !== null && Number.isSafeInteger(row.step) && row.step >= 1;
   return {
     id,
     repositoryId: row.repositoryId,
     state: OUTCOME_STATES.has(row.state) ? row.state : null,
-    featureId: feature === null ? null : row.featureId,
-    feature,
+    featureId: attached ? row.featureId : null,
+    feature: attached ? feature : null,
+    step: attached ? row.step : null,
     issue: readTaskSource(database, row.repositoryId, row.number),
   };
 }

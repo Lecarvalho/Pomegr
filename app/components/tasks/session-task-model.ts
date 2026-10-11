@@ -1,7 +1,7 @@
 import type { SessionTaskReference } from "../../../shared/session-catalog-contract";
 import type { Task, TaskBoard, TaskCheck, TaskFeature, TaskRun } from "../../../shared/task-contract";
 import { CHECK_LABELS, EFFORT_LABELS, PROVIDER_LABELS, REMOTE_CONTROL_LABEL, observedModelDiffers } from "./task-fields";
-import { featureCounts, featureSteps } from "./task-features";
+import { highestStep, featureCounts } from "./task-features";
 import { taskStateLabels } from "./task-presentation";
 
 // Pure rules for the session view's task surfaces (the header meta, the Overview summary and the Task tab).
@@ -20,36 +20,46 @@ export type SessionTaskFull = {
   task: Task;
   feature: TaskFeature | null;
   progress: { done: number; total: number } | null;
+  sameStep: Task[];
   nextStep: Task[];
   queue: { blocked: boolean; by: string | null };
 };
 
-/** The task's place among its feature's tasks, read from the order of their cards. */
-export type SessionTaskStep = { step: number; total: number };
+export type SessionTaskModel = { stepTotal: number | null } & ({ kind: "reduced"; reason: ReducedReason; note: string | null } | SessionTaskFull);
 
-export type SessionTaskModel = { step: SessionTaskStep | null } & ({ kind: "reduced"; reason: ReducedReason; note: string | null } | SessionTaskFull);
+function idNumber(id: string) {
+  return Number(id.slice(2));
+}
+const byTaskNumber = (left: Task, right: Task) => idNumber(left.id) - idNumber(right.id);
 
-export function stepLabel(step: SessionTaskStep): string {
-  return `step ${step.step} of ${step.total}`;
+export function stepTotal(board: Pick<TaskBoard, "readiness" | "tasks">, featureId: string | null): number | null {
+  if (featureId === null || board.readiness !== "ready") return null;
+  return highestStep(board.tasks, featureId) || null;
+}
+
+export function stepLabel(step: number, total: number | null): string {
+  return total === null ? `step ${step}` : `step ${step} of ${Math.max(step, total)}`;
 }
 
 export function sessionTaskModel(board: TaskBoard, reference: SessionTaskReference): SessionTaskModel {
+  const total = stepTotal(board, reference.featureId);
   if (board.readiness !== "ready") {
     const reason: ReducedReason = board.readiness;
-    return { step: null, kind: "reduced", reason, note: REDUCED_NOTES[reason] };
+    return { stepTotal: total, kind: "reduced", reason, note: REDUCED_NOTES[reason] };
   }
   const task = board.tasks.find((entry) => entry.id === reference.id);
-  if (!task) return { step: null, kind: "reduced", reason: "missing", note: REDUCED_NOTES.missing };
+  if (!task) return { stepTotal: total, kind: "reduced", reason: "missing", note: REDUCED_NOTES.missing };
   const featureId = task.featureId;
-  const steps = featureId === null ? [] : featureSteps(board, featureId);
-  const at = steps.findIndex((entry) => entry.id === task.id);
+  const inFeature = featureId === null ? [] : board.tasks.filter((entry) => entry.featureId === featureId);
+  const step = task.step;
   return {
-    step: at < 0 ? null : { step: at + 1, total: steps.length },
+    stepTotal: total,
     kind: "full",
     task,
     feature: featureId === null ? null : board.features.find((entry) => entry.id === featureId) ?? null,
     progress: featureId === null ? null : featureCounts(board, featureId),
-    nextStep: at < 0 ? [] : steps.slice(at + 1, at + 2),
+    sameStep: step === null ? [] : inFeature.filter((entry) => entry.step === step && entry.id !== task.id).sort(byTaskNumber),
+    nextStep: step === null ? [] : inFeature.filter((entry) => entry.step === step + 1).sort(byTaskNumber),
     queue: { blocked: board.queue.status === "blocked", by: board.queue.blockedBy },
   };
 }

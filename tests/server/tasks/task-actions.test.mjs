@@ -10,7 +10,7 @@ import { openTaskStore } from "../../../server/tasks/task-store.mjs";
 
 const REPOSITORY = `repo-${"a1".repeat(12)}`;
 const OTHER_REPOSITORY = `repo-${"b2".repeat(12)}`;
-const IMPLEMENTED = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_settings", "resolve_done", "resolve_requeue"];
+const IMPLEMENTED = ["create", "update", "delete", "move", "feature_create", "queue_add", "queue_remove", "queue_reorder", "queue_settings", "resolve_done", "resolve_requeue"];
 
 async function temporaryDirectory(t) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-actions-"));
@@ -62,8 +62,7 @@ const taskCount = (databasePath) => withRawDatabase(databasePath, (database) => 
 
 test("the route's mirrored action list equals the record module's fixed list", () => {
   assert.deepEqual([...ROUTE_ACTIONS], [...TASK_ACTIONS]);
-  assert.equal(TASK_ACTIONS.length, 10);
-  assert.equal(TASK_ACTIONS.includes("queue_reorder"), false);
+  assert.equal(TASK_ACTIONS.length, 11);
 });
 
 test("create lands as the last card of the first column with the next ID and every other field at its default", async (t) => {
@@ -80,8 +79,7 @@ test("create lands as the last card of the first column with the next ID and eve
   assert.equal(task.columnId, backlog.id);
   assert.equal(task.position, 0);
   assert.equal(task.state, "not_queued");
-  assert.deepEqual([task.featureId, task.scheduledAt, task.session, task.report], [null, null, null, null]);
-  assert.equal(Object.hasOwn(task, "step"), false);
+  assert.deepEqual([task.featureId, task.step, task.scheduledAt, task.session, task.report], [null, null, null, null, null]);
   assert.deepEqual(task.run, { provider: null, model: null, effort: null, remoteControl: false });
   assert.deepEqual(task.completeWhen, { checks: [], own: null });
   assert.equal(task.createdAt, task.updatedAt);
@@ -343,7 +341,7 @@ test("every listed action has a handler and a name outside the list answers unsu
   const store = openStore(temp);
   const before = store.readBoard(REPOSITORY);
   assert.deepEqual(TASK_ACTIONS.filter((name) => !IMPLEMENTED.includes(name)), []);
-  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "queue_reorder", "start-plan", "queue-next", "queue-pause", "__proto__"]) {
+  for (const action of ["unknown_action", "column_create", "column_rename", "column_reorder", "column_delete", "column_role", "start-plan", "queue-next", "queue-pause", "__proto__"]) {
     assert.deepEqual(store.apply(REPOSITORY, action, { id: "T-1", text: "x" }), { ok: false, error: "unsupported" }, action);
   }
   assert.deepEqual(store.readBoard(REPOSITORY), before);

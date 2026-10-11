@@ -28,7 +28,7 @@ export function TaskFieldsSection() {
   const [unset, setUnset] = useState<TaskRun>(EMPTY_RUN);
   const [fresh, setFresh] = useState<CompleteWhenDraft>(DEFAULT_COMPLETE_WHEN);
   const [startAt, setStartAt] = useState("02:00");
-  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "" });
+  const [placed, setPlaced] = useState<FeatureDraft>({ featureId: SAMPLE_FEATURE_ID, creating: false, name: "", step: 2 });
   const [created, setCreated] = useState<FeatureDraft>({ ...NO_FEATURE_DRAFT, creating: true, name: "Retry telemetry" });
   const modalTitleId = useId();
   const [modalText, setModalText] = useState("");
@@ -61,7 +61,7 @@ export function TaskFieldsSection() {
       <Sample label="Complete when, reported" note="With an agent report, each checked condition shows Passed or Not passed in one list.">
         <CompleteWhenField draft={reported} results={RESULTS} ownNote="Agent-reported" onDraftChange={setReported} />
       </Sample>
-      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. The folded In this feature list counts the feature's tasks and opens on demand.">
+      <Sample label="Feature" note="Feature lists unfinished features, No feature and New feature…. A task that joins a feature takes a new last step; the Queue view changes it. The folded In this feature list counts the feature's tasks and opens on demand.">
         <FeatureFields draft={placed} board={BOARD_RUNNING} onChange={setPlaced} />
       </Sample>
       <Sample label="Feature, in the Task modal" note="Given the open task, its siblings lead with their step number and the task itself is left out of the list.">

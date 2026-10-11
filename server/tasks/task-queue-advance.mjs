@@ -54,13 +54,10 @@ function gateFacts(resolveGateFacts, repositoryId) {
 
 const startProvider = (task) => task.run.provider ?? "claude";
 
-// The board's tasks as the queue rule reads them: a card's place, and whether a session is linked.
-const gateRecords = (board) => board.tasks.map((task) => ({ id: task.id, featureId: task.featureId, state: task.state, queuePosition: task.position, linked: task.session !== null }));
-
 export function startGates({ database, repositoryId, board, taskId, resolveGateFacts, at, manual = false }) {
   const task = board.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return { ok: false, reasons: [] };
-  const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : previousStepBlocker(taskId, gateRecords(board)) },
+  const gates = evaluateGates({ provider: startProvider(task), blockedBy: manual ? null : previousStepBlocker(taskId, board.tasks, board.features) },
     gateFacts(resolveGateFacts, repositoryId), { threshold: readGateThreshold(database, repositoryId) });
   const early = task.state === "scheduled" && task.scheduledAt !== null && !taskIsDue(Date.parse(task.scheduledAt), at);
   return early ? { ok: false, reasons: gates.reasons, early: true } : gates;
@@ -69,7 +66,7 @@ export function startGates({ database, repositoryId, board, taskId, resolveGateF
 export function fillQueueGates({ database, board, resolveGateFacts, at }) {
   if (board?.readiness !== "ready" || typeof resolveGateFacts !== "function") return board;
   const task = board.tasks.find((candidate) => candidate.id === board.queue.order[0]);
-  const next = task ? { taskId: task.id, provider: startProvider(task), blockedBy: previousStepBlocker(task.id, gateRecords(board)) } : null;
+  const next = task ? { taskId: task.id, provider: startProvider(task), blockedBy: previousStepBlocker(task.id, board.tasks, board.features) } : null;
   const gates = queueGates(next, gateFacts(resolveGateFacts, board.repositoryId), { threshold: readGateThreshold(database, board.repositoryId) });
   const hold = gates.next ? queueWindowHold(readQueueSchedule(database, board.repositoryId), at) : null;
   if (hold) gates.next = { ...gates.next, reasons: [...gates.next.reasons, hold] };
@@ -159,6 +156,7 @@ function queueRecord(row, at) {
   return {
     id: taskIdFromNumber(Number(row.number)),
     featureId: row.feature_id ?? null,
+    step: row.step ?? null,
     state: row.state,
     queuePosition: row.position ?? null,
     due: row.state === "scheduled" && taskIsDue(row.scheduled_at ?? null, at),

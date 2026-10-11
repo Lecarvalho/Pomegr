@@ -423,7 +423,7 @@ describe("Pomegr visual contract", () => {
     expect(fields).toMatch(/placeholder="What should the session do\?"/);
     expect(fields).toMatch(/aria-label="Own condition"[^>]*placeholder="Own condition, judged by the agent \(optional\)"/);
     expect(fields).not.toMatch(/Use your own condition/);
-    expect(featureFields).not.toMatch(/>Step<\/label>/);
+    expect(featureFields).not.toMatch(/>Step<|aria-label="Step"/);
     expect(fields + featureFields).not.toMatch(/<select/);
     // DESIGN.md and the design-system sample document the frame and the fields.
     expect(designContract).toMatch(/\*\*Task modal frame\.\*\* `TaskModalFrame`[^]*native modal `<dialog>`[^]*`--color-text` mixed to 40%/);

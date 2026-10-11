@@ -17,6 +17,7 @@ export function SessionTaskCell({ task, omitFeature = false }: { task: SessionTa
   if (!task) return <span title="Not started from a task">—</span>;
   const chip = sessionTaskChip(task.state);
   const href = sessionTaskHref(task);
+  const placed = task.feature !== null && task.step !== null;
   const issue = validIssueNumber(task.issue);
   return <div className="commandSessionTask">
     <span className="commandSessionTaskHead">
@@ -27,7 +28,7 @@ export function SessionTaskCell({ task, omitFeature = false }: { task: SessionTa
       </span>}
       {chip && <span className={`commandChip ${chip.tone}`}>{chip.label}</span>}
     </span>
-    {task.feature !== null && !omitFeature && <span className="commandSessionTaskFeature">{task.feature}</span>}
+    {placed && <span className="commandSessionTaskFeature">{omitFeature ? `Step ${task.step}` : `${task.feature} · step ${task.step}`}</span>}
   </div>;
 }
 

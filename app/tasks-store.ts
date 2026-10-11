@@ -73,7 +73,7 @@ function validTask(value: unknown): value is Task {
   const checks = listOf(completeWhen.checks, CHECKS.size, (entry): entry is TaskCheck => CHECKS.has(entry as TaskCheck));
   return typeof task.id === "string" && /^T-[1-9]\d*$/u.test(task.id)
     && text(task.text, LIMITS.text) && text(task.columnId, LIMITS.label) && count(task.position, 0)
-    && (task.featureId === null || text(task.featureId, LIMITS.label))
+    && (task.featureId === null || text(task.featureId, LIMITS.label)) && (task.step === null || count(task.step, 1))
     && (run.provider === null || PROVIDERS.has(run.provider as string)) && nullableText(run.model, LIMITS.model)
     && (run.effort === null || EFFORTS.has(run.effort as string))
     && (run.remoteControl === undefined || typeof run.remoteControl === "boolean")

@@ -105,7 +105,7 @@ test("the planned token links the session, clears the digest, and moves the card
   const columns = env.store.readBoard(REPOSITORY_ID).columns;
   assert.equal(columns.find((column) => column.id === before.columnId).role, null);
   assert.equal(columns.find((column) => column.id === after.columnId).role, "in_progress");
-  for (const key of ["id", "text", "featureId", "run", "completeWhen", "state", "scheduledAt", "report", "createdAt"]) {
+  for (const key of ["id", "text", "featureId", "step", "run", "completeWhen", "state", "scheduledAt", "report", "createdAt"]) {
     assert.deepEqual(after[key], before[key], key);
   }
   assert.ok(Date.parse(after.updatedAt) >= Date.parse(before.updatedAt));

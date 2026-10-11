@@ -79,27 +79,24 @@ test("a resolver that throws or answers junk reads every gate unknown and never 
   }
 });
 
-// T-1 waits for a time that has not come, and T-2 is queued below it in the same feature.
-function featureWithScheduledFirst(store, clock) {
+test("the next task names the earlier step it waits on", async (context) => {
+  const { store } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
-  createTask(store, REPOSITORY, { featureId: feature });
-  createTask(store, REPOSITORY, { featureId: feature });
-  assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-1", at: new Date(clock.now + 3_600_000).toISOString() }).ok, true);
+  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
+  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
   queueTask(store, "T-2");
-}
-
-test("the next task names the task before it in its feature that it waits on", async (context) => {
-  const { store, clock } = await openTemporaryStore(context);
-  featureWithScheduledFirst(store, clock);
   assert.deepEqual(store.readBoard(REPOSITORY, { resolveGateFacts: passingGates }).queue.gates.next,
     { taskId: "T-2", provider: "claude", blockedBy: "T-1", reasons: ["previous_step"] });
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
 });
 
-test("a manual start is not held by the task before it, which holds only the queue", async (context) => {
-  const { store, clock } = await openTemporaryStore(context);
-  featureWithScheduledFirst(store, clock);
+test("a manual start is not held by step order, which holds only the queue", async (context) => {
+  const { store } = await openTemporaryStore(context);
+  const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
+  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
+  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
+  queueTask(store, "T-2");
   assert.equal(queueSettings(store, true).ok, true);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   // The other gates still hold a start made by hand.

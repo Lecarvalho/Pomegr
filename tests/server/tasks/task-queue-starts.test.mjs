@@ -41,7 +41,7 @@ test("a queue that is idle, blocked, or paused answers nothing", async (context)
   }
 });
 
-test("one task at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
+test("one step at a time: a live start or a linked session without an outcome holds the queue", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
   runningRepository(store, REPOSITORY, 2);
   startedTask(directory, 1, { mintedAt: START_TIME - MINUTE });
@@ -112,7 +112,7 @@ test("a start that is not the first queued task does not pause the queue", async
   assert.equal(queueRow(directory).queue_status, "running");
 });
 
-test("the queue waits for the task before it in its feature and never skips ahead", async (context) => {
+test("the queue waits for earlier feature steps and never skips ahead", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
@@ -123,10 +123,8 @@ test("the queue waits for the task before it in its feature and never skips ahea
   queueTask(store, "T-2");
   queueTask(store, "T-3");
   queueSettings(store, true);
-  // T-1 was never queued and has not started, so it does not hold T-2.
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
-  // A stalled T-1 started and is not settled: T-2 waits, and T-3 does not jump the line.
-  updateTask(directory, 1, { state: "stalled" });
+  // T-1 is in step 1 and was never queued, so step 1 is not done: T-2 waits, and T-3 does not jump the line.
+  assert.deepEqual(store.readBoard(REPOSITORY).tasks.map((task) => [task.id, task.step]), [["T-1", 1], ["T-2", 2], ["T-3", null]]);
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   updateTask(directory, 1, { state: "done" });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
@@ -228,57 +226,50 @@ test("the queue methods answer a fixed unavailable error once the store is close
   assert.deepEqual(store.apply(REPOSITORY, "queue_settings", { on: true }), { ok: false, error: "conflict" });
 });
 
-/** A running queue over one feature with `count` queued tasks, T-1 first. */
-function runningFeature(store, count) {
+/** A running queue over one feature: `steps` lists the step of each task, T-1 first. */
+function runningFeature(store, steps) {
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Search" });
   assert.equal(feature.ok, true);
   const featureId = feature.board.features[0].id;
-  for (let index = 1; index <= count; index += 1) {
-    createTask(store, REPOSITORY, { featureId });
-    queueTask(store, `T-${index}`);
-  }
+  steps.forEach((step, index) => {
+    createTask(store, REPOSITORY, { featureId, step });
+    queueTask(store, `T-${index + 1}`);
+  });
   assert.equal(queueSettings(store, true).ok, true);
 }
 
-test("the tasks of a feature start one at a time, each after the one before it is done", async (context) => {
+test("the queued tasks of one step are answered together, and the next step waits for all of them", async (context) => {
   const { store, clock, directory } = await openTemporaryStore(context);
-  runningFeature(store, 3);
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
-  // T-1 started: nothing else starts beside it, and the next one waits.
+  runningFeature(store, [1, 1, 2]);
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1"), start("T-2")] });
+  // T-1 started; T-2 has not yet: it is still answered, alone.
   startedTask(directory, 1, { mintedAt: clock.now });
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
-  startedTask(directory, 1, { session: SESSION });
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "the task is in flight");
-  updateTask(directory, 1, { state: "done", queue_position: null });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-2")] });
+  startedTask(directory, 1, { session: SESSION });
+  startedTask(directory, 2, { session: "claude:second-session" });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] }, "the step is in flight");
+  // One task done is not the step done.
+  updateTask(directory, 1, { state: "done", queue_position: null });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [] });
   updateTask(directory, 2, { state: "done", queue_position: null });
   assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
 });
 
-test("the order of the cards in Ready decides which task of a feature starts first", async (context) => {
+test("each task of a step is judged by the gates on its own", async (context) => {
   const { store } = await openTemporaryStore(context);
-  runningFeature(store, 3);
-  const ready = store.readBoard(REPOSITORY).columns.find((column) => column.name === "Ready");
-  assert.equal(store.apply(REPOSITORY, "move", { id: "T-3", columnId: ready.id, position: 0 }).ok, true);
-  const board = store.readBoard(REPOSITORY, { resolveGateFacts: passingGates });
-  assert.deepEqual(board.queue.order, ["T-3", "T-1", "T-2"]);
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-3")] });
-});
-
-test("a running feature task whose gates hold keeps the queue waiting instead of starting the next task", async (context) => {
-  const { store } = await openTemporaryStore(context);
-  runningFeature(store, 2);
+  runningFeature(store, [1, 1]);
   assert.equal(store.apply(REPOSITORY, "update", { id: "T-1", run: { provider: "codex", model: null, effort: null } }).ok, true);
   const codexOver = () => ({ ...passingGates(), usage: { ...passingGates().usage, codex: { fiveHourPercent: 99, sevenDayPercent: 10 } } });
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [] });
+  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: codexOver }), { ok: true, starts: [start("T-2")] });
   assert.equal(store.readBoard(REPOSITORY).queue.status, "running");
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
 });
 
-test("a queue answers one start, however many tasks of a feature are queued", async (context) => {
+test("the starts of one step stop at the sixteen-start limit", async (context) => {
   const { store } = await openTemporaryStore(context);
-  runningFeature(store, TASK_QUEUE_START_LIMIT + 2);
-  assert.deepEqual(store.nextQueueStarts({ resolveGateFacts: passingGates }), { ok: true, starts: [start("T-1")] });
+  runningFeature(store, Array.from({ length: TASK_QUEUE_START_LIMIT + 2 }, () => 1));
+  const answer = store.nextQueueStarts({ resolveGateFacts: passingGates });
+  assert.equal(answer.starts.length, TASK_QUEUE_START_LIMIT);
+  assert.deepEqual(answer.starts[TASK_QUEUE_START_LIMIT - 1], start(`T-${TASK_QUEUE_START_LIMIT}`));
 });
 
 test("a started task is not in queue.order and is never the next task, whether its session is linked or its dispatch is live", async (context) => {
@@ -295,11 +286,11 @@ test("a started task is not in queue.order and is never the next task, whether i
   assert.deepEqual(store.readBoard(REPOSITORY).queue.order, ["T-2", "T-3", "T-4"]);
 });
 
-test("with a feature task in flight no other task is next, and a waiting card above it names it as its blocker", async (context) => {
+test("with a step in flight the next task is the first of a later step and names the in-flight task as its blocker", async (context) => {
   const { store, directory } = await openTemporaryStore(context);
   const feature = store.apply(REPOSITORY, "feature_create", { name: "Feature" }).board.features[0].id;
-  createTask(store, REPOSITORY, { featureId: feature });
-  createTask(store, REPOSITORY, { featureId: feature });
+  createTask(store, REPOSITORY, { featureId: feature, step: 1 });
+  createTask(store, REPOSITORY, { featureId: feature, step: 2 });
   queueTask(store, "T-1");
   queueTask(store, "T-2");
   startedTask(directory, 1, { session: SESSION });
