@@ -157,11 +157,20 @@ type TaskBoard = {
   always lands in the first column.
 - The New task modal, for a written task and for a promoted issue, opens with the `run`
   and `completeWhen` of the newest task on the board, the one with the highest ID, and
-  with no feature. An empty board gives no `run` and the checks Pull request open and
-  Working tree clean. This is read from the board the client already holds: nothing is
-  kept in browser storage, and an `add_task` task counts as the newest like any other.
-- `run` sets only the main agent of the started session, and every part of it is
-  optional: a provider with a model or its "Default model", and an effort. `model` is
+  with no feature. An empty board gives the default `run` (Claude Code, its Default
+  model, effort `medium`) and the checks Pull request open and Working tree clean. This
+  is read from the board the client already holds: nothing is kept in browser storage,
+  and an `add_task` task counts as the newest like any other.
+- Run on and Effort are required in the task forms. A new task opens with both chosen:
+  the form fills a provider or an effort that the newest task lacks from the default
+  `run`. Run on offers no "Not set", and pressing the chosen effort keeps it, so neither
+  can be cleared. The New task and promote forms therefore always send a `run` with a
+  provider and an effort. Only the forms require them: the monitor still accepts a `run`
+  with a part missing, because an `add_task` task and a task stored before this rule may
+  have none. The Task form shows such a task as stored, with "Not set" in Run on or no
+  pressed effort, until the user chooses one; after that it cannot go back.
+- `run` sets only the main agent of the started session, and the monitor treats every
+  part of it as optional: a provider with a model or its "Default model", and an effort. `model` is
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at
   most 120 identifier characters, never a path, markup, or prose. A card shows the
   planned provider and model beside the observed model; the observed model is

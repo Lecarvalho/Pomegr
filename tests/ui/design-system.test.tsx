@@ -114,17 +114,19 @@ describe("Design-system reference page", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("renders the Task fields samples from static data: grouped Run on, optional Effort and Complete when", async () => {
+  it("renders the Task fields samples from static data: grouped Run on, required Effort and Complete when", async () => {
     const user = userEvent.setup();
     render(<DesignSystemView />);
     const section = screen.getByRole("heading", { level: 2, name: "Task fields" }).closest("section") as HTMLElement;
     const selects = within(section).getAllByRole("combobox", { name: "Run on" });
     expect(selects[0]).toHaveTextContent("Claude Code · model-large");
+    // Only the sample of a task stored with nothing chosen shows Not set.
     expect(selects[1]).toHaveTextContent("Not set");
+    expect(selects[2]).toHaveTextContent("Claude Code · Default model");
     const efforts = within(section).getAllByRole("button", { name: "High" });
     expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
     await user.click(efforts[0]);
-    expect(efforts[0]).toHaveAttribute("aria-pressed", "false");
+    expect(efforts[0]).toHaveAttribute("aria-pressed", "true");
     expect(efforts[0].parentElement).toHaveClass("commandSegmented");
     expect(within(section).getAllByRole("checkbox", { name: "PR open" })[0]).toBeChecked();
     // Complete when, reported, and the edit modal sample that needs review each show the agent report's outcomes.

@@ -113,8 +113,8 @@ describe("mode issue", () => {
     // The same fields as New task, with the same defaults.
     expect(modal.getByRole("combobox", { name: "Feature" })).toHaveTextContent("No feature");
     expect(modal.queryByRole("combobox", { name: "Step" })).not.toBeInTheDocument();
-    expect(modal.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Not set");
-    expect(modal.getByRole("group", { name: "Effort" })).toBeInTheDocument();
+    expect(modal.getByRole("combobox", { name: "Run on" })).toHaveTextContent("Claude Code · Default model");
+    expect(within(modal.getByRole("group", { name: "Effort" })).getByRole("button", { name: "Medium" })).toHaveAttribute("aria-pressed", "true");
     expect(modal.getByRole("checkbox", { name: "PR open" })).toBeChecked();
     expect(modal.getByRole("checkbox", { name: "Tree clean" })).toBeChecked();
     expect(modal.getByRole("checkbox", { name: "CI passed" })).not.toBeChecked();
@@ -147,7 +147,7 @@ describe("mode issue", () => {
     expect(taskIssues).not.toHaveBeenCalled();
   });
 
-  it("promotes by number and digest, sends no text, then sends the default conditions in one update and closes", async () => {
+  it("promotes by number and digest, sends no text, then sends the default run and conditions in one update and closes", async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(promoteButton());
@@ -156,14 +156,14 @@ describe("mode issue", () => {
     expect(Object.keys(promoteCalls()[0][2])).toEqual(["number", "digest"]);
     // Nothing the issue says goes back through the bridge.
     expect(JSON.stringify([...taskIssues.mock.calls, ...taskAction.mock.calls])).not.toMatch(/worktree|manual start|D:/);
-    // The monitor makes the task with no checks, so the checked defaults differ and are sent; nothing else is.
-    expect(taskAction.mock.calls).toEqual([[repositoryId, "update", { id: "T-40", completeWhen: { checks: ["pr_open", "tree_clean"], own: null } }]]);
+    // The monitor makes the task with no run and no checks, so the required run and the checked defaults are sent; nothing else is.
+    expect(taskAction.mock.calls).toEqual([[repositoryId, "update", { id: "T-40", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } }]]);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(onPromoted).toHaveBeenCalledWith("T-40");
     expect(onPromoted).toHaveBeenCalledTimes(1);
   });
 
-  it("sends no update when nothing differs from the task the monitor made", async () => {
+  it("sends the required run alone when no condition is chosen", async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole("checkbox", { name: "PR open" }));
@@ -171,7 +171,7 @@ describe("mode issue", () => {
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(promoteCalls()).toHaveLength(1);
-    expect(taskAction).not.toHaveBeenCalled();
+    expect(taskAction.mock.calls).toEqual([[repositoryId, "update", { id: "T-40", run: { provider: "claude", model: null, effort: "medium" } }]]);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(onPromoted).toHaveBeenCalledWith("T-40");
   });
@@ -200,7 +200,7 @@ describe("mode issue", () => {
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(updateCalls()).toEqual([[repositoryId, "update", {
-      id: "T-40", run: { provider: null, model: null, effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-1",
+      id: "T-40", run: { provider: "claude", model: null, effort: "high" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-1",
     }]]);
     unmount();
 
@@ -212,7 +212,7 @@ describe("mode issue", () => {
     await user.type(screen.getByRole("textbox", { name: "Own condition" }), "The store rejects a malformed record.");
     await user.click(promoteButton());
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(updateCalls()).toEqual([[repositoryId, "update", { id: "T-40", completeWhen: { checks: [], own: "The store rejects a malformed record." } }]]);
+    expect(updateCalls()).toEqual([[repositoryId, "update", { id: "T-40", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: [], own: "The store rejects a malformed record." } }]]);
   });
 
   it("builds the patch from the draft alone", () => {
@@ -343,7 +343,7 @@ describe("mode issue", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(taskAction.mock.calls.map((call) => call[1])).toEqual(["feature_create", "update"]);
     expect(taskAction.mock.calls[0][2]).toEqual({ name: "Retry telemetry" });
-    expect(taskAction.mock.calls[1][2]).toEqual({ id: "T-40", completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-9" });
+    expect(taskAction.mock.calls[1][2]).toEqual({ id: "T-40", run: { provider: "claude", model: null, effort: "medium" }, completeWhen: { checks: ["pr_open", "tree_clean"], own: null }, featureId: "feat-9" });
     expect(promoteCalls()).toHaveLength(1);
   });
 
