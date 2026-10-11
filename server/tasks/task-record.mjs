@@ -414,9 +414,9 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   if (columns.length > STORED_COLUMN_READ_BOUNDS.columns || features.length > TASK_BOUNDS.featuresPerRepository
     || tasks.length > TASK_BOUNDS.tasksPerRepository) return undefined;
   const status = repository.queue_status;
-  const blockedBy = repository.queue_blocked_by ?? null;
+  const storedBlockedBy = repository.queue_blocked_by ?? null;
   const pauseReason = status === "paused" && TASK_QUEUE_PAUSE_REASONS.includes(repository.pause_reason) ? repository.pause_reason : null;
-  if (!TASK_QUEUE_STATUSES.includes(status) || (blockedBy !== null && !isTaskId(blockedBy))) return undefined;
+  if (!TASK_QUEUE_STATUSES.includes(status) || (storedBlockedBy !== null && !isTaskId(storedBlockedBy))) return undefined;
 
   const projectedColumns = columns.map(normalizeStoredColumn);
   const projectedFeatures = features.map(normalizeStoredFeature);
@@ -426,6 +426,9 @@ export function projectBoard(repositoryId, { repository, columns, features, task
   const columnOrder = new Map(projectedColumns.toSorted((a, b) => a.position - b.position || a.id.localeCompare(b.id)).map((column, index) => [column.id, index]));
   const featureIds = new Set(projectedFeatures.map((feature) => feature.id));
   if (projectedTasks.some((task) => !columnOrder.has(task.columnId) || (task.featureId !== null && !featureIds.has(task.featureId)))) return undefined;
+
+  // A task that is gone is never served as a task ID.
+  const blockedBy = projectedTasks.some((task) => task.id === storedBlockedBy) ? storedBlockedBy : null;
 
   const doneByFeature = new Map();
   for (const task of projectedTasks) {

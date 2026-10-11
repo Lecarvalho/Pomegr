@@ -167,6 +167,8 @@ type TaskBoard = {
 - `queue.pauseReason` is one fixed value, set only while the queue is `paused`. It says why
   a start the queue made did not succeed and never carries a path, command, or error text.
   `worktree_dirty` says that a requeued task's own worktree holds uncommitted changes.
+- `queue.blockedBy` is the ID of a task on the same board, or `null`. A stored blocker
+  that names no stored task is served as `null`, never as a task ID.
 - `queue.gates` is the [start gates](#start-gates) as the monitor last judged them: fixed
   statuses, the whole percentages Usage limits already shows, the threshold, and for the
   next task its provider, the earlier task it waits on, and the fixed reasons that hold
@@ -423,7 +425,9 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   queue turned off. `queue_settings` with `{ on: true }` sets it to `running`, or to
   `blocked` with the lowest-numbered task that is stalled or blocked in
   `blockedBy` when one exists; `{ on: false }` sets it back to `idle`. Turning the queue
-  off never touches a running session. No other action turns the queue on or off.
+  off never touches a running session. No other action turns the queue on, and the one
+  other write that turns it off is the end of a pause whose named task is gone (see
+  **A pause ends with its task** below).
 - **Next start.** The pure `nextQueueStart` rule in `task-queue.mjs` answers for one
   repository. Nothing starts unless the status is `running`. The queue runs one step at
   a time, and a task without a feature is a step of its own. A task is in flight when it
@@ -465,6 +469,26 @@ and only one step at a time. Every start first passes the [start gates](#start-g
   the retry. A task that moved or a manual start in flight pauses nothing; the next poll
   asks again. The reason is kept in the store's `meta` table under
   `queue_pause_reason:<repositoryId>`, so the schema version stays 1.
+  - **A pause ends with its task.** A pause is about the one task in `blockedBy`. When
+    that task is deleted (`delete`, or the agent's `remove_task`), removed from the queue
+    (`queue_remove`), marked done (`resolve_done`), or requeued (`resolve_requeue`), the
+    same transaction clears the status, `blockedBy`, and the reason together
+    (`releasePause` in `task-queue-advance.mjs`), so no banner names a task that is gone
+    or no longer the one that failed to start. The same action on any other task leaves
+    the pause as it is.
+  - **What the status becomes.** It depends on whose the cause was. `worktree_dirty` and
+    `session_not_linked` are the task's own (its worktree, its start), so the cause went
+    with the task: the queue is set as if the user turned it on again, `running`, or
+    `blocked` at the lowest-numbered stalled or blocked task, and the repository's
+    expired unlinked dispatches are cleared. With nothing queued, a running queue starts
+    nothing. `cli_missing`, `plugin_missing`, `unsupported_platform`, `start_failed`, and
+    a pause with no stored reason are about the computer or the repository, so the cause
+    is still there: the queue is set to `idle`, turned off. Running it again would start
+    the next task into the same failure without the user asking for the retry, and
+    would show On and then a new pause.
+  - A store written before this rule may hold a pause at a task that was deleted. The
+    board never serves that ID (see [Record](#record)), and when the monitor
+    opens the store, each such pause ends by the same rule (`releaseDanglingPause`).
 - **Stop on trouble.** A stalled task or an agent block
   sets the queue to `blocked` with the responsible task in `blockedBy`. Nothing new
   starts until the user resolves it, by **Mark done and resume** (`resolve_done`) or
@@ -1029,8 +1053,8 @@ How it is built:
   number stays retired, the cards after it and the steps of its feature close up, the
   task's source, attention line, image list, and added-by record go in the same write,
   its image files go after the commit, the waiting queue cards are settled in Ready, and
-  a queue blocked at the task is released, so the queue banner no longer names a task
-  that is gone.
+  a queue blocked or paused at the task is released, so the queue banner no longer names
+  a task that is gone.
 - The monitor serves it as `POST /api/agent/v1/tasks/remove`, under the gate of `add`
   and with the same content-type check. The body is a JSON object of at most 1 KiB with
   exactly `sessionRef` and `taskId`; any other key, a query string, or an ID outside the
@@ -1146,7 +1170,7 @@ Built so far: the manual and the queued start of a Claude Code or Codex session 
   calls the fixed channel `pomegr:task-worktree-open` with the repository ID and task ID
   only and shows one line per fixed result (`opened`, `not_found`, `invalid`,
   `unavailable`); the **Queue paused** banner offers the same button when the pause reason
-  is `worktree_dirty`. Desktop main resolves the folder (the task's worktree directory,
+  is `worktree_dirty`, and its result line lasts only as long as that pause. Desktop main resolves the folder (the task's worktree directory,
   which must exist and be listed by Git on the task branch) and opens it with
   `shell.openPath`; Windows only. No path, command, or error text crosses the channel.
 
@@ -1472,7 +1496,9 @@ serves no other client.
   the only task of the last step to a new last step, succeeds and changes nothing. Otherwise
   the steps are renumbered densely in the same transaction (a step the move empties
   disappears) without changing the update time of other tasks, and the task stays
-  `queued`. The three actions start no session and leave the stored queue status as it is.
+  `queued`. The three actions start no session and leave the stored queue status as it is,
+  except `queue_remove` of the task a pause names, which ends that pause (see
+  [Queue](#queue)).
   There is no insertion of a step between two others yet. `resolve_done` and
   `resolve_requeue` take `{ id }` (see [Queue](#queue)). `queue_settings` takes
   exactly one setting: `{ on }`, a boolean (see [Queue](#queue)); `{ threshold }`,

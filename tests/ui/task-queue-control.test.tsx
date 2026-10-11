@@ -386,6 +386,32 @@ describe("the paused Queue banner", () => {
     });
   });
 
+  it("does not name a task the board does not hold, and offers no folder for it", async () => {
+    setBridge({ taskAction, taskWorktreeOpen: vi.fn() });
+    setBoard({ status: "paused", blockedBy: "T-99", pauseReason: "worktree_dirty" });
+    await renderOn("queue");
+    expect(banner()).toHaveTextContent("A task could not start: its worktree has uncommitted changes");
+    expect(banner()).not.toHaveTextContent("T-99");
+    expect(within(banner()).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("drops the folder result with the pause it belongs to, so a later pause starts without it", async () => {
+    setBridge({ taskAction, taskWorktreeOpen: vi.fn(async () => ({ status: "opened" })) });
+    const paused = () => setBoard({ status: "paused", blockedBy: "T-15", pauseReason: "worktree_dirty" });
+    paused();
+    const { rerender } = render(<TaskBoardPane repositoryId={repositoryId} />);
+    await userEvent.click(within(banner()).getByRole("button", { name: "Open folder" }));
+    expect(await within(banner()).findByRole("status")).toHaveTextContent("The folder is open.");
+    setBoard({ status: "running" });
+    rerender(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(screen.queryByRole("region", { name: "Queue status" })).not.toBeInTheDocument();
+    expect(screen.queryByText("The folder is open.")).not.toBeInTheDocument();
+    paused();
+    rerender(<TaskBoardPane repositoryId={repositoryId} />);
+    expect(within(banner()).getByRole("button", { name: "Open folder" })).toBeInTheDocument();
+    expect(within(banner()).queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("does not name a task when the monitor names none", async () => {
     setBoard({ status: "paused", blockedBy: null, pauseReason: "cli_missing" });
     await renderOn("board");

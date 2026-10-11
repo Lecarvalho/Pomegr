@@ -45,9 +45,9 @@ export function queueBanner(board: Pick<TaskBoard, "queue" | "tasks">): QueueBan
   if (status !== "blocked" && status !== "paused") return null;
   const task = blockedBy === null ? null : board.tasks.find((entry) => entry.id === blockedBy) ?? null;
   if (status === "blocked") return { title: "Queue blocked", body: blockedBody(task), task, resolvable: task !== null && RESOLVABLE_STATES.has(task.state), dirtyWorktreeTaskId: null };
-  const subject = blockedBy === null ? "A task" : blockedBy;
+  const subject = task === null ? "A task" : task.id;
   const reason = pauseReason === null ? UNKNOWN_PAUSE_REASON : PAUSE_REASONS[pauseReason];
-  return { title: "Queue paused", body: `${subject} could not start: ${reason} ${SESSIONS_CONTINUE} Turn the queue on again to retry.`, task, resolvable: false, dirtyWorktreeTaskId: pauseReason === "worktree_dirty" ? blockedBy : null };
+  return { title: "Queue paused", body: `${subject} could not start: ${reason} ${SESSIONS_CONTINUE} Turn the queue on again to retry.`, task, resolvable: false, dirtyWorktreeTaskId: pauseReason === "worktree_dirty" && task !== null ? task.id : null };
 }
 
 export function queueStatusLine(status: TaskBoard["queue"]["status"]): string | null {

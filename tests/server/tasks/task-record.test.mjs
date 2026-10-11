@@ -318,11 +318,20 @@ test("a board with inconsistent or out-of-bound rows is not projected", () => {
 
 test("a pause reason is projected only for a paused queue and only from the fixed list", () => {
   const paused = (reason, status = "paused") => projectBoard(REPOSITORY, {
-    repository: { queue_status: status, queue_blocked_by: "T-2", pause_reason: reason }, columns: columnRows, features: [], tasks: [],
+    repository: { queue_status: status, queue_blocked_by: "T-2", pause_reason: reason }, columns: columnRows, features: [], tasks: [storedTask({ number: 2 })],
   }).queue;
   for (const reason of TASK_QUEUE_PAUSE_REASONS) assert.deepEqual(paused(reason), { status: "paused", blockedBy: "T-2", pauseReason: reason, order: [] });
   for (const reason of ["unknown", "", null, undefined, 7, {}, "Start_Failed", "C:\secret\path"]) assert.equal(paused(reason).pauseReason, null, String(reason));
   for (const status of ["idle", "running", "blocked"]) assert.equal(paused("start_failed", status).pauseReason, null, status);
+});
+
+test("a blocked-by that names no stored task is never served as a task ID", () => {
+  const queue = (status, blockedBy) => projectBoard(REPOSITORY, {
+    repository: { queue_status: status, queue_blocked_by: blockedBy, pause_reason: "worktree_dirty" }, columns: columnRows, features: [], tasks: [storedTask({ number: 2 })],
+  }).queue;
+  assert.deepEqual(queue("paused", "T-7"), { status: "paused", blockedBy: null, pauseReason: "worktree_dirty", order: [] });
+  assert.deepEqual(queue("blocked", "T-7"), { status: "blocked", blockedBy: null, pauseReason: null, order: [] });
+  assert.equal(queue("paused", "T-2").blockedBy, "T-2");
 });
 
 test("an empty board carries no content", () => {

@@ -15,6 +15,8 @@ export function QueueBanner({ board, view, onOpenTask, edits }: {
   const desktop = useTaskDesktopAvailability();
   const [folder, setFolder] = useState<{ taskId: string; status: TaskWorktreeOpenStatus | "opening" } | null>(null);
   const banner = queueBanner(board);
+  // The result of opening a folder belongs to one pause: it goes when that pause ends, so a later pause starts without it.
+  if (folder !== null && folder.taskId !== (banner?.dirtyWorktreeTaskId ?? null)) setFolder(null);
   if (!banner) return null;
   const { task } = banner;
   const { repositoryId } = board;

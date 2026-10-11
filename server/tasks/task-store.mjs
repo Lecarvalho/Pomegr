@@ -8,7 +8,7 @@ import { preparedStatement } from "../persistence/prepared-statements.mjs";
 import { fillTaskSessions } from "./task-board.mjs";
 import { hasFixedColumns, readColumnRoles, readyColumnId, reconcileFixedColumns, seedColumnRoles, settleReadyColumn, taskNumbersInOrder, writeTaskOrder } from "./task-columns.mjs";
 import { bindDispatch, startAbort, startPlan } from "./task-dispatch.mjs";
-import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, startGates } from "./task-queue-advance.mjs";
+import { fillQueueGates, nextQueueStarts, pauseQueue, queueSettings, readPauseReason, readQueueSchedule, releaseDanglingPause, releasePause, startGates } from "./task-queue-advance.mjs";
 import { releaseQueue, reportableChecks, reportBlock, reportComplete, resolveDone, resolveRequeue } from "./task-report.mjs";
 import { featureSessionGroups, featureSessions, sessionTaskReferences } from "./task-session-link.mjs";
 import { stallEndedTasks } from "./task-stall.mjs";
@@ -283,7 +283,7 @@ function updatedPlacement(database, repositoryId, stored, input) {
   return step === undefined ? { error: "invalid" } : { featureId, step };
 }
 
-function deleteTask({ database, repositoryId }, payload) {
+function deleteTask({ database, repositoryId, now }, payload) {
   const input = normalizeDeletePayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const task = preparedStatement(database, "SELECT column_id, position, feature_id FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
@@ -299,8 +299,9 @@ function deleteTask({ database, repositoryId }, payload) {
   preparedStatement(database, "UPDATE tasks SET position = position - 1 WHERE repository_id = ? AND column_id = ? AND position > ?")
     .run(repositoryId, task.column_id, task.position);
   if (task.feature_id) renumberSteps(database, repositoryId, task.feature_id);
-  // A blocked queue must not keep naming a task that is gone.
+  // A blocked or paused queue must not keep naming a task that is gone.
   releaseQueue(database, repositoryId);
+  releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
   return { ok: true };
 }
 
@@ -400,7 +401,7 @@ function addToQueue({ database, repositoryId, now }, payload) {
   return { ok: true };
 }
 
-function removeFromQueue({ database, repositoryId }, payload) {
+function removeFromQueue({ database, repositoryId, now }, payload) {
   const input = normalizeQueueTaskPayload(payload);
   if (!input) return { ok: false, error: "invalid" };
   const task = preparedStatement(database, "SELECT state FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, input.number);
@@ -408,6 +409,7 @@ function removeFromQueue({ database, repositoryId }, payload) {
   if (task.state !== "queued" && task.state !== "scheduled") return { ok: false, error: "conflict" };
   preparedStatement(database, "UPDATE tasks SET state = 'not_queued', queue_position = NULL, scheduled_at = NULL, updated_at = ? WHERE repository_id = ? AND number = ?")
     .run(Date.now(), repositoryId, input.number);
+  releasePause({ database, repositoryId, now }, taskIdFromNumber(input.number));
   return { ok: true };
 }
 
@@ -508,6 +510,7 @@ export function openTaskStore({ directory, now = Date.now } = {}) {
         try { seedColumns(repositoryId); } catch { /* stays unavailable until it projects */ }
         try { settleReady(repositoryId); } catch { /* settled by the next action instead */ }
         try { runTransaction(database, () => releaseQueue(database, repositoryId)); } catch { /* released by the next resolution instead */ }
+        try { runTransaction(database, () => releaseDanglingPause({ database, repositoryId, now })); } catch { /* served without the task's ID until the queue is turned on or off */ }
       }
     } catch { /* the store is read again on the first board read */ }
   }
