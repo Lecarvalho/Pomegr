@@ -1,13 +1,14 @@
 name: Windows verification
 
+# The tests, the build, and the desktop smoke of `npm run verify`, as parallel jobs. The static checks and the
+# landing suite of the same verifier run in checks.yml, which also covers a pull request that changes only docs/.
 on:
   workflow_dispatch:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - main
+    paths-ignore:
+      - "docs/**"
 
 permissions:
   contents: read
@@ -17,9 +18,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  windows:
+  node-tests:
+    name: Node tests
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -39,7 +41,59 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           npm ci
           npm run desktop:runtime
-          npm ci --prefix landing
+
+      - name: Run Node tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm run test:node
+
+  ui-tests:
+    name: UI tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run UI tests
+        run: npm run test:ui
+
+  build-smoke:
+    name: Build and desktop smoke
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+
+      - name: Install locked dependencies
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          npm ci
+          npm run desktop:runtime
 
       - name: Verify release source archive
         shell: pwsh
@@ -48,10 +102,11 @@ jobs:
           $PSNativeCommandUseErrorActionPreference = $true
           npm run check:release-source -- --ref HEAD
 
-      - name: Run canonical verifier and desktop smoke
+      - name: Build, check generated artifacts, and run desktop smoke
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          npm run verify
+          npm run build
+          npm run check:generated
           npm run desktop:smoke:ci
