@@ -735,7 +735,9 @@ What a held gate does:
   `unavailable`, `plugin_missing`). The answer names no gate. The renderer names the
   gates that hold the task's provider from the readings `queue.gates` already carries
   ("This task is held: ..."), and falls back to one fixed line that points at the Queue
-  view when those readings show no hold. A start held only by the root's uncommitted changes answers the fixed
+  view when those readings show no hold. It asks for the board again after the answer, so
+  the line is drawn from the newest readings. A reading that is unknown reads "not known
+  yet", never as passed. A start held only by the root's uncommitted changes answers the fixed
   `tree_dirty` instead, and the renderer offers
   [a separate worktree](#separate-worktree-for-a-dirty-repository). The queue runner
   treats `gate_held` and `tree_dirty` like a task that moved: no pause, and the next poll

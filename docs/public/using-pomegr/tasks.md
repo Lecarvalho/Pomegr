@@ -371,7 +371,7 @@ incident affects you. The working tree gate reads the repository itself, even
 for a task that will start in its own worktree. A held queued task changes
 nothing: it waits, the queue stays on, and Pomegr judges again at the next check.
 A held manual start says which gates hold it, for example "This task is held:
-Claude Code usage is not known."
+Claude Code usage is not known yet."
 
 ## Schedule starts
 
