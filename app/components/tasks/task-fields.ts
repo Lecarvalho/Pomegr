@@ -32,7 +32,16 @@ export function canRemoteControl(run: TaskRun): boolean {
 
 export function withRemoteControl(run: TaskRun, on: boolean): TaskRun {
   const { provider, model, effort } = run;
-  return on && canRemoteControl(run) ? { provider, model, effort, remoteControl: true } : { provider, model, effort };
+  const kept = run.keepWorktree === true ? { keepWorktree: true } : {};
+  return on && canRemoteControl(run) ? { provider, model, effort, remoteControl: true, ...kept } : { provider, model, effort, ...kept };
+}
+
+export const REMOVE_WORKTREE_LABEL = "Remove worktree and branch when done";
+
+/** Removal is the default, so the run carries the choice only when the worktree is kept. */
+export function withKeepWorktree(run: TaskRun, keep: boolean): TaskRun {
+  const { provider, model, effort } = run;
+  return { provider, model, effort, ...(run.remoteControl === true ? { remoteControl: true } : {}), ...(keep ? { keepWorktree: true } : {}) };
 }
 
 export const EMPTY_RUN: TaskRun = { provider: null, model: null, effort: null };
@@ -110,7 +119,7 @@ export function runSelectOptions(models: TaskModelOptions, run: TaskRun): Comman
 }
 
 export function isRunSet(run: TaskRun): boolean {
-  return run.provider !== null || run.model !== null || run.effort !== null || run.remoteControl === true;
+  return run.provider !== null || run.model !== null || run.effort !== null || run.remoteControl === true || run.keepWorktree === true;
 }
 
 export function isEffort(value: string): value is TaskEffort {
@@ -126,11 +135,11 @@ export function completeWhenFromTask(completeWhen: Task["completeWhen"]): Comple
   return { checks: [...completeWhen.checks], ownText: completeWhen.own ?? "" };
 }
 
-/** A new task starts from the Run on and Complete when of the newest task on the board. */
+/** A new task starts from the Run on and Complete when of the newest task on the board. Removing its worktree when done is always on. */
 export function newTaskDefaults(tasks: ReadonlyArray<Pick<Task, "id" | "run" | "completeWhen">>): { run: TaskRun; completeWhen: CompleteWhenDraft } {
   const number = (task: Pick<Task, "id">) => Number(task.id.slice(2));
   const newest = tasks.reduce<Pick<Task, "id" | "run" | "completeWhen"> | null>((latest, task) => (latest === null || number(task) > number(latest) ? task : latest), null);
-  return newest === null ? { run: EMPTY_RUN, completeWhen: DEFAULT_COMPLETE_WHEN } : { run: newest.run, completeWhen: completeWhenFromTask(newest.completeWhen) };
+  return newest === null ? { run: EMPTY_RUN, completeWhen: DEFAULT_COMPLETE_WHEN } : { run: withKeepWorktree(newest.run, false), completeWhen: completeWhenFromTask(newest.completeWhen) };
 }
 
 export function toCompleteWhen(draft: CompleteWhenDraft): CompleteWhenValue {

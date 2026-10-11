@@ -6,7 +6,7 @@ import { TASK_IMAGE_HELPER } from "./task-images-desktop";
 import { TASK_BOUNDS, TASK_CHECKS, TASK_EFFORTS, taskImageIds, type TaskCheck, type TaskRun } from "../../../shared/task-contract";
 import { CommandSelect } from "../command-center/CommandSelect";
 import {
-  CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, canRemoteControl, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withRemoteControl,
+  CHECK_SHORT_LABELS, EFFORT_LABELS, REMOTE_CONTROL_LABEL, REMOVE_WORKTREE_LABEL, canRemoteControl, runFromSelectValue, runSelectOptions, runSelectValue, withCheck, withKeepWorktree, withRemoteControl,
   type CompleteWhenDraft, type TaskModelOptions,
 } from "./task-fields";
 
@@ -65,12 +65,14 @@ export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; m
   const effortId = useId();
   const remoteId = useId();
   const remoteHelperId = useId();
+  const removeId = useId();
+  const removeHelperId = useId();
   const remote = canRemoteControl(run);
   return <div className="taskRunRow">
     <div className="newTaskField taskRunOn">
       <label htmlFor={selectId}>Run on</label>
       <CommandSelect id={selectId} aria-label="Run on" options={runSelectOptions(models, run)} value={runSelectValue(run)} disabled={disabled}
-        onChange={(value) => onChange(withRemoteControl(runFromSelectValue(value, run.effort), run.remoteControl === true))} />
+        onChange={(value) => onChange(withRemoteControl(withKeepWorktree(runFromSelectValue(value, run.effort), run.keepWorktree === true), run.remoteControl === true))} />
     </div>
     <div className="newTaskField">
       <span id={effortId} className="newTaskEffortLabel">Effort</span>
@@ -86,6 +88,14 @@ export function RunFields({ run, models, disabled, onChange }: { run: TaskRun; m
         <label htmlFor={remoteId}>{REMOTE_CONTROL_LABEL}</label>
       </div>
       <p id={remoteHelperId} className="newTaskHelper">{remote ? "Starts the session with Remote Control, so you can also open it on your phone." : "Claude Code only."}</p>
+    </div>
+    <div className="newTaskField taskRemoveWorktree">
+      <div className="taskCheckRow">
+        <input id={removeId} type="checkbox" checked={run.keepWorktree !== true} disabled={disabled} aria-describedby={removeHelperId}
+          onChange={(event) => onChange(withKeepWorktree(run, !event.currentTarget.checked))} />
+        <label htmlFor={removeId}>{REMOVE_WORKTREE_LABEL}</label>
+      </div>
+      <p id={removeHelperId} className="newTaskHelper">For a task that runs in its own worktree. Uncommitted or unpushed work is never removed.</p>
     </div>
   </div>;
 }

@@ -5,47 +5,53 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY, taskBranch } from "../desktop/runtime/task-worktree.mjs";
+import { createTaskWorktrees, TASK_WORKTREE_DIRECTORY, TASK_WORKTREE_REPOSITORY_PATH, taskBranch } from "../desktop/runtime/task-worktree.mjs";
 
 const repositoryId = "repo-0123456789abcdef01234567";
 const root = path.resolve("/pomegr-data", TASK_WORKTREE_DIRECTORY);
 const repositoryRoot = path.resolve("/work/repo");
-const directory = path.join(root, repositoryId, "T-3");
+const directory = path.join(repositoryRoot, ".pomegr", "worktrees", "T-3");
+// Where a worktree was made before worktrees moved into the repository.
+const legacy = path.join(root, repositoryId, "T-3");
 const place = { repositoryRoot, repositoryId, taskId: "T-3" };
-const listing = (branch = "refs/heads/tasks/T-3") =>
-  `worktree ${repositoryRoot.replaceAll("\\", "/")}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${directory.replaceAll("\\", "/")}\nHEAD abc\n${branch ? `branch ${branch}` : "detached"}\n\n`;
+const listing = (branch = "refs/heads/tasks/T-3", at = directory) =>
+  `worktree ${repositoryRoot.replaceAll("\\", "/")}\nHEAD abc\nbranch refs/heads/main\n\nworktree ${at.replaceAll("\\", "/")}\nHEAD abc\n${branch ? `branch ${branch}` : "detached"}\n\n`;
 
 /** Fake Git: `answers` maps the first argument after `-C <directory>` (two words for `worktree`) to `{ ok, stdout }`. */
-function harness({ answers = {}, exists = false } = {}) {
+function harness({ answers = {}, exists = false, legacyExists = false, legacyRoot = root } = {}) {
   const calls = [];
   const made = [];
-  const present = new Set(exists ? [directory] : []);
+  const ignored = [];
+  const present = new Set([...(exists ? [directory] : []), ...(legacyExists ? [legacy] : [])]);
   const worktrees = createTaskWorktrees({
-    root,
+    root: legacyRoot,
     environment: { PATH: "C:\\Windows", SECRET_KEY: "nope" },
     directoryExists: (target) => present.has(target),
     makeDirectory: (target) => { made.push(target); },
+    ignoreContents: (target) => { ignored.push(target); },
     execFile: (file, args, options, callback) => {
       calls.push({ file, args, options });
       const key = args[2] === "worktree" ? `worktree ${args[3]}` : args[2];
       const answer = typeof answers[key] === "function" ? answers[key](args) : answers[key] ?? { ok: true, stdout: "" };
       if (key === "worktree add" && answer.ok) present.add(directory);
-      if (key === "worktree remove" && answer.ok) present.delete(directory);
+      if (key === "worktree remove" && answer.ok) present.delete(args[4]);
       queueMicrotask(() => callback(answer.ok ? null : new Error("git failed"), answer.stdout ?? "", ""));
     },
   });
-  return { worktrees, calls, made, git: () => calls.map((call) => call.args.slice(2).join(" ")) };
+  return { worktrees, calls, made, ignored, git: () => calls.map((call) => call.args.slice(2).join(" ")) };
 }
 
-test("the task branch and the owned directory name are fixed", () => {
+test("the task branch and the worktree folders are fixed", () => {
   assert.equal(taskBranch("T-3"), "tasks/T-3");
+  assert.deepEqual(TASK_WORKTREE_REPOSITORY_PATH, [".pomegr", "worktrees"]);
   assert.equal(TASK_WORKTREE_DIRECTORY, "task-worktrees");
 });
 
-test("a new worktree is added on a new task branch at HEAD, with argument arrays and no shell", async () => {
+test("a new worktree is added inside the repository on a new task branch at HEAD, with argument arrays and no shell", async () => {
   const h = harness({ answers: { "show-ref": { ok: false } } });
   assert.deepEqual(await h.worktrees.ensure(place), { ok: true, directory, created: true, branchCreated: true });
-  assert.deepEqual(h.made, [path.join(root, repositoryId)]);
+  assert.deepEqual(h.made, [path.join(repositoryRoot, ".pomegr", "worktrees")]);
+  assert.deepEqual(h.ignored, h.made, "the folder ignores its own contents, so the repository's tree stays clean");
   assert.deepEqual(h.calls.map((call) => call.args), [
     ["-C", repositoryRoot, "show-ref", "--verify", "--quiet", "refs/heads/tasks/T-3"],
     ["-C", repositoryRoot, "worktree", "add", "-b", "tasks/T-3", directory, "HEAD"],
@@ -63,6 +69,29 @@ test("an existing task branch is checked out instead of created", async () => {
   const h = harness();
   assert.deepEqual(await h.worktrees.ensure(place), { ok: true, directory, created: true, branchCreated: false });
   assert.deepEqual(h.calls[1].args, ["-C", repositoryRoot, "worktree", "add", directory, "tasks/T-3"]);
+});
+
+test("a worktrees folder that cannot ignore its contents makes no worktree", async () => {
+  const worktrees = createTaskWorktrees({
+    directoryExists: () => false, makeDirectory() {}, ignoreContents() { throw new Error("EACCES"); }, execFile: () => { throw new Error("never"); },
+  });
+  assert.deepEqual(await worktrees.ensure(place), { ok: false });
+});
+
+test("a worktree made in the desktop data folder before the move is used, opened, and removed where it is", async () => {
+  const safe = { "worktree list": { ok: true, stdout: listing(undefined, legacy) }, "rev-list": { ok: true, stdout: "0\n" } };
+  let h = harness({ legacyExists: true, answers: safe });
+  assert.deepEqual(await h.worktrees.ensure(place), { ok: true, directory: legacy, created: false, branchCreated: false });
+  assert.deepEqual([h.made, h.ignored], [[], []]);
+  assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), legacy);
+  assert.equal(await h.worktrees.locate({ repositoryRoot, repositoryId, taskId: "T-3" }), legacy);
+  assert.equal(await h.worktrees.remove({ ...place, deleteBranch: true }), "removed");
+  assert.deepEqual(h.git().slice(-2), [`worktree remove ${legacy}`, "branch -D tasks/T-3"]);
+
+  // Without the data folder only the repository's own folder is read.
+  h = harness({ legacyExists: true, legacyRoot: "relative", answers: { "show-ref": { ok: false } } });
+  assert.deepEqual(await h.worktrees.ensure(place), { ok: true, directory, created: true, branchCreated: true });
+  assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), null);
 });
 
 test("a failed add answers not ok", async () => {
@@ -105,8 +134,6 @@ test("invalid input makes no Git call", async () => {
     assert.equal(await h.worktrees.remove(request), "failed");
   }
   assert.equal(h.calls.length, 0);
-  const noRoot = createTaskWorktrees({ root: "relative", execFile: () => { throw new Error("never"); } });
-  assert.deepEqual(await noRoot.ensure(place), { ok: false });
 });
 
 test("remove deletes only a listed, clean worktree whose commits exist elsewhere", async () => {
@@ -123,7 +150,14 @@ test("remove deletes only a listed, clean worktree whose commits exist elsewhere
 
   h = harness({ exists: true, answers: safe });
   assert.equal(await h.worktrees.remove({ ...place, deleteBranch: true }), "removed");
-  assert.equal(h.git().at(-1), "branch -d tasks/T-3", "the safe delete, never -D");
+  assert.equal(h.git().at(-1), "branch -D tasks/T-3", "the worktree's own branch, whose commits were just found elsewhere");
+
+  // A worktree on another branch, or on none, goes without a branch delete.
+  for (const branch of ["refs/heads/other", null]) {
+    h = harness({ exists: true, answers: { ...safe, "worktree list": { ok: true, stdout: listing(branch) } } });
+    assert.equal(await h.worktrees.remove({ ...place, deleteBranch: true }), "removed");
+    assert.equal(h.git().some((command) => command.startsWith("branch")), false);
+  }
 
   const kept = [
     { ...safe, status: { ok: true, stdout: " M file.txt\n" } },
@@ -172,7 +206,9 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
   const first = await worktrees.ensure(at("T-1"));
   const second = await worktrees.ensure(at("T-2"));
   assert.deepEqual([first.ok, first.created, first.branchCreated, second.ok], [true, true, true, true]);
-  assert.notEqual(first.directory, second.directory);
+  assert.equal(first.directory, path.join(repository, ".pomegr", "worktrees", "T-1"));
+  assert.equal(second.directory, path.join(repository, ".pomegr", "worktrees", "T-2"));
+  assert.equal(git(repository, "status", "--porcelain", "--untracked-files=normal"), "", "the worktrees leave the repository's own tree clean");
   assert.equal(git(first.directory, "branch", "--show-current").trim(), "tasks/T-1");
   assert.equal(git(second.directory, "branch", "--show-current").trim(), "tasks/T-2");
 
@@ -182,7 +218,8 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
   // Uncommitted changes: not reused, not removed.
   writeFileSync(path.join(first.directory, "new.txt"), "work\n");
   assert.deepEqual(await worktrees.ensure(at("T-1")), { ok: false, reason: "dirty" });
-  assert.equal(await worktrees.locate({ repositoryId: at("T-1").repositoryId, taskId: "T-1" }), first.directory);
+  assert.equal(await worktrees.locate({ repositoryRoot: repository, repositoryId, taskId: "T-1" }), first.directory);
+  assert.equal(await worktrees.locate({ repositoryId, taskId: "T-1" }), null);
   assert.equal(await worktrees.remove(at("T-1")), "kept");
   assert.equal(existsSync(path.join(first.directory, "new.txt")), true);
 
@@ -202,6 +239,25 @@ test("with real Git: parallel worktrees are made, reused, and never removed with
   git(repository, "merge", "--quiet", "tasks/T-1");
   assert.equal(await worktrees.remove(at("T-1")), "removed");
   assert.match(git(repository, "branch", "--list", "tasks/T-1"), /tasks\/T-1/u);
+
+  // A done task's branch goes with its worktree once its commits are on another branch, merged into the root or not.
+  const third = await worktrees.ensure(at("T-3"));
+  writeFileSync(path.join(third.directory, "third.txt"), "work\n");
+  git(third.directory, "add", ".");
+  git(third.directory, "commit", "--quiet", "-m", "third");
+  assert.equal(await worktrees.remove({ ...at("T-3"), deleteBranch: true }), "kept");
+  git(repository, "branch", "kept-elsewhere", "tasks/T-3");
+  assert.equal(await worktrees.remove({ ...at("T-3"), deleteBranch: true }), "removed");
+  assert.equal(git(repository, "branch", "--list", "tasks/T-3").trim(), "");
+  assert.match(git(repository, "branch", "--list", "kept-elsewhere"), /kept-elsewhere/u);
+
+  // A worktree made in the desktop data folder before the move is still the task's worktree.
+  const old = path.join(base, TASK_WORKTREE_DIRECTORY, repositoryId, "T-4");
+  git(repository, "worktree", "add", "--quiet", "-b", "tasks/T-4", old, "HEAD");
+  assert.deepEqual(await worktrees.ensure(at("T-4")), { ok: true, directory: old, created: false, branchCreated: false });
+  assert.equal(await worktrees.locate({ repositoryId, taskId: "T-4" }), old);
+  assert.equal(await worktrees.remove({ ...at("T-4"), deleteBranch: true }), "removed");
+  assert.equal(existsSync(old), false);
 });
 
 test("only a listed, uncommitted-changes worktree is dirty; a failed status and other refusals are the plain failure", async () => {
@@ -215,7 +271,7 @@ test("only a listed, uncommitted-changes worktree is dirty; a failed status and 
 
 test("locate answers the directory only when it exists and Git lists it on the task branch, asking Git from inside it", async () => {
   let h = harness({ exists: true, answers: { "worktree list": { ok: true, stdout: listing() } } });
-  assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), directory);
+  assert.equal(await h.worktrees.locate({ repositoryRoot, repositoryId, taskId: "T-3" }), directory);
   assert.deepEqual(h.calls.map((call) => call.args), [["-C", directory, "worktree", "list", "--porcelain"]]);
   const misses = [
     { exists: false, answers: { "worktree list": { ok: true, stdout: listing() } } },
@@ -226,10 +282,11 @@ test("locate answers the directory only when it exists and Git lists it on the t
   ];
   for (const miss of misses) {
     h = harness(miss);
-    assert.equal(await h.worktrees.locate({ repositoryId, taskId: "T-3" }), null);
+    assert.equal(await h.worktrees.locate({ repositoryRoot, repositoryId, taskId: "T-3" }), null);
   }
   h = harness({ exists: true });
-  for (const bad of [undefined, {}, { repositoryId: "x", taskId: "T-3" }, { repositoryId, taskId: "../T-3" }, { repositoryId, taskId: "T-0" }]) {
+  for (const bad of [undefined, {}, { repositoryId: "x", taskId: "T-3" }, { repositoryId, taskId: "../T-3" }, { repositoryId, taskId: "T-0" },
+    { repositoryRoot: "relative", repositoryId, taskId: "T-3" }, { repositoryRoot: `${repositoryRoot}"`, repositoryId, taskId: "T-3" }].map((entry) => entry && { repositoryRoot, ...entry })) {
     assert.equal(await h.worktrees.locate(bad), null);
   }
   assert.deepEqual(h.calls, []);
@@ -244,7 +301,7 @@ function shortPath(directory) {
   } catch { return null; }
 }
 
-test("with real Git: a worktree root reached through a Windows short name is still reused", { skip: process.platform !== "win32" || !gitAvailable() }, async (context) => {
+test("with real Git: a repository reached through a Windows short name still has its worktree reused", { skip: process.platform !== "win32" || !gitAvailable() }, async (context) => {
   const base = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), "pomegr task worktree long name ")));
   context.after(() => { rmSync(base, { recursive: true, force: true, maxRetries: 20, retryDelay: 25 }); });
   const short = shortPath(base);
@@ -257,8 +314,8 @@ test("with real Git: a worktree root reached through a Windows short name is sti
   git(repository, "add", ".");
   git(repository, "commit", "--quiet", "-m", "first");
 
-  const worktrees = createTaskWorktrees({ root: path.join(short, TASK_WORKTREE_DIRECTORY) });
-  const at = { repositoryRoot: repository, repositoryId, taskId: "T-1" };
+  const worktrees = createTaskWorktrees();
+  const at = { repositoryRoot: path.join(short, "repo"), repositoryId, taskId: "T-1" };
   const first = await worktrees.ensure(at);
   assert.deepEqual([first.ok, first.created], [true, true]);
   assert.deepEqual(await worktrees.ensure(at), { ok: true, directory: first.directory, created: false, branchCreated: false });

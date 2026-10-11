@@ -1,12 +1,13 @@
-// A removed Pomegr task worktree (`.../task-worktrees/<repository ID>/<task ID>`) gets no Git answer. Its
-// path names the repository, and the inventory accepts that only for a repository ID it already knows.
+// A removed Pomegr task worktree gets no Git answer. Its path names the repository, by its root
+// (`<main root>/.pomegr/worktrees/<task ID>`) or, for one made before worktrees moved into the repository, by its ID
+// (`.../task-worktrees/<repository ID>/<task ID>`). The inventory accepts that only for a repository it already knows.
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { taskWorktreeRepositoryId } from "../../../server/repository/git-checkout.mjs";
+import { taskWorktreeMainRoot, taskWorktreeRepositoryId } from "../../../server/repository/git-checkout.mjs";
 import { createRepositoryInventoryRuntime } from "../../../server/repository/repository-inventory-runtime.mjs";
 import { createSessionRepositoryAssociations } from "../../../server/repository/session-repository-association.mjs";
 import { isTaskId } from "../../../server/tasks/task-record.mjs";
@@ -16,13 +17,14 @@ const DATA = path.resolve("/data/pomegr");
 const UNKNOWN_ID = "repo-ffffffffffffffffffffffff";
 const worktreePath = (repositoryId, taskId, ...rest) => path.join(DATA, "task-worktrees", repositoryId, taskId, ...rest);
 
-async function inventory(context, { existing = [] } = {}) {
+async function inventory(context, { existing = [], missing = [] } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "pomegr-task-worktree-identity-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   const options = {
     registry: { providers: [] }, storeFile: path.join(directory, "inventory.json"),
     // Git answers for the main checkout and for folders that still exist; everything else has no answer.
-    gitRoot: async (cwd) => [MAIN, ...existing].find((root) => cwd === root || cwd.startsWith(`${root}${path.sep}`)) ?? null,
+    gitRoot: async (cwd) => (missing.some((gone) => cwd === gone || cwd.startsWith(`${gone}${path.sep}`)) ? null
+      : [MAIN, ...existing].find((root) => cwd === root || cwd.startsWith(`${root}${path.sep}`)) ?? null),
   };
   const runtime = createRepositoryInventoryRuntime(options);
   await runtime.ready;
@@ -139,4 +141,53 @@ test("the path rule reads the inventory's ID format and the task store's task ID
     assert.equal(taskWorktreeRepositoryId(worktreePath(id, taskId || ".")) === id, isTaskId(taskId), taskId);
   }
   for (const cwd of ["", "relative/task-worktrees/x", null, undefined]) assert.equal(taskWorktreeRepositoryId(cwd), null);
+});
+
+// A task worktree inside its repository (`<main root>/.pomegr/worktrees/<task ID>`) names the repository by its root.
+const insidePath = (taskId, ...rest) => path.join(MAIN, ".pomegr", "worktrees", taskId, ...rest);
+
+test("a removed task worktree inside a known repository belongs to that repository and never becomes its root", async (context) => {
+  // Git has no answer for a folder that is gone, although it lay under the main checkout.
+  const removed = insidePath("T-20");
+  const { runtime } = await inventory(context, { missing: [removed] });
+  const main = await runtime.identify(MAIN);
+  for (const cwd of [removed, path.join(removed, "src", "deep")]) {
+    assert.deepEqual(await runtime.identify(cwd), main);
+    assert.deepEqual(await runtime.resolveRepository(cwd), { repositoryId: main.repositoryId, root: cwd, mainRoot: MAIN });
+    assert.equal(await runtime.resolveRepository(cwd, { requireGit: true }), null);
+    assert.equal(runtime.taskWorktreeOwner(cwd), "known");
+  }
+  assert.equal(runtime.repositoryRoot(main.repositoryId), MAIN);
+});
+
+test("a removed worktree inside a repository that is not known yet keeps the fallback until the repository is identified", async (context) => {
+  const removed = insidePath("T-20");
+  const { runtime, plain } = await inventory(context, { missing: [removed] });
+  const mainId = (await plain.identify(MAIN)).repositoryId;
+  const fallback = await runtime.identify(removed);
+  assert.equal(fallback.name, "T-20");
+  assert.notEqual(fallback.repositoryId, mainId);
+  assert.equal(runtime.taskWorktreeOwner(removed), "unknown");
+  assert.equal(runtime.repositoryRoot(mainId), null, "the path never creates the repository");
+  await runtime.identify(MAIN);
+  assert.equal(runtime.taskWorktreeOwner(removed), "known");
+});
+
+test("a worktree folder inside a repository that Git still answers for is read from Git, not from its path", async (context) => {
+  const { runtime } = await inventory(context);
+  const main = await runtime.identify(MAIN);
+  assert.deepEqual(await runtime.identify(insidePath("T-3")), main);
+  assert.equal(runtime.taskWorktreeOwner(insidePath("T-3")), null);
+});
+
+test("the path rule for a worktree inside its repository reads the main root and the task store's task ID format", () => {
+  assert.equal(taskWorktreeMainRoot(insidePath("T-20")), MAIN);
+  assert.equal(taskWorktreeMainRoot(insidePath("T-20", "src", "deep")), MAIN);
+  for (const taskId of ["T-1", "T-999999999", "T-0", "T-01", "T-1000000000", "t-1", "T-", "T-1a", "T1"]) {
+    assert.equal(taskWorktreeMainRoot(insidePath(taskId)) === MAIN, isTaskId(taskId), taskId);
+  }
+  for (const cwd of [path.join(MAIN, ".pomegr", "worktrees"), path.join(MAIN, ".pomegr", "T-20"), path.join(MAIN, "pomegr", "worktrees", "T-20"),
+    path.join(MAIN, ".pomegr", "worktrees-old", "T-20"), "", "relative/.pomegr/worktrees/T-1", null, undefined]) {
+    assert.equal(taskWorktreeMainRoot(cwd), null, String(cwd));
+  }
 });

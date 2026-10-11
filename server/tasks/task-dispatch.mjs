@@ -5,6 +5,7 @@ import { moveTaskToRole } from "./task-columns.mjs";
 import { TASK_DISPATCH_UNBOUND_TTL_MS, isLive, parseStoredDispatch } from "./task-dispatch-standing.mjs";
 import { withTaskRemoteControl } from "./task-remote-control.mjs";
 import { taskSourceOf, withTaskSource } from "./task-source.mjs";
+import { withTaskKeepWorktree } from "./task-worktree-cleanup.mjs";
 import { TASK_IMAGE_MARKER, isRepositoryId, isTaskId, isTaskSessionId, normalizeStoredTask } from "./task-record.mjs";
 
 export { TASK_DISPATCH_UNBOUND_TTL_MS };
@@ -76,7 +77,7 @@ function taskNumber(payload, keys) {
 }
 
 const loadRow = (database, repositoryId, number) =>
-  withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number)));
+  withTaskKeepWorktree(database, withTaskRemoteControl(database, withTaskSource(database, preparedStatement(database, "SELECT * FROM tasks WHERE repository_id = ? AND number = ?").get(repositoryId, number))));
 
 function worktreeRequired(database, row) {
   if ((row.feature_id ?? null) === null || (row.step ?? null) === null) return false;

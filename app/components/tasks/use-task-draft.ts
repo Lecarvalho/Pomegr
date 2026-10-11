@@ -17,7 +17,7 @@ export function taskDraftFromTask(task: Task): TaskDraft {
 }
 
 const sameRun = (left: TaskRun, right: TaskRun) => left.provider === right.provider && left.model === right.model && left.effort === right.effort
-  && (left.remoteControl === true) === (right.remoteControl === true);
+  && (left.remoteControl === true) === (right.remoteControl === true) && (left.keepWorktree === true) === (right.keepWorktree === true);
 
 export function taskDraftPatch(task: Task, draft: TaskDraft, createdFeatureId: string | null = null): TaskPatch | null {
   const patch: TaskPatch = {};

@@ -79,6 +79,7 @@ done, and requeue a started task.
 | **Run on** | The provider and model of the started session's main agent: **Not set**, or under **Claude Code** or **Codex** a model or **Default model**. Subagents are not set. A task with no provider starts on Claude Code. |
 | **Effort** | **Low**, **Medium**, **High**, or **Xhigh**. Select the chosen button again to clear it. |
 | **Remote Control** | Starts the Claude Code session with Remote Control on, so you can also open that session on your phone or in a browser, signed in to the same Claude account. It is off by default and is not available for a Codex task. Pomegr only passes Claude Code's own `--remote-control` option; it does not connect to the session. |
+| **Remove worktree and branch when done** | When you mark the task done, Pomegr removes the Git worktree it made for the task and the task's branch. It is on by default. It changes nothing for a task that runs in the repository itself, and never removes uncommitted or unpushed work; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 | **Complete when** | The conditions an agent's report is checked against; see [Complete when](#complete-when). |
 | **Feature**, **Step** | Where the task runs among related tasks; see [Group tasks into features and steps](#group-tasks-into-features-and-steps). |
 
@@ -267,13 +268,22 @@ A step that holds more than one task starts each task in a Git worktree of its
 own, on a branch named `tasks/<task ID>`, so parallel agents do not edit the same
 files. The worktree begins at the repository's current commit, so uncommitted
 changes in the repository are not part of it. A task alone in its step, or with no
-feature, runs in the repository itself. Pomegr keeps its worktrees in a folder it
-owns under the desktop app's data folder.
+feature, runs in the repository itself. Pomegr keeps its worktrees inside the
+repository, in `.pomegr/worktrees/<task ID>`. That folder ignores its own contents,
+so the worktrees do not show as changes in the repository.
 
+- When you mark a task done, Pomegr removes the task's worktree and its
+  `tasks/<task ID>` branch. To keep them, clear **Remove worktree and branch when
+  done** in the task. The box is checked for every new task.
 - Pomegr never removes a worktree that has uncommitted changes or a commit that
-  exists nowhere else, and never forces a removal.
-- The only worktree it removes itself is one made for a start that then failed.
-  Worktrees of finished tasks stay until you remove them.
+  exists nowhere else, and never forces a removal. Such a worktree stays until you
+  commit, push, or remove it. A worktree whose folder is still in use, for example
+  by an open terminal, is removed about a minute after it is free.
+- The branch is deleted only with its worktree, so every commit on it is also on a
+  remote or on another local branch.
+- The other worktree Pomegr removes itself is one made for a start that then failed.
+- A worktree that an earlier version made under the desktop app's data folder keeps
+  working where it is.
 - A requeued task reuses its worktree only if Git still lists it on the task
   branch and it is clean. Otherwise the start fails and nothing is touched.
 - When a start is refused because the task's worktree has uncommitted changes, the

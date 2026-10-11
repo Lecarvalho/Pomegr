@@ -580,17 +580,23 @@ test("a separate-worktree start never runs in the repository root, and takes onl
 });
 
 /** The open channel: a fake worktrees with `locate`, an injected `openPath` and the same trust check as the start. */
-function openHarness({ located = worktreeDirectory, openPath, platform = "win32", withWorktrees = true } = {}) {
+function openHarness({ located = worktreeDirectory, openPath, platform = "win32", withWorktrees = true, rootAnswer = null } = {}) {
   const opened = [];
   const locates = [];
+  const posts = [];
   const worktrees = withWorktrees ? { locate: async (request) => { locates.push(request); if (located instanceof Error) throw located; return located; } } : null;
   const starter = createTaskStart({
     isTrustedEvent: (e) => e?.trusted === true,
     platform,
     worktrees,
     openPath: openPath || (async (directory) => { opened.push(directory); return ""; }),
+    // The monitor is asked for the repository root only when the harness gives it an answer.
+    ...(rootAnswer === null ? {} : {
+      monitorOrigin: origin, authorizationToken: "secret",
+      fetch: async (url, options) => { posts.push({ url, body: JSON.parse(options.body) }); return rootAnswer(); },
+    }),
   });
-  return { starter, opened, locates };
+  return { starter, opened, locates, posts };
 }
 const open = (h, repo = repositoryId, id = "T-3", event = trusted) => h.starter.openWorktree(event, repo, id);
 
@@ -601,7 +607,38 @@ test("the open channel is fixed and answers one of four statuses", async () => {
   const h = openHarness();
   assert.deepEqual(await open(h), { status: "opened" });
   assert.deepEqual(h.opened, [worktreeDirectory]);
-  assert.deepEqual(h.locates, [{ repositoryId, taskId: "T-3" }]);
+  assert.deepEqual(h.locates, [{ repositoryRoot: null, repositoryId, taskId: "T-3" }]);
+});
+
+test("the open channel asks the monitor for the repository root, and a root it cannot get leaves only the older folder", async () => {
+  const h = openHarness({ rootAnswer: () => json({ ok: true, root }) });
+  assert.deepEqual(await open(h), { status: "opened" });
+  assert.deepEqual(h.posts, [{ url: `${origin}/internal/tasks/worktree-root`, body: { repositoryId, payload: {} } }]);
+  assert.deepEqual(h.locates, [{ repositoryRoot: root, repositoryId, taskId: "T-3" }]);
+  for (const rootAnswer of [() => json({ ok: false, error: "not_found" }), () => json({ ok: true, root: 7 }), () => json(null), () => { throw new Error("offline"); }]) {
+    const missing = openHarness({ rootAnswer });
+    assert.deepEqual(await open(missing), { status: "opened" });
+    assert.deepEqual(missing.locates, [{ repositoryRoot: null, repositoryId, taskId: "T-3" }]);
+  }
+});
+
+test("a done task's worktree is removed with its branch, and only the fixed outcome is answered", async () => {
+  const removes = [];
+  const starter = (outcome) => createTaskStart({ worktrees: { remove: async (request) => { removes.push(request); if (outcome instanceof Error) throw outcome; return outcome; } } });
+  for (const outcome of ["removed", "absent", "kept", "failed"]) {
+    assert.equal(await starter(outcome).cleanWorktree(repositoryId, "T-3", root), outcome);
+    assert.deepEqual(removes.pop(), { repositoryRoot: root, repositoryId, taskId: "T-3", deleteBranch: true });
+  }
+  assert.equal(await starter(new Error("git")).cleanWorktree(repositoryId, "T-3", root), "failed");
+  removes.length = 0;
+  for (const [repo, id] of [["repo-x", "T-3"], [repositoryId, "T-0"], [repositoryId, "../T-3"], [null, null]]) {
+    assert.equal(await starter("removed").cleanWorktree(repo, id, root), "failed");
+  }
+  assert.equal(await createTaskStart({}).cleanWorktree(repositoryId, "T-3", root), "failed", "no worktrees, nothing to remove");
+  const disposed = starter("removed");
+  disposed.dispose();
+  assert.equal(await disposed.cleanWorktree(repositoryId, "T-3", root), "failed");
+  assert.deepEqual(removes, []);
 });
 
 test("the open channel refuses an untrusted frame and bad IDs without locating anything", async () => {

@@ -19,6 +19,9 @@ const START_STATUS = Object.freeze({
 const QUEUE_ACTIONS = Object.freeze(["queue-next", "queue-pause"]);
 const QUEUE_STATUS = Object.freeze({ invalid: 400, not_found: 404, unavailable: 503 });
 const QUEUE_START_LIMIT = 16;
+// The removal of a done task's worktree: the desktop asks which wait, where a repository is, and reports one gone.
+const WORKTREE_ACTIONS = Object.freeze(["worktree-cleanups", "worktree-root", "worktree-cleaned"]);
+const WORKTREE_CLEANUP_LIMIT = 64;
 const TASK_ID_PATTERN = /^T-[1-9][0-9]{0,8}$/u;
 const REPOSITORY_ID_PATTERN = /^repo-[a-f0-9]{24}$/u;
 const SERVED_READINESS = new Set(["ready", "loading", "unavailable"]);
@@ -249,10 +252,67 @@ function serveQueuePause({ response, taskStore, repositoryId, payload }) {
   }
 }
 
+const startRoot = (resolveStart, repositoryId) => {
+  try {
+    const root = typeof resolveStart === "function" ? resolveStart(repositoryId, "claude")?.root : null;
+    return typeof root === "string" && root.length > 0 ? root : null;
+  } catch { return null; }
+};
+
+// `worktree-cleanups` answers `{ ok: true, cleanups }`: IDs from the store, each with the root the monitor holds for its repository.
+function serveWorktreeCleanups({ response, taskStore, resolveStart, body }) {
+  try {
+    if (!isPlainObject(body) || Object.keys(body).length > 0) {
+      writeActionResult(response, 400, rejected("invalid"));
+      return;
+    }
+    const result = typeof taskStore?.worktreeCleanups === "function" ? taskStore.worktreeCleanups() : null;
+    if (result?.ok !== true || !Array.isArray(result.cleanups)) {
+      writeActionResult(response, 503, rejected("unavailable"));
+      return;
+    }
+    const cleanups = [];
+    const roots = new Map();
+    for (const entry of result.cleanups) {
+      if (cleanups.length >= WORKTREE_CLEANUP_LIMIT) break;
+      if (!isPlainObject(entry) || typeof entry.repositoryId !== "string" || !REPOSITORY_ID_PATTERN.test(entry.repositoryId)
+        || typeof entry.taskId !== "string" || !TASK_ID_PATTERN.test(entry.taskId)) continue;
+      if (!roots.has(entry.repositoryId)) roots.set(entry.repositoryId, startRoot(resolveStart, entry.repositoryId));
+      const repositoryRoot = roots.get(entry.repositoryId);
+      // A repository the monitor has not located in this run is asked about again later.
+      if (repositoryRoot !== null) cleanups.push({ repositoryId: entry.repositoryId, taskId: entry.taskId, repositoryRoot });
+    }
+    writeActionResult(response, 200, { ok: true, cleanups });
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
+// `worktree-root` answers `{ ok: true, root }` and `worktree-cleaned` `{ ok: true }`; a refusal is a fixed code only.
+function serveWorktreeAction({ response, taskStore, resolveStart, action, repositoryId, payload }) {
+  try {
+    if (action === "worktree-root") {
+      const root = Object.keys(payload).length === 0 ? startRoot(resolveStart, repositoryId) : undefined;
+      if (typeof root === "string") writeActionResult(response, 200, { ok: true, root });
+      else writeActionResult(response, root === null ? 404 : 400, rejected(root === null ? "not_found" : "invalid"));
+      return;
+    }
+    const result = typeof taskStore?.worktreeCleaned === "function" ? taskStore.worktreeCleaned(repositoryId, payload) : null;
+    if (result?.ok === true) {
+      writeActionResult(response, 200, { ok: true });
+      return;
+    }
+    const error = Object.hasOwn(QUEUE_STATUS, result?.error) ? result.error : "unavailable";
+    writeActionResult(response, QUEUE_STATUS[error], rejected(error));
+  } catch {
+    writeActionResult(response, 503, rejected("unavailable"));
+  }
+}
+
 // `POST /internal/tasks/<action>`.
 export async function serveTaskActionRoute({ request, response, requestUrl, taskStore, resolveStart = null, resolveSessionFacts = null, resolveGateFacts = null, resolveCheckFacts = null }) {
   const action = requestUrl.pathname.slice(TASK_ACTION_PATH_PREFIX.length);
-  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action)) {
+  if (!TASK_ACTIONS.includes(action) && !START_ACTIONS.includes(action) && !QUEUE_ACTIONS.includes(action) && !WORKTREE_ACTIONS.includes(action)) {
     writeActionResult(response, 404, rejected("invalid"));
     return;
   }
@@ -287,6 +347,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
     serveQueueNext({ response, taskStore, resolveGateFacts, body });
     return;
   }
+  if (action === "worktree-cleanups") {
+    serveWorktreeCleanups({ response, taskStore, resolveStart, body });
+    return;
+  }
   const validEnvelope = isPlainObject(body) && Object.keys(body).every((key) => key === "repositoryId" || key === "payload")
     && typeof body.repositoryId === "string" && REPOSITORY_ID_PATTERN.test(body.repositoryId) && isPlainObject(body.payload);
   if (!validEnvelope) {
@@ -299,6 +363,10 @@ export async function serveTaskActionRoute({ request, response, requestUrl, task
   }
   if (action === "queue-pause") {
     serveQueuePause({ response, taskStore, repositoryId: body.repositoryId, payload: body.payload });
+    return;
+  }
+  if (WORKTREE_ACTIONS.includes(action)) {
+    serveWorktreeAction({ response, taskStore, resolveStart, action, repositoryId: body.repositoryId, payload: body.payload });
     return;
   }
   if (START_ACTIONS.includes(action)) {

@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { createCommittedResponseCache } from "../persistence/committed-response-cache.mjs";
 import { contextAllocationFromCategories, contextCategoryKind } from "../normalize/context-machinery.mjs";
-import { checkoutRoots, readGitCheckout, taskWorktreeRepositoryId } from "./git-checkout.mjs";
+import { checkoutRoots, readGitCheckout, taskWorktreeMainRoot, taskWorktreeRepositoryId } from "./git-checkout.mjs";
 import { createRepositoryPluginRuntime } from "./repository-plugin-runtime.mjs";
 
 const GIT_ROOT_TTL_MS = 300_000;
@@ -261,6 +261,17 @@ export function createRepositoryInventoryRuntime(options = {}) {
     };
   }
 
+  const repositoryIdOf = (mainRoot) => `repo-${createHmac("sha256", Buffer.from(state.salt, "hex"))
+    .update(process.platform === "win32" ? mainRoot.toLowerCase() : mainRoot).digest("hex").slice(0, 24)}`;
+
+  // The repository ID a Pomegr task worktree path names: in the path itself, or the ID of the main root the path is inside.
+  function taskWorktreeOwnerId(normalizedCwd) {
+    const named = taskWorktreeRepositoryId(normalizedCwd);
+    if (named) return named;
+    const mainRoot = taskWorktreeMainRoot(normalizedCwd);
+    return mainRoot ? repositoryIdOf(mainRoot) : null;
+  }
+
   async function locate(cwd, recognized = null) {
     await ready;
     const normalizedCwd = path.resolve(cwd);
@@ -270,10 +281,10 @@ export function createRepositoryInventoryRuntime(options = {}) {
       roots.set(normalizedCwd, checkout);
     }
     const { root, mainRoot } = checkout;
-    const owner = checkout.unanswered ? targets.get(taskWorktreeRepositoryId(normalizedCwd)) : null;
-    if (owner) return { repositoryId: taskWorktreeRepositoryId(normalizedCwd), name: owner.name, root, mainRoot: owner.root };
-    const identityRoot = process.platform === "win32" ? mainRoot.toLowerCase() : mainRoot;
-    const repositoryId = `repo-${createHmac("sha256", Buffer.from(state.salt, "hex")).update(identityRoot).digest("hex").slice(0, 24)}`;
+    const ownerId = checkout.unanswered ? taskWorktreeOwnerId(normalizedCwd) : null;
+    const owner = ownerId ? targets.get(ownerId) : null;
+    if (owner) return { repositoryId: ownerId, name: owner.name, root, mainRoot: owner.root };
+    const repositoryId = repositoryIdOf(mainRoot);
     const name = safeText(path.basename(mainRoot), 128, "Repository");
     targets.set(repositoryId, { root: mainRoot, name });
     return { repositoryId, name, root, mainRoot };
@@ -288,7 +299,7 @@ export function createRepositoryInventoryRuntime(options = {}) {
     if (typeof cwd !== "string" || !path.isAbsolute(cwd)) return null;
     const normalizedCwd = path.resolve(cwd);
     if (roots.get(normalizedCwd)?.unanswered !== true) return null;
-    const ownerId = taskWorktreeRepositoryId(normalizedCwd);
+    const ownerId = taskWorktreeOwnerId(normalizedCwd);
     return ownerId ? targets.has(ownerId) ? "known" : "unknown" : null;
   }
 
