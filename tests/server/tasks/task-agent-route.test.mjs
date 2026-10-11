@@ -166,7 +166,7 @@ test("bounds follow the store validation", async (context) => {
   assert.equal((await add(port, { text: "o", completeWhen: { checks: [], own: "y".repeat(500) } })).status, 200);
   reason(await add(port, { text: "o", completeWhen: { checks: [], own: "y".repeat(501) } }), 400, "invalid");
   // A plugin from before the rename still sends `doneWhen`; both names together are refused.
-  assert.equal((await add(port, { text: "o", doneWhen: { checks: ["pr_open"], own: null } })).status, 200);
+  assert.equal((await add(port, { text: "p", doneWhen: { checks: ["pr_open"], own: null } })).status, 200);
   reason(await add(port, { text: "o", doneWhen: { checks: [], own: null }, completeWhen: { checks: [], own: null } }), 400, "invalid");
   reason(await add(port, { text: "m", run: { provider: "claude", model: "bad model\n", effort: null } }), 400, "invalid");
   reason(await add(port, { text: "m", run: { provider: "other", model: null, effort: null } }), 400, "invalid");
@@ -206,6 +206,60 @@ test("an unavailable store or lookup answers unavailable", async (context) => {
   const store = await realStore(context);
   const noLookup = await start(context, store, { resolve: false });
   reason(await add(noLookup.port, { text: "x" }), 503, "unavailable");
+});
+
+test("the same session adding the same text again gets the task it already added, and only that", async (context) => {
+  const { store, directory, clock } = await openTemporaryStore(context, "pomegr-agent-add-again-");
+  const { port } = await start(context, store);
+  const addText = async (sessionRef, text, extra = {}) => (await send(port, { body: JSON.stringify({ sessionRef, text, ...extra }) })).json;
+  const first = await addText("claude:mine", SECRET_TEXT);
+  assert.deepEqual(first, { schemaVersion: 1, ok: true, taskId: "T-1" });
+  // The retry of a call whose answer was lost: the same ID, the same shape, and no second task.
+  assert.deepEqual(await addText("claude:mine", SECRET_TEXT), first);
+  // The text is compared as the store keeps it, so outer blanks do not make a second task.
+  assert.deepEqual(await addText("claude:mine", `  ${SECRET_TEXT}\n`), first);
+  // Run and conditions do not tell two adds apart; the text and the feature do.
+  assert.deepEqual(await addText("claude:mine", SECRET_TEXT, { run: { provider: "codex", model: null, effort: null } }), first);
+  assert.deepEqual(taskIds(store), ["T-1"]);
+  // Another text, another session, or another feature each make a task of their own.
+  assert.equal((await addText("claude:mine", `${SECRET_TEXT} two`)).taskId, "T-2");
+  assert.equal((await addText("claude:theirs", SECRET_TEXT)).taskId, "T-3");
+  assert.equal(store.apply(REPOSITORY, "feature_create", { name: "Reports" }).ok, true);
+  assert.equal((await addText("claude:mine", SECRET_TEXT, { feature: "Reports" })).taskId, "T-4");
+  assert.equal((await addText("claude:mine", SECRET_TEXT, { feature: "Reports" })).taskId, "T-4");
+  assert.equal((await addText("claude:mine", SECRET_TEXT)).taskId, "T-1");
+  assert.deepEqual(taskIds(store), ["T-1", "T-2", "T-3", "T-4"]);
+  // The owner's edits do not end it inside the window; an owner's delete does.
+  assert.equal(store.apply(REPOSITORY, "update", { id: "T-2", text: "edited by the owner" }).ok, true);
+  assert.equal((await addText("claude:mine", `${SECRET_TEXT} two`)).taskId, "T-2");
+  assert.equal(store.apply(REPOSITORY, "delete", { id: "T-3" }).ok, true);
+  assert.equal((await addText("claude:theirs", SECRET_TEXT)).taskId, "T-5");
+  // The memory is the monitor's alone: nothing about it is stored, and the task text is kept nowhere new.
+  assert.equal(metaValue(directory, adderKey(1)), "claude:mine");
+  assert.doesNotMatch(JSON.stringify(store.readBoard(REPOSITORY)), /recent|digest/u);
+  // After the window the same call adds a new task, and the window counts from the add, not from the last retry.
+  clock.now += 4 * 60 * 1000;
+  assert.equal((await addText("claude:mine", SECRET_TEXT)).taskId, "T-1");
+  clock.now += 61 * 1000;
+  assert.equal((await addText("claude:mine", SECRET_TEXT)).taskId, "T-6");
+  assert.equal((await addText("claude:mine", SECRET_TEXT)).taskId, "T-6");
+});
+
+test("a store reopened after a restart remembers no earlier add, and a refused add is not remembered", async (context) => {
+  const { store, directory } = await openTemporaryStore(context, "pomegr-agent-add-restart-");
+  const { port } = await start(context, store);
+  const addText = async (text) => send(port, { body: JSON.stringify({ sessionRef: "claude:mine", text }) });
+  reason(await addText("x".repeat(4001)), 400, "invalid");
+  reason(await addText("x".repeat(4001)), 400, "invalid");
+  assert.equal((await addText(SECRET_TEXT)).json.taskId, "T-1");
+  store.close();
+  const reopened = openTaskStore({ directory });
+  try {
+    const second = await start(context, reopened);
+    assert.equal((await send(second.port, { body: JSON.stringify({ sessionRef: "claude:mine", text: SECRET_TEXT }) })).json.taskId, "T-2");
+  } finally {
+    reopened.close();
+  }
 });
 
 test("no other agent write path exists", async (context) => {
@@ -283,7 +337,7 @@ test("a store that cannot read the link leaves the committed identity in charge"
   assert.equal((await addTo(throwing.port, "claude:worktree")).json.ok, true);
   assert.equal(store.readBoard("repo-ffffffffffffffffffffffff").tasks.length, 1);
   const missing = await start(context, { apply: store.apply, readBoard: store.readBoard });
-  assert.equal((await addTo(missing.port, "claude:known")).json.ok, true);
+  assert.equal((await addTo(missing.port, "claude:known", { text: "from the worktree, second" })).json.ok, true);
   assert.equal(store.readBoard(REPOSITORY_ID).tasks.length, 2);
   assert.equal(store.readBoard(REPOSITORY).tasks.length, 1);
 });
@@ -314,7 +368,7 @@ test("a session removes a task it added: the number stays retired and the answer
   const { store, directory } = await openTemporaryStore(context, "pomegr-agent-remove-");
   const { port } = await start(context, store);
   assert.equal(await addAs(port, "claude:mine"), "T-1");
-  assert.equal(await addAs(port, "claude:mine"), "T-2");
+  assert.equal(await addAs(port, "claude:mine", "a second task"), "T-2");
   assert.equal(metaValue(directory, adderKey(2)), "claude:mine");
   // The record of who added a task is never on the served board.
   assert.doesNotMatch(JSON.stringify(store.readBoard(REPOSITORY)), /claude:mine|added_by|addedBy/u);
@@ -326,7 +380,8 @@ test("a session removes a task it added: the number stays retired and the answer
   assert.equal(metaValue(directory, adderKey(2)), null);
   // Gone is gone: a second call is the same refusal as a task that never existed, and the number is not reused.
   refused(await remove(port, "T-2"));
-  assert.equal(await addAs(port, "claude:mine"), "T-3");
+  // The same text again, moments later, is a new task: a removed task is never answered as the one already added.
+  assert.equal(await addAs(port, "claude:mine", "a second task"), "T-3");
 });
 
 test("a task the user or another session added, or one that does not exist, is the one fixed refusal", async (context) => {
@@ -346,7 +401,7 @@ test("a task the user or another session added, or one that does not exist, is t
 test("a task that waits in the queue is removed, and one that started, linked, or reported is refused", async (context) => {
   const { store, directory, clock } = await openTemporaryStore(context, "pomegr-agent-remove-");
   const { port } = await start(context, store);
-  for (let number = 1; number <= 7; number += 1) assert.equal(await addAs(port, "claude:mine"), `T-${number}`);
+  for (let number = 1; number <= 7; number += 1) assert.equal(await addAs(port, "claude:mine", `${SECRET_TEXT} ${number}`), `T-${number}`);
   // T-1 queued and T-2 scheduled still wait.
   queueTask(store, "T-1");
   assert.equal(store.apply(REPOSITORY, "queue_add", { id: "T-2", at: new Date(START_TIME + 3_600_000).toISOString() }).ok, true);

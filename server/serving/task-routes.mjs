@@ -430,6 +430,9 @@ function agentBoardRepository(taskStore, resolveSession, sessionRef) {
  * agent-query gate (loopback host, no Origin, agent token); this route adds the content-type check,
  * the strict body, and the bound session's repository from `resolveSession` (committed facts only).
  * The answer carries the new task ID and never an echo of task content. The store validates the record.
+ * The add is safe to repeat for a few minutes: the same session sending the same text and feature again is answered
+ * the task it already added (the store's memory, task-recent-adds.mjs), because an agent whose first answer was lost
+ * asks again.
  */
 export async function serveAgentTaskAddRoute({ request, response, requestUrl, taskStore, resolveSession }) {
   const read = await readAgentJson(request, requestUrl, TASK_PAYLOAD_LIMIT_BYTES);
@@ -483,7 +486,13 @@ export async function serveAgentTaskAddRoute({ request, response, requestUrl, ta
       writeAgentAddResult(response, reason);
       return;
     }
-    // Task numbers only grow, so the newest task of the committed board is the one just created.
+    // The store names the task: the one it just made, or the one this session already added with the same text and
+    // feature a moment ago, so a repeated call answers the same ID and adds nothing.
+    if (typeof result.taskId === "string" && TASK_ID_PATTERN.test(result.taskId)) {
+      writeAgentAddResult(response, null, result.taskId);
+      return;
+    }
+    // A store that names none: task numbers only grow, so the newest task of the committed board is the one just created.
     const numbers = projectBoard(repositoryId, result.board).tasks.map((task) => ({ id: task.id, number: Number(String(task.id).slice(2)) }));
     const newest = numbers.reduce((best, task) => (best === null || task.number > best.number ? task : best), null);
     if (!newest) {

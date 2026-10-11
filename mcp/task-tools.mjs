@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { AGENT_TASK_NO_ANSWER } from "../shared/agent-query-transport.mjs";
+
 export const TASK_ADD_PATH = "/api/agent/v1/tasks/add";
 export const TASK_COMPLETE_PATH = "/api/agent/v1/tasks/complete";
 export const TASK_BLOCK_PATH = "/api/agent/v1/tasks/block";
@@ -7,6 +9,13 @@ export const TASK_REMOVE_PATH = "/api/agent/v1/tasks/remove";
 export const TASK_TOOL_INSTRUCTIONS = "Use add_task to put follow-up work on the current repository's Pomegr task board when the user asks for it; it only adds a task in the first column, it does not queue or start anything, and the repository is always the current session's. Use remove_task only to delete a task this session added itself with add_task, such as a duplicate, while it has not started; it cannot be undone, and it never removes a task the user or another session added. When Pomegr started this session for a task, call complete_task once the task is complete, which puts it in Review for the user, adding its attention line only when something in the finished work needs the user's attention, or block_task with a short reason when you cannot proceed; each session reports once, and only on its own task.";
 export const TASK_UNBOUND_TEXT = "Pomegr could not bind this call to the current session, so no task was added.";
 export const TASK_UNAVAILABLE_TEXT = "Pomegr is unavailable, so no task was added.";
+// The request was sent and no answer came back in time: the write may have happened, so each text says the outcome is
+// unknown and what to do instead of a blind retry. Fixed texts, never an error detail.
+export const TASK_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was added. It may have been: do not assume it failed. Calling add_task again with exactly the same text and feature within a few minutes is safe and returns the same task instead of a second one; do not add it again with different wording.";
+export const TASK_REPORT_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the report was recorded. It may have been: do not assume it failed. Calling the same tool once more is safe, because a task takes one report; if the answer is that this session already reported, the first report stands.";
+export const TASK_REMOVE_NO_ANSWER_TEXT = "Pomegr did not answer in time, so it is unknown whether the task was removed. It may have been: do not assume it failed. Calling remove_task once more with the same task ID is safe; if the answer is that no task was removed, the first call removed it or it could not be removed.";
+
+const noAnswer = (error) => error instanceof Error && error.message === AGENT_TASK_NO_ANSWER;
 
 const CHECKS = ["pr_open", "tree_clean", "commit_on_branch", "pr_merged", "ci_passed"];
 const REASON_TEXT = {
@@ -105,7 +114,7 @@ function result(text, isError) {
 export function registerTaskTools(server, { resolveSession, post, hookBound = false }) {
   server.registerTool("add_task", {
     title: "Add a Pomegr task",
-    description: "Add a task to the current repository's Pomegr board, in the first column, not queued. It does not start any session. The repository and session are bound by the host; there is no repository or path input.",
+    description: "Add a task to the current repository's Pomegr board, in the first column, not queued. It does not start any session. Adding the same text to the same feature again within a few minutes returns the task already added instead of a second one. The repository and session are bound by the host; there is no repository or path input.",
     inputSchema: z.object(inputShape(hookBound)).strict(),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   }, async (input, extra) => {
@@ -114,8 +123,8 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     let answer;
     try {
       answer = await post(TASK_ADD_PATH, buildAddTaskBody(ref, input));
-    } catch {
-      return result(TASK_UNAVAILABLE_TEXT, true);
+    } catch (error) {
+      return result(noAnswer(error) ? TASK_NO_ANSWER_TEXT : TASK_UNAVAILABLE_TEXT, true);
     }
     if (answer && answer.ok === true && typeof answer.taskId === "string" && /^T-\d{1,9}$/u.test(answer.taskId)) {
       return result(`Task ${answer.taskId} added to the board, not queued.`, false);
@@ -139,8 +148,8 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     let answer;
     try {
       answer = await post(TASK_REMOVE_PATH, { sessionRef: ref, taskId: input.task_id });
-    } catch {
-      return result(REMOVE_REASON_TEXT.unavailable, true);
+    } catch (error) {
+      return result(noAnswer(error) ? TASK_REMOVE_NO_ANSWER_TEXT : REMOVE_REASON_TEXT.unavailable, true);
     }
     if (answer && answer.ok === true) return result(`Task ${input.task_id} removed from the board.`, false);
     const text = answer && answer.ok === false && typeof answer.reason === "string" && Object.hasOwn(REMOVE_REASON_TEXT, answer.reason)
@@ -154,8 +163,8 @@ export function registerTaskTools(server, { resolveSession, post, hookBound = fa
     let answer;
     try {
       answer = await post(path, { sessionRef: ref, ...body });
-    } catch {
-      return result(REPORT_REASON_TEXT.unavailable, true);
+    } catch (error) {
+      return result(noAnswer(error) ? TASK_REPORT_NO_ANSWER_TEXT : REPORT_REASON_TEXT.unavailable, true);
     }
     if (answer && answer.ok === true) {
       const text = done(answer);

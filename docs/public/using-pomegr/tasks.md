@@ -386,7 +386,7 @@ the coding tool, not by anything the model supplies.
 
 | Tool | What it does |
 | --- | --- |
-| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. |
+| `add_task` | Adds a task to the board of the session's repository. A session started for a task adds to the same board, even from a task worktree. It lands in the first column, not queued. It may carry **Run on**, **Complete when**, and the exact name of an unfinished feature, which puts the task in a new last step. Agents cannot create features. When the same session adds the same text to the same feature again within five minutes, it gets the task it already added instead of a second one (plugin 0.9.2 or later tells the agent when Pomegr did not answer in time, so the agent does not add the task twice). |
 | `remove_task` | Deletes a task the same session added with `add_task`, such as a duplicate. It needs plugin 0.9.1 or later. See [Tasks an agent can remove](#tasks-an-agent-can-remove). |
 | `complete_task` | Reports the work done on the task the session was started for. Pomegr then verifies the checked conditions. The task goes to **Review**, never straight to **Done**. The agent may add one line of up to 200 characters that names what needs your attention. |
 | `block_task` | Reports that the agent cannot continue, with a reason of up to 200 characters. The task becomes **Blocked by agent**. |
