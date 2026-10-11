@@ -126,6 +126,13 @@ export function completeWhenFromTask(completeWhen: Task["completeWhen"]): Comple
   return { checks: [...completeWhen.checks], ownText: completeWhen.own ?? "" };
 }
 
+/** A new task starts from the Run on and Complete when of the newest task on the board. */
+export function newTaskDefaults(tasks: ReadonlyArray<Pick<Task, "id" | "run" | "completeWhen">>): { run: TaskRun; completeWhen: CompleteWhenDraft } {
+  const number = (task: Pick<Task, "id">) => Number(task.id.slice(2));
+  const newest = tasks.reduce<Pick<Task, "id" | "run" | "completeWhen"> | null>((latest, task) => (latest === null || number(task) > number(latest) ? task : latest), null);
+  return newest === null ? { run: EMPTY_RUN, completeWhen: DEFAULT_COMPLETE_WHEN } : { run: newest.run, completeWhen: completeWhenFromTask(newest.completeWhen) };
+}
+
 export function toCompleteWhen(draft: CompleteWhenDraft): CompleteWhenValue {
   const own = draft.ownText.trim().slice(0, TASK_BOUNDS.ownConditionLength);
   return { checks: TASK_CHECKS.filter((check) => draft.checks.includes(check)), own: own || null };

@@ -81,9 +81,9 @@ afterEach(() => {
 });
 
 /** The modal in mode issue. `reload` stands in for the page: it may hand the modal a newer version of the issue. */
-function Harness({ first = issue(), reload = async () => {} }: { first?: TaskIssue; reload?: (show: (next: TaskIssue) => void) => Promise<void> }) {
+function Harness({ first = issue(), tasks = [], reload = async () => {} }: { first?: TaskIssue; tasks?: Task[]; reload?: (show: (next: TaskIssue) => void) => Promise<void> }) {
   const [current, setCurrent] = useState(first);
-  return <TaskModal mode="issue" repositoryId={repositoryId} repositoryName="Example project" issue={current} board={board} refresh={refresh}
+  return <TaskModal mode="issue" repositoryId={repositoryId} repositoryName="Example project" issue={current} board={{ ...board, tasks }} refresh={refresh}
     onReload={() => reload(setCurrent)} onPromoted={onPromoted} onClose={onClose} />;
 }
 
@@ -174,6 +174,22 @@ describe("mode issue", () => {
     expect(taskAction).not.toHaveBeenCalled();
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(onPromoted).toHaveBeenCalledWith("T-40");
+  });
+
+  it("starts from the run and conditions of the newest task on the board", async () => {
+    const user = userEvent.setup();
+    render(<Harness tasks={[
+      task({ id: "T-7", run: { provider: "codex", model: null, effort: "low" } }),
+      task({ id: "T-31", run: { provider: "claude", model: null, effort: "xhigh" }, completeWhen: { checks: ["ci_passed"], own: "Docs updated." } }),
+    ]} />);
+    expect(screen.getByRole("button", { name: "Xhigh" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("checkbox", { name: "CI passed" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "PR open" })).not.toBeChecked();
+    await user.click(promoteButton());
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(updateCalls()).toEqual([[repositoryId, "update", {
+      id: "T-40", run: { provider: "claude", model: null, effort: "xhigh" }, completeWhen: { checks: ["ci_passed"], own: "Docs updated." },
+    }]]);
   });
 
   it("sends only the keys that were chosen", async () => {

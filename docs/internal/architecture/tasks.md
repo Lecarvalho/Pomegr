@@ -140,6 +140,11 @@ type TaskBoard = {
 - A task is created with one free-text field, **Task**. There is no title field: a card
   shows the task text until its session has a title, then the session title. A new task
   always lands in the first column.
+- The New task modal, for a written task and for a promoted issue, opens with the `run`
+  and `completeWhen` of the newest task on the board, the one with the highest ID, and
+  with no feature. An empty board gives no `run` and the checks Pull request open and
+  Working tree clean. This is read from the board the client already holds: nothing is
+  kept in browser storage, and an `add_task` task counts as the newest like any other.
 - `run` sets only the main agent of the started session, and every part of it is
   optional: a provider with a model or its "Default model", and an effort. `model` is
   validated like the request model identifier in [AGENTS.md](../../../AGENTS.md): at

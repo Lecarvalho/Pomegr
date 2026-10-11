@@ -50,7 +50,8 @@ const tasks = () => [
   task(4, "Queue", { featureId: "f1", step: 3, state: "queued", columnId: "col-2", position: 0 }),
   task(5, "Old work", { featureId: "f2", step: 1, state: "done" }),
   task(6, "Loose end"),
-  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", step: 4, columnId: "col-2", position: id })),
+  // T-10 is the newest task, so a new task opens with its Complete when.
+  ...[7, 8, 9, 10].map((id) => task(id, `Gate ${id}`, { featureId: "f1", step: 4, columnId: "col-2", position: id, completeWhen: { checks: ["pr_open", "tree_clean"], own: null } })),
 ];
 const features = [
   { id: "f1", name: "Task board v1", done: false },
